@@ -24,15 +24,6 @@ const HOST = `127.0.0.1:${PORT}`;
  * the backlog item docs/lanes.md assigns it.
  */
 const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
-  ['GET', '/api/sessions', 'M4.1'],
-  ['POST', '/api/sessions', 'M5.1'],
-  ['GET', '/api/sessions/s1', 'M4.1'],
-  ['POST', '/api/sessions/s1/messages', 'M4.2'],
-  ['POST', '/api/sessions/s1/pause', 'M4.1'],
-  ['POST', '/api/sessions/s1/resume', 'M4.1'],
-  ['POST', '/api/sessions/s1/detach', 'M4.1'],
-  ['POST', '/api/sessions/s1/attach', 'M4.1'],
-  ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M4.2'],
   ['GET', '/api/sessions/s1/diff?file=a.ts', 'M4.5'],
   ['GET', '/api/inbox', 'M3.2'],
   ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
@@ -52,6 +43,19 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['PUT', '/api/tools', 'M8.1'],
   ['POST', '/api/tools/cm/probe', 'M8.1'],
   ['GET', '/api/system', 'M5.3'],
+];
+
+/** Contract rows implemented so far (their behavior has its own tests, e.g. tests/server/api/sessions.test.ts). */
+const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
+  ['GET', '/api/sessions', 'M2.1'],
+  ['POST', '/api/sessions', 'M2.1'],
+  ['GET', '/api/sessions/s1', 'M2.1'],
+  ['POST', '/api/sessions/s1/messages', 'M2.1'],
+  ['POST', '/api/sessions/s1/pause', 'M2.1'],
+  ['POST', '/api/sessions/s1/resume', 'M2.1'],
+  ['POST', '/api/sessions/s1/detach', 'M2.1'],
+  ['POST', '/api/sessions/s1/attach', 'M2.1'],
+  ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M2.1'],
 ];
 
 let tmp: string;
@@ -84,13 +88,20 @@ describe('API route registry (M1.4)', () => {
   });
 
   it('keeps every route behind the cookie guard', async () => {
-    for (const [method, url] of CONTRACT) {
+    for (const [method, url] of [...CONTRACT, ...IMPLEMENTED]) {
       const response = await app.inject({ method, url, headers: { host: HOST } });
       expect(response.statusCode, `${method} ${url}`).toBe(401);
     }
   });
 
-  it('lists exactly the contract routes as pending, once each', () => {
+  it('no longer answers 501 on the implemented routes', async () => {
+    for (const [method, url] of IMPLEMENTED) {
+      const response = await app.inject({ method, url, headers: { host: HOST, cookie: `sb_token=${token}` } });
+      expect(response.statusCode, `${method} ${url}`).not.toBe(501);
+    }
+  });
+
+  it('lists exactly the contract routes still pending, once each', () => {
     const pending = [
       ...SESSION_ROUTES_PENDING,
       ...INBOX_ROUTES_PENDING,

@@ -85,6 +85,7 @@ export interface SessionEvent {
   readonly endTs: string | null;
   readonly kind: EventKind;
   readonly label: string;
+  /** One of the `EventPayload` shapes in `event-payload.ts` (`payload.type`; `docs/derivations.md`). */
   readonly payload: unknown;
 }
 

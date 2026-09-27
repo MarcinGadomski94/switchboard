@@ -79,7 +79,8 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const token = (await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).trim();
     const host = `127.0.0.1:${server.port}`;
     const sessions = await rawRequest({ port: server.port, path: '/api/sessions', headers: { host, cookie: `sb_token=${token}` } });
-    expect(sessions.status).toBe(501); // the demo feeds the DB and providers; routes are the lanes' (M4.1)
+    expect(sessions.status).toBe(200); // the demo feeds the DB; the real route (M2.1) reads it
+    expect((JSON.parse(sessions.body) as unknown[]).length).toBe(6);
     expect(await server.stop()).toBe(0);
     server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir, SWITCHBOARD_DEMO: '1' }); // second start: no-op
     expect(await server.stop()).toBe(0);

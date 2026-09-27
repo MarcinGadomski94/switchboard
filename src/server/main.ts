@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from './app.ts';
+import { buildApp, createSupervisor } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { openStore, storeFile } from './db/store.ts';
@@ -22,8 +22,11 @@ async function main(): Promise<void> {
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
     let providers: Providers = {};
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, logger: true });
+    const supervisor = createSupervisor(config, store);
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, logger: true });
     app.addHook('onClose', async () => {
+      // Live claude processes are stopped (their status kept for M2.4) before the database closes.
+      await supervisor.shutdown();
       await store.close();
     });
     // Installed before listening: a signal right after "Server listening" (tests stop

@@ -13,10 +13,10 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 ## Server: API areas (`src/server/api/*.ts`, registered from `src/server/routes.ts`)
 | Route (contract) | Module | Item |
 |---|---|---|
-| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | M4.1 |
-| `POST /api/sessions` | `api/sessions.ts` | M5.1 (+ M2.1 start, M2.2 worktrees, M5.2 first message) |
-| `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | M4.1 (D7 stop from M2.1) |
-| `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | M4.2 |
+| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 refines the shapes additively |
+| `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); M2.2 adds worktrees, M5.2 the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
+| `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); M4.1 adds the Attach warning + transcript import |
+| `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
 | `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 |
 | `GET /api/inbox` | `api/inbox.ts` | M3.2 (items from M3.1 and M3.3) |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | M3.1 |

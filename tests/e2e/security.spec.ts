@@ -38,7 +38,7 @@ test('UI load sets the sb_token cookie and the page can call the API', async ({ 
   // HttpOnly: invisible to page scripts, but sent with same-origin requests.
   expect(await page.evaluate(() => document.cookie)).not.toContain('sb_token');
   const status = await page.evaluate(async () => (await fetch('/api/sessions')).status);
-  expect(status).toBe(501); // past the guard; the route answers 501 until its item lands (M1.4)
+  expect(status).toBe(200); // past the guard; the real route (M2.1) answers
 });
 
 test('without the cookie the API answers 401', async ({ browser }) => {

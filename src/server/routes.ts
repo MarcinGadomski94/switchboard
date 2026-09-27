@@ -11,6 +11,7 @@ import { registerToolRoutes } from './api/tools.ts';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
 import type { Providers } from './providers.ts';
+import type { SessionSupervisor } from './supervisor/supervisor.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -19,6 +20,8 @@ export interface ApiContext {
   readonly store: Store;
   /** Computed data sources (providers.ts); demo implementations when SWITCHBOARD_DEMO=1. */
   readonly providers: Providers;
+  /** The claude process supervisor (M2.1). */
+  readonly supervisor: SessionSupervisor;
 }
 
 /**

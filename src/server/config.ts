@@ -19,6 +19,12 @@ export interface ServerConfig {
   readonly workspaceRoot: string | null;
   /** `SWITCHBOARD_CLAUDE_BIN` as an argv prefix, default `["claude"]`. */
   readonly claudeCommand: readonly string[];
+  /**
+   * `SWITCHBOARD_CLAUDE_EXTRA_ARGS`: dev-only flags appended to every supervised
+   * `claude` spawn (a JSON array, e.g. `["--model","haiku","--max-turns","3"]` for the
+   * D13 real-CLI smoke). Default none.
+   */
+  readonly claudeExtraArgs: readonly string[];
   /** `SWITCHBOARD_GH_BIN` as an argv prefix, default `["gh"]`. */
   readonly ghCommand: readonly string[];
   /** `SWITCHBOARD_DEMO=1` loads the demo seed (decisions gap #21). Anything else = off. */
@@ -87,6 +93,25 @@ export function parseCommand(name: string, raw: string | undefined, fallback: st
   return parsed as string[];
 }
 
+/**
+ * A list of CLI arguments as a JSON array of non-empty strings (never shell-parsed).
+ * Unset or blank = none.
+ * @throws {ConfigError} on anything else.
+ */
+export function parseArgList(name: string, raw: string | undefined): string[] {
+  if (raw === undefined || raw.trim() === '') return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.trim());
+  } catch {
+    throw new ConfigError(`${name} must be a JSON array of strings`);
+  }
+  if (!Array.isArray(parsed) || !parsed.every((part) => typeof part === 'string' && part !== '')) {
+    throw new ConfigError(`${name} must be a JSON array of non-empty strings`);
+  }
+  return parsed as string[];
+}
+
 function parseDir(raw: string | undefined, cwd: string): string | null {
   if (raw === undefined || raw.trim() === '') return null;
   return path.resolve(cwd, raw.trim());
@@ -116,6 +141,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     dataDir: parseDir(env['SWITCHBOARD_DATA_DIR'], cwd) ?? defaultDataDir(platform, env, home),
     workspaceRoot: parseDir(env['SWITCHBOARD_WORKSPACE_ROOT'], cwd),
     claudeCommand: parseCommand('SWITCHBOARD_CLAUDE_BIN', env['SWITCHBOARD_CLAUDE_BIN'], 'claude'),
+    claudeExtraArgs: parseArgList('SWITCHBOARD_CLAUDE_EXTRA_ARGS', env['SWITCHBOARD_CLAUDE_EXTRA_ARGS']),
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
     demo: env['SWITCHBOARD_DEMO'] === '1',
   };

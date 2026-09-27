@@ -1,7 +1,7 @@
 ## Current
-item: M2.1 (next)
+item: M2.2 (next)
 attempt: 0/5
-last oracle: M1.4 PASS (attempt 3/5; attempt 1 red: SPEC oklch tokens looked missing because Vite minifies `oklch(0.8 0.14 70)` to `oklch(80% .14 70)` → tokens now compared as browser-computed colors, and the footer's "claude code" box wraps in the prototype only because of its process count → copy/style-only check; attempt 2 E2E green) · `npm run typecheck` green · `npm test` 214/214 (25 new: tests/server/api/routes.test.ts every contract route 501 + guarded; tests/server/demo/{data,seed,providers}.test.ts verbatim strings vs the prototype, seed rows/timestamps/links, idempotent, refuses real data + app-data dir, rollback, demo providers; tests/web/format.test.ts; main.test.ts demo seeds once / non-demo DB empty) · `npx playwright test` 6/6 (tests/e2e/shell.spec.ts non-demo: real 501 API calls, nothing invented, nav + deep links, modals + ⌘K/Ctrl+K; tests/e2e/visual/shell.spec.ts: 29 parts, all chrome boxes equal to the prototype's, copy exact, 21 SPEC color tokens defined, 16 computed-style checks, pixel diff 5.32% page / 5.42% sidebar advisory → docs/visual/shell.md + side-by-side PNGs; agent review in docs/visual/README.md) · main.test.ts pre-existing flake (~1 in 6: SIGTERM right after "Server listening" beat the handler registration) fixed by installing the shutdown handlers before listen: 8/8 reruns green
+last oracle: M2.1 PASS (attempt 3/5; attempt 1 red: the attach test read the fake's argv log before the fake had written it → wait for the log line; attempt 2 oracle green ×3; attempt 3 full suite red only on M1.4 tests that pinned `/api/sessions` at 501 → now assert the real 200) · `npm run typecheck` green · `npm test` 292/292 ×3 (new: tests/server/supervisor/supervisor.test.ts 18 fake-claude integration tests — exact argv/env/cwd + first stdin line, extra args, missing CLI → fail, multiturn/tool-use/subagent-forward typed events + agents + usage + transcript sync uuid, perm-auto mismatch + automatic denial, [fake:write] artifacts, ask-2q need → respond → done, perm-allow request event, ask-interrupt cancel → paused exit 1, pause idle (handoff-start, exit 0) and mid-tool (handoff-midturn, exit 1) → paused, resume `--resume` same id + "Continue.", crash → fail, message to paused resumes, SIGINT→SIGTERM escalation, unhandled control subtype → error reply, shutdown keeps status; tests/server/api/sessions.test.ts 5 REST tests over the real supervisor; tests/core/{stream-json,derive}.test.ts 47 unit tests over every M0 fixture + the derivations) · `npx playwright test` 6/6 · no leftover fake processes · visual: n/a (no UI in M2.1)
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -13,6 +13,7 @@ last oracle: M1.4 PASS (attempt 3/5; attempt 1 red: SPEC oklch tokens looked mis
 - M1.3 ✓ 2026-09-28 (commit: see git log "M1.3: SQLite schema + migrations") · attempts 3/5 · plan: 0001_initial.sql STRICT tables for every data-model entity + M0 stored fields + inbox permission/system items + outbox/usage/history cache; database.ts (WAL, FKs, busy timeout, sync transaction helper) + migrate.ts (NNNN_name.sql, schema_migrations with LF-normalized sha256, one transaction per migration, foreign_key_check, edited/newer refusal); table.ts typed row mapper + src/server/db/repos/* (Promise API) + store.ts openStore; main.ts opens <dataDir>/switchboard.db, ApiContext.store; src/core/model.ts enums; docs/database.md
 - M1.4 ✓ 2026-09-28 (commit: see git log "M1.4: App shell, lane scaffolding, demo seed, visual harness") · attempts 3/5 · plan: fonts + prototype runtime deps; tokens.css/global.css, router, Shell + Sidebar fed only by the typed API client (501 → empty, "—"); placeholders per view/tab/modal + ToastHost, api/client.ts + useApi + useHub (SSE), src/server/api/* 501 modules from routes.ts, providers.ts; demo data files + seed + demo providers (SWITCHBOARD_DEMO=1, throwaway data dir only); visual harness (offline prototype, boxes ±2 px, copy, tokens, canvas pixel diff, side-by-side); docs/lanes.md, docs/demo.md, docs/visual/README.md
 
+- M2.1 ✓ 2026-09-28 (commit: see git log "M2.1: SessionSupervisor + stream-json events") · attempts 3/5 · plan: src/core stream-json parser + stdin builders + event payloads + derive/{event-kind,agents,artifacts,status}; src/server/supervisor/{argv,process,recorder,supervisor}.ts (baseline argv + SWITCHBOARD_CLAUDE_EXTRA_ARGS, env scrub, D7 stop with SIGINT→SIGTERM→SIGKILL, resume/detach/attach, ControlRequestHandler + respond() for M3.1, hub notifications for M2.3); sessions/{wire,validate}.ts + REST in api/sessions.ts (diff stays 501); docs/derivations.md + docs/supervisor.md + config/lanes rows
 ## Blocked
 - (none)
 ## Breaker
@@ -81,3 +82,18 @@ consecutive_blocked: 0
 - M1.4 · in-browser canvas pixel diff (no image deps)
 - M1.4 · demo seed mapping (ids, timeline base, payload.channel, artifacts list)
 - M1.4 · e2e global setup builds dist/web
+- M2.1 · session status rules (need > run > done/fail > idle; stop → paused; shutdown keeps status)
+- M2.1 · event model + payload union; interrupted result not recorded; 4000-char payload cut
+- M2.1 · demo seed keeps its channel-based payloads (M4 lanes map/update)
+- M2.1 · gap #7 tool lists + rebuild = same Bash command after an error in the turn
+- M2.1 · gap #8 main/subagent naming + task status mapping; no solutionPath/branch
+- M2.1 · gap #9 path → solution by router layout, DIFF/PR/BRANCH rules, meta left to git/gh
+- M2.1 · POST /api/sessions 201 / 422 (dup name too) / 409 no workspace root; task = first message until M5.2
+- M2.1 · message to a paused session resumes with it; 409 while detached; attach spawns idle, no import/warning (M4.1)
+- M2.1 · D7 stop timeouts 5/10/10/3 s
+- M2.1 · shutdown stops children, keeps status, 503 closing
+- M2.1 · no --settings; auto switch off
+- M2.1 · M3.1 hand-off interface only (no batch/permission storage)
+- M2.1 · SWITCHBOARD_CLAUDE_EXTRA_ARGS JSON array
+- M2.1 · detail = newest 200 events; since normalized, invalid → 422
+- M2.1 · buildApp owns a supervisor when none is passed

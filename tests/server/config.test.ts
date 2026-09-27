@@ -13,6 +13,7 @@ describe('loadConfig', () => {
       dataDir: '/Users/dev/Library/Application Support/Switchboard',
       workspaceRoot: null,
       claudeCommand: ['claude'],
+      claudeExtraArgs: [],
       ghCommand: ['gh'],
       demo: false,
     });
@@ -27,6 +28,7 @@ describe('loadConfig', () => {
         SWITCHBOARD_DATA_DIR: 'data',
         SWITCHBOARD_WORKSPACE_ROOT: '/work/space',
         SWITCHBOARD_CLAUDE_BIN: '["/usr/bin/node","/repo/tools/fake-claude/main.ts"]',
+        SWITCHBOARD_CLAUDE_EXTRA_ARGS: '["--model","haiku","--max-turns","3"]',
         SWITCHBOARD_GH_BIN: '/opt/bin/gh',
         SWITCHBOARD_DEMO: '1',
       },
@@ -38,6 +40,7 @@ describe('loadConfig', () => {
     expect(config.dataDir).toBe('/tmp/switchboard-cwd/data');
     expect(config.workspaceRoot).toBe('/work/space');
     expect(config.claudeCommand).toEqual(['/usr/bin/node', '/repo/tools/fake-claude/main.ts']);
+    expect(config.claudeExtraArgs).toEqual(['--model', 'haiku', '--max-turns', '3']);
     expect(config.ghCommand).toEqual(['/opt/bin/gh']);
     expect(config.demo).toBe(true);
   });
@@ -64,6 +67,18 @@ describe('loadConfig', () => {
 
   it.each(['[', '[]', '["node", 3]', '[""]', '["node",'])('rejects SWITCHBOARD_CLAUDE_BIN=%s', (value) => {
     expect(() => loadConfig({ env: { SWITCHBOARD_CLAUDE_BIN: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
+  });
+});
+
+describe('SWITCHBOARD_CLAUDE_EXTRA_ARGS (M2.1, dev-only)', () => {
+  it('blank means none', () => {
+    expect(loadConfig({ env: { SWITCHBOARD_CLAUDE_EXTRA_ARGS: '  ' }, platform: 'linux', home: HOME, cwd: CWD }).claudeExtraArgs).toEqual([]);
+  });
+
+  it.each(['--model haiku', '[', '["--model", 3]', '[""]', '{"a":1}'])('rejects %s', (value) => {
+    expect(() => loadConfig({ env: { SWITCHBOARD_CLAUDE_EXTRA_ARGS: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(
+      ConfigError,
+    );
   });
 });
 

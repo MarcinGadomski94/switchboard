@@ -41,12 +41,18 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.getByTestId('view-inbox')).toBeAttached();
   await expect(page.getByTestId('nav-inbox')).toHaveAttribute('aria-current', 'page');
 
-  // Every sidebar source was asked for, reached the real server and got the 501 placeholder.
+  // Every sidebar source was asked for and reached the real server: /api/sessions (M2.1) answers
+  // with the empty list, the others still with the 501 placeholder.
   const expected = ['/api/sessions', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
   await expect.poll(() => expected.filter((url) => !apiCalls.some((call) => call.url === url))).toEqual([]);
   for (const call of apiCalls) {
-    expect(call.status, call.url).toBe(501);
-    expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
+    if (call.url === '/api/sessions') {
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toEqual([]);
+    } else {
+      expect(call.status, call.url).toBe(501);
+      expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
+    }
   }
 
   // Nothing invented: no rows, no badges, unknown meters, the real address.
