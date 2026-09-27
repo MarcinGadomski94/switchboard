@@ -821,6 +821,98 @@
       "stdin": "tx-main.stdin.ndjson",
       "stdinPlan": "wait 2.5 s; send line 1; after result send line 2; after result close stdin",
       "note": "M0.3: cwd with a space inside its own git repo on branch feature/tx-probe; --name writes custom-title/agent-name to the transcript; transcript in transcripts/tx-main.jsonl"
+    },
+    "handoff-start": {
+      "cwd": ".spike/sandbox/handoff",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-prompt-tool",
+        "stdio",
+        "--permission-mode",
+        "acceptEdits",
+        "--replay-user-messages",
+        "--session-id",
+        "bf41e86f-38c1-4b6f-b795-4084d86d0787",
+        "--name",
+        "sb-handoff",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3"
+      ],
+      "exitCode": 0,
+      "stdout": "handoff-start.ndjson",
+      "stdin": "handoff-start.stdin.ndjson",
+      "stdinPlan": "wait 1 s; send line 1 (user) and wait for the result; send line 2 (interrupt control_request) while idle; after its control_response wait 1.5 s; close stdin",
+      "note": "M0.4 step 1 (service start + D7 Pause while idle): the idle interrupt yields only control_response{still_queued:[]}; EOF -> exit 0 in ~0.5 s. Transcript: transcripts/handoff.jsonl step 1"
+    },
+    "handoff-reattach": {
+      "cwd": ".spike/sandbox/handoff",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-prompt-tool",
+        "stdio",
+        "--permission-mode",
+        "acceptEdits",
+        "--replay-user-messages",
+        "--resume",
+        "bf41e86f-38c1-4b6f-b795-4084d86d0787",
+        "--name",
+        "sb-handoff",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3"
+      ],
+      "exitCode": 0,
+      "stdout": "handoff-reattach.ndjson",
+      "stdin": "handoff-reattach.stdin.ndjson",
+      "stdinPlan": "send nothing for 5 s (idle attach: only SessionStart:resume hook_started/hook_response arrive, no system/init); send line 1 and wait for the result; close stdin",
+      "note": "M0.4 step 3 (service picks the session up again after two terminal turns): same session_id, result \"tangerine, kestrel\" = context from the service turn and the terminal turns"
+    },
+    "handoff-midturn": {
+      "cwd": ".spike/sandbox/handoff-mid",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-prompt-tool",
+        "stdio",
+        "--permission-mode",
+        "acceptEdits",
+        "--replay-user-messages",
+        "--session-id",
+        "8c831952-16b8-47eb-8cf8-7a89a69dfad6",
+        "--name",
+        "sb-handoff-mid",
+        "--allowedTools",
+        "Bash(node -e *)",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3"
+      ],
+      "exitCode": 1,
+      "stdout": "handoff-midturn.ndjson",
+      "stdin": "handoff-midturn.stdin.ndjson",
+      "stdinPlan": "wait 1 s; send line 1; 2.5 s after the Bash tool_use send line 2 (interrupt); after the result close stdin",
+      "note": "M0.4 D7 Pause while a foreground Bash tool runs: control_response, rejected tool_result, [Request interrupted by user for tool use], result/error_during_execution (aborted_tools); EOF -> exit 1 (a clean pause, not a failure). Transcript: transcripts/handoff-mid.jsonl"
     }
   },
   "accountReplacedWith": {
@@ -835,6 +927,151 @@
       "originalPath": "~/.claude/projects/-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main/b8b908e5-75ad-4201-8f37-056b3bb0a379.jsonl",
       "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main",
       "note": "Whole lines as written by the CLI, home dir scrubbed. Dropped attachment lines (machine instructions/memory, system prompt, account, email, tool/skill/agent/MCP listings): {\"deferred_tools_delta\":2,\"agent_listing_delta\":1,\"mcp_instructions_delta\":2,\"skill_listing\":1,\"instructions\":1,\"session_context\":1,\"credential_org\":1,\"remote_session_change\":1,\"prompt_snapshot\":2}. parentUuid links that pointed at dropped lines are left dangling."
+    },
+    "handoff": {
+      "file": "transcripts/handoff.jsonl",
+      "sessionId": "bf41e86f-38c1-4b6f-b795-4084d86d0787",
+      "scenario": "handoff-start",
+      "originalPath": "~/.claude/projects/-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff/bf41e86f-38c1-4b6f-b795-4084d86d0787.jsonl",
+      "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff",
+      "steps": [
+        {
+          "step": "1 service start + idle pause (handoff-start)",
+          "first": 1,
+          "last": 21
+        },
+        {
+          "step": "2 terminal -p --resume, same cwd (handoff-terminal)",
+          "first": 22,
+          "last": 30
+        },
+        {
+          "step": "2b terminal -p --resume, other cwd (handoff-terminal-othercwd)",
+          "first": 31,
+          "last": 39
+        },
+        {
+          "step": "3 service re-attach (handoff-reattach)",
+          "first": 40,
+          "last": 48
+        }
+      ],
+      "note": "M0.4: final snapshot of the session transcript across the handoff steps (line ranges per step, 1-based, in this file). Same line filter and home-dir scrub as tx-main. Dropped attachment lines: {\"deferred_tools_delta\":3,\"agent_listing_delta\":1,\"mcp_instructions_delta\":2,\"skill_listing\":1,\"instructions\":1,\"session_context\":1,\"credential_org\":1,\"remote_session_change\":1,\"prompt_snapshot\":2}. parentUuid links that pointed at dropped lines dangle."
+    },
+    "handoff-mid": {
+      "file": "transcripts/handoff-mid.jsonl",
+      "sessionId": "8c831952-16b8-47eb-8cf8-7a89a69dfad6",
+      "scenario": "handoff-midturn",
+      "originalPath": "~/.claude/projects/-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff-mid/8c831952-16b8-47eb-8cf8-7a89a69dfad6.jsonl",
+      "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff-mid",
+      "steps": [
+        {
+          "step": "1 service start + mid-tool pause (handoff-midturn)",
+          "first": 1,
+          "last": 24
+        },
+        {
+          "step": "2 terminal -p --resume (handoff-midturn-terminal)",
+          "first": 25,
+          "last": 34
+        }
+      ],
+      "note": "M0.4: final snapshot of the session transcript across the handoff steps (line ranges per step, 1-based, in this file). Same line filter and home-dir scrub as tx-main. Dropped attachment lines: {\"deferred_tools_delta\":2,\"agent_listing_delta\":1,\"mcp_instructions_delta\":2,\"skill_listing\":1,\"instructions\":1,\"session_context\":1,\"credential_org\":1,\"remote_session_change\":1,\"prompt_snapshot\":2}. parentUuid links that pointed at dropped lines dangle."
+    },
+    "handoff-conc": {
+      "file": "transcripts/handoff-conc.jsonl",
+      "sessionId": "4c639eeb-0edd-4a82-ba64-4d55e93e01d2",
+      "scenario": "handoff-conc-2-attach",
+      "originalPath": "~/.claude/projects/-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff-conc/4c639eeb-0edd-4a82-ba64-4d55e93e01d2.jsonl",
+      "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-handoff-conc",
+      "steps": [
+        {
+          "step": "0 service start, 1 terminal stand-in (P1) turn 1, 2 service attach (P2) turn while P1 is still live",
+          "first": 1,
+          "last": 36
+        },
+        {
+          "step": "3 P1 turn 2 (still on its in-memory chain: forks the file)",
+          "first": 37,
+          "last": 44
+        },
+        {
+          "step": "4 later -p --resume (follows the newest leaf)",
+          "first": 45,
+          "last": 52
+        }
+      ],
+      "note": "M0.4: final snapshot of the session transcript across the handoff steps (line ranges per step, 1-based, in this file). Same line filter and home-dir scrub as tx-main. Dropped attachment lines: {\"deferred_tools_delta\":3,\"agent_listing_delta\":1,\"mcp_instructions_delta\":2,\"skill_listing\":1,\"instructions\":1,\"session_context\":1,\"credential_org\":1,\"remote_session_change\":1,\"prompt_snapshot\":2}. parentUuid links that pointed at dropped lines dangle."
+    }
+  },
+  "textRuns": {
+    "handoff-terminal": {
+      "cwd": ".spike/sandbox/handoff",
+      "argv": [
+        "claude",
+        "-p",
+        "--resume",
+        "bf41e86f-38c1-4b6f-b795-4084d86d0787",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "Please also remember a second code word: kestrel. What was the first code word I gave you? Reply with just that word."
+      ],
+      "exitCode": 0,
+      "stdoutText": "tangerine\n",
+      "note": "M0.4 step 2 (terminal continuation, text mode, same cwd): same id, appended to the same file, context kept"
+    },
+    "handoff-terminal-othercwd": {
+      "cwd": ".spike/sandbox/handoff-elsewhere",
+      "argv": [
+        "claude",
+        "-p",
+        "--resume",
+        "bf41e86f-38c1-4b6f-b795-4084d86d0787",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "What were the two code words so far? Reply with both words, comma-separated, in the order I gave them."
+      ],
+      "exitCode": 0,
+      "stdoutText": "tangerine, kestrel\n",
+      "note": "M0.4 step 2b (terminal continuation from another cwd): same id, appended to the original file under the original project folder, entries carry the new cwd"
+    },
+    "handoff-midturn-terminal": {
+      "cwd": ".spike/sandbox/handoff-mid",
+      "argv": [
+        "claude",
+        "-p",
+        "--resume",
+        "8c831952-16b8-47eb-8cf8-7a89a69dfad6",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "What code word did I ask you to remember? Reply with just the word."
+      ],
+      "exitCode": 0,
+      "stdoutText": "marigold\n",
+      "note": "M0.4: terminal continuation after a mid-tool pause; the CLI first appends a synthetic assistant \"No response requested.\" (model \"<synthetic>\") to close the interrupted turn"
+    },
+    "handoff-conc-3-later": {
+      "cwd": ".spike/sandbox/handoff-conc",
+      "argv": [
+        "claude",
+        "-p",
+        "--resume",
+        "4c639eeb-0edd-4a82-ba64-4d55e93e01d2",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "List every code word I asked you to remember so far, comma-separated, in order."
+      ],
+      "exitCode": 0,
+      "stdoutText": "lantern, walnut\n",
+      "note": "M0.4 concurrent case: after two live processes wrote to one id, a later resume follows the newest leaf; the attach turn (quokka) is not in its context"
     }
   }
 }

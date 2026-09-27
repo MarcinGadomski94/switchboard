@@ -9,7 +9,7 @@ What the installed CLI actually does, captured with real probes. Later items bui
 | M0.1 Headless surface | done (2026-09-27) | One long-lived `claude -p --input-format stream-json --output-format stream-json --verbose` process per session works: multi-turn over stdin, interrupt via a stdin `control_request`, `--session-id` / `--resume` / `--fork-session` behave as needed, hooks from `--settings` fire in `-p`. `auto` permission mode could not be proven (the model gates it), so sessions default to `acceptEdits` (D6). Switchboard does not use `--bg`/`attach`. |
 | M0.2 Questions & permissions | done (2026-09-27) | Mechanism (a) works end to end: add `--permission-prompt-tool stdio` to the supervised stream-json process. Every question batch (`AskUserQuestion`) and every permission request arrives on stdout as `control_request/can_use_tool` and is answered with one `control_response` line on stdin (`allow` + `updatedInput.answers`, or `allow` / `deny`). (b) SDK and (c) hooks were not needed. `auto` is still not proven (Haiku lacks it), so `acceptEdits` stays the default. |
 | M0.3 Transcripts & usage | done (2026-09-27) | Transcripts are `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<slug(cwd)>/<session-id>.jsonl`, slug = every non-`[A-Za-z0-9]` char → `-` (+ hash suffix past 200 chars), verified on spaces, symbols, a 230-char path, a case-mismatched cwd and a worktree. History reads first prompt / last text / titles / PR links / timestamps from the file; `entrypoint: "cli"` marks terminal-started sessions. Usage: **5-hour % and weekly % are both reliable** from the stdin control request `get_usage` (no model call, 0–100) and from each turn's `rate_limit_event` (0–1). They agreed with `/usage`. Cost/transcript fields give no %. |
-| M0.4 Terminal handoff | pending | Lead from M0.1: `--resume <id>` works from any cwd and keeps the id. |
+| M0.4 Terminal handoff | done (2026-09-27) | Works in both directions, verified by printing the conversation back. A session started as the service starts it (stream-json, `--session-id`), then paused per D7 (interrupt, then EOF), continues with `claude -p --resume <id> "<prompt>"` from the same or any other cwd. The **id stays** (no fork), the context is kept and every turn goes into the **same transcript file**. `--resume` + stream-json then picks it up again under supervision with the full context, terminal turns included. Two live processes on one id **fork the transcript**, so Attach must never overlap an open terminal. Interactive TTY resume could not be automated here; manual steps are below. |
 
 ---
 
@@ -499,3 +499,164 @@ Sources checked on 2.1.283:
   - Never write into `~/.claude`.
 - **Gap #5 "Attach here":** warn when the mtime is less than 2 min old or `claude agents --json` lists the id as live.
 - **M0.4:** confirm that a terminal `claude --resume <id>` appends `entrypoint:"cli"` lines to the same file, and that `--name`'s `custom-title` survives.
+
+---
+
+## M0.4 Terminal handoff
+
+### Probe conditions
+- Same CLI (2.1.283), Node and machine as M0.1–M0.3. There were **10 `claude` processes and 11 API requests**. Every one used `--model haiku --max-turns 3`, with cwd `.spike/sandbox/{handoff, handoff-elsewhere, handoff-mid, handoff-conc}` (D11) and the env scrubbed as in M0.1.
+- Runner: `.spike/probe4.mjs` (gitignored). It defines a `Proc` class with the D11 guard, the M0.2 control host and a D7 `pause()` helper (interrupt `control_request` → wait for its `control_response`, and for the `result` when a turn is running → EOF → wait for exit). It also takes a transcript snapshot after each step, and it diffs every `projects/*/*.jsonl` (size + mtime) before and after each process, which shows which transcript files a run **created** or **changed**. The driver is `.spike/handoff.mjs <step>` and the export is `.spike/export4.mjs`.
+- "The terminal" in the automated steps is `claude -p --resume <id> "<prompt>"` in **text** mode (plain stdout), as a developer would type it in a shell. An interactive TTY resume cannot be driven here; see *Manual verification*.
+- Some statements below are marked **(binary)**. Those were read from the 2.1.283 binary's bundled code and were not observed in a probe.
+
+### Fixtures (M0.4)
+Same format and home-dir scrub as M0.1. The transcripts use the same line filter as M0.3 `tx-main`: the `attachment` lines with instructions, memory, system prompt, account and listings are dropped, and `parentUuid` links to those lines dangle. `manifest.json` has the new `scenarios` entries. The text-mode runs go in a new **`textRuns`** section (argv, cwd, exit code, `stdoutText`), because their stdout is plain text, not NDJSON. Each transcript entry has `steps[]` line ranges, which say which process wrote which lines.
+
+| Fixture | What | Shows |
+|---|---|---|
+| `handoff-start` (.ndjson + .stdin) | step 1: service-style start, one turn, D7 Pause while idle | idle interrupt → only `control_response{still_queued:[]}`; EOF → exit 0 |
+| `handoff-reattach` (.ndjson + .stdin) | step 3: `--resume` + stream-json after two terminal turns | idle attach emits only `SessionStart:resume` hook lines; reply `tangerine, kestrel` |
+| `handoff-midturn` (.ndjson + .stdin) | D7 Pause while a foreground Bash tool runs | rejected tool_result, `aborted_tools`, EOF → **exit 1** |
+| `transcripts/handoff.jsonl` | session `bf41e86f-…` after steps 1, 2, 2b, 3 | one file, one id, one chain, all four processes |
+| `transcripts/handoff-mid.jsonl` | session `8c831952-…`: mid-tool pause, then terminal resume | the synthetic `No response requested.` line |
+| `transcripts/handoff-conc.jsonl` | session `4c639eeb-…`: attach while the "terminal" is still live | a forked chain (2 leaves) |
+| `textRuns.handoff-terminal`, `…-othercwd`, `handoff-midturn-terminal`, `handoff-conc-3-later` | the text-mode terminal runs | stdout text + exit code |
+
+### The three steps (session `bf41e86f-38c1-4b6f-b795-4084d86d0787`)
+All from `.spike/sandbox/handoff` unless stated.
+
+**(1) Start as the service will, one turn, then Pause (D7).**
+```
+claude -p --input-format stream-json --output-format stream-json --verbose \
+  --permission-prompt-tool stdio --permission-mode acceptEdits --replay-user-messages \
+  --session-id bf41e86f-38c1-4b6f-b795-4084d86d0787 --name sb-handoff --model haiku --max-turns 3
+stdin → {"type":"user","message":{"role":"user","content":"Remember the code word: tangerine. Reply with just OK."}}
+stdout ← … system/init (session_id = the given id, permissionMode acceptEdits) … result/success "OK"
+stdin → {"type":"control_request","request_id":"req_pause_1","request":{"subtype":"interrupt"}}   (turn already finished)
+stdout ← {"type":"control_response","response":{"subtype":"success","request_id":"req_pause_1","response":{"still_queued":[]}}}
+(1.5 s: nothing else) → close stdin → exit 0 about 0.56 s later
+```
+
+**(2) Continue in a terminal:** `claude -p --resume bf41e86f-… --model haiku --max-turns 3 "Please also remember a second code word: kestrel. What was the first code word I gave you? Reply with just that word."`
+- stdout `tangerine`, exit 0, 5.2 s. **The context is kept.**
+- **The id stays.** No transcript file was created in any project folder. The existing `<id>.jsonl` got 11 new lines, all with `sessionId` = the same id. The first 31 lines, from step 1, were byte-identical before and after.
+
+**(2b) The same from another directory** (`.spike/sandbox/handoff-elsewhere`): `claude -p --resume bf41e86f-… … "What were the two code words so far? …"`
+- stdout `tangerine, kestrel`, exit 0. Same id, and the new lines went to the same file under the **original** project folder (`…-spike-sandbox-handoff/`).
+- The new entries carry `cwd = …/handoff-elsewhere`. This confirms M0.1 for a text-mode terminal. (binary) An explicit `--resume <id>` looks for the id in three places, in order: the current project folder, this repo's worktrees, and a scan of every `projects/*/<id>.jsonl`. The scan gives up if the id exists in two folders. A valid UUID is adopted as the session id unless `--fork-session` is passed. Interactive (`entrypoint cli_flag`) and print mode share this loader.
+
+**(3) The service picks it up again.** Command: step 1's flags with `--resume bf41e86f-…` in place of `--session-id`, and the same `--name sb-handoff`.
+- **Idle attach:** for 5 s with no stdin message, stdout carried only `system/hook_started` + `system/hook_response` for `hook_name:"SessionStart:resume"` (already carrying `session_id`). There was no `system/init`, no model call and **no transcript write**.
+- Then stdin `What were the two code words I asked you to remember? …` → `system/init` (same `session_id`, `permissionMode:"acceptEdits"`) → `result/success` **`tangerine, kestrel`**. That context includes the service turn *and* the terminal turns. EOF → exit 0.
+- **stdout does not replay history.** Nothing from the terminal turns (or from step 1) is re-emitted on stdout. Only the transcript has them.
+
+### Transcript behavior across the steps
+| After | Lines | Written by this step | `entrypoint` | `permissionMode` on the prompt | `cwd` of the new lines | New `custom-title` lines |
+|---|---|---|---|---|---|---|
+| (1) service start | 31 | created the file | `sdk-cli` | `acceptEdits` | `…/handoff` | 3 (`sb-handoff`, from `--name`) |
+| (2) terminal, same cwd | 42 | +11 | `sdk-cli` | **`default`** | `…/handoff` | 0 |
+| (2b) terminal, other cwd | 51 | +9 | `sdk-cli` | `default` | **`…/handoff-elsewhere`** | 0 |
+| (3) service re-attach | 61 | +10 | `sdk-cli` | `acceptEdits` | `…/handoff` | 0 (even with `--name` passed again) |
+
+- **One file, one id, one chain.** Path: `<configDir>/projects/<slug(start cwd)>/<id>.jsonl`. Each step's first `user` line has `parentUuid` = the last chain line of the previous step. The file always had exactly one leaf. `last-prompt` is appended per turn, with `leafUuid` = the chain tip.
+- Each resuming process appends:
+  - `queue-operation` enqueue/dequeue
+  - the `user` prompt (`promptSource`/`turnOrigin` `"sdk"`)
+  - a few `attachment` lines (`environment`, `deferred_tools_delta`, `total_tokens_reminder`, …)
+  - the `assistant` lines
+  - `last-prompt` and `cost-state`
+  - text-mode runs also add `{"type":"mode","mode":"normal"}`.
+- **`entrypoint` is `"sdk-cli"` for any `-p` run**, the text-mode terminal runs included. Only an **interactive** terminal writes `"cli"` (M0.3). That could not be observed here and is part of the manual check. Either way the id is in Switchboard's DB, so a mixed file keeps its Switchboard row (M0.3 rule).
+- **The `--name` title survives.** Resumes do not re-append `custom-title`/`agent-name`, with or without `--name`, so the last `custom-title` stays `sb-handoff`. An interactive session may add `ai-title` lines (M0.3). History already prefers `custom-title`.
+- **The permission mode is per process, not per session.** A `-p --resume` without `--permission-mode` ran as `default`, not the session's `acceptEdits`. The supervisor must pass `--permission-mode` on every spawn, as step 3 did. (binary) The resume loader returns the stored mode, so an interactive resume may restore it. The manual check shows which.
+- **An idle attached process writes nothing.** The re-attach wrote its first line only when the message was sent, 5 s after spawn, so an idle supervised session leaves the mtime alone.
+- **Resume after an interrupted turn** (`handoff-mid`): before the new prompt, the resuming process appends a synthetic assistant line whose `parentUuid` is the `[Request interrupted by user for tool use]` line. Fields: `message.model:"<synthetic>"`, `stop_reason:"stop_sequence"`, text `No response requested.`. History's "last assistant text" must skip `model:"<synthetic>"` lines.
+
+### D7 Pause (interrupt, then end the process)
+| When | stdout after the interrupt | Exit after EOF |
+|---|---|---|
+| idle, turn finished (`handoff-start`) | `control_response{still_queued:[]}` only, no `result` | **0**, ~0.5 s |
+| foreground Bash tool running (`handoff-midturn`) | `control_response`, then a rejected `is_error` tool_result, then `[Request interrupted by user for tool use]`, then `result/error_during_execution` with `terminal_reason:"aborted_tools"` and `errors:["[ede_diagnostic] …"]`, all within 20 ms. The tool_result says "…STOP what you are doing and wait for the user…" and carries `tool_use_result:"User rejected tool use"` and `tool_result_meta[{non_execution_kind:"user-rejected"}]`. | **1**, ~0.4 s |
+| question open (M0.2 `ask-interrupt`) | `control_cancel_request` + as above | **1** |
+
+The interrupted `node -e` tool process was gone afterwards, so nothing was orphaned. **Exit 0 and exit 1 both mean "paused" when Switchboard sent the interrupt.** The supervisor has to remember that it started the stop before it reads the exit code, otherwise a clean pause shows as `fail`. After the pause, the terminal resume of `handoff-mid` answered `marigold`, so context survives a mid-tool pause.
+
+### Attach while the terminal still holds the session (`handoff-conc`)
+A `-p` stream-json process stands in for the open terminal, because an interactive TTY cannot be driven here. The sequence:
+- P0 started session `4c639eeb-…` with the code word "lantern" and exited.
+- P1 (the terminal stand-in, `--resume`) added "walnut" and **stayed open**.
+- P2 (Switchboard's "Attach here", `--resume`) then added "quokka" and correctly listed `lantern, walnut, quokka`. It had loaded the file from disk, P1's turn included.
+- P1 was then asked for all words and answered **`lantern, walnut`**. It kept its in-memory chain, and its new turn's `parentUuid` pointed at the same "walnut OK" line as P2's turn. **The file now has two leaves.**
+- A later `-p --resume` (P3) answered **`lantern, walnut`**. It continues from the newest leaf, so P2's turn is still in the file but **no longer in the conversation**.
+
+Neither process refused or warned. (binary) The explicit-id loader checks no liveness; only `--continue` without an id looks at live sessions. **Verdict:** two live processes on one id silently fork the conversation and lose the older branch's turns from later context. "Continue in terminal" must stop the supervised process before it shows the command (D7 already does). "Attach here" must not run while the terminal still has the session open.
+
+### Interactive picker and cross-directory resume (binary)
+- The interactive `/resume` picker, and `claude --resume` without an id, **hide sessions whose first entry has `entrypoint` `sdk-cli`/`sdk-ts`/`sdk-py`**, unless the picker itself runs from an SDK entrypoint. They also hide `/loop` and daemon sessions. Switchboard sessions are therefore not listed in a terminal's picker. The developer needs the exact id, which is what the handoff card's `claude --resume <id>` + copy button gives them.
+- When the picker resumes a session from another directory, it prints and copies `cd <original project path> && claude --resume <id>` ("This conversation is from a different directory.") instead of resuming in place. The explicit `claude --resume <id>` is the form the prototype shows (step 2b shows it works anywhere with `-p`). Resuming in a different cwd changes the working directory for the session's tools and which `CLAUDE.md`/`AGENTS.md` load. Switchboard sessions run at the workspace root.
+
+### Verdict
+- **(1)** A session started the way the service starts it (`-p`, stream-json in/out, `--session-id`, stdin open) can be paused per D7 cleanly. Idle pause exits 0; mid-turn pause exits 1, and both mean paused.
+- **(2)** `claude -p --resume <id> "<prompt>"` continues it from the same or any other cwd. The id stays (no fork), the context is kept (it repeated `tangerine`), and the turns go to the same transcript file.
+- **(3)** `--resume <id>` + stream-json picks it up again under supervision with the full context (`tangerine, kestrel`), terminal turns included.
+- The handoff works as ARCHITECTURE describes. Two conditions apply: never have two live processes on one id, and read the terminal's turns from the transcript, because stdout does not replay them.
+- Interactive TTY resume is expected to behave the same (binary: same loader, same adoption of the id). It is **not observed** and is left to the manual steps.
+
+### Manual verification (interactive TTY), for the developer
+Run these in a plain terminal, not inside a Claude Code session, on macOS. They use Haiku and cost 3–4 small turns. They write only a new sandbox session under `~/.claude/projects/`.
+```sh
+# 0. start a session the way the service does (one turn; EOF right after = the process ends when the turn is done)
+cd "<workspace>/other/switchboard/.spike/sandbox" && mkdir -p handoff-manual && cd handoff-manual
+SID=$(node -e 'console.log(crypto.randomUUID())'); echo "$SID"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"Remember the code word: tangerine. Reply with just OK."}}' |
+  claude -p --input-format stream-json --output-format stream-json --verbose --permission-prompt-tool stdio \
+    --permission-mode acceptEdits --session-id "$SID" --name sb-handoff-manual --model haiku --max-turns 3 > step1.ndjson
+tail -1 step1.ndjson          # expect: "subtype":"success", "result":"OK", "session_id":"<SID>"
+
+# 1. picker: expect sb-handoff-manual NOT to be listed (sdk-cli sessions are hidden). Press Esc without choosing.
+claude --resume
+
+# 2. interactive continuation in the same folder
+claude --resume "$SID" --model haiku
+#   If Claude asks whether to trust this folder: accepting writes ~/.claude.json (your call); declining ends the check.
+#   expect: no "No conversation found"; the earlier tangerine/OK exchange is shown.
+#   type:   Also remember a second code word: kestrel. What was the first code word? Reply with just that word.
+#   expect: tangerine        (optional: note the permission mode shown in the footer)   then: /exit
+
+# 3. (optional) the same from another folder you already trust, e.g. the workspace root
+#   claude --resume "$SID" --model haiku → ask "What were the two code words?" → expect "tangerine, kestrel" → /exit
+
+# 4. the service picks it up again
+cd "<workspace>/other/switchboard/.spike/sandbox/handoff-manual"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"What were the two code words I asked you to remember? Reply with both words, comma-separated, in the order I gave them."}}' |
+  claude -p --input-format stream-json --output-format stream-json --verbose --permission-prompt-tool stdio \
+    --permission-mode acceptEdits --resume "$SID" --name sb-handoff-manual --model haiku --max-turns 3 > step3.ndjson
+tail -1 step3.ndjson          # expect: "result":"tangerine, kestrel", "session_id":"<SID>" (the same id)
+
+# 5. transcript check
+node -e 'const fs=require("fs"),p=require("path"),os=require("os");const sid=process.argv[1];const root=p.join(process.env.CLAUDE_CONFIG_DIR||p.join(os.homedir(),".claude"),"projects");const hits=fs.readdirSync(root).map(d=>p.join(root,d,sid+".jsonl")).filter(f=>fs.existsSync(f));console.log("files:",hits.length);for(const f of hits){const L=fs.readFileSync(f,"utf8").split("\n").filter(Boolean).map(l=>JSON.parse(l));const par=new Set(L.map(m=>m.parentUuid).filter(Boolean));console.log("sessionIds:",[...new Set(L.map(m=>m.sessionId).filter(Boolean))].join(" "),"leaves:",L.filter(m=>m.uuid&&!par.has(m.uuid)).length);for(const m of L){if(m.type==="user"&&!m.isMeta&&typeof m.message?.content==="string")console.log(m.entrypoint,m.promptSource,m.permissionMode,JSON.stringify(m.message.content.slice(0,60)));if(m.type==="custom-title"||m.type==="ai-title")console.log(m.type,m.customTitle||m.aiTitle)}}' "$SID"
+#   expect: files: 1 · sessionIds: <SID> only · leaves: 1
+#           the step-2 prompt with entrypoint "cli" and promptSource "typed"; the others "sdk-cli sdk"
+#           custom-title sb-handoff-manual still present (an ai-title may appear too)
+```
+If step 2 says "No conversation found", or step 4 or 5 shows a **different** session id or two files, the terminal path forks. The handoff card and M2.4 would then have to follow the new id, taken from the newest `<configDir>/projects/*/*.jsonl` whose first entries repeat the old conversation. Record the outcome here.
+
+### Implications for later items
+- **M2.1 SessionSupervisor**
+  - **Pause:** mark the session "pausing" *before* sending the interrupt, then: `control_response` → the `result` when a turn is running (≤ a few s) → EOF → exit. Exit 0 **or 1** → `paused`, and only an exit Switchboard did not start → `fail`. The escalation order from M0.1 stays.
+  - **Detach** ("Continue in terminal") = the same stop, then return `resumeCommand`.
+  - **Attach** ("Attach here") = spawn with `--resume <claudeSessionId>`, the same baseline flags, and `--permission-mode` + `--name` passed again. The permission mode is not inherited, and the title is not duplicated.
+  - The process can stay idle until the developer sends a message (no model call, no transcript write). Treat the `SessionStart:resume` `hook_started` line as "process up".
+- **Sync back after Attach** (prototype copy "syncs back when you attach"): stdout does not replay history, so read the transcript. Import the entries after the last `uuid` Switchboard stored before detaching, walking the `parentUuid` chain to the newest leaf. Terminal turns have `entrypoint:"cli"` (interactive) or `"sdk-cli"` (a `-p` resume).
+- **Gap #5 "Attach here" warning:** the terminal's liveness matters more than the mtime rule, because an open but idle interactive terminal does not touch the file (M0.3) and neither does an idle attached process (M0.4). Check `claude agents --json` for the id (M0.1) as well as the mtime rule. The warning text should say that attaching while the terminal is open forks the conversation. Warning vs. refusal stays as gap #5 rules (warn).
+- **M2.4 crash recovery / D7 Resume:** `--resume <id>` + "Continue." keeps the id (again confirmed). After a mid-turn pause, expect the synthetic `No response requested.` line in the transcript.
+- **M4.1 / M4.3 handoff card:** the copy command shown is `claude --resume <id>`, as in the prototype. It works from any cwd (id kept, same file). Resuming outside the workspace root runs the session there. An alternative is `cd "<root>" && claude --resume <id>`, the form the CLI itself prints for cross-directory sessions. That is a copy decision for M4.1/M4.3 (D10 copy is the prototype's), not taken here. Switchboard sessions never appear in the terminal's `/resume` picker, so the copy button is the path.
+- **M7.4 History:** mixed `sdk-cli`/`cli` entrypoints on one Switchboard id are normal. Skip `message.model:"<synthetic>"` when picking the last assistant text. When a file has more than one leaf, follow the newest leaf's chain, as the CLI does, and optionally flag it as forked.
+- **M1.2 fake-claude:**
+  - `--resume <id>` appends to the same transcript: same id, chain continued, no `custom-title` re-append.
+  - An idle `--resume` process emits only the `SessionStart:resume` hook pair until the first stdin message.
+  - Interrupt while idle → `control_response` only.
+  - Interrupt mid-tool + EOF → the `handoff-midturn` tail and exit 1.
+  - A resume after an interrupted turn adds the synthetic assistant line.
+  - A text-mode `-p "<prompt>"` run prints only the final text.
