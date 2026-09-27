@@ -1,0 +1,1 @@
+{"type":"user","message":{"role":"user","content":"Run the shell command `sleep 25` with the Bash tool, then tell me it finished."}}

@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"Run exactly this shell command with the Bash tool in the foreground (do NOT set run_in_background): node -e \"setTimeout(()=>console.log(1),20000)\"  Then tell me its output."}}
+{"type":"control_request","request_id":"req_interrupt_1","request":{"subtype":"interrupt"}}
+{"type":"user","message":{"role":"user","content":"Reply with exactly: resumed-ok"}}
