@@ -22,6 +22,17 @@ Rulings made by the developer at kickoff, on top of `docs/handoff/`. **Where thi
 - **D11 Real CLI in M0.** `claude -p` probes only with `--model haiku`, `--max-turns` ≤ 3, cwd = gitignored `.spike/sandbox/`. Hooks tested via `--settings <repo file>`. (These write transcripts to `~/.claude/projects/` — accepted.)
 - **D12 Allowed outside the repo.** npm cache / `node_modules`; Playwright Chromium in `~/Library/Caches/ms-playwright` if the cached one doesn't match; the D11 probes; one final **read-only** smoke run that scans the real workspace (no sessions started, nothing written there). M9 service files are generated and dry-run tested, never installed.
 
+## Full implementation (added after launch, same night)
+- **D13 Full implementation, not a UI over demo data.** The developer wants the whole product working. **This ruling overrides any item-brief wording that suggests rendering from demo data or leaving wiring for later.**
+  - In normal runs every view and action goes through the real services and the real API: real `claude` processes via the SessionSupervisor, real git/gh via the WorktreeManager, real workspace scanning, real transcripts, the real scheduler, real system metrics, and `/hub` events emitted from real state changes.
+  - The demo seed (gap #21) is data only. It loads into the same DB, or feeds alternate implementations of the same provider interfaces, selected only when `SWITCHBOARD_DEMO=1`. Normal code paths never read demo data. Nothing from the prototype's mock data (session names like `free-talk-feature`, fixed counts, badges, timestamps) is hard-coded in `src/` outside `src/server/demo/`.
+  - Every item's oracle includes at least one **non-demo** test that drives the real code path end to end: fake-claude as the CLI binary, temp git repos with a fake `gh`, and a fixture workspace in a temp dir. A screen that passes only with demo data is not green.
+  - A lane that needs an endpoint another lane builds in the same wave codes against the contract and leaves a test that fails until the merge. The merge step must wire it for real, with no demo fallback, and make that test pass; otherwise the item goes into brokenItems.
+  - **Final verify** adds three checks:
+    1. A **real-path E2E scenario** with no demo seed and fake-claude: create a session from the New-session modal (with a worktree in a temp repo) → the chat shows streamed events → a question batch reaches the Inbox with a toast → answering it continues the process → Pause / Resume → Detach shows the resume command → Attach → the Diff tab shows the worktree change → a schedule's "Run now" starts a session → History lists it.
+    2. A **real-CLI smoke** within D11. The built app runs with `SWITCHBOARD_WORKSPACE_ROOT` set to a fixture workspace under `.spike/sandbox/`, and uses the real `claude` on Haiku with `--max-turns` ≤ 3, passed through a dev-only extra-args env var. It starts one session with a harmless prompt that makes it ask one AskUserQuestion, and answers it through the Inbox UI. The result is recorded in the delivery report.
+    3. A grep audit confirming no prototype mock strings in `src/` outside `src/server/demo/`.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
