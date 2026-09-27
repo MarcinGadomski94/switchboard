@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"Create a file named notes.txt containing the text ALPHA using the Write tool. Then reply with the single word DONE."}}
+{"type":"user","message":{"role":"user","content":"Reply with exactly the word: finished"}}

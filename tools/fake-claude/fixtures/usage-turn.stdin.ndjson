@@ -1,0 +1,4 @@
+{"type":"control_request","request_id":"req_ctl_1","request":{"subtype":"get_usage","skip_behaviors":true}}
+{"type":"user","message":{"role":"user","content":"Reply with exactly the word: pong"}}
+{"type":"control_request","request_id":"req_ctl_2","request":{"subtype":"get_usage","skip_behaviors":true}}
+{"type":"control_request","request_id":"req_ctl_3","request":{"subtype":"get_session_cost"}}

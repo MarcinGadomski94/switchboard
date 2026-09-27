@@ -746,10 +746,95 @@
       "stdin": "ctl-init.stdin.ndjson",
       "stdinPlan": "send line 1 (initialize), then line 2 (set_permission_mode auto), then line 3 (set_permission_mode acceptEdits), each after its control_response; no user message; close stdin",
       "note": "M0.2: no model call. initialize response (commands, agents, models[] with supportsAutoMode, account, current_permission_mode, session_state); set auto -> error_code auto_mode_model for haiku; account email/organization replaced with placeholders"
+    },
+    "usage-ctl": {
+      "cwd": ".spike/sandbox/usage-ctl",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "1",
+        "--permission-prompt-tool",
+        "stdio"
+      ],
+      "exitCode": 0,
+      "stdout": "usage-ctl.ndjson",
+      "stdin": "usage-ctl.stdin.ndjson",
+      "stdinPlan": "send line 1 (get_usage, skip_behaviors) and wait for its control_response, then line 2 (get_session_cost), then close stdin; no user message",
+      "note": "M0.3: no model call, no transcript written. get_usage returns rate_limits.five_hour/seven_day.utilization (0-100) + resets_at; money amounts (extra_usage.monthly_limit, spend.*.amount_minor) replaced with 0"
+    },
+    "usage-turn": {
+      "cwd": ".spike/sandbox/usage-turn",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "1",
+        "--permission-prompt-tool",
+        "stdio"
+      ],
+      "exitCode": 0,
+      "stdout": "usage-turn.ndjson",
+      "stdin": "usage-turn.stdin.ndjson",
+      "stdinPlan": "wait 3 s; send line 1 (get_usage) and wait for its control_response; send line 2 (user) and wait for the result; send line 3 (get_usage), line 4 (get_session_cost), each after the previous control_response; close stdin",
+      "note": "M0.3: get_usage before and after one turn next to the turn's rate_limit_event (0.1/0.18 vs 10/18); money amounts replaced with 0"
+    },
+    "tx-main": {
+      "cwd": ".spike/sandbox/tx main",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "--permission-mode",
+        "acceptEdits",
+        "--permission-prompt-tool",
+        "stdio",
+        "--session-id",
+        "b8b908e5-75ad-4201-8f37-056b3bb0a379",
+        "--name",
+        "sb-tx-probe"
+      ],
+      "exitCode": 0,
+      "stdout": "tx-main.ndjson",
+      "stdin": "tx-main.stdin.ndjson",
+      "stdinPlan": "wait 2.5 s; send line 1; after result send line 2; after result close stdin",
+      "note": "M0.3: cwd with a space inside its own git repo on branch feature/tx-probe; --name writes custom-title/agent-name to the transcript; transcript in transcripts/tx-main.jsonl"
     }
   },
   "accountReplacedWith": {
     "email": "dev@example.com",
     "organization": "Example Org"
+  },
+  "transcripts": {
+    "tx-main": {
+      "file": "transcripts/tx-main.jsonl",
+      "sessionId": "b8b908e5-75ad-4201-8f37-056b3bb0a379",
+      "scenario": "tx-main",
+      "originalPath": "~/.claude/projects/-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main/b8b908e5-75ad-4201-8f37-056b3bb0a379.jsonl",
+      "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main",
+      "note": "Whole lines as written by the CLI, home dir scrubbed. Dropped attachment lines (machine instructions/memory, system prompt, account, email, tool/skill/agent/MCP listings): {\"deferred_tools_delta\":2,\"agent_listing_delta\":1,\"mcp_instructions_delta\":2,\"skill_listing\":1,\"instructions\":1,\"session_context\":1,\"credential_org\":1,\"remote_session_change\":1,\"prompt_snapshot\":2}. parentUuid links that pointed at dropped lines are left dangling."
+    }
   }
 }

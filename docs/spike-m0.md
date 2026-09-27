@@ -8,7 +8,7 @@ What the installed CLI actually does, captured with real probes. Later items bui
 |---|---|---|
 | M0.1 Headless surface | done (2026-09-27) | One long-lived `claude -p --input-format stream-json --output-format stream-json --verbose` process per session works: multi-turn over stdin, interrupt via a stdin `control_request`, `--session-id` / `--resume` / `--fork-session` behave as needed, hooks from `--settings` fire in `-p`. `auto` permission mode could not be proven (the model gates it), so sessions default to `acceptEdits` (D6). Switchboard does not use `--bg`/`attach`. |
 | M0.2 Questions & permissions | done (2026-09-27) | Mechanism (a) works end to end: add `--permission-prompt-tool stdio` to the supervised stream-json process. Every question batch (`AskUserQuestion`) and every permission request arrives on stdout as `control_request/can_use_tool` and is answered with one `control_response` line on stdin (`allow` + `updatedInput.answers`, or `allow` / `deny`). (b) SDK and (c) hooks were not needed. `auto` is still not proven (Haiku lacks it), so `acceptEdits` stays the default. |
-| M0.3 Transcripts & usage | pending | Lead from M0.1: `rate_limit_event.rate_limit_info.unifiedWindows.{five_hour,seven_day}.utilization` arrives in every stream. |
+| M0.3 Transcripts & usage | done (2026-09-27) | Transcripts are `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<slug(cwd)>/<session-id>.jsonl`, slug = every non-`[A-Za-z0-9]` char → `-` (+ hash suffix past 200 chars), verified on spaces, symbols, a 230-char path, a case-mismatched cwd and a worktree. History reads first prompt / last text / titles / PR links / timestamps from the file; `entrypoint: "cli"` marks terminal-started sessions. Usage: **5-hour % and weekly % are both reliable** from the stdin control request `get_usage` (no model call, 0–100) and from each turn's `rate_limit_event` (0–1). They agreed with `/usage`. Cost/transcript fields give no %. |
 | M0.4 Terminal handoff | pending | Lead from M0.1: `--resume <id>` works from any cwd and keeps the id. |
 
 ---
@@ -292,3 +292,210 @@ Keep stdin open for the life of the process. Close it only to pause or stop, and
 - It signals cancellation explicitly.
 
 It adds no dependency (no Agent SDK), no second channel (no hook script, no loopback HTTP endpoint for the CLI to call), and no settings files. It also uses the same stdin/stdout pipe the SessionSupervisor already owns for messages and interrupts (M0.1), with the CLI's own subscription login.
+
+---
+
+## M0.3 Transcripts & usage
+
+### Probe conditions
+- Same CLI (2.1.283), Node and machine as M0.1/M0.2. Every real call used `--model haiku` and `--max-turns` 1 or 3, with cwd under `.spike/sandbox/` (D11). The env was scrubbed as in M0.1.
+- Runner: `.spike/probe3.mjs` (gitignored). It is `probe2.mjs` plus four additions: a free-form cwd (spaces, symbols, long paths, case changes), control requests before and after the prompts, a `stat` of `~/.claude/projects/*/<id>.jsonl` before the first message, after each result and after exit, and a D11 guard that refuses argv without `--model haiku --max-turns ≤3` or a cwd outside the sandbox.
+- **11 `claude` processes, 8 API requests** in total. `usage-ctl`, `usage-cache` and the three slash-command runs made no model call. The API requests: `usage-turn` 1, `tx-main` 3 (two turns plus one tool round trip), `slug-chars`, `slug-long`, `slug-case` and `tx-main-wt` 1 each.
+- The developer's own transcripts on this machine (22 files at the workspace root, 63 in all) were read **for structure only**. The tools printed entry types, key names, counts, sizes and redacted flags, never content. Nothing from them is in the repo.
+- Sample parser: `.spike/parse-transcript.mjs` (gitignored, async `fs`/`readline`, no dependencies).
+
+### Fixtures (M0.3)
+They use the same format and home-dir scrub as M0.1, and `manifest.json` has an entry for each. In `usage-*`, the money amounts in the `get_usage` response (`extra_usage.monthly_limit`, `spend.*.amount_minor`) are replaced with `0`.
+
+| Scenario | Args (all `-p --output-format stream-json --verbose --model haiku`) | Exit | Shows |
+|---|---|---|---|
+| `usage-ctl` | `--input-format stream-json --max-turns 1 --permission-prompt-tool stdio` | 0 | stdin `get_usage` + `get_session_cost` control requests, **no user message, no model call, no transcript written** |
+| `usage-turn` | same | 0 | `get_usage` → one turn (`rate_limit_event` 0.1 / 0.18) → `get_usage` (10 / 18) → `get_session_cost` |
+| `tx-main` | `--input-format stream-json --max-turns 3 --permission-mode acceptEdits --permission-prompt-tool stdio --session-id <uuid> --name sb-tx-probe` | 0 | 2 turns (Write + text) in cwd `.spike/sandbox/tx main` (with a space; its own git repo on branch `feature/tx-probe`) |
+| `transcripts/tx-main.jsonl` | the transcript `tx-main` wrote | — | **transcript fixture.** Whole lines as written by the CLI, home dir scrubbed. 32 of 44 lines are kept. The dropped lines are 12 `attachment` lines that carry the machine's CLAUDE.md/AGENTS.md/memory (`instructions`), the system prompt (`prompt_snapshot`), the account e-mail (`session_context`), the org id (`credential_org`), the commit/PR attribution settings (`remote_session_change`) and the tool/skill/agent/MCP listings. The `attachment` lines kept are `environment`, `model`, `date` and `total_tokens_reminder`. `parentUuid` links to the dropped lines dangle. |
+
+Not exported: the `slash-usage`/`slash-cost` output, because its text includes a usage attribution computed from the developer's own sessions. `slash-status`, `slug-*`, `tx-main-wt` and `usage-cache` are not exported either, since they add nothing a later item replays. They are described below.
+
+### Transcript location
+**Path:** `<configDir>/projects/<slug>/<sessionId>.jsonl`.
+- `configDir` is `$CLAUDE_CONFIG_DIR` when it is set, otherwise `~/.claude`. The binary has `(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")).normalize("NFC")` with `projects` joined under it. The Agent SDK code in the same binary uses `CLAUDE_CONFIG_DIR ?? join(home, ".claude")` + `"projects"` too.
+- `CLAUDE_CONFIG_DIR` is unset on this machine. It is **not** one of the `CLAUDE_CODE_*` variables the supervisor strips, so a developer who sets it passes it to every child, and Switchboard must read transcripts from that same folder.
+- **`sessionId` = the file name.** It is the `--session-id` Switchboard passes, the same value as `init.session_id`.
+
+**Slug.** The 2.1.283 binary computes it like this (found in the binary, then checked against the real folders of 5 probes):
+```js
+// cwd = the process's canonical working directory (see "case" below)
+function slugForCwd(cwd) {
+  const s = cwd.replace(/[^a-zA-Z0-9]/g, '-');          // every char except ASCII letters/digits → '-', one per UTF-16 unit
+  if (s.length <= 200) return s;
+  let h = 0;                                              // Java-style string hash of the *unsanitized* cwd
+  for (let i = 0; i < cwd.length; i++) h = ((h << 5) - h + cwd.charCodeAt(i)) | 0;
+  return `${s.slice(0, 200)}-${Math.abs(h).toString(36)}`;
+}
+```
+
+| Probe | cwd (home = `/Users/dev`) | Project folder | Shows |
+|---|---|---|---|
+| `tx-main` | `…/switchboard/.spike/sandbox/tx main` | `-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main` | a space → `-`; `/.` → `--`. The workspace root itself (`/Users/dev/RiderProjects/Acme Corp/workspace`) → `-Users-dev-RiderProjects-Acme-Corp-workspace`. |
+| `slug-chars` | `…/sandbox/slug chars (a+b) ż_é.v2@#1` | `…--spike-sandbox-slug-chars--a-b------v2--1` | `( + ) ż _ é . @ #` each → one `-`. Non-ASCII letters (BMP) and `_` are replaced too. |
+| `slug-long` | `…/sandbox/slug-long/a×60/b×60/cc dd` (230 chars with the real home dir) | first 200 chars of the sanitized path + `-mouvan` (207 chars) | the 200-char cut + base-36 hash, reproduced exactly by the code above from the real path |
+| `slug-case` | spawned with cwd `…/.spike/SANDBOX/Slug-Case` | `…--spike-sandbox-slug-case` | the CLI uses the **on-disk case** (getcwd). `init.cwd` and the transcript `cwd` show `…/sandbox/slug-case` too. |
+| `tx-main-wt` | `…/sandbox/tx-main-wt`, a `git worktree` of `tx main` (branch `feature/wt-probe`) | `…--spike-sandbox-tx-main-wt` | a worktree gets its **own** folder, keyed by its own path, not the main repo's. `gitBranch` = the worktree's branch. |
+
+Consequences:
+- The slug is lossy: `a b`, `a-b` and `a.b` all map to `a-b`. Never turn a slug back into a path. Read `cwd` from the entries instead.
+- On macOS, canonicalize a configured path with **`fs.promises.realpath`** (libuv, native) before slugging or comparing. In Node `fs.promises.realpath` and `fs.realpathSync.native` return `…/sandbox/slug-case` for `…/SANDBOX/Slug-Case`, while the JS `fs.realpathSync` keeps the typed case. NFD vs NFC file names were not probed. The binary NFC-normalizes the config dir, not visibly the cwd.
+- Most robust lookup for a known session: find `<configDir>/projects/*/<sessionId>.jsonl`. A readdir of ~50 folders is a few ms. Use the slug only as the fast path.
+
+**When and how the file is written** (`tx-main` stat log):
+- The file does **not** exist at spawn (checked 2.5 s after spawn). It is created with the first user message.
+- A process that only exchanges control requests and gets EOF (`usage-ctl`, `usage-cache`) **writes no transcript**. A `-p "/usage"` slash command does write one.
+- Entries are appended as the turn runs. After result 1 the file was 385,369 bytes (mtime 21:19:54.795Z), after result 2 390,418 bytes (21:19:56.020Z), after exit 391,102 bytes (21:19:56.233Z, the `last-prompt` + `cost-state` lines). **mtime tracks activity.**
+- An `--resume` from another cwd appends to the original file (M0.1). `--fork-session` starts a new file under the fork's cwd.
+- Beside the file: `<sessionId>/subagents/agent-<agentId>.jsonl` holds each subagent's sidechain, and `agent-<agentId>.meta.json` holds `{agentType, description, toolUseId, spawnDepth, requestShape, requestNonInteractive}`. Workflow agents go to `<sessionId>/subagents/workflows/wf_*/…`. Other files are `.json`/`.txt`/`.md`/`.js`. History reads **only the top-level `*.jsonl`**.
+- **Sizes:** the files are big because the CLI stores the system prompt and instructions as attachments. A 2-turn Haiku session is ~390 KB. The developer's 22 workspace-root files total 54 MB, the largest 19 MB.
+
+### Transcript format (2.1.283)
+One JSON object per line. Every `user`, `assistant`, `attachment` and `system` line has the same envelope: `parentUuid, isSidechain, type, uuid, timestamp (ISO-8601 UTC), userType ("external"), entrypoint, cwd, sessionId, version, gitBranch`. The other types are small records keyed by `sessionId`.
+- `entrypoint` is `"cli"` for an interactive terminal session and `"sdk-cli"` for `-p` / stream-json (every spike line).
+- **`cwd` is the session's current directory.** It follows `cd` in Bash. The developer's workspace-root sessions have 1–22 distinct `cwd` values each, and the first is always the root. The project folder comes from the **start** cwd.
+- **`gitBranch` is resolved from the start cwd.** It is `"HEAD"` when that is not a git repo. Every entry of every workspace-root session reads `"HEAD"`, even after a `cd` into a repo, because the workspace root is not a repo. It is the branch name when started inside a repo (`feature/tx-probe`, the worktree's `feature/wt-probe`, `main` for sandbox probes inside this repo).
+
+Entry types seen across the 261 transcript files on this machine (versions 2.1.278–2.1.283), with the ones History needs in bold:
+
+| Type | Fields | Written in `-p`? | Notes |
+|---|---|---|---|
+| **`user`** | `message.content` (string = a prompt; blocks = `tool_result`), `promptId`, `promptSource` (`sdk`, `typed`, `queued`, `system`, `suggestion_accepted`), `turnOrigin` (`sdk`, `human`, `peer`, `task_notification`), `permissionMode`, `isMeta?` | yes | Switchboard prompts: `promptSource/turnOrigin = "sdk"`. Interactive slash commands appear as `<command-name>/x</command-name>…<command-args>…</command-args>`, plus `isMeta` `<local-command-caveat>` and `<local-command-stdout>` lines. |
+| **`assistant`** | `message{id, model, content[], stop_reason, usage}`, `requestId` | yes | one line per content block, as on stdout; group by `message.id`. **There is no `result` line.** The last result is the last main-chain assistant text. |
+| **`last-prompt`** | `lastPrompt, leafUuid` | yes | re-appended every turn; the last one is the latest prompt |
+| **`custom-title`** + **`agent-name`** | `customTitle` / `agentName` | yes, with `--name` | `--name sb-tx-probe` wrote both, repeated each turn. Also present in interactive sessions (667 lines on this machine). |
+| **`ai-title`** | `aiTitle` | **no** | interactive only |
+| **`system/away_summary`** | `content` (free text) + envelope | no | interactive only. The closest thing to a summary entry. |
+| **`pr-link`** | `prNumber, prUrl, prRepository, timestamp` | not observed | present in interactive transcripts (652 lines). Useful for History's outcome and for Artifacts (gap #9). |
+| `cost-state` | `totalCostUSD, totalDuration, startTime, totalLinesAdded/Removed, modelUsage` | yes (at exit) | list-price cost, not a plan % (see Usage) |
+| `queue-operation` | `operation (enqueue/dequeue), timestamp, content` | yes | stdin message queueing |
+| `system/turn_duration` | `durationMs, messageCount, slug` | no | `slug` here is a three-word `word-word-word` value, not the project slug |
+| `mode`, `permission-mode`, `file-history-snapshot`, `file-history-delta`, `frame-link`, `bridge-session`, `atis-latch`, `system/compact_boundary`, `system/local_command`, `attachment:*` (instructions, prompt_snapshot, environment, skill_listing, …) | — | mixed | not needed by History |
+
+**There is no `type: "summary"` entry** in any of the 261 files. On 2.1.283 the "summary" role is split three ways: title (`custom-title` → `ai-title`), recap (`system/away_summary`, interactive only) and the last assistant text.
+
+Offsets in the developer's files (numbers only): the first prompt is always within the first 12 KB. The last title is within the last 32 KB, the last `last-prompt` within the last 21 KB, and the last assistant text within the last 108 KB. A streaming full read is also cheap (below).
+
+### What History needs → where it comes from
+| History field (SPEC §History, contract `HistoryItem`) | Switchboard-started session | Terminal-started session (transcript only) |
+|---|---|---|
+| date | DB `createdAt` | `timestamp` of the first entry (`startedAt`). Show the last entry's `timestamp` or the file mtime as "last active". |
+| name | DB name (also written as `custom-title` because Switchboard passes `--name`) | last `custom-title` → last `ai-title` → first prompt (truncated) |
+| mode line | DB (work type · mode · phase) | `terminal` (+ first slash command, e.g. `/loop 1h`, when the session started with one) |
+| summary | last main-chain assistant text (the final reply) | last `system/away_summary` if present, else last assistant text, else `lastPrompt` |
+| solutions / branches | DB worktrees + solutions | distinct `cwd` values under the workspace root → solution folders; `gitBranch` only when ≠ `"HEAD"` |
+| outcome | DB status (+ PR state via gh, M2.2) | `pr-link` entries ("PR #n"), else "ended" / "active" by mtime and liveness |
+| search (`?q=`) | name, task, prompts, final text, solutions, branches | first prompt, `lastPrompt`, title, last text, cwds |
+
+### Terminal-started sessions and last-modified time (gap #5)
+- **Which folders count as the workspace:** every project folder whose name starts with `slug(workspaceRoot)`. Then, because the slug is lossy (`…-workspace2` also matches), keep a file only if its first entry's `cwd` equals the root or starts with `root + path.sep`. Compare case-insensitively on macOS/Windows.
+- **Terminal-started:** the `sessionId` is not in Switchboard's DB **and** the first human prompt's `entrypoint` is `"cli"`. Evidence: all 23 of the developer's terminal files are `cli` only, and all 40 spike files are `sdk-cli` only. A Switchboard session continued in a terminal (M0.4) mixes both, but its id is in the DB, so it keeps its Switchboard row. A headless `sdk-cli` session that is not in the DB comes from some other tool. It is not "terminal-started" by the gap #5 wording, and M7.4 decides whether to show it.
+- **Stubs:** 12 of the 22 workspace-root files have no typed prompt. 7 have no user line at all (a session opened and closed) and 5 contain only slash commands. Hide files with neither a prompt nor a command. A command-only session (e.g. `/loop …`) shows its command as the name.
+- **Last modified:** `fs.stat(file).mtime` (async). The CLI appends on every message, so a running turn keeps it fresh. An interactive session that sits **idle** in an open terminal does not write, so mtime alone misses it. For the "Attach here" warning, combine mtime with a liveness check:
+  - `mtime` less than 2 min ago (gap #5), **or**
+  - the id is live in `claude agents --json` (M0.1, no model call). The same fields also sit in one file per live CLI process, `<configDir>/sessions/<pid>.json` = `{pid, sessionId, cwd, startedAt, version, kind:"interactive", entrypoint:"cli", status:"busy"|"idle", updatedAt, name, …}` (2 files seen). That file format is undocumented, so prefer the command and read the files only as a fallback.
+  - Warn in either case.
+
+### Sample parse
+`.spike/parse-transcript.mjs --session <id> | --cwd <dir> | --file <path> [--redact]`. One async streaming pass per file (`readline` over `createReadStream`). Core rules:
+```js
+const textOf = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : '';
+function isHumanPrompt(m) {            // a prompt someone typed or Switchboard sent, not a tool result / meta / notification
+  if (m.type !== 'user' || m.isSidechain || m.isMeta) return false;
+  const c = m.message?.content;
+  if (Array.isArray(c) && c.some((b) => b.type === 'tool_result')) return false;
+  if (m.promptSource === 'system' || m.turnOrigin === 'task_notification') return false;
+  const t = textOf(c).trim();
+  return !!t && !t.startsWith('<local-command-') && !t.startsWith('<command-') && !t.startsWith('[Request interrupted');
+}
+// per line: startedAt ??= m.timestamp; lastActivityAt = m.timestamp; startCwd ??= m.cwd; cwds.add(m.cwd); gitBranch ??= m.gitBranch
+// user → firstPrompt ??= text, origin = entrypoint "cli" ? "terminal" : "headless"; <command-name> → firstCommand
+// assistant (!isSidechain, has text) → lastResult = text of the latest message.id
+// last-prompt → lastPrompt; custom-title / ai-title → title (custom wins); pr-link → prLinks; cost-state → costUSD
+// system/away_summary → awaySummary; subagent count = readdir(<id>/subagents/*.jsonl)
+```
+Output for `node .spike/parse-transcript.mjs --cwd "$PWD/.spike/sandbox/tx main"` (home shown as `/Users/dev`; condensed: `file`, `cwds` and the empty `awaySummary`/`firstCommand`/`commands` fields omitted):
+```json
+{ "sessionId": "b8b908e5-75ad-4201-8f37-056b3bb0a379",
+  "projectDir": "-Users-dev-RiderProjects-Acme-Corp-workspace-other-switchboard--spike-sandbox-tx-main",
+  "sizeBytes": 391102, "mtime": "2026-09-27T21:19:56.233Z", "modifiedAgoSec": 239,
+  "origin": "headless", "entrypoints": ["sdk-cli"], "version": "2.1.283",
+  "startCwd": "/Users/dev/RiderProjects/Acme Corp/workspace/other/switchboard/.spike/sandbox/tx main",
+  "gitBranch": "feature/tx-probe", "title": "sb-tx-probe", "titleSource": "custom-title", "agentName": "sb-tx-probe",
+  "firstPrompt": "Create a file named notes.txt containing the text ALPHA using the Write tool. Then reply with the single word DONE.",
+  "lastPrompt": "Reply with exactly the word: finished", "lastResult": "finished",
+  "startedAt": "2026-09-27T21:19:49.586Z", "lastActivityAt": "2026-09-27T21:19:55.998Z",
+  "humanTurns": 2, "prLinks": [], "costUSD": 0.0805611, "subagentFiles": 0, "badLines": 0 }
+parsed 1 file(s), 391102 bytes in 6 ms
+```
+Two more checks:
+- M0.1's `multiturn` session was resumed from `sandbox/resume`. It parses to `cwds: [.../multiturn, .../resume]`, `humanTurns: 3`, `lastResult: "zeppelin"`.
+- The redacted run over the developer's workspace root (`--cwd <workspace> --redact`, flags only) parsed **22 files / 54 MB in 194 ms**. The breakdown: 10 terminal sessions with a prompt, all titled (8 `custom-title`, 2 `ai-title`); 5 command-only sessions; 7 empty stubs. 7 files had `pr-link`, 9 had `away_summary`, 5 had subagents, 0 lines were unparseable. A full streaming re-parse is affordable at startup. Refresh a file only when its `(size, mtime)` changes.
+
+### Usage %
+Sources checked on 2.1.283:
+
+| Source | How | Observed | Gives a Max %? |
+|---|---|---|---|
+| `claude --help` | subcommands | `agents, attach, auth, auto-mode, doctor, gateway, import, install, logs, mcp, plugin, project, respawn, rm, setup-token, stop, ultrareview, update`. **No usage command.** `auth status [--json\|--text]` is auth only. | no |
+| `/usage` in `-p` (`claude -p "/usage" --output-format stream-json …`) | slash command | Works without a model call: a synthetic `assistant` (`model:"<synthetic>"`), then `result/success` with `num_turns:0`, `total_cost_usd:0`. Text: `Current session: 10% used · resets Sep 28 at 1:40am (Europe/Copenhagen)` / `Current week (all models): 18% used · resets Oct 1 at 3pm (…)` / `Current week (Fable): 0% used …`. It then prints a "What's contributing" attribution scanned from local transcripts. | yes, but only as locale-formatted human text, plus a transcript file and a transcript scan per call. Not recommended. |
+| `/cost` in `-p` | slash command | On a subscription it prints the same text as `/usage` | as `/usage` |
+| `/status` in `-p` | slash command | `"/status isn't available in this environment."` | no |
+| `result` (`total_cost_usd`, `usage`, `modelUsage[*].costUSD`) | stream-json | per-process token counts and cost at **list price** (`get_usage` labels it `costBasis:"list"`). The subscription is not billed per token. | **no.** It measures cost, not the plan quota. |
+| Transcripts (`assistant.message.usage`, `cost-state`) | files | tokens and list-price cost only. No utilization and no limit to divide by. | **no** |
+| `rate_limit_event` | stream-json, one per API turn | `rate_limit_info.unifiedWindows.five_hour.utilization` = **0.1**, `seven_day.utilization` = **0.18**, `resetsAt` in epoch seconds, `rateLimitType:"five_hour"`, `status:"allowed"`. Only when a turn calls the API. `status` values other than `allowed` were not seen. | **yes** (fraction × 100) |
+| stdin control request **`get_usage`** | `{"type":"control_request","request_id":"…","request":{"subtype":"get_usage","skip_behaviors":true}}` on the stream-json process | `response.rate_limits.five_hour = {utilization: 10, resets_at: "2026-09-27T23:40:00…+00:00"}`, `seven_day = {utilization: 18, resets_at: "2026-10-01T13:00:00…"}`. Also `subscription_type:"max"`, `rate_limits_available:true`, `model_scoped[{display_name:"Fable", utilization:0}]`, `limits[{kind:"session"\|"weekly_all"\|"weekly_scoped", percent, resets_at, is_active}]`, `extra_usage`, `seven_day_breakdown{as_of}` and `session{total_cost_usd,…}`. **No model call, no transcript**, answered 0.3–0.7 s fresh and 10 ms cached. | **yes** (0–100) |
+| `~/.claude.json` → `cachedUsageUtilization` | file | `{fetchedAtMs, accountUuid, utilization{five_hour, seven_day, …}}`, updated by any CLI process that fetches usage | yes, but undocumented and in the user's config file. Not recommended. |
+
+**Cross-check at the same moment (21:18–21:19Z):** `get_usage` 10 / 18, `rate_limit_event` 0.1 / 0.18 and `/usage` "10% / 18%" all agree. Eight minutes later `get_usage` read 11 / 18 (other sessions were running).
+
+**`get_usage` specifics:**
+- The binary describes it as *"Requests the structured /usage data: session cost/usage totals plus claude.ai plan rate-limit utilization when available. Experimental — the response shape may change."* The SDK method is named `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET`.
+- `skip_behaviors: true` skips the 7-day local transcript scan, which is exactly the "usage meter" case the binary's own description names.
+- **The CLI caches it for about a minute** (`usage-cache`: one process asked at 0 s, 40 s and 110 s):
+  - The 40 s answer repeated the 0 s one (same `seven_day_breakdown.as_of`, same `resets_at` microseconds).
+  - The 110 s answer was fresh.
+  - The first request of a new process can also be served from another process's cache: the first answer in `usage-turn` carried an `as_of` about 28 s old.
+- A `get_usage` sent **mid-turn** was not probed. Every probe sent it between turns.
+- `get_session_cost` returns only the `/cost` text for the process (`Total cost: $0.0603 …`). It has no %.
+
+**Verdict:**
+- **Max 5-hour window %: reliable.** Source: `get_usage` → `rate_limits.five_hour.utilization` (0–100) + `resets_at`. Every turn also brings a free update: `rate_limit_event.rate_limit_info.unifiedWindows.five_hour.utilization × 100`.
+- **Weekly %: reliable.** Same sources, `seven_day` (all models). `model_scoped[]` adds per-model weekly windows (e.g. "Fable") if the UI ever wants them.
+- **Show "unknown"** (never a guessed number) in any of these cases:
+  - `get_usage` returns an error.
+  - `rate_limits_available` is false.
+  - `rate_limits`, the window object or `utilization` is null.
+  - The response shape changes.
+  - The last reading's `resets_at` has passed without a newer reading.
+- Cost fields, transcripts and `/status`: **unknown / no**. `/usage` text: a readable fallback only, not recommended.
+
+### Implications for later items
+- **M9.2 usage meter:**
+  - Read `get_usage` (`skip_behaviors:true`) over the stdin of any live supervised session. That needs no new process.
+  - When no session runs, spawn a short-lived poller: `claude -p --input-format stream-json --output-format stream-json --verbose --permission-prompt-tool stdio` → `get_usage` → EOF. It exits 0 in ~3.5 s with no model call and no transcript. It does run the user's SessionStart hooks, which took ~1.6 s here, and it should follow the M0.1 env scrub. Its cwd should be Switchboard's app-data folder, not a repo.
+  - Take free updates from every `rate_limit_event` in between.
+  - Poll at most once per 60 s, since the CLI cache makes faster polling pointless. Record "as of" = when Switchboard received the value.
+  - The contract has one optional `usagePct` on `/api/system`, and the footer has one "Max" bar, while Settings says "5-hour window and weekly limit". Suggestion for M9.2 (not decided here): `usagePct` = the higher of the two (the binding limit), with the warning at ≥ 90 % on either. Omit the field when unknown.
+- **M1.2 fake-claude:**
+  - Answer `get_usage` / `get_session_cost` control requests with the `usage-ctl` payloads, and emit `rate_limit_event` per turn as recorded.
+  - Honour `CLAUDE_CONFIG_DIR`: write a transcript to `$CLAUDE_CONFIG_DIR/projects/<slugForCwd(cwd)>/<session-id>.jsonl` built from `transcripts/tx-main.jsonl`, rewriting `sessionId`, `cwd`, `gitBranch` and timestamps. Create it at the first user message, append per message, add `last-prompt` + `cost-state` at exit.
+  - Emit `custom-title` + `agent-name` lines when `--name` is given.
+  - Tests then point `CLAUDE_CONFIG_DIR` at a temp dir, and no real `~/.claude` is touched.
+- **M2.1 SessionSupervisor:**
+  - Keep `CLAUDE_CONFIG_DIR` in the child env.
+  - Pass `--name <session name>`. It becomes the transcript title that terminal History and the `claude --resume` picker show.
+  - Parse `rate_limit_event` into the usage store.
+  - The transcript path of a session = `<configDir>/projects/<slugForCwd(init.cwd)>/<init.session_id>.jsonl`. Use `init.cwd`, which is already canonical.
+- **M7.4 History:**
+  - Use the "What History needs" table and the terminal-session rules above.
+  - Resolve `configDir` once from the env (Settings may show it).
+  - Scan the workspace-slug-prefixed folders, confirm by `cwd`, read only top-level `*.jsonl` with async streaming, and cache rows by `(size, mtime)`.
+  - Never write into `~/.claude`.
+- **Gap #5 "Attach here":** warn when the mtime is less than 2 min old or `claude agents --json` lists the id as live.
+- **M0.4:** confirm that a terminal `claude --resume <id>` appends `entrypoint:"cli"` lines to the same file, and that `--name`'s `custom-title` survives.
