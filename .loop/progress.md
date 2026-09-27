@@ -1,7 +1,7 @@
 ## Current
-item: M1.3 (next)
+item: M1.4 (next)
 attempt: 0/5
-last oracle: M1.2 PASS (attempt 1/5) · `npm run typecheck` (3 tsconfigs) green · `npm test` 142/142 (40 new in tests/tools: every manifest argv parses, --version/auth/unknown flag, multiturn/eof-immediate/ask-2q/perm-allow/perm-deny/perm-noflag/ask-interrupt/subagent-perm/interrupt/interrupt-tool/handoff-start/handoff-midturn/sigint/usage-ctl/usage-turn/ctl-init/max-turns/resume/fork stdout kinds equal the recordings, hang/crash, [fake:write], tokens, transcript vs tx-main + synthetic line + idle resume, sessions/<pid>.json + agents --json, FAKE_CLAUDE_LOG) · mutation check: EOF exit-code rule and cwd rewrite broken → 4 tests red
+last oracle: M1.3 PASS (attempt 3/5; attempt 1 red: FK-violation test expected the runner's message but the immediate FK error fired first → test split into immediate + deferred cases) · `npm run typecheck` green · `npm test` 189/189 (47 new: tests/server/db/migrate.test.ts fresh DB + every data-model table/column + STRICT + integrity, re-run no-op (same connection and reopen: schema dump, schema_migrations rows and data unchanged), rollback of a failing / FK-violating migration, edited-checksum and newer-DB refusal, CRLF checksum, loadMigrations naming; tests/server/db/repos.test.ts CRUD per entity (sessions, agents, events, question batches/questions, permission requests, system items, worktrees, artifacts, schedules + runs, loops, tools, settings, usage readings, history cache, pending messages) + cascades + CHECK/UNIQUE/FK refusals; main.test.ts DB created+migrated at startup, exit 1 on a newer DB) · `npx playwright test` 2/2 · mutation check: re-run guard removed → 4 tests red
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -10,6 +10,7 @@ last oracle: M1.2 PASS (attempt 1/5) · `npm run typecheck` (3 tsconfigs) green 
 - M0-adapt ✓ 2026-09-27 (commit: see git log "M0: adapt backlog and architecture after spike") · attempts 2/5 · plan: read spike + fixtures + questions; rewrite BACKLOG M5.2 + the items the spike changed (M1.2, M1.3 pointer, M2.1, M2.4, M3.1, M4.1, M7.4, M9.2) with concrete fake-claude oracles; rewrite ARCHITECTURE "Claude Code integration" (+ the M0.3 usage placeholder); log ASSUMED; oracle = scratchpad check script
 - M1.1 ✓ 2026-09-28 (commit: see git log "M1.1: Node project skeleton + loopback-only server") · attempts 4/5 (1 red: a wrong config test case; 3 red: e2e spec needed DOM lib → tsconfig.e2e.json) · plan: package.json exact pins + lockfile, tsconfig/web/e2e, vite/vitest/playwright configs excluding .worktrees/.spike/dist/node_modules; config.ts env (PORT, DATA_DIR #18, WORKSPACE_ROOT, CLAUDE_BIN/GH_BIN argv prefix, DEMO); security.ts Host/Origin guard + default-deny sb_token cookie (#20); token.ts; listen.ts 127.0.0.1-only; web.ts dist/web + placeholder; routes.ts registry; tools/dev.ts; docs/security.md + docs/configuration.md
 - M1.2 ✓ 2026-09-28 (commit: see git log "M1.2: tools/fake-claude") · attempts 1/5 · plan: tools/fake-claude/{main,args,fixtures,rewrite,scenarios,session,transcript,log,command}.ts; fixture compiler (preamble, turns split at result, replay/request/answer/wait/ack steps); runner state machine (blocking can_use_tool, interrupt/cancel tails, SIGINT, EOF, control requests, --max-turns, perm-noflag, siblings); transcript + sessions/<pid>.json under CLAUDE_CONFIG_DIR; tests/helpers/fake-claude.ts + tests/tools/*.test.ts; docs/fake-claude.md
+- M1.3 ✓ 2026-09-28 (commit: see git log "M1.3: SQLite schema + migrations") · attempts 3/5 · plan: 0001_initial.sql STRICT tables for every data-model entity + M0 stored fields + inbox permission/system items + outbox/usage/history cache; database.ts (WAL, FKs, busy timeout, sync transaction helper) + migrate.ts (NNNN_name.sql, schema_migrations with LF-normalized sha256, one transaction per migration, foreign_key_check, edited/newer refusal); table.ts typed row mapper + src/server/db/repos/* (Promise API) + store.ts openStore; main.ts opens <dataDir>/switchboard.db, ApiContext.store; src/core/model.ts enums; docs/database.md
 
 ## Blocked
 - (none)
@@ -58,3 +59,11 @@ consecutive_blocked: 0
 - M1.2 · recorded reply text after answers; sibling recordings on a different decision, else default "OK"; exhausted scenario → default turn
 - M1.2 · invented outputs (auth status silent, agents text, unknown control subtype error, [fake:write] content, synthetic after both markers, crash leaves live file)
 - M1.2 · no separate `fail` scenario: crash + max-turns cover it
+- M1.3 · Promise API over synchronous node:sqlite (atomic per call, sync transaction callbacks)
+- M1.3 · schema beyond the minimum (batches+questions, permission/system tables, pending_messages, usage, history cache, extra nullable columns)
+- M1.3 · CHECK only on locked enums; other vocabularies are TS unions
+- M1.3 · sessions.work_type / mode nullable
+- M1.3 · ISO timestamps, event id cursor, UUID ids, batch id = request_id, worktree path unique among live ones
+- M1.3 · answer rules (label recorded, answered when complete, no double answer, stale stays stale)
+- M1.3 · store opened in main.ts, required ApiContext.store, exit 1 on migration errors
+- M1.3 · no seeded rows (tool defaults left to M8.1)

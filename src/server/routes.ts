@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { ServerConfig } from './config.ts';
+import type { Store } from './db/store.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
   readonly config: ServerConfig;
+  /** The database repositories (db/store.ts, docs/database.md). */
+  readonly store: Store;
 }
 
 /**

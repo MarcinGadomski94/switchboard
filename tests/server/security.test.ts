@@ -4,10 +4,12 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.ts';
 import { type ServerConfig, loadConfig } from '../../src/server/config.ts';
+import type { Store } from '../../src/server/db/store.ts';
 import { isAllowedHost, isAllowedOrigin, readCookieValues } from '../../src/server/security.ts';
 import { generateToken } from '../../src/server/token.ts';
 import { UNBUILT_PAGE } from '../../src/server/web.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
+import { openTempStore } from '../helpers/store.ts';
 
 const PORT = 4871; // inject() never opens a socket; the port only feeds the Host/Origin checks
 const HOST = `127.0.0.1:${PORT}`;
@@ -20,6 +22,7 @@ let webRoot: string;
 let token: string;
 let app: FastifyInstance;
 let config: ServerConfig;
+let store: Store;
 
 function request(options: InjectOptions & { url: string }) {
   const headers = { host: HOST, ...(options.headers ?? {}) };
@@ -57,7 +60,8 @@ beforeAll(async () => {
   await writeFile(path.join(tmp, 'secret.txt'), OUTSIDE_SECRET);
   token = generateToken();
   config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: PORT };
-  app = await buildApp({ config, token, webRoot });
+  store = await openTempStore(tmp);
+  app = await buildApp({ config, token, store, webRoot });
   // Probe routes standing in for the API routes later items add.
   app.get('/api/_probe', async () => ({ ok: true }));
   app.post('/api/_probe', async () => ({ ok: true }));
@@ -69,6 +73,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  await store.close();
   await removeTempDir(tmp);
 });
 
@@ -262,7 +267,7 @@ describe('UI page load sets the cookie (gap #20)', () => {
   );
 
   it('serves a placeholder page (and the cookie) when the UI is not built', async () => {
-    const unbuilt = await buildApp({ config, token, webRoot: path.join(tmp, 'not-built') });
+    const unbuilt = await buildApp({ config, token, store, webRoot: path.join(tmp, 'not-built') });
     try {
       const response = await unbuilt.inject({ url: '/', headers: { host: HOST, 'sec-fetch-site': 'none' } });
       expect(response.statusCode).toBe(200);

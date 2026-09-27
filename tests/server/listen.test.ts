@@ -4,23 +4,28 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.ts';
 import { loadConfig } from '../../src/server/config.ts';
 import { BindRefusedError, assertLoopbackBind, listenLoopback } from '../../src/server/listen.ts';
+import type { Store } from '../../src/server/db/store.ts';
 import { generateToken } from '../../src/server/token.ts';
 import { freeTestPorts, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
+import { openTempStore } from '../helpers/store.ts';
 
 let tmp: string;
+let store: Store;
 const apps: FastifyInstance[] = [];
 
 beforeEach(async () => {
   tmp = await makeTempDir('listen');
+  store = await openTempStore(tmp);
 });
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
+  await store.close();
   await removeTempDir(tmp);
 });
 
 async function makeApp(port: number, token = generateToken()): Promise<FastifyInstance> {
   const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, cwd: tmp }), port };
-  const app = await buildApp({ config, token, webRoot: tmp });
+  const app = await buildApp({ config, token, store, webRoot: tmp });
   apps.push(app);
   return app;
 }

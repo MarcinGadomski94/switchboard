@@ -1,6 +1,9 @@
 import path from 'node:path';
+import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
+import { MigrationError } from './db/migrate.ts';
+import { openStore, storeFile } from './db/store.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import { loadOrCreateToken } from './token.ts';
 
@@ -10,8 +13,18 @@ const WEB_ROOT = path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
 async function main(): Promise<void> {
   const config = loadConfig();
   const token = await loadOrCreateToken(config.dataDir);
-  const app = await buildApp({ config, token, webRoot: WEB_ROOT, logger: true });
-  await listenLoopback(app, { port: config.port });
+  const store = await openStore(storeFile(config.dataDir));
+  let app: FastifyInstance;
+  try {
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, logger: true });
+    app.addHook('onClose', async () => {
+      await store.close();
+    });
+    await listenLoopback(app, { port: config.port });
+  } catch (error) {
+    await store.close();
+    throw error;
+  }
 
   let closing = false;
   const shutdown = (signal: NodeJS.Signals): void => {
@@ -31,7 +44,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  if (error instanceof ConfigError || error instanceof BindRefusedError) {
+  if (error instanceof ConfigError || error instanceof BindRefusedError || error instanceof MigrationError) {
     console.error(`switchboard: ${error.message}`);
   } else {
     console.error(error);

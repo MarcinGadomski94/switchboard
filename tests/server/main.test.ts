@@ -1,6 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DB_FILE, openDatabase } from '../../src/server/db/database.ts';
+import { appliedMigrations, loadMigrations, makeMigration, migrate } from '../../src/server/db/migrate.ts';
 import { TOKEN_FILE } from '../../src/server/token.ts';
 import { makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../helpers/server-process.ts';
@@ -43,6 +46,31 @@ describe('npm start entry point (src/server/main.ts)', () => {
     await server.stop();
     server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir });
     expect(await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).toBe(first);
+  });
+
+  it('creates and migrates <dataDir>/switchboard.db at startup and closes it on shutdown', async () => {
+    const dataDir = path.join(tmp, 'data');
+    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir });
+    expect(await server.stop()).toBe(0);
+    const db = new DatabaseSync(path.join(dataDir, DB_FILE), { readOnly: true });
+    try {
+      const shipped = await loadMigrations();
+      expect(appliedMigrations(db).map((m) => [m.version, m.checksum])).toEqual(shipped.map((m) => [m.version, m.checksum]));
+      expect(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'`).get()).toEqual({ name: 'sessions' });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('exits 1 with a message when the database was made by a newer build', async () => {
+    const dataDir = path.join(tmp, 'data');
+    const db = await openDatabase(path.join(dataDir, DB_FILE));
+    migrate(db, [...(await loadMigrations()), makeMigration(9999, 'future', 'CREATE TABLE future (id INTEGER) STRICT;')]);
+    db.close();
+    const bad = spawnServer(4879, { SWITCHBOARD_DATA_DIR: dataDir });
+    expect(await bad.closed).toBe(1);
+    expect(bad.output()).toContain('switchboard: the database has migration 9999 (future)');
+    expect(bad.output()).not.toContain('Server listening');
   });
 
   it('exits 1 on an invalid SWITCHBOARD_PORT without binding anything', async () => {

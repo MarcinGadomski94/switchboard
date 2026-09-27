@@ -1,0 +1,57 @@
+# Database (M1.3)
+
+Switchboard keeps its state in one SQLite database through Node's built-in `node:sqlite` (D4). There is no ORM. The schema lives in plain SQL migrations, and a thin typed repository layer sits on top.
+
+## Where it lives
+- File: `<dataDir>/switchboard.db`, next to the token (`docs/configuration.md`, gap #18). `src/server/main.ts` opens it at startup, before the server listens, and closes it when the app closes. Tests always use temp folders (`tests/helpers/store.ts`).
+- Connection settings (`src/server/db/database.ts`): WAL journal, `foreign_keys = ON`, a 5 s busy timeout, `synchronous = NORMAL`. The folder is created with mode 0700.
+- If the database cannot be brought to this build's schema, `npm start` exits 1 with `switchboard: <reason>` and binds nothing. That happens when a migration was edited after it was applied, when the database was migrated by a newer build, or when a migration script fails.
+
+## Migrations
+- Files: `src/server/db/migrations/NNNN_name.sql`. The version has 4 digits (0000 is reserved) and the name is lowercase `[a-z0-9_-]`. The runner (`src/server/db/migrate.ts`) applies them in version order.
+- `schema_migrations(version, name, checksum, applied_at)` records what ran. The checksum is the sha256 of the file with line endings normalized to `\n`, so a CRLF checkout matches.
+- Each pending migration runs in its own `BEGIN IMMEDIATE` transaction, together with its `schema_migrations` row. Before the commit, `PRAGMA foreign_key_check` must come back empty. A failing script leaves nothing behind, and the migrations before it stay applied.
+- Re-running on a current database is a no-op: nothing is written, and the schema and the rows stay unchanged (see `tests/server/db/migrate.test.ts`).
+- **Never edit a committed migration.** The runner refuses a changed checksum. Add a new file instead. A database that holds a version this build does not know was made by a newer Switchboard, and the runner refuses it rather than guessing.
+- Parallel lanes: each lane takes the next free number. If two lanes pick the same number, the merge step renumbers one before anything runs against a real database. Lane tests only ever use temp databases.
+- `PRAGMA foreign_keys` cannot change inside a transaction. A future migration that has to rebuild a table would therefore need runner support first. `PRAGMA defer_foreign_keys = ON` works inside a migration, and the `foreign_key_check` still guards the commit.
+
+## Conventions
+- `STRICT` tables with snake_case columns. The repository records use camelCase field names (`src/server/db/table.ts` maps between them).
+- Timestamps are ISO 8601 UTC text from `Date.toISOString()` (`2026-09-28T01:02:03.004Z`). They sort as text. Transcript mtimes are the exception: `history_cache.mtime_ms` is a number, as `fs.stat` returns it.
+- JSON lives in TEXT columns with `CHECK (json_valid(…))`. List columns also require `json_type(…) = 'array'`. Values that hold verbatim CLI data (`question_batches.input`, `permission_requests.input`, the `options` of a question) are stored exactly as received.
+- Booleans are stored as `0`/`1` with a CHECK, nullable fields read back as `null`, and a field that is left out takes the table default.
+- CHECK constraints are used only for enumerations that the contract or the architecture data model locks: session `status`, `work_type`, `mode`, `phase`, `coordination`, `qa_stack`, event `kind`, artifact `type` and question batch `state`. The TypeScript unions and runtime lists for them are in `src/core/model.ts`. Other small vocabularies are TypeScript unions without a CHECK, so a later item can extend them without a migration: agent kind/status, permission and system-item states, schedule-run result and trigger, loop kind, usage source and pending-message kind.
+- `work_type` and `mode` are nullable in the database, even though `NewSession` requires them. Sessions that the service starts itself (gap #4 reindex, schedules) may not have them. The API validates `NewSession`.
+
+## Tables
+| Table | Entity (ARCHITECTURE → Data model / Stored state) | Notes |
+|---|---|---|
+| `sessions` | Session | NewSession fields (`task`, `qa_*`, `worktrees`) + M0 fields (`pid`, requested/observed permission mode, `cli_version`, `last_transcript_uuid`). `stop_reason` is set while a Switchboard-initiated stop runs (D7: exit 0 or 1 = paused). `name` and `claude_session_id` are unique. |
+| `agents` | Agent | `kind` main / subagent / workflow (gap #8). `tool_use_id` (unique per session), `task_id`, `subagent_type`. |
+| `events` | Event | The autoincrement `id` is a cursor. `end_ts` closes a timeline block. `uuid`/`message_id`/`tool_use_id` are used for transcript dedupe, assistant-line merge and tool pairing (not unique, because one line may give several events). |
+| `question_batches` + `questions` | Question | Batch id = `request_id` = `batchId`. The batch holds the verbatim input, `state` open/answered/stale and how the answers were delivered. A question holds `position`, `source`, the verbatim `text`/`header`/`options`/`multi_select` and the answer index + label. A question's state is its batch's state. |
+| `permission_requests` | Inbox permission item (D6) | `tool_name` + verbatim `input`, `description`, `decision_reason`, `agent_id` (a subagent's task id). `state` open/decided/stale, `decision` allow-once/deny. `(session_id, request_id)` is unique. |
+| `system_items` | Inbox system item (M3.3) | `kind`, `source`, `status` (dot color), title/detail, `branches[{solution, branch}]`, `actions[{id, label}]` (the first is primary), links to a session / schedule / run / worktree. `state` open/closed + `closed_action`. |
+| `worktrees` | Worktree | `repo`, `repo_path`, `branch`, `base_ref` (gap #10), `path`, PR number/url/state (verbatim from gh), `removable`, `removed_at`. `path` is unique only among worktrees that are not removed, so a path can be reused after removal. |
+| `artifacts` | Artifact | `type` is the locked list, `meta` is the short copy, and `path`/`url`/`data` are optional. |
+| `schedules` + `schedule_runs` | Schedule + runs | `template` = the session config + prompt (D8). A run has `ts`, `finished_at`, `result`, `summary`, `session_id` and `triggered_by` (cron/manual). No default schedules (gap #6). |
+| `loops` | Loop | `iteration`, `cap`, `breaker_count` and the times stay `null` unless observed or read from `.loop/progress.md` (D9). `iterations` feeds the strip. |
+| `tools` | Tool | `url` null = not configured. `position` = sort order. No default rows: M8.1 adds Codebase Memory and Acme Tool. |
+| `settings` | Setting | key → JSON value. Nothing is stored until something is set. |
+| `usage_readings` | Usage reading | 5-hour / 7-day percentages 0–100 (callers convert `rate_limit_event`'s 0–1) with their reset times, source and raw payload. `null` = unknown, never invented. |
+| `history_cache` | History cache | Transcript path → `(size, mtime_ms)` + the parsed row. `item` null = the file shows no row. |
+| `pending_messages` | (outbox) | User messages owed to a session the next time it runs: answers to a stale batch, the restart note of a `need` session (M2.4/M3.1). They survive restarts. |
+
+Not stored, because it is computed live: diff files (git, gap #10), the solution scan and phase ledgers (M6), codebase-memory freshness (M6.4) and system metrics (M9).
+
+## Repository layer
+- `openStore(file, { now?, migrations? })` in `src/server/db/store.ts` opens the database, runs the migrations and returns a `Store`, which has one repository per table group (`sessions`, `agents`, `events`, `questions`, `permissions`, `systemItems`, `worktrees`, `artifacts`, `schedules`, `loops`, `tools`, `settings`, `usage`, `historyCache`, `pendingMessages`) plus `close()`. Routes get it as `ApiContext.store`.
+- **Async-friendly over a synchronous driver.** `node:sqlite` only has a synchronous API, so every repository method returns a Promise and does its work without yielding. Each call is therefore atomic. Operations that write several rows run in one transaction: `questions.createBatch` / `answer`, `tools.replaceAll`, `settings.setMany`, `permissions.decide`, `systemItems.close` and `artifacts.upsert`. `transaction()` in `database.ts` takes a synchronous callback on purpose, because an `await` inside it would let unrelated statements join the transaction. The calls are short local reads and writes on a WAL database. If they ever show up as event-loop stalls, the Store can move behind a worker thread and keep the same Promise API.
+- `create` methods insert only the fields they are given, apply the table defaults and return the stored record (`RETURNING *`). Ids default to random UUIDs, except the question batch id, which is the CLI's `request_id`. `update` methods change only the given fields and bump `updatedAt` where the table has it.
+- Errors: a repository refusal is a `StoreError` with `code` `not-found` / `conflict` / `invalid`. Examples are answering an answered batch, deciding a request that is not open, or a value of the wrong type for its column. Constraint violations (UNIQUE, CHECK, FOREIGN KEY) surface as node:sqlite errors (`code: 'ERR_SQLITE_ERROR'`).
+- Question and permission state rules (M3.1 builds on them):
+  - `answer()` records the index and the option's label. The batch gets `answeredAt` once every question has an answer, and `open` becomes `answered`. A `stale` batch stays `stale`, which means its answers still have to go out as a user message (`deliveredAt` null). A second answer to an answered batch is refused.
+  - `markStale()` only affects `open` batches and requests. `markDelivered()` records `control_response` or `user_message`.
+  - Permission requests go `open` → `decided` (allow-once / deny) or `open` → `stale`, which closes without a decision.
+- Deleting a session deletes its agents, events, question batches and questions, permission requests, loops and pending messages. Worktrees, artifacts, system items, schedule runs and usage readings keep their rows, and their `session_id` becomes null.

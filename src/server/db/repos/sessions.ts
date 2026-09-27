@@ -1,0 +1,146 @@
+import { randomUUID } from 'node:crypto';
+import type { Coordination, Phase, QaStack, SessionMode, SessionStatus, WorkType } from '../../../core/model.ts';
+import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
+import { Table, type TableSpec, defined } from '../table.ts';
+
+/** A stored session (ARCHITECTURE data model + the M0 stored fields). */
+export interface SessionRecord {
+  /** Switchboard's id (the `{id}` of `/api/sessions/{id}`). */
+  readonly id: string;
+  /** Unique, kebab-case (the API validates the format). */
+  readonly name: string;
+  /** The task text the developer typed in the New-session modal. */
+  readonly task: string;
+  /** The CLI's session id (`--session-id` / `--resume`); never changes. */
+  readonly claudeSessionId: string;
+  readonly status: SessionStatus;
+  readonly workType: WorkType | null;
+  readonly mode: SessionMode | null;
+  readonly phase: Phase | null;
+  readonly coordination: Coordination | null;
+  readonly qaStack: QaStack | null;
+  readonly qaConfluenceUrl: string | null;
+  readonly qaFigmaUrls: string[];
+  /** Solutions in scope, in the chosen order. */
+  readonly solutions: string[];
+  /** NewSession `worktrees` toggle. */
+  readonly worktrees: boolean;
+  readonly ultracode: boolean;
+  /** `false` after "Continue in terminal" until "Attach here". */
+  readonly attached: boolean;
+  /** Working folder of the claude process (the workspace root). */
+  readonly cwd: string | null;
+  /** Pid of the live claude process, `null` when none. */
+  readonly pid: number | null;
+  readonly requestedPermissionMode: string | null;
+  /** `system/init.permissionMode` last seen. */
+  readonly observedPermissionMode: string | null;
+  /** `claude_code_version` from `system/init`. */
+  readonly cliVersion: string | null;
+  /** Last transcript entry Switchboard has (the Attach sync point). */
+  readonly lastTranscriptUuid: string | null;
+  /** Set while a Switchboard-initiated stop runs (e.g. `pause`, `detach`, `restart`). */
+  readonly stopReason: string | null;
+  /** The schedule that started it, if any. */
+  readonly scheduleId: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly lastActivityAt: string | null;
+  readonly detachedAt: string | null;
+  readonly endedAt: string | null;
+}
+
+/** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
+export type SessionCreate = CreateInput<SessionRecord, 'name' | 'claudeSessionId', 'createdAt' | 'updatedAt'>;
+
+/** Input of {@link SessionRepository.update}. */
+export type SessionPatch = Patch<SessionRecord, 'id' | 'createdAt' | 'updatedAt'>;
+
+/** Filter of {@link SessionRepository.list}. */
+export interface SessionFilter {
+  readonly statuses?: readonly SessionStatus[];
+}
+
+const SPEC: TableSpec<SessionRecord> = {
+  table: 'sessions',
+  key: 'id',
+  fields: {
+    id: ['id', 'text'],
+    name: ['name', 'text'],
+    task: ['task', 'text'],
+    claudeSessionId: ['claude_session_id', 'text'],
+    status: ['status', 'text'],
+    workType: ['work_type', 'text'],
+    mode: ['mode', 'text'],
+    phase: ['phase', 'text'],
+    coordination: ['coordination', 'text'],
+    qaStack: ['qa_stack', 'text'],
+    qaConfluenceUrl: ['qa_confluence_url', 'text'],
+    qaFigmaUrls: ['qa_figma_urls', 'json'],
+    solutions: ['solutions', 'json'],
+    worktrees: ['worktrees', 'bool'],
+    ultracode: ['ultracode', 'bool'],
+    attached: ['attached', 'bool'],
+    cwd: ['cwd', 'text'],
+    pid: ['pid', 'int'],
+    requestedPermissionMode: ['requested_permission_mode', 'text'],
+    observedPermissionMode: ['observed_permission_mode', 'text'],
+    cliVersion: ['cli_version', 'text'],
+    lastTranscriptUuid: ['last_transcript_uuid', 'text'],
+    stopReason: ['stop_reason', 'text'],
+    scheduleId: ['schedule_id', 'text'],
+    createdAt: ['created_at', 'text'],
+    updatedAt: ['updated_at', 'text'],
+    lastActivityAt: ['last_activity_at', 'text'],
+    detachedAt: ['detached_at', 'text'],
+    endedAt: ['ended_at', 'text'],
+  },
+};
+
+/** Sessions. */
+export class SessionRepository {
+  readonly #ctx: RepoContext;
+  readonly #table: Table<SessionRecord>;
+
+  constructor(ctx: RepoContext) {
+    this.#ctx = ctx;
+    this.#table = new Table(ctx.db, SPEC);
+  }
+
+  /** Stores a new session. The name and the claude session id must be unique. */
+  async create(input: SessionCreate): Promise<SessionRecord> {
+    const ts = this.#ctx.now();
+    return this.#table.insert({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts });
+  }
+
+  async get(id: string): Promise<SessionRecord | null> {
+    return this.#table.get(id);
+  }
+
+  async getByName(name: string): Promise<SessionRecord | null> {
+    return this.#table.first('name = ?', [name]);
+  }
+
+  async getByClaudeSessionId(claudeSessionId: string): Promise<SessionRecord | null> {
+    return this.#table.first('claude_session_id = ?', [claudeSessionId]);
+  }
+
+  /** Sessions, newest first. */
+  async list(filter: SessionFilter = {}): Promise<SessionRecord[]> {
+    if (filter.statuses) {
+      if (filter.statuses.length === 0) return [];
+      return this.#table.select(`status IN (${placeholders(filter.statuses.length)})`, filter.statuses, 'created_at DESC, id');
+    }
+    return this.#table.select('', [], 'created_at DESC, id');
+  }
+
+  /** Updates the given fields (and `updatedAt`); `null` if there is no such session. */
+  async update(id: string, patch: SessionPatch): Promise<SessionRecord | null> {
+    return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
+  }
+
+  /** Deletes a session with its agents, events, questions, requests, loops and pending messages. */
+  async delete(id: string): Promise<boolean> {
+    return this.#table.delete(id);
+  }
+}
