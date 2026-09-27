@@ -1,7 +1,7 @@
 ## Current
-item: M1.2 (next)
+item: M1.3 (next)
 attempt: 0/5
-last oracle: M1.1 PASS (attempt 4/5) · `npm run typecheck` (3 tsconfigs) green · `npm test` 102/102 (config, token, guard via inject, real bind on 4871-4879 + LAN port closed, spawned `npm start` entry) · `npm run e2e` 2/2 in cached Chromium 1234 (HttpOnly/SameSite=Strict cookie, page fetch passes, no cookie → 401) · `npm run build` + `npm run dev` smoke on 4873 ok · mutation check: breaking Host/cookie/bind guards turns 18/20/8 tests red
+last oracle: M1.2 PASS (attempt 1/5) · `npm run typecheck` (3 tsconfigs) green · `npm test` 142/142 (40 new in tests/tools: every manifest argv parses, --version/auth/unknown flag, multiturn/eof-immediate/ask-2q/perm-allow/perm-deny/perm-noflag/ask-interrupt/subagent-perm/interrupt/interrupt-tool/handoff-start/handoff-midturn/sigint/usage-ctl/usage-turn/ctl-init/max-turns/resume/fork stdout kinds equal the recordings, hang/crash, [fake:write], tokens, transcript vs tx-main + synthetic line + idle resume, sessions/<pid>.json + agents --json, FAKE_CLAUDE_LOG) · mutation check: EOF exit-code rule and cwd rewrite broken → 4 tests red
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -9,6 +9,7 @@ last oracle: M1.1 PASS (attempt 4/5) · `npm run typecheck` (3 tsconfigs) green 
 - M0.4 ✓ 2026-09-27 (commit: see git log "M0.4: Terminal handoff") · attempts 1/5 · plan: probe4.mjs Proc lib + handoff.mjs steps in .spike; 10 Haiku processes / 11 API requests (start+idle pause, terminal -p resume same + other cwd, service re-attach, mid-tool pause + terminal resume, concurrent attach); export4.mjs → 3 NDJSON scenarios + textRuns + 3 transcripts; verdict: id stays, context kept, one transcript file; pause exit 0 (idle) / 1 (mid-turn) both = paused; two live processes on one id fork the chain; interactive TTY left to manual steps
 - M0-adapt ✓ 2026-09-27 (commit: see git log "M0: adapt backlog and architecture after spike") · attempts 2/5 · plan: read spike + fixtures + questions; rewrite BACKLOG M5.2 + the items the spike changed (M1.2, M1.3 pointer, M2.1, M2.4, M3.1, M4.1, M7.4, M9.2) with concrete fake-claude oracles; rewrite ARCHITECTURE "Claude Code integration" (+ the M0.3 usage placeholder); log ASSUMED; oracle = scratchpad check script
 - M1.1 ✓ 2026-09-28 (commit: see git log "M1.1: Node project skeleton + loopback-only server") · attempts 4/5 (1 red: a wrong config test case; 3 red: e2e spec needed DOM lib → tsconfig.e2e.json) · plan: package.json exact pins + lockfile, tsconfig/web/e2e, vite/vitest/playwright configs excluding .worktrees/.spike/dist/node_modules; config.ts env (PORT, DATA_DIR #18, WORKSPACE_ROOT, CLAUDE_BIN/GH_BIN argv prefix, DEMO); security.ts Host/Origin guard + default-deny sb_token cookie (#20); token.ts; listen.ts 127.0.0.1-only; web.ts dist/web + placeholder; routes.ts registry; tools/dev.ts; docs/security.md + docs/configuration.md
+- M1.2 ✓ 2026-09-28 (commit: see git log "M1.2: tools/fake-claude") · attempts 1/5 · plan: tools/fake-claude/{main,args,fixtures,rewrite,scenarios,session,transcript,log,command}.ts; fixture compiler (preamble, turns split at result, replay/request/answer/wait/ack steps); runner state machine (blocking can_use_tool, interrupt/cancel tails, SIGINT, EOF, control requests, --max-turns, perm-noflag, siblings); transcript + sessions/<pid>.json under CLAUDE_CONFIG_DIR; tests/helpers/fake-claude.ts + tests/tools/*.test.ts; docs/fake-claude.md
 
 ## Blocked
 - (none)
@@ -51,3 +52,9 @@ consecutive_blocked: 0
 - M1.1 · Linux data dir honours absolute $XDG_DATA_HOME; token file <dataDir>/sb_token 0600
 - M1.1 · npm run dev = vite build --watch + node --watch server (no Vite dev server)
 - M1.1 · no ESLint; typecheck = 3 tsconfigs
+- M1.2 · rate_limit_event replayed as recorded (first turn only), not injected per turn
+- M1.2 · no CLAUDE_CONFIG_DIR → no files written, --resume refused (never ~/.claude)
+- M1.2 · EOF exit 1 iff last result is_error; EOF keeps a hang/tool wait alive; EOF with an open request → "Stream closed" failure; unknown --resume id → exit 1
+- M1.2 · recorded reply text after answers; sibling recordings on a different decision, else default "OK"; exhausted scenario → default turn
+- M1.2 · invented outputs (auth status silent, agents text, unknown control subtype error, [fake:write] content, synthetic after both markers, crash leaves live file)
+- M1.2 · no separate `fail` scenario: crash + max-turns cover it
