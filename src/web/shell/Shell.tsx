@@ -1,0 +1,52 @@
+import { ModalHost } from '../modals/ModalHost.tsx';
+import { type Route, useRouter } from '../router.tsx';
+import { ToastHost } from '../toast/ToastHost.tsx';
+import { ArtifactsView } from '../views/ArtifactsView.tsx';
+import { HistoryView } from '../views/HistoryView.tsx';
+import { InboxView } from '../views/InboxView.tsx';
+import { SchedulesView } from '../views/SchedulesView.tsx';
+import { SettingsView } from '../views/SettingsView.tsx';
+import { SolutionsView } from '../views/SolutionsView.tsx';
+import { ToolView } from '../views/ToolView.tsx';
+import { SessionView } from '../views/session/SessionView.tsx';
+import { Sidebar } from './Sidebar.tsx';
+import './shell.css';
+
+function View({ route }: { readonly route: Route }) {
+  switch (route.view) {
+    case 'inbox':
+      return <InboxView />;
+    case 'session':
+      return <SessionView key={route.id} sessionId={route.id} tab={route.tab} />;
+    case 'solutions':
+      return <SolutionsView />;
+    case 'schedules':
+      return <SchedulesView />;
+    case 'artifacts':
+      return <ArtifactsView />;
+    case 'history':
+      return <HistoryView />;
+    case 'tool':
+      return <ToolView key={route.id} toolId={route.id} />;
+    case 'settings':
+      return <SettingsView section={route.section} />;
+  }
+}
+
+/**
+ * The app shell (SPEC → Shell): grid `256px | 1fr`, full height; the sidebar on
+ * the left, the current view in the main area, the toast and the modals on top.
+ */
+export function Shell() {
+  const { route } = useRouter();
+  return (
+    <div className="sb-shell" data-testid="shell">
+      <Sidebar />
+      <main className="sb-main" data-testid="main">
+        <View route={route} />
+      </main>
+      <ToastHost />
+      <ModalHost />
+    </div>
+  );
+}

@@ -1,0 +1,89 @@
+{
+  "loops": [
+    {
+      "session": "prod-monitoring",
+      "kind": "/loop 1h · Plan-Act-Verify",
+      "iterations": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "facts": [
+        {
+          "k": "Iteration",
+          "v": "17"
+        },
+        {
+          "k": "Next sweep",
+          "v": "15:00"
+        },
+        {
+          "k": "Expires",
+          "v": "in 6 days"
+        }
+      ],
+      "note": "Session-only schedule. It stops when the session closes or after 7 days. Last sweep: 1 fix (PR #412), 2 escalations.",
+      "loopKind": "/loop",
+      "iteration": 17,
+      "cap": null,
+      "breakerCount": null,
+      "breakerState": null,
+      "nextFireInMinutes": null,
+      "expiresInDays": 6
+    },
+    {
+      "session": "button-rollout",
+      "kind": "Ralph · loop-until-dry",
+      "iterations": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "fail",
+        "fail",
+        "skipped",
+        "skipped",
+        "skipped"
+      ],
+      "facts": [
+        {
+          "k": "Progress",
+          "v": "7 / 12 items"
+        },
+        {
+          "k": "Breaker",
+          "v": "tripped (2)"
+        },
+        {
+          "k": "Isolation",
+          "v": "mobile/ shared ⚠"
+        }
+      ],
+      "note": "Paused: items 8 and 9 have no Figma loading state. Answer in the Inbox to continue.",
+      "loopKind": "Ralph",
+      "iteration": 9,
+      "cap": 12,
+      "breakerCount": 2,
+      "breakerState": "tripped",
+      "nextFireInMinutes": null,
+      "expiresInDays": null
+    }
+  ]
+}

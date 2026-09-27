@@ -1,0 +1,12 @@
+{
+  "footer": {
+    "service": "127.0.0.1:4870",
+    "processes": 9,
+    "cpu": "38%",
+    "ram": "11.2/32 GB",
+    "max": "62% · 1h48"
+  },
+  "cli": "C:\\Users\\dev\\.local\\bin\\claude.exe",
+  "signedIn": true,
+  "ghSignedIn": true
+}

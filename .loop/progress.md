@@ -1,7 +1,7 @@
 ## Current
-item: M1.4 (next)
+item: M2.1 (next)
 attempt: 0/5
-last oracle: M1.3 PASS (attempt 3/5; attempt 1 red: FK-violation test expected the runner's message but the immediate FK error fired first → test split into immediate + deferred cases) · `npm run typecheck` green · `npm test` 189/189 (47 new: tests/server/db/migrate.test.ts fresh DB + every data-model table/column + STRICT + integrity, re-run no-op (same connection and reopen: schema dump, schema_migrations rows and data unchanged), rollback of a failing / FK-violating migration, edited-checksum and newer-DB refusal, CRLF checksum, loadMigrations naming; tests/server/db/repos.test.ts CRUD per entity (sessions, agents, events, question batches/questions, permission requests, system items, worktrees, artifacts, schedules + runs, loops, tools, settings, usage readings, history cache, pending messages) + cascades + CHECK/UNIQUE/FK refusals; main.test.ts DB created+migrated at startup, exit 1 on a newer DB) · `npx playwright test` 2/2 · mutation check: re-run guard removed → 4 tests red
+last oracle: M1.4 PASS (attempt 3/5; attempt 1 red: SPEC oklch tokens looked missing because Vite minifies `oklch(0.8 0.14 70)` to `oklch(80% .14 70)` → tokens now compared as browser-computed colors, and the footer's "claude code" box wraps in the prototype only because of its process count → copy/style-only check; attempt 2 E2E green) · `npm run typecheck` green · `npm test` 214/214 (25 new: tests/server/api/routes.test.ts every contract route 501 + guarded; tests/server/demo/{data,seed,providers}.test.ts verbatim strings vs the prototype, seed rows/timestamps/links, idempotent, refuses real data + app-data dir, rollback, demo providers; tests/web/format.test.ts; main.test.ts demo seeds once / non-demo DB empty) · `npx playwright test` 6/6 (tests/e2e/shell.spec.ts non-demo: real 501 API calls, nothing invented, nav + deep links, modals + ⌘K/Ctrl+K; tests/e2e/visual/shell.spec.ts: 29 parts, all chrome boxes equal to the prototype's, copy exact, 21 SPEC color tokens defined, 16 computed-style checks, pixel diff 5.32% page / 5.42% sidebar advisory → docs/visual/shell.md + side-by-side PNGs; agent review in docs/visual/README.md) · main.test.ts pre-existing flake (~1 in 6: SIGTERM right after "Server listening" beat the handler registration) fixed by installing the shutdown handlers before listen: 8/8 reruns green
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -11,6 +11,7 @@ last oracle: M1.3 PASS (attempt 3/5; attempt 1 red: FK-violation test expected t
 - M1.1 ✓ 2026-09-28 (commit: see git log "M1.1: Node project skeleton + loopback-only server") · attempts 4/5 (1 red: a wrong config test case; 3 red: e2e spec needed DOM lib → tsconfig.e2e.json) · plan: package.json exact pins + lockfile, tsconfig/web/e2e, vite/vitest/playwright configs excluding .worktrees/.spike/dist/node_modules; config.ts env (PORT, DATA_DIR #18, WORKSPACE_ROOT, CLAUDE_BIN/GH_BIN argv prefix, DEMO); security.ts Host/Origin guard + default-deny sb_token cookie (#20); token.ts; listen.ts 127.0.0.1-only; web.ts dist/web + placeholder; routes.ts registry; tools/dev.ts; docs/security.md + docs/configuration.md
 - M1.2 ✓ 2026-09-28 (commit: see git log "M1.2: tools/fake-claude") · attempts 1/5 · plan: tools/fake-claude/{main,args,fixtures,rewrite,scenarios,session,transcript,log,command}.ts; fixture compiler (preamble, turns split at result, replay/request/answer/wait/ack steps); runner state machine (blocking can_use_tool, interrupt/cancel tails, SIGINT, EOF, control requests, --max-turns, perm-noflag, siblings); transcript + sessions/<pid>.json under CLAUDE_CONFIG_DIR; tests/helpers/fake-claude.ts + tests/tools/*.test.ts; docs/fake-claude.md
 - M1.3 ✓ 2026-09-28 (commit: see git log "M1.3: SQLite schema + migrations") · attempts 3/5 · plan: 0001_initial.sql STRICT tables for every data-model entity + M0 stored fields + inbox permission/system items + outbox/usage/history cache; database.ts (WAL, FKs, busy timeout, sync transaction helper) + migrate.ts (NNNN_name.sql, schema_migrations with LF-normalized sha256, one transaction per migration, foreign_key_check, edited/newer refusal); table.ts typed row mapper + src/server/db/repos/* (Promise API) + store.ts openStore; main.ts opens <dataDir>/switchboard.db, ApiContext.store; src/core/model.ts enums; docs/database.md
+- M1.4 ✓ 2026-09-28 (commit: see git log "M1.4: App shell, lane scaffolding, demo seed, visual harness") · attempts 3/5 · plan: fonts + prototype runtime deps; tokens.css/global.css, router, Shell + Sidebar fed only by the typed API client (501 → empty, "—"); placeholders per view/tab/modal + ToastHost, api/client.ts + useApi + useHub (SSE), src/server/api/* 501 modules from routes.ts, providers.ts; demo data files + seed + demo providers (SWITCHBOARD_DEMO=1, throwaway data dir only); visual harness (offline prototype, boxes ±2 px, copy, tokens, canvas pixel diff, side-by-side); docs/lanes.md, docs/demo.md, docs/visual/README.md
 
 ## Blocked
 - (none)
@@ -67,3 +68,16 @@ consecutive_blocked: 0
 - M1.3 · answer rules (label recorded, answered when complete, no double answer, stale stays stale)
 - M1.3 · store opened in main.ts, required ApiContext.store, exit 1 on migration errors
 - M1.3 · no seeded rows (tool defaults left to M8.1)
+- M1.4 · demo mode only on a throwaway data dir, seeds an empty DB once
+- M1.4 · all contract routes 501 with owner item; /hub left to M2.3
+- M1.4 · provisional wire types in src/core/api.ts; /api/system units + additive usageResetsAt
+- M1.4 · sidebar shows only API data (empty / "—" / "unknown" while 501)
+- M1.4 · badge, mode-line and age derivations
+- M1.4 · ⌘K on Apple platforms, "Ctrl K" elsewhere
+- M1.4 · in-house history router
+- M1.4 · @fontsource fonts; prototype runtime via npm aliases + overrides
+- M1.4 · visual reports to docs/visual only with SWITCHBOARD_VISUAL_REPORT=1
+- M1.4 · empty-shell gate: data-dependent parts by size / bottom / copy only
+- M1.4 · in-browser canvas pixel diff (no image deps)
+- M1.4 · demo seed mapping (ids, timeline base, payload.channel, artifacts list)
+- M1.4 · e2e global setup builds dist/web

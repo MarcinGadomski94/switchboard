@@ -1,0 +1,66 @@
+{
+  "wizardChecks": [
+    {
+      "label": "Claude Code CLI found",
+      "detail": "C:\\Users\\dev\\.local\\bin\\claude.exe"
+    },
+    {
+      "label": "Signed in · Max plan",
+      "detail": "subscription auth · no API key"
+    },
+    {
+      "label": "GitHub CLI signed in",
+      "detail": "gh auth status · used to detect merged PRs"
+    }
+  ],
+  "scan": [
+    {
+      "folder": "microfrontends/",
+      "count": 4,
+      "examples": "acme-app-front, workspace-front, auth-front, …",
+      "rule": "editable"
+    },
+    {
+      "folder": "mobile/",
+      "count": 1,
+      "examples": "MAUI app + Mobile Gateway BFF",
+      "rule": "editable"
+    },
+    {
+      "folder": "nugets/",
+      "count": 4,
+      "examples": "components-library-nuget, typography-nuget, …",
+      "rule": "editable"
+    },
+    {
+      "folder": "microservices/",
+      "count": 2,
+      "examples": "auth-microservice, notifications-microservice",
+      "rule": "editable"
+    },
+    {
+      "folder": "functions/",
+      "count": 2,
+      "examples": "calendar-func, hubspot-func",
+      "rule": "editable"
+    },
+    {
+      "folder": "other/",
+      "count": 1,
+      "examples": "it-dashboard",
+      "rule": "on request only"
+    },
+    {
+      "folder": "deprecated/",
+      "count": 3,
+      "examples": "old-chat-front, legacy-auth-microservice, …",
+      "rule": "read-only"
+    },
+    {
+      "folder": "infrastructure/",
+      "count": 1,
+      "examples": "platform Terraform",
+      "rule": "read-only"
+    }
+  ]
+}

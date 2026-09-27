@@ -9,6 +9,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
   testIgnore: ['**/.worktrees/**', '**/.spike/**', '**/dist/**', '**/node_modules/**'],
+  // Builds dist/web from the current src/web before any spec runs.
+  globalSetup: './tests/e2e/global-setup.ts',
   outputDir: 'test-results',
   fullyParallel: false,
   workers: 1,

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
+import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
 import { registerWeb } from './web.ts';
@@ -14,6 +15,8 @@ export interface AppOptions {
   readonly store: Store;
   /** Absolute path of the built UI, normally `<repo>/dist/web`. */
   readonly webRoot: string;
+  /** Computed data sources (providers.ts); none by default. */
+  readonly providers?: Providers;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -26,7 +29,7 @@ export interface AppOptions {
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
   registerSecurity(app, { port: options.config.port, token: options.token });
-  await registerApiRoutes(app, { config: options.config, store: options.store });
+  await registerApiRoutes(app, { config: options.config, store: options.store, providers: options.providers ?? {} });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

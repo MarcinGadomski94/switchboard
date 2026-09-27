@@ -1,0 +1,76 @@
+/* Toast (SPEC → Modals → Toast): top-right, 360px; values from the prototype markup. */
+.sb-toast {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 360px;
+  background: #232429;
+  border: 1px solid #34353b;
+  border-radius: var(--radius-toast);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-toast);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 13px;
+  z-index: 30;
+}
+
+.sb-toast-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-toast-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-need);
+}
+
+.sb-toast-title {
+  font-weight: 600;
+}
+
+.sb-toast-sub {
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+.sb-toast-close {
+  margin-left: auto;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-toast-branch {
+  font: 400 11.5px var(--font-mono);
+  color: var(--branch-fg);
+}
+
+.sb-toast-text {
+  line-height: 1.45;
+  color: #cfcec9;
+}
+
+.sb-toast-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-toast-jump {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-toast-later {
+  border: 1px solid #3a3b41;
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+}

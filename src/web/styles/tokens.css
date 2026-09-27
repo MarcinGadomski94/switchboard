@@ -1,0 +1,111 @@
+/*
+ * Design tokens from docs/handoff/SPEC.md → "Design tokens", as CSS variables.
+ * Values are the prototype's exact ones (docs/handoff/prototype/Switchboard App.dc.html).
+ * Where SPEC lists several values for one token, each gets its own variable,
+ * in SPEC order.
+ */
+:root {
+  /* Colors: surfaces */
+  --bg-app: #0b0c0d;
+  --bg-sidebar: #111214;
+  --bg-main: #141518;
+  --bg-list: #121315;
+  --bg-card: #17181b;
+  --bg-card-2: #16171a;
+  --bg-code: #0c0d0f;
+  --bg-selected-nav: #212227;
+  --bg-selected-card: #1c1d21;
+  --bg-selected-row: #1f2024;
+
+  /* Colors: borders */
+  --border-divider: #232428;
+  --border-control: #2c2d32;
+  --border-card: #26272c;
+  --border-row: #1f2024;
+
+  /* Colors: text */
+  --text: #e8e7e3;
+  --text-strong: #f0efeb;
+  --text-2: #c9c8c3;
+  --text-2b: #d9d8d3;
+  --muted-1: #a9a8a3;
+  --muted-2: #8d8c87;
+  --muted-3: #76756f;
+  --muted-4: #6d6c67;
+
+  /* Primary button */
+  --primary-bg: #e8e7e3;
+  --primary-fg: #111214;
+
+  /* Status */
+  --status-need: oklch(0.8 0.14 70);
+  --status-run: oklch(0.72 0.12 250);
+  --status-done: oklch(0.74 0.13 150);
+  --status-fail: oklch(0.68 0.17 25);
+  --status-idle: #5a5955;
+  /* Empty slot of a run strip (prototype C.none). */
+  --status-none: #26272c;
+
+  /* Branch chip (⎇ branch) */
+  --branch-fg: oklch(0.78 0.1 250);
+  --branch-bg: oklch(0.24 0.03 250);
+
+  /* Question card */
+  --question-border: oklch(0.5 0.09 70);
+  --question-bg: oklch(0.2 0.025 70);
+  --question-label: oklch(0.82 0.13 70);
+  --option-selected-border: oklch(0.7 0.12 70);
+  --option-selected-bg: oklch(0.3 0.06 70);
+
+  /* Diff + / − */
+  --diff-add-fg: oklch(0.82 0.1 150);
+  --diff-add-bg: oklch(0.22 0.04 150);
+  --diff-del-fg: oklch(0.76 0.13 25);
+  --diff-del-bg: oklch(0.22 0.04 25);
+
+  /* Type: Geist (UI) and Geist Mono (paths, branches, labels, terminal), self-hosted (gap #19) */
+  --font-ui: Geist, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', monospace;
+  --fs-page-title: 18px;
+  --fs-modal-title: 20px;
+  --fs-focus-title: 24px;
+  --fs-body: 13px;
+  --fs-body-lg: 13.5px;
+  --fs-section-label: 10.5px;
+  --fs-mono-meta: 11px;
+  --fs-mono-meta-lg: 12px;
+  --ls-section-label: 0.06em;
+  --ls-focus-title: -0.01em;
+
+  /* Radius */
+  --radius-chip: 4px;
+  --radius-chip-lg: 5px;
+  --radius-button: 6px;
+  --radius-button-lg: 7px;
+  --radius-card: 8px;
+  --radius-card-lg: 10px;
+  --radius-question: 12px;
+  --radius-toast: 12px;
+  --radius-modal: 14px;
+
+  /* Shadows */
+  --shadow-toast: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.6);
+
+  /* Spacing scale */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-22: 22px;
+  --space-26: 26px;
+  --space-28: 28px;
+
+  /* Layout */
+  --sidebar-width: 256px;
+}

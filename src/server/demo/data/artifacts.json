@@ -1,0 +1,113 @@
+{
+  "artifacts": [
+    {
+      "type": "CONTRACT",
+      "name": "contracts/free-talk.md",
+      "solution": "root",
+      "session": "free-talk-feature",
+      "meta": "locked",
+      "age": "1m"
+    },
+    {
+      "type": "DIFF",
+      "name": "Pages/FreeTalk · 6 files",
+      "solution": "acme-app-front",
+      "branch": "feature/free-talk-360",
+      "session": "free-talk-feature",
+      "meta": "+284 −12",
+      "age": "4m"
+    },
+    {
+      "type": "DIFF",
+      "name": "Views/FreeTalkView · 5 files",
+      "solution": "mobile",
+      "branch": "feature/free-talk-360",
+      "session": "free-talk-feature",
+      "meta": "+231 −4",
+      "age": "5m"
+    },
+    {
+      "type": "FOLLOWUP",
+      "name": "mobile-followups/from-acme-app-front.md",
+      "solution": "mobile",
+      "session": "free-talk-feature",
+      "meta": "1 new",
+      "age": "5m"
+    },
+    {
+      "type": "CONTRACT",
+      "name": "contracts/push-preferences.md",
+      "solution": "root",
+      "session": "notifications-integration",
+      "meta": "locked",
+      "age": "22m"
+    },
+    {
+      "type": "PR",
+      "name": "notifications-microservice #88 · push preferences",
+      "solution": "notifications-microservice",
+      "branch": "feature/push-prefs",
+      "session": "notifications-integration",
+      "meta": "open",
+      "age": "20m"
+    },
+    {
+      "type": "QA",
+      "name": "coverage-matrix.md · Free talk",
+      "solution": "root",
+      "session": "qa-free-talk",
+      "meta": "14/18",
+      "age": "9m"
+    },
+    {
+      "type": "BRANCH",
+      "name": "feature/acm-button-sizes",
+      "solution": "components-library-nuget",
+      "session": "button-rollout",
+      "meta": "7 commits",
+      "age": "12m"
+    },
+    {
+      "type": "DOC",
+      "name": "rollout-checklist.md",
+      "solution": "root",
+      "session": "button-rollout",
+      "meta": "7/12",
+      "age": "12m"
+    },
+    {
+      "type": "DIFF",
+      "name": "Services/ReminderScheduler.cs",
+      "solution": "calendar-func",
+      "branch": "fix/timezone-dst",
+      "session": "calendar-func-fix",
+      "meta": "+14 −6",
+      "age": "20m"
+    },
+    {
+      "type": "PR",
+      "name": "notifications-microservice #412 · null-ref fix",
+      "solution": "notifications-microservice",
+      "branch": "fix/notif-nullref",
+      "session": "prod-monitoring",
+      "meta": "open",
+      "age": "41m"
+    },
+    {
+      "type": "DOC",
+      "name": "monitoring-notes.md",
+      "solution": "root",
+      "session": "prod-monitoring",
+      "meta": "2 escalations",
+      "age": "41m"
+    },
+    {
+      "type": "TICKET",
+      "name": "Reply draft: Free talk empty-state copy",
+      "solution": "root",
+      "session": "qa-free-talk",
+      "meta": "draft",
+      "age": "9m"
+    }
+  ]
+}

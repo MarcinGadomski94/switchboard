@@ -1,0 +1,1066 @@
+{
+  "sessions": [
+    {
+      "name": "free-talk-feature",
+      "status": "need",
+      "age": "1m",
+      "modeLine": "orch · feature · UI-first",
+      "resumeId": "7f3a2c91",
+      "t0": 2,
+      "duration": 46,
+      "chips": [
+        {
+          "k": "work",
+          "v": "feature-building"
+        },
+        {
+          "k": "mode",
+          "v": "orchestrator"
+        },
+        {
+          "k": "phase",
+          "v": "UI-first"
+        },
+        {
+          "k": "bp",
+          "v": "360"
+        },
+        {
+          "k": "scope",
+          "v": "acme-app-front + mobile"
+        },
+        {
+          "k": "run",
+          "v": "workflow 7f3a · reconcile",
+          "loop": true
+        }
+      ],
+      "agents": [
+        {
+          "name": "orchestrator",
+          "description": "relay + reconcile",
+          "solutionPath": "workspace root",
+          "branch": "",
+          "statusText": "needs you",
+          "status": "need"
+        },
+        {
+          "name": "web",
+          "description": "FreeTalkPage @360",
+          "solutionPath": "microfrontends/acme-app-front",
+          "branch": "feature/free-talk-360",
+          "statusText": "asked 1",
+          "status": "need"
+        },
+        {
+          "name": "mobile",
+          "description": "FreeTalkView @360",
+          "solutionPath": "mobile/",
+          "branch": "feature/free-talk-360",
+          "statusText": "asked 1",
+          "status": "need"
+        },
+        {
+          "name": "figma-extractor",
+          "description": "spec table",
+          "solutionPath": "read-only",
+          "branch": "",
+          "statusText": "done",
+          "status": "done"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Free talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page."
+        },
+        {
+          "from": "agent",
+          "text": "Contract locked from Figma node 2231:884 and written to contracts/free-talk.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.",
+          "tools": [
+            "✓ recon · codebase-memory · 2 precedents found",
+            "✓ figma-extractor · spec table, 14 slots",
+            "✓ web returned · 6 files · render loop 3/5 green",
+            "✓ mobile returned · 5 files · build self-heal ×1"
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "source": "web · microfrontends/acme-app-front",
+          "text": "Figma shows the topic chips wrapping to 2 rows at 360. Should overflow wrap as drawn, or scroll horizontally?",
+          "options": [
+            "Wrap to 2 rows (as Figma)",
+            "Horizontal scroll",
+            "Ask designer"
+          ]
+        },
+        {
+          "source": "mobile · mobile/",
+          "text": "AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?",
+          "options": [
+            "Use default size",
+            "Add compact variant",
+            "Stop here"
+          ]
+        },
+        {
+          "source": "(orchestrator)",
+          "text": "Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?",
+          "options": [
+            "Nullable",
+            "Required",
+            "Check Confluence first"
+          ]
+        }
+      ],
+      "terminal": [
+        "[orch] reconcile · contract-adherence report",
+        "✓ web 13/14 fields match",
+        "⚠ mobile TopicId: required ≠ web nullable",
+        "⏸ [web] question: chip overflow at 360",
+        "⏸ [mobile] question: AcmChip compact size",
+        "⏸ waiting for your answers"
+      ],
+      "files": [
+        {
+          "solution": "acme-app-front",
+          "path": "Pages/FreeTalk/FreeTalk.razor",
+          "branch": "feature/free-talk-360",
+          "delta": "+118",
+          "lines": [
+            " @page \"/free-talk\"",
+            " @inject IFreeTalkService FreeTalkService",
+            "+<AcmPageHeader Title=\"Free talk\" />",
+            "+<TopicChips Topics=\"@_topics\" Wrap=\"true\" />",
+            "+<AcmButton Size=\"Large\" OnClick=\"StartAsync\">Start talking</AcmButton>",
+            "+",
+            "+@code {",
+            "+    private IReadOnlyList<TopicDto> _topics = [];",
+            "+",
+            "+    protected override async Task OnInitializedAsync()",
+            "+        => _topics = await FreeTalkService.GetTopicsAsync();",
+            "+}"
+          ]
+        },
+        {
+          "solution": "acme-app-front",
+          "path": "Pages/FreeTalk/TopicChips.razor",
+          "branch": "feature/free-talk-360",
+          "delta": "+51 −12",
+          "lines": [
+            " <div class=\"topic-chips\">",
+            "-    <AcmChip Size=\"Compact\" @bind-Selected=\"topic.Selected\">",
+            "+    <AcmChip @bind-Selected=\"topic.Selected\">",
+            "         @topic.Title",
+            "     </AcmChip>",
+            " </div>"
+          ]
+        },
+        {
+          "solution": "mobile/",
+          "path": "Views/FreeTalkView.xaml",
+          "branch": "feature/free-talk-360",
+          "delta": "+96",
+          "lines": [
+            "+<ContentPage x:Class=\"Acme.Mobile.Views.FreeTalkView\"",
+            "+             Title=\"Free talk\">",
+            "+  <VerticalStackLayout Spacing=\"16\" Padding=\"16\">",
+            "+    <controls:AcmChipGroup ItemsSource=\"{Binding Topics}\" />",
+            "+    <controls:AcmButton Text=\"Start talking\" Command=\"{Binding StartCommand}\" />",
+            "+  </VerticalStackLayout>",
+            "+</ContentPage>"
+          ]
+        },
+        {
+          "solution": "mobile/",
+          "path": "ViewModels/FreeTalkViewModel.cs",
+          "branch": "feature/free-talk-360",
+          "delta": "+88",
+          "lines": [
+            "+public partial class FreeTalkViewModel : ObservableObject",
+            "+{",
+            "+    // UI-first seam: swap FreeTalkServiceMock for the real connector at integration",
+            "+    [ObservableProperty] private IReadOnlyList<TopicDto> _topics = [];",
+            "+}"
+          ]
+        },
+        {
+          "solution": "root",
+          "path": "contracts/free-talk.md",
+          "branch": "—",
+          "delta": "+62",
+          "lines": [
+            "+# Free talk · locked contract",
+            "+Figma: 2231:884 (360)",
+            "+Breakpoints: web 360 · mobile 360",
+            "+Phase: UI-first (mock-DI)"
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "CONTRACT",
+          "name": "contracts/free-talk.md",
+          "meta": "locked"
+        },
+        {
+          "type": "DIFF",
+          "name": "acme-app-front · 6 files",
+          "meta": "+284 −12"
+        },
+        {
+          "type": "DIFF",
+          "name": "mobile · 5 files",
+          "meta": "+231 −4"
+        },
+        {
+          "type": "FOLLOWUP",
+          "name": "mobile-followups/from-acme-app-front.md",
+          "meta": "1 new"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "orchestrator",
+          "solution": "workspace root",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 3,
+              "kind": "plan",
+              "label": "task definition"
+            },
+            {
+              "start": 3,
+              "end": 9,
+              "kind": "plan",
+              "label": "recon · codebase-memory"
+            },
+            {
+              "start": 9,
+              "end": 12,
+              "kind": "plan",
+              "label": "contract lock"
+            },
+            {
+              "start": 12,
+              "end": 13,
+              "kind": "impl",
+              "label": "dispatch"
+            },
+            {
+              "start": 30,
+              "end": 33,
+              "kind": "ask",
+              "label": "relay 3 Qs"
+            },
+            {
+              "start": 40,
+              "end": 46,
+              "kind": "ok",
+              "label": "reconcile"
+            }
+          ]
+        },
+        {
+          "agent": "figma-extractor",
+          "solution": "read-only",
+          "blocks": [
+            {
+              "start": 9,
+              "end": 12,
+              "kind": "plan",
+              "label": "spec table"
+            }
+          ]
+        },
+        {
+          "agent": "web",
+          "solution": "acme-app-front",
+          "blocks": [
+            {
+              "start": 13,
+              "end": 22,
+              "kind": "impl",
+              "label": "implement FreeTalkPage"
+            },
+            {
+              "start": 22,
+              "end": 26,
+              "kind": "loop",
+              "label": "build self-heal ×2"
+            },
+            {
+              "start": 26,
+              "end": 30,
+              "kind": "loop",
+              "label": "render vs Figma 3/5"
+            },
+            {
+              "start": 30,
+              "end": 31,
+              "kind": "ask",
+              "label": "?"
+            },
+            {
+              "start": 33,
+              "end": 40,
+              "kind": "impl",
+              "label": "apply answers"
+            }
+          ]
+        },
+        {
+          "agent": "mobile",
+          "solution": "mobile/",
+          "blocks": [
+            {
+              "start": 13,
+              "end": 24,
+              "kind": "impl",
+              "label": "implement FreeTalkView"
+            },
+            {
+              "start": 24,
+              "end": 29,
+              "kind": "loop",
+              "label": "build self-heal ×1"
+            },
+            {
+              "start": 29,
+              "end": 30,
+              "kind": "ask",
+              "label": "?"
+            },
+            {
+              "start": 33,
+              "end": 39,
+              "kind": "impl",
+              "label": "apply answers"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "notifications-integration",
+      "status": "need",
+      "age": "3m",
+      "modeLine": "orch · integration · Tier A 3/6",
+      "resumeId": "b21e0f47",
+      "t0": 5,
+      "duration": 38,
+      "chips": [
+        {
+          "k": "work",
+          "v": "feature-building"
+        },
+        {
+          "k": "mode",
+          "v": "orchestrator"
+        },
+        {
+          "k": "phase",
+          "v": "integration"
+        },
+        {
+          "k": "scope",
+          "v": "notifications-microservice → mobile BFF → workspace-front"
+        },
+        {
+          "k": "loop",
+          "v": "Tier A 3/6",
+          "loop": true
+        }
+      ],
+      "agents": [
+        {
+          "name": "orchestrator",
+          "description": "relay + integration loop",
+          "solutionPath": "workspace root",
+          "branch": "",
+          "statusText": "needs you",
+          "status": "need"
+        },
+        {
+          "name": "microservice",
+          "description": "push-preferences endpoint",
+          "solutionPath": "microservices/notifications-microservice",
+          "branch": "feature/push-prefs",
+          "statusText": "contract locked",
+          "status": "done"
+        },
+        {
+          "name": "web",
+          "description": "NotificationsPanel connector",
+          "solutionPath": "microfrontends/workspace-front",
+          "branch": "feature/notifications-panel",
+          "statusText": "Tier A green",
+          "status": "done"
+        },
+        {
+          "name": "mobile",
+          "description": "BFF route + client",
+          "solutionPath": "mobile/",
+          "branch": "feature/push-prefs-bff",
+          "statusText": "running",
+          "status": "run"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Wire the notifications panel to the real notifications-microservice. Push preferences endpoint."
+        },
+        {
+          "from": "agent",
+          "text": "The microservice shipped first and locked the contract (GET/PUT /push-preferences). Web ran the Tier A loop against the mocked upstream and is green after 3 iterations. Mobile is still wiring the BFF route.",
+          "tools": [
+            "✓ microservice · swagger.yml updated · contract locked",
+            "✓ web · NSwag client regenerated",
+            "✓ web · Tier A iteration 3/6 · deserialization matches",
+            "● mobile · BFF route PushPreferences in progress"
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "source": "(orchestrator)",
+          "text": "Tier A is green on web. Tier B boots notifications-microservice → Gateway → workspace-front locally (3 processes, about 6 min). Authorize Tier B now?",
+          "options": [
+            "Authorize Tier B",
+            "Tier A only for now",
+            "Stop after web"
+          ]
+        }
+      ],
+      "terminal": [
+        "$ dotnet run --project Notifications.API (mock upstream)",
+        "rider-debugger attach · breakpoint PushPreferencesConnector.cs:58",
+        "GET /push-preferences → 200 · 4 fields",
+        "✓ runtime matches locked contract",
+        "⏸ Tier B requires your authorization"
+      ],
+      "files": [
+        {
+          "solution": "workspace-front",
+          "path": "Services/PushPreferencesConnector.cs",
+          "branch": "feature/notifications-panel",
+          "delta": "+74",
+          "lines": [
+            "+public sealed class PushPreferencesConnector(INotificationsMicroserviceClient client)",
+            "+{",
+            "+    public async Task<PushPreferences> GetAsync(CancellationToken ct)",
+            "+        => (await client.GetPushPreferencesAsync(ct)).ToModel();",
+            "+}"
+          ]
+        },
+        {
+          "solution": "notifications-microservice",
+          "path": "swagger.yml",
+          "branch": "feature/push-prefs",
+          "delta": "+41",
+          "lines": [
+            "+  /push-preferences:",
+            "+    get:",
+            "+      operationId: GetPushPreferences",
+            "+    put:",
+            "+      operationId: UpdatePushPreferences"
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "CONTRACT",
+          "name": "contracts/push-preferences.md",
+          "meta": "locked"
+        },
+        {
+          "type": "PR",
+          "name": "notifications-microservice #88",
+          "meta": "open"
+        },
+        {
+          "type": "DIFF",
+          "name": "workspace-front · 4 files",
+          "meta": "+131 −9"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "orchestrator",
+          "solution": "workspace root",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 6,
+              "kind": "plan",
+              "label": "recon + contract"
+            },
+            {
+              "start": 30,
+              "end": 38,
+              "kind": "ask",
+              "label": "Tier B authorization"
+            }
+          ]
+        },
+        {
+          "agent": "microservice",
+          "solution": "notifications-microservice",
+          "blocks": [
+            {
+              "start": 6,
+              "end": 16,
+              "kind": "impl",
+              "label": "endpoint + swagger"
+            },
+            {
+              "start": 16,
+              "end": 18,
+              "kind": "ok",
+              "label": "contract locked"
+            }
+          ]
+        },
+        {
+          "agent": "web",
+          "solution": "workspace-front",
+          "blocks": [
+            {
+              "start": 18,
+              "end": 24,
+              "kind": "impl",
+              "label": "connector"
+            },
+            {
+              "start": 24,
+              "end": 30,
+              "kind": "loop",
+              "label": "Tier A loop 3/6"
+            }
+          ]
+        },
+        {
+          "agent": "mobile",
+          "solution": "mobile/",
+          "blocks": [
+            {
+              "start": 18,
+              "end": 38,
+              "kind": "impl",
+              "label": "BFF route"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "qa-free-talk",
+      "status": "run",
+      "age": "9m",
+      "modeLine": "orch · QA · 14/18 covered",
+      "resumeId": "c9d4118a",
+      "t0": 20,
+      "duration": 30,
+      "chips": [
+        {
+          "k": "work",
+          "v": "test-authoring (QA)"
+        },
+        {
+          "k": "mode",
+          "v": "orchestrator"
+        },
+        {
+          "k": "phase",
+          "v": "UI-first"
+        },
+        {
+          "k": "stack",
+          "v": "both"
+        },
+        {
+          "k": "contract",
+          "v": "Confluence v14 + Figma 2231:884"
+        }
+      ],
+      "agents": [
+        {
+          "name": "qa-web-playwright",
+          "description": "E2E @360",
+          "solutionPath": "microfrontends/acme-app-front",
+          "branch": "qa/free-talk-e2e",
+          "statusText": "AC 14/18",
+          "status": "run"
+        },
+        {
+          "name": "qa-mobile-appium",
+          "description": "UI tests @360",
+          "solutionPath": "mobile/",
+          "branch": "qa/free-talk-appium",
+          "statusText": "AC 12/18",
+          "status": "run"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Write E2E tests for Free talk at 360 on both stacks."
+        },
+        {
+          "from": "agent",
+          "text": "Coverage matrix built from Confluence v14 (18 requirements) and Figma 2231:884. Both QA agents dispatched in parallel against the same anchor.",
+          "tools": [
+            "✓ contract preflight · Confluence + Figma resolve",
+            "✓ coverage-matrix.md · 18 requirement IDs",
+            "● web 14/18 · mobile 12/18"
+          ]
+        }
+      ],
+      "questions": [],
+      "terminal": [
+        "[web] $ dotnet test --filter FreeTalk",
+        "[web] Passed 14 · Failed 0",
+        "[mobile] appium · emulator pixel_7 @360",
+        "[mobile] AC-5 swipe to next topic ✓",
+        "▍"
+      ],
+      "files": [
+        {
+          "solution": "acme-app-front",
+          "path": "Tests/E2E/FreeTalkTests.cs",
+          "branch": "qa/free-talk-e2e",
+          "delta": "+212",
+          "lines": [
+            "+[Test, Requirement(\"AC-3\")]",
+            "+public async Task Topic_chips_wrap_at_360()",
+            "+{",
+            "+    await Page.SetViewportSizeAsync(360, 800);",
+            "+}"
+          ]
+        },
+        {
+          "solution": "root",
+          "path": "coverage-matrix.md",
+          "branch": "—",
+          "delta": "+48",
+          "lines": [
+            "+| ID | Requirement | Web | Mobile |",
+            "+| AC-1 | Title shows \"Free talk\" | ✓ | ✓ |"
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "QA",
+          "name": "coverage-matrix.md",
+          "meta": "14/18 · 12/18"
+        },
+        {
+          "type": "DIFF",
+          "name": "acme-app-front · Tests/E2E",
+          "meta": "+212"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "orchestrator",
+          "solution": "workspace root",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 6,
+              "kind": "plan",
+              "label": "contract-lock + matrix"
+            },
+            {
+              "start": 6,
+              "end": 7,
+              "kind": "impl",
+              "label": "dispatch"
+            }
+          ]
+        },
+        {
+          "agent": "qa-web-playwright",
+          "solution": "acme-app-front",
+          "blocks": [
+            {
+              "start": 7,
+              "end": 30,
+              "kind": "impl",
+              "label": "authoring tests"
+            }
+          ]
+        },
+        {
+          "agent": "qa-mobile-appium",
+          "solution": "mobile/",
+          "blocks": [
+            {
+              "start": 7,
+              "end": 30,
+              "kind": "impl",
+              "label": "authoring tests"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "button-rollout",
+      "status": "need",
+      "age": "12m",
+      "modeLine": "loop-until-dry · 7/12 · breaker",
+      "resumeId": "e04a77b3",
+      "t0": 0,
+      "duration": 58,
+      "chips": [
+        {
+          "k": "work",
+          "v": "feature-building"
+        },
+        {
+          "k": "mode",
+          "v": "orchestrator"
+        },
+        {
+          "k": "loop",
+          "v": "Ralph · loop-until-dry",
+          "loop": true
+        },
+        {
+          "k": "cap",
+          "v": "12 items · breaker 2"
+        },
+        {
+          "k": "scope",
+          "v": "components-library-nuget + acme-app-front + mobile"
+        }
+      ],
+      "agents": [
+        {
+          "name": "nuget",
+          "description": "AcmButton size variants",
+          "solutionPath": "nugets/components-library-nuget",
+          "branch": "feature/acm-button-sizes",
+          "statusText": "item 7 done",
+          "status": "done"
+        },
+        {
+          "name": "web",
+          "description": "local variants",
+          "solutionPath": "microfrontends/acme-app-front",
+          "branch": "feature/button-variants",
+          "statusText": "paused",
+          "status": "need"
+        },
+        {
+          "name": "mobile",
+          "description": "local variants",
+          "solutionPath": "mobile/",
+          "branch": "feature/button-variants",
+          "statusText": "paused",
+          "status": "need"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Roll out the new Large and Loading variants to every local button component. Loop until dry."
+        },
+        {
+          "from": "agent",
+          "text": "Items 1–7 converged against the verified spec table. The circuit breaker tripped on items 8 and 9.",
+          "tools": [
+            "✓ items 1–7 · render vs Figma green",
+            "✕ item 8 AcmIconButton · no loading frame",
+            "✕ item 9 AcmLinkButton · no loading frame",
+            "⏸ breaker: 2 consecutive ambiguous items"
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "source": "circuit breaker",
+          "text": "Items 8 and 9 (AcmIconButton, AcmLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive).",
+          "options": [
+            "Skip both, continue loop",
+            "Stop loop here",
+            "I'll add Figma frames"
+          ]
+        }
+      ],
+      "terminal": [
+        "[loop] item 8/12 AcmIconButton",
+        "✕ figma: no variant State=Loading",
+        "[loop] item 9/12 AcmLinkButton",
+        "✕ figma: no variant State=Loading",
+        "⏸ circuit breaker tripped"
+      ],
+      "files": [
+        {
+          "solution": "components-library-nuget",
+          "path": "AcmButton/AcmButton.razor",
+          "branch": "feature/acm-button-sizes",
+          "delta": "+64 −8",
+          "lines": [
+            "+[Parameter] public AcmButtonSize Size { get; set; } = AcmButtonSize.Medium;",
+            "+[Parameter] public bool Loading { get; set; }"
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "BRANCH",
+          "name": "feature/acm-button-sizes",
+          "meta": "7 commits"
+        },
+        {
+          "type": "DOC",
+          "name": "rollout-checklist.md",
+          "meta": "7/12 done"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "orchestrator",
+          "solution": "workspace root",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 8,
+              "kind": "plan",
+              "label": "spec table"
+            },
+            {
+              "start": 52,
+              "end": 58,
+              "kind": "ask",
+              "label": "breaker"
+            }
+          ]
+        },
+        {
+          "agent": "loop",
+          "solution": "3 solutions",
+          "blocks": [
+            {
+              "start": 8,
+              "end": 50,
+              "kind": "loop",
+              "label": "items 1–7"
+            },
+            {
+              "start": 50,
+              "end": 56,
+              "kind": "ask",
+              "label": "items 8–9"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "calendar-func-fix",
+      "status": "run",
+      "age": "20m",
+      "modeLine": "single · calendar-func",
+      "resumeId": "a7710de2",
+      "t0": 12,
+      "duration": 22,
+      "chips": [
+        {
+          "k": "work",
+          "v": "feature-building"
+        },
+        {
+          "k": "mode",
+          "v": "single-solution"
+        },
+        {
+          "k": "phase",
+          "v": "integration"
+        },
+        {
+          "k": "scope",
+          "v": "functions/calendar-func"
+        }
+      ],
+      "agents": [
+        {
+          "name": "calendar-func",
+          "description": "DST offset in reminders",
+          "solutionPath": "functions/calendar-func",
+          "branch": "fix/timezone-dst",
+          "statusText": "build self-heal 1/3",
+          "status": "run"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Reminders fire an hour late after the DST switch. Fix in calendar-func."
+        },
+        {
+          "from": "agent",
+          "text": "Found the cause: the timer trigger converts with a fixed UTC offset. Switching to TimeZoneInfo with the user's zone. Building now.",
+          "tools": [
+            "✓ recon · codebase-memory · ReminderScheduler.cs",
+            "● dotnet build · self-heal 1/3"
+          ]
+        }
+      ],
+      "questions": [],
+      "terminal": [
+        "$ dotnet build",
+        "CS0103 TimeZoneInfo not found → add using System",
+        "$ dotnet build",
+        "▍"
+      ],
+      "files": [
+        {
+          "solution": "calendar-func",
+          "path": "Services/ReminderScheduler.cs",
+          "branch": "fix/timezone-dst",
+          "delta": "+14 −6",
+          "lines": [
+            "-var local = utc.AddHours(offset);",
+            "+var zone = TimeZoneInfo.FindSystemTimeZoneById(user.TimeZoneId);",
+            "+var local = TimeZoneInfo.ConvertTimeFromUtc(utc, zone);"
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "DIFF",
+          "name": "calendar-func · 2 files",
+          "meta": "+23 −6"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "calendar-func",
+          "solution": "functions/calendar-func",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 8,
+              "kind": "plan",
+              "label": "recon"
+            },
+            {
+              "start": 8,
+              "end": 18,
+              "kind": "impl",
+              "label": "fix"
+            },
+            {
+              "start": 18,
+              "end": 22,
+              "kind": "loop",
+              "label": "build self-heal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prod-monitoring",
+      "status": "done",
+      "age": "41m",
+      "modeLine": "/loop 1h · expires in 6d",
+      "resumeId": "f55c0931",
+      "t0": 0,
+      "duration": 60,
+      "chips": [
+        {
+          "k": "loop",
+          "v": "/loop 1h",
+          "loop": true
+        },
+        {
+          "k": "runbook",
+          "v": "production-monitoring-runbook.md"
+        },
+        {
+          "k": "expires",
+          "v": "in 6d"
+        }
+      ],
+      "agents": [
+        {
+          "name": "monitor",
+          "description": "prod Log Analytics sweep",
+          "solutionPath": "workspace root",
+          "branch": "",
+          "statusText": "next 00:19",
+          "status": "done"
+        }
+      ],
+      "messages": [
+        {
+          "from": "user",
+          "text": "Monitor production errors and warnings in the prod Log Analytics workspace and fix what can be safely fixed. Follow production-monitoring-runbook.md. Continue until I say stop."
+        },
+        {
+          "from": "agent",
+          "text": "Sweep 14:00 done: 212 events, 3 new signatures. Fixed 1 (null-ref in NotificationsController, PR #412). Escalated 2 to you as notes. Next sweep 15:00.",
+          "tools": [
+            "✓ 209 known-noise events filtered",
+            "✓ PR #412 opened · notifications-microservice",
+            "• 2 escalations written to monitoring-notes.md"
+          ]
+        }
+      ],
+      "questions": [],
+      "terminal": [
+        "$ az monitor log-analytics query …",
+        "212 rows · 3 new signatures",
+        "✓ PR #412 opened",
+        "sleeping until 15:00"
+      ],
+      "files": [],
+      "artifacts": [
+        {
+          "type": "PR",
+          "name": "notifications-microservice #412",
+          "meta": "open"
+        },
+        {
+          "type": "DOC",
+          "name": "monitoring-notes.md",
+          "meta": "2 escalations"
+        }
+      ],
+      "timeline": [
+        {
+          "agent": "monitor",
+          "solution": "prod",
+          "blocks": [
+            {
+              "start": 0,
+              "end": 6,
+              "kind": "plan",
+              "label": "sweep 13:00"
+            },
+            {
+              "start": 6,
+              "end": 60,
+              "kind": "ok",
+              "label": "idle"
+            },
+            {
+              "start": 54,
+              "end": 60,
+              "kind": "plan",
+              "label": "sweep 14:00"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

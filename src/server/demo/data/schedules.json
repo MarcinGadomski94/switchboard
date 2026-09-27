@@ -1,0 +1,104 @@
+{
+  "schedules": [
+    {
+      "name": "nightly-build-verify",
+      "description": "Build web + mobile on main, report failures",
+      "cron": "0 2 * * *",
+      "cronLabel": "02:00 daily",
+      "runs": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "fail"
+      ],
+      "last": "Failed 38m ago · Android XamlC",
+      "next": "in 23h 22m",
+      "status": "fail"
+    },
+    {
+      "name": "codebase-memory-reindex",
+      "description": "Reindex projects listed in .codebase-memory-dirty",
+      "cron": "0 */4 * * *",
+      "cronLabel": "every 4h",
+      "runs": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "last": "OK · 5 projects reindexed",
+      "next": "in 1h 12m",
+      "status": "done"
+    },
+    {
+      "name": "standup-digest",
+      "description": "Summary of yesterday's sessions, PRs, open questions",
+      "cron": "30 8 * * 1-5",
+      "cronLabel": "08:30 weekdays",
+      "runs": [
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "need"
+      ],
+      "last": "Asked: include QA coverage?",
+      "next": "tomorrow 08:30",
+      "status": "need"
+    },
+    {
+      "name": "dependency-audit",
+      "description": "dotnet list package --vulnerable across solutions",
+      "cron": "0 7 * * 1",
+      "cronLabel": "Mon 07:00",
+      "runs": [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "ok",
+        "skipped",
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "last": "OK · 0 vulnerable",
+      "next": "Mon 07:00",
+      "status": "done"
+    }
+  ]
+}

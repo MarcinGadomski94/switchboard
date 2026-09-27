@@ -112,6 +112,6 @@ describe('guard over a real socket', () => {
     expect(page.headers['set-cookie']).toEqual([`sb_token=${token}; Path=/; HttpOnly; SameSite=Strict`]);
 
     const withCookie = await rawRequest({ port, path: '/api/sessions', headers: { host, cookie: `sb_token=${token}` } });
-    expect(withCookie.status).toBe(404); // past the guard; the route itself comes in a later item
+    expect(withCookie.status).toBe(501); // past the guard; the route answers 501 until its item lands (M1.4)
   });
 });

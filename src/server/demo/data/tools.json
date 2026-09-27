@@ -1,0 +1,16 @@
+{
+  "tools": [
+    {
+      "id": "cm",
+      "name": "Codebase Memory",
+      "description": "code graph for your indexed solutions",
+      "url": "http://localhost:13000"
+    },
+    {
+      "id": "sw",
+      "name": "Acme Tool",
+      "description": "AI chat connected to other tools",
+      "url": null
+    }
+  ]
+}

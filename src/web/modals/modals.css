@@ -1,0 +1,66 @@
+/* Modal overlays and panels (SPEC → Modals); values from the prototype markup. */
+.sb-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+}
+
+.sb-overlay[data-modal='new-session'] {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-overlay[data-modal='setup-wizard'] {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.sb-overlay[data-modal='palette'] {
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 110px;
+}
+
+/* New session: 1080px, `1fr | 360px`. */
+.sb-modal-new {
+  width: 1080px;
+  max-width: calc(100% - 60px);
+  height: min(800px, calc(100% - 60px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+}
+
+/* Setup wizard: 960×620, a 250px steps rail. */
+.sb-modal-wizard {
+  width: 960px;
+  max-width: calc(100% - 60px);
+  height: 620px;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+}
+
+/* Palette: 620px. */
+.sb-modal-palette {
+  width: 620px;
+  height: fit-content;
+  background: #1a1b1f;
+  border: 1px solid #34353b;
+  border-radius: 12px;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}

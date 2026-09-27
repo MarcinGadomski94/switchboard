@@ -1,0 +1,367 @@
+/*
+ * App shell (SPEC → Shell). Each rule mirrors the inline style of the matching
+ * element in docs/handoff/prototype/Switchboard App.dc.html (sidebar markup at the
+ * top of <x-dc>), with colors taken from tokens.css.
+ */
+.sb-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  min-width: 1100px;
+  background: var(--bg-sidebar);
+  position: relative;
+}
+
+.sb-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+}
+
+/* Sidebar: scrolls as a whole. */
+.sb-sidebar {
+  border-right: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sb-brand {
+  padding: 16px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.sb-brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sb-brand-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sb-brand-kbd {
+  margin-left: auto;
+  font: 500 11px var(--font-mono);
+  color: var(--muted-2);
+  border: 1px solid var(--border-control);
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.sb-new-wrap {
+  padding: 0 10px 8px;
+}
+
+.sb-new {
+  /* A <button> does not stretch like the prototype's <div>: fill the row explicitly. */
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-nav {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.sb-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.sb-nav-item:hover {
+  color: var(--text-2);
+}
+
+.sb-nav-item[aria-current='page'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-badge {
+  margin-left: auto;
+  font: 500 11px var(--font-mono);
+  border-radius: 10px;
+  padding: 1px 7px;
+  background: transparent;
+  color: var(--muted-2);
+}
+
+.sb-badge[data-kind='need'] {
+  background: var(--status-need);
+  color: var(--primary-fg);
+}
+
+.sb-badge[data-kind='warn'] {
+  color: var(--status-need);
+}
+
+.sb-badge[data-kind='fail'] {
+  color: oklch(0.72 0.16 25);
+}
+
+.sb-section-label {
+  padding: 16px 18px 6px;
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  display: flex;
+}
+
+.sb-section-action {
+  margin-left: auto;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sb-section-action:hover {
+  color: inherit;
+}
+
+.sb-section-count {
+  margin-left: auto;
+  color: var(--muted-4);
+}
+
+.sb-tools {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: transparent;
+  text-decoration: none;
+}
+
+.sb-tool[aria-current='page'] {
+  background: var(--bg-selected-nav);
+}
+
+.sb-tool-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sb-tool-name {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sb-tool[aria-current='page'] .sb-tool-name {
+  color: var(--text-strong);
+}
+
+.sb-tool-host {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-sessions {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 0 auto;
+  min-height: 160px;
+}
+
+.sb-session {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.sb-session:hover {
+  color: var(--text);
+}
+
+.sb-session[aria-current='page'] {
+  background: var(--bg-selected-nav);
+}
+
+.sb-session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex: none;
+}
+
+.sb-session-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.sb-session-head {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sb-session-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-session-age {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-session-mode {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-settings {
+  margin: 6px 10px 0;
+  display: flex;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.sb-settings:hover {
+  color: var(--text-2);
+}
+
+.sb-settings[aria-current='page'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+/* Machine footer: service dot + address, CPU/RAM/Max bars at 4px, process count. */
+.sb-footer {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--border-divider);
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-footer-service {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* No flex:none, as in the prototype: the dot may shrink when the row is full. */
+.sb-footer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-done);
+}
+
+.sb-footer-dot[data-state='down'] {
+  background: var(--status-fail);
+}
+
+.sb-footer-label {
+  color: var(--text-2);
+}
+
+.sb-footer-address {
+  margin-left: auto;
+}
+
+.sb-meter {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 76px;
+  gap: 8px;
+  align-items: center;
+}
+
+.sb-meter-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-card);
+  overflow: hidden;
+}
+
+.sb-meter-fill {
+  height: 100%;
+  background: var(--text-2);
+}
+
+.sb-meter[data-meter='max'] .sb-meter-fill {
+  background: var(--text);
+}
+
+.sb-meter-value {
+  text-align: right;
+}
+
+/* A view fills the main area (views/*). */
+.sb-view {
+  flex: 1;
+  min-height: 0;
+}

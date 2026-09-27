@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
-import { REPO_ROOT, freeTestPorts } from './net.ts';
+import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
 
 /** A spawned `node src/server/main.ts`. */
 export interface SpawnedServer {
@@ -62,13 +62,28 @@ function stopper(spawned: SpawnedServer): () => Promise<number | null> {
 }
 
 /**
- * Starts the real server entry point on the first free test port (4871–4879) and
- * waits for "Server listening". Retries the next port if another test took it.
- * `env` must point SWITCHBOARD_DATA_DIR at a temp folder.
+ * The ports {@link startServer} tries: only `SWITCHBOARD_E2E_PORT` when it is set
+ * (it must be one of the 4871–4879 test ports), else every free test port.
+ */
+export async function candidatePorts(env: NodeJS.ProcessEnv = process.env): Promise<number[]> {
+  const pinned = env['SWITCHBOARD_E2E_PORT'];
+  if (pinned !== undefined && pinned !== '') {
+    const port = Number(pinned);
+    if (!TEST_PORTS.includes(port)) throw new Error(`SWITCHBOARD_E2E_PORT must be one of ${TEST_PORTS.join(', ')}, got "${pinned}"`);
+    return [port];
+  }
+  return freeTestPorts();
+}
+
+/**
+ * Starts the real server entry point on the first free test port (4871–4879), or
+ * on `SWITCHBOARD_E2E_PORT` when set, and waits for "Server listening". Retries the
+ * next port if another test took it. `env` must point SWITCHBOARD_DATA_DIR at a
+ * temp folder.
  */
 export async function startServer(env: Record<string, string>, timeoutMs = 15_000): Promise<ServerProcess> {
   let lastOutput = '';
-  for (const port of await freeTestPorts()) {
+  for (const port of await candidatePorts()) {
     const spawned = spawnServer(port, env);
     const listening = `Server listening at http://127.0.0.1:${port}`;
     const outcome = await new Promise<'up' | 'exited' | 'timeout'>((resolve) => {

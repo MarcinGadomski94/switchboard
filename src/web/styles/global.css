@@ -1,0 +1,48 @@
+/* Page-level rules of the prototype (its <helmet> style + the runtime's full-page CSS). */
+html,
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--font-ui);
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+a {
+  color: oklch(0.78 0.1 250);
+}
+
+a:hover {
+  color: oklch(0.88 0.08 250);
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-control);
+  border-radius: 4px;
+}
+
+/* A <button> that looks like the prototype's clickable <div>s. */
+.sb-button {
+  all: unset;
+  cursor: pointer;
+}
+
+.sb-button:focus-visible,
+[role='button']:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+}

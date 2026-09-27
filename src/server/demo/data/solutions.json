@@ -1,0 +1,428 @@
+{
+  "groups": [
+    {
+      "folder": "microfrontends/",
+      "note": "",
+      "solutions": [
+        {
+          "name": "acme-app-front",
+          "type": "Web",
+          "status": "need",
+          "readOnly": false,
+          "phase": "mixed",
+          "changes": "+508",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "feature/free-talk-360",
+              "owner": "free-talk-feature",
+              "status": "need",
+              "worktree": "acme-app-front-wt-free-talk-feature"
+            },
+            {
+              "branch": "feature/button-variants",
+              "owner": "button-rollout",
+              "status": "need",
+              "worktree": "acme-app-front-wt-button-rollout"
+            },
+            {
+              "branch": "qa/free-talk-e2e",
+              "owner": "qa-free-talk",
+              "status": "run",
+              "worktree": "acme-app-front-wt-qa-free-talk"
+            }
+          ]
+        },
+        {
+          "name": "workspace-front",
+          "type": "Web",
+          "status": "run",
+          "readOnly": false,
+          "phase": "integration",
+          "changes": "+131",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "feature/notifications-panel",
+              "owner": "notifications-integration",
+              "status": "done",
+              "worktree": "workspace-front-wt-notifications-integration"
+            }
+          ]
+        },
+        {
+          "name": "auth-front",
+          "type": "Web",
+          "status": "idle",
+          "readOnly": false,
+          "phase": "integration",
+          "changes": "—",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "idle",
+              "status": "idle",
+              "worktree": null
+            }
+          ]
+        },
+        {
+          "name": "learning-material-front",
+          "type": "Web",
+          "status": "idle",
+          "readOnly": false,
+          "phase": "UI-first",
+          "changes": "—",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "idle",
+              "status": "idle",
+              "worktree": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "folder": "mobile/",
+      "note": "",
+      "solutions": [
+        {
+          "name": "mobile",
+          "type": "Mobile",
+          "status": "need",
+          "readOnly": false,
+          "phase": "mixed",
+          "changes": "+312",
+          "flag": "⚠ shared working tree",
+          "flagKind": "warn",
+          "branches": [
+            {
+              "branch": "feature/free-talk-360",
+              "owner": "free-talk-feature",
+              "status": "need",
+              "worktree": "mobile-wt-free-talk-feature"
+            },
+            {
+              "branch": "feature/button-variants",
+              "owner": "button-rollout",
+              "status": "need",
+              "worktree": null
+            },
+            {
+              "branch": "feature/push-prefs-bff",
+              "owner": "notifications-integration",
+              "status": "run",
+              "worktree": "mobile-wt-notifications-integration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "folder": "nugets/",
+      "note": "",
+      "solutions": [
+        {
+          "name": "components-library-nuget",
+          "type": "NuGet",
+          "status": "run",
+          "readOnly": false,
+          "phase": "—",
+          "changes": "+64",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "feature/acm-button-sizes",
+              "owner": "button-rollout",
+              "status": "done",
+              "worktree": "components-library-nuget-wt-button-rollout"
+            }
+          ]
+        },
+        {
+          "name": "typography-nuget",
+          "type": "NuGet",
+          "status": "idle",
+          "readOnly": false,
+          "phase": "—",
+          "changes": "—",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "idle",
+              "status": "idle",
+              "worktree": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "folder": "microservices/",
+      "note": "",
+      "solutions": [
+        {
+          "name": "notifications-microservice",
+          "type": "Backend",
+          "status": "done",
+          "readOnly": false,
+          "phase": "integration",
+          "changes": "+41",
+          "flag": "contract source",
+          "flagKind": "muted",
+          "branches": [
+            {
+              "branch": "feature/push-prefs",
+              "owner": "notifications-integration",
+              "status": "done",
+              "worktree": "notifications-microservice-wt-notifications-integration"
+            }
+          ]
+        },
+        {
+          "name": "auth-microservice",
+          "type": "Backend",
+          "status": "idle",
+          "readOnly": false,
+          "phase": "integration",
+          "changes": "—",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "idle",
+              "status": "idle",
+              "worktree": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "folder": "functions/",
+      "note": "",
+      "solutions": [
+        {
+          "name": "calendar-func",
+          "type": "Backend",
+          "status": "run",
+          "readOnly": false,
+          "phase": "integration",
+          "changes": "+23",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "fix/timezone-dst",
+              "owner": "calendar-func-fix",
+              "status": "run",
+              "worktree": "calendar-func-wt-calendar-func-fix"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "folder": "read-only",
+      "note": "deprecated/ · infrastructure/ · never edited",
+      "solutions": [
+        {
+          "name": "infrastructure",
+          "type": "Read-only",
+          "status": "idle",
+          "readOnly": true,
+          "phase": "—",
+          "changes": "locked",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "read by notifications-integration",
+              "status": "run",
+              "worktree": null
+            }
+          ]
+        },
+        {
+          "name": "old-chat-front",
+          "type": "Read-only",
+          "status": "idle",
+          "readOnly": true,
+          "phase": "—",
+          "changes": "locked",
+          "flag": "",
+          "flagKind": null,
+          "branches": [
+            {
+              "branch": "main",
+              "owner": "read by notifications-integration",
+              "status": "run",
+              "worktree": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "conflictFixedBranch": {
+    "solution": "mobile",
+    "branch": "feature/button-variants",
+    "worktree": "mobile-wt-button-rollout"
+  },
+  "phaseLedgers": {
+    "mobile": [
+      {
+        "interface": "FreeTalkService",
+        "phase": "UI-first",
+        "status": "need",
+        "seam": "seam TODO · FreeTalkViewModel.cs:41"
+      },
+      {
+        "interface": "PushPreferencesClient",
+        "phase": "integration",
+        "status": "run",
+        "seam": "Tier A pending on BFF route"
+      }
+    ],
+    "acme-app-front": [
+      {
+        "interface": "FreeTalkService",
+        "phase": "UI-first",
+        "status": "need",
+        "seam": "mock-DI · fixtures/free-talk.json"
+      },
+      {
+        "interface": "ProfileConnector",
+        "phase": "integration",
+        "status": "run",
+        "seam": "Tier B green 09-24"
+      }
+    ]
+  },
+  "artifacts": {
+    "mobile": [
+      {
+        "type": "CONTRACT",
+        "name": "contracts/free-talk.md",
+        "meta": "locked"
+      },
+      {
+        "type": "FOLLOWUP",
+        "name": "mobile-followups/from-acme-app-front.md",
+        "meta": "2 pending"
+      },
+      {
+        "type": "QA",
+        "name": "coverage-matrix.md",
+        "meta": "12/18"
+      }
+    ],
+    "acme-app-front": [
+      {
+        "type": "CONTRACT",
+        "name": "contracts/free-talk.md",
+        "meta": "locked"
+      },
+      {
+        "type": "QA",
+        "name": "coverage-matrix.md",
+        "meta": "14/18"
+      }
+    ]
+  },
+  "codebaseMemoryDirty": [
+    {
+      "project": "mobile",
+      "ts": "10:31"
+    },
+    {
+      "project": "acme-app-front",
+      "ts": "10:22"
+    },
+    {
+      "project": "components-library-nuget",
+      "ts": "09:58"
+    }
+  ],
+  "newSessionGroups": [
+    {
+      "folder": "microfrontends/",
+      "solutions": [
+        "acme-app-front",
+        "workspace-front",
+        "auth-front",
+        "learning-material-front"
+      ]
+    },
+    {
+      "folder": "mobile/",
+      "solutions": [
+        "mobile"
+      ]
+    },
+    {
+      "folder": "nugets/",
+      "solutions": [
+        "components-library-nuget",
+        "typography-nuget",
+        "wrap-up-nuget",
+        "auth-nuget"
+      ]
+    },
+    {
+      "folder": "microservices/",
+      "solutions": [
+        "auth-microservice",
+        "notifications-microservice"
+      ]
+    },
+    {
+      "folder": "functions/",
+      "solutions": [
+        "calendar-func",
+        "hubspot-func"
+      ]
+    },
+    {
+      "folder": "other/",
+      "solutions": [
+        "it-dashboard"
+      ]
+    },
+    {
+      "folder": "read-only",
+      "solutions": [
+        "deprecated/*",
+        "infrastructure"
+      ]
+    }
+  ],
+  "newSessionDraft": {
+    "name": "free-talk-640",
+    "task": "Free talk screen at 640, web and mobile. Figma node 2231:902.",
+    "work": "feature",
+    "mode": "orch",
+    "phase": "ui",
+    "coord": "seq",
+    "stack": "both",
+    "sols": [
+      "acme-app-front",
+      "mobile"
+    ],
+    "wt": true,
+    "ultra": false
+  }
+}

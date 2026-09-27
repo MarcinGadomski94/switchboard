@@ -1,0 +1,115 @@
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ARTIFACT_ROUTES_PENDING } from '../../../src/server/api/artifacts.ts';
+import { HISTORY_ROUTES_PENDING } from '../../../src/server/api/history.ts';
+import { INBOX_ROUTES_PENDING } from '../../../src/server/api/inbox.ts';
+import { SCHEDULE_ROUTES_PENDING } from '../../../src/server/api/schedules.ts';
+import { SESSION_ROUTES_PENDING } from '../../../src/server/api/sessions.ts';
+import { SETTINGS_ROUTES_PENDING } from '../../../src/server/api/settings.ts';
+import { SOLUTION_ROUTES_PENDING } from '../../../src/server/api/solutions.ts';
+import { SYSTEM_ROUTES_PENDING } from '../../../src/server/api/system.ts';
+import { TOOL_ROUTES_PENDING } from '../../../src/server/api/tools.ts';
+import { buildApp } from '../../../src/server/app.ts';
+import { loadConfig } from '../../../src/server/config.ts';
+import type { Store } from '../../../src/server/db/store.ts';
+import { generateToken } from '../../../src/server/token.ts';
+import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
+import { openTempStore } from '../../helpers/store.ts';
+
+const PORT = 4871; // inject() opens no socket; the port feeds the Host check only
+const HOST = `127.0.0.1:${PORT}`;
+
+/**
+ * Every REST row of contracts/local-api.md (concrete ids in place of {id}), with
+ * the backlog item docs/lanes.md assigns it.
+ */
+const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
+  ['GET', '/api/sessions', 'M4.1'],
+  ['POST', '/api/sessions', 'M5.1'],
+  ['GET', '/api/sessions/s1', 'M4.1'],
+  ['POST', '/api/sessions/s1/messages', 'M4.2'],
+  ['POST', '/api/sessions/s1/pause', 'M4.1'],
+  ['POST', '/api/sessions/s1/resume', 'M4.1'],
+  ['POST', '/api/sessions/s1/detach', 'M4.1'],
+  ['POST', '/api/sessions/s1/attach', 'M4.1'],
+  ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M4.2'],
+  ['GET', '/api/sessions/s1/diff?file=a.ts', 'M4.5'],
+  ['GET', '/api/inbox', 'M3.2'],
+  ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
+  ['POST', '/api/inbox/i1/actions/allow-once', 'M3.1'],
+  ['GET', '/api/solutions', 'M6.2'],
+  ['POST', '/api/solutions/mobile/isolate', 'M6.3'],
+  ['GET', '/api/schedules', 'M7.1'],
+  ['POST', '/api/schedules', 'M7.1'],
+  ['POST', '/api/schedules/c1/run', 'M7.1'],
+  ['POST', '/api/schedules/c1/pause', 'M7.1'],
+  ['POST', '/api/schedules/c1/resume', 'M7.1'],
+  ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'],
+  ['GET', '/api/history?q=x', 'M7.4'],
+  ['GET', '/api/settings', 'M8.2'],
+  ['PUT', '/api/settings', 'M8.2'],
+  ['GET', '/api/tools', 'M8.1'],
+  ['PUT', '/api/tools', 'M8.1'],
+  ['POST', '/api/tools/cm/probe', 'M8.1'],
+  ['GET', '/api/system', 'M5.3'],
+];
+
+let tmp: string;
+let store: Store;
+let app: FastifyInstance;
+let token: string;
+
+beforeAll(async () => {
+  tmp = await makeTempDir('api-routes');
+  store = await openTempStore(tmp);
+  token = generateToken();
+  const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: PORT };
+  app = await buildApp({ config, token, store, webRoot: tmp });
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+  await store.close();
+  await removeTempDir(tmp);
+});
+
+describe('API route registry (M1.4)', () => {
+  it('registers every contract route; each answers 501 with its backlog item until implemented', async () => {
+    for (const [method, url, item] of CONTRACT) {
+      const response = await app.inject({ method, url, headers: { host: HOST, cookie: `sb_token=${token}` } });
+      expect(response.statusCode, `${method} ${url}`).toBe(501);
+      expect(response.json(), `${method} ${url}`).toEqual({ error: 'not-implemented', item });
+    }
+  });
+
+  it('keeps every route behind the cookie guard', async () => {
+    for (const [method, url] of CONTRACT) {
+      const response = await app.inject({ method, url, headers: { host: HOST } });
+      expect(response.statusCode, `${method} ${url}`).toBe(401);
+    }
+  });
+
+  it('lists exactly the contract routes as pending, once each', () => {
+    const pending = [
+      ...SESSION_ROUTES_PENDING,
+      ...INBOX_ROUTES_PENDING,
+      ...SOLUTION_ROUTES_PENDING,
+      ...SCHEDULE_ROUTES_PENDING,
+      ...ARTIFACT_ROUTES_PENDING,
+      ...HISTORY_ROUTES_PENDING,
+      ...SETTINGS_ROUTES_PENDING,
+      ...TOOL_ROUTES_PENDING,
+      ...SYSTEM_ROUTES_PENDING,
+    ];
+    expect(pending).toHaveLength(CONTRACT.length);
+    expect(new Set(pending.map((route) => `${String(route.method)} ${route.url}`)).size).toBe(pending.length);
+  });
+
+  it('leaves unknown /api paths at 404 and /hub to M2.3', async () => {
+    const headers = { host: HOST, cookie: `sb_token=${token}` };
+    expect((await app.inject({ method: 'GET', url: '/api/nope', headers })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: '/api/sessions', headers })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/hub', headers })).statusCode).toBe(404);
+  });
+});

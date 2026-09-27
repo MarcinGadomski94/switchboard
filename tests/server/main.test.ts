@@ -73,6 +73,41 @@ describe('npm start entry point (src/server/main.ts)', () => {
     expect(bad.output()).not.toContain('Server listening');
   });
 
+  it('SWITCHBOARD_DEMO=1 seeds a throwaway data folder once, and the API still answers through the real routes', async () => {
+    const dataDir = path.join(tmp, 'data');
+    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir, SWITCHBOARD_DEMO: '1' });
+    const token = (await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).trim();
+    const host = `127.0.0.1:${server.port}`;
+    const sessions = await rawRequest({ port: server.port, path: '/api/sessions', headers: { host, cookie: `sb_token=${token}` } });
+    expect(sessions.status).toBe(501); // the demo feeds the DB and providers; routes are the lanes' (M4.1)
+    expect(await server.stop()).toBe(0);
+    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir, SWITCHBOARD_DEMO: '1' }); // second start: no-op
+    expect(await server.stop()).toBe(0);
+    server = undefined;
+
+    const db = new DatabaseSync(path.join(dataDir, DB_FILE), { readOnly: true });
+    try {
+      expect(db.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 6 });
+      expect(db.prepare(`SELECT value FROM settings WHERE key = 'demo.seed'`).get()).toBeDefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('without SWITCHBOARD_DEMO the database stays empty', async () => {
+    const dataDir = path.join(tmp, 'data');
+    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir, SWITCHBOARD_DEMO: '0' });
+    expect(await server.stop()).toBe(0);
+    server = undefined;
+    const db = new DatabaseSync(path.join(dataDir, DB_FILE), { readOnly: true });
+    try {
+      expect(db.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 0 });
+      expect(db.prepare('SELECT count(*) AS n FROM tools').get()).toEqual({ n: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
   it('exits 1 on an invalid SWITCHBOARD_PORT without binding anything', async () => {
     const dataDir = path.join(tmp, 'data');
     const bad = spawnServer('not-a-port', { SWITCHBOARD_DATA_DIR: dataDir });

@@ -1,0 +1,76 @@
+{
+  "history": [
+    {
+      "date": "09-26 16:40",
+      "name": "speaking-page-360",
+      "mode": "orch · feature · UI-first",
+      "summary": "Speaking page at 360 on web and mobile. 2 questions answered, reconciled clean.",
+      "branches": "acme-app-front ⎇ feature/speaking-page · mobile ⎇ feature/speaking-page",
+      "outcome": "PR #231 merged",
+      "status": "done"
+    },
+    {
+      "date": "09-26 11:05",
+      "name": "qa-speaking-page",
+      "mode": "orch · QA",
+      "summary": "E2E + Appium coverage for Speaking page. 16/16 requirements covered.",
+      "branches": "acme-app-front ⎇ qa/speaking-e2e · mobile ⎇ qa/speaking-appium",
+      "outcome": "PR #229 merged",
+      "status": "done"
+    },
+    {
+      "date": "09-25 15:20",
+      "name": "auth-token-refresh",
+      "mode": "orch · integration",
+      "summary": "Refresh-token rotation, Tier B green before phase exit.",
+      "branches": "auth-microservice ⎇ feature/refresh-rotation · auth-front ⎇ feature/refresh",
+      "outcome": "PR #77 merged",
+      "status": "done"
+    },
+    {
+      "date": "09-25 09:12",
+      "name": "hubspot-func-retry",
+      "mode": "single · hubspot-func",
+      "summary": "Retry with backoff on 429s from HubSpot.",
+      "branches": "hubspot-func ⎇ fix/retry-429",
+      "outcome": "PR #19 open",
+      "status": "run"
+    },
+    {
+      "date": "09-24 17:30",
+      "name": "typography-nuget-1.4",
+      "mode": "single · typography-nuget",
+      "summary": "New Display XL token, inline version bump to 1.4.0.",
+      "branches": "typography-nuget ⎇ release/1.4",
+      "outcome": "published",
+      "status": "done"
+    },
+    {
+      "date": "09-24 10:02",
+      "name": "wrap-up-nuget-skeleton",
+      "mode": "loop-until-dry",
+      "summary": "Loading skeletons for 6 wrap-up components.",
+      "branches": "wrap-up-nuget ⎇ feature/skeletons",
+      "outcome": "stopped by you at 4/6",
+      "status": "fail"
+    },
+    {
+      "date": "09-23 14:44",
+      "name": "learning-material-filters",
+      "mode": "orch · feature · UI-first",
+      "summary": "Filter bar at 1366 and 1920, web only (no mobile per breakpoint partition).",
+      "branches": "learning-material-front ⎇ feature/filters",
+      "outcome": "PR #58 merged",
+      "status": "done"
+    },
+    {
+      "date": "09-23 08:00",
+      "name": "prod-monitoring",
+      "mode": "/loop 1h",
+      "summary": "7-day shift ended automatically. 11 fixes, 5 escalations.",
+      "branches": "various",
+      "outcome": "expired",
+      "status": "idle"
+    }
+  ]
+}

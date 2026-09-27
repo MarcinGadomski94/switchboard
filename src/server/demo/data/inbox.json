@@ -1,0 +1,73 @@
+{
+  "incoming": {
+    "session": "qa-free-talk",
+    "question": {
+      "source": "qa-web-playwright · acme-app-front",
+      "text": "Confluence AC-7 says the empty state reads \"No topics yet\", Figma 2231:884 shows \"Pick a topic to start\". Which one is the contract?",
+      "options": [
+        "Confluence (AC-7)",
+        "Figma",
+        "Flag as spec divergence"
+      ]
+    },
+    "toast": {
+      "sid": "qa-free-talk",
+      "title": "qa-free-talk",
+      "sub": "question · now",
+      "branch": "acme-app-front ⎇ qa/free-talk-e2e",
+      "text": "Confluence AC-7 and Figma disagree on the empty-state copy. Which one is the contract?"
+    },
+    "notification": {
+      "title": "qa-free-talk needs you",
+      "body": "Confluence AC-7 and Figma disagree on the empty-state copy."
+    }
+  },
+  "system": [
+    {
+      "id": "sys-run",
+      "source": "nightly-build-verify",
+      "label": "Scheduled run failed",
+      "status": "fail",
+      "age": "38m",
+      "title": "Android build failed at XamlC",
+      "detail": "mobile/ · FreeTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to free-talk-feature.",
+      "branches": [
+        {
+          "solution": "mobile/",
+          "branch": "feature/free-talk-360"
+        }
+      ],
+      "actions": [
+        "Open fix session",
+        "Retry run",
+        "Dismiss"
+      ],
+      "schedule": "nightly-build-verify"
+    },
+    {
+      "id": "sys-wt",
+      "source": "worktrees",
+      "label": "PR merged",
+      "status": "done",
+      "age": "20m",
+      "title": "PR #231 merged, so the worktree can be removed",
+      "detail": "../acme-app-front-wt-speaking-page · branch feature/speaking-page was merged on GitHub (checked through gh). No uncommitted changes.",
+      "branches": [
+        {
+          "solution": "acme-app-front",
+          "branch": "feature/speaking-page"
+        }
+      ],
+      "actions": [
+        "Remove worktree",
+        "Keep"
+      ],
+      "worktree": {
+        "repo": "acme-app-front",
+        "branch": "feature/speaking-page",
+        "path": "../acme-app-front-wt-speaking-page",
+        "prNumber": 231
+      }
+    }
+  ]
+}
