@@ -7,7 +7,7 @@ What the installed CLI actually does, captured with real probes. Later items bui
 | Item | Status | Verdict (one line) |
 |---|---|---|
 | M0.1 Headless surface | done (2026-09-27) | One long-lived `claude -p --input-format stream-json --output-format stream-json --verbose` process per session works: multi-turn over stdin, interrupt via a stdin `control_request`, `--session-id` / `--resume` / `--fork-session` behave as needed, hooks from `--settings` fire in `-p`. `auto` permission mode could not be proven (the model gates it), so sessions default to `acceptEdits` (D6). Switchboard does not use `--bg`/`attach`. |
-| M0.2 Questions & permissions | pending | |
+| M0.2 Questions & permissions | done (2026-09-27) | Mechanism (a) works end to end: add `--permission-prompt-tool stdio` to the supervised stream-json process. Every question batch (`AskUserQuestion`) and every permission request arrives on stdout as `control_request/can_use_tool` and is answered with one `control_response` line on stdin (`allow` + `updatedInput.answers`, or `allow` / `deny`). (b) SDK and (c) hooks were not needed. `auto` is still not proven (Haiku lacks it), so `acceptEdits` stays the default. |
 | M0.3 Transcripts & usage | pending | Lead from M0.1: `rate_limit_event.rate_limit_info.unifiedWindows.{five_hour,seven_day}.utilization` arrives in every stream. |
 | M0.4 Terminal handoff | pending | Lead from M0.1: `--resume <id>` works from any cwd and keeps the id. |
 
@@ -188,3 +188,107 @@ Probe settings (`.spike/sandbox/hooks-shared/settings.json`): `SessionStart`, `U
 - **M2.4 crash recovery / D7:** `--resume <id>` + "Continue." keeps the id. Detect a failed start with `result.is_error` / the exit code.
 - **M5.2 first-turn payload (adapt after M0):** the confirmed session-start answers go into the **first stdin user message**, since there is no prompt argument. Optionally they can also go in via `--append-system-prompt`. That flag was not probed.
 - **M9.2 usage meter:** the `rate_limit_event` utilization values are the lead. M0.3 decides.
+
+---
+
+## M0.2 Questions & permissions
+
+### Probe conditions
+- Same CLI, Node and machine as M0.1. Every real call used `--model haiku`, `--max-turns 3` (1 for `ctl-init`) and cwd `.spike/sandbox/<scenario>/` (D11). The env was scrubbed the same way as in M0.1. That makes 14 `claude` processes: 13 made model calls and `ctl-init` made none.
+- Runner: `.spike/probe2.mjs` (gitignored). It is `probe.mjs` plus a small **control host**. It reads stdout line by line and answers each `control_request/can_use_tool` with a `control_response` line on stdin. Every stdin line is logged to `<scenario>.stdin.ndjson`.
+- Order tried, per the item: (a) native stream-json control protocol → **worked on the first probe**, so (b) the Agent SDK and (c) a PreToolUse hook were **not probed**.
+
+### Fixtures (M0.2)
+Same format and scrub as M0.1 (`manifest.json` has argv, cwd, exit code, stdin plan and a note per scenario). In `ctl-init` only, the account email and organization from the `initialize` response are also replaced (`dev@example.com`, `Example Org`).
+
+| Scenario | Extra args (all: `-p --input-format stream-json --output-format stream-json --verbose --model haiku --max-turns 3 --permission-mode acceptEdits`) | Exit | Shows |
+|---|---|---|---|
+| `ask-2q` | `--permission-prompt-tool stdio` | 0 | **Oracle (1):** 2-question AskUserQuestion answered end to end; the model replies "You chose a green button in small size." |
+| `perm-allow` | `--permission-prompt-tool stdio` | 0 | **Oracle (2):** Bash permission request → allow once → runs, prints 42 |
+| `perm-deny` | `--permission-prompt-tool stdio` | 0 | **Oracle (3):** the same request → deny → the model says it did not run |
+| `perm-noflag` | *(none)* | 0 | without the flag: no AskUserQuestion tool, and the request is denied at once |
+| `ask-multiselect` | `--permission-prompt-tool stdio` | 0 | `multiSelect: true`, answer `"Tests, Docs"` |
+| `ask-delay` | `--permission-prompt-tool stdio` | 0 | answered 240 s after the request |
+| `ask-interrupt` | `--permission-prompt-tool stdio --session-id 3c1f0e52-…` | **1** | interrupt while a question is open → `control_cancel_request` |
+| `ask-resume` | `--permission-prompt-tool stdio --resume 3c1f0e52-…` | 0 | "Continue." after that: the question is **not** asked again |
+| `subagent-perm` | `--permission-prompt-tool stdio --forward-subagent-text` | 0 | a subagent's permission request carries `agent_id` |
+| `subagent-ask` | `--permission-prompt-tool stdio --forward-subagent-text` | 0 | subagents have no AskUserQuestion |
+| `ctl-init` | `--permission-prompt-tool stdio` (`--max-turns 1`) | 0 | `initialize` + `set_permission_mode`, no model call |
+
+Exact oracle-(1) run:
+```
+cd .spike/sandbox/ask-2q
+claude -p --input-format stream-json --output-format stream-json --verbose \
+  --model haiku --max-turns 3 --permission-mode acceptEdits --permission-prompt-tool stdio
+stdin  → {"type":"user","message":{"role":"user","content":"Use the AskUserQuestion tool to ask me exactly two questions in a single call. Question 1: \"Which color should the button be?\" … Question 2: \"Which size should it be?\" …"}}
+stdout ← {"type":"assistant", … "content":[{"type":"tool_use","id":"toolu_01E65…","name":"AskUserQuestion","input":{"questions":[…]}}]}
+stdout ← {"type":"control_request","request_id":"86a2f717-…","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","display_name":"AskUserQuestion",
+          "input":{"questions":[{"question":"Which color should the button be?","header":"Color","options":[{"label":"Red","description":"A red button"},{"label":"Green",…},{"label":"Blue",…}],"multiSelect":false},
+                                {"question":"Which size should it be?","header":"Size","options":[{"label":"Small",…},{"label":"Large",…}],"multiSelect":false}]},
+          "tool_use_id":"toolu_01E65…","requires_user_interaction":true}}
+stdin  → {"type":"control_response","response":{"subtype":"success","request_id":"86a2f717-…","response":{"behavior":"allow",
+          "updatedInput":{"questions":[…unchanged…],"answers":{"Which color should the button be?":"Green","Which size should it be?":"Small"}}}}}
+stdout ← {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_01E65…","content":"Your questions have been answered: \"Which color should the button be?\"=\"Green\", \"Which size should it be?\"=\"Small\". You can now continue with these answers in mind."}]},
+          "tool_use_result":{"questions":[…],"answers":{…}}}
+stdout ← assistant text "You chose a green button in small size." → result/success
+```
+
+### The control protocol (what M3.1 builds on)
+- **`--permission-prompt-tool stdio` is required.** Without it (`perm-noflag`), `init.tools` has **no** `AskUserQuestion`, and a permission request is denied at once (`system/permission_denied`, `result.permission_denials[]`). The model then says it "can't proceed". That happens even with stream-json input and the default `--permission-prompts host`. With the flag, `init.tools` includes `AskUserQuestion`.
+- **No handshake is needed.** Requests arrived without the SDK's `initialize` control request. `initialize` works (see `ctl-init`), and it is useful for the D6 check below.
+- **Order on stdout:** the `assistant` line with the `tool_use` comes first, then `control_request` about 10 ms later, with the same `tool_use_id`. The CLI waits for an answer and emits nothing while it waits. There is no keepalive, and the `rate_limit_event` can come before or after the request.
+- **Request** (`type:"control_request"`, `request_id` = a CLI-generated uuid, `request.subtype:"can_use_tool"`):
+  - Always: `tool_name`, `display_name`, `input` (the tool input, verbatim), `tool_use_id`.
+  - AskUserQuestion adds `requires_user_interaction: true`. `input.questions[]` = `{question, header, options[{label, description}], multiSelect}`: the question text verbatim. These probes saw 1 or 2 questions per call with 2 or 3 options each; the tool's upper limits were not probed.
+  - Permission requests add `description` (the model's own description of the command), `decision_reason` ("This command requires approval"), `decision_reason_type` ("other"), and `permission_suggestions[]`. The suggestion seen was `{type:"addRules", rules:[{toolName:"Bash", ruleContent:"<command>"}], behavior:"allow", destination:"localSettings"}`.
+  - A request raised inside a **subagent** adds `agent_id`, equal to `system/task_started.task_id` and to the Agent tool result's `agentId` (`subagent-perm`). A request from the main agent has no `agent_id`.
+- **Response** (one stdin line; the CLI sends no acknowledgement):
+  - Answer questions: `{"type":"control_response","response":{"subtype":"success","request_id":"<request_id>","response":{"behavior":"allow","updatedInput":{…input, "answers":{"<question text>":"<option label>"}}}}}`. The key is the question text verbatim. For `multiSelect`, the value is the chosen labels joined with `", "` (`"Tests, Docs"`; the model listed both). The CLI turns it into the tool_result text `Your questions have been answered: "<q>"="<a>", … You can now continue with these answers in mind.` and `tool_use_result.answers`.
+  - Allow once: `{"behavior":"allow","updatedInput":<input unchanged>}`. **Never send `updatedPermissions`.** The CLI's suggestions target `localSettings` (the project's `.claude/settings.local.json`), and D6 forbids Switchboard from writing settings files.
+  - Deny: `{"behavior":"deny","message":"<text>"}`. The model gets an `is_error` tool_result whose content is exactly `<text>`. `result.permission_denials[]` lists the call. **No** `system/permission_denied` line is emitted. That line appeared only for the automatic denial in `perm-noflag`.
+  - A control request the host does not handle should get `{"subtype":"error","request_id":…,"error":"…"}`. The CLI sent no other request subtype in these probes. The host registered no hooks or SDK MCP servers, so any subtypes tied to those (e.g. `hook_callback`, `mcp_message`) were not probed.
+- **Long waits work.** A 240 s wait (`ask-delay`) and a 1200 s wait (`ask-delay-20m`, not exported because its stream matches `ask-delay`) both went through normally. The process wrote nothing to stdout during the wait. After the answer it replied "You chose **Production** as the target environment." and exited 0. Waits of hours were not probed. If the process dies while a request is open, the cancellation rules below apply.
+- **Cancellation.** An interrupt `control_request` while a question is open (D7 Pause, `ask-interrupt`) makes the CLI emit `{"type":"control_cancel_request","request_id":"<the can_use_tool request_id>"}`. Then come the interrupt `control_response`, a rejected `is_error` tool_result, `[Request interrupted by user for tool use]`, and `result/error_during_execution` (`terminal_reason:"aborted_tools"`, the question listed in `permission_denials`). After EOF the process exited with **code 1**, not 0 as in M0.1's interrupt, where another turn ran before EOF.
+- **After resume the question is gone.** `--resume <id>` + "Continue." (`ask-resume`, D7) got "What would you like me to help with?". The model does **not** ask the cancelled question again.
+- **Background agents and stdin.** In this CLI the `Agent` tool ran **in the background** (`task_started.is_backgrounded: true`). The main turn's `result` came *before* the subagent finished. A later `result` with `origin:{kind:"task-notification"}` closes the loop, so one stdin message can produce two results. When stdin was closed after the first `result`, the process kept running the subagent, but each subagent permission request failed at once with the tool_result `Tool permission request failed: AbortError: Stream closed` (first `subagent-perm` run, not exported). With stdin open, the request arrived with `agent_id` and was answered normally.
+- **Subagents cannot ask.** A subagent told to use AskUserQuestion answered "I don't have access to an `AskUserQuestion` tool" (`subagent-ask`). So every question batch comes from the **main** agent. A subagent's doubt only reaches the developer as the main agent relaying it: as its own AskUserQuestion, or, as here, as plain text in the final reply.
+
+### D6: auto mode headless
+- `--permission-mode auto` is accepted as a flag, but on Haiku it silently becomes `default` (M0.1).
+- New in M0.2, with no model call (`ctl-init`):
+  - The `initialize` response lists `models[]` with `supportsAutoMode: true` for `default`/`opus`/`sonnet`/`fable`/… and **no** such flag for `haiku`. It also returns `current_permission_mode` and `account.subscriptionType` (`"Claude Max"`: the CLI uses the subscription login, and nothing else is needed).
+  - The control request `{"subtype":"set_permission_mode","mode":"auto"}` on the Haiku session returned `{"subtype":"error","error":"Cannot set permission mode to auto: auto mode unavailable for this model","error_code":"auto_mode_model"}`. `mode:"acceptEdits"` returned `success {mode:"acceptEdits"}`.
+- **Verdict.** D11 allows only Haiku, so it is still not proven that auto works headless: **`acceptEdits` stays the default** (the M0.1 ASSUMED entry stands). There is now a safe, zero-cost way to switch later. At spawn, send `initialize`. If the session's model has `supportsAutoMode`, send `set_permission_mode auto`. On `error_code:"auto_mode_model"` (or any error), stay on `acceptEdits`. Also keep M0.1's `init.permissionMode` mismatch check.
+
+### (b) Agent SDK and (c) hooks
+Not probed: (a) worked end to end on the installed CLI, and the item says to stop at the first mechanism that works. No `@anthropic-ai/claude-agent-sdk` was installed, and no hook bridge was built. Hooks stay unnecessary for questions and permissions, so the `--settings <hooks file>` line in the M0.1 baseline can be dropped unless another item needs hooks.
+
+### Updated baseline for the SessionSupervisor (M2.1)
+```
+claude -p --input-format stream-json --output-format stream-json --verbose
+       --permission-prompt-tool stdio          # M0.2: questions + permission requests over stdio
+       --session-id <uuid> | --resume <id>
+       --permission-mode acceptEdits           # D6 (see above for the auto switch)
+       [--forward-subagent-text] [--replay-user-messages] [--name <session name>]
+```
+Keep stdin open for the life of the process. Close it only to pause or stop, and only after background tasks have ended (`system/background_tasks_changed` → `tasks: []`) or after the developer has accepted that they will lose their permission host.
+
+### Implications for later items
+- **M1.2 fake-claude:** on a stdin `user` message that matches a question/permission scenario, emit the `assistant` tool_use + `control_request/can_use_tool` and **block** until a `control_response` with the same `request_id` arrives. Then emit the tool_result built from `updatedInput.answers` (or the deny message) and the rest of the fixture. On interrupt while it is blocked, emit `control_cancel_request` + the `ask-interrupt` tail. Without `--permission-prompt-tool stdio`, behave like `perm-noflag`.
+- **M3.1 question pipeline:**
+  - One `can_use_tool` for `AskUserQuestion` = one **batch**: `batchId` ← the control `request_id` (keep `tool_use_id` too); each `input.questions[i]` → one `Question`. `text` = `question` verbatim; `options` = labels, keeping `header` and `description` for display.
+  - Source: always the main agent (subagents cannot ask), shown as the session's orchestrator/main source. Permission requests with `agent_id` are attributed to the subagent through `task_started` (`subagent_type`, `description`).
+  - Answer: `answerIndex` → `options[answerIndex].label` → `updatedInput.answers[question] = label` with `questions` passed back unchanged. **Gap for M3.1:** the locked contract has one `answerIndex` per question, so a `multiSelect` question cannot carry several choices through the API as it stands. Two identical question texts in one batch would also collide, because `answers` is keyed by text.
+  - A `control_cancel_request` for an open batch, or the process exiting while one is open, means the CLI will not take that answer any more. Mark the batch closed or stale; do not write a `control_response` to a dead request. If it is still answered later, the only channel is a normal user message on resume, because the model does not re-ask.
+- **D6 Inbox permission items:** `can_use_tool` for any other tool → an *Allow once / Deny* item showing `tool_name` + `input` verbatim (plus `description` / `decision_reason`). Allow once = `allow` + unchanged `updatedInput`, never `updatedPermissions`. Deny = `deny` + a fixed message, for example "The user denied this tool use in Switchboard."
+- **M2.1 parser:** add `control_request` (to the pipeline), `control_cancel_request`, and `result.origin.kind:"task-notification"` (a result with no stdin message behind it). Timeline kind `ask` (gap #7) comes from `can_use_tool` requests, and `system/permission_denied` stays for automatic denials.
+
+### Recommendation for M3.1
+**Use (a): the native stream-json control protocol, with `--permission-prompt-tool stdio` on the one supervised `claude -p` process.** It is the only mechanism probed end to end, and it covers every case M3.1 and D6 need:
+- It carries the questions, headers, options and permission inputs verbatim.
+- It takes the answers back through a single stdin line.
+- It attributes subagent requests (`agent_id`).
+- It waits for the developer's answer: 20 min proven, hours not probed.
+- It signals cancellation explicitly.
+
+It adds no dependency (no Agent SDK), no second channel (no hook script, no loopback HTTP endpoint for the CLI to call), and no settings files. It also uses the same stdin/stdout pipe the SessionSupervisor already owns for messages and interrupts (M0.1), with the CLI's own subscription login.

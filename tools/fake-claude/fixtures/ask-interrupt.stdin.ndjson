@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"Use the AskUserQuestion tool to ask me one question: \"Which environment should I target?\" (header \"Env\") with options Staging, Production. After I answer, reply with one sentence naming the option I chose. Do not use any other tool."}}
+{"type":"control_request","request_id":"req_interrupt_1","request":{"subtype":"interrupt"}}

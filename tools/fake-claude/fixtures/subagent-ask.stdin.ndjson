@@ -1,0 +1,1 @@
+{"type":"user","message":{"role":"user","content":"Use the Agent tool with subagent_type general-purpose and this exact prompt: \"Use the AskUserQuestion tool to ask the user one question: Which environment should I target? (header Env) with options Staging, Production. Then report the chosen option.\" Then reply with one short sentence naming the option the subagent reported."}}

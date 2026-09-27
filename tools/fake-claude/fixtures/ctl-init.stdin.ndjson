@@ -1,0 +1,3 @@
+{"type":"control_request","request_id":"req_init_1","request":{"subtype":"initialize","hooks":null}}
+{"type":"control_request","request_id":"req_ctl_1","request":{"subtype":"set_permission_mode","mode":"auto"}}
+{"type":"control_request","request_id":"req_ctl_2","request":{"subtype":"set_permission_mode","mode":"acceptEdits"}}
