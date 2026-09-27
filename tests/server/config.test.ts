@@ -1,0 +1,87 @@
+import { describe, expect, it } from 'vitest';
+import { ConfigError, DEFAULT_PORT, LOOPBACK_HOST, defaultDataDir, loadConfig } from '../../src/server/config.ts';
+
+const HOME = '/Users/dev';
+const CWD = '/tmp/switchboard-cwd';
+
+describe('loadConfig', () => {
+  it('uses the documented defaults', () => {
+    const config = loadConfig({ env: {}, platform: 'darwin', home: HOME, cwd: CWD });
+    expect(config).toEqual({
+      host: '127.0.0.1',
+      port: 4870,
+      dataDir: '/Users/dev/Library/Application Support/Switchboard',
+      workspaceRoot: null,
+      claudeCommand: ['claude'],
+      ghCommand: ['gh'],
+      demo: false,
+    });
+    expect(DEFAULT_PORT).toBe(4870);
+    expect(LOOPBACK_HOST).toBe('127.0.0.1');
+  });
+
+  it('reads every SWITCHBOARD_* variable', () => {
+    const config = loadConfig({
+      env: {
+        SWITCHBOARD_PORT: '4875',
+        SWITCHBOARD_DATA_DIR: 'data',
+        SWITCHBOARD_WORKSPACE_ROOT: '/work/space',
+        SWITCHBOARD_CLAUDE_BIN: '["/usr/bin/node","/repo/tools/fake-claude/main.ts"]',
+        SWITCHBOARD_GH_BIN: '/opt/bin/gh',
+        SWITCHBOARD_DEMO: '1',
+      },
+      platform: 'linux',
+      home: HOME,
+      cwd: CWD,
+    });
+    expect(config.port).toBe(4875);
+    expect(config.dataDir).toBe('/tmp/switchboard-cwd/data');
+    expect(config.workspaceRoot).toBe('/work/space');
+    expect(config.claudeCommand).toEqual(['/usr/bin/node', '/repo/tools/fake-claude/main.ts']);
+    expect(config.ghCommand).toEqual(['/opt/bin/gh']);
+    expect(config.demo).toBe(true);
+  });
+
+  it('has no bind-address setting: the host stays 127.0.0.1', () => {
+    const config = loadConfig({ env: { SWITCHBOARD_HOST: '0.0.0.0', HOST: '0.0.0.0' }, platform: 'linux', home: HOME, cwd: CWD });
+    expect(config.host).toBe('127.0.0.1');
+  });
+
+  it('treats a value that does not start with "[" as one executable path', () => {
+    const config = loadConfig({ env: { SWITCHBOARD_GH_BIN: '  /opt/my tools/gh  ' }, platform: 'linux', home: HOME, cwd: CWD });
+    expect(config.ghCommand).toEqual(['/opt/my tools/gh']);
+  });
+
+  it('turns demo on only for SWITCHBOARD_DEMO=1', () => {
+    for (const value of ['0', 'true', 'yes', '', ' 1']) {
+      expect(loadConfig({ env: { SWITCHBOARD_DEMO: value }, platform: 'linux', home: HOME, cwd: CWD }).demo).toBe(false);
+    }
+  });
+
+  it.each(['abc', '0', '65536', '48.7', '-1', '4870x'])('rejects SWITCHBOARD_PORT=%s', (value) => {
+    expect(() => loadConfig({ env: { SWITCHBOARD_PORT: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
+  });
+
+  it.each(['[', '[]', '["node", 3]', '[""]', '["node",'])('rejects SWITCHBOARD_CLAUDE_BIN=%s', (value) => {
+    expect(() => loadConfig({ env: { SWITCHBOARD_CLAUDE_BIN: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
+  });
+});
+
+describe('defaultDataDir (gap #18)', () => {
+  it('macOS: ~/Library/Application Support/Switchboard', () => {
+    expect(defaultDataDir('darwin', {}, HOME)).toBe('/Users/dev/Library/Application Support/Switchboard');
+  });
+
+  it('Windows: %LOCALAPPDATA%\\Switchboard, else ~\\AppData\\Local\\Switchboard', () => {
+    expect(defaultDataDir('win32', { LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local' }, 'C:\\Users\\dev')).toBe(
+      'C:\\Users\\dev\\AppData\\Local\\Switchboard',
+    );
+    expect(defaultDataDir('win32', {}, 'C:\\Users\\dev')).toBe('C:\\Users\\dev\\AppData\\Local\\Switchboard');
+  });
+
+  it('Linux: $XDG_DATA_HOME/switchboard, else ~/.local/share/switchboard', () => {
+    expect(defaultDataDir('linux', {}, '/home/dev')).toBe('/home/dev/.local/share/switchboard');
+    expect(defaultDataDir('linux', { XDG_DATA_HOME: '/data/xdg' }, '/home/dev')).toBe('/data/xdg/switchboard');
+    expect(defaultDataDir('linux', { XDG_DATA_HOME: 'relative' }, '/home/dev')).toBe('/home/dev/.local/share/switchboard');
+  });
+});

@@ -1,0 +1,10 @@
+{
+  // Playwright specs: Node-side test code plus browser code inside page.evaluate(),
+  // so they get the DOM lib that the server config deliberately leaves out.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["tests/e2e/**/*.ts", "tests/helpers/**/*.ts", "playwright.config.ts"],
+  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web"]
+}

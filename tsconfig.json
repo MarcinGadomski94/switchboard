@@ -1,0 +1,35 @@
+{
+  // Server, core, tools, tests and tool configs. The server runs these .ts files
+  // directly under Node 24 type stripping, so only erasable syntax is allowed.
+  // The React UI has its own config (tsconfig.web.json), and so do the Playwright
+  // specs (tsconfig.e2e.json, which adds the DOM lib for page.evaluate).
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/core/**/*.ts",
+    "src/server/**/*.ts",
+    "tools/**/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web", "tests/e2e"]
+}

@@ -1,13 +1,15 @@
 ## Current
-item: M1.1 (next)
+item: M1.2 (next)
 attempt: 0/5
-last oracle: M0-adapt check PASS (attempt 2/5; attempt 1 failed only on the check script's own item count and a "non-demo" false positive) · 39 BACKLOG items all name an **Oracle:**, no "(adapt after M0)" item left, 9 items adapted (M1.2, M1.3, M2.1, M2.4, M3.1, M4.1, M5.2, M7.4, M9.2), D4–D13 + gap #5/#8 checklist clean; no package.json yet (M1.1), so typecheck/test do not exist
+last oracle: M1.1 PASS (attempt 4/5) · `npm run typecheck` (3 tsconfigs) green · `npm test` 102/102 (config, token, guard via inject, real bind on 4871-4879 + LAN port closed, spawned `npm start` entry) · `npm run e2e` 2/2 in cached Chromium 1234 (HttpOnly/SameSite=Strict cookie, page fetch passes, no cookie → 401) · `npm run build` + `npm run dev` smoke on 4873 ok · mutation check: breaking Host/cookie/bind guards turns 18/20/8 tests red
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
 - M0.3 ✓ 2026-09-27 (commit: see git log "M0.3: Transcripts & usage") · attempts 1/5 · plan: structure-only survey of ~/.claude/projects; probe3.mjs (11 processes, 8 API requests: usage-ctl/usage-turn/usage-cache get_usage, /usage /status /cost, tx-main space+git+--name, slug-chars/long/case, worktree); slug rule read from the binary and verified on 5 folders; parse-transcript.mjs sample parse; verdict: 5-hour % and weekly % reliable via stdin `get_usage` (+ rate_limit_event), cost/transcripts give no %
 - M0.4 ✓ 2026-09-27 (commit: see git log "M0.4: Terminal handoff") · attempts 1/5 · plan: probe4.mjs Proc lib + handoff.mjs steps in .spike; 10 Haiku processes / 11 API requests (start+idle pause, terminal -p resume same + other cwd, service re-attach, mid-tool pause + terminal resume, concurrent attach); export4.mjs → 3 NDJSON scenarios + textRuns + 3 transcripts; verdict: id stays, context kept, one transcript file; pause exit 0 (idle) / 1 (mid-turn) both = paused; two live processes on one id fork the chain; interactive TTY left to manual steps
 - M0-adapt ✓ 2026-09-27 (commit: see git log "M0: adapt backlog and architecture after spike") · attempts 2/5 · plan: read spike + fixtures + questions; rewrite BACKLOG M5.2 + the items the spike changed (M1.2, M1.3 pointer, M2.1, M2.4, M3.1, M4.1, M7.4, M9.2) with concrete fake-claude oracles; rewrite ARCHITECTURE "Claude Code integration" (+ the M0.3 usage placeholder); log ASSUMED; oracle = scratchpad check script
+- M1.1 ✓ 2026-09-28 (commit: see git log "M1.1: Node project skeleton + loopback-only server") · attempts 4/5 (1 red: a wrong config test case; 3 red: e2e spec needed DOM lib → tsconfig.e2e.json) · plan: package.json exact pins + lockfile, tsconfig/web/e2e, vite/vitest/playwright configs excluding .worktrees/.spike/dist/node_modules; config.ts env (PORT, DATA_DIR #18, WORKSPACE_ROOT, CLAUDE_BIN/GH_BIN argv prefix, DEMO); security.ts Host/Origin guard + default-deny sb_token cookie (#20); token.ts; listen.ts 127.0.0.1-only; web.ts dist/web + placeholder; routes.ts registry; tools/dev.ts; docs/security.md + docs/configuration.md
+
 ## Blocked
 - (none)
 ## Breaker
@@ -40,3 +42,12 @@ consecutive_blocked: 0
 - M0-adapt · History hides headless sdk-cli files not in the DB and stubs
 - M0-adapt · usagePct = max(5-hour, weekly); poll cadence 60 s live / 5 min poller while UI connected
 - M0-adapt · M1.3 pointer + ARCHITECTURE usage section filled in (beyond the brief's list)
+- M1.1 · @playwright/test 1.62.1 (cached Chromium 1234 matches; no download)
+- M1.1 · Host/Origin allowlist = 127.0.0.1 / localhost with the exact port; other loopback ports are foreign
+- M1.1 · sb_token session cookie (Path=/; HttpOnly; SameSite=Strict); no Sec-Fetch-Site → no cookie
+- M1.1 · default-deny cookie guard (only UI page + static files public; /api*, /hub* always protected); JSON error bodies
+- M1.1 · no default SWITCHBOARD_WORKSPACE_ROOT (null)
+- M1.1 · CLAUDE_BIN / GH_BIN accept a JSON array argv prefix
+- M1.1 · Linux data dir honours absolute $XDG_DATA_HOME; token file <dataDir>/sb_token 0600
+- M1.1 · npm run dev = vite build --watch + node --watch server (no Vite dev server)
+- M1.1 · no ESLint; typecheck = 3 tsconfigs
