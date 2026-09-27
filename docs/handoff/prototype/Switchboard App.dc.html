@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>html,body{margin:0;background:#0b0c0d;color:#e8e7e3;font-family:Geist,system-ui,sans-serif;height:100%}a{color:oklch(0.78 0.1 250)}a:hover{color:oklch(0.88 0.08 250)}input,textarea{font-family:inherit}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#2c2d32;border-radius:4px}</style></helmet>
+<div style="display:grid;grid-template-columns:256px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100vh;min-width:1100px;background:#111214;position:relative">
+
+<div style="border-right:1px solid #232428;display:flex;flex-direction:column;min-height:0;overflow-y:auto">
+<div style="padding:16px 16px 12px;display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div><div onClick="{{ openPalette }}" style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87;border:1px solid #2c2d32;border-radius:5px;padding:2px 6px;cursor:pointer">⌘K</div></div>
+<div style="padding:0 10px 8px"><div onClick="{{ openNew }}" style="display:flex;align-items:center;justify-content:center;gap:6px;background:#e8e7e3;color:#111214;border-radius:8px;padding:8px;font-size:13px;font-weight:500;cursor:pointer">+ New session</div></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;font-size:13px">
+<sc-for list="{{ nav }}" as="n" hint-placeholder-count="5"><div onClick="{{ n.pick }}" style="display:flex;align-items:center;padding:7px 8px;border-radius:7px;cursor:pointer;background:{{ n.bg }};color:{{ n.fg }}">{{ n.label }}<span style="margin-left:auto;font:500 11px Geist Mono,monospace;border-radius:10px;padding:1px 7px;background:{{ n.badgeBg }};color:{{ n.badgeFg }}">{{ n.badge }}</span></div></sc-for>
+</div>
+<div style="padding:16px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Tools<span onClick="{{ goToolsSettings }}" style="margin-left:auto;cursor:pointer">+ Add</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px">
+<sc-for list="{{ toolsNav }}" as="t" hint-placeholder-count="2"><div onClick="{{ t.pick }}" style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;cursor:pointer;background:{{ t.bg }}"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ t.dot }}"></span><span style="font-size:13px;color:{{ t.fg }}">{{ t.name }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#6d6c67">{{ t.host }}</span></div></sc-for>
+</div>
+<div style="padding:16px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Sessions<span style="margin-left:auto;color:#6d6c67">{{ sessCount }}</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;flex:1 0 auto;min-height:160px">
+<sc-for list="{{ sideSessions }}" as="s" hint-placeholder-count="6">
+<div onClick="{{ s.pick }}" style="display:flex;gap:10px;padding:8px;border-radius:8px;cursor:pointer;background:{{ s.bg }}">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:{{ s.color }}"></span>
+<div style="min-width:0;flex:1"><div style="display:flex;gap:6px;font-size:13px;font-weight:500"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ s.time }}</span></div><div style="font:400 11px Geist Mono,monospace;color:#76756f;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.mode }}</div></div>
+</div>
+</sc-for>
+</div>
+<div onClick="{{ goSettings }}" style="margin:6px 10px 0;display:flex;align-items:center;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:13px;background:{{ setNavBg }};color:{{ setNavFg }}">Settings</div>
+<div style="padding:10px 16px 14px;border-top:1px solid #232428;margin-top:6px;display:flex;flex-direction:column;gap:7px;font:400 11px Geist Mono,monospace;color:#8d8c87">
+<div style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.74 0.13 150)"></span><span style="color:#c9c8c3">claude code</span><span>{{ procCount }}</span><span style="margin-left:auto">127.0.0.1:4870</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 76px;gap:8px;align-items:center"><span>CPU</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:38%;background:#c9c8c3"></div></div><span style="text-align:right">38%</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 76px;gap:8px;align-items:center"><span>RAM</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:35%;background:#c9c8c3"></div></div><span style="text-align:right">11.2/32 GB</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 76px;gap:8px;align-items:center"><span>Max</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:62%;background:#e8e7e3"></div></div><span style="text-align:right">62% · 1h48</span></div>
+</div>
+</div>
+
+<div style="min-width:0;min-height:0;display:flex;flex-direction:column;background:#141518">
+
+<sc-if value="{{ vInbox }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:340px minmax(0,1fr);grid-template-rows:minmax(0,1fr)">
+<div style="border-right:1px solid #232428;display:flex;flex-direction:column;min-height:0;background:#121315">
+<div style="padding:18px 18px 12px;display:flex;align-items:baseline;gap:10px"><div style="font-size:18px;font-weight:600">Inbox</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">{{ inboxCount }} waiting on you</div></div>
+<div style="padding:0 10px 12px;display:flex;flex-direction:column;gap:6px;overflow:auto">
+<sc-for list="{{ inbox }}" as="q" hint-placeholder-count="4">
+<div onClick="{{ q.pick }}" style="padding:12px;border-radius:10px;border:1px solid {{ q.border }};background:{{ q.bg }};display:flex;flex-direction:column;gap:5px;cursor:pointer">
+<div style="display:flex;align-items:center;gap:7px;font-size:12px"><span style="width:7px;height:7px;border-radius:50%;background:{{ q.color }}"></span><span style="font-weight:500">{{ q.source }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ q.age }}</span></div>
+<div style="font-size:13px;line-height:1.4;color:#d9d8d3">{{ q.title }}</div>
+<div style="font:500 10px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:#8d8c87">{{ q.kind }}</div>
+</div>
+</sc-for>
+<sc-if value="{{ inboxEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:40px 12px;text-align:center;font-size:13px;color:#76756f">All clear. Nothing is waiting on you.</div></sc-if>
+</div>
+</div>
+<div style="min-width:0;min-height:0;overflow:auto;padding:28px 40px;display:flex;flex-direction:column;gap:16px">
+<sc-if value="{{ ib.has }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8d8c87"><span style="width:8px;height:8px;border-radius:50%;background:{{ ib.color }}"></span><span style="font-weight:600;color:#e8e7e3">{{ ib.source }}</span><span>·</span><span>{{ ib.kind }}</span><span>·</span><span>{{ ib.age }}</span><sc-if value="{{ ib.isSession }}" hint-placeholder-val="{{ true }}"><span onClick="{{ ib.open }}" style="margin-left:auto;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;cursor:pointer">Open session →</span></sc-if></div>
+<div style="font-size:24px;line-height:1.3;font-weight:500;letter-spacing:-.01em;max-width:720px;text-wrap:pretty">{{ ib.title }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ ib.branches }}" as="b"><span style="display:flex;gap:8px;border:1px solid #2c2d32;border-radius:7px;padding:4px 10px;font:400 12px Geist Mono,monospace"><span>{{ b.sol }}</span><span style="color:oklch(0.78 0.1 250)">⎇ {{ b.branch }}</span></span></sc-for></div>
+<sc-if value="{{ ib.detail }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;line-height:1.55;color:#a9a8a3;max-width:720px">{{ ib.detail }}</div></sc-if>
+<sc-if value="{{ ib.isSession }}" hint-placeholder-val="{{ true }}">
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.2 0.025 70);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;max-width:760px">
+<div style="display:flex;font:500 11px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:oklch(0.82 0.13 70)">{{ ibCard.head }}</div>
+<sc-for list="{{ ibCard.qs }}" as="q" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:7px;padding-top:10px;border-top:1px solid oklch(0.32 0.04 70)">
+<div style="font:400 11px Geist Mono,monospace;color:oklch(0.78 0.1 250)">{{ q.from }}</div>
+<div style="color:#f0efeb;font-size:13.5px;line-height:1.5">“{{ q.quote }}”</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ q.opts }}" as="o"><span onClick="{{ o.pick }}" style="font-size:12.5px;border-radius:7px;padding:6px 12px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div>
+</div>
+</sc-for>
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#a9a8a3">{{ ibCard.status }}</span><div onClick="{{ ibCard.send }}" style="margin-left:auto;background:#e8e7e3;color:#111214;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:500;cursor:pointer;opacity:{{ ibCard.op }}">{{ ibCard.label }}</div></div>
+</div>
+</sc-if>
+<sc-if value="{{ ib.isSystem }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:8px"><sc-for list="{{ ib.actions }}" as="a"><span onClick="{{ a.pick }}" style="border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;background:{{ a.bg }};color:{{ a.fg }};border:1px solid {{ a.bd }}">{{ a.label }}</span></sc-for></div>
+</sc-if>
+</sc-if>
+<sc-if value="{{ inboxEmpty }}" hint-placeholder-val="{{ false }}"><div style="margin:auto;text-align:center;display:flex;flex-direction:column;gap:6px;color:#8d8c87"><div style="font-size:18px;color:#e8e7e3;font-weight:500">Inbox zero</div><div style="font-size:13px">New questions, approvals and failed runs show up here with a toast and sound.</div></div></sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vSession }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:minmax(0,1fr)">
+<div style="display:flex;flex-direction:column;min-width:0;min-height:0">
+<div style="padding:13px 22px 0;border-bottom:1px solid #232428;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:50%;background:{{ ss.color }}"></span><div style="font-weight:600;font-size:15px">{{ ss.name }}</div><div style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">D:\acme · workspace root</div>
+<div style="margin-left:auto;display:flex;gap:6px;font-size:12px;color:#c9c8c3"><div onClick="{{ togglePause }}" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;cursor:pointer">{{ pauseLabel }}</div><div onClick="{{ toggleAttach }}" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;cursor:pointer">{{ attachLabel }}</div></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;font:400 11.5px Geist Mono,monospace"><sc-for list="{{ ss.chips }}" as="c" hint-placeholder-count="4"><span style="border:1px solid {{ c.bd }};border-radius:5px;padding:2px 8px;color:{{ c.fg }}"><span style="color:#76756f">{{ c.k }} </span>{{ c.v }}</span></sc-for></div>
+<div style="display:flex;gap:2px;font-size:13px;margin-top:2px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><div onClick="{{ t.pick }}" style="padding:8px 12px;cursor:pointer;border-bottom:2px solid {{ t.bd }};color:{{ t.fg }}">{{ t.label }}</div></sc-for></div>
+</div>
+
+<sc-if value="{{ tChat }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;min-height:0;overflow:auto;padding:20px 26px;display:flex;flex-direction:column;gap:16px;font-size:13.5px;line-height:1.55;color:#d9d8d3">
+<sc-for list="{{ ss.msgs }}" as="m" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:6px;align-self:{{ m.align }};max-width:{{ m.maxw }}">
+<div style="background:{{ m.bg }};border-radius:12px;padding:{{ m.pad }}">{{ m.text }}</div>
+<sc-if value="{{ m.hasTools }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:3px;font:400 12px Geist Mono,monospace;color:#8d8c87"><sc-for list="{{ m.tools }}" as="t"><div>{{ t }}</div></sc-for></div></sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ ssCard.show }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.2 0.025 70);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;font:500 11px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:oklch(0.82 0.13 70)">{{ ssCard.head }}</div>
+<sc-for list="{{ ssCard.qs }}" as="q">
+<div style="display:flex;flex-direction:column;gap:7px;padding-top:10px;border-top:1px solid oklch(0.32 0.04 70)">
+<div style="font:400 11px Geist Mono,monospace;color:oklch(0.78 0.1 250)">{{ q.from }}</div>
+<div style="color:#f0efeb;font-size:13px">“{{ q.quote }}”</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ q.opts }}" as="o"><span onClick="{{ o.pick }}" style="font-size:12.5px;border-radius:7px;padding:5px 11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div>
+</div>
+</sc-for>
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#a9a8a3">{{ ssCard.status }}</span><div onClick="{{ ssCard.send }}" style="margin-left:auto;background:#e8e7e3;color:#111214;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:500;cursor:pointer;opacity:{{ ssCard.op }}">{{ ssCard.label }}</div></div>
+</div>
+</sc-if>
+<sc-if value="{{ ssAnswered.show }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end;max-width:80%"><div style="background:#212227;border-radius:12px 12px 4px 12px;padding:10px 14px;display:flex;flex-direction:column;gap:3px"><sc-for list="{{ ssAnswered.lines }}" as="l"><div>{{ l }}</div></sc-for></div></div>
+<div style="font:400 12px Geist Mono,monospace;color:oklch(0.74 0.12 250)">● Answers written into the briefs. Blocked agents are resuming…</div>
+</sc-if>
+</div>
+<div style="padding:10px 22px 16px;border-top:1px solid #232428;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#76756f;margin-right:4px">Quick replies</span>
+<sc-for list="{{ quick }}" as="k" hint-placeholder-count="4"><span onClick="{{ k.pick }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:14px;padding:4px 10px;color:#c9c8c3;cursor:pointer">{{ k.label }}</span></sc-for></div>
+<div style="display:flex;gap:8px"><input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onDraftKey }}" placeholder="{{ draftPh }}" style="flex:1;border:1px solid #2c2d32;border-radius:10px;padding:11px 14px;font-size:13px;background:#111214;color:#e8e7e3;outline:none"></input><div onClick="{{ sendDraft }}" style="background:#e8e7e3;color:#111214;border-radius:10px;padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer">Send</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tTimeline }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:10px">
+<div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;font:400 10.5px Geist Mono,monospace;color:#6d6c67"><span>{{ tl.range }}</span><div style="display:flex;justify-content:space-between"><sc-for list="{{ tl.ticks }}" as="k"><span>{{ k }}</span></sc-for></div></div>
+<sc-for list="{{ tl.lanes }}" as="ln" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center">
+<div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:12.5px;font-weight:500">{{ ln.name }}</span><span style="font:400 10.5px Geist Mono,monospace;color:#6d6c67;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ ln.sol }}</span></div>
+<div style="position:relative;height:34px;background:#101113;border-radius:6px;border:1px solid #1f2024">
+<sc-for list="{{ ln.ev }}" as="e"><div title="{{ e.label }}" style="position:absolute;top:4px;bottom:4px;left:{{ e.left }};width:{{ e.width }};background:{{ e.bg }};border:1px solid {{ e.bd }};border-radius:4px;padding:0 6px;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 10.5px/24px Geist Mono,monospace;color:{{ e.fg }};opacity:{{ e.op }}">{{ e.label }}</div></sc-for>
+<div style="position:absolute;top:-4px;bottom:-4px;left:{{ tl.head }};width:2px;background:#e8e7e3"></div>
+</div>
+</div>
+</sc-for>
+<div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center;margin-top:4px"><div style="display:flex;gap:6px;align-items:center"><span onClick="{{ togglePlay }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;cursor:pointer">{{ playLabel }}</span><span style="font:500 11px Geist Mono,monospace;color:#e8e7e3">{{ tl.now }}</span></div><input type="range" min="0" max="1000" value="{{ playVal }}" onChange="{{ onScrub }}" style="width:100%;accent-color:#e8e7e3"></input></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:8px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Events up to {{ tl.now }}</div>
+<sc-for list="{{ tl.log }}" as="x" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:44px 8px minmax(0,1fr);gap:8px;align-items:baseline;font-size:12.5px"><span style="font:400 11px Geist Mono,monospace;color:#76756f">{{ x.t }}</span><span style="width:7px;height:7px;border-radius:50%;background:{{ x.c }}"></span><span><span style="color:#8d8c87">{{ x.who }} · </span>{{ x.label }}</span></div></sc-for></div>
+<div style="background:#0c0d0f;border:1px solid #1f2024;border-radius:8px;padding:10px 12px;font:400 11px/1.7 Geist Mono,monospace;min-height:160px"><sc-for list="{{ ss.term }}" as="l"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.t }}</div></sc-for></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tDiff }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(0,1fr);grid-template-rows:minmax(0,1fr)">
+<div style="border-right:1px solid #232428;padding:12px 10px;display:flex;flex-direction:column;gap:3px;overflow:auto">
+<sc-for list="{{ ss.files }}" as="f" hint-placeholder-count="4"><div onClick="{{ f.pick }}" style="padding:8px 10px;border-radius:7px;cursor:pointer;background:{{ f.bg }};display:flex;flex-direction:column;gap:2px"><div style="display:flex;font:400 12px Geist Mono,monospace"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.short }}</span><span style="margin-left:auto;color:oklch(0.76 0.13 150);white-space:nowrap">{{ f.d }}</span></div><div style="font:400 10.5px Geist Mono,monospace;color:#6d6c67">{{ f.sol }}</div></div></sc-for>
+<sc-if value="{{ noFiles }}" hint-placeholder-val="{{ false }}"><div style="padding:20px 10px;font-size:12.5px;color:#76756f">No changes yet.</div></sc-if>
+</div>
+<div style="min-width:0;display:flex;flex-direction:column;min-height:0">
+<div style="padding:10px 16px;border-bottom:1px solid #232428;display:flex;align-items:center;gap:10px;font:400 12px Geist Mono,monospace"><span>{{ df.n }}</span><span style="color:oklch(0.78 0.1 250)">{{ df.branch }}</span><span style="margin-left:auto;font-family:Geist,sans-serif;font-size:12px;color:#8d8c87">Not committed. Commit only when you approve.</span></div>
+<div style="flex:1;overflow:auto;background:#0c0d0f;padding:10px 0;font:400 12px/1.75 Geist Mono,monospace"><sc-for list="{{ df.lines }}" as="l"><div style="padding:0 16px;white-space:pre;background:{{ l.bg }};color:{{ l.c }}">{{ l.t }}</div></sc-for></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tArts }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:6px">
+<sc-for list="{{ ss.arts }}" as="a" hint-placeholder-count="4"><div style="display:flex;gap:12px;align-items:center;padding:11px 14px;border:1px solid #26272c;border-radius:9px;background:#17181b"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3">{{ a.t }}</span><div style="flex:1;font-size:13px">{{ a.n }}</div><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ a.m }}</span></div></sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="border-left:1px solid #232428;display:flex;flex-direction:column;min-height:0;overflow:auto">
+<div style="padding:14px 16px 8px;display:flex;align-items:baseline"><span style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Agents &amp; solutions</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#6d6c67">{{ ss.agentSummary }}</span></div>
+<div style="padding:0 10px 12px;display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{ ss.agents }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:8px;background:#17181b;border:1px solid #1f2024">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:{{ g.color }};flex:none"></span><span style="font-size:13px;font-weight:500">{{ g.name }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.desc }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:{{ g.color }};white-space:nowrap">{{ g.status }}</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding-left:15px;font:400 11.5px Geist Mono,monospace;color:#76756f;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.sol }}</span><sc-if value="{{ g.branch }}" hint-placeholder-val="{{ false }}"><span style="margin-left:auto;color:oklch(0.78 0.1 250);background:oklch(0.24 0.03 250);border-radius:4px;padding:1px 6px;white-space:nowrap">⎇ {{ g.branch }}</span></sc-if></div>
+</div>
+</sc-for>
+</div>
+<div style="padding:6px 16px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Terminal</div>
+<div style="margin:0 12px;background:#0c0d0f;border:1px solid #1f2024;border-radius:8px;padding:10px 12px;font:400 11px/1.7 Geist Mono,monospace;min-height:150px"><sc-for list="{{ ss.term }}" as="l" hint-placeholder-count="5"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.t }}</div></sc-for></div>
+<div style="margin:14px 12px;border:1px solid #26272c;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:#0c0d0f">
+<div style="display:flex;align-items:center;font-size:12.5px;font-weight:500">Terminal handoff<span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:{{ handoff.color }}">{{ handoff.state }}</span></div>
+<div style="font-size:12px;color:#8d8c87;line-height:1.5">{{ handoff.text }}</div>
+<div style="display:flex;gap:8px;align-items:center;font:400 11.5px Geist Mono,monospace;background:#16171a;border:1px solid #232428;border-radius:6px;padding:6px 10px;color:#c9c8c3">claude --resume {{ ss.rid }}<span onClick="{{ copyResume }}" style="margin-left:auto;color:#8d8c87;cursor:pointer">{{ copyLabel }}</span></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vSolutions }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);grid-template-rows:minmax(0,1fr)">
+<div style="display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid #232428">
+<div style="padding:18px 22px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid #232428">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:18px;font-weight:600">Solutions</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">D:\acme · 18 solutions · 7 active</div></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ solFilters }}" as="f" hint-placeholder-count="6"><span onClick="{{ f.pick }}" style="font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }}</span></sc-for></div>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:0 12px 16px;min-width:0">
+<sc-for list="{{ solGroups }}" as="grp" hint-placeholder-count="4">
+<div style="padding:14px 10px 4px;display:flex;gap:8px;font:500 11px Geist Mono,monospace;color:#8d8c87">{{ grp.folder }}<span style="color:#5a5955">{{ grp.note }}</span></div>
+<sc-for list="{{ grp.rows }}" as="r">
+<div onClick="{{ r.pick }}" style="display:grid;grid-template-columns:minmax(130px,190px) minmax(240px,1fr) 80px 54px;gap:12px;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{ r.bg }};opacity:{{ r.op }}">
+<div style="display:flex;align-items:flex-start;gap:8px;min-width:0"><span style="width:7px;height:7px;border-radius:50%;flex:none;margin-top:6px;background:{{ r.color }}"></span><div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span><sc-if value="{{ r.flag }}" hint-placeholder-val="{{ false }}"><span style="font:400 10.5px Geist Mono,monospace;color:{{ r.flagColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.flag }}</span></sc-if></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:5px;min-width:0"><sc-for list="{{ r.branches }}" as="b"><span style="display:flex;align-items:center;gap:6px;font:400 11px Geist Mono,monospace;border:1px solid #26272c;border-radius:5px;padding:2px 7px;white-space:nowrap;min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden"><span style="color:oklch(0.78 0.1 250);flex:none">⎇ {{ b.b }}</span><span style="color:#76756f;flex:none">{{ b.wt }}</span><span style="width:6px;height:6px;border-radius:50%;background:{{ b.color }};flex:none"></span><span style="color:#a9a8a3;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ b.who }}</span></span></sc-for></div>
+<span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ r.phase }}</span>
+<span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.changes }}</span>
+</div>
+</sc-for>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;min-height:0;padding:18px;gap:14px;overflow:auto">
+<div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ sd.path }}</div><div style="font-size:18px;font-weight:600;margin-top:2px">{{ sd.name }}</div></div>
+<sc-if value="{{ sd.warn }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.2 0.025 70);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px">
+<div style="font-size:13px;color:#f0efeb;line-height:1.45">{{ sd.warn }}</div>
+<div style="display:flex;gap:6px;font-size:12px"><span onClick="{{ fixConflict }}" style="background:#e8e7e3;color:#111214;border-radius:6px;padding:5px 10px;font-weight:500;cursor:pointer">Move button-rollout to worktree</span></div>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Branches &amp; worktrees</div>
+<sc-for list="{{ sd.branches }}" as="b" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:3px;padding:9px 11px;border:1px solid #26272c;border-radius:8px;background:#17181b"><div style="font:400 12px Geist Mono,monospace;color:oklch(0.78 0.1 250);overflow-wrap:anywhere">⎇ {{ b.b }}</div><div style="font:400 11px Geist Mono,monospace;color:#76756f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.wtPath }}</div><div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#a9a8a3"><span style="width:6px;height:6px;border-radius:50%;background:{{ b.color }}"></span>{{ b.who }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Phase ledger</div>
+<sc-for list="{{ sd.ledger }}" as="l" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;font:400 11.5px Geist Mono,monospace;padding:5px 0;border-bottom:1px solid #1f2024"><span>{{ l.i }}</span><span style="color:{{ l.c }}">{{ l.p }}</span><span style="color:#6d6c67;grid-column:1 / 3">{{ l.seam }}</span></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Artifacts &amp; follow-ups</div>
+<sc-for list="{{ sd.arts }}" as="a" hint-placeholder-count="2"><div style="display:flex;gap:8px;align-items:center;font-size:12.5px"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3">{{ a.t }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.n }}</span><span style="font:400 11px Geist Mono,monospace;color:#8d8c87">{{ a.m }}</span></div></sc-for>
+</div>
+<div style="margin-top:auto;display:flex;align-items:center;gap:8px;font:400 11px Geist Mono,monospace;color:#76756f"><span style="width:6px;height:6px;border-radius:50%;background:{{ sd.idxColor }}"></span>{{ sd.idx }}<span onClick="{{ openCm }}" style="margin-left:auto;color:#c9c8c3;cursor:pointer">open Codebase Memory ›</span></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vSchedules }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;overflow:auto;padding:22px 28px;display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:18px;font-weight:600">Schedules &amp; loops</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">scheduled Claude Code runs + long-running loops</div><span style="margin-left:auto;font-size:12.5px;border:1px dashed #3a3b41;border-radius:7px;padding:6px 12px;color:#c9c8c3">+ New scheduled run</span></div>
+<div style="display:flex;flex-direction:column">
+<div style="display:grid;grid-template-columns:10px 220px 150px minmax(0,1fr) 150px 180px;gap:14px;padding:0 4px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#6d6c67;border-bottom:1px solid #232428"><span></span><span>Run</span><span>Schedule</span><span>Last 14 runs</span><span>Next</span><span></span></div>
+<sc-for list="{{ scheds }}" as="r" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:10px 220px 150px minmax(0,1fr) 150px 180px;gap:14px;align-items:center;padding:12px 4px;border-bottom:1px solid #1f2024">
+<span style="width:7px;height:7px;border-radius:50%;background:{{ r.color }}"></span>
+<div style="display:flex;flex-direction:column;min-width:0"><span style="font-size:13.5px;font-weight:500">{{ r.name }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.desc }}</span></div>
+<span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">{{ r.cron }}</span>
+<div style="display:flex;flex-direction:column;gap:5px"><div style="display:flex;gap:3px"><sc-for list="{{ r.runs }}" as="d"><span style="flex:1;height:14px;border-radius:2px;background:{{ d }}"></span></sc-for></div><span style="font-size:11.5px;color:#8d8c87">{{ r.last }}</span></div>
+<span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">{{ r.next }}</span>
+<div style="display:flex;gap:6px;justify-content:flex-end;font-size:12px"><span onClick="{{ r.runNow }}" style="border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#c9c8c3;cursor:pointer">{{ r.runLabel }}</span><span onClick="{{ r.toggle }}" style="border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#c9c8c3;cursor:pointer">{{ r.pauseLabel }}</span></div>
+</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+<sc-for list="{{ loops }}" as="l" hint-placeholder-count="2">
+<div style="border:1px solid {{ l.bd }};border-radius:12px;padding:16px 18px;background:#17181b;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:{{ l.color }}"></span><span style="font-size:14px;font-weight:600">{{ l.name }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ l.kind }}</span><span onClick="{{ l.open }}" style="margin-left:auto;font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#c9c8c3;cursor:pointer">Open session</span></div>
+<div style="display:flex;gap:3px"><sc-for list="{{ l.iters }}" as="d"><span style="flex:1;height:10px;border-radius:2px;background:{{ d }}"></span></sc-for></div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;font-size:12px"><sc-for list="{{ l.facts }}" as="f"><div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 10px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:#6d6c67">{{ f.k }}</span><span style="color:#d9d8d3">{{ f.v }}</span></div></sc-for></div>
+<div style="font-size:12.5px;color:#a9a8a3;line-height:1.5">{{ l.note }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vArtifacts }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:flex;flex-direction:column">
+<div style="padding:18px 22px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid #232428">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:18px;font-weight:600">Artifacts</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">{{ artCount }}</div><input value="{{ artQ }}" onChange="{{ onArtQ }}" placeholder="Search artifacts, solutions, branches…" style="margin-left:auto;width:280px;border:1px solid #2c2d32;border-radius:7px;padding:7px 11px;font-size:12.5px;background:#111214;color:#e8e7e3;outline:none"></input></div>
+<div style="display:flex;gap:6px"><sc-for list="{{ artFilters }}" as="f" hint-placeholder-count="5"><span onClick="{{ f.pick }}" style="font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }}</span></sc-for></div>
+</div>
+<div style="display:grid;grid-template-columns:80px minmax(0,1fr) 320px 180px 90px 50px;gap:14px;padding:8px 22px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#6d6c67;border-bottom:1px solid #1f2024"><span>Type</span><span>Name</span><span>Solution · branch</span><span>Session</span><span>Status</span><span style="text-align:right">Age</span></div>
+<div style="flex:1;min-height:0;overflow:auto;padding:0 22px">
+<sc-for list="{{ arts }}" as="a" hint-placeholder-count="6"><div onClick="{{ a.open }}" style="display:grid;grid-template-columns:80px minmax(0,1fr) 320px 180px 90px 50px;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid #1f2024;font-size:13px;cursor:pointer"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3;justify-self:start">{{ a.t }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.n }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.sol }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#a9a8a3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.sess }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ a.m }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#76756f;text-align:right">{{ a.age }}</span></div></sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vHistory }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:flex;flex-direction:column">
+<div style="padding:18px 22px 14px;display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #232428"><div style="font-size:18px;font-weight:600">History</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">past sessions · searchable transcripts</div><input value="{{ histQ }}" onChange="{{ onHistQ }}" placeholder="Search conversations, solutions, branches…" style="margin-left:auto;width:320px;border:1px solid #2c2d32;border-radius:7px;padding:7px 11px;font-size:12.5px;background:#111214;color:#e8e7e3;outline:none"></input></div>
+<div style="flex:1;min-height:0;overflow:auto;padding:8px 22px">
+<sc-for list="{{ hist }}" as="h" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:110px 220px minmax(0,1fr) 200px;gap:16px;align-items:baseline;padding:13px 0;border-bottom:1px solid #1f2024"><span style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ h.date }}</span><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:13.5px;font-weight:500">{{ h.name }}</span><span style="font:400 11px Geist Mono,monospace;color:#6d6c67">{{ h.mode }}</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:13px;color:#d9d8d3;line-height:1.45">{{ h.summary }}</span><span style="font:400 11px Geist Mono,monospace;color:oklch(0.72 0.08 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.sols }}</span></div><span style="font:400 11.5px Geist Mono,monospace;color:{{ h.oc }};text-align:right">{{ h.outcome }}</span></div></sc-for>
+<sc-if value="{{ histEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:40px 0;text-align:center;color:#76756f;font-size:13px">No sessions match.</div></sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vTool }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:flex;flex-direction:column">
+<div style="padding:10px 16px;border-bottom:1px solid #232428;display:flex;align-items:center;gap:10px">
+<span style="width:8px;height:8px;border-radius:50%;background:{{ tool.dot }}"></span><div style="font-weight:600;font-size:14px">{{ tool.name }}</div><div style="font-size:12px;color:#8d8c87">{{ tool.desc }}</div>
+<div style="flex:1;max-width:420px;display:flex;align-items:center;gap:8px;font:400 12px Geist Mono,monospace;color:#a9a8a3;background:#0c0d0f;border:1px solid #232428;border-radius:7px;padding:6px 10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tool.urlText }}</span><span style="margin-left:auto;color:{{ tool.dot }}">{{ tool.state }}</span></div>
+<div style="margin-left:auto;display:flex;gap:6px;font-size:12px"><span onClick="{{ reloadTool }}" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;cursor:pointer;color:#c9c8c3">↻ Reload</span><a href="{{ tool.url }}" target="_blank" rel="noopener" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;text-decoration:none">↗ New tab</a><span onClick="{{ goToolsSettings }}" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;cursor:pointer;color:#c9c8c3">Edit</span></div>
+</div>
+<div style="flex:1;min-height:0;position:relative;background:#0c0d0f">
+<sc-if value="{{ tool.hasUrl }}" hint-placeholder-val="{{ false }}"><iframe key="{{ tool.key }}" src="{{ tool.url }}" title="{{ tool.name }}" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe></sc-if>
+<sc-if value="{{ tool.overlay }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;display:grid;place-items:center;background:#0f1012">
+<div style="width:440px;display:flex;flex-direction:column;gap:12px;padding:22px 24px;border:1px solid #26272c;border-radius:12px;background:#16171a">
+<div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:{{ tool.dot }}"></span>{{ tool.ovTitle }}</div>
+<div style="font-size:13px;line-height:1.55;color:#a9a8a3">{{ tool.ovText }}</div>
+<div style="display:flex;gap:6px;font-size:12.5px"><span onClick="{{ tool.ovAction }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:6px 14px;font-weight:500;cursor:pointer">{{ tool.ovLabel }}</span></div>
+</div>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ tool.isCm }}" hint-placeholder-val="{{ false }}">
+<div style="padding:9px 16px;border-top:1px solid #232428;display:flex;align-items:center;gap:10px;font:400 11.5px Geist Mono,monospace;color:#8d8c87">
+<span style="color:#c9c8c3">.codebase-memory-dirty</span>
+<sc-for list="{{ dirty }}" as="d"><span style="display:flex;align-items:center;gap:6px;border:1px solid oklch(0.42 0.07 70);border-radius:5px;padding:2px 8px;color:#e8e7e3"><span style="width:6px;height:6px;border-radius:50%;background:oklch(0.8 0.14 70)"></span>{{ d.n }}<span style="color:#76756f">{{ d.t }}</span></span></sc-for>
+<span style="margin-left:auto;color:#76756f">16 projects indexed · full mode</span>
+<span onClick="{{ reindex }}" style="border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#e8e7e3;cursor:pointer;font-family:Geist,sans-serif;font-size:12px">{{ reindexLabel }}</span>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ vSettings }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr);grid-template-rows:minmax(0,1fr)">
+<div style="border-right:1px solid #232428;background:#121315;padding:20px 12px;display:flex;flex-direction:column;gap:2px">
+<div style="font-size:18px;font-weight:600;padding:0 8px 14px">Settings</div>
+<sc-for list="{{ setNav }}" as="n" hint-placeholder-count="7"><div onClick="{{ n.pick }}" style="padding:8px 10px;border-radius:7px;font-size:13px;cursor:pointer;background:{{ n.bg }};color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+</div>
+<div style="padding:26px 34px;display:flex;flex-direction:column;gap:2px;min-height:0;overflow:auto;max-width:860px">
+<sc-if value="{{ sec.claude }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Claude Code</div>
+<sc-for list="{{ rowsClaude }}" as="r"><div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">{{ r.k }}</div><div style="font-size:12.5px;color:#8d8c87">{{ r.d }}</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">{{ r.v }}</span></div></sc-for>
+<div style="padding-top:16px;display:flex;gap:8px"><span onClick="{{ openWizard }}" style="font-size:12.5px;border:1px solid #2c2d32;border-radius:7px;padding:7px 14px;color:#c9c8c3;cursor:pointer">Run setup again</span></div>
+</sc-if>
+<sc-if value="{{ sec.workspace }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Workspace &amp; solutions</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Workspace root</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">D:\acme · AGENTS.md (Workspace Router)</div></div><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Rescan</span></div>
+<div style="display:flex;flex-direction:column;margin-top:12px;border:1px solid #26272c;border-radius:9px;overflow:hidden"><sc-for list="{{ scan }}" as="r"><div style="display:grid;grid-template-columns:170px 40px minmax(0,1fr) 120px;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid #1f2024;background:#16171a"><span style="font:400 12.5px Geist Mono,monospace">{{ r.f }}</span><span style="font:400 12px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.n }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.ex }}</span><span style="font:400 11px Geist Mono,monospace;color:{{ r.rc }};text-align:right">{{ r.rule }}</span></div></sc-for></div>
+</sc-if>
+<sc-if value="{{ sec.sessions }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Sessions &amp; worktrees</div>
+<sc-for list="{{ rowsSessions }}" as="r"><div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">{{ r.k }}</div><div style="font-size:12.5px;color:#8d8c87">{{ r.d }}</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">{{ r.v }}</span></div></sc-for>
+</sc-if>
+<sc-if value="{{ sec.notify }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Notifications &amp; usage</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">In-app toast + sound</div><div style="font-size:12.5px;color:#8d8c87">Questions, approvals, failed scheduled runs, merged-PR worktrees</div></div><span onClick="{{ testToast }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;cursor:pointer">Send test</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">OS notifications</div><div style="font-size:12.5px;color:#8d8c87">Windows / macOS notification center, also when the tab is in the background</div></div><span style="font:400 12px Geist Mono,monospace;color:{{ notif.color }}">{{ notif.state }}</span><span onClick="{{ askNotif }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;cursor:pointer">Allow</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Warn at Max usage</div><div style="font-size:12.5px;color:#8d8c87">5-hour window and weekly limit</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">90%</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Near the limit</div><div style="font-size:12.5px;color:#8d8c87">Sessions and scheduled runs keep going</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">just warn</span></div>
+</sc-if>
+<sc-if value="{{ sec.schedules }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Schedules</div>
+<sc-for list="{{ scheds }}" as="r"><div style="display:grid;grid-template-columns:10px 200px 160px minmax(0,1fr);gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #1f2024"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.color }}"></span><span style="font-size:13.5px">{{ r.name }}</span><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3;border:1px solid #2c2d32;border-radius:6px;padding:4px 8px;background:#111214">{{ r.cron }}</span><span style="font-size:12px;color:#8d8c87">{{ r.desc }}</span></div></sc-for>
+</sc-if>
+<sc-if value="{{ sec.tools }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:4px">Embedded tools</div>
+<div style="font-size:12.5px;color:#8d8c87;margin-bottom:12px">Local web apps shown under Tools in the sidebar and opened in the main area. URLs are saved in this browser.</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ toolRows }}" as="t" hint-placeholder-count="2">
+<div style="border:1px solid #26272c;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:#16171a">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:{{ t.dot }}"></span><span style="font-size:14px;font-weight:500">{{ t.name }}</span><span style="font-size:12px;color:#8d8c87">{{ t.desc }}</span><span style="margin-left:auto;font:400 11.5px Geist Mono,monospace;color:#76756f">{{ t.state }}</span></div>
+<div style="display:flex;gap:8px"><input value="{{ t.url }}" onChange="{{ t.onUrl }}" placeholder="http://localhost:PORT" style="flex:1;border:1px solid #3a3b41;border-radius:7px;padding:8px 12px;font:400 12.5px Geist Mono,monospace;background:#111214;color:#e8e7e3;outline:none"></input><span onClick="{{ t.test }}" style="border:1px solid #2c2d32;border-radius:7px;padding:8px 14px;font-size:12.5px;color:#c9c8c3;cursor:pointer">Test</span><span onClick="{{ t.open }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Open</span></div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ sec.github }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">GitHub</div>
+<sc-for list="{{ rowsGithub }}" as="r"><div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">{{ r.k }}</div><div style="font-size:12.5px;color:#8d8c87">{{ r.d }}</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">{{ r.v }}</span></div></sc-for>
+</sc-if>
+</div>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{ toast.show }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;top:16px;right:16px;width:360px;background:#232429;border:1px solid #34353b;border-radius:12px;padding:14px 16px;box-shadow:0 16px 40px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:9px;font-size:13px;z-index:30">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.14 70)"></span><span style="font-weight:600">{{ toast.title }}</span><span style="color:#8d8c87;font-size:12px">{{ toast.sub }}</span><span onClick="{{ closeToast }}" style="margin-left:auto;color:#8d8c87;cursor:pointer">✕</span></div>
+<div style="font:400 11.5px Geist Mono,monospace;color:oklch(0.78 0.1 250)">{{ toast.branch }}</div>
+<div style="line-height:1.45;color:#cfcec9">{{ toast.text }}</div>
+<div style="display:flex;gap:6px"><div onClick="{{ toastJump }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:6px 12px;font-weight:500;cursor:pointer">Jump to session</div><div onClick="{{ closeToast }}" style="border:1px solid #3a3b41;border-radius:7px;padding:6px 12px;cursor:pointer">Later</div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ mNew }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeModal }}" style="position:absolute;inset:0;background:rgba(0,0,0,.6);z-index:40;display:grid;place-items:center">
+<div onClick="{{ stop }}" style="width:1080px;max-width:calc(100% - 60px);height:min(800px, calc(100% - 60px));display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:minmax(0,1fr);background:#141518;border:1px solid #2c2d32;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)">
+<div style="padding:22px 28px;display:flex;flex-direction:column;gap:18px;min-height:0;overflow:auto">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:20px;font-weight:600">New session</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">Claude Code · background · Max</div><span onClick="{{ nsRecommended }}" style="margin-left:auto;font-size:12px;border:1px solid #2c2d32;border-radius:14px;padding:4px 12px;color:#c9c8c3;cursor:pointer">Accept recommended</span></div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">1 · Task definition</div>
+<div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:8px"><input value="{{ ns.name }}" onChange="{{ onNsName }}" placeholder="session-name" style="border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font:400 13px Geist Mono,monospace;background:#111214;color:#e8e7e3;outline:none"></input><input value="{{ ns.task }}" onChange="{{ onNsTask }}" placeholder="What should be implemented?" style="border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font-size:13px;background:#111214;color:#e8e7e3;outline:none"></input></div></div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">2 · Work type</div><div style="display:flex;gap:6px"><sc-for list="{{ nsWork }}" as="o"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">3 · Mode</div><div style="display:flex;gap:6px"><sc-for list="{{ nsMode }}" as="o"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">4 · Solutions in scope<span style="margin-left:auto;color:#6d6c67;text-transform:none;letter-spacing:0">{{ nsSolHint }}</span></div>
+<sc-for list="{{ nsGroups }}" as="g"><div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:start"><span style="font:400 11.5px Geist Mono,monospace;color:#76756f;padding-top:5px">{{ g.folder }}</span><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ g.items }}" as="i"><span onClick="{{ i.pick }}" style="font:400 12px Geist Mono,monospace;border-radius:6px;padding:4px 10px;cursor:{{ i.cursor }};border:1px solid {{ i.border }};background:{{ i.bg }};color:{{ i.fg }};opacity:{{ i.op }}">{{ i.label }}</span></sc-for></div></div></sc-for></div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">5 · Phase</div><div style="display:flex;gap:6px"><sc-for list="{{ nsPhase }}" as="o"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<sc-if value="{{ nsShowCoord }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">6 · Mobile coordination</div><div style="display:flex;gap:6px"><sc-for list="{{ nsCoord }}" as="o"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div></sc-if>
+<sc-if value="{{ nsIsQa }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">6 · QA contract</div><div style="display:flex;gap:6px"><sc-for list="{{ nsStack }}" as="o"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;font:400 12px Geist Mono,monospace"><div style="border:1px solid #2c2d32;border-radius:8px;padding:8px 12px;color:#76756f;background:#111214">Confluence page URL (required)</div><div style="border:1px solid #2c2d32;border-radius:8px;padding:8px 12px;color:#76756f;background:#111214">Figma frame URL per breakpoint (required)</div></div></div></sc-if>
+</div>
+<div style="border-left:1px solid #232428;background:#111214;display:flex;flex-direction:column;min-height:0">
+<div style="padding:20px 20px 10px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Launch</div>
+<div style="padding:0 20px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:13px;font-weight:500">Worktree per solution</div><div style="font-size:12px;color:#8d8c87">Kept until the PR is merged on GitHub</div></div><span onClick="{{ nsToggleWt }}" style="width:32px;height:18px;border-radius:9px;background:{{ nsWt.bg }};position:relative;cursor:pointer;flex:none"><span style="position:absolute;top:2px;left:{{ nsWt.knob }};width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:13px;font-weight:500">Ultracode (workflows)</div><div style="font-size:12px;color:#8d8c87">Dispatch via the Workflow tool</div></div><span onClick="{{ nsToggleUltra }}" style="width:32px;height:18px;border-radius:9px;background:{{ nsUltra.bg }};position:relative;cursor:pointer;flex:none"><span style="position:absolute;top:2px;left:{{ nsUltra.knob }};width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+</div>
+<div style="padding:18px 20px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Summary</div>
+<div style="margin:0 16px;background:#0c0d0f;border:1px solid #1f2024;border-radius:8px;padding:12px 14px;font:400 11.5px/1.75 Geist Mono,monospace;flex:1;overflow:auto"><sc-for list="{{ nsSummary }}" as="l"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1em">{{ l.t }}</div></sc-for></div>
+<div style="padding:16px;display:flex;gap:8px"><span onClick="{{ closeModal }}" style="border:1px solid #2c2d32;border-radius:8px;padding:9px 14px;font-size:13px;color:#c9c8c3;cursor:pointer">Cancel</span><span onClick="{{ nsLaunch }}" style="flex:1;text-align:center;background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:500;cursor:pointer;opacity:{{ nsCanLaunchOp }}">Start session</span></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ mWizard }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.7);z-index:40;display:grid;place-items:center">
+<div style="width:960px;max-width:calc(100% - 60px);height:620px;display:grid;grid-template-columns:250px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#111214;border:1px solid #2c2d32;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)">
+<div style="border-right:1px solid #232428;padding:24px 18px;display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:22px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Set up Switchboard</div></div>
+<sc-for list="{{ wzSteps }}" as="w"><div onClick="{{ w.pick }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;background:{{ w.bg }};cursor:pointer"><span style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:500 11px Geist Mono,monospace;flex:none;background:{{ w.dotBg }};color:{{ w.dotFg }};border:1px solid {{ w.dotBd }}">{{ w.mark }}</span><span style="font-size:13px;color:{{ w.fg }}">{{ w.label }}</span></div></sc-for>
+<div style="margin-top:auto;font-size:11.5px;line-height:1.5;color:#6d6c67">Everything stays on this PC. Switchboard never stores your Claude login.</div>
+</div>
+<div style="padding:30px 36px;display:flex;flex-direction:column;gap:16px;min-height:0;overflow:auto">
+<div style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ wz.pos }}</div>
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">{{ wz.title }}</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:540px">{{ wz.text }}</div>
+<sc-if value="{{ wz.s0 }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:6px;max-width:560px"><sc-for list="{{ wzChecks }}" as="c"><div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid #26272c;border-radius:9px;background:#16171a"><span style="color:oklch(0.76 0.13 150)">✓</span><div style="flex:1"><div style="font-size:13px">{{ c.k }}</div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ c.d }}</div></div></div></sc-for></div></sc-if>
+<sc-if value="{{ wz.s1 }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:8px;max-width:560px"><div style="flex:1;border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font:400 13px Geist Mono,monospace;background:#16171a">D:\acme</div><span style="border:1px solid #2c2d32;border-radius:8px;padding:9px 14px;font-size:13px;color:#c9c8c3">Browse…</span></div><div style="font:400 12px Geist Mono,monospace;color:oklch(0.76 0.13 150)">✓ AGENTS.md (Workspace Router) found · 640 lines</div></sc-if>
+<sc-if value="{{ wz.s2 }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;max-width:620px;border:1px solid #26272c;border-radius:9px;overflow:hidden"><sc-for list="{{ scan }}" as="r"><div style="display:grid;grid-template-columns:150px 36px minmax(0,1fr) 110px;gap:12px;align-items:center;padding:8px 14px;border-bottom:1px solid #1f2024;background:#16171a"><span style="font:400 12.5px Geist Mono,monospace">{{ r.f }}</span><span style="font:400 12px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.n }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.ex }}</span><span style="font:400 11px Geist Mono,monospace;color:{{ r.rc }};text-align:right">{{ r.rule }}</span></div></sc-for></div></sc-if>
+<sc-if value="{{ wz.s3 }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:8px;align-items:center"><span onClick="{{ askNotif }}" style="background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer">Allow notifications</span><span style="font:400 12px Geist Mono,monospace;color:{{ notif.color }}">{{ notif.state }}</span></div></sc-if>
+<sc-if value="{{ wz.s4 }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;max-width:480px"><div style="display:flex;font-size:13px">Warn at<span style="margin-left:auto;font-family:Geist Mono,monospace">90%</span></div><div style="height:6px;border-radius:3px;background:#26272c"><div style="width:90%;height:100%;border-radius:3px;background:oklch(0.8 0.14 70)"></div></div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">near limit → just warn</div></div></sc-if>
+<div style="margin-top:auto;display:flex;gap:8px"><span onClick="{{ wzBack }}" style="border:1px solid #2c2d32;border-radius:8px;padding:9px 16px;font-size:13px;color:#c9c8c3;cursor:pointer">Back</span><span onClick="{{ closeModal }}" style="border:0;padding:9px 6px;font-size:13px;color:#76756f;cursor:pointer">Skip</span><span onClick="{{ wzNext }}" style="margin-left:auto;background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer">{{ wz.next }}</span></div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ mPalette }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeModal }}" style="position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;justify-content:center;padding-top:110px">
+<div onClick="{{ stop }}" style="width:620px;height:fit-content;background:#1a1b1f;border:1px solid #34353b;border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden">
+<input ref="{{ palRef }}" value="{{ palQ }}" onChange="{{ onPalQ }}" onKeyDown="{{ onPalKey }}" placeholder="Jump to a session, solution, view or tool…" style="width:100%;box-sizing:border-box;border:0;border-bottom:1px solid #2c2d32;padding:16px 18px;font-size:15px;background:transparent;color:#e8e7e3;outline:none"></input>
+<div style="max-height:380px;overflow:auto;padding:6px">
+<sc-for list="{{ palItems }}" as="p"><div onClick="{{ p.pick }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:7px;cursor:pointer;background:{{ p.bg }}"><span style="font:500 10px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:#76756f;width:70px">{{ p.kind }}</span><span style="font-size:13.5px">{{ p.label }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#6d6c67">{{ p.hint }}</span></div></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;simulateIncoming&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;showSetupOnLoad&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  C = { need: 'oklch(0.8 0.14 70)', run: 'oklch(0.72 0.12 250)', done: 'oklch(0.74 0.13 150)', fail: 'oklch(0.68 0.17 25)', idle: '#5a5955', none: '#26272c' };
+  loadUrls() { try { return JSON.parse(localStorage.getItem('switchboard.toolUrls')) || null; } catch (e) { return null; } }
+  state = { view: 'inbox', sid: 'free-talk-feature', tab: 'chat', ans: {}, sent: {}, dismissed: {}, extra: [], extraMsgs: {}, incoming: false, toast: null, modal: null, solSel: 'mobile', solF: 'All', paused: {}, ran: {}, artF: 'All', artQ: '', histQ: '', setSec: 'claude', urls: this.loadUrls() || { cm: 'http://localhost:13000', sw: '' }, tstate: {}, toolId: 'cm', frameN: 0, wz: 0, diffSel: 0, play: 1000, palQ: '', palIdx: 0, inboxSel: null, notif: null, draft: '', sessPaused: {}, detached: {}, conflictFixed: false, reindexSent: false, copied: false, ns: { name: 'free-talk-640', task: 'Free talk screen at 640, web and mobile. Figma node 2231:902.', work: 'feature', mode: 'orch', phase: 'ui', coord: 'seq', stack: 'both', sols: ['acme-app-front', 'mobile'], wt: true, ultra: false } };
+  palRef = React.createRef();
+
+  componentDidMount() {
+    this._key = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.openPal(); }
+      if (e.key === 'Escape' && this.state.modal) this.setState({ modal: null });
+    };
+    window.addEventListener('keydown', this._key);
+    if (this.props.showSetupOnLoad ?? false) this.setState({ modal: 'wizard' });
+    if (this.props.simulateIncoming ?? true) this._inc = setTimeout(() => this.arrive(), 9000);
+    this.probe('cm');
+    if (this.state.urls.sw) this.probe('sw');
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._key); clearTimeout(this._inc); clearInterval(this._timer); }
+  openPal() { this.setState({ modal: 'palette', palQ: '', palIdx: 0 }, () => setTimeout(() => this.palRef.current && this.palRef.current.focus(), 30)); }
+  beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(); [0, 0.14].forEach((t, i) => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = i ? 1046 : 784; g.gain.setValueAtTime(0.0001, a.currentTime + t); g.gain.exponentialRampToValueAtTime(0.12, a.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + t + 0.22); o.connect(g).connect(a.destination); o.start(a.currentTime + t); o.stop(a.currentTime + t + 0.25); }); } catch (e) {} }
+  notifyOS(title, body) { try { if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(title, { body }); } catch (e) {} }
+  arrive() {
+    this.setState({ incoming: true, toast: { sid: 'qa-free-talk', title: 'qa-free-talk', sub: 'question · now', branch: 'acme-app-front ⎇ qa/free-talk-e2e', text: 'Confluence AC-7 and Figma disagree on the empty-state copy. Which one is the contract?' } });
+    this.beep(); this.notifyOS('qa-free-talk needs you', 'Confluence AC-7 and Figma disagree on the empty-state copy.');
+  }
+  probe(id) {
+    const url = (this.state.urls[id] || '').trim();
+    if (!url) { this.setState(s => ({ tstate: { ...s.tstate, [id]: 'unset' } })); return; }
+    this.setState(s => ({ tstate: { ...s.tstate, [id]: 'checking' } }));
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 3000);
+    fetch(url, { mode: 'no-cors', signal: ctl.signal }).then(() => this.setState(s => ({ tstate: { ...s.tstate, [id]: 'up' } }))).catch(() => this.setState(s => ({ tstate: { ...s.tstate, [id]: 'down' } }))).finally(() => clearTimeout(to));
+  }
+  setUrl(id, v) { const urls = { ...this.state.urls, [id]: v }; try { localStorage.setItem('switchboard.toolUrls', JSON.stringify(urls)); } catch (e) {} this.setState({ urls, tstate: { ...this.state.tstate, [id]: v ? 'idle' : 'unset' } }); }
+  lineColor(t) { if (t.startsWith('$')) return '#6d6c67'; if (t.startsWith('✓')) return 'oklch(0.78 0.12 150)'; if (t.startsWith('⏸') || t.startsWith('⚠')) return 'oklch(0.8 0.13 70)'; if (t.startsWith('✕')) return 'oklch(0.72 0.16 25)'; return '#bfbeb8'; }
+
+  S = [
+    { id: 'free-talk-feature', status: 'need', time: '1m', mode: 'orch · feature · UI-first', rid: '7f3a2c91', t0: 2, dur: 46,
+      chips: [['work', 'feature-building'], ['mode', 'orchestrator'], ['phase', 'UI-first'], ['bp', '360'], ['scope', 'acme-app-front + mobile'], ['run', 'workflow 7f3a · reconcile', 1]],
+      agents: [['orchestrator', 'relay + reconcile', 'workspace root', '', 'needs you', 'need'], ['web', 'FreeTalkPage @360', 'microfrontends/acme-app-front', 'feature/free-talk-360', 'asked 1', 'need'], ['mobile', 'FreeTalkView @360', 'mobile/', 'feature/free-talk-360', 'asked 1', 'need'], ['figma-extractor', 'spec table', 'read-only', '', 'done', 'done']],
+      msgs: [[1, 'Free talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page.'], [0, 'Contract locked from Figma node 2231:884 and written to contracts/free-talk.md. Web and mobile were dispatched in parallel. Both returned with 3 open questions between them.', ['✓ recon · codebase-memory · 2 precedents found', '✓ figma-extractor · spec table, 14 slots', '✓ web returned · 6 files · render loop 3/5 green', '✓ mobile returned · 5 files · build self-heal ×1']]],
+      qs: [['web · microfrontends/acme-app-front', 'Figma shows the topic chips wrapping to 2 rows at 360. Should overflow wrap as drawn, or scroll horizontally?', ['Wrap to 2 rows (as Figma)', 'Horizontal scroll', 'Ask designer']], ['mobile · mobile/', 'AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?', ['Use default size', 'Add compact variant', 'Stop here']], ['(orchestrator)', 'Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?', ['Nullable', 'Required', 'Check Confluence first']]],
+      term: ['[orch] reconcile · contract-adherence report', '✓ web 13/14 fields match', '⚠ mobile TopicId: required ≠ web nullable', '⏸ [web] question: chip overflow at 360', '⏸ [mobile] question: AcmChip compact size', '⏸ waiting for your answers'],
+      files: [['acme-app-front', 'Pages/FreeTalk/FreeTalk.razor', 'feature/free-talk-360', '+118', [' @page "/free-talk"', ' @inject IFreeTalkService FreeTalkService', '+<AcmPageHeader Title="Free talk" />', '+<TopicChips Topics="@_topics" Wrap="true" />', '+<AcmButton Size="Large" OnClick="StartAsync">Start talking</AcmButton>', '+', '+@code {', '+    private IReadOnlyList<TopicDto> _topics = [];', '+', '+    protected override async Task OnInitializedAsync()', '+        => _topics = await FreeTalkService.GetTopicsAsync();', '+}']], ['acme-app-front', 'Pages/FreeTalk/TopicChips.razor', 'feature/free-talk-360', '+51 −12', [' <div class="topic-chips">', '-    <AcmChip Size="Compact" @bind-Selected="topic.Selected">', '+    <AcmChip @bind-Selected="topic.Selected">', '         @topic.Title', '     </AcmChip>', ' </div>']], ['mobile/', 'Views/FreeTalkView.xaml', 'feature/free-talk-360', '+96', ['+<ContentPage x:Class="Acme.Mobile.Views.FreeTalkView"', '+             Title="Free talk">', '+  <VerticalStackLayout Spacing="16" Padding="16">', '+    <controls:AcmChipGroup ItemsSource="{Binding Topics}" />', '+    <controls:AcmButton Text="Start talking" Command="{Binding StartCommand}" />', '+  </VerticalStackLayout>', '+</ContentPage>']], ['mobile/', 'ViewModels/FreeTalkViewModel.cs', 'feature/free-talk-360', '+88', ['+public partial class FreeTalkViewModel : ObservableObject', '+{', '+    // UI-first seam: swap FreeTalkServiceMock for the real connector at integration', '+    [ObservableProperty] private IReadOnlyList<TopicDto> _topics = [];', '+}']], ['root', 'contracts/free-talk.md', '—', '+62', ['+# Free talk · locked contract', '+Figma: 2231:884 (360)', '+Breakpoints: web 360 · mobile 360', '+Phase: UI-first (mock-DI)']]],
+      arts: [['CONTRACT', 'contracts/free-talk.md', 'locked'], ['DIFF', 'acme-app-front · 6 files', '+284 −12'], ['DIFF', 'mobile · 5 files', '+231 −4'], ['FOLLOWUP', 'mobile-followups/from-acme-app-front.md', '1 new']],
+      tl: [['orchestrator', 'workspace root', [[0, 3, 'plan', 'task definition'], [3, 9, 'plan', 'recon · codebase-memory'], [9, 12, 'plan', 'contract lock'], [12, 13, 'impl', 'dispatch'], [30, 33, 'ask', 'relay 3 Qs'], [40, 46, 'ok', 'reconcile']]], ['figma-extractor', 'read-only', [[9, 12, 'plan', 'spec table']]], ['web', 'acme-app-front', [[13, 22, 'impl', 'implement FreeTalkPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]], ['mobile', 'mobile/', [[13, 24, 'impl', 'implement FreeTalkView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]]] },
+    { id: 'notifications-integration', status: 'need', time: '3m', mode: 'orch · integration · Tier A 3/6', rid: 'b21e0f47', t0: 5, dur: 38,
+      chips: [['work', 'feature-building'], ['mode', 'orchestrator'], ['phase', 'integration'], ['scope', 'notifications-microservice → mobile BFF → workspace-front'], ['loop', 'Tier A 3/6', 1]],
+      agents: [['orchestrator', 'relay + integration loop', 'workspace root', '', 'needs you', 'need'], ['microservice', 'push-preferences endpoint', 'microservices/notifications-microservice', 'feature/push-prefs', 'contract locked', 'done'], ['web', 'NotificationsPanel connector', 'microfrontends/workspace-front', 'feature/notifications-panel', 'Tier A green', 'done'], ['mobile', 'BFF route + client', 'mobile/', 'feature/push-prefs-bff', 'running', 'run']],
+      msgs: [[1, 'Wire the notifications panel to the real notifications-microservice. Push preferences endpoint.'], [0, 'The microservice shipped first and locked the contract (GET/PUT /push-preferences). Web ran the Tier A loop against the mocked upstream and is green after 3 iterations. Mobile is still wiring the BFF route.', ['✓ microservice · swagger.yml updated · contract locked', '✓ web · NSwag client regenerated', '✓ web · Tier A iteration 3/6 · deserialization matches', '● mobile · BFF route PushPreferences in progress']]],
+      qs: [['(orchestrator)', 'Tier A is green on web. Tier B boots notifications-microservice → Gateway → workspace-front locally (3 processes, about 6 min). Authorize Tier B now?', ['Authorize Tier B', 'Tier A only for now', 'Stop after web']]],
+      term: ['$ dotnet run --project Notifications.API (mock upstream)', 'rider-debugger attach · breakpoint PushPreferencesConnector.cs:58', 'GET /push-preferences → 200 · 4 fields', '✓ runtime matches locked contract', '⏸ Tier B requires your authorization'],
+      files: [['workspace-front', 'Services/PushPreferencesConnector.cs', 'feature/notifications-panel', '+74', ['+public sealed class PushPreferencesConnector(INotificationsMicroserviceClient client)', '+{', '+    public async Task<PushPreferences> GetAsync(CancellationToken ct)', '+        => (await client.GetPushPreferencesAsync(ct)).ToModel();', '+}']], ['notifications-microservice', 'swagger.yml', 'feature/push-prefs', '+41', ['+  /push-preferences:', '+    get:', '+      operationId: GetPushPreferences', '+    put:', '+      operationId: UpdatePushPreferences']]],
+      arts: [['CONTRACT', 'contracts/push-preferences.md', 'locked'], ['PR', 'notifications-microservice #88', 'open'], ['DIFF', 'workspace-front · 4 files', '+131 −9']],
+      tl: [['orchestrator', 'workspace root', [[0, 6, 'plan', 'recon + contract'], [30, 38, 'ask', 'Tier B authorization']]], ['microservice', 'notifications-microservice', [[6, 16, 'impl', 'endpoint + swagger'], [16, 18, 'ok', 'contract locked']]], ['web', 'workspace-front', [[18, 24, 'impl', 'connector'], [24, 30, 'loop', 'Tier A loop 3/6']]], ['mobile', 'mobile/', [[18, 38, 'impl', 'BFF route']]]] },
+    { id: 'qa-free-talk', status: 'run', time: '9m', mode: 'orch · QA · 14/18 covered', rid: 'c9d4118a', t0: 20, dur: 30,
+      chips: [['work', 'test-authoring (QA)'], ['mode', 'orchestrator'], ['phase', 'UI-first'], ['stack', 'both'], ['contract', 'Confluence v14 + Figma 2231:884']],
+      agents: [['qa-web-playwright', 'E2E @360', 'microfrontends/acme-app-front', 'qa/free-talk-e2e', 'AC 14/18', 'run'], ['qa-mobile-appium', 'UI tests @360', 'mobile/', 'qa/free-talk-appium', 'AC 12/18', 'run']],
+      msgs: [[1, 'Write E2E tests for Free talk at 360 on both stacks.'], [0, 'Coverage matrix built from Confluence v14 (18 requirements) and Figma 2231:884. Both QA agents dispatched in parallel against the same anchor.', ['✓ contract preflight · Confluence + Figma resolve', '✓ coverage-matrix.md · 18 requirement IDs', '● web 14/18 · mobile 12/18']]],
+      qs: [],
+      term: ['[web] $ dotnet test --filter FreeTalk', '[web] Passed 14 · Failed 0', '[mobile] appium · emulator pixel_7 @360', '[mobile] AC-5 swipe to next topic ✓', '▍'],
+      files: [['acme-app-front', 'Tests/E2E/FreeTalkTests.cs', 'qa/free-talk-e2e', '+212', ['+[Test, Requirement("AC-3")]', '+public async Task Topic_chips_wrap_at_360()', '+{', '+    await Page.SetViewportSizeAsync(360, 800);', '+}']], ['root', 'coverage-matrix.md', '—', '+48', ['+| ID | Requirement | Web | Mobile |', '+| AC-1 | Title shows "Free talk" | ✓ | ✓ |']]],
+      arts: [['QA', 'coverage-matrix.md', '14/18 · 12/18'], ['DIFF', 'acme-app-front · Tests/E2E', '+212']],
+      tl: [['orchestrator', 'workspace root', [[0, 6, 'plan', 'contract-lock + matrix'], [6, 7, 'impl', 'dispatch']]], ['qa-web-playwright', 'acme-app-front', [[7, 30, 'impl', 'authoring tests']]], ['qa-mobile-appium', 'mobile/', [[7, 30, 'impl', 'authoring tests']]]] },
+    { id: 'button-rollout', status: 'need', time: '12m', mode: 'loop-until-dry · 7/12 · breaker', rid: 'e04a77b3', t0: 0, dur: 58,
+      chips: [['work', 'feature-building'], ['mode', 'orchestrator'], ['loop', 'Ralph · loop-until-dry', 1], ['cap', '12 items · breaker 2'], ['scope', 'components-library-nuget + acme-app-front + mobile']],
+      agents: [['nuget', 'AcmButton size variants', 'nugets/components-library-nuget', 'feature/acm-button-sizes', 'item 7 done', 'done'], ['web', 'local variants', 'microfrontends/acme-app-front', 'feature/button-variants', 'paused', 'need'], ['mobile', 'local variants', 'mobile/', 'feature/button-variants', 'paused', 'need']],
+      msgs: [[1, 'Roll out the new Large and Loading variants to every local button component. Loop until dry.'], [0, 'Items 1–7 converged against the verified spec table. The circuit breaker tripped on items 8 and 9.', ['✓ items 1–7 · render vs Figma green', '✕ item 8 AcmIconButton · no loading frame', '✕ item 9 AcmLinkButton · no loading frame', '⏸ breaker: 2 consecutive ambiguous items']]],
+      qs: [['circuit breaker', 'Items 8 and 9 (AcmIconButton, AcmLinkButton) both hit ambiguity: Figma has no loading state for them. Loop paused per breaker (2 consecutive).', ['Skip both, continue loop', 'Stop loop here', 'I\'ll add Figma frames']]],
+      term: ['[loop] item 8/12 AcmIconButton', '✕ figma: no variant State=Loading', '[loop] item 9/12 AcmLinkButton', '✕ figma: no variant State=Loading', '⏸ circuit breaker tripped'],
+      files: [['components-library-nuget', 'AcmButton/AcmButton.razor', 'feature/acm-button-sizes', '+64 −8', ['+[Parameter] public AcmButtonSize Size { get; set; } = AcmButtonSize.Medium;', '+[Parameter] public bool Loading { get; set; }']]],
+      arts: [['BRANCH', 'feature/acm-button-sizes', '7 commits'], ['DOC', 'rollout-checklist.md', '7/12 done']],
+      tl: [['orchestrator', 'workspace root', [[0, 8, 'plan', 'spec table'], [52, 58, 'ask', 'breaker']]], ['loop', '3 solutions', [[8, 50, 'loop', 'items 1–7'], [50, 56, 'ask', 'items 8–9']]]] },
+    { id: 'calendar-func-fix', status: 'run', time: '20m', mode: 'single · calendar-func', rid: 'a7710de2', t0: 12, dur: 22,
+      chips: [['work', 'feature-building'], ['mode', 'single-solution'], ['phase', 'integration'], ['scope', 'functions/calendar-func']],
+      agents: [['calendar-func', 'DST offset in reminders', 'functions/calendar-func', 'fix/timezone-dst', 'build self-heal 1/3', 'run']],
+      msgs: [[1, 'Reminders fire an hour late after the DST switch. Fix in calendar-func.'], [0, 'Found the cause: the timer trigger converts with a fixed UTC offset. Switching to TimeZoneInfo with the user\'s zone. Building now.', ['✓ recon · codebase-memory · ReminderScheduler.cs', '● dotnet build · self-heal 1/3']]],
+      qs: [],
+      term: ['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build', '▍'],
+      files: [['calendar-func', 'Services/ReminderScheduler.cs', 'fix/timezone-dst', '+14 −6', ['-var local = utc.AddHours(offset);', '+var zone = TimeZoneInfo.FindSystemTimeZoneById(user.TimeZoneId);', '+var local = TimeZoneInfo.ConvertTimeFromUtc(utc, zone);']]],
+      arts: [['DIFF', 'calendar-func · 2 files', '+23 −6']],
+      tl: [['calendar-func', 'functions/calendar-func', [[0, 8, 'plan', 'recon'], [8, 18, 'impl', 'fix'], [18, 22, 'loop', 'build self-heal']]]] },
+    { id: 'prod-monitoring', status: 'done', time: '41m', mode: '/loop 1h · expires in 6d', rid: 'f55c0931', t0: 0, dur: 60,
+      chips: [['loop', '/loop 1h', 1], ['runbook', 'production-monitoring-runbook.md'], ['expires', 'in 6d']],
+      agents: [['monitor', 'prod Log Analytics sweep', 'workspace root', '', 'next 00:19', 'done']],
+      msgs: [[1, 'Monitor production errors and warnings in the prod Log Analytics workspace and fix what can be safely fixed. Follow production-monitoring-runbook.md. Continue until I say stop.'], [0, 'Sweep 14:00 done: 212 events, 3 new signatures. Fixed 1 (null-ref in NotificationsController, PR #412). Escalated 2 to you as notes. Next sweep 15:00.', ['✓ 209 known-noise events filtered', '✓ PR #412 opened · notifications-microservice', '• 2 escalations written to monitoring-notes.md']]],
+      qs: [],
+      term: ['$ az monitor log-analytics query …', '212 rows · 3 new signatures', '✓ PR #412 opened', 'sleeping until 15:00'],
+      files: [], arts: [['PR', 'notifications-microservice #412', 'open'], ['DOC', 'monitoring-notes.md', '2 escalations']],
+      tl: [['monitor', 'prod', [[0, 6, 'plan', 'sweep 13:00'], [6, 60, 'ok', 'idle'], [54, 60, 'plan', 'sweep 14:00']]]] },
+  ];
+  INQ = ['qa-web-playwright · acme-app-front', 'Confluence AC-7 says the empty state reads "No topics yet", Figma 2231:884 shows "Pick a topic to start". Which one is the contract?', ['Confluence (AC-7)', 'Figma', 'Flag as spec divergence']];
+  SYS = [
+    { id: 'sys-run', source: 'nightly-build-verify', kind: 'Scheduled run failed', s: 'fail', age: '38m', title: 'Android build failed at XamlC', detail: 'mobile/ · FreeTalkView.xaml(41): unknown property AcmChip.Size. The previous 13 runs were green. Likely related to free-talk-feature.', branches: [['mobile/', 'feature/free-talk-360']], actions: ['Open fix session', 'Retry run', 'Dismiss'] },
+    { id: 'sys-wt', source: 'worktrees', kind: 'PR merged', s: 'done', age: '20m', title: 'PR #231 merged, so the worktree can be removed', detail: '../acme-app-front-wt-speaking-page · branch feature/speaking-page was merged on GitHub (checked through gh). No uncommitted changes.', branches: [['acme-app-front', 'feature/speaking-page']], actions: ['Remove worktree', 'Keep'] },
+  ];
+
+  sessions() {
+    const st = this.state;
+    return [...this.S, ...st.extra].map(s => {
+      const qs = [...s.qs, ...(s.id === 'qa-free-talk' && st.incoming ? [this.INQ] : [])];
+      const open = qs.length > 0 && !st.sent[s.id];
+      const status = st.sessPaused[s.id] ? 'idle' : open ? 'need' : (s.status === 'need' ? 'run' : s.status);
+      return { ...s, qs, open, status };
+    });
+  }
+  card(s, prefix) {
+    const st = this.state, C = this.C, ans = st.ans[s.id] || [];
+    const qs = s.qs.map((q, qi) => ({ from: q[0], quote: q[1], opts: q[2].map((label, oi) => { const on = ans[qi] === oi; return { label, border: on ? 'oklch(0.7 0.12 70)' : 'oklch(0.36 0.04 70)', bg: on ? 'oklch(0.3 0.06 70)' : 'transparent', fg: on ? '#f5f4f0' : '#c9c8c3', pick: () => { const a = [...(this.state.ans[s.id] || [])]; a[qi] = oi; this.setState({ ans: { ...this.state.ans, [s.id]: a } }); } }; }) }));
+    const n = qs.filter((_, i) => ans[i] != null).length, all = n === qs.length;
+    return { show: s.open, qs, head: qs.length + (qs.length === 1 ? ' question' : ' questions') + ' · relayed verbatim', status: all ? 'All answered. Each answer is written into the blocked brief word for word.' : n + ' of ' + qs.length + ' answered', label: qs.length > 1 ? 'Send all answers' : 'Send answer', op: all ? 1 : 0.45, send: () => { if (!all) return; this.setState({ sent: { ...this.state.sent, [s.id]: true }, toast: this.state.toast && this.state.toast.sid === s.id ? null : this.state.toast }); } };
+  }
+  go(view, extra) { this.setState({ view, ...(extra || {}), modal: null }); }
+  openSession(id) { this.go('session', { sid: id, tab: 'chat', diffSel: 0, play: 1000 }); }
+
+  renderVals() {
+    const st = this.state, C = this.C, P = this;
+    const sess = this.sessions();
+    const byId = Object.fromEntries(sess.map(s => [s.id, s]));
+    const inboxRaw = [
+      ...sess.filter(s => s.open).map(s => ({ id: s.id, isSession: true, source: s.id, s: 'need', age: s.id === 'qa-free-talk' ? 'now' : s.time, kind: s.qs.length > 1 ? s.qs.length + ' questions' : (s.qs[0][0] === 'circuit breaker' ? 'Loop paused' : 'Question'), title: s.qs.length > 1 ? s.qs.length + ' questions from ' + [...new Set(s.qs.map(q => q[0].split(' · ')[0]))].join(', ') : s.qs[0][1], branches: [...new Map(s.agents.filter(a => a[3]).map(a => [a[2] + a[3], { sol: a[2].split('/').filter(Boolean).pop() || a[2], branch: a[3] }])).values()] })),
+      ...this.SYS.filter(x => !st.dismissed[x.id]).map(x => ({ ...x, isSystem: true, branches: x.branches.map(b => ({ sol: b[0], branch: b[1] })) })),
+    ];
+    const selId = inboxRaw.find(x => x.id === st.inboxSel) ? st.inboxSel : (inboxRaw[0] && inboxRaw[0].id);
+    const inbox = inboxRaw.map(x => ({ ...x, color: C[x.s], border: x.id === selId ? '#3a3b41' : '#1f2024', bg: x.id === selId ? '#1c1d21' : 'transparent', pick: () => this.setState({ inboxSel: x.id }) }));
+    const cur = inboxRaw.find(x => x.id === selId);
+    const ib = cur ? { has: true, ...cur, color: C[cur.s], isSession: !!cur.isSession, isSystem: !!cur.isSystem, detail: cur.detail || '', open: () => this.openSession(cur.id), actions: (cur.actions || []).map((label, i) => ({ label, bg: i === 0 ? '#e8e7e3' : 'transparent', fg: i === 0 ? '#111214' : '#c9c8c3', bd: i === 0 ? '#e8e7e3' : '#2c2d32', pick: () => { if (label === 'Open fix session') { this.setState({ modal: 'new', ns: { ...this.state.ns, name: 'fix-xamlc-acmchip', task: 'nightly-build-verify: FreeTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/free-talk-360.', sols: ['mobile'], mode: 'single', phase: 'ui' } }); } this.setState({ dismissed: { ...this.state.dismissed, [cur.id]: true } }); } })) } : { has: false, branches: [], actions: [], isSession: false, isSystem: false };
+    const ibCard = cur && cur.isSession ? this.card(byId[cur.id]) : { qs: [], head: '', status: '', label: '', op: 1, send: () => {} };
+
+    const needCount = inboxRaw.length;
+    const navDef = [['inbox', 'Inbox', needCount ? String(needCount) : '', needCount ? 'need' : null], ['solutions', 'Solutions', st.conflictFixed ? '' : '1 conflict', st.conflictFixed ? null : 'warn'], ['schedules', 'Schedules & loops', '1 failed', 'fail'], ['artifacts', 'Artifacts', '14', null], ['history', 'History', '', null]];
+    const nav = navDef.map(([k, label, badge, kind]) => { const on = st.view === k; return { label, badge, bg: on ? '#212227' : 'transparent', fg: on ? '#f0efeb' : '#c9c8c3', badgeBg: kind === 'need' ? C.need : 'transparent', badgeFg: kind === 'need' ? '#111214' : kind === 'warn' ? C.need : kind === 'fail' ? 'oklch(0.72 0.16 25)' : '#8d8c87', pick: () => this.go(k) }; });
+    const tdot = (id) => ({ up: C.done, down: C.fail, checking: C.need, idle: '#8d8c87', unset: '#5a5955' })[st.tstate[id] || 'idle'];
+    const host = (u) => (u || '').replace(/^https?:\/\//, '');
+    const TOOLS = [['cm', 'Codebase Memory', 'code graph for your indexed solutions'], ['sw', 'Acme Tool', 'AI chat connected to other tools']];
+    const toolsNav = TOOLS.map(([id, name]) => { const on = st.view === 'tool' && st.toolId === id; return { name, host: host(st.urls[id]) || 'set URL', dot: tdot(id), bg: on ? '#212227' : 'transparent', fg: on ? '#f0efeb' : '#c9c8c3', pick: () => { this.go('tool', { toolId: id }); this.probe(id); } }; });
+    const sideSessions = sess.map(s => ({ name: s.id, mode: s.mode, time: s.time, color: C[s.status], bg: st.view === 'session' && st.sid === s.id ? '#212227' : 'transparent', pick: () => this.openSession(s.id) }));
+
+    const s = byId[st.sid] || sess[0];
+    const extraM = st.extraMsgs[s.id] || [];
+    const msgs = [...s.msgs, ...extraM].map(m => ({ text: m[1], tools: m[2] || [], hasTools: !!(m[2] && m[2].length), align: m[0] ? 'flex-end' : 'flex-start', maxw: m[0] ? '72%' : '92%', bg: m[0] ? '#212227' : 'transparent', pad: m[0] ? '10px 14px' : '0' }));
+    const agents = s.agents.map(a => ({ name: a[0], desc: a[1], sol: a[2], branch: a[3], status: st.sessPaused[s.id] ? 'paused' : (a[5] === 'need' && !s.open ? 'resuming' : a[4]), color: st.sessPaused[s.id] ? C.idle : C[a[5] === 'need' && !s.open ? 'run' : a[5]] }));
+    const solSet = new Set(s.agents.filter(a => a[2] !== 'workspace root' && a[2] !== 'read-only').map(a => a[2])), brSet = new Set(s.agents.filter(a => a[3]).map(a => a[3]));
+    const files = s.files.map((f, i) => ({ short: f[1].split('/').pop(), sol: f[0] + ' · ' + f[1], d: f[3], bg: i === st.diffSel ? '#1f2024' : 'transparent', pick: () => this.setState({ diffSel: i }) }));
+    const f0 = s.files[Math.min(st.diffSel, s.files.length - 1)];
+    const df = f0 ? { n: f0[0] + ' / ' + f0[1], branch: f0[2] === '—' ? '' : '⎇ ' + f0[2], lines: f0[4].map(t => ({ t, c: t[0] === '+' ? 'oklch(0.82 0.1 150)' : t[0] === '-' ? 'oklch(0.76 0.13 25)' : '#8d8c87', bg: t[0] === '+' ? 'oklch(0.22 0.04 150)' : t[0] === '-' ? 'oklch(0.22 0.04 25)' : 'transparent' })) } : { n: '', branch: '', lines: [] };
+    const ss = { name: s.id, color: C[s.status], rid: s.rid, chips: s.chips.map(c => ({ k: c[0], v: c[1], bd: c[2] ? 'oklch(0.4 0.06 250)' : '#2c2d32', fg: c[2] ? 'oklch(0.8 0.09 250)' : '#c9c8c3' })), msgs, agents, agentSummary: s.agents.length + ' agents · ' + solSet.size + ' solutions · ' + brSet.size + ' branches', term: s.term.map(t => ({ t, c: this.lineColor(t.replace(/^\[[\w-]+\] /, '')) })), files, arts: s.arts.map(a => ({ t: a[0], n: a[1], m: a[2] })) };
+    const ssCard = this.card(s);
+    const ans = st.ans[s.id] || [];
+    const ssAnswered = { show: s.qs.length > 0 && !!st.sent[s.id], lines: s.qs.map((q, i) => q[0].split(' · ')[0] + ': ' + (q[2][ans[i]] || '—')) };
+    const TABS = [['chat', 'Chat'], ['timeline', 'Timeline'], ['diff', 'Diff · ' + s.files.length], ['arts', 'Artifacts · ' + s.arts.length]];
+    const tabs = TABS.map(([k, label]) => ({ label, bd: st.tab === k ? '#e8e7e3' : 'transparent', fg: st.tab === k ? '#f0efeb' : '#8d8c87', pick: () => this.setState({ tab: k }) }));
+    const K = { plan: ['oklch(0.26 0.02 250)', 'oklch(0.38 0.04 250)', '#c9c8c3', '#8d8c87'], impl: ['oklch(0.3 0.06 250)', 'oklch(0.45 0.09 250)', '#e8e7e3', C.run], loop: ['oklch(0.3 0.06 300)', 'oklch(0.45 0.09 300)', '#e8e7e3', 'oklch(0.72 0.12 300)'], ask: ['oklch(0.32 0.07 70)', 'oklch(0.5 0.1 70)', '#f5f4f0', C.need], ok: ['oklch(0.3 0.06 150)', 'oklch(0.45 0.09 150)', '#e8e7e3', C.done] };
+    const dur = s.dur || 30, tm = st.play / 1000 * dur;
+    const hm = (m) => { const t = 600 + (s.t0 || 0) + Math.round(m); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+    const tl = { range: hm(0) + ' – ' + hm(dur), now: hm(tm), head: (st.play / 10) + '%', ticks: [0, 1, 2, 3, 4, 5, 6].map(i => hm(dur * i / 6)), lanes: (s.tl || []).map(l => ({ name: l[0], sol: l[1], ev: l[2].map(e => ({ left: (e[0] / dur * 100) + '%', width: ((e[1] - e[0]) / dur * 100) + '%', bg: K[e[2]][0], bd: K[e[2]][1], fg: K[e[2]][2], label: e[3], op: e[0] <= tm ? 1 : 0.35 })) })), log: (s.tl || []).flatMap(l => l[2].map(e => ({ s: e[0], who: l[0], label: e[3], k: e[2] }))).filter(e => e.s <= tm).sort((a, b) => a.s - b.s).slice(-8).map(e => ({ t: hm(e.s), c: K[e.k][3], who: e.who, label: e.label })) };
+
+    const quickDef = ['Accept recommended', 'Match Figma exactly', 'Stop and ask designer', 'Commit when green'];
+    const quick = quickDef.map(label => ({ label, pick: () => this.setState({ draft: label === 'Accept recommended' ? 'Accept recommended: feature-building · single-solution · UI-first · sequential' : label === 'Match Figma exactly' ? 'Match the Figma frame exactly; don\'t add variants.' : label === 'Stop and ask designer' ? 'Stop and park this until the designer confirms.' : 'Commit once all checks are green. Stage only this feature\'s files.' }) }));
+    const sendDraft = () => { const t = (this.state.draft || '').trim(); if (!t) return; const cur = this.state.extraMsgs[s.id] || []; this.setState({ draft: '', extraMsgs: { ...this.state.extraMsgs, [s.id]: [...cur, [1, t], [0, 'Got it. Passing this to the running agents.', ['● queued for next turn']]] } }); };
+
+    const b = (bb, who, sk, wt) => ({ b: bb, who, color: C[sk], wt: wt || '', wtPath: wt ? '../' + wt : 'in place' });
+    const SG = [
+      ['microfrontends/', '', [
+        { id: 'acme-app-front', type: 'Web', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', 'acme-app-front-wt-free-talk-feature'), b('feature/button-variants', 'button-rollout', 'need', 'acme-app-front-wt-button-rollout'), b('qa/free-talk-e2e', 'qa-free-talk', 'run', 'acme-app-front-wt-qa-free-talk')], phase: 'mixed', changes: '+508' },
+        { id: 'workspace-front', type: 'Web', s: 'run', branches: [b('feature/notifications-panel', 'notifications-integration', 'done', 'workspace-front-wt-notifications-integration')], phase: 'integration', changes: '+131' },
+        { id: 'auth-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'integration', changes: '—' },
+        { id: 'learning-material-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'UI-first', changes: '—' }]],
+      ['mobile/', '', [{ id: 'mobile', type: 'Mobile', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', 'mobile-wt-free-talk-feature'), st.conflictFixed ? b('feature/button-variants', 'button-rollout', 'need', 'mobile-wt-button-rollout') : b('feature/button-variants', 'button-rollout', 'need'), b('feature/push-prefs-bff', 'notifications-integration', 'run', 'mobile-wt-notifications-integration')], phase: 'mixed', changes: '+312', flag: st.conflictFixed ? '' : '⚠ shared working tree', fc: C.need }]],
+      ['nugets/', '', [{ id: 'components-library-nuget', type: 'NuGet', s: 'run', branches: [b('feature/acm-button-sizes', 'button-rollout', 'done', 'components-library-nuget-wt-button-rollout')], phase: '—', changes: '+64' }, { id: 'typography-nuget', type: 'NuGet', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: '—', changes: '—' }]],
+      ['microservices/', '', [{ id: 'notifications-microservice', type: 'Backend', s: 'done', branches: [b('feature/push-prefs', 'notifications-integration', 'done', 'notifications-microservice-wt-notifications-integration')], phase: 'integration', changes: '+41', flag: 'contract source', fc: '#76756f' }, { id: 'auth-microservice', type: 'Backend', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'integration', changes: '—' }]],
+      ['functions/', '', [{ id: 'calendar-func', type: 'Backend', s: 'run', branches: [b('fix/timezone-dst', 'calendar-func-fix', 'run', 'calendar-func-wt-calendar-func-fix')], phase: 'integration', changes: '+23' }]],
+      ['read-only', 'deprecated/ · infrastructure/ · never edited', [{ id: 'infrastructure', type: 'Read-only', s: 'idle', ro: true, branches: [b('main', 'read by notifications-integration', 'run')], phase: '—', changes: 'locked' }, { id: 'old-chat-front', type: 'Read-only', s: 'idle', ro: true, branches: [b('main', 'read by notifications-integration', 'run')], phase: '—', changes: 'locked' }]],
+    ];
+    const solFilters = ['All', 'Web', 'Mobile', 'NuGet', 'Backend', 'Read-only'].map(label => ({ label, bg: label === st.solF ? '#e8e7e3' : '#1f2024', fg: label === st.solF ? '#111214' : '#c9c8c3', pick: () => this.setState({ solF: label }) }));
+    const solGroups = SG.map(g => ({ folder: g[0], note: g[1], rows: g[2].filter(r => st.solF === 'All' || r.type === st.solF).map(r => ({ ...r, name: r.id, color: C[r.s], flag: r.flag || '', flagColor: r.fc || '#76756f', bg: r.id === st.solSel ? '#1f2024' : 'transparent', op: r.ro ? 0.6 : 1, pick: () => this.setState({ solSel: r.id }) })) })).filter(g => g.rows.length);
+    const allSol = SG.flatMap(g => g[2].map(r => ({ ...r, folder: g[0] })));
+    const sr = allSol.find(r => r.id === st.solSel) || allSol[0];
+    const LED = { mobile: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'seam TODO · FreeTalkViewModel.cs:41' }, { i: 'PushPreferencesClient', p: 'integration', c: C.run, seam: 'Tier A pending on BFF route' }], 'acme-app-front': [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'mock-DI · fixtures/free-talk.json' }, { i: 'ProfileConnector', p: 'integration', c: C.run, seam: 'Tier B green 09-24' }] };
+    const ARTS = { mobile: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'FOLLOWUP', n: 'mobile-followups/from-acme-app-front.md', m: '2 pending' }, { t: 'QA', n: 'coverage-matrix.md', m: '12/18' }], 'acme-app-front': [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'QA', n: 'coverage-matrix.md', m: '14/18' }] };
+    const dirtyIds = ['mobile', 'acme-app-front', 'components-library-nuget'];
+    const isDirty = dirtyIds.includes(sr.id) && !st.reindexSent;
+    const sd = { name: sr.id, path: 'D:\\acme\\' + (sr.ro ? (sr.id === 'infrastructure' ? '' : 'deprecated\\microfrontends\\') : (sr.folder === 'mobile/' ? '' : sr.folder.replace('/', '\\'))) + (sr.id === 'mobile' ? 'mobile' : sr.id), warn: sr.id === 'mobile' && !st.conflictFixed ? 'free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: \'worktree\' for parallel writers in the same repo.' : '', branches: sr.branches, ledger: LED[sr.id] || [{ i: '—', p: sr.phase, c: '#8d8c87', seam: 'no phase-ledger.md changes today' }], arts: ARTS[sr.id] || [{ t: 'INFO', n: 'No artifacts today', m: '' }], idx: isDirty ? 'codebase-memory · edited by agents since last index' : 'codebase-memory · indexed · fresh', idxColor: isDirty ? C.need : C.done };
+
+    const rs = (p) => p.split('').map(ch => ({ g: C.done, r: C.fail, a: C.need, n: C.none, b: C.run })[ch]);
+    const SCH = [
+      ['nightly-build-verify', 'Build web + mobile on main, report failures', '02:00 daily', 'gggggggggggggr', 'Failed 38m ago · Android XamlC', 'in 23h 22m', 'fail'],
+      ['codebase-memory-reindex', 'Reindex projects listed in .codebase-memory-dirty', 'every 4h', 'gggggggggggggg', 'OK · 5 projects reindexed', 'in 1h 12m', 'done'],
+      ['standup-digest', 'Summary of yesterday\'s sessions, PRs, open questions', '08:30 weekdays', 'ggggggggggggga', 'Asked: include QA coverage?', 'tomorrow 08:30', 'need'],
+      ['dependency-audit', 'dotnet list package --vulnerable across solutions', 'Mon 07:00', 'nnnnggggggnggg', 'OK · 0 vulnerable', 'Mon 07:00', 'done'],
+    ];
+    const scheds = SCH.map(r => { const p = !!st.paused[r[0]], ran = !!st.ran[r[0]]; return { name: r[0], desc: r[1], cron: r[2], runs: ran ? [...rs(r[3]).slice(1), C.run] : rs(r[3]), last: ran ? 'Running now…' : r[4], next: p ? 'paused' : r[5], color: p ? C.idle : ran ? C.run : C[r[6]], pauseLabel: p ? 'Resume' : 'Pause', runLabel: ran ? 'Running' : 'Run now', runNow: () => this.setState({ ran: { ...this.state.ran, [r[0]]: true } }), toggle: () => this.setState({ paused: { ...this.state.paused, [r[0]]: !p } }) }; });
+    const loops = [
+      { name: 'prod-monitoring', kind: '/loop 1h · Plan-Act-Verify', color: C.done, bd: '#26272c', iters: rs('ggggggggggggggggg'), facts: [{ k: 'Iteration', v: '17' }, { k: 'Next sweep', v: '15:00' }, { k: 'Expires', v: 'in 6 days' }], note: 'Session-only schedule. It stops when the session closes or after 7 days. Last sweep: 1 fix (PR #412), 2 escalations.', open: () => this.openSession('prod-monitoring') },
+      { name: 'button-rollout', kind: 'Ralph · loop-until-dry', color: byId['button-rollout'].open ? C.need : C.run, bd: byId['button-rollout'].open ? 'oklch(0.45 0.08 70)' : '#26272c', iters: rs('gggggggrrnnn'), facts: [{ k: 'Progress', v: '7 / 12 items' }, { k: 'Breaker', v: byId['button-rollout'].open ? 'tripped (2)' : 'reset' }, { k: 'Isolation', v: st.conflictFixed ? 'worktree ✓' : 'mobile/ shared ⚠' }], note: byId['button-rollout'].open ? 'Paused: items 8 and 9 have no Figma loading state. Answer in the Inbox to continue.' : 'Resumed with your answer.', open: () => this.openSession('button-rollout') },
+    ];
+
+    const ART = [['PR', 'Revert keepalive… → Free talk contract', 'root', 'free-talk-feature', 'locked', '1m'], ['CONTRACT', 'contracts/free-talk.md', 'root', 'free-talk-feature', 'locked', '1m'], ['DIFF', 'Pages/FreeTalk · 6 files', 'acme-app-front ⎇ feature/free-talk-360', 'free-talk-feature', '+284 −12', '4m'], ['DIFF', 'Views/FreeTalkView · 5 files', 'mobile ⎇ feature/free-talk-360', 'free-talk-feature', '+231 −4', '5m'], ['FOLLOWUP', 'mobile-followups/from-acme-app-front.md', 'mobile', 'free-talk-feature', '1 new', '5m'], ['CONTRACT', 'contracts/push-preferences.md', 'root', 'notifications-integration', 'locked', '22m'], ['PR', 'notifications-microservice #88 · push preferences', 'notifications-microservice ⎇ feature/push-prefs', 'notifications-integration', 'open', '20m'], ['QA', 'coverage-matrix.md · Free talk', 'root', 'qa-free-talk', '14/18', '9m'], ['BRANCH', 'feature/acm-button-sizes', 'components-library-nuget', 'button-rollout', '7 commits', '12m'], ['DOC', 'rollout-checklist.md', 'root', 'button-rollout', '7/12', '12m'], ['DIFF', 'Services/ReminderScheduler.cs', 'calendar-func ⎇ fix/timezone-dst', 'calendar-func-fix', '+14 −6', '20m'], ['PR', 'notifications-microservice #412 · null-ref fix', 'notifications-microservice ⎇ fix/notif-nullref', 'prod-monitoring', 'open', '41m'], ['DOC', 'monitoring-notes.md', 'root', 'prod-monitoring', '2 escalations', '41m'], ['TICKET', 'Reply draft: Free talk empty-state copy', 'root', 'qa-free-talk', 'draft', '9m']].slice(1);
+    const AMAP = { 'Diffs': ['DIFF'], 'PRs / branches': ['PR', 'BRANCH'], 'Docs & contracts': ['DOC', 'CONTRACT', 'QA', 'FOLLOWUP'], 'Ticket replies': ['TICKET'] };
+    const artFilters = ['All', 'Diffs', 'PRs / branches', 'Docs & contracts', 'Ticket replies'].map(label => ({ label, bg: label === st.artF ? '#e8e7e3' : '#1f2024', fg: label === st.artF ? '#111214' : '#c9c8c3', pick: () => this.setState({ artF: label }) }));
+    const q = st.artQ.toLowerCase();
+    const arts = ART.filter(a => (st.artF === 'All' || AMAP[st.artF].includes(a[0])) && (!q || a.join(' ').toLowerCase().includes(q))).map(a => ({ t: a[0], n: a[1], sol: a[2], sess: a[3], m: a[4], age: a[5], open: () => { if (byId[a[3]]) this.openSession(a[3]); } }));
+
+    const HIST = [['09-26 16:40', 'speaking-page-360', 'orch · feature · UI-first', 'Speaking page at 360 on web and mobile. 2 questions answered, reconciled clean.', 'acme-app-front ⎇ feature/speaking-page · mobile ⎇ feature/speaking-page', 'PR #231 merged', 'done'], ['09-26 11:05', 'qa-speaking-page', 'orch · QA', 'E2E + Appium coverage for Speaking page. 16/16 requirements covered.', 'acme-app-front ⎇ qa/speaking-e2e · mobile ⎇ qa/speaking-appium', 'PR #229 merged', 'done'], ['09-25 15:20', 'auth-token-refresh', 'orch · integration', 'Refresh-token rotation, Tier B green before phase exit.', 'auth-microservice ⎇ feature/refresh-rotation · auth-front ⎇ feature/refresh', 'PR #77 merged', 'done'], ['09-25 09:12', 'hubspot-func-retry', 'single · hubspot-func', 'Retry with backoff on 429s from HubSpot.', 'hubspot-func ⎇ fix/retry-429', 'PR #19 open', 'run'], ['09-24 17:30', 'typography-nuget-1.4', 'single · typography-nuget', 'New Display XL token, inline version bump to 1.4.0.', 'typography-nuget ⎇ release/1.4', 'published', 'done'], ['09-24 10:02', 'wrap-up-nuget-skeleton', 'loop-until-dry', 'Loading skeletons for 6 wrap-up components.', 'wrap-up-nuget ⎇ feature/skeletons', 'stopped by you at 4/6', 'fail'], ['09-23 14:44', 'learning-material-filters', 'orch · feature · UI-first', 'Filter bar at 1366 and 1920, web only (no mobile per breakpoint partition).', 'learning-material-front ⎇ feature/filters', 'PR #58 merged', 'done'], ['09-23 08:00', 'prod-monitoring', '/loop 1h', '7-day shift ended automatically. 11 fixes, 5 escalations.', 'various', 'expired', 'idle']];
+    const hq = st.histQ.toLowerCase();
+    const hist = HIST.filter(h => !hq || h.join(' ').toLowerCase().includes(hq)).map(h => ({ date: h[0], name: h[1], mode: h[2], summary: h[3], sols: h[4], outcome: h[5], oc: C[h[6]] }));
+
+    const ts = st.tstate[st.toolId] || 'idle', turl = st.urls[st.toolId] || '', T = TOOLS.find(t => t[0] === st.toolId);
+    const tool = { name: T[1], desc: T[2], url: turl, urlText: turl || 'no URL set', hasUrl: !!turl && ts !== 'down', dot: tdot(st.toolId), state: { up: 'connected', down: 'offline', checking: 'checking…', idle: '', unset: 'not configured' }[ts], key: st.toolId + st.frameN, isCm: st.toolId === 'cm', overlay: !turl || ts === 'down', ovTitle: !turl ? T[1] + ' isn\'t configured' : host(turl) + ' is not reachable', ovText: !turl ? 'Add the URL where ' + T[1] + ' runs on this PC. It is saved in this browser.' : 'Start ' + T[1] + ' on this PC and retry. If it runs but refuses to load in a frame (X-Frame-Options / frame-ancestors), use New tab.', ovLabel: !turl ? 'Set URL in Settings' : 'Retry', ovAction: () => { if (!turl) this.go('settings', { setSec: 'tools' }); else { this.setState({ frameN: this.state.frameN + 1 }); this.probe(this.state.toolId); } } };
+    const toolRows = TOOLS.map(([id, name, desc]) => ({ name, desc, url: st.urls[id] || '', dot: tdot(id), state: { up: 'reachable', down: 'not reachable', checking: 'checking…', idle: 'not tested', unset: 'not set' }[st.tstate[id] || 'idle'], onUrl: (e) => this.setUrl(id, e.target.value), test: () => this.probe(id), open: () => { this.go('tool', { toolId: id }); this.probe(id); } }));
+
+    const ns = st.ns, setNs = (p) => this.setState({ ns: { ...this.state.ns, ...p } });
+    const pills = (opts, key) => opts.map(([v, label]) => { const on = ns[key] === v; return { label, border: on ? '#8d8c87' : '#2c2d32', bg: on ? '#26272c' : 'transparent', fg: on ? '#f0efeb' : '#a9a8a3', pick: () => setNs({ [key]: v }) }; });
+    const G = [['microfrontends/', ['acme-app-front', 'workspace-front', 'auth-front', 'learning-material-front']], ['mobile/', ['mobile']], ['nugets/', ['components-library-nuget', 'typography-nuget', 'wrap-up-nuget', 'auth-nuget']], ['microservices/', ['auth-microservice', 'notifications-microservice']], ['functions/', ['calendar-func', 'hubspot-func']], ['other/', ['it-dashboard']], ['read-only', ['deprecated/*', 'infrastructure']]];
+    const nsGroups = G.map(([folder, items]) => ({ folder, items: items.map(n => { const ro = folder === 'read-only', on = ns.sols.includes(n); return { label: (on ? '✓ ' : '') + n, border: on ? 'oklch(0.55 0.09 250)' : '#2c2d32', bg: on ? 'oklch(0.25 0.04 250)' : 'transparent', fg: on ? '#e8e7e3' : '#a9a8a3', op: ro ? 0.4 : 1, cursor: ro ? 'not-allowed' : 'pointer', pick: () => { if (ro) return; setNs({ sols: on ? ns.sols.filter(x => x !== n) : [...ns.sols, n] }); } }; }) }));
+    const hasFront = ns.sols.some(x => x.endsWith('-front')), sname = (ns.name || 'session').trim();
+    const nsSummary = [{ t: '# claude code · background · Max', c: '#6d6c67' }, { t: 'cwd       D:\\acme', c: '#bfbeb8' }, { t: 'work      ' + (ns.work === 'qa' ? 'test-authoring (QA)' : 'feature-building'), c: '#bfbeb8' }, { t: 'mode      ' + (ns.mode === 'orch' ? 'workspace orchestrator' : 'single-solution'), c: '#bfbeb8' }, { t: 'phase     ' + (ns.phase === 'ui' ? 'UI-first' : 'integration'), c: '#bfbeb8' }, ...(ns.work === 'qa' ? [{ t: 'stack     ' + ns.stack, c: '#bfbeb8' }] : (ns.mode === 'single' && hasFront ? [{ t: 'mobile    ' + { seq: 'sequential', twin: 'parallel-twin', none: 'no counterpart' }[ns.coord], c: '#bfbeb8' }] : [])), { t: 'ultracode ' + (ns.ultra ? 'on' : 'off'), c: '#bfbeb8' }, { t: ' ', c: '#bfbeb8' }, { t: ns.wt ? '# worktrees' : '# no worktrees · edits in place', c: '#6d6c67' }, ...(ns.wt ? ns.sols.map(x => ({ t: '../' + x + '-wt-' + sname, c: 'oklch(0.78 0.1 250)' })) : []), ...(ns.sols.length === 0 ? [{ t: '⚠ pick at least one solution', c: C.need }] : []), { t: ' ', c: '#bfbeb8' }, { t: '✓ answers pre-filled → agent confirms, no re-ask', c: 'oklch(0.78 0.12 150)' }];
+    const canLaunch = ns.sols.length > 0 && sname && !byId[sname];
+    const nsLaunch = () => { if (!canLaunch) return; const mode = (ns.mode === 'orch' ? 'orch' : 'single') + ' · ' + (ns.work === 'qa' ? 'QA' : 'feature') + ' · ' + (ns.phase === 'ui' ? 'UI-first' : 'integration'); const ag = ns.mode === 'orch' ? [['orchestrator', 'recon + contract lock', 'workspace root', '', 'running', 'run']] : ns.sols.map(x => [x, 'working', x, 'session/' + sname, 'running', 'run']); const ns2 = { id: sname, status: 'run', time: 'now', mode, rid: Math.random().toString(16).slice(2, 10), t0: 50, dur: 10, chips: [['work', ns.work === 'qa' ? 'test-authoring (QA)' : 'feature-building'], ['mode', ns.mode === 'orch' ? 'orchestrator' : 'single-solution'], ['phase', ns.phase === 'ui' ? 'UI-first' : 'integration'], ['scope', ns.sols.join(' + ')], ...(ns.ultra ? [['ultracode', 'on', 1]] : [])], agents: ag, msgs: [[1, ns.task || '(no task text)'], [0, 'Session-start answers confirmed from the form. Starting read-only recon before any edits.', ['✓ router AGENTS.md loaded', '● recon · codebase-memory']]], qs: [], term: ['$ claude (background) · cwd D:\\acme', ...(ns.wt ? ns.sols.map(x => '✓ git worktree add ../' + x + '-wt-' + sname) : []), '● recon…'], files: [], arts: [], tl: [['orchestrator', 'workspace root', [[0, 1, 'plan', 'start'], [1, 10, 'plan', 'recon']]]] }; this.setState({ extra: [...this.state.extra, ns2], modal: null, view: 'session', sid: sname, tab: 'chat' }); };
+
+    const WZ = [['Claude Code CLI + login', 'Claude Code on this PC', 'Switchboard starts and drives Claude Code in the background, signed in with your Max plan. It also reads PR status through the GitHub CLI.'], ['Workspace root', 'Workspace root', 'The folder that holds your router AGENTS.md. Every session starts here.'], ['Scan solutions', 'Solutions found', 'Scanned the folders your router defines. The folder rules are applied as written.'], ['Notifications', 'Notifications', 'When an agent asks something or a scheduled run fails, you get a sound, a toast and an OS notification, even when the tab is in the background.'], ['Usage warnings', 'Usage-limit warnings', 'You get a warning when your Max 5-hour window reaches the threshold. Nothing is paused automatically.']];
+    const wzSteps = WZ.map((w, i) => ({ label: w[0], mark: i < st.wz ? '✓' : String(i + 1), bg: i === st.wz ? '#1f2024' : 'transparent', fg: i === st.wz ? '#f0efeb' : i < st.wz ? '#c9c8c3' : '#76756f', dotBg: i < st.wz ? 'oklch(0.3 0.06 150)' : i === st.wz ? '#e8e7e3' : 'transparent', dotFg: i < st.wz ? 'oklch(0.85 0.1 150)' : i === st.wz ? '#111214' : '#76756f', dotBd: i <= st.wz ? 'transparent' : '#33343a', pick: () => this.setState({ wz: i }) }));
+    const wz = { pos: 'Step ' + (st.wz + 1) + ' of 5', title: WZ[st.wz][1], text: WZ[st.wz][2], s0: st.wz === 0, s1: st.wz === 1, s2: st.wz === 2, s3: st.wz === 3, s4: st.wz === 4, next: st.wz === 4 ? 'Finish' : 'Continue' };
+    const ro = 'oklch(0.72 0.1 70)', ed = '#8d8c87';
+    const scan = [['microfrontends/', 4, 'acme-app-front, workspace-front, auth-front, …', 'editable', ed], ['mobile/', 1, 'MAUI app + Mobile Gateway BFF', 'editable', ed], ['nugets/', 4, 'components-library-nuget, typography-nuget, …', 'editable', ed], ['microservices/', 2, 'auth-microservice, notifications-microservice', 'editable', ed], ['functions/', 2, 'calendar-func, hubspot-func', 'editable', ed], ['other/', 1, 'it-dashboard', 'on request only', ro], ['deprecated/', 3, 'old-chat-front, legacy-auth-microservice, …', 'read-only', ro], ['infrastructure/', 1, 'platform Terraform', 'read-only', ro]].map(r => ({ f: r[0], n: r[1], ex: r[2], rule: r[3], rc: r[4] }));
+    const np = st.notif ?? (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+    const notif = { state: { granted: '✓ allowed', denied: '✕ blocked in browser settings', default: 'not asked yet', unsupported: 'not supported here' }[np] || np, color: np === 'granted' ? C.done : np === 'denied' ? C.fail : '#8d8c87' };
+
+    const SN = [['claude', 'Claude Code'], ['workspace', 'Workspace & solutions'], ['sessions', 'Sessions & worktrees'], ['notify', 'Notifications & usage'], ['schedules', 'Schedules'], ['tools', 'Embedded tools'], ['github', 'GitHub']];
+    const sec = Object.fromEntries(SN.map(([k]) => [k, st.setSec === k]));
+    const r3 = (k, d, v) => ({ k, d, v });
+
+    const pq = st.palQ.toLowerCase();
+    const PAL = [...[['inbox', 'Inbox'], ['solutions', 'Solutions'], ['schedules', 'Schedules & loops'], ['artifacts', 'Artifacts'], ['history', 'History'], ['settings', 'Settings']].map(([k, l]) => ({ kind: 'view', label: l, hint: '', act: () => this.go(k) })), { kind: 'action', label: 'New session', hint: '', act: () => this.setState({ modal: 'new' }) }, ...TOOLS.map(([id, n]) => ({ kind: 'tool', label: n, hint: host(st.urls[id]), act: () => { this.go('tool', { toolId: id }); this.probe(id); } })), ...sess.map(x => ({ kind: 'session', label: x.id, hint: x.mode, act: () => this.openSession(x.id) })), ...allSol.map(x => ({ kind: 'solution', label: x.id, hint: x.folder, act: () => this.go('solutions', { solSel: x.id }) }))];
+    const palF = PAL.filter(p => !pq || (p.label + ' ' + p.kind + ' ' + p.hint).toLowerCase().includes(pq)).slice(0, 10);
+    const pi = Math.min(st.palIdx, Math.max(0, palF.length - 1));
+
+    const tdata = st.toast;
+    return {
+      nav, toolsNav, sideSessions, sessCount: String(sess.length), procCount: (sess.length + 3) + ' bg processes',
+      setNavBg: st.view === 'settings' ? '#212227' : 'transparent', setNavFg: st.view === 'settings' ? '#f0efeb' : '#c9c8c3',
+      goSettings: () => this.go('settings'), goToolsSettings: () => this.go('settings', { setSec: 'tools' }), openNew: () => this.setState({ modal: 'new' }), openPalette: () => this.openPal(), openWizard: () => this.setState({ modal: 'wizard', wz: 0 }), openCm: () => { this.go('tool', { toolId: 'cm' }); this.probe('cm'); },
+      vInbox: st.view === 'inbox', vSession: st.view === 'session', vSolutions: st.view === 'solutions', vSchedules: st.view === 'schedules', vArtifacts: st.view === 'artifacts', vHistory: st.view === 'history', vTool: st.view === 'tool', vSettings: st.view === 'settings',
+      inbox, inboxCount: String(needCount), inboxEmpty: needCount === 0, ib, ibCard,
+      ss, ssCard, ssAnswered, tabs, tChat: st.tab === 'chat', tTimeline: st.tab === 'timeline', tDiff: st.tab === 'diff', tArts: st.tab === 'arts', noFiles: s.files.length === 0, df, tl,
+      pauseLabel: st.sessPaused[s.id] ? 'Resume' : 'Pause', togglePause: () => this.setState({ sessPaused: { ...this.state.sessPaused, [s.id]: !this.state.sessPaused[s.id] } }),
+      attachLabel: st.detached[s.id] ? '⇄ Attach here' : '⇄ Continue in terminal', toggleAttach: () => this.setState({ detached: { ...this.state.detached, [s.id]: !this.state.detached[s.id] } }),
+      handoff: st.detached[s.id] ? { state: 'in terminal', color: C.need, text: 'Detached. Continue in any terminal with the command below. Switchboard keeps showing notifications and syncs back when you attach.' } : { state: 'attached', color: C.done, text: 'Running in the background and attached here. Detach to continue in a terminal. The conversation stays in sync both ways.' },
+      copyLabel: st.copied ? 'copied' : 'copy', copyResume: () => { try { navigator.clipboard.writeText('claude --resume ' + s.rid); } catch (e) {} this.setState({ copied: true }); setTimeout(() => this.setState({ copied: false }), 1500); },
+      quick, draft: st.draft, draftPh: 'Message ' + s.id + '…', onDraft: (e) => this.setState({ draft: e.target.value }), onDraftKey: (e) => { if (e.key === 'Enter') sendDraft(); }, sendDraft,
+      playLabel: st.playing ? '❚❚' : '▶', playVal: st.play, onScrub: (e) => this.setState({ play: Number(e.target.value) }),
+      togglePlay: () => { if (this.state.playing) { clearInterval(this._timer); this.setState({ playing: false }); return; } if (this.state.play >= 1000) this.setState({ play: 0 }); this._timer = setInterval(() => { const p = this.state.play + 8; if (p >= 1000) { clearInterval(this._timer); this.setState({ play: 1000, playing: false }); } else this.setState({ play: p }); }, 50); this.setState({ playing: true }); },
+      solFilters, solGroups, sd, fixConflict: () => this.setState({ conflictFixed: true }),
+      scheds, loops,
+      artFilters, arts, artQ: st.artQ, onArtQ: (e) => this.setState({ artQ: e.target.value }), artCount: arts.length + ' of ' + ART.length,
+      hist, histQ: st.histQ, onHistQ: (e) => this.setState({ histQ: e.target.value }), histEmpty: hist.length === 0,
+      tool, reloadTool: () => { this.setState({ frameN: this.state.frameN + 1 }); this.probe(this.state.toolId); }, toolRows,
+      dirty: st.reindexSent ? [] : dirtyIds.map((n, i) => ({ n, t: ['10:31', '10:22', '09:58'][i] })), reindexLabel: st.reindexSent ? '✓ Reindexed' : 'Reindex 3 now', reindex: () => this.setState({ reindexSent: true }),
+      setNav: SN.map(([k, label]) => ({ label, bg: k === st.setSec ? '#212227' : 'transparent', fg: k === st.setSec ? '#f0efeb' : '#a9a8a3', pick: () => this.setState({ setSec: k }) })), sec,
+      rowsClaude: [r3('CLI', 'C:\\Users\\dev\\.local\\bin\\claude.exe', 'detected'), r3('Account', 'Uses the CLI\'s own login. Switchboard stores no credentials.', 'Max · signed in'), r3('Background service', 'Starts and supervises Claude Code processes', '127.0.0.1:4870 · running'), r3('Bind address', 'The service never listens beyond this PC', 'localhost only'), r3('Start at login', 'Launch the service when you sign in (Windows / macOS)', 'on'), r3('Permissions', 'Follow Claude Code\'s .claude/settings.json. Only agent questions surface here.', 'managed by Claude Code')],
+      rowsSessions: [r3('Working folder', 'Sessions always start at the workspace root, so the router applies', 'workspace root'), r3('Worktree per session', 'One worktree per solution the session writes to', 'on'), r3('Worktree location', 'Next to the repo', '../{repo}-wt-{session}'), r3('Cleanup', 'Keep until the branch\'s PR is merged on GitHub', 'keep until merged'), r3('Ultracode by default', 'Pre-select workflows in the new-session form', 'off'), r3('Session-start questions', 'Asked in the new-session form and passed to the agent as confirmed answers', 'from AGENTS.md')],
+      rowsGithub: [r3('GitHub CLI login', 'Reused from gh auth. No token stored in Switchboard.', '✓ signed in'), r3('PR merge detection', 'Marks a worktree ready to remove once its PR is merged', 'every 10 min'), r3('Repositories', 'Matched from each solution\'s git remote', '16 repos')],
+      scan, notif, askNotif: () => { if (typeof Notification === 'undefined') return; Notification.requestPermission().then(p => { this.setState({ notif: p }); if (p === 'granted') this.notifyOS('Switchboard', 'Notifications are on.'); }); },
+      testToast: () => { this.setState({ toast: { sid: 'free-talk-feature', title: 'Test notification', sub: 'now', branch: 'this is how questions arrive', text: 'Sound, toast and OS notification all fire together.' } }); this.beep(); this.notifyOS('Switchboard', 'Test notification'); },
+      toast: tdata ? { show: true, ...tdata } : { show: false }, closeToast: () => this.setState({ toast: null }), toastJump: () => { const id = this.state.toast && this.state.toast.sid; this.setState({ toast: null }); if (id) this.openSession(id); },
+      mNew: st.modal === 'new', mWizard: st.modal === 'wizard', mPalette: st.modal === 'palette', closeModal: () => this.setState({ modal: null }), stop: (e) => e.stopPropagation(),
+      ns, onNsName: (e) => setNs({ name: e.target.value.replace(/\s+/g, '-').toLowerCase() }), onNsTask: (e) => setNs({ task: e.target.value }),
+      nsWork: pills([['feature', 'Feature-building'], ['qa', 'Test-authoring (QA)']], 'work'), nsMode: pills([['single', 'Single-solution'], ['orch', 'Workspace orchestrator']], 'mode'), nsPhase: pills([['ui', 'UI-first'], ['int', 'Integration']], 'phase'), nsCoord: pills([['seq', 'Sequential follow-up'], ['twin', 'Parallel-twin'], ['none', 'No mobile counterpart']], 'coord'), nsStack: pills([['web', 'Web · Playwright'], ['mobile', 'Mobile · Appium'], ['both', 'Both']], 'stack'),
+      nsGroups, nsSolHint: ns.sols.length + ' selected · read-only folders locked', nsShowCoord: ns.work === 'feature' && ns.mode === 'single' && hasFront, nsIsQa: ns.work === 'qa',
+      nsWt: { bg: ns.wt ? '#e8e7e3' : '#33343a', knob: ns.wt ? '16px' : '2px' }, nsUltra: { bg: ns.ultra ? '#e8e7e3' : '#33343a', knob: ns.ultra ? '16px' : '2px' }, nsToggleWt: () => setNs({ wt: !ns.wt }), nsToggleUltra: () => setNs({ ultra: !ns.ultra }), nsRecommended: () => setNs({ work: 'feature', mode: 'single', phase: 'ui', coord: 'seq' }),
+      nsSummary, nsLaunch, nsCanLaunchOp: canLaunch ? 1 : 0.45,
+      wzSteps, wz, wzChecks: [{ k: 'Claude Code CLI found', d: 'C:\\Users\\dev\\.local\\bin\\claude.exe' }, { k: 'Signed in · Max plan', d: 'subscription auth · no API key' }, { k: 'GitHub CLI signed in', d: 'gh auth status · used to detect merged PRs' }],
+      wzBack: () => this.setState({ wz: Math.max(0, st.wz - 1) }), wzNext: () => { if (st.wz === 4) { try { localStorage.setItem('switchboard.setupDone', '1'); } catch (e) {} this.setState({ modal: null }); } else this.setState({ wz: st.wz + 1 }); },
+      palRef: this.palRef, palQ: st.palQ, onPalQ: (e) => this.setState({ palQ: e.target.value, palIdx: 0 }),
+      onPalKey: (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); this.setState({ palIdx: Math.min(pi + 1, palF.length - 1) }); } else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState({ palIdx: Math.max(pi - 1, 0) }); } else if (e.key === 'Enter' && palF[pi]) palF[pi].act(); },
+      palItems: palF.map((p, i) => ({ kind: p.kind, label: p.label, hint: p.hint, bg: i === pi ? '#2a2b30' : 'transparent', pick: p.act })),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>html{background:#0b0c0d}body{margin:0;min-width:max-content;background:#0b0c0d;font-family:Geist,system-ui,sans-serif;color:#e8e7e3}a{color:oklch(0.75 0.11 250)}a:hover{color:oklch(0.85 0.09 250)}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.07);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#e8e7e3;color:#111;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:#e8e7e3}.dv-opts{display:flex;flex-wrap:nowrap;gap:48px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.1);color:#e8e7e3;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 system-ui,sans-serif;color:rgba(255,255,255,.55)}.dv-card{max-width:100%;border:1px solid rgba(255,255,255,.09);border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.5);overflow:hidden}.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 system-ui,sans-serif;color:rgba(255,255,255,.45)}</style></helmet>
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">New-session form, first-run setup, Settings</span></div>
+<div style="max-width:1100px;margin:0 0 28px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.6)">
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Answers before launch</div>The form asks your AGENTS.md start questions before a session begins: work type, mode, solutions, phase, and coordination. The session then starts with those answers already given, so the agent confirms them instead of asking again. Your task description comes first, as the router requires.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Your defaults</div>Sessions run from the workspace root. Worktrees are created automatically at ../&lt;repo&gt;-wt-&lt;session&gt; and kept until the PR is merged on GitHub, which is checked through your gh CLI login. Ultracode is a toggle.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Settings you asked for</div>Permissions follow Claude Code's own settings, and only questions reach Switchboard. You get a warning at 90% Max usage, and nothing is paused. Acme Tool's URL is set in Embedded tools.</div>
+</div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a"><div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>New session. Switch between feature and QA, pick solutions, toggle ultracode, and watch the launch summary update.</div>
+<div class="dv-card" style="width:1180px;height:860px;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:minmax(0,1fr);background:#141518">
+<div style="padding:24px 30px;display:flex;flex-direction:column;gap:20px;min-height:0;overflow:auto">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:20px;font-weight:600;letter-spacing:-.01em">New session</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">runs in background · Claude Code · Max</div><span onClick="{{ nsRecommended }}" style="margin-left:auto;font-size:12px;border:1px solid #2c2d32;border-radius:14px;padding:4px 12px;color:#c9c8c3;cursor:pointer">Accept recommended</span></div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">1 · Task definition</div>
+<div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:8px">
+<div style="border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font:400 13px Geist Mono,monospace;color:#e8e7e3;background:#111214">free-talk-640</div>
+<div style="border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font-size:13px;color:#d9d8d3;background:#111214;line-height:1.5">Free talk screen at 640, web and mobile. Figma frame in the AI handoff page, node 2231:902.</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">2 · Work type</div>
+<div style="display:flex;gap:6px"><sc-for list="{{ nsWork }}" as="o" hint-placeholder-count="2"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">3 · Mode</div>
+<div style="display:flex;gap:6px"><sc-for list="{{ nsMode }}" as="o" hint-placeholder-count="2"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">4 · Solutions in scope<span style="margin-left:auto;color:#6d6c67;text-transform:none;letter-spacing:0">{{ nsSolHint }}</span></div>
+<sc-for list="{{ nsGroups }}" as="g" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:start"><span style="font:400 11.5px Geist Mono,monospace;color:#76756f;padding-top:5px">{{ g.folder }}</span><div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ g.items }}" as="i"><span onClick="{{ i.pick }}" style="font:400 12px Geist Mono,monospace;border-radius:6px;padding:4px 10px;cursor:{{ i.cursor }};border:1px solid {{ i.border }};background:{{ i.bg }};color:{{ i.fg }};opacity:{{ i.op }}">{{ i.label }}</span></sc-for></div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">5 · Phase</div>
+<div style="display:flex;gap:6px"><sc-for list="{{ nsPhase }}" as="o" hint-placeholder-count="2"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+<sc-if value="{{ nsShowCoord }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:7px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">6 · Mobile coordination</div>
+<div style="display:flex;gap:6px"><sc-for list="{{ nsCoord }}" as="o" hint-placeholder-count="3"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div></div>
+</sc-if>
+<sc-if value="{{ nsIsQa }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">6 · QA contract</div>
+<div style="display:flex;gap:6px"><sc-for list="{{ nsStack }}" as="o" hint-placeholder-count="3"><span onClick="{{ o.pick }}" style="font-size:13px;border-radius:8px;padding:7px 14px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;font:400 12px Geist Mono,monospace"><div style="border:1px solid #2c2d32;border-radius:8px;padding:8px 12px;color:#76756f;background:#111214">Confluence page URL (required)</div><div style="border:1px solid #2c2d32;border-radius:8px;padding:8px 12px;color:#76756f;background:#111214">Figma frame URL per breakpoint (required)</div></div>
+</div>
+</sc-if>
+</div>
+<div style="border-left:1px solid #232428;background:#111214;display:flex;flex-direction:column;min-height:0">
+<div style="padding:20px 20px 10px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Launch</div>
+<div style="padding:0 20px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:13px;font-weight:500">Worktree per solution</div><div style="font-size:12px;color:#8d8c87">Kept until the PR is merged on GitHub</div></div><span onClick="{{ nsToggleWt }}" style="width:32px;height:18px;border-radius:9px;background:{{ nsWtBg }};position:relative;cursor:pointer;flex:none"><span style="position:absolute;top:2px;left:{{ nsWtKnob }};width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:13px;font-weight:500">Ultracode (workflows)</div><div style="font-size:12px;color:#8d8c87">Orchestrator dispatch via the Workflow tool</div></div><span onClick="{{ nsToggleUltra }}" style="width:32px;height:18px;border-radius:9px;background:{{ nsUltraBg }};position:relative;cursor:pointer;flex:none"><span style="position:absolute;top:2px;left:{{ nsUltraKnob }};width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+</div>
+<div style="padding:18px 20px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Summary</div>
+<div style="margin:0 16px;background:#0c0d0f;border:1px solid #1f2024;border-radius:8px;padding:12px 14px;font:400 11.5px/1.75 Geist Mono,monospace;color:#bfbeb8;flex:1;overflow:hidden">
+<sc-for list="{{ nsSummary }}" as="l" hint-placeholder-count="8"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.t }}</div></sc-for>
+</div>
+<div style="padding:16px;display:flex;gap:8px"><span style="border:1px solid #2c2d32;border-radius:8px;padding:9px 14px;font-size:13px;color:#c9c8c3">Cancel</span><span onClick="{{ nsLaunch }}" style="flex:1;text-align:center;background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:500;cursor:pointer">{{ nsLaunchLabel }}</span></div>
+</div>
+</div></div>
+
+<div class="dv-opt" id="4b"><div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>First-run setup, 5 steps. Click through the steps. "Allow notifications" asks your browser for real.</div>
+<div class="dv-card" style="width:980px;height:640px;display:grid;grid-template-columns:260px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#111214">
+<div style="border-right:1px solid #232428;padding:24px 18px;display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:22px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Set up Switchboard</div></div>
+<sc-for list="{{ wzSteps }}" as="w" hint-placeholder-count="5"><div onClick="{{ w.pick }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;background:{{ w.bg }};cursor:pointer"><span style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:500 11px Geist Mono,monospace;flex:none;background:{{ w.dotBg }};color:{{ w.dotFg }};border:1px solid {{ w.dotBd }}">{{ w.mark }}</span><span style="font-size:13px;color:{{ w.fg }}">{{ w.label }}</span></div></sc-for>
+<div style="margin-top:auto;font-size:11.5px;line-height:1.5;color:#6d6c67">Everything stays on this PC. Switchboard never stores your Claude login.</div>
+</div>
+<div style="padding:30px 36px;display:flex;flex-direction:column;gap:18px;min-height:0">
+<div style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ wzPos }}</div>
+<sc-if value="{{ wz0 }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Claude Code on this PC</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:520px">Switchboard starts and drives Claude Code in the background, signed in with your Max plan. It also reads PR status through the GitHub CLI.</div>
+<div style="display:flex;flex-direction:column;gap:6px;max-width:560px">
+<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid #26272c;border-radius:9px;background:#16171a"><span style="color:oklch(0.76 0.13 150)">✓</span><div style="flex:1"><div style="font-size:13px">Claude Code CLI found</div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">C:\Users\dev\.local\bin\claude.exe</div></div></div>
+<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid #26272c;border-radius:9px;background:#16171a"><span style="color:oklch(0.76 0.13 150)">✓</span><div style="flex:1"><div style="font-size:13px">Signed in · Max plan</div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">subscription auth · no API key</div></div><span style="font-size:12px;color:#c9c8c3;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px">Re-login</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid #26272c;border-radius:9px;background:#16171a"><span style="color:oklch(0.76 0.13 150)">✓</span><div style="flex:1"><div style="font-size:13px">GitHub CLI signed in</div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">gh auth status · used to detect merged PRs</div></div></div>
+</div>
+</sc-if>
+<sc-if value="{{ wz1 }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Workspace root</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:520px">The folder that holds your router AGENTS.md. Every session starts here.</div>
+<div style="display:flex;gap:8px;max-width:560px"><div style="flex:1;border:1px solid #2c2d32;border-radius:8px;padding:9px 12px;font:400 13px Geist Mono,monospace;background:#16171a">D:\acme</div><span style="border:1px solid #2c2d32;border-radius:8px;padding:9px 14px;font-size:13px;color:#c9c8c3">Browse…</span></div>
+<div style="display:flex;align-items:center;gap:8px;font:400 12px Geist Mono,monospace;color:oklch(0.76 0.13 150)">✓ AGENTS.md (Workspace Router) found · 640 lines</div>
+</sc-if>
+<sc-if value="{{ wz2 }}" hint-placeholder-val="{{ true }}">
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Solutions found</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:560px">Scanned the folders your router defines. The folder rules are applied as written: read-only folders can't be picked as work targets, and other/ only when you choose it explicitly.</div>
+<div style="display:flex;flex-direction:column;max-width:600px;border:1px solid #26272c;border-radius:9px;overflow:hidden">
+<sc-for list="{{ wzScan }}" as="r" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:150px 40px minmax(0,1fr) 110px;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid #1f2024;background:#16171a"><span style="font:400 12.5px Geist Mono,monospace;color:#e8e7e3">{{ r.f }}</span><span style="font:400 12px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.n }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.ex }}</span><span style="font:400 11px Geist Mono,monospace;color:{{ r.rc }};text-align:right">{{ r.rule }}</span></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ wz3 }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Notifications</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:520px">When an agent asks a question or a scheduled run fails, Switchboard plays a sound, shows a toast, and sends an OS notification, even when the tab is in the background.</div>
+<div style="display:flex;gap:8px;align-items:center"><span onClick="{{ askNotif }}" style="background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer">Allow notifications</span><span style="font:400 12px Geist Mono,monospace;color:{{ notifColor }}">{{ notifState }}</span></div>
+</sc-if>
+<sc-if value="{{ wz4 }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:22px;font-weight:600;letter-spacing:-.01em">Usage-limit warnings</div>
+<div style="font-size:13.5px;color:#a9a8a3;line-height:1.55;max-width:520px">Switchboard warns you when your Max 5-hour window reaches the threshold. It never pauses sessions for you.</div>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:480px"><div style="display:flex;font-size:13px">Warn at<span style="margin-left:auto;font-family:Geist Mono,monospace">90%</span></div><div style="height:6px;border-radius:3px;background:#26272c;position:relative"><div style="width:90%;height:100%;border-radius:3px;background:oklch(0.8 0.14 70)"></div></div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">near limit → just warn</div></div>
+</sc-if>
+<div style="margin-top:auto;display:flex;gap:8px"><span onClick="{{ wzBack }}" style="border:1px solid #2c2d32;border-radius:8px;padding:9px 16px;font-size:13px;color:#c9c8c3;cursor:pointer">Back</span><span onClick="{{ wzNext }}" style="margin-left:auto;background:#e8e7e3;color:#111214;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer">{{ wzNextLabel }}</span></div>
+</div>
+</div></div>
+
+<div class="dv-opt" id="4c"><div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>Settings. Click the sections. Embedded tools has the Acme Tool URL field with a working Test button.</div>
+<div class="dv-card" style="width:1180px;height:760px;display:grid;grid-template-columns:240px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#141518">
+<div style="border-right:1px solid #232428;background:#111214;padding:20px 12px;display:flex;flex-direction:column;gap:2px">
+<div style="font-size:16px;font-weight:600;padding:0 8px 14px">Settings</div>
+<sc-for list="{{ setNav }}" as="n" hint-placeholder-count="7"><div onClick="{{ n.pick }}" style="padding:8px 10px;border-radius:7px;font-size:13px;cursor:pointer;background:{{ n.bg }};color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+</div>
+<div style="padding:26px 34px;display:flex;flex-direction:column;gap:6px;min-height:0;overflow:auto">
+<sc-if value="{{ setClaude }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Claude Code</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">CLI</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">C:\Users\dev\.local\bin\claude.exe · detected</div></div><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Re-check</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Account</div><div style="font-size:12.5px;color:#8d8c87">Signed in with Max subscription. Switchboard uses the CLI's login and stores no credentials.</div></div><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Re-login in terminal</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Background service</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">127.0.0.1:4870 · localhost only · running</div></div><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Restart</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Start at login</div><div style="font-size:12.5px;color:#8d8c87">Launch the service when you sign in to Windows or macOS</div></div><span style="width:32px;height:18px;border-radius:9px;background:#e8e7e3;position:relative;flex:none"><span style="position:absolute;top:2px;left:16px;width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Permissions</div><div style="font-size:12.5px;color:#8d8c87">Follow Claude Code's own settings (.claude/settings.json). Only agent questions surface in Switchboard.</div></div><span style="font:400 12px Geist Mono,monospace;color:#8d8c87">managed by Claude Code</span></div>
+</sc-if>
+<sc-if value="{{ setWorkspace }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Workspace &amp; solutions</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Workspace root</div><div style="font:400 12px Geist Mono,monospace;color:#76756f">D:\acme · AGENTS.md router</div></div><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Change</span><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3">Rescan</span></div>
+<div style="display:flex;flex-direction:column;margin-top:10px;border:1px solid #26272c;border-radius:9px;overflow:hidden">
+<sc-for list="{{ wzScan }}" as="r" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:170px 40px minmax(0,1fr) 120px;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid #1f2024;background:#16171a"><span style="font:400 12.5px Geist Mono,monospace">{{ r.f }}</span><span style="font:400 12px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.n }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.ex }}</span><span style="font:400 11px Geist Mono,monospace;color:{{ r.rc }};text-align:right">{{ r.rule }}</span></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ setSessions }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Sessions &amp; worktrees</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Working folder</div><div style="font-size:12.5px;color:#8d8c87">Sessions always start at the workspace root, so the router applies</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">workspace root</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Worktree per session</div><div style="font-size:12.5px;color:#8d8c87">One worktree per solution the session writes to</div></div><span style="width:32px;height:18px;border-radius:9px;background:#e8e7e3;position:relative;flex:none"><span style="position:absolute;top:2px;left:16px;width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Worktree location</div><div style="font-size:12.5px;color:#8d8c87">Next to the repo</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;background:#111214">../{repo}-wt-{session}</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Cleanup</div><div style="font-size:12.5px;color:#8d8c87">Keep until the branch's PR is merged on GitHub, checked through gh CLI</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">keep until merged</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Ultracode by default</div><div style="font-size:12.5px;color:#8d8c87">Pre-select workflows in the new-session form</div></div><span style="width:32px;height:18px;border-radius:9px;background:#33343a;position:relative;flex:none"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#8d8c87"></span></span></div>
+</sc-if>
+<sc-if value="{{ setNotify }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Notifications &amp; usage</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">In-app toast + sound</div><div style="font-size:12.5px;color:#8d8c87">Questions, approvals, failed scheduled runs</div></div><span style="width:32px;height:18px;border-radius:9px;background:#e8e7e3;position:relative;flex:none"><span style="position:absolute;top:2px;left:16px;width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">OS notifications</div><div style="font-size:12.5px;color:#8d8c87">Windows / macOS notification center</div></div><span style="font:400 12px Geist Mono,monospace;color:{{ notifColor }}">{{ notifState }}</span><span onClick="{{ askNotif }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;cursor:pointer">Allow</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Warn at Max usage</div><div style="font-size:12.5px;color:#8d8c87">5-hour window and weekly limit</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">90%</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">Near the limit</div><div style="font-size:12.5px;color:#8d8c87">Sessions and scheduled runs keep going</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">just warn</span></div>
+</sc-if>
+<sc-if value="{{ setSchedules }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">Schedules</div>
+<sc-for list="{{ schedules }}" as="r" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:10px 180px 160px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #1f2024"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.color }}"></span><span style="font-size:13.5px">{{ r.name }}</span><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3;border:1px solid #2c2d32;border-radius:6px;padding:4px 8px;background:#111214">{{ r.cron }}</span><span style="font-size:12px;color:#8d8c87">{{ r.last }} · next {{ r.next }}</span><span style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#c9c8c3">Edit</span></div></sc-for>
+<div style="padding-top:12px"><span style="font-size:12.5px;border:1px dashed #3a3b41;border-radius:7px;padding:6px 12px;color:#c9c8c3">+ New scheduled run</span></div>
+</sc-if>
+<sc-if value="{{ setTools }}" hint-placeholder-val="{{ true }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:4px">Embedded tools</div>
+<div style="font-size:12.5px;color:#8d8c87;margin-bottom:10px">Local web apps shown in the sidebar under Tools and opened in the main area.</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="border:1px solid #26272c;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:#16171a">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:{{ toolDot }}"></span><span style="font-size:14px;font-weight:500">Codebase Memory UI</span><span style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ toolState }}</span><span style="margin-left:auto;font-size:12px;color:#8d8c87">Show in sidebar</span><span style="width:32px;height:18px;border-radius:9px;background:#e8e7e3;position:relative;flex:none"><span style="position:absolute;top:2px;left:16px;width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;gap:8px"><div style="flex:1;border:1px solid #2c2d32;border-radius:7px;padding:8px 12px;font:400 12.5px Geist Mono,monospace;background:#111214">{{ toolUrl }}</div><span onClick="{{ reloadTool }}" style="border:1px solid #2c2d32;border-radius:7px;padding:8px 14px;font-size:12.5px;color:#c9c8c3;cursor:pointer">Test</span></div>
+</div>
+<div style="border:1px solid #26272c;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:#16171a">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:{{ swDot }}"></span><span style="font-size:14px;font-weight:500">Acme Tool</span><span style="font-size:12px;color:#8d8c87">AI chat connected to other tools</span><span style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ swState }}</span><span style="margin-left:auto;font-size:12px;color:#8d8c87">Show in sidebar</span><span style="width:32px;height:18px;border-radius:9px;background:#e8e7e3;position:relative;flex:none"><span style="position:absolute;top:2px;left:16px;width:14px;height:14px;border-radius:50%;background:#111214"></span></span></div>
+<div style="display:flex;gap:8px"><input value="{{ swUrl }}" onChange="{{ onSwUrl }}" placeholder="http://localhost:PORT" style="flex:1;border:1px solid #3a3b41;border-radius:7px;padding:8px 12px;font:400 12.5px Geist Mono,monospace;background:#111214;color:#e8e7e3;outline:none"></input><span onClick="{{ testSw }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Test</span></div>
+</div>
+<div><span style="font-size:12.5px;border:1px dashed #3a3b41;border-radius:7px;padding:6px 12px;color:#c9c8c3">+ Add tool</span></div>
+</div>
+</sc-if>
+<sc-if value="{{ setGithub }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;margin-bottom:10px">GitHub</div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">GitHub CLI login</div><div style="font-size:12.5px;color:#8d8c87">Reused from gh auth. No token stored in Switchboard.</div></div><span style="font:400 12px Geist Mono,monospace;color:oklch(0.76 0.13 150)">✓ signed in</span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #1f2024"><div style="flex:1"><div style="font-size:13.5px">PR merge detection</div><div style="font-size:12.5px;color:#8d8c87">Marks a worktree ready to remove once its branch's PR is merged</div></div><span style="font:400 12px Geist Mono,monospace;color:#c9c8c3">every 10 min</span></div>
+</sc-if>
+</div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "combine everything into one clickable prototype" · "show the worktree-ready-to-remove notification" · "add Acme Tool as a tool page like <a class="dv-oid" href="#3a">3a</a>"</p>
+</section>
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Embedded local tools: codebase-memory-mcp UI inside Switchboard</span></div>
+<div style="max-width:1100px;margin:0 0 28px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.6)">
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">What this is</div>Switchboard is only the UI. The agents keep running as Claude Code processes in the background on this PC. Local tools you already run open in a Tools section of the sidebar, framed inside the app.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Live frame</div>The frame below loads your real http://localhost:13000. If it shows "not reachable", start the server. If the server blocks framing (X-Frame-Options or frame-ancestors), use "Open in new tab".</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Tied to sessions</div>The strip under the frame reads your .codebase-memory-dirty list. It shows which projects agents have edited since their last index and offers to reindex them.</div>
+</div>
+<div class="dv-opts">
+<div class="dv-opt" id="3a"><div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Tools → codebase-memory. Reload, open it in a new tab, or send a reindex to a session.</div>
+<div class="dv-card" style="width:1340px;height:840px;display:grid;grid-template-columns:256px minmax(0,1fr);grid-template-rows:minmax(0,1fr);background:#111214">
+<div style="border-right:1px solid #232428;display:flex;flex-direction:column;min-height:0">
+<div style="padding:16px 16px 12px;display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div><div style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87;border:1px solid #2c2d32;border-radius:5px;padding:2px 6px">⌘K</div></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;font-size:13px;color:#c9c8c3">
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Inbox<span style="margin-left:auto;font:500 11px Geist Mono,monospace;background:oklch(0.8 0.14 70);color:#111214;border-radius:10px;padding:1px 7px">4</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Solutions<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:oklch(0.8 0.14 70)">1 conflict</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Schedules &amp; loops<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">2</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Artifacts<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">31</span></div>
+</div>
+<div style="padding:18px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Tools<span style="margin-left:auto">+ Add</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px">
+<div style="display:flex;gap:10px;padding:8px;border-radius:8px;background:#212227">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:{{ toolDot }}"></span>
+<div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:500">codebase-memory</div><div style="font:400 11px Geist Mono,monospace;color:#76756f">{{ toolHost }}</div></div>
+</div>
+<div style="display:flex;gap:10px;padding:8px;border-radius:8px;border:1px dashed #2c2d32;opacity:.7">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;border:1px solid #5a5955"></span>
+<div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:500;color:#a9a8a3">Second tool</div><div style="font:400 11px Geist Mono,monospace;color:#6d6c67">localhost:?</div></div>
+</div>
+</div>
+<div style="padding:18px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Sessions<span style="margin-left:auto">+ New</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden">
+<sc-for list="{{ s2 }}" as="s" hint-placeholder-count="6">
+<div style="display:flex;gap:10px;padding:7px 8px;border-radius:8px">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:{{ s.color }}"></span>
+<div style="min-width:0;flex:1"><div style="display:flex;gap:6px;font-size:13px;font-weight:500"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ s.time }}</span></div></div>
+</div>
+</sc-for>
+</div>
+<div style="padding:12px 16px 14px;border-top:1px solid #232428;display:flex;flex-direction:column;gap:8px;font:400 11px Geist Mono,monospace;color:#8d8c87">
+<div style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.74 0.13 150)"></span><span style="color:#c9c8c3">claude code</span><span>9 bg processes</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 72px;gap:8px;align-items:center"><span>CPU</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:38%;background:#c9c8c3"></div></div><span style="text-align:right">38%</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 72px;gap:8px;align-items:center"><span>Max</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:62%;background:oklch(0.8 0.14 70)"></div></div><span style="text-align:right">62% · 1h48</span></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;min-width:0;min-height:0;background:#141518">
+<div style="padding:10px 16px;border-bottom:1px solid #232428;display:flex;align-items:center;gap:10px">
+<span style="width:8px;height:8px;border-radius:50%;background:{{ toolDot }}"></span>
+<div style="font-weight:600;font-size:14px">codebase-memory</div>
+<div style="flex:1;max-width:420px;display:flex;align-items:center;gap:8px;font:400 12px Geist Mono,monospace;color:#a9a8a3;background:#0c0d0f;border:1px solid #232428;border-radius:7px;padding:6px 10px"><span style="color:#6d6c67">⌂</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ toolUrl }}</span><span style="margin-left:auto;color:{{ toolDot }}">{{ toolState }}</span></div>
+<div style="margin-left:auto;display:flex;gap:6px;font-size:12px;color:#c9c8c3">
+<span onClick="{{ reloadTool }}" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;cursor:pointer">↻ Reload</span>
+<a href="{{ toolUrl }}" target="_blank" rel="noopener" style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;color:#c9c8c3;text-decoration:none">↗ Open in new tab</a>
+</div>
+</div>
+<div style="flex:1;min-height:0;position:relative;background:#0c0d0f">
+<iframe key="{{ frameKey }}" src="{{ toolUrl }}" title="codebase-memory-mcp UI" style="position:absolute;inset:0;width:100%;height:100%;border:0;background:#0c0d0f"></iframe>
+<sc-if value="{{ toolOffline }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;display:grid;place-items:center;background:#0f1012">
+<div style="width:420px;display:flex;flex-direction:column;gap:12px;padding:22px 24px;border:1px solid #26272c;border-radius:12px;background:#16171a">
+<div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.68 0.17 25)"></span>{{ toolHost }} is not reachable</div>
+<div style="font-size:13px;line-height:1.55;color:#a9a8a3">Switchboard couldn't reach the codebase-memory-mcp UI. Start it on this PC, then retry.</div>
+<div style="font:400 12px Geist Mono,monospace;background:#0c0d0f;border:1px solid #232428;border-radius:6px;padding:8px 10px;color:#c9c8c3">codebase-memory-mcp ui --port 13000</div>
+<div style="display:flex;gap:6px;font-size:12.5px"><span onClick="{{ reloadTool }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:6px 14px;font-weight:500;cursor:pointer">Retry</span><span style="border:1px solid #2c2d32;border-radius:7px;padding:6px 14px;color:#c9c8c3">Edit tool</span></div>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="padding:9px 16px;border-top:1px solid #232428;display:flex;align-items:center;gap:10px;font:400 11.5px Geist Mono,monospace;color:#8d8c87">
+<span style="color:#c9c8c3">.codebase-memory-dirty</span>
+<sc-for list="{{ dirty }}" as="d" hint-placeholder-count="2"><span style="display:flex;align-items:center;gap:6px;border:1px solid oklch(0.42 0.07 70);border-radius:5px;padding:2px 8px;color:#e8e7e3"><span style="width:6px;height:6px;border-radius:50%;background:oklch(0.8 0.14 70)"></span>{{ d.n }}<span style="color:#76756f">{{ d.t }}</span></span></sc-for>
+<span style="margin-left:auto;color:#76756f">indexed: 16 projects · full mode</span>
+<span onClick="{{ reindex }}" style="border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;color:#e8e7e3;cursor:pointer;font-family:Geist,sans-serif;font-size:12px">{{ reindexLabel }}</span>
+</div>
+</div>
+</div></div>
+</div>
+<p class="dv-next">Try next: "add the second tool at localhost:XXXX" · "open tools in a split next to <a class="dv-oid" href="#2a">2a</a>'s chat" · "turn 4: setup wizard + Settings"</p>
+</section>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Building out <a class="dv-oid" href="#1a">1a</a>, modeled on your Acme AGENTS.md: the session, Solutions view, and timeline</span></div>
+<div style="max-width:1100px;margin:0 0 32px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.6)">
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Session context</div>Every session carries the answers your router asks for up front: work type, mode, solution(s), and phase. They appear as chips in the header, and you can answer the whole setup with one confirm-or-adjust click.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Batched questions</div>Subagent questions arrive together (up to 4), quoted word for word and labeled with the agent that asked, exactly as your question-routing rule requires. You answer all of them with one send.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Solutions by folder</div>Solutions are grouped by the router's folders. deprecated/ and infrastructure/ are locked. Each branch shows its worktree and which session is using it. Two writers in one working tree trigger a warning.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Local-first</div>A background service on this PC runs the Claude CLI and binds to localhost only. The sidebar footer shows its health, CPU and RAM use, and your Max usage. Any session can be handed off to the terminal and back.</div>
+</div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Orchestrator session. Answer the batched subagent questions, try the quick replies, and see the agent table on the right.</div>
+<div class="dv-card" style="width:1340px;height:840px;display:grid;grid-template-columns:256px minmax(0,1fr) 420px;grid-template-rows:minmax(0,1fr);background:#111214">
+<div style="border-right:1px solid #232428;display:flex;flex-direction:column;min-height:0">
+<div style="padding:16px 16px 12px;display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div><div style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87;border:1px solid #2c2d32;border-radius:5px;padding:2px 6px">⌘K</div></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;font-size:13px;color:#c9c8c3">
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Inbox<span style="margin-left:auto;font:500 11px Geist Mono,monospace;background:oklch(0.8 0.14 70);color:#111214;border-radius:10px;padding:1px 7px">4</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Solutions<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:oklch(0.8 0.14 70)">1 conflict</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Schedules &amp; loops<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">2</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Artifacts<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">31</span></div>
+</div>
+<div style="padding:18px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Sessions<span style="margin-left:auto">+ New</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden">
+<sc-for list="{{ s2 }}" as="s" hint-placeholder-count="6">
+<div onClick="{{ s.pick }}" style="display:flex;gap:10px;padding:8px;border-radius:8px;background:{{ s.bg }};cursor:pointer">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:{{ s.color }}"></span>
+<div style="min-width:0;flex:1"><div style="display:flex;gap:6px;font-size:13px;font-weight:500"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ s.time }}</span></div><div style="font:400 11px Geist Mono,monospace;color:#76756f;margin-top:2px">{{ s.mode }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="padding:12px 16px 14px;border-top:1px solid #232428;display:flex;flex-direction:column;gap:8px;font:400 11px Geist Mono,monospace;color:#8d8c87">
+<div style="display:flex;align-items:center;gap:7px"><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.74 0.13 150)"></span><span style="color:#c9c8c3">local service</span><span>127.0.0.1:4870</span><span style="margin-left:auto">WIN-DEV01</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 72px;gap:8px;align-items:center"><span>CPU</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:38%;background:#c9c8c3"></div></div><span style="text-align:right">38%</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 72px;gap:8px;align-items:center"><span>RAM</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:35%;background:#c9c8c3"></div></div><span style="text-align:right">11.2/32 GB</span></div>
+<div style="display:grid;grid-template-columns:34px minmax(0,1fr) 72px;gap:8px;align-items:center"><span>Max</span><div style="height:4px;border-radius:2px;background:#26272c;overflow:hidden"><div style="height:100%;width:62%;background:oklch(0.8 0.14 70)"></div></div><span style="text-align:right">62% · 1h48</span></div>
+<div style="display:flex;color:#76756f">9 claude processes<span style="margin-left:auto;color:#c9c8c3">details ›</span></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;min-width:0;background:#141518">
+<div style="padding:13px 22px;border-bottom:1px solid #232428;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.14 70)"></span><div style="font-weight:600;font-size:14px">free-talk-feature</div><div style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">~/acme · workspace root</div>
+<div style="margin-left:auto;display:flex;gap:6px;font-size:12px;color:#c9c8c3"><div style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px">Pause all</div><div style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;display:flex;gap:6px">⇄ Resume in terminal</div></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:6px;font:400 11.5px Geist Mono,monospace">
+<span style="border:1px solid #2c2d32;border-radius:5px;padding:2px 8px;color:#c9c8c3"><span style="color:#76756f">work </span>feature-building</span>
+<span style="border:1px solid #2c2d32;border-radius:5px;padding:2px 8px;color:#c9c8c3"><span style="color:#76756f">mode </span>orchestrator</span>
+<span style="border:1px solid #2c2d32;border-radius:5px;padding:2px 8px;color:#c9c8c3"><span style="color:#76756f">phase </span>UI-first</span>
+<span style="border:1px solid #2c2d32;border-radius:5px;padding:2px 8px;color:#c9c8c3"><span style="color:#76756f">bp </span>360</span>
+<span style="border:1px solid #2c2d32;border-radius:5px;padding:2px 8px;color:#c9c8c3"><span style="color:#76756f">scope </span>acme-app-front + mobile</span>
+<span style="border:1px solid oklch(0.4 0.06 250);border-radius:5px;padding:2px 8px;color:oklch(0.8 0.09 250)">workflow run 7f3a · reconcile</span>
+</div>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;padding:20px 26px;display:flex;flex-direction:column;gap:16px;font-size:13.5px;line-height:1.55;color:#d9d8d3">
+<div style="align-self:flex-end;max-width:72%;background:#212227;border-radius:12px 12px 4px 12px;padding:10px 14px">Free talk screen at 360, web and mobile in parallel. Figma frame is in the AI handoff page.</div>
+<div style="display:flex;flex-direction:column;gap:6px;max-width:92%">
+<div>Contract locked from Figma node 2231:884 and written to <span style="font-family:Geist Mono,monospace;font-size:12.5px;background:#1f2024;padding:1px 5px;border-radius:4px">contracts/free-talk.md</span>. I dispatched web and mobile in parallel. Both have returned, with 3 open questions between them.</div>
+<div style="display:flex;flex-direction:column;gap:3px;font:400 12px Geist Mono,monospace;color:#8d8c87"><div>✓ recon · codebase-memory · 2 precedents found</div><div>✓ figma-extractor · spec table, 14 slots</div><div>✓ web returned · 6 files · render loop 3/5 green</div><div>✓ mobile returned · 5 files · build self-heal ×1</div></div>
+</div>
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.2 0.025 70);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;font:500 11px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:oklch(0.82 0.13 70)">3 questions · relayed verbatim<span style="margin-left:auto;color:#8d8c87;text-transform:none;letter-spacing:0">1–3 · ⏎ send all</span></div>
+<sc-for list="{{ qs }}" as="q" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:7px;padding-top:10px;border-top:1px solid oklch(0.32 0.04 70)">
+<div style="font:400 11px Geist Mono,monospace;color:oklch(0.78 0.1 250)">{{ q.from }}</div>
+<div style="color:#f0efeb;font-size:13px">“{{ q.quote }}”</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ q.opts }}" as="o"><span onClick="{{ o.pick }}" style="font-size:12.5px;border-radius:7px;padding:5px 11px;cursor:pointer;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</span></sc-for></div>
+</div>
+</sc-for>
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:#8d8c87">{{ qStatus }}</span><div onClick="{{ sendQs }}" style="margin-left:auto;background:#e8e7e3;color:#111214;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:500;cursor:pointer">{{ sendQsLabel }}</div></div>
+</div>
+</div>
+<div style="padding:10px 22px 16px;border-top:1px solid #232428;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#76756f;margin-right:4px">Quick replies</span>
+<sc-for list="{{ quick }}" as="k" hint-placeholder-count="4"><span onClick="{{ k.pick }}" style="font-size:12px;border:1px solid {{ k.border }};border-radius:14px;padding:4px 10px;color:#c9c8c3;cursor:pointer">{{ k.label }}</span></sc-for>
+</div>
+<div style="border:1px solid #2c2d32;border-radius:10px;padding:11px 14px;font-size:13px;display:flex;color:{{ composerColor }}">{{ composer }}<span style="margin-left:auto;font-family:Geist Mono,monospace;font-size:11px;color:#76756f">⏎ send</span></div>
+</div>
+</div>
+<div style="border-left:1px solid #232428;display:flex;flex-direction:column;min-height:0">
+<div style="padding:14px 16px 8px;display:flex;align-items:baseline"><span style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Agents</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#6d6c67">4 · 2 solutions · 1 branch</span></div>
+<div style="padding:0 10px 12px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid #232428">
+<sc-for list="{{ agents }}" as="g" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:8px;background:#17181b;border:1px solid #1f2024">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:{{ g.color }};flex:none"></span><span style="font-size:13px;font-weight:500">{{ g.name }}</span><span style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.desc }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:{{ g.color }};white-space:nowrap">{{ g.status }}</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding-left:15px;font:400 11.5px Geist Mono,monospace;color:#76756f"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.sol }}</span><sc-if value="{{ g.branch }}" hint-placeholder-val="{{ true }}"><span style="margin-left:auto;color:oklch(0.78 0.1 250);background:oklch(0.24 0.03 250);border-radius:4px;padding:1px 6px;white-space:nowrap">⎇ {{ g.branch }}</span></sc-if></div>
+</div>
+</sc-for>
+</div>
+<div style="padding:14px 16px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Session artifacts</div>
+<div style="padding:0 12px;display:flex;flex-direction:column;gap:5px">
+<sc-for list="{{ sArts }}" as="a" hint-placeholder-count="4"><div style="display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid #26272c;border-radius:8px;background:#17181b"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3">{{ a.type }}</span><div style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.name }}</div><span style="font:400 11px Geist Mono,monospace;color:#8d8c87">{{ a.meta }}</span></div></sc-for>
+</div>
+<div style="margin:auto 12px 14px;border:1px solid #26272c;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:#0c0d0f">
+<div style="display:flex;align-items:center;font-size:12.5px;font-weight:500">Terminal handoff<span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:oklch(0.74 0.13 150)">attached</span></div>
+<div style="font-size:12px;color:#8d8c87;line-height:1.5">Started in Windows Terminal (pid 48211) and attached here. Detach to continue in the terminal. The conversation stays in sync both ways.</div>
+<div style="display:flex;gap:8px;align-items:center;font:400 11.5px Geist Mono,monospace;background:#16171a;border:1px solid #232428;border-radius:6px;padding:6px 10px;color:#c9c8c3">claude --resume 7f3a2c91<span style="margin-left:auto;color:#76756f">copy</span></div>
+</div>
+</div>
+</div></div>
+
+<div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Solutions view across all sessions (main area; sidebar same as <a class="dv-oid" href="#2a">2a</a>). Click any row. mobile/ is flagged because two sessions write to the same working tree.</div>
+<div class="dv-card" style="width:1180px;height:840px;display:grid;grid-template-columns:minmax(0,1fr) 400px;background:#141518">
+<div style="display:flex;flex-direction:column;min-width:0;border-right:1px solid #232428">
+<div style="padding:16px 22px 12px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid #232428">
+<div style="display:flex;align-items:baseline;gap:12px"><div style="font-size:18px;font-weight:600;letter-spacing:-.01em">Solutions</div><div style="font:400 12px Geist Mono,monospace;color:#8d8c87">~/acme · 18 solutions · 7 active · 8 branches</div><div style="margin-left:auto;font-size:12px;color:#76756f;border:1px solid #2c2d32;border-radius:6px;padding:5px 10px;width:200px">Filter solutions or branches…</div></div>
+<div style="display:flex;gap:6px"><sc-for list="{{ solFilters }}" as="f" hint-placeholder-count="6"><span onClick="{{ f.pick }}" style="font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }}</span></sc-for></div>
+</div>
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 100px 70px;gap:14px;padding:8px 22px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#6d6c67;border-bottom:1px solid #1f2024"><span>Solution</span><span>Branches · who is working</span><span>Phase</span><span style="text-align:right">Changes</span></div>
+<div style="flex:1;overflow:hidden;padding:0 12px">
+<sc-for list="{{ solGroups }}" as="grp" hint-placeholder-count="5">
+<div style="padding:12px 10px 4px;display:flex;align-items:center;gap:8px;font:500 11px Geist Mono,monospace;color:#8d8c87">{{ grp.folder }}<span style="color:#5a5955">{{ grp.note }}</span></div>
+<sc-for list="{{ grp.rows }}" as="r">
+<div onClick="{{ r.pick }}" style="display:grid;grid-template-columns:200px minmax(0,1fr) 100px 70px;gap:14px;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{ r.bg }};opacity:{{ r.op }}">
+<div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ r.color }}"></span><span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span><span style="font:400 11px Geist Mono,monospace;color:{{ r.flagColor }};white-space:nowrap">{{ r.flag }}</span></div>
+<div style="display:flex;flex-wrap:wrap;gap:5px;min-width:0"><sc-for list="{{ r.branches }}" as="b"><span style="display:flex;align-items:center;gap:6px;font:400 11px Geist Mono,monospace;border:1px solid #26272c;border-radius:5px;padding:2px 7px;white-space:nowrap;min-width:0;max-width:100%;box-sizing:border-box;overflow:hidden"><span style="color:oklch(0.78 0.1 250);flex:none">⎇ {{ b.b }}</span><span style="color:#76756f;flex:none">{{ b.wt }}</span><span style="width:6px;height:6px;border-radius:50%;background:{{ b.color }};flex:none"></span><span style="color:#a9a8a3;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ b.who }}</span></span></sc-for></div>
+<span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ r.phase }}</span>
+<span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87;text-align:right">{{ r.changes }}</span>
+</div>
+</sc-for>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;min-height:0;padding:18px 18px;gap:14px;overflow:hidden">
+<div><div style="font:400 11.5px Geist Mono,monospace;color:#76756f">{{ sd.path }}</div><div style="font-size:18px;font-weight:600;margin-top:2px">{{ sd.name }}</div></div>
+<sc-if value="{{ sd.warn }}" hint-placeholder-val="{{ true }}">
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.2 0.025 70);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px">
+<div style="font-size:13px;color:#f0efeb;line-height:1.45">{{ sd.warn }}</div>
+<div style="display:flex;gap:6px;font-size:12px"><span style="background:#e8e7e3;color:#111214;border-radius:6px;padding:5px 10px;font-weight:500">Move to worktree</span><span style="border:1px solid oklch(0.45 0.07 70);border-radius:6px;padding:5px 10px;color:#e8e7e3">Pause button-rollout</span></div>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Branches &amp; worktrees</div>
+<sc-for list="{{ sd.branches }}" as="b" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:3px;padding:9px 11px;border:1px solid #26272c;border-radius:8px;background:#17181b"><div style="display:flex;align-items:center;gap:8px;font:400 12px Geist Mono,monospace"><span style="color:oklch(0.78 0.1 250)">⎇ {{ b.b }}</span><span style="margin-left:auto;color:#76756f">{{ b.wt }}</span></div><div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#a9a8a3"><span style="width:6px;height:6px;border-radius:50%;background:{{ b.color }}"></span>{{ b.who }}<span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#76756f">{{ b.agent }}</span></div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Phase ledger</div>
+<sc-for list="{{ sd.ledger }}" as="l" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font:400 11.5px Geist Mono,monospace;padding:4px 0;border-bottom:1px solid #1f2024"><span style="color:#d9d8d3">{{ l.i }}</span><span style="color:{{ l.c }}">{{ l.p }}</span><span style="color:#6d6c67;grid-column:1 / 3">{{ l.seam }}</span></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Artifacts &amp; follow-ups</div>
+<sc-for list="{{ sd.arts }}" as="a" hint-placeholder-count="2"><div style="display:flex;gap:8px;align-items:center;font-size:12.5px"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3">{{ a.t }}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.n }}</span><span style="font:400 11px Geist Mono,monospace;color:#8d8c87">{{ a.m }}</span></div></sc-for>
+</div>
+<div style="margin-top:auto;display:flex;align-items:center;gap:8px;font:400 11px Geist Mono,monospace;color:#76756f"><span style="width:6px;height:6px;border-radius:50%;background:{{ sd.idxColor }}"></span>{{ sd.idx }}</div>
+</div>
+</div></div>
+
+<div class="dv-opt" id="2c"><div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Session timeline. Drag the scrubber or press play to replay what each agent did. The panels below show the state at the playhead.</div>
+<div class="dv-card" style="width:1180px;height:840px;display:flex;flex-direction:column;background:#141518">
+<div style="padding:14px 22px;border-bottom:1px solid #232428;display:flex;align-items:center;gap:12px">
+<span style="width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.14 70)"></span><div style="font-weight:600;font-size:14px">free-talk-feature</div>
+<div style="display:flex;gap:4px;font-size:12.5px;color:#8d8c87;margin-left:10px"><span style="padding:5px 10px">Chat</span><span style="padding:5px 10px;border-radius:6px;background:#212227;color:#e8e7e3;font-weight:500">Timeline</span><span style="padding:5px 10px">Diff</span><span style="padding:5px 10px">Artifacts</span></div>
+<div style="margin-left:auto;font:400 11.5px Geist Mono,monospace;color:#8d8c87">today 10:02 – 10:48 · 46 min · 4 agents</div>
+</div>
+<div style="padding:16px 22px 10px;display:flex;flex-direction:column;gap:8px;position:relative">
+<div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;font:400 10.5px Geist Mono,monospace;color:#6d6c67"><span></span><div style="display:flex;justify-content:space-between"><span>10:02</span><span>10:10</span><span>10:18</span><span>10:26</span><span>10:34</span><span>10:42</span><span>10:48</span></div></div>
+<sc-for list="{{ lanes }}" as="ln" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center">
+<div style="display:flex;flex-direction:column"><span style="font-size:12.5px;font-weight:500">{{ ln.name }}</span><span style="font:400 10.5px Geist Mono,monospace;color:#6d6c67">{{ ln.sol }}</span></div>
+<div style="position:relative;height:34px;background:#101113;border-radius:6px;border:1px solid #1f2024">
+<sc-for list="{{ ln.ev }}" as="e"><div style="position:absolute;top:4px;bottom:4px;left:{{ e.left }};width:{{ e.width }};background:{{ e.bg }};border:1px solid {{ e.bd }};border-radius:4px;padding:0 6px;box-sizing:border-box;line-height:24px;overflow:hidden;text-overflow:ellipsis;font:400 10.5px/24px Geist Mono,monospace;color:{{ e.fg }};white-space:nowrap;opacity:{{ e.op }}" title="{{ e.label }}">{{ e.label }}</div></sc-for>
+</div>
+</div>
+</sc-for>
+<div style="position:absolute;top:34px;bottom:4px;left:calc(184px + (100% - 228px) * {{ playFrac }});width:2px;background:#e8e7e3;pointer-events:none"><div style="position:absolute;top:-18px;left:-22px;font:500 10.5px Geist Mono,monospace;background:#e8e7e3;color:#111214;border-radius:4px;padding:1px 6px">{{ playTime }}</div></div>
+</div>
+<div style="padding:4px 22px 14px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center;border-bottom:1px solid #232428">
+<div style="display:flex;gap:6px"><span onClick="{{ togglePlay }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;cursor:pointer;color:#e8e7e3">{{ playLabel }}</span><span onClick="{{ stepBack }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 8px;cursor:pointer;color:#c9c8c3">◀</span><span onClick="{{ stepFwd }}" style="font-size:12px;border:1px solid #2c2d32;border-radius:6px;padding:4px 8px;cursor:pointer;color:#c9c8c3">▶</span></div>
+<input type="range" min="0" max="460" value="{{ playVal }}" onChange="{{ onScrub }}" style="width:100%;accent-color:#e8e7e3"></input>
+</div>
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)">
+<div style="padding:16px 20px;border-right:1px solid #232428;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+<div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Events up to {{ playTime }}</div>
+<sc-for list="{{ evLog }}" as="x" hint-placeholder-count="6"><div style="display:grid;grid-template-columns:44px 8px minmax(0,1fr);gap:8px;align-items:baseline;font-size:12.5px;line-height:1.45;opacity:{{ x.op }}"><span style="font:400 11px Geist Mono,monospace;color:#76756f">{{ x.t }}</span><span style="width:7px;height:7px;border-radius:50%;background:{{ x.c }}"></span><span><span style="color:#8d8c87">{{ x.who }} · </span>{{ x.label }}</span></div></sc-for>
+</div>
+<div style="padding:16px 20px;border-right:1px solid #232428;display:flex;flex-direction:column;gap:8px;overflow:hidden">
+<div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Files changed so far<span style="margin-left:auto;color:#6d6c67">{{ filesCount }}</span></div>
+<sc-for list="{{ filesAt }}" as="f" hint-placeholder-count="5"><div style="display:flex;flex-direction:column;gap:1px;padding:5px 0;border-bottom:1px solid #1f2024"><div style="display:flex;font:400 11.5px Geist Mono,monospace;color:#d9d8d3"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.n }}</span><span style="margin-left:auto;color:oklch(0.76 0.13 150);white-space:nowrap">{{ f.d }}</span></div><div style="font:400 10.5px Geist Mono,monospace;color:#6d6c67">{{ f.sol }}</div></div></sc-for>
+</div>
+<div style="display:flex;flex-direction:column;min-height:0">
+<div style="padding:16px 20px 8px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Terminal at {{ playTime }}</div>
+<div style="flex:1;margin:0 14px 14px;background:#0c0d0f;border:1px solid #1f2024;border-radius:8px;padding:10px 12px;font:400 11px/1.7 Geist Mono,monospace;overflow:hidden"><sc-for list="{{ termAt }}" as="l" hint-placeholder-count="6"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.t }}</div></sc-for></div>
+</div>
+</div>
+</div></div>
+
+</div>
+<p class="dv-next">Next up (turn 3): first-run setup wizard + Settings (Claude connection, local service, solution roots, session defaults, notifications, usage limits, schedules). Or try: "make <a class="dv-oid" href="#2b">2b</a> a graph of sessions → solutions" · "add the process details panel from the <a class="dv-oid" href="#2a">2a</a> footer"</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Switchboard: three dark layouts for one workspace over all your Claude sessions</span></div>
+<div style="max-width:1100px;margin:0 0 32px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.6)">
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Assumptions</div>Web app, solo, 4–8 live sessions plus scheduled runs. Each session is a Claude Code process on your machine, signed in with your Max plan. A small local companion streams sessions to the browser, so no API keys are needed.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Sessions → solutions</div>One session can touch several solutions (repos) at once. Every solution shows its own branch, what the agent is doing in it right now, and its change count.</div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Status language</div><div style="display:flex;flex-direction:column;gap:3px"><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.14 70)"></span>Needs you</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.72 0.12 250)"></span>Running</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.74 0.13 150)"></span>Done</span><span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.68 0.17 25)"></span>Failed</span></div></div>
+<div><div style="font-weight:600;color:#e8e7e3;margin-bottom:4px">Your pains → answers</div>Terminal switching → one session list. Missed follow-ups → toast, sound, inline answers. Schedules → countdowns, run history, pause and run-now. Lost artifacts → global library plus per-session panel.</div>
+</div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Inbox + chat, the layout you picked. The right panel lists the solutions this session is working in, each with its branch. Click sessions, solutions, and answer options.</div>
+<div class="dv-card" style="width:1340px;height:820px;display:grid;grid-template-columns:252px minmax(0,1fr) 420px;position:relative;background:#111214">
+<div style="border-right:1px solid #232428;display:flex;flex-direction:column;min-height:0">
+<div style="padding:16px 16px 12px;display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div><div style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87;border:1px solid #2c2d32;border-radius:5px;padding:2px 6px">⌘K</div></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;font-size:13px;color:#c9c8c3">
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Inbox<span style="margin-left:auto;font:500 11px Geist Mono,monospace;background:oklch(0.8 0.14 70);color:#111214;border-radius:10px;padding:1px 7px">3</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Schedules<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:oklch(0.72 0.16 25)">1 failed</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Solutions<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">14</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">Artifacts<span style="margin-left:auto;font:500 11px Geist Mono,monospace;color:#8d8c87">24</span></div>
+<div style="display:flex;align-items:center;padding:7px 8px;border-radius:7px">History</div>
+</div>
+<div style="padding:18px 18px 6px;font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex">Sessions<span style="margin-left:auto">+ New</span></div>
+<div style="padding:0 10px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden">
+<sc-for list="{{ sessions }}" as="s" hint-placeholder-count="6">
+<div onClick="{{ s.pick }}" style="display:flex;gap:10px;padding:8px;border-radius:8px;background:{{ s.rowBg }};cursor:pointer">
+<span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:{{ s.color }}"></span>
+<div style="min-width:0;flex:1"><div style="display:flex;gap:6px;font-size:13px;font-weight:500"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ s.time }}</span></div><div style="font-size:12px;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.task }}</div><div style="font:400 11px Geist Mono,monospace;color:#6d6c67;margin-top:2px">{{ s.solCount }}</div></div>
+</div>
+</sc-for>
+</div>
+<div style="padding:14px 16px;border-top:1px solid #232428;display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;font-size:12px;color:#8d8c87">Max plan · 5‑hour window<span style="margin-left:auto;font-family:Geist Mono,monospace;color:#e8e7e3">62%</span></div>
+<div style="height:5px;border-radius:3px;background:#26272c;overflow:hidden"><div style="height:100%;width:62%;background:#e8e7e3"></div></div>
+<div style="font-size:11.5px;color:#76756f">Resets in 1h 48m · weekly 41%</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;min-width:0;background:#141518">
+<div style="padding:14px 22px;border-bottom:1px solid #232428;display:flex;align-items:center;gap:10px">
+<span style="width:8px;height:8px;border-radius:50%;background:{{ active.color }}"></span>
+<div><div style="font-weight:600;font-size:14px">{{ active.name }}</div><div style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ active.meta }}</div></div>
+<div style="margin-left:auto;display:flex;gap:6px;font-size:12px;color:#c9c8c3"><div style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px">Pause</div><div style="border:1px solid #2c2d32;border-radius:6px;padding:5px 10px">Open in terminal</div></div>
+</div>
+<div style="flex:1;overflow:hidden;padding:22px 28px;display:flex;flex-direction:column;gap:18px;font-size:13.5px;line-height:1.55;color:#d9d8d3">
+<div style="align-self:flex-end;max-width:70%;background:#212227;border-radius:12px 12px 4px 12px;padding:10px 14px">Rotate the staging RDS master credentials and update every consumer. Don't touch prod.</div>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:90%">
+<div>The secret lives in infra-live and is read by 3 other solutions. I created a branch in each one that needs changes.</div>
+<div style="display:flex;flex-direction:column;gap:5px;font:400 12px Geist Mono,monospace;color:#8d8c87">
+<div style="display:flex;gap:8px;align-items:center"><span style="color:#c9c8c3;background:#1f2024;border-radius:4px;padding:0 6px">infra-live</span>✓ Edited modules/rds/main.tf <span style="color:oklch(0.76 0.13 150)">+18</span> <span style="color:oklch(0.72 0.16 25)">−6</span></div>
+<div style="display:flex;gap:8px;align-items:center"><span style="color:#c9c8c3;background:#1f2024;border-radius:4px;padding:0 6px">infra-live</span>✓ terraform plan: 3 to change, 0 to destroy</div>
+<div style="display:flex;gap:8px;align-items:center"><span style="color:#c9c8c3;background:#1f2024;border-radius:4px;padding:0 6px">billing-worker</span>✓ Edited src/config.ts <span style="color:oklch(0.76 0.13 150)">+9</span> <span style="color:oklch(0.72 0.16 25)">−3</span></div>
+<div style="display:flex;gap:8px;align-items:center"><span style="color:#c9c8c3;background:#1f2024;border-radius:4px;padding:0 6px">reports-cron</span>✓ Edited env.sh <span style="color:oklch(0.76 0.13 150)">+4</span> <span style="color:oklch(0.72 0.16 25)">−2</span></div>
+</div>
+</div>
+<sc-if value="{{ askOpen }}" hint-placeholder-val="{{ true }}">
+<div style="border:1px solid oklch(0.5 0.09 70);background:oklch(0.22 0.03 70);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:92%">
+<div style="font:500 11px Geist Mono,monospace;letter-spacing:.05em;text-transform:uppercase;color:oklch(0.82 0.13 70)">Claude is asking · billing-worker, reports-cron · 2m ago</div>
+<div style="font-weight:500;color:#f0efeb">Both apps read the old secret at boot. How should I proceed?</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<sc-for list="{{ optsA }}" as="o" hint-placeholder-count="3">
+<div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid {{ o.border }};background:{{ o.bg }};cursor:pointer"><span style="font:500 11px Geist Mono,monospace;width:18px;height:18px;border-radius:4px;display:grid;place-items:center;background:#111214;border:1px solid #33343a">{{ o.key }}</span><span>{{ o.label }}</span></div>
+</sc-for>
+</div>
+<div style="display:flex;gap:8px"><div style="flex:1;border:1px solid #33343a;background:#141518;border-radius:8px;padding:8px 12px;color:#76756f;font-size:13px">Or type a different instruction…</div><div onClick="{{ sendA }}" style="background:#e8e7e3;color:#111214;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer">Send</div></div>
+</div>
+</sc-if>
+<sc-if value="{{ askDone }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px;max-width:88%"><div style="align-self:flex-end;background:#212227;border-radius:12px 12px 4px 12px;padding:10px 14px">{{ sentLabel }}</div><div style="font:400 12px Geist Mono,monospace;color:oklch(0.74 0.12 250)">● Working…</div></div>
+</sc-if>
+</div>
+<div style="padding:14px 22px 18px;border-top:1px solid #232428"><div style="border:1px solid #2c2d32;border-radius:10px;padding:11px 14px;color:#76756f;font-size:13px;display:flex">Message {{ active.name }}…<span style="margin-left:auto;font-family:Geist Mono,monospace;font-size:11px">⏎ send · ⇧⏎ newline</span></div></div>
+</div>
+<div style="border-left:1px solid #232428;display:flex;flex-direction:column;min-height:0">
+<div style="padding:14px 16px 8px;display:flex;align-items:baseline"><span style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87">Solutions in this session</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#6d6c67">{{ solSummary }}</span></div>
+<div style="padding:0 10px 12px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid #232428">
+<sc-for list="{{ sols }}" as="p" hint-placeholder-count="4">
+<div onClick="{{ p.pick }}" style="display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:8px;border:1px solid {{ p.border }};background:{{ p.bg }};cursor:pointer">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;border-radius:50%;background:{{ p.color }};flex:none"></span><span style="font-size:13px;font-weight:500">{{ p.name }}</span><span style="font:400 11px Geist Mono,monospace;color:#8d8c87">{{ p.state }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ p.diff }}</span></div>
+<div style="display:flex;align-items:center;gap:8px;padding-left:15px;font:400 11.5px Geist Mono,monospace"><span style="color:oklch(0.78 0.1 250);background:oklch(0.24 0.03 250);border-radius:4px;padding:1px 6px;white-space:nowrap">⎇ {{ p.branch }}</span><span style="color:#76756f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.doing }}</span></div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:4px;padding:6px 14px 0;font-size:12.5px;border-bottom:1px solid #232428;color:#8d8c87">
+<div style="padding:7px 10px;border-bottom:2px solid #e8e7e3;font-weight:500;color:#e8e7e3">Terminal</div><div style="padding:7px 10px">Diff</div><div style="padding:7px 10px">Artifacts · 5</div>
+<div style="margin-left:auto;padding:7px 4px;font:400 11px Geist Mono,monospace;color:#6d6c67">{{ curSol }}</div>
+</div>
+<div style="flex:1;background:#0c0d0f;color:#bfbeb8;font:400 11.5px/1.7 Geist Mono,monospace;padding:12px 16px;overflow:hidden">
+<sc-for list="{{ termLines }}" as="l" hint-placeholder-count="6"><div style="color:{{ l.c }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.t }}</div></sc-for>
+</div>
+</div>
+<sc-if value="{{ toastOn }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;top:14px;left:50%;margin-left:-40px;width:340px;background:#232429;border:1px solid #34353b;color:#e8e7e3;border-radius:12px;padding:14px 16px;box-shadow:0 16px 40px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:10px;font-size:13px">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.8 0.14 70)"></span><span style="font-weight:600">incident-0412</span><span style="color:#8d8c87;font-size:12px">needs approval · now</span><span onClick="{{ hideToast }}" style="margin-left:auto;color:#8d8c87;cursor:pointer">✕</span></div>
+<div style="font:400 11.5px Geist Mono,monospace;color:oklch(0.78 0.1 250)">api-gateway ⎇ hotfix/keepalive-timeout</div>
+<div style="line-height:1.45;color:#cfcec9">Roll back api-gateway to v2.8.3? The 502 rate went from 0.2% to 4.1% after the deploy.</div>
+<div style="display:flex;gap:6px"><div onClick="{{ hideToast }}" style="background:#e8e7e3;color:#111214;border-radius:7px;padding:6px 12px;font-weight:500;cursor:pointer">Approve</div><div style="border:1px solid #3a3b41;border-radius:7px;padding:6px 12px">Jump to session</div></div>
+</div>
+</sc-if>
+</div></div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Triage queue. You work through everything waiting on you one item at a time. Each item shows the solutions and branches it affects. Schedules sit on the right.</div>
+<div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;background:#111214">
+<div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid #232428">
+<div style="display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div></div>
+<div style="display:flex;gap:4px;font-size:13px;margin-left:12px;color:#8d8c87"><div style="padding:6px 12px;border-radius:7px;background:#212227;font-weight:500;color:#e8e7e3">Queue · 4</div><div style="padding:6px 12px">Sessions</div><div style="padding:6px 12px">Schedules</div><div style="padding:6px 12px">Solutions</div><div style="padding:6px 12px">Artifacts</div></div>
+<div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+<sc-for list="{{ sessions }}" as="s" hint-placeholder-count="6"><div style="display:flex;align-items:center;gap:6px;font:400 11.5px Geist Mono,monospace;padding:4px 8px;border:1px solid #2c2d32;border-radius:14px;color:#c9c8c3"><span style="width:7px;height:7px;border-radius:50%;background:{{ s.color }}"></span>{{ s.short }}</div></sc-for>
+</div>
+</div>
+<div style="flex:1;min-height:0;display:grid;grid-template-columns:290px minmax(0,1fr) 300px">
+<div style="border-right:1px solid #232428;padding:16px 12px;display:flex;flex-direction:column;gap:8px">
+<div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;padding:0 6px 4px;display:flex">Waiting on you<span style="margin-left:auto">J / K</span></div>
+<sc-for list="{{ queue }}" as="q" hint-placeholder-count="4">
+<div onClick="{{ q.pick }}" style="padding:12px;border-radius:10px;border:1px solid {{ q.border }};background:{{ q.bg }};display:flex;flex-direction:column;gap:5px;cursor:pointer">
+<div style="display:flex;align-items:center;gap:7px;font-size:12px"><span style="width:7px;height:7px;border-radius:50%;background:{{ q.color }}"></span><span style="font-weight:500">{{ q.session }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ q.age }}</span></div>
+<div style="font-size:13px;line-height:1.4;color:#d9d8d3">{{ q.title }}</div>
+<div style="font:400 11px Geist Mono,monospace;color:oklch(0.72 0.08 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ q.solLine }}</div>
+</div>
+</sc-for>
+</div>
+<div style="padding:28px 40px;display:flex;flex-direction:column;gap:18px;overflow:hidden;background:#141518">
+<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8d8c87"><span style="width:8px;height:8px;border-radius:50%;background:{{ cur.color }}"></span><span style="font-weight:600;color:#e8e7e3">{{ cur.session }}</span><span>·</span><span>{{ cur.kind }}</span><span>·</span><span>{{ cur.age }} ago</span><span style="margin-left:auto;font-family:Geist Mono,monospace">{{ cur.pos }}</span></div>
+<div style="font-size:24px;line-height:1.3;font-weight:500;letter-spacing:-.01em;text-wrap:pretty;max-width:640px">{{ cur.title }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px">
+<sc-for list="{{ cur.sols }}" as="p" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:8px;border:1px solid #2c2d32;border-radius:7px;padding:5px 10px;font:400 12px Geist Mono,monospace"><span style="color:#e8e7e3">{{ p.name }}</span><span style="color:oklch(0.78 0.1 250)">⎇ {{ p.branch }}</span></div></sc-for>
+</div>
+<div style="font-size:14px;line-height:1.55;color:#a9a8a3;max-width:640px">{{ cur.detail }}</div>
+<div style="display:flex;flex-direction:column;gap:8px;max-width:640px">
+<sc-for list="{{ optsB }}" as="o" hint-placeholder-count="3">
+<div onClick="{{ o.pick }}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid {{ o.border }};background:{{ o.bg }};font-size:14px;cursor:pointer"><span style="font:500 12px Geist Mono,monospace;width:22px;height:22px;border-radius:5px;display:grid;place-items:center;background:#26272c">{{ o.key }}</span>{{ o.label }}</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:16px;font:400 11.5px Geist Mono,monospace;color:#76756f"><span>1–3 choose</span><span>⏎ send &amp; next</span><span>S snooze 15m</span><span>O open session</span></div>
+</div>
+<div style="border-left:1px solid #232428;padding:16px;display:flex;flex-direction:column;gap:4px">
+<div style="font:500 10.5px Geist Mono,monospace;letter-spacing:.06em;text-transform:uppercase;color:#8d8c87;display:flex;padding-bottom:4px">Schedules<span style="margin-left:auto">Last 14 runs</span></div>
+<sc-for list="{{ schedules }}" as="r" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:7px;padding:11px 0;border-bottom:1px solid #1f2024">
+<div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500"><span style="width:7px;height:7px;border-radius:50%;background:{{ r.color }}"></span>{{ r.name }}<span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ r.cron }}</span></div>
+<div style="display:flex;gap:3px"><sc-for list="{{ r.runs }}" as="d"><span style="flex:1;height:14px;border-radius:2px;background:{{ d }}"></span></sc-for></div>
+<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:#8d8c87">{{ r.last }}<span style="margin-left:auto;font-family:Geist Mono,monospace;color:#c9c8c3">{{ r.next }}</span></div>
+<div style="display:flex;gap:6px;font-size:11.5px;color:#c9c8c3"><span style="border:1px solid #2c2d32;border-radius:5px;padding:3px 8px">Run now</span><span style="border:1px solid #2c2d32;border-radius:5px;padding:3px 8px">{{ r.pauseLabel }}</span></div>
+</div>
+</sc-for>
+</div>
+</div>
+</div></div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Board + library. Every session is a live tile listing its solutions and branches, and you can answer from the tile. The global artifact library runs along the bottom.</div>
+<div class="dv-card" style="width:1280px;height:820px;display:flex;flex-direction:column;background:#0f1012">
+<div style="height:52px;flex:none;display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid #232428">
+<div style="display:flex;align-items:center;gap:9px"><div style="width:22px;height:22px;border-radius:6px;background:#e8e7e3;color:#111214;display:grid;place-items:center;font-size:12px;font-weight:600">S</div><div style="font-weight:600;font-size:14px">Switchboard</div></div>
+<div style="display:flex;gap:18px;margin-left:16px;font:400 12px Geist Mono,monospace;color:#8d8c87"><span><span style="color:oklch(0.8 0.14 70)">2</span> need you</span><span><span style="color:oklch(0.72 0.12 250)">3</span> running</span><span><span style="color:oklch(0.74 0.13 150)">1</span> done</span><span>14 solutions</span><span>next cron 00:14:32</span></div>
+<div style="margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:#8d8c87"><span>Max · 62%</span><div style="width:90px;height:5px;border-radius:3px;background:#26272c;overflow:hidden"><div style="height:100%;width:62%;background:#e8e7e3"></div></div><div style="background:#e8e7e3;color:#111214;border-radius:7px;padding:6px 12px;font-weight:500">+ New session</div></div>
+</div>
+<div style="flex:1;min-height:0;padding:14px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:12px">
+<sc-for list="{{ tiles }}" as="t" hint-placeholder-count="6">
+<div style="border:1px solid {{ t.border }};background:#16171a;border-radius:10px;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+<div style="display:flex;align-items:center;gap:8px;padding:10px 12px"><span style="width:8px;height:8px;border-radius:50%;background:{{ t.color }}"></span><span style="font-weight:600;font-size:13px">{{ t.name }}</span><span style="font:400 11px Geist Mono,monospace;color:#8d8c87">{{ t.state }}</span><span style="margin-left:auto;font:400 11px Geist Mono,monospace;color:#8d8c87">{{ t.time }}</span></div>
+<div style="padding:0 12px 10px;display:flex;flex-direction:column;gap:3px;border-bottom:1px solid #222327">
+<sc-for list="{{ t.sols }}" as="p"><div style="display:flex;align-items:center;gap:7px;font:400 11px Geist Mono,monospace"><span style="width:5px;height:5px;border-radius:50%;background:{{ p.color }};flex:none"></span><span style="color:#d9d8d3">{{ p.name }}</span><span style="color:oklch(0.76 0.1 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">⎇ {{ p.branch }}</span><span style="margin-left:auto;color:#6d6c67;white-space:nowrap">{{ p.state }}</span></div></sc-for>
+</div>
+<div style="flex:1;padding:8px 12px;font:400 11px/1.6 Geist Mono,monospace;color:#9a9994;overflow:hidden;background:#0c0d0f"><sc-for list="{{ t.lines }}" as="l"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l }}</div></sc-for></div>
+<sc-if value="{{ t.ask }}" hint-placeholder-val="{{ false }}"><div style="padding:9px 12px;display:flex;flex-direction:column;gap:7px;background:oklch(0.21 0.03 70);border-top:1px solid oklch(0.4 0.07 70)"><div style="font-size:12.5px;color:#f0efeb">{{ t.ask }}</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ t.opts }}" as="o"><span style="font-size:11.5px;border:1px solid oklch(0.45 0.07 70);border-radius:6px;padding:4px 9px;color:#e8e7e3">{{ o }}</span></sc-for></div></div></sc-if>
+</div>
+</sc-for>
+</div>
+<div style="flex:none;height:196px;border-top:1px solid #232428;display:flex;flex-direction:column;background:#131417">
+<div style="display:flex;align-items:center;gap:6px;padding:10px 16px"><span style="font-weight:600;font-size:13px;margin-right:10px">Artifacts</span>
+<sc-for list="{{ artFilters }}" as="f" hint-placeholder-count="5"><span onClick="{{ f.pick }}" style="font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }}</span></sc-for>
+<span style="margin-left:auto;font-size:12px;color:#76756f;border:1px solid #2c2d32;border-radius:6px;padding:4px 10px;width:180px">Search artifacts…</span></div>
+<div style="flex:1;overflow:hidden;padding:0 16px">
+<sc-for list="{{ artifacts }}" as="a" hint-placeholder-count="5">
+<div style="display:grid;grid-template-columns:70px minmax(0,1fr) 260px 130px 50px;gap:12px;align-items:center;padding:6px 0;border-top:1px solid #1f2024;font-size:12.5px"><span style="font:500 10px Geist Mono,monospace;padding:2px 6px;border-radius:4px;background:#26272c;color:#c9c8c3;justify-self:start">{{ a.type }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.name }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.sol }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#8d8c87">{{ a.meta }}</span><span style="font:400 11.5px Geist Mono,monospace;color:#76756f;text-align:right">{{ a.age }}</span></div>
+</sc-for>
+</div>
+</div>
+</div></div>
+
+</div>
+<p class="dv-next">Try next: "go deeper on <a class="dv-oid" href="#1a">1a</a>: a global Solutions view across all sessions" · "<a class="dv-oid" href="#1a">1a</a> with the queue from <a class="dv-oid" href="#1b">1b</a> as the Inbox" · "show the Max connect / onboarding flow"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;codebaseMemoryUrl&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;http://localhost:13000&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Embedded tools&quot;}}">
+class Component extends DCLogic {
+  state = { active: 0, sol: 0, optA: 0, askDone: false, toast: true, q: 0, optB: 0, filter: 'All' };
+  C = { need: 'oklch(0.8 0.14 70)', run: 'oklch(0.72 0.12 250)', done: 'oklch(0.74 0.13 150)', fail: 'oklch(0.68 0.17 25)', idle: '#5a5955', none: '#26272c' };
+  SOL = {
+    'infra-terraform': [
+      ['infra-live', 'rotate-rds-staging', 'done', 'planned', '+18 −6', 'terraform plan ready, 3 changes', ['$ cd ~/work/infra-live', '$ terraform plan -target=module.rds', '  ~ secret_string = (sensitive)', '  ~ manage_master_user_password = true', 'Plan: 0 to add, 3 to change, 0 to destroy.', '✓ saved plan to plan-output.md']],
+      ['billing-worker', 'chore/rds-secret-ref', 'need', 'waiting', '+9 −3', 'restart strategy needs your answer', ['$ cd ~/work/billing-worker', '$ rg "RDS_MASTER" src/', 'src/config.ts:14  process.env.RDS_MASTER', '✓ replaced with getSecret("rds/staging/master")', '$ npm test  ›  42 passed', '⏸ waiting for your answer']],
+      ['reports-cron', 'chore/rds-secret-ref', 'need', 'waiting', '+4 −2', 'restart strategy needs your answer', ['$ cd ~/work/reports-cron', '$ cat env.sh | grep RDS', 'export RDS_MASTER=$(vault read …)', '✓ switched to aws secretsmanager get-secret-value', '$ shellcheck env.sh  ›  ok', '⏸ waiting for your answer']],
+      ['shared-config', 'main', 'idle', 'read only', '—', 'read secret naming conventions', ['$ cd ~/work/shared-config', '$ cat docs/secrets.md', 'Naming: <env>/<service>/<name>', 'no changes needed']],
+    ],
+    'incident-0412': [
+      ['api-gateway', 'hotfix/keepalive-timeout', 'need', 'approval', '+1 −1', 'rollback to v2.8.3 awaiting approval', ['$ kubectl rollout history deploy/api-gateway', 'REVISION 41  v2.8.3', 'REVISION 42  v2.9.0  (current)', 'nginx.conf keepalive_timeout 75s → 5s', '5xx 4.1% ▁▁▂▆█▇█', '⏸ waiting for approval']],
+      ['k8s-manifests', 'main', 'run', 'reading', '—', 'checking HPA and ingress config', ['$ cd ~/work/k8s-manifests', '$ kubectl get hpa api-gateway', 'MIN 3  MAX 12  CURRENT 9', 'reading ingress/api.yaml…']],
+      ['runbooks', 'incident/0412-notes', 'run', 'writing', '+64', 'writing incident timeline', ['$ cd ~/work/runbooks', 'writing incidents/2026-09-27-0412.md', '14:02 deploy v2.9.0', '14:05 5xx alert fired', '▍']],
+    ],
+    'helpdesk-triage': [
+      ['support-kb', 'main', 'run', 'reading', '—', 'matching tickets to KB articles', ['$ search KB "printer mapping"', 'KB-0231 Map network printer via GPO', 'KB-0118 VPN reconnect loop']],
+      ['ticket-templates', 'drafts/sept-27', 'run', 'writing', '+3 files', 'drafting reply 4 of 7', ['drafting #4419 printer mapping', '✓ #4412 password reset', '✓ #4415 VPN drop', '▍']],
+    ],
+    'ad-sync-script': [
+      ['it-scripts', 'feature/ad-group-sync', 'run', 'testing', '+142', 'running -WhatIf against OU=Staff', ['✓ Wrote Sync-ADGroups.ps1 (142 lines)', '$ Invoke-Pester ./tests', 'Tests Passed: 18, Failed: 0', 'Running -WhatIf against OU=Staff…']],
+      ['it-scripts-tests', 'feature/ad-group-sync', 'done', 'committed', '+88', '18 Pester tests added', ['✓ 18 tests committed']],
+    ],
+    'vpn-docs': [
+      ['it-docs', 'docs/wireguard-rollout', 'run', 'writing', '+210', 'writing section 3: key rotation', ['Fetched wireguard.com/quickstart', 'Comparing with current OpenVPN config', 'Outline: 6 sections', 'Writing section 3: key rotation']],
+      ['network-config', 'main', 'idle', 'read only', '—', 'read current OpenVPN server config', ['$ cat openvpn/server.conf', 'no changes']],
+    ],
+    'backup-audit': [
+      ['ops-reports', 'reports/2026-09', 'done', 'finished', '+1 file', 'backup-audit-2026-09.md written', ['✓ Audited 23 Veeam jobs', '2 jobs missing offsite copy', '✓ Wrote backup-audit-2026-09.md']],
+    ],
+  };
+  componentWillUnmount() { clearInterval(this._timer); }
+  componentDidMount() { this.probeTool(); }
+  probeTool() {
+    const url = this.props.codebaseMemoryUrl ?? 'http://localhost:13000';
+    this.setState({ tool: 'checking' });
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 3000);
+    fetch(url, { mode: 'no-cors', signal: ctl.signal }).then(() => this.setState({ tool: 'up' })).catch(() => this.setState({ tool: 'down' })).finally(() => clearTimeout(to));
+  }
+  v4() {
+    const st = this.state, C = this.C;
+    const ns = st.ns ?? { work: 'feature', mode: 'orch', phase: 'ui', coord: 'seq', stack: 'both', sols: ['acme-app-front', 'mobile'], wt: true, ultra: false };
+    const set = (patch) => this.setState({ ns: { ...ns, ...patch }, nsLaunched: false });
+    const pills = (opts, key) => opts.map(([v, label]) => { const on = ns[key] === v; return { label, border: on ? '#8d8c87' : '#2c2d32', bg: on ? '#26272c' : 'transparent', fg: on ? '#f0efeb' : '#a9a8a3', pick: () => set({ [key]: v }) }; });
+    const G = [['microfrontends/', ['acme-app-front', 'workspace-front', 'auth-front', 'learning-material-front']], ['mobile/', ['mobile']], ['nugets/', ['components-library-nuget', 'typography-nuget', 'wrap-up-nuget', 'auth-nuget']], ['microservices/', ['auth-microservice', 'notifications-microservice']], ['functions/', ['calendar-func', 'hubspot-func']], ['other/', ['it-dashboard']], ['read-only', ['deprecated/*', 'infrastructure']]];
+    const nsGroups = G.map(([folder, items]) => ({ folder, items: items.map(n => { const ro = folder === 'read-only', on = ns.sols.includes(n); return { label: (on ? '✓ ' : '') + n, border: on ? 'oklch(0.55 0.09 250)' : '#2c2d32', bg: on ? 'oklch(0.25 0.04 250)' : 'transparent', fg: on ? '#e8e7e3' : '#a9a8a3', op: ro ? 0.4 : 1, cursor: ro ? 'not-allowed' : 'pointer', pick: () => { if (ro) return; set({ sols: on ? ns.sols.filter(x => x !== n) : [...ns.sols, n] }); } }; }) }));
+    const hasFront = ns.sols.some(s => s.endsWith('-front'));
+    const sess = 'free-talk-640';
+    const sum = [
+      { t: '# claude code · background · Max', c: '#6d6c67' },
+      { t: 'cwd       D:\\acme', c: '#bfbeb8' },
+      { t: 'work      ' + (ns.work === 'qa' ? 'test-authoring (QA)' : 'feature-building'), c: '#bfbeb8' },
+      { t: 'mode      ' + (ns.mode === 'orch' ? 'workspace orchestrator' : 'single-solution'), c: '#bfbeb8' },
+      { t: 'phase     ' + (ns.phase === 'ui' ? 'UI-first' : 'integration'), c: '#bfbeb8' },
+      ...(ns.work === 'qa' ? [{ t: 'stack     ' + ns.stack, c: '#bfbeb8' }] : (ns.mode === 'single' && hasFront ? [{ t: 'mobile    ' + { seq: 'sequential', twin: 'parallel-twin', none: 'no counterpart' }[ns.coord], c: '#bfbeb8' }] : [])),
+      { t: 'ultracode ' + (ns.ultra ? 'on' : 'off'), c: '#bfbeb8' },
+      { t: '', c: '#bfbeb8' },
+      { t: ns.wt ? '# worktrees' : '# no worktrees · edits in place', c: '#6d6c67' },
+      ...(ns.wt ? ns.sols.map(s => ({ t: '../' + s + '-wt-' + sess, c: 'oklch(0.78 0.1 250)' })) : []),
+      ...(ns.sols.length === 0 ? [{ t: '⚠ pick at least one solution', c: C.need }] : []),
+      { t: '', c: '#bfbeb8' },
+      { t: '✓ answers pre-filled → agent confirms, no re-ask', c: 'oklch(0.78 0.12 150)' },
+    ];
+    const WZ = ['Claude Code CLI + login', 'Workspace root', 'Scan solutions', 'Notifications', 'Usage warnings'];
+    const wz = st.wz ?? 2;
+    const wzSteps = WZ.map((label, i) => ({ label, mark: i < wz ? '✓' : String(i + 1), bg: i === wz ? '#1f2024' : 'transparent', fg: i === wz ? '#f0efeb' : i < wz ? '#c9c8c3' : '#76756f', dotBg: i < wz ? 'oklch(0.3 0.06 150)' : i === wz ? '#e8e7e3' : 'transparent', dotFg: i < wz ? 'oklch(0.85 0.1 150)' : i === wz ? '#111214' : '#76756f', dotBd: i <= wz ? 'transparent' : '#33343a', pick: () => this.setState({ wz: i }) }));
+    const ro = 'oklch(0.72 0.1 70)';
+    const wzScan = [
+      { f: 'microfrontends/', n: 4, ex: 'acme-app-front, workspace-front, auth-front, …', rule: 'editable', rc: '#8d8c87' },
+      { f: 'mobile/', n: 1, ex: 'MAUI app + Mobile Gateway BFF', rule: 'editable', rc: '#8d8c87' },
+      { f: 'nugets/', n: 4, ex: 'components-library-nuget, typography-nuget, …', rule: 'editable', rc: '#8d8c87' },
+      { f: 'microservices/', n: 2, ex: 'auth-microservice, notifications-microservice', rule: 'editable', rc: '#8d8c87' },
+      { f: 'functions/', n: 2, ex: 'calendar-func, hubspot-func', rule: 'editable', rc: '#8d8c87' },
+      { f: 'other/', n: 1, ex: 'it-dashboard', rule: 'on request only', rc: ro },
+      { f: 'deprecated/', n: 3, ex: 'old-chat-front, legacy-auth-microservice, …', rule: 'read-only', rc: ro },
+      { f: 'infrastructure/', n: 1, ex: 'platform Terraform', rule: 'read-only', rc: ro },
+    ];
+    const np = st.notif ?? (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+    const SN = [['claude', 'Claude Code'], ['workspace', 'Workspace & solutions'], ['sessions', 'Sessions & worktrees'], ['notify', 'Notifications & usage'], ['schedules', 'Schedules'], ['tools', 'Embedded tools'], ['github', 'GitHub']];
+    const sec = st.setSec ?? 'tools';
+    const sw = st.sw ?? 'idle';
+    return {
+      nsWork: pills([['feature', 'Feature-building'], ['qa', 'Test-authoring (QA)']], 'work'),
+      nsMode: pills([['single', 'Single-solution'], ['orch', 'Workspace orchestrator']], 'mode'),
+      nsPhase: pills([['ui', 'UI-first'], ['int', 'Integration']], 'phase'),
+      nsCoord: pills([['seq', 'Sequential follow-up'], ['twin', 'Parallel-twin'], ['none', 'No mobile counterpart']], 'coord'),
+      nsStack: pills([['web', 'Web · Playwright'], ['mobile', 'Mobile · Appium'], ['both', 'Both']], 'stack'),
+      nsGroups, nsSolHint: ns.sols.length + ' selected · read-only folders locked',
+      nsShowCoord: ns.work === 'feature' && ns.mode === 'single' && hasFront, nsIsQa: ns.work === 'qa',
+      nsWtBg: ns.wt ? '#e8e7e3' : '#33343a', nsWtKnob: ns.wt ? '16px' : '2px', nsToggleWt: () => set({ wt: !ns.wt }),
+      nsUltraBg: ns.ultra ? '#e8e7e3' : '#33343a', nsUltraKnob: ns.ultra ? '16px' : '2px', nsToggleUltra: () => set({ ultra: !ns.ultra }),
+      nsRecommended: () => set({ work: 'feature', mode: 'single', phase: 'ui', coord: 'seq' }),
+      nsSummary: sum, nsLaunchLabel: st.nsLaunched ? '✓ Started in background' : 'Start session', nsLaunch: () => this.setState({ nsLaunched: true }),
+      wzSteps, wzPos: 'Step ' + (wz + 1) + ' of 5', wz0: wz === 0, wz1: wz === 1, wz2: wz === 2, wz3: wz === 3, wz4: wz === 4, wzScan,
+      wzBack: () => this.setState({ wz: Math.max(0, wz - 1) }), wzNext: () => this.setState({ wz: Math.min(4, wz + 1) }), wzNextLabel: wz === 4 ? 'Finish' : 'Continue',
+      notifState: { granted: '✓ allowed', denied: '✕ blocked in browser settings', default: 'not asked yet', unsupported: 'not supported here' }[np] || np,
+      notifColor: np === 'granted' ? 'oklch(0.76 0.13 150)' : np === 'denied' ? 'oklch(0.72 0.16 25)' : '#8d8c87',
+      askNotif: () => { if (typeof Notification === 'undefined') return; Notification.requestPermission().then(p => { this.setState({ notif: p }); if (p === 'granted') new Notification('Switchboard', { body: 'incident-0412 needs approval' }); }); },
+      setNav: SN.map(([k, label]) => ({ label, bg: k === sec ? '#212227' : 'transparent', fg: k === sec ? '#f0efeb' : '#a9a8a3', pick: () => this.setState({ setSec: k }) })),
+      setClaude: sec === 'claude', setWorkspace: sec === 'workspace', setSessions: sec === 'sessions', setNotify: sec === 'notify', setSchedules: sec === 'schedules', setTools: sec === 'tools', setGithub: sec === 'github',
+      swUrl: st.swUrl ?? '', onSwUrl: (e) => this.setState({ swUrl: e.target.value, sw: 'idle' }),
+      swDot: { idle: '#5a5955', checking: C.need, up: C.done, down: C.fail }[sw], swState: { idle: 'not set', checking: 'checking…', up: 'reachable', down: 'not reachable' }[sw],
+      testSw: () => { const u = (this.state.swUrl || '').trim(); if (!u) return; this.setState({ sw: 'checking' }); const ctl = new AbortController(); setTimeout(() => ctl.abort(), 3000); fetch(u, { mode: 'no-cors', signal: ctl.signal }).then(() => this.setState({ sw: 'up' })).catch(() => this.setState({ sw: 'down' })); },
+    };
+  }
+  v3() {
+    const url = this.props.codebaseMemoryUrl ?? 'http://localhost:13000', t = this.state.tool ?? 'checking';
+    const dot = { up: 'oklch(0.74 0.13 150)', down: 'oklch(0.68 0.17 25)', checking: 'oklch(0.8 0.14 70)' }[t];
+    return {
+      toolUrl: url, toolHost: url.replace(/^https?:\/\//, ''), toolDot: dot, toolState: { up: 'connected', down: 'offline', checking: 'checking…' }[t],
+      toolOffline: t === 'down', frameKey: 'f' + (this.state.frameN ?? 0),
+      reloadTool: () => { this.setState({ frameN: (this.state.frameN ?? 0) + 1 }); this.probeTool(); },
+      dirty: [{ n: 'mobile', t: '10:31' }, { n: 'acme-app-front', t: '10:22' }, { n: 'components-library-nuget', t: '09:58' }],
+      reindexLabel: this.state.reindexSent ? '✓ Sent to calendar-func-fix' : 'Reindex 3 via session…',
+      reindex: () => this.setState({ reindexSent: true }),
+    };
+  }
+  v2() {
+    const C = this.C, st = this.state;
+    const s2i = st.s2 ?? 0, ans = st.ans ?? [0, 0, 2], sent = !!st.qSent, solSel = st.solSel ?? 'mobile', solF = st.solF ?? 'All', play = st.play ?? 330;
+    const S2 = [['free-talk-feature', 'orch · feature · UI-first', 'need', '1m'], ['notifications-integration', 'orch · integration · Tier A 3/6', 'run', '3m'], ['qa-free-talk', 'orch · QA · 14/18 covered', 'run', '9m'], ['button-rollout', 'loop-until-dry · 7/12', 'need', '12m'], ['calendar-func-fix', 'single · calendar-func', 'run', '20m'], ['prod-monitoring', '/loop 1h · expires 6d', 'done', '41m']];
+    const s2 = S2.map((s, i) => ({ name: s[0], mode: s[1], color: C[s[2]], time: s[3], bg: i === s2i ? '#212227' : 'transparent', pick: () => this.setState({ s2: i }) }));
+    const Q = [
+      ['web · microfrontends/acme-app-front', 'Figma shows the topic chips wrapping to 2 rows at 360. Should overflow wrap as drawn, or scroll horizontally?', ['Wrap to 2 rows (as Figma)', 'Horizontal scroll', 'Ask designer']],
+      ['mobile · mobile/', 'AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?', ['Use default size', 'Add compact variant', 'Stop here']],
+      ['(orchestrator)', 'Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?', ['Nullable', 'Required', 'Check Confluence first']],
+    ];
+    const qs = Q.map((q, qi) => ({ from: q[0], quote: q[1], opts: q[2].map((label, oi) => { const on = ans[qi] === oi; return { label, border: on ? 'oklch(0.7 0.12 70)' : 'oklch(0.36 0.04 70)', bg: on ? 'oklch(0.3 0.06 70)' : 'transparent', fg: on ? '#f5f4f0' : '#c9c8c3', pick: () => { const a = [...ans]; a[qi] = oi; this.setState({ ans: a, qSent: false }); } }; }) }));
+    const QK = [['Accept recommended', 'Accept recommended: feature-building · single-solution · UI-first · sequential'], ['Match Figma exactly', 'Match the Figma frame exactly; don\'t add variants.'], ['Stop, ask designer', 'Stop and park this until the designer confirms.'], ['+ Save as template', '']];
+    const quick = QK.map((k, i) => ({ label: k[0], border: st.qk === i ? '#6d6c67' : '#2c2d32', pick: () => this.setState({ qk: i }) }));
+    const composer = st.qk != null && QK[st.qk][1] ? QK[st.qk][1] : 'Message free-talk-feature…';
+    const agents = [
+      { name: 'orchestrator', desc: 'relay + reconcile', sol: 'workspace root', branch: '', status: 'needs you', color: C.need },
+      { name: 'web', desc: 'FreeTalkPage @360', sol: 'microfrontends/acme-app-front', branch: 'feature/free-talk-360', status: 'asked 1', color: C.need },
+      { name: 'mobile', desc: 'FreeTalkView @360', sol: 'mobile/', branch: 'feature/free-talk-360', status: 'asked 1', color: C.need },
+      { name: 'figma-extractor', desc: 'spec table, node 2231:884', sol: 'read-only', branch: '', status: 'done', color: C.done },
+    ];
+    const sArts = [{ type: 'CONTRACT', name: 'contracts/free-talk.md', meta: 'locked' }, { type: 'DIFF', name: 'acme-app-front · 6 files', meta: '+284 −12' }, { type: 'DIFF', name: 'mobile · 5 files', meta: '+231 −4' }, { type: 'FOLLOWUP', name: 'mobile-followups/from-acme-app-front.md', meta: '1 new' }];
+    const b = (b, who, s, wt, agent) => ({ b, who, color: C[s], wt: wt || '', agent: agent || '' });
+    const SG = [
+      ['microfrontends/', '', [
+        { id: 'swap', name: 'acme-app-front', type: 'Web', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', 'wt-1', 'web'), b('feature/button-variants', 'button-rollout', 'run', 'wt-2', 'web')], phase: 'mixed', changes: '+312', flag: '2 writers · isolated', fc: '#76756f' },
+        { id: 'workspace', name: 'workspace-front', type: 'Web', s: 'run', branches: [b('feature/notifications-panel', 'notifications-integration', 'run', '', 'web')], phase: 'integration', changes: '+88' },
+        { id: 'auth', name: 'auth-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'integration', changes: '—' },
+        { id: 'lm', name: 'learning-material-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'UI-first', changes: '—' },
+      ]],
+      ['mobile/', '', [{ id: 'mobile', name: 'mobile', type: 'Mobile', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', '', 'mobile'), b('feature/button-variants', 'button-rollout', 'run', '', 'mobile')], phase: 'mixed', changes: '+247', flag: '⚠ same working tree', fc: C.need }]],
+      ['nugets/', '', [{ id: 'cl', name: 'components-library-nuget', type: 'NuGet', s: 'run', branches: [b('feature/acm-button-sizes', 'button-rollout', 'run')], phase: '—', changes: '+96' }, { id: 'typo', name: 'typography-nuget', type: 'NuGet', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: '—', changes: '—' }]],
+      ['microservices/', '', [{ id: 'notif', name: 'notifications-microservice', type: 'Backend', s: 'run', branches: [b('feature/push-prefs', 'notifications-integration', 'run')], phase: 'integration', changes: '+141', flag: 'contract source', fc: '#76756f' }, { id: 'authms', name: 'auth-microservice', type: 'Backend', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'integration', changes: '—' }]],
+      ['functions/', '', [{ id: 'cal', name: 'calendar-func', type: 'Backend', s: 'run', branches: [b('fix/timezone-dst', 'calendar-func-fix', 'run')], phase: 'integration', changes: '+23' }]],
+      ['read-only', 'deprecated/ · infrastructure/ · never edited', [{ id: 'infra', name: 'infrastructure', type: 'Read-only', s: 'idle', ro: true, branches: [b('main', 'read by notifications-integration', 'run')], phase: '—', changes: 'locked' }, { id: 'oldchat', name: 'old-chat-front', type: 'Read-only', s: 'idle', ro: true, branches: [b('main', 'read by notifications-integration', 'run')], phase: '—', changes: 'locked' }]],
+    ];
+    const solFilters = ['All', 'Web', 'Mobile', 'NuGet', 'Backend', 'Read-only'].map(label => ({ label, bg: label === solF ? '#e8e7e3' : '#1f2024', fg: label === solF ? '#111214' : '#c9c8c3', pick: () => this.setState({ solF: label }) }));
+    const solGroups = SG.map(g => ({ folder: g[0], note: g[1], rows: g[2].filter(r => solF === 'All' || r.type === solF).map(r => ({ ...r, color: C[r.s], flag: r.flag || '', flagColor: r.fc || '#76756f', bg: r.id === solSel ? '#1f2024' : 'transparent', op: r.ro ? 0.6 : 1, pick: () => this.setState({ solSel: r.id }) })) })).filter(g => g.rows.length);
+    const all = SG.flatMap(g => g[2]); const sr = all.find(r => r.id === solSel) || all[0];
+    const D = {
+      mobile: { path: '~/acme/mobile/', warn: 'free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: \'worktree\' for parallel writers in the same repo.', ledger: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'seam TODO · FreeTalkViewModel.cs:41' }, { i: 'NotificationsConnector', p: 'integration', c: C.run, seam: 'Tier A green · Tier B pending' }], arts: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'FOLLOWUP', n: 'mobile-followups/from-acme-app-front.md', m: '2 pending' }, { t: 'QA', n: 'coverage-matrix.md', m: '14/18' }], idx: 'codebase-memory · dirty since 10:31 · reindex', idxColor: C.need },
+      swap: { path: '~/acme/microfrontends/acme-app-front/', warn: '', ledger: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'mock-DI · fixtures/free-talk.json' }, { i: 'ProfileConnector', p: 'integration', c: C.run, seam: 'Tier B green 09-24' }], arts: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'DIFF', n: 'Pages/FreeTalk/*.razor', m: '+284 −12' }], idx: 'codebase-memory · dirty since 10:22 · reindex', idxColor: C.need },
+    };
+    const d = D[sr.id] || { path: '~/acme/' + (SG.find(g => g[2].includes(sr))[0].replace('read-only', 'deprecated/')) + sr.name + '/', warn: '', ledger: [{ i: '—', p: sr.phase, c: '#8d8c87', seam: 'no phase-ledger.md changes today' }], arts: [{ t: 'INFO', n: 'No artifacts today', m: '' }], idx: 'codebase-memory · indexed · fresh', idxColor: C.done };
+    const sd = { name: sr.name, ...d, branches: sr.branches };
+    const K = { plan: ['oklch(0.26 0.02 250)', 'oklch(0.38 0.04 250)', '#c9c8c3'], impl: ['oklch(0.3 0.06 250)', 'oklch(0.45 0.09 250)', '#e8e7e3'], loop: ['oklch(0.3 0.06 300)', 'oklch(0.45 0.09 300)', '#e8e7e3'], ask: ['oklch(0.32 0.07 70)', 'oklch(0.5 0.1 70)', '#f5f4f0'], ok: ['oklch(0.3 0.06 150)', 'oklch(0.45 0.09 150)', '#e8e7e3'] };
+    const LN = [
+      ['orchestrator', 'workspace root', [[0, 3, 'plan', 'task definition'], [3, 9, 'plan', 'recon · codebase-memory'], [9, 12, 'plan', 'contract lock'], [12, 13, 'impl', 'dispatch'], [30, 33, 'ask', 'relay 3 Qs'], [40, 46, 'ok', 'reconcile']]],
+      ['figma-extractor', 'read-only', [[9, 12, 'plan', 'spec table']]],
+      ['web', 'acme-app-front', [[13, 22, 'impl', 'implement FreeTalkPage'], [22, 26, 'loop', 'build self-heal ×2'], [26, 30, 'loop', 'render vs Figma 3/5'], [30, 31, 'ask', '?'], [33, 40, 'impl', 'apply answers']]],
+      ['mobile', 'mobile/', [[13, 24, 'impl', 'implement FreeTalkView'], [24, 29, 'loop', 'build self-heal ×1'], [29, 30, 'ask', '?'], [33, 39, 'impl', 'apply answers']]],
+    ];
+    const tm = play / 10;
+    const lanes = LN.map(l => ({ name: l[0], sol: l[1], ev: l[2].map(e => ({ left: (e[0] / 46 * 100) + '%', width: ((e[1] - e[0]) / 46 * 100) + '%', bg: K[e[2]][0], bd: K[e[2]][1], fg: K[e[2]][2], label: e[3], op: e[0] <= tm ? 1 : 0.35 })) }));
+    const hm = (m) => { const t = 122 + Math.round(m); return '10:' + String(t - 120).padStart(2, '0'); };
+    const dotC = { plan: '#8d8c87', impl: C.run, loop: 'oklch(0.72 0.12 300)', ask: C.need, ok: C.done };
+    const evs = LN.flatMap(l => l[2].map(e => ({ s: e[0], who: l[0], label: e[3], k: e[2] }))).filter(e => e.s <= tm).sort((a, b) => a.s - b.s);
+    const evLog = evs.slice(-9).map((e, i, arr) => ({ t: hm(e.s), c: dotC[e.k], who: e.who, label: e.label, op: i === arr.length - 1 ? 1 : 0.75 }));
+    const F = [[9, 'contracts/free-talk.md', 'root', '+62'], [15, 'Pages/FreeTalk/FreeTalk.razor', 'acme-app-front', '+118'], [16, 'Views/FreeTalkView.xaml', 'mobile/', '+96'], [18, 'Pages/FreeTalk/FreeTalk.razor.css', 'acme-app-front', '+74'], [20, 'ViewModels/FreeTalkViewModel.cs', 'mobile/', '+88'], [23, 'Services/Mocks/FreeTalkServiceMock.cs', 'acme-app-front', '+41'], [25, 'Services/Mocks/FreeTalkServiceMock.cs', 'mobile/', '+37'], [35, 'Pages/FreeTalk/TopicChips.razor', 'acme-app-front', '+51 −12'], [41, 'mobile-followups/from-acme-app-front.md', 'root', '+14']];
+    const fa = F.filter(f => f[0] <= tm);
+    const filesAt = fa.slice(-7).reverse().map(f => ({ n: f[1], sol: f[2] + ' · ' + hm(f[0]), d: f[3] }));
+    const T = tm < 13 ? ['$ codebase-memory search_graph "FreeTalk"', '2 precedents: SpeakingPage, TopicPicker', '$ figma get_metadata 2231:884', '✓ 14 slots · breakpoint 360', '✓ wrote contracts/free-talk.md'] : tm < 22 ? ['[web] cd microfrontends/acme-app-front', '[web] writing Pages/FreeTalk/FreeTalk.razor', '[mobile] cd mobile/', '[mobile] writing Views/FreeTalkView.xaml', '▍'] : tm < 30 ? ['[web] $ dotnet build', '[web] CS0246 AcmChip not found → add using', '[web] $ dotnet build  ›  ✓ 0 errors', '[web] chrome-devtools screenshot @360 vs Figma', '[web] diff: chip gap 8px ≠ 12px → fix (3/5)', '[mobile] $ dotnet build  ›  ✓ 0 errors'] : tm < 40 ? ['⏸ [web] question: chip overflow at 360', '⏸ [mobile] question: AcmChip compact size', '⏸ [orch] TopicId nullable vs required', '✓ answers received 10:34', '[web] applying: wrap to 2 rows', '[mobile] applying: default size'] : ['[orch] reconcile · contract-adherence report', '✓ web 14/14 fields match', '✓ mobile 14/14 fields match', '✓ follow-up routed → mobile-followups/', '✓ ready for your review · not committed'];
+    const termAt = T.map(t => ({ t, c: this.lineColor(t.replace(/^\[\w+\] /, '')) }));
+    const answered = sent;
+    return {
+      s2, qs, quick, composer, composerColor: st.qk != null && QK[st.qk][1] ? '#e8e7e3' : '#76756f', agents, sArts,
+      qStatus: answered ? '✓ Sent to 2 subagents and the orchestrator. Blocked work resumes.' : '3 of 3 selected · answers are baked into each brief verbatim',
+      sendQsLabel: answered ? 'Sent' : 'Send all answers', sendQs: () => this.setState({ qSent: true }),
+      solFilters, solGroups, sd,
+      lanes, playFrac: play / 460, playVal: play, playTime: hm(tm), evLog, filesAt, filesCount: fa.length + ' files', termAt,
+      onScrub: (e) => this.setState({ play: Number(e.target.value) }),
+      stepBack: () => this.setState({ play: Math.max(0, play - 20) }), stepFwd: () => this.setState({ play: Math.min(460, play + 20) }),
+      playLabel: st.playing ? '❚❚ Pause' : '▶ Play',
+      togglePlay: () => { if (st.playing) { clearInterval(this._timer); this.setState({ playing: false }); } else { if (play >= 460) this.setState({ play: 0 }); this._timer = setInterval(() => { const p = (this.state.play ?? 0) + 4; if (p >= 460) { clearInterval(this._timer); this.setState({ play: 460, playing: false }); } else this.setState({ play: p }); }, 60); this.setState({ playing: true }); } },
+    };
+  }
+  lineColor(t) { if (t.startsWith('$')) return '#6d6c67'; if (t.startsWith('✓')) return 'oklch(0.78 0.12 150)'; if (t.startsWith('⏸')) return 'oklch(0.8 0.13 70)'; if (t.startsWith('  ~')) return 'oklch(0.82 0.1 85)'; return '#bfbeb8'; }
+  renderVals() {
+    const C = this.C, st = this.state, SOL = this.SOL;
+    const S = [
+      ['infra-terraform', 'terra', 'need', 'Rotate staging RDS creds', '2m', 'opus'],
+      ['incident-0412', 'inc-0412', 'need', 'api-gateway 502 spike', 'now', 'opus'],
+      ['helpdesk-triage', 'helpdesk', 'run', 'Drafting replies to 7 tickets', '4m', 'sonnet'],
+      ['ad-sync-script', 'ad-sync', 'run', 'PowerShell AD group sync', '11m', 'sonnet'],
+      ['vpn-docs', 'vpn-docs', 'run', 'Research WireGuard rollout', '18m', 'opus'],
+      ['backup-audit', 'backup', 'done', 'Veeam job audit report', '1h', 'sonnet'],
+    ];
+    const sessions = S.map((s, i) => ({ name: s[0], short: s[1], color: C[s[2]], task: s[3], time: s[4], solCount: SOL[s[0]].length + ' solutions', rowBg: i === st.active ? '#212227' : 'transparent', pick: () => this.setState({ active: i, sol: 0 }) }));
+    const a = S[st.active], list = SOL[a[0]], si = Math.min(st.sol, list.length - 1);
+    const sols = list.map((p, i) => ({ name: p[0], branch: p[1], color: C[p[2]], state: p[3], diff: p[4], doing: p[5], border: i === si ? '#3a3b41' : 'transparent', bg: i === si ? '#1c1d21' : 'transparent', pick: () => this.setState({ sol: i }) }));
+    const termLines = list[si][6].map(t => ({ t, c: this.lineColor(t) }));
+    const branches = new Set(list.map(p => p[1])).size;
+    const LA = ['Update both configs and restart them now', 'Update configs, restart in tonight\'s window', 'Stop here, I\'ll handle the apps'];
+    const optsA = LA.map((label, i) => ({ key: i + 1, label, border: i === st.optA ? 'oklch(0.7 0.12 70)' : '#33343a', bg: i === st.optA ? 'oklch(0.28 0.05 70)' : '#17181b', pick: () => this.setState({ optA: i }) }));
+    const Q = [
+      ['incident-0412', 'need', 'Approval', '1m', 'Roll back api-gateway to v2.8.3?', 'The 502 rate went from 0.2% to 4.1% right after deploy v2.9.0. Rolling back takes about 3 minutes and needs no downtime.', ['Roll back now', 'Merge the hotfix branch and redeploy', 'Keep investigating'], [['api-gateway', 'hotfix/keepalive-timeout']]],
+      ['infra-terraform', 'need', 'Question', '2m', 'Two apps still read the old secret at boot. How should I proceed?', 'billing-worker and reports-cron load RDS_MASTER from env on startup. The new password is already in Secrets Manager.', ['Update and restart both now', 'Restart in tonight\'s window', 'Stop, I\'ll handle it'], [['billing-worker', 'chore/rds-secret-ref'], ['reports-cron', 'chore/rds-secret-ref']]],
+      ['nightly-patch', 'fail', 'Scheduled run failed', '38m', 'Patch run failed on 2 of 14 hosts', 'web-07 and web-11 returned apt lock errors. The other 12 hosts are patched and healthy.', ['Retry the 2 hosts', 'Skip until tomorrow', 'Open the log'], [['ansible-playbooks', 'main']]],
+      ['helpdesk-triage', 'need', 'Review', '6m', 'Send 3 drafted ticket replies?', 'Password reset (#4412), VPN drop (#4415), and printer mapping (#4419). All match existing KB articles.', ['Send all 3', 'Review each one', 'Discard'], [['ticket-templates', 'drafts/sept-27']]],
+    ];
+    const queue = Q.map((q, i) => ({ session: q[0], color: C[q[1]], age: q[3], title: q[4], solLine: q[7].map(p => p[0] + ' ⎇ ' + p[1]).join(' · '), border: i === st.q ? '#3a3b41' : '#1f2024', bg: i === st.q ? '#1c1d21' : 'transparent', pick: () => this.setState({ q: i, optB: 0 }) }));
+    const cq = Q[st.q];
+    const cur = { session: cq[0], color: C[cq[1]], kind: cq[2], age: cq[3], title: cq[4], detail: cq[5], pos: (st.q + 1) + ' / ' + Q.length, sols: cq[7].map(p => ({ name: p[0], branch: p[1] })) };
+    const optsB = cq[6].map((label, i) => ({ key: i + 1, label, border: i === st.optB ? '#6d6c67' : '#26272c', bg: i === st.optB ? '#222328' : '#17181b', pick: () => this.setState({ optB: i }) }));
+    const rs = (p) => p.split('').map(ch => ({ g: C.done, r: C.fail, a: C.need, n: C.none })[ch]);
+    const schedules = [
+      { name: 'nightly-patch', cron: '02:00 daily', color: C.fail, runs: rs('gggggggggggggr'), last: 'Failed 38m ago · 2 hosts', next: 'in 23h 22m', pauseLabel: 'Pause' },
+      { name: 'cert-expiry-scan', cron: 'every 6h', color: C.done, runs: rs('gggggggggggggg'), last: 'OK · 0 expiring', next: 'in 00:14:32', pauseLabel: 'Pause' },
+      { name: 'ticket-digest', cron: '08:00 weekdays', color: C.need, runs: rs('ggggagggggggga'), last: 'Asking: include P3s?', next: 'tomorrow 08:00', pauseLabel: 'Pause' },
+      { name: 'backup-verify', cron: 'Sun 03:00', color: C.idle, runs: rs('nnnnggggggnggg'), last: 'Paused by you', next: 'paused', pauseLabel: 'Resume' },
+    ];
+    const T = { 'incident-0412': ['Roll back api-gateway to v2.8.3?', ['Roll back', 'Merge hotfix', 'Keep investigating']], 'infra-terraform': ['Two apps read the old secret at boot.', ['Restart now', 'Tonight', 'Stop']] };
+    const order = ['incident-0412', 'infra-terraform', 'helpdesk-triage', 'ad-sync-script', 'vpn-docs', 'backup-audit'];
+    const tiles = order.map(n => { const s = S.find(x => x[0] === n), l = SOL[n]; const busy = l.find(p => p[2] === 'need' || p[2] === 'run') || l[0]; return { name: n, state: { need: 'needs you', run: 'running', done: 'done' }[s[2]], time: s[4], color: C[s[2]], border: s[2] === 'need' ? 'oklch(0.45 0.08 70)' : '#232428', sols: l.slice(0, 3).map(p => ({ name: p[0], branch: p[1], color: C[p[2]], state: p[3] })), lines: busy[6].slice(-3), ask: T[n] ? T[n][0] : '', opts: T[n] ? T[n][1] : [] }; });
+    const A = [
+      ['PR', 'Revert keepalive_timeout to 75s', 'api-gateway ⎇ hotfix/keepalive-timeout', '#218 · open', '1m'],
+      ['DIFF', 'modules/rds/main.tf', 'infra-live ⎇ rotate-rds-staging', '+18 −6', '4m'],
+      ['TICKET', 'Re: #4412 Password reset loop', 'ticket-templates ⎇ drafts/sept-27', 'draft', '6m'],
+      ['BRANCH', 'feature/ad-group-sync', 'it-scripts', '3 commits', '11m'],
+      ['DOC', 'backup-audit-2026-09.md', 'ops-reports ⎇ reports/2026-09', '2.4 KB', '1h'],
+      ['DOC', 'wireguard-rollout-plan.md', 'it-docs ⎇ docs/wireguard-rollout', 'in progress', '18m'],
+    ];
+    const map = { 'Files & diffs': ['DIFF'], 'PRs / branches': ['PR', 'BRANCH'], 'Docs': ['DOC'], 'Tickets': ['TICKET'] };
+    const artFilters = ['All', 'Files & diffs', 'PRs / branches', 'Docs', 'Tickets'].map(label => ({ label, bg: label === st.filter ? '#e8e7e3' : '#1f2024', fg: label === st.filter ? '#111214' : '#c9c8c3', pick: () => this.setState({ filter: label }) }));
+    const artifacts = A.filter(x => st.filter === 'All' || map[st.filter].includes(x[0])).map(x => ({ type: x[0], name: x[1], sol: x[2], meta: x[3], age: x[4] }));
+    return {
+      sessions, active: { name: a[0], color: C[a[2]], meta: list.length + ' solutions · ' + branches + ' branches · ' + a[5] },
+      sols, termLines, curSol: list[si][0] + ' ⎇ ' + list[si][1], solSummary: list.length + ' solutions · ' + branches + ' branches',
+      optsA, askOpen: !st.askDone, askDone: st.askDone, sentLabel: LA[st.optA],
+      sendA: () => this.setState({ askDone: true }),
+      toastOn: st.toast, hideToast: () => this.setState({ toast: false }),
+      queue, cur, optsB, schedules, tiles, artFilters, artifacts,
+      ...this.v2(),
+      ...this.v3(),
+      ...this.v4(),
+    };
+  }
+}
+</script>
+</body>
+</html>
