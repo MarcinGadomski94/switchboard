@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import type { NewSession, ResumeCommand, Session, SessionEvent } from '../../core/api.ts';
+import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionEvent } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
@@ -13,7 +13,9 @@ import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { toEvent, toSession } from '../sessions/wire.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildClaudeArgs, childEnv, resumeCommand } from './argv.ts';
+import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
 import { ClaudeProcess, type ProcessExit } from './process.ts';
+import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
@@ -84,8 +86,19 @@ export interface SupervisorOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly timeouts?: Partial<StopTimeouts>;
   readonly controlHandler?: ControlRequestHandler;
+  /**
+   * `claude agents --json` for the "Attach here" warning (M4.1: `claudeAgentsLister`
+   * in recovery.ts). Without one, liveness is unknown and every attach asks first.
+   */
+  readonly listLive?: LiveProcessLister;
   /** Called when processing a line or an exit throws (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
+}
+
+/** Options of {@link SessionSupervisor.attach}. */
+export interface AttachOptions {
+  /** Attach even when a terminal may still hold the session (the developer confirmed the warning). */
+  readonly confirm?: boolean;
 }
 
 /** Why the supervisor refused a call. `code` maps to an HTTP status in the routes. */
@@ -96,7 +109,8 @@ export type SupervisorErrorCode =
   | 'detached'
   | 'already-running'
   | 'request-not-open'
-  | 'closing';
+  | 'closing'
+  | 'attach-warning';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -105,6 +119,16 @@ export class SupervisorError extends Error {
   constructor(code: SupervisorErrorCode, message: string) {
     super(message);
     this.code = code;
+  }
+}
+
+/** "Attach here" without `confirm` while a terminal may still hold the session (M4.1, gap #5): nothing was spawned. */
+export class AttachWarningError extends SupervisorError {
+  override name = 'AttachWarningError';
+  readonly reasons: readonly AttachWarningReason[];
+  constructor(reasons: readonly AttachWarningReason[]) {
+    super('attach-warning', attachWarningMessage(reasons));
+    this.reasons = reasons;
   }
 }
 
@@ -147,7 +171,10 @@ export class SessionSupervisor {
   readonly #timeouts: StopTimeouts;
   readonly #handler: ControlRequestHandler;
   readonly #onError: (error: unknown) => void;
+  readonly #listLive: LiveProcessLister | null;
   readonly #live = new Map<string, Live>();
+  /** Attach calls run one at a time per session (the check and the spawn must not interleave). */
+  readonly #attaching = new Map<string, Promise<unknown>>();
   readonly #listeners = { sessionUpdated: new Set<Listener<'sessionUpdated'>>(), event: new Set<Listener<'event'>>() };
   #closing = false;
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
@@ -162,6 +189,7 @@ export class SessionSupervisor {
     this.#timeouts = { ...DEFAULT_STOP_TIMEOUTS, ...options.timeouts };
     this.#handler = options.controlHandler ?? {};
     this.#onError = options.onError ?? ((error) => console.error('switchboard supervisor:', error));
+    this.#listLive = options.listLive ?? null;
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -302,20 +330,72 @@ export class SessionSupervisor {
   }
 
   /**
-   * "Attach here": spawns `--resume` with the baseline flags and no message (the
-   * process stays idle until the developer writes). The warning and the transcript
-   * import are M4.1's.
+   * "Attach here" (M4.1, `docs/supervisor.md` → *Attach here*). When the session
+   * has a live process nothing happens (never two live processes on one id).
+   * Otherwise, unless `options.confirm`, it first checks whether a terminal may
+   * still hold the session (transcript changed < 2 min ago, or `claude agents
+   * --json` lists the id, or that list cannot be read) and throws
+   * {@link AttachWarningError} without spawning. Then it imports the turns the
+   * terminal added (transcript entries after the sync point) as events, and spawns
+   * `--resume` with the baseline flags and no message: the process stays idle
+   * until the developer writes.
    */
-  async attach(sessionId: string): Promise<ResumeCommand> {
+  async attach(sessionId: string, options: AttachOptions = {}): Promise<ResumeCommand> {
     await this.#gate;
+    const previous = this.#attaching.get(sessionId) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.#attachNow(sessionId, options));
+    this.#attaching.set(sessionId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#attaching.get(sessionId) === run) this.#attaching.delete(sessionId);
+    }
+  }
+
+  async #attachNow(sessionId: string, options: AttachOptions): Promise<ResumeCommand> {
     this.#assertOpen();
     const session = await this.#get(sessionId);
-    if (!this.#live.has(sessionId)) {
-      const attached = (await this.#store.sessions.update(sessionId, { attached: true, detachedAt: null })) ?? session;
-      const live = await this.#spawn(attached, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'attached');
-      await this.#enqueue(live, () => this.#refreshStatus(live));
+    const command = { resumeCommand: resumeCommand(session.claudeSessionId) };
+    if (this.#live.has(sessionId)) return command;
+    const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
+    if (options.confirm !== true) {
+      const reasons = await attachWarnings({ transcript, claudeSessionId: session.claudeSessionId, listLive: this.#listLive, now: Date.now() });
+      if (reasons.length > 0) throw new AttachWarningError(reasons);
     }
-    return { resumeCommand: resumeCommand(session.claudeSessionId) };
+    this.#assertOpen();
+    if (this.#live.has(sessionId)) return command;
+    if (transcript) await this.#importTranscript(await this.#get(sessionId), transcript);
+    const attached = (await this.#store.sessions.update(sessionId, { attached: true, detachedAt: null })) ?? session;
+    const live = await this.#spawn(attached, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'attached');
+    await this.#enqueue(live, () => this.#refreshStatus(live));
+    return command;
+  }
+
+  /** Sync back (M4.1): the terminal's turns from the transcript become events; a failure is recorded, never fatal. */
+  async #importTranscript(session: SessionRecord, transcript: string): Promise<void> {
+    try {
+      const result = await importTerminalTurns({
+        store: this.#store,
+        session,
+        mainAgentId: await this.#mainAgentId(session),
+        transcript,
+        onEvent: (event) => this.#emitEvent(event),
+      });
+      if (!result.found) {
+        await this.recordServiceEvent(session.id, 'error', 'Could not sync the terminal\'s turns', {
+          type: 'lifecycle',
+          action: 'attached',
+          message: `The last transcript entry Switchboard saw (${session.lastTranscriptUuid ?? 'none'}) is not in ${transcript}; nothing was imported.`,
+        });
+      }
+    } catch (error) {
+      this.#onError(error);
+      await this.recordServiceEvent(session.id, 'error', 'Could not sync the terminal\'s turns', {
+        type: 'lifecycle',
+        action: 'attached',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** Writes the reply to an open `can_use_tool` request (M3.1: answers, Allow once, Deny). */

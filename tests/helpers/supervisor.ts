@@ -5,6 +5,7 @@ import type { SessionStatus } from '../../src/core/model.ts';
 import type { EventRecord } from '../../src/server/db/repos/events.ts';
 import type { SessionRecord } from '../../src/server/db/repos/sessions.ts';
 import type { Store } from '../../src/server/db/store.ts';
+import { type LiveProcessLister, claudeAgentsLister } from '../../src/server/supervisor/recovery.ts';
 import { type ControlRequestHandler, SessionSupervisor, type StopTimeouts } from '../../src/server/supervisor/supervisor.ts';
 import { fakeClaudeCommand } from '../../tools/fake-claude/command.ts';
 import { makeTempDir, removeTempDir } from './net.ts';
@@ -34,6 +35,8 @@ export interface WorldOptions {
   /** Extra variables in the parent env (e.g. CLAUDECODE to prove the scrub). */
   readonly parentEnv?: Record<string, string>;
   readonly extraArgs?: readonly string[];
+  /** The Attach warning's live-process list; default `claude agents --json` of the world's CLI, `null` = none (liveness unknown). */
+  readonly listLive?: LiveProcessLister | null;
 }
 
 /** Parent env without CLAUDE* / FAKE_CLAUDE_* (the test runner may run inside Claude Code). */
@@ -61,12 +64,15 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     ...(options.scenario ? { FAKE_CLAUDE_SCENARIO: options.scenario } : {}),
   };
   const errors: unknown[] = [];
+  const claudeCommand = options.command ?? fakeClaudeCommand();
   const supervisor = new SessionSupervisor({
     store,
-    claudeCommand: options.command ?? fakeClaudeCommand(),
+    claudeCommand,
     claudeExtraArgs: options.extraArgs ?? [],
     workspaceRoot: workspace,
     env,
+    // M4.1: the Attach warning's `claude agents --json` through the same CLI (the fake lists its live-process files).
+    listLive: options.listLive === undefined ? claudeAgentsLister({ claudeCommand, workspaceRoot: workspace, env }) : options.listLive ?? undefined,
     timeouts: { ack: 3_000, result: 5_000, exit: 5_000, signal: 2_000, ...options.timeouts },
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
     onError: (error) => errors.push(error),

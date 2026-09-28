@@ -6,6 +6,8 @@ Domain code with no HTTP: domain types, the stream-json parser, derivations, the
 
 M2.1: `stream-json.ts` (typed view of the CLI's stdout), `stdin.ts` (the lines Switchboard writes), `event-payload.ts` (`SessionEvent.payload` shapes) and `derive/` (event kinds gap #7, agents gap #8, artifacts gap #9, session status), documented in `docs/derivations.md`.
 
+M4.1: `transcript-sync.ts` (which transcript entries a terminal added while the session was detached, and what they show; `docs/supervisor.md` → *Attach here*), `derive/chips.ts` (the session header chips, `docs/derivations.md` → *Session chips*).
+
 M6.1: `workspace-rules.ts` (router `AGENTS.md` folder rules, the baseline layout, the read-only check of a NewSession solution, `GET /api/solutions` grouping), documented in `docs/solutions.md`; the file-system walk is `src/server/solutions/scanner.ts`.
 
 M6.3: `conflicts.ts` (two or more open sessions writing one repo while one has no worktree of its own: the row flag, the card copy and its "Move … to worktree" actions), documented in `docs/solutions.md` → *Conflicts*.

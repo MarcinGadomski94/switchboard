@@ -13,9 +13,9 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 ## Server: API areas (`src/server/api/*.ts`, registered from `src/server/routes.ts`)
 | Route (contract) | Module | Item |
 |---|---|---|
-| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 refines the shapes additively |
+| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 added `cwd`, `live`, `resumeCommand`, `chips` to Session; M4.2 added `questions` to SessionDetail (`docs/chat.md`) |
 | `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2 adds the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
-| `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); M4.1 adds the Attach warning + transcript import |
+| `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); the Attach warning (`409 attach-warning` unless `{ confirm: true }`) + transcript import since M4.1 (`docs/supervisor.md` → *Attach here*) |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
 | `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |
 | `GET /api/inbox` | `api/inbox.ts` | served since M3.2 (`listInbox` in `inbox/wire.ts`, `docs/inbox.md`); items from M3.1 and M3.3 |
@@ -58,10 +58,10 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `shell/Shell.tsx`, `shell/Sidebar.tsx`, `shell/format.ts`, `shell/shell.css` | App shell, sidebar, footer meters (M1.4). Lanes only adjust badge sources if their data needs it. | M1.4 |
 | `views/InboxView.tsx` | Inbox list + detail (+ `inbox.ts`, `inbox.css`; `docs/inbox.md`) | M3.2 |
 | `toast/ToastHost.tsx` | Toast host; since M3.4 the `questionBatch` toast + chime + OS notification (`toast/notify.ts`, `toast/useQuestionNotifications.ts`, `docs/notifications.md`) | M1.4, M3.4 |
-| `views/session/SessionView.tsx` | Session layout (`1fr | 380px`), tab switch | M4.1 |
-| `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons, tabs | M4.1 |
-| `views/session/ChatTab.tsx` | Chat | M4.2 |
-| `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.3 |
+| `views/session/SessionView.tsx` | Session layout (`1fr | 380px`), tab switch; loads `GET /api/sessions/{id}`, reloads on its `/hub` events | done in M4.1 (`session.css`, class prefix `sb-sv-`: the sidebar owns `sb-session-*`) |
+| `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons + the Attach warning, tabs | done in M4.1 (`session-header.ts`: copy and rules) |
+| `views/session/ChatTab.tsx` | Chat | done in M4.2 (`chat.ts`: items, step marks, quick replies; `docs/chat.md`): messages, step lines, the inline `QuestionCard` + answers bubble, quick replies, composer |
+| `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.1 added the column and the handoff card (`HandoffCard.tsx`); done in M4.3 (`right-panel.ts`: cards, summary, tail rules; `TerminalTail.tsx`, reusable by M4.4's Timeline terminal; `docs/session-panel.md`) |
 | `views/session/TimelineTab.tsx` | Timeline | M4.4 |
 | `views/session/DiffTab.tsx` | Diff | M4.5 |
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |

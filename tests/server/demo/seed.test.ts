@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Store } from '../../../src/server/db/store.ts';
 import { loadDemoData } from '../../../src/server/demo/data.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from '../../../src/server/demo/index.ts';
-import { DEMO_SEED_KEY, DEMO_SEED_VERSION, seedDemo, solutionOf } from '../../../src/server/demo/seed.ts';
+import { DEMO_SEED_KEY, DEMO_SEED_VERSION, demoStep, seedDemo, solutionOf } from '../../../src/server/demo/seed.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -57,9 +57,28 @@ describe('seedDemo (gap #21)', () => {
 
     const events = await store.events.list('free-talk-feature');
     const byChannel = (channel: string) => events.filter((e) => (e.payload as { channel: string }).channel === channel);
-    expect(byChannel('chat').map((e) => e.kind)).toEqual(['text', 'text']);
-    expect(byChannel('chat')[1]?.payload).toMatchObject({ role: 'assistant', tools: data.sessions[0]?.messages[1]?.tools });
-    expect(byChannel('terminal').map((e) => e.label)).toEqual(data.sessions[0]?.terminal);
+    // M4.2: the chat as real payloads (user / assistant) + one step event per prototype tool line (✓ = a finished tool).
+    const chat = events.filter((e) => ['user', 'assistant', 'tool', 'request'].includes(String((e.payload as { type?: unknown }).type)));
+    const messages = data.sessions[0]?.messages ?? [];
+    expect(chat.map((e) => [e.kind, (e.payload as { type: string }).type, e.label])).toEqual([
+      ['text', 'user', messages[0]?.text],
+      ['text', 'assistant', messages[1]?.text],
+      ...(messages[1]?.tools ?? []).map((line) => ['tool', 'tool', line.replace(/^✓ /, '')]),
+    ]);
+    expect(chat[0]?.payload).toEqual({ source: 'demo', type: 'user', text: messages[0]?.text, origin: 'task', delivered: true });
+    expect(chat[1]?.payload).toEqual({ source: 'demo', type: 'assistant', text: messages[1]?.text, messageId: null });
+    expect(chat[2]).toMatchObject({ agentId: null, endTs: chat[2]?.ts, payload: { type: 'tool', result: '', isError: false } });
+    expect(byChannel('chat')).toEqual([]);
+    // M4.3: each terminal line is a finished turn result with the line as its text (the tail shows it verbatim).
+    expect(byChannel('terminal')).toEqual([]);
+    const results = events.filter((e) => (e.payload as { type?: unknown }).type === 'result');
+    expect(results.map((e) => [e.kind, e.label, (e.payload as { text: string }).text])).toEqual(
+      (data.sessions[0]?.terminal ?? []).map((line) => ['ok', line, line]),
+    );
+    expect(results[0]?.payload).toMatchObject({ source: 'demo', type: 'result', subtype: 'success', isError: false, errors: [], taskNotification: false });
+    // The prototype's cursor line `▍` is not stored: the tail adds it while the session runs.
+    const calendar = (await store.events.list('calendar-func-fix')).filter((e) => (e.payload as { type?: unknown }).type === 'result');
+    expect(calendar.map((e) => e.label)).toEqual(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build']);
     const timeline = byChannel('timeline');
     expect(timeline).toHaveLength(16);
     const first = events.find((e) => e.label === 'task definition');
@@ -165,6 +184,16 @@ describe('seedDemo (gap #21)', () => {
     const started = await startDemo(store, path.join(tmp, 'data'));
     expect(started.seed).toEqual({ seeded: true, sessions: 6 });
     expect(Object.keys(started.providers).sort()).toEqual(['diff', 'history', 'solutions', 'system']);
+  });
+
+  it('maps the prototype chat tool lines to step events with the same mark (M4.2)', () => {
+    const ts = '2026-09-28T10:48:00.000Z';
+    expect(demoStep('✓ recon · codebase-memory', 'd1', ts)).toMatchObject({ kind: 'tool', label: 'recon · codebase-memory', endTs: ts, payload: { type: 'tool', isError: false } });
+    expect(demoStep('● dotnet build · self-heal 1/3', 'd2', ts)).toMatchObject({ kind: 'tool', label: 'dotnet build · self-heal 1/3', endTs: null });
+    expect(demoStep('● x', 'd2', ts).payload).not.toHaveProperty('result');
+    expect(demoStep('✕ item 8 AcmIconButton · no loading frame', 'd3', ts)).toMatchObject({ endTs: ts, payload: { type: 'tool', isError: true } });
+    expect(demoStep('⏸ breaker: 2 consecutive ambiguous items', 'd4', ts)).toMatchObject({ kind: 'ask', label: 'breaker: 2 consecutive ambiguous items', payload: { type: 'request', state: 'open' } });
+    expect(demoStep('• 2 escalations written to monitoring-notes.md', 'd5', ts)).toMatchObject({ kind: 'tool', label: '2 escalations written to monitoring-notes.md', payload: { isError: false } });
   });
 
   it('maps agent folders to solution names', () => {

@@ -30,6 +30,11 @@ async function setup(scenario: string, workspace: 'world' | 'none' = 'world'): P
   return world;
 }
 
+/** The fake's spawns for sessions (not the Attach warning's `claude agents --json` calls, M4.1). */
+async function sessionSpawns(logFile: string) {
+  return (await spawnedArgv(logFile)).filter((line) => line.argv?.[0] !== 'agents');
+}
+
 afterEach(async () => {
   await app?.close();
   await world?.cleanup();
@@ -123,13 +128,18 @@ describe('session routes over the real supervisor + fake-claude', () => {
     expect((await call('POST', `/api/sessions/${session.id}/resume`)).statusCode).toBe(409);
     expect((await call('POST', `/api/sessions/${session.id}/messages`, { text: 'hi' })).statusCode).toBe(409);
 
-    const attached = await call('POST', `/api/sessions/${session.id}/attach`);
+    // M4.1: the transcript changed moments ago, so Attach warns first (409, nothing spawned) until confirmed.
+    const warned = await call('POST', `/api/sessions/${session.id}/attach`);
+    expect(warned.statusCode).toBe(409);
+    expect(warned.json()).toMatchObject({ error: 'attach-warning', reasons: [{ kind: 'transcript-recent' }] });
+    expect(await sessionSpawns(w.logFile)).toHaveLength(1);
+    const attached = await call('POST', `/api/sessions/${session.id}/attach`, { confirm: true });
     expect(attached.json()).toEqual({ resumeCommand: `claude --resume ${session.claudeSessionId}` });
     const idle = await waitForStatus(w.store, session.id, ['idle']);
     expect(idle.attached).toBe(true);
     // The fake logs its argv asynchronously after it starts.
     const spawns = await until(async () => {
-      const logged = await spawnedArgv(w.logFile);
+      const logged = await sessionSpawns(w.logFile);
       return logged.length === 2 ? logged : undefined;
     }, 'the attach spawn in the fake log');
     expect(spawns[1]?.pid).toBe((await w.store.sessions.get(session.id))?.pid);

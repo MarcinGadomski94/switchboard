@@ -1,0 +1,522 @@
+/*
+ * Session view (M4.1, SPEC → Session): the layout, the header and the handoff
+ * card. Values are the prototype's inline styles (`vSession` markup in
+ * docs/handoff/prototype/Switchboard App.dc.html), through the SPEC tokens.
+ */
+
+/* Grid `1fr | 380px`: header + tab on the left, the right panel. */
+.sb-sv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.sb-sv-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Header: status dot, name, root path, actions; chips; tabs. */
+.sb-sv-header {
+  padding: 13px 22px 0;
+  border-bottom: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sb-sv-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-sv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sb-sv-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.sb-sv-root {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-sv-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-sv-action {
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.sb-sv-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-sv-action[aria-busy='true'] {
+  cursor: progress;
+}
+
+.sb-sv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font: 400 11.5px var(--font-mono);
+}
+
+.sb-sv-chip {
+  border: 1px solid var(--border-control);
+  border-radius: 5px;
+  padding: 2px 8px;
+  color: var(--text-2);
+}
+
+/* Loop / workflow chips are blue (SPEC; prototype chip flag 1). */
+.sb-sv-chip[data-loop='true'] {
+  border-color: oklch(0.4 0.06 250);
+  color: oklch(0.8 0.09 250);
+}
+
+.sb-sv-chip-k {
+  color: var(--muted-3);
+}
+
+.sb-sv-tabs {
+  display: flex;
+  gap: 2px;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.sb-sv-tab {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--muted-2);
+  text-decoration: none;
+}
+
+.sb-sv-tab:hover {
+  color: var(--muted-2);
+}
+
+.sb-sv-tab[aria-selected='true'] {
+  border-bottom-color: var(--text);
+  color: var(--text-strong);
+}
+
+/* Attach warning (gap #5): question-card colors, like the other warning cards. */
+.sb-sv-warning {
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sb-sv-warning-text {
+  font-size: 13px;
+  color: var(--text-strong);
+  line-height: 1.45;
+}
+
+.sb-sv-warning-actions {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-sv-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-sv-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.sb-sv-primary:disabled,
+.sb-sv-outlined:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-sv-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}
+
+/*
+ * Right panel (M4.3, prototype right column): "Agents & solutions" + summary, the
+ * agent cards, "Terminal" + the terminal tail, then the handoff card (M4.1).
+ */
+.sb-sv-panel {
+  border-left: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sb-sv-panel-head {
+  padding: 14px 16px 8px;
+  display: flex;
+  align-items: baseline;
+}
+
+/* Section label (SPEC: Geist Mono 10.5px/500, uppercase, .06em, #8d8c87). */
+.sb-sv-panel-label {
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-sv-panel-summary {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-agents {
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-row);
+}
+
+.sb-agent-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-agent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sb-agent-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sb-agent-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-agent-status {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  white-space: nowrap;
+}
+
+.sb-agent-where {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 15px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  min-width: 0;
+}
+
+.sb-agent-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-agent-branch {
+  margin-left: auto;
+  color: var(--branch-fg);
+  background: var(--branch-bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.sb-term-label {
+  padding: 6px 16px 8px;
+}
+
+/* Terminal box (bg-code; prototype `ss.term`), shared with the Timeline tab (M4.4). */
+.sb-term {
+  background: var(--bg-code);
+  border: 1px solid var(--border-row);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: 400 11px/1.7 var(--font-mono);
+}
+
+.sb-sv-term {
+  margin: 0 12px;
+  min-height: 150px;
+}
+
+.sb-term-line {
+  color: #bfbeb8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Line tones (prototype `lineColor`). */
+.sb-term-line[data-tone='cmd'] {
+  color: var(--muted-4);
+}
+
+.sb-term-line[data-tone='ok'] {
+  color: oklch(0.78 0.12 150);
+}
+
+.sb-term-line[data-tone='wait'] {
+  color: oklch(0.8 0.13 70);
+}
+
+.sb-term-line[data-tone='fail'] {
+  color: oklch(0.72 0.16 25);
+}
+
+/* Handoff card (prototype `handoff`). */
+.sb-handoff {
+  margin: 14px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-code);
+}
+
+.sb-handoff-head {
+  display: flex;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.sb-handoff-state {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+}
+
+.sb-handoff-text {
+  font-size: 12px;
+  color: var(--muted-2);
+  line-height: 1.5;
+}
+
+.sb-handoff-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font: 400 11.5px var(--font-mono);
+  background: var(--bg-card-2);
+  border: 1px solid var(--border-divider);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-2);
+}
+
+.sb-handoff-command-text {
+  overflow-wrap: anywhere;
+}
+
+.sb-handoff-copy {
+  margin-left: auto;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+/*
+ * Chat (M4.2, SPEC → Session → Chat; prototype chat markup): the message list,
+ * the step lines, the answers bubble and the composer. The inline question card is
+ * the shared QuestionCard (`variant="chat"`, components/question-card.css).
+ */
+.sb-chat {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-2b);
+}
+
+.sb-chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: flex-start;
+  max-width: 92%;
+}
+
+.sb-chat-message[data-role='user'] {
+  align-self: flex-end;
+  max-width: 72%;
+}
+
+.sb-chat-bubble {
+  border-radius: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sb-chat-message[data-role='user'] .sb-chat-bubble {
+  background: var(--bg-selected-nav);
+  padding: 10px 14px;
+}
+
+/* Mono step lines under an agent message (✓ / ● / ✕ / ⏸ + the event label). */
+.sb-chat-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-chat-step {
+  overflow-wrap: anywhere;
+}
+
+/* An answered batch: the answers bubble (right) and the blue note under it. */
+.sb-chat-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: flex-end;
+  max-width: 80%;
+}
+
+.sb-chat-answers-bubble {
+  background: var(--bg-selected-nav);
+  border-radius: 12px 12px 4px 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sb-chat-answers-note {
+  font: 400 12px var(--font-mono);
+  color: oklch(0.74 0.12 250);
+}
+
+/* Composer: quick replies, then the message field and Send. */
+.sb-chat-composer {
+  padding: 10px 22px 16px;
+  border-top: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-chat-quick {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sb-chat-quick-label {
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+  margin-right: 4px;
+}
+
+.sb-chat-quick .sb-chat-quick-reply {
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 4px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-chat-compose {
+  display: flex;
+  gap: 8px;
+}
+
+.sb-chat-input {
+  flex: 1;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 13px;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-chat-compose .sb-chat-send {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-chat-compose .sb-chat-send:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+.sb-chat-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}
