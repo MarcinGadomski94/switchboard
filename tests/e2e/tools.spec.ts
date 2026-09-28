@@ -123,6 +123,8 @@ test('Codebase Memory: toolbar, server-side probe, iframe, Reload, New tab, Edit
   const frame = page.getByTestId('tool-frame');
   await expect(frame).toHaveAttribute('src', `http://127.0.0.1:${cmStub.port}`);
   await expect(page.frameLocator('[data-testid="tool-frame"]').getByTestId('stub')).toHaveText('Codebase Memory stub');
+  // Audit 2026-09-28: sandboxed, and the tool still loads and runs (no top navigation of Switchboard).
+  await expect(page.getByTestId('tool-frame')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads');
 
   // Sidebar row: reachability dot + host.
   const row = page.getByTestId('sidebar-tools').locator('a').first();

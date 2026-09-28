@@ -8,6 +8,9 @@ import { TOOLBAR_STATE, TOOL_DOT, probeTool, useToolState } from '../tools/probe
 import { CodebaseMemoryStrip } from './tool/CodebaseMemoryStrip.tsx';
 import './tool.css';
 
+/** The embedded tool's iframe permissions (audit 2026-09-28): no `allow-top-navigation`. */
+export const TOOL_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads';
+
 /** The built-in Codebase Memory tool (0002_default_tools.sql); it gets the dirty-projects strip. */
 export const CODEBASE_MEMORY_TOOL_ID = 'cm';
 
@@ -115,7 +118,15 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
       </div>
       <div className="sb-tool-frame">
         {url && state !== 'down' ? (
-          <iframe key={`${tool.id}:${frameN}`} src={url} title={tool.name} data-testid="tool-frame" data-frame-n={frameN} />
+          <iframe
+            key={`${tool.id}:${frameN}`}
+            src={url}
+            title={tool.name}
+            // The tool keeps its own origin, scripts, forms, popups and downloads, but cannot navigate Switchboard's tab.
+            sandbox={TOOL_FRAME_SANDBOX}
+            data-testid="tool-frame"
+            data-frame-n={frameN}
+          />
         ) : null}
         {overlay ? <OverlayCard dot={dot} overlay={overlay} /> : null}
       </div>
