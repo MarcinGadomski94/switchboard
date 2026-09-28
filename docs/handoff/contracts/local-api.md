@@ -143,6 +143,27 @@ ContinueConversation { "name"?: "…", "title"?: "Lantern follow-up" | null, "ad
 ConflictSession   { …, "title": "JIRA Ticket handling" | null }
 ```
 
+## Remote sessions continue locally (D25, 2026-09-28, additive)
+Developer ruling D25 (`docs/decisions.md` → *Remote sessions*): a remote session (claude.ai/code, or Remote Control on another machine) continues as a **local copy** that Switchboard supervises: a new clean worktree of a saved **repo** folder, `claude -p --teleport <session_X> …` there (the CLI checks the tree and the repo, fetches and checks out the session's branch, loads its history), then an ordinary session (`--resume <local id>` later). New work in the copy stays local. Additive; nothing above changes. Details: `docs/supervisor.md` → *Teleport*, `docs/new-session.md` → *From a remote session*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/sessions/teleport | TeleportSession | 201 Session · 422 `invalid` `{ errors }` (fields `remote`, `folder`, `title`, `task`) · 409 `folder-missing` / `no-commits` / `branch-exists` / `path-exists` / `git-failed` (the worktree could not be made) · 502 `teleport-failed` `{ message }` · 504 `teleport-timeout` `{ message }` · 503 `closing` |
+
+- **TeleportSession** `{ remote, folder, title?, task? }`: `remote` is a claude.ai/code session URL (`https://claude.ai/code/session_<X>`; query string, fragment and a trailing `/` ignored), `session_<X>` or `cse_<X>` (the same session, `docs/spike-remote.md` → R.8; `<X>` = `[A-Za-z0-9_]+`), normalized to `session_<X>`; anything else is 422 on `remote`. `folder` is required: a saved **repo** folder's id (a workspace folder or an unknown id is 422 on `folder`: teleport needs a checkout of the session's GitHub repo). `title` follows D22 (1–80 characters once trimmed, else 422; omitted, `null` or blank = none). `task` is an optional first message, written to the local copy right after the spawn (blank = none: the copy stays idle).
+- **Names:** the title is `title`, else `Remote <first 8 characters of X>`; the short name is derived from `title` (D22), else `remote-<first 8 characters of X, lower-cased>`; `-2`, `-3`, … when taken.
+- **The local copy:** worktree `../{repo}-wt-{name}` on branch `session/{name}` from the repo's HEAD, then the teleport checks out the remote session's branch there; the worktree row (`Worktree.branch`) records the branch the teleport checked out. `claudeSessionId` is the id the CLI's `system/init` reported (never passed with `--session-id`). `workType`, `mode`, `phase`, `coordination` are `null`, `worktrees` true, `ultracode` false, `solutions` the repo.
+- **Refusals:** when `claude` exits before its `system/init` (a dirty tree, the wrong repo, a branch that is not pushed, not signed in, an archived session, …) the answer is 502 `{ error: "teleport-failed", message }` with the CLI's text **verbatim** (its stderr, else the non-JSON lines it printed); with no `system/init` in time (120 s) the process is stopped and the answer is 504 `teleport-timeout`. Either way nothing is left: no session, and the worktree and `session/{name}` branch Switchboard made are removed (`git worktree remove`, `git branch -d`; if git keeps the worktree, the message says so). Nothing is retried.
+- **Session / SessionDetail** (and `sessionUpdated`) gain `remoteSource`: the remote session (`session_<X>`) a local copy came from, `null` for every other session. A teleport that has not reported `system/init` yet is neither listed by `GET /api/sessions` nor announced on `/hub`; it is announced (`sessionUpdated`) once it has started.
+- **HistoryItem:** a local copy's `mode` is `remote · local copy`.
+- **SessionEvent:** a local copy starts with a lifecycle event `teleported` (`message` = the remote session); the remote history is imported from the local copy's transcript as the chat's first messages, prompts as `user` events with the new origin `remote`.
+
+```json
+TeleportSession   { "remote": "https://claude.ai/code/session_011CU…", "folder": "<repo folder id>", "title"?: "Cloud health work" | null, "task"?: "Run the tests." }
+TeleportRefusal   { "error": "teleport-failed" | "teleport-timeout", "message": "You must run claude --teleport session_011CU… from a checkout of acme/app" }
+Session           { …, "remoteSource": "session_011CU…" | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

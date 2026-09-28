@@ -6,8 +6,8 @@ SPEC → Session → Chat, prototype `vSession` chat markup + `msgs` / `card()` 
 `chatItems(events, questions, mainAgentId)`, top to bottom:
 
 1. **Only the main conversation**: events of the session's main agent (or of no agent). A subagent's own lines (its text, tools, prompts) belong to its agent card and the timeline (M4.3 / M4.4); the main agent's `Agent · …` call is the step line that stands for it. Without a known main agent every event shows.
-2. **Time order**: `ts`, then id. Turns a terminal added while detached carry the transcript's timestamps (M4.1), so they sit where they happened.
-3. **User bubbles** (right, `#212227`, 12px radius, max 72%): every `user` payload: typed here, the task, "Continue.", a service note (restart, stale answers) or a terminal prompt (`data-origin`).
+2. **Time order**: `ts`, then id. Turns a terminal added while detached carry the transcript's timestamps (M4.1), so they sit where they happened; so does the remote history of a local copy of a remote session (D25), which comes first.
+3. **User bubbles** (right, `#212227`, 12px radius, max 72%): every `user` payload: typed here, the task, "Continue.", a service note (restart, stale answers), a terminal prompt or, D25, a prompt of the remote session a local copy came from (`data-origin`: `remote`).
 4. **Agent blocks** (left, max 92%): an `assistant` text, then the **step lines** that followed it until the next text, user message, question batch, turn end or lifecycle step. A turn that starts with a tool gets a block without text. Step lines are mono 12px `#8d8c87`, `<mark> <event label>` (labels per `docs/derivations.md` → *Events*):
 
    | Event | Mark |
