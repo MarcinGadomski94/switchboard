@@ -25,6 +25,21 @@ SPEC → Session → Chat, prototype `vSession` chat markup + `msgs` / `card()` 
 
 The list stays scrolled to the newest item while the developer is at (or within 32px of) the bottom, and jumps there after they send a message or an answer; scrolling up stops that until they scroll back down.
 
+## Live activity line (D19)
+While a turn runs, one line sits between the conversation and the composer, Claude-Code style; it is not rendered at all when no turn runs, so an idle chat is unchanged. Source: `Session.activity` from the session detail, replaced by each `/hub` `activity` event for the session until the next reload (`useLiveActivity`, `src/web/activity/useActivity.ts`; server side `docs/derivations.md` → *Live activity*). Code: `src/web/activity/activity.ts` (pure copy and formats), `ActivityViews.tsx` (`ChatActivityLine`), `activity.css`. The times are the server's timestamps; the line ticks locally once a second.
+
+| State | Line |
+|---|---|
+| thinking | spinner glyph, a **playful verb** from Switchboard's own list of 20 (`Pondering…`, `Noodling…`, `Cogitating…`, `Patching through…`, …; `THINKING_VERBS`), the time since the turn started (`12s`, `1m 23s`), then `· ↓ 1.2k tokens` once a thinking-token tick arrived (`formatTokens`: `850`, `1.2k`, `12k`, rounded down) |
+| tool | `●` (blinking) and `<Tool>: <summary>` literally (`Bash: npm test`; just the name when the summary is the name), then the time since that tool started (`0:42`, `1:02:03`) |
+| writing | spinner, `Writing…`, the time since the turn started |
+| waiting | `⏸` (amber, still), `Waiting for you`, the time since the question or permission request opened (`0:42`) |
+
+- The verb changes every 4 s (`VERB_ROTATE_MS`): the turn's start time picks the first verb, then it steps through the list, so the same turn shows the same verb in every tab at the same moment (`thinkingVerb`, deterministic for a given clock).
+- The spinner is `·✢✳✶✻✽` stepping in place (a CSS `content` animation on the glyph's `::before`), in the running blue (`--status-run`); `prefers-reduced-motion` stops it.
+- Type and colors are the prototype's: mono 12px, `#8d8c87` (the step lines' muted color) with the action in `#c9c8c3`, the tokens in `#76756f`; padding 8px 26px like the conversation. A long action is cut with `…`; the time and tokens always show.
+- Test ids: `chat-activity` (`data-state`), `chat-activity-glyph` (`data-glyph`: `spinner` / `●` / `⏸`), `chat-activity-text`, `chat-activity-time`, `chat-activity-tokens`.
+
 ## Composer
 - **Quick replies** (label `QUICK REPLIES`, pills): the prototype's four labels and texts verbatim. A pill **fills the draft** and focuses the field; it never sends by itself (prototype `quick`).
 
@@ -46,3 +61,4 @@ The list stays scrolled to the newest item while the developer is at (or within 
 - `tests/server/sessions/questions.test.ts`: `SessionDetail.questions`.
 - `tests/e2e/session-chat.spec.ts` (oracle, real path, no demo): fake-claude `tool-use` (task bubble, `✓ Write · out.txt`, `✓ Bash · ls`, `DONE`), a quick reply fills the draft only, Enter sends (`202`, the bubble shows), `ask-2q` shows the inline card (Send disabled at 45% until both are answered), the answers reach the process (the fake's AskUserQuestion result is built from them) and the card turns into the answers bubble followed by the reply, Send works, a detached session refuses with the service message.
 - `tests/e2e/visual/session-chat.spec.ts` (D10): the demo app against the prototype (`docs/visual/chat.md`).
+- D19: `tests/web/activity.test.ts` (formats, the verb rotation with an injected clock, the lines and labels, the summaries from real tool inputs); `tests/e2e/live-activity.spec.ts` (real path: a slow Bash call's line with a growing clock, a thinking turn's verb + time + tokens, the sidebar action and pulsing dot, the agent card's action; all gone after Pause; an idle session unchanged).

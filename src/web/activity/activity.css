@@ -1,0 +1,127 @@
+/*
+ * D19 live activity (docs/chat.md → Live activity line): the chat line above the
+ * composer, the sidebar row's action and pulsing dot, the agent cards' action.
+ * Everything here applies only while a turn runs; idle views are untouched.
+ * Prototype tokens: mono meta type, muted text, the running blue for the spinner.
+ */
+
+.sb-chat-activity {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 26px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-activity-glyph {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  color: var(--status-run);
+}
+
+/* The spinner: a glyph that changes in place (discrete `content` steps). */
+.sb-activity-glyph[data-glyph='spinner']::before {
+  content: '✻';
+  animation: sb-activity-spin 1.2s steps(1, end) infinite;
+}
+
+.sb-activity-glyph[data-glyph='●'] {
+  animation: sb-activity-blink 1.2s ease-in-out infinite;
+}
+
+.sb-activity-glyph[data-glyph='⏸'] {
+  color: var(--status-need);
+}
+
+.sb-activity-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+
+.sb-activity-time,
+.sb-activity-tokens {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-activity-tokens {
+  color: var(--muted-3);
+}
+
+/* Sidebar row and agent card: action (cut with …) then its time, which always shows. */
+.sb-activity-label {
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+.sb-activity-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-activity-label-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card's status slot is narrow (380 px panel): long summaries are cut, the time stays. */
+.sb-agent-status .sb-activity-label {
+  max-width: 160px;
+}
+
+/* A running session's status dot pulses (not while it waits for you: that dot is amber and still). */
+.sb-session-dot[data-activity]:not([data-activity='waiting']) {
+  animation: sb-activity-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sb-activity-spin {
+  0% {
+    content: '·';
+  }
+  16.66% {
+    content: '✢';
+  }
+  33.33% {
+    content: '✳';
+  }
+  50% {
+    content: '✶';
+  }
+  66.66% {
+    content: '✻';
+  }
+  83.33% {
+    content: '✽';
+  }
+}
+
+@keyframes sb-activity-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes sb-activity-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-activity-glyph[data-glyph='spinner']::before,
+  .sb-activity-glyph[data-glyph='●'],
+  .sb-session-dot[data-activity] {
+    animation: none;
+  }
+}

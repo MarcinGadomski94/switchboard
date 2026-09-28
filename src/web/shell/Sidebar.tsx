@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SystemInfo, Tool } from '../../core/api.ts';
+import { SessionActivityOr } from '../activity/ActivityViews.tsx';
+import { useLiveActivities } from '../activity/useActivity.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -88,7 +90,8 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
  * artifacts, system) and the `/hub` stream; while a route is not implemented yet
  * (501) or unreachable, its part stays empty and the meters read "—". D14: a
  * session from a folder other than the default one carries its folder's tag at
- * the start of its mode line.
+ * the start of its mode line. D19: a running session's row shows its current action
+ * and time in place of the mode line, and its dot pulses.
  */
 export function Sidebar() {
   const { route } = useRouter();
@@ -104,6 +107,7 @@ export function Sidebar() {
   const system = useApi(api.system);
   const [liveSystem, setLiveSystem] = useState<SystemInfo | null>(null);
   const tagOf = useFolderTags();
+  const activityOf = useLiveActivities(sessions.data);
 
   useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());
@@ -189,7 +193,7 @@ export function Sidebar() {
             className="sb-session"
             aria-current={isActive(route, 'session', session.id) ? 'page' : undefined}
           >
-            <span className="sb-session-dot" style={{ background: statusColor(session.status) }} />
+            <span className="sb-session-dot" data-activity={activityOf(session.id)?.state} style={{ background: statusColor(session.status) }} />
             <div className="sb-session-body">
               <div className="sb-session-head">
                 <span className="sb-session-name">{session.name}</span>
@@ -197,7 +201,7 @@ export function Sidebar() {
               </div>
               <div className="sb-session-mode">
                 <FolderTag name={tagOf(session)} title={session.folderPath} />
-                {modeLine(session)}
+                <SessionActivityOr activity={activityOf(session.id)}>{modeLine(session)}</SessionActivityOr>
               </div>
             </div>
           </Link>

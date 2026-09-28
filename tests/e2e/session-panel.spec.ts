@@ -86,10 +86,10 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   await expect(lines.nth(1)).toHaveCSS('color', 'rgb(109, 108, 103)');
   await expect(lines.nth(2)).toHaveCSS('color', 'rgb(191, 190, 184)');
 
-  // A turn that runs: the cursor is the last line and the main agent reads running.
+  // A turn that runs: the cursor is the last line; the main agent's status slot shows its live action (D19: thinking + the turn's time).
   await send(page, id, '[fake:hang] Keep working.');
   await expect(lines.last()).toHaveText('▍');
-  await expect(panel.getByTestId('agent-status').first()).toHaveText('running');
+  await expect(panel.getByTestId('agent-status').first()).toHaveText(/^Thinking… \d+s$/);
   await expect(lines).toHaveCount(8);
   await expect(lines.first()).toHaveText('$ ls');
 
