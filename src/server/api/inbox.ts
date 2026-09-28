@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { InboxError, type InboxErrorCode } from '../inbox/pipeline.ts';
+import { listInbox } from '../inbox/wire.ts';
 import type { ApiContext } from '../routes.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 
-/** Inbox and question routes (contract → REST) not implemented yet. */
-export const INBOX_ROUTES_PENDING: readonly PendingRoute[] = [{ method: 'GET', url: '/api/inbox', item: 'M3.2' }];
+/** Inbox and question routes (contract → REST) not implemented yet (none since M3.2). */
+export const INBOX_ROUTES_PENDING: readonly PendingRoute[] = [];
 
 /** HTTP status of each pipeline refusal. */
 const ERROR_STATUS: Record<InboxErrorCode, number> = {
@@ -24,11 +25,14 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
 
 /**
  * Registers the Inbox and question routes. M3.1: the answers route and the
- * permission-item actions (`docs/questions.md`); M3.2 adds `GET /api/inbox`, M3.3
- * the system-item actions on the same actions route.
+ * permission-item actions (`docs/questions.md`); M3.2: `GET /api/inbox`
+ * (`docs/inbox.md`); M3.3 adds the system-item actions on the same actions route.
  */
 export async function registerInboxRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { questions } = context;
+  const { questions, store } = context;
+
+  // Contract: InboxItem[] (question batches, permission items, system items).
+  app.get('/api/inbox', async () => listInbox(store));
 
   // Contract: 204, 400 unless every question is answered.
   app.post<{ Params: { batchId: string } }>('/api/questions/batch/:batchId/answers', async (request, reply) => {
