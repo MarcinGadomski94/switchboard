@@ -9,6 +9,7 @@ import { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
+import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
 import { registerWeb } from './web.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
@@ -54,6 +55,13 @@ export interface AppOptions {
    * manager and the bus (no background sync) and closes it with the app.
    */
   readonly systemItems?: SystemItemService;
+  /**
+   * First-run setup (M5.3, docs/setup.md). main.ts passes the one whose root its
+   * services started with; without one the app makes its own over `config` and the
+   * store. Either way a root saved by the wizard goes to the app's supervisor and
+   * worktree manager at once.
+   */
+  readonly setup?: SetupService;
   /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
   readonly hub?: HubTimingOptions;
   /** Fastify logger; off by default (tests). */
@@ -99,7 +107,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     stopForwarding();
   });
-  await registerApiRoutes(app, { config: options.config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems });
+  const setup = options.setup ?? (await SetupService.open({ store: options.store, envRoot: options.config.workspaceRoot }));
+  const applyRoot = (root: string | null): void => {
+    supervisor.setWorkspaceRoot(root);
+    worktrees.setWorkspaceRoot(root);
+  };
+  // A root the wizard saved earlier, when the configuration has none (main.ts passes a config that already follows it).
+  if (setup.workspaceRoot !== options.config.workspaceRoot) applyRoot(setup.workspaceRoot);
+  const stopRootUpdates = setup.onRootChange(applyRoot);
+  app.addHook('onClose', async () => {
+    stopRootUpdates();
+  });
+  const config = setup.liveConfig(options.config);
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

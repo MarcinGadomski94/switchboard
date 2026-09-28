@@ -26,9 +26,10 @@ export interface SolutionsProvider {
   isReadOnly?(solution: string): Promise<boolean>;
 }
 
-/** CLI / gh status + machine metrics (gap #11) + usage (M9.2). Real implementation: M5.3, M9.2. */
+/** CLI / gh status + machine metrics (gap #11) + usage (M9.2). Real implementation: `SystemProbe` (M5.3, `system/probe.ts`); M9.2 adds usage. */
 export interface SystemProvider {
-  system(): Promise<SystemInfo>;
+  /** `fresh`: check the CLI and gh again instead of answering from a recent check (the setup wizard). */
+  system(options?: { readonly fresh?: boolean }): Promise<SystemInfo>;
 }
 
 /** Transcript-based History rows (M7.4). Real implementation: M7.4. */

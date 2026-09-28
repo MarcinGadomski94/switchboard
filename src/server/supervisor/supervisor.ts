@@ -142,7 +142,7 @@ export class SessionSupervisor {
   readonly #store: Store;
   readonly #command: readonly string[];
   readonly #extraArgs: readonly string[];
-  readonly #root: string | null;
+  #root: string | null;
   readonly #env: NodeJS.ProcessEnv;
   readonly #timeouts: StopTimeouts;
   readonly #handler: ControlRequestHandler;
@@ -184,6 +184,14 @@ export class SessionSupervisor {
   /** The live process's pid, or `null`. */
   pid(sessionId: string): number | null {
     return this.#live.get(sessionId)?.proc.pid ?? null;
+  }
+
+  /**
+   * The workspace root new sessions start in, as the setup wizard changed it (M5.3,
+   * `docs/setup.md`). Sessions that exist keep their stored cwd.
+   */
+  setWorkspaceRoot(root: string | null): void {
+    this.#root = root;
   }
 
   // ── commands ───────────────────────────────────────────────────────────

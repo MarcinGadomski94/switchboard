@@ -37,7 +37,6 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['GET', '/api/tools', 'M8.1'],
   ['PUT', '/api/tools', 'M8.1'],
   ['POST', '/api/tools/cm/probe', 'M8.1'],
-  ['GET', '/api/system', 'M5.3'],
 ];
 
 /** Contract rows implemented so far (their behavior has its own tests, e.g. tests/server/api/sessions.test.ts). */
@@ -56,6 +55,14 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
   ['POST', '/api/inbox/i1/actions/allow-once', 'M3.1'],
   ['GET', '/api/solutions', 'M6.1'],
+  // M5.3: 503 here (this app has no system provider; main.ts passes the real SystemProbe).
+  ['GET', '/api/system', 'M5.3'],
+  // M5.3, additive to the contract (docs/setup.md): the first-run wizard.
+  ['GET', '/api/setup', 'M5.3'],
+  ['GET', '/api/setup/root?path=/tmp', 'M5.3'],
+  ['PUT', '/api/setup/root', 'M5.3'],
+  ['GET', '/api/setup/folders?path=/tmp', 'M5.3'],
+  ['POST', '/api/setup/complete', 'M5.3'],
 ];
 
 let tmp: string;

@@ -193,7 +193,7 @@ function errorText(error: unknown): string {
  */
 export class WorktreeManager implements DiffProvider {
   readonly #store: Store;
-  readonly #root: string | null;
+  #root: string | null;
   readonly #gh: readonly string[];
   readonly #git: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
@@ -223,6 +223,11 @@ export class WorktreeManager implements DiffProvider {
     void name;
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /** The workspace root solutions resolve in, as the setup wizard changed it (M5.3, `docs/setup.md`). Registered worktrees keep their paths. */
+  setWorkspaceRoot(root: string | null): void {
+    this.#root = root;
   }
 
   // ── solutions ─────────────────────────────────────────────────────────

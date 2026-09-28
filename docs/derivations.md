@@ -71,6 +71,9 @@ The modal derives, from `GET /api/solutions`: the summary's `cwd` (the first sol
 ## First-turn payload (M5.2)
 The first stdin message of a new session = the trimmed task, a blank line, then the confirmed session-start answers in the modal summary's terms, with each solution's workspace folder (from its worktree record, else `WorktreeManager.resolveRepo`, else the name as posted) and the absolute worktree paths + branches. Mobile coordination only for feature + single-solution + a `*-front` and a non-null value. An empty task: no first message; the block waits in the outbox (`pending_messages.kind = 'session-start'`). Details: `docs/new-session.md` → *First-turn payload*.
 
+## Setup wizard (M5.3)
+The step 1 rows from `GET /api/system`, the root line from the router's first `# ` heading and line count, and the scan table (one row per top-level folder, the read-only group split back in its note's order, three names + `, …`, the strictest rule) are in `docs/setup.md` → *The steps*; `cpu` / `ramUsed` / `processes` in `docs/setup.md` → *System*.
+
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.
 

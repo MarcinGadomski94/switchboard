@@ -369,10 +369,10 @@ export interface ToolProbe {
  * `GET /api/system` (contract fields) and the `system` hub event. Units, which the
  * contract leaves open: `cpu` and `usagePct` are percentages 0–100, `ramUsed` and
  * `ramTotal` are bytes, `processes` = live supervised `claude` processes (gap #11).
- * Provisional: M5.3 (CLI/gh fields, metrics) and M9.2 (usage).
+ * CLI/gh fields and metrics since M5.3 (`docs/setup.md` → *System*); usage: M9.2.
  */
 export interface SystemInfo {
-  /** CLI path or command when found, `null` when not found. */
+  /** CLI path or command when found (`<cli> --version` exits 0), `null` when not found. */
   readonly cli: string | null;
   readonly cliVersion: string | null;
   readonly signedIn: boolean;
@@ -385,6 +385,43 @@ export interface SystemInfo {
   readonly usagePct?: number;
   /** Additive: when the window behind `usagePct` resets (the footer's "40% · 2h05"). */
   readonly usageResetsAt?: string;
+}
+
+/** Additive (M5.3): where the workspace root comes from (`docs/setup.md`). */
+export type WorkspaceRootSource = 'env' | 'setup';
+
+/** Additive (M5.3): what a folder offered as the workspace root holds (`GET /api/setup/root`). */
+export interface WorkspaceRootCheck {
+  /** The folder, absolute (`~` expanded); as typed when it is not absolute. */
+  readonly path: string;
+  /** `ok` = a folder with an `AGENTS.md`; `no-router` = a folder without one; `missing` = no such folder. */
+  readonly state: 'ok' | 'no-router' | 'missing' | 'not-absolute';
+  /** `<path>/AGENTS.md`: its first `# ` heading and its line count; `null` unless `state` is `ok`. */
+  readonly router: { readonly title: string | null; readonly lines: number } | null;
+}
+
+/** Additive (M5.3): `GET /api/setup`, the first-run wizard's state (`docs/setup.md`). */
+export interface SetupState {
+  /** When the wizard was finished; `null` = setup not done. */
+  readonly completedAt: string | null;
+  /** Open the wizard when the UI loads: setup not done and `SWITCHBOARD_SETUP_WIZARD` is not `off`. */
+  readonly autoOpen: boolean;
+  readonly workspaceRoot: {
+    /** The root sessions start in; `null` = not configured. */
+    readonly path: string | null;
+    readonly source: WorkspaceRootSource | null;
+    readonly check: WorkspaceRootCheck | null;
+  };
+  /** The usage warning threshold (M8.2's `usage.warnAtPct`, default 90). */
+  readonly warnAtPct: number;
+}
+
+/** Additive (M5.3): `GET /api/setup/folders`, one folder's subfolders for the wizard's Browse…. */
+export interface FolderListing {
+  readonly path: string;
+  /** `null` at the top of the file system. */
+  readonly parent: string | null;
+  readonly folders: ReadonlyArray<{ readonly name: string; readonly path: string }>;
 }
 
 /** `/hub` event names and payloads (contract, locked). */

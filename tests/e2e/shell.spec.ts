@@ -53,19 +53,28 @@ test('the shell renders from the real API and shows only what the API returns', 
       // M6.1: the real scanner; this server has no workspace root configured.
       expect(call.status, call.url).toBe(409);
       expect(call.body, call.url).toMatchObject({ error: 'workspace-not-configured' });
+    } else if (call.url === '/api/system') {
+      // M5.3: the real SystemProbe over the fake CLIs (tests/helpers/server-process.ts); no usage reading yet (M9.2).
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ cliVersion: '2.1.283', signedIn: true, ghSignedIn: true, processes: 0 });
+      expect(call.body, call.url).not.toHaveProperty('usagePct');
+    } else if (call.url === '/api/setup') {
+      // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ completedAt: null, autoOpen: false });
     } else {
       expect(call.status, call.url).toBe(501);
       expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
     }
   }
 
-  // Nothing invented: no rows, no badges, unknown meters, the real address.
+  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3), usage unknown until M9.2, the real address.
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveCount(0);
   await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '']);
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
-  await expect(page.getByTestId('process-count')).toHaveText('');
-  await expect(page.locator('.sb-meter-value')).toHaveText(['—', '—', '—']);
+  await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
+  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/, 'unknown']);
 });
 
 test('the nav switches views client-side and deep links load the right view', async ({ page }) => {
