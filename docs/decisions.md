@@ -112,6 +112,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The Status cell shows a SPEC status color dot plus the text, with any leading status emoji or glyph removed. `🟢`, `running`, `testing` and `in progress` are run (blue); `✅`, `✓`, `done`, `merged` and `green` are done (green); `🟡`, `⏳`, `⏸`, `queued`, `waiting`, `blocked` and `needs` are need (amber); `❌`, `✕`, `🔴` and `failed` are fail (red); anything else is idle (muted).
   - A small "as printed" toggle shows the original text in monospace, as D21 did.
   - A table that can't be parsed into consistent rows falls back to the printed text.
+  - **Developer rulings (2026-09-28):** the right panel never scrolls sideways (D29), so "as printed" opens in a popover over the main area, which may cover the sidebar for wide tables; a table that can't be parsed shows only a one-line note in the panel, with the original behind "as printed"; the status glyphs also include `✔` (done), `✖` and `✗` (failed), `🔵` (running) and `🟠` (waiting).
 
 ## Signed-in sites in a frame (added 2026-09-28)
 - **D28 Signed-in SaaS tools (Jira) open in a direct frame through a Switchboard browser extension.**
@@ -129,6 +130,23 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 - **D29 The sidebar and the session's right panel scroll down only, never sideways.**
   - **Sidebar TOOLS rows:** the name always shows in full on the first line. A URL that doesn't fit beside it moves to its own line, right-aligned as in the prototype, and is cut with … there; the full URL is the tooltip. The prototype instead wraps a long name next to its URL, so the full visual pass compares these rows' name and URL boxes by copy and styles only, and `tools.spec` checks the ruled layout.
   - **Right panel:** `overflow-x: hidden`. Agent names wrap as in the prototype. Paths, descriptions and terminal lines are cut with …. A branch chip keeps its width up to 60% of its row, then is cut with …. Name, description, path and branch carry their full text as a tooltip.
+
+## Background work and live model choice (added 2026-09-28)
+- **D30 A session waiting on background work shows that it is still working.**
+  - **Why:** agents often wait for a GitHub Action (or a build, a subagent or a timer) by starting a background task and ending their turn: `Bash` with `run_in_background: true` (result "Command running in background with ID: <id>"), an async `Agent` ("Async agent launched successfully"), `Monitor`, `ScheduleWakeup`. The CLI process stays alive and continues by itself when the task ends, but Switchboard only saw the turn end and showed the session as idle.
+  - **Tracking:** Switchboard tracks each such task from its `tool_use` / `tool_result`. It stays pending until the CLI's completion message arrives: a `user` message with `origin: {kind: "task-notification"}` whose text has `<task-id>`, `<tool-use-id>` and `<status>`, or until the process exits or is paused.
+  - **Display:** while any task is pending and no turn runs, the session counts as working in the background. It shows in:
+    - the chat's activity line: `⏳ Waiting for GitHub Actions: gh run view …  3:21`, or `⏳ Waiting for a background task: <summary>`, or `⏳ Waking up at 18:40`;
+    - the sidebar row: the action and time, with the running dot pulsing;
+    - the agent cards.
+    A command that uses `gh run`, `gh pr checks` or `gh workflow` reads "Waiting for GitHub Actions".
+  - Pending tasks are additive on `Session.activity`: the D19 shape gains the list of pending tasks, and a `background` state when no turn runs.
+- **D31 Model and effort can be changed while a session runs.**
+  - The session header gets a **model** picker and an **effort** picker. The choices come from the CLI: the models its `initialize` reports, and the effort levels the chosen model supports.
+  - A change applies to the running process through the CLI's control protocol (a `set_model` control request and the effort equivalent, verified against the installed CLI). It takes effect from the next turn and shows as a chat step line ("Model: … · effort: …").
+  - The choice is stored on the session. Every later spawn (resume, restart recovery) passes `--model` / `--effort`.
+  - If the CLI refuses a change, its text is shown and the stored choice is left unchanged.
+  - Sessions without a choice use the CLI's defaults, exactly as today.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
