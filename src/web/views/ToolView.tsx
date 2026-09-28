@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Tool } from '../../core/api.ts';
+import { isSiteToolUrl } from '../../core/site-tools.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { Link, useRouter } from '../router.tsx';
 import { urlHost } from '../shell/format.ts';
+import type { FrameHelperState } from '../tools/frame-helper.ts';
+import { useFrameHelper } from '../tools/useFrameHelper.ts';
 import { TOOLBAR_STATE, TOOL_DOT, probeTool, useToolFramingRefused, useToolState } from '../tools/probe.ts';
 import { CodebaseMemoryStrip } from './tool/CodebaseMemoryStrip.tsx';
 import './tool.css';
@@ -11,10 +14,21 @@ import './tool.css';
 /** The embedded tool's iframe permissions (audit 2026-09-28): no `allow-top-navigation`. */
 export const TOOL_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads';
 
+/**
+ * D28: a signed-in site's frame: {@link TOOL_FRAME_SANDBOX} plus the Storage Access
+ * API's token, so the frame helper's "Allow" button can ask Safari for the site's
+ * cookies (a sandboxed frame may only ask with it).
+ */
+export const SITE_FRAME_SANDBOX = `${TOOL_FRAME_SANDBOX} allow-storage-access-by-user-activation`;
+
 /** The built-in Codebase Memory tool (0002_default_tools.sql); it gets the dirty-projects strip. */
 export const CODEBASE_MEMORY_TOOL_ID = 'cm';
 
-/** The overlay over the frame area: not configured, not reachable (prototype `tool.ov*`), or refuses framing (D15 fallback). */
+/**
+ * The overlay over the frame area: not configured, not reachable (prototype
+ * `tool.ov*`), refuses framing (D15 fallback), or a site without a working frame
+ * helper (D28).
+ */
 interface Overlay {
   readonly title: string;
   readonly text: string;
@@ -35,6 +49,9 @@ interface Overlay {
  * D15: the iframe loads the tool's framing proxy (`Tool.frameUrl`), so a tool that
  * refuses framing still shows; New tab opens the tool's own URL. Only when no proxy
  * runs and the probe says the tool refuses framing, the overlay offers New tab.
+ * D28 (`docs/frame-helper.md`): a signed-in site (a non-loopback `https:` URL) has no
+ * proxy; with the frame helper working in this browser the iframe loads the site's
+ * own URL, else the overlay says what is missing and offers Open in new tab.
  */
 export function ToolView({ toolId }: { readonly toolId: string }) {
   const { navigate } = useRouter();
@@ -42,6 +59,8 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
   const tool: Tool | null = tools.data?.find((candidate) => candidate.id === toolId) ?? null;
   const state = useToolState(tool);
   const framingRefused = useToolFramingRefused(tool);
+  const site = isSiteToolUrl(tool?.url);
+  const helper = useFrameHelper(site);
   const [frameN, setFrameN] = useState(0);
 
   useEffect(() => {
@@ -91,7 +110,9 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
           label: 'Retry',
           action: retry,
         }
-      : framingRefused
+      : site
+        ? siteOverlay(url, helper)
+        : framingRefused
         ? {
             title: `${urlHost(url)} refuses to load in a frame`,
             text: `${tool.name} runs but refuses to load in a frame (X-Frame-Options / frame-ancestors), use New tab.`,
@@ -99,9 +120,18 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
             href: url,
           }
         : null;
+  // D28: a site frames directly once the helper works; a local tool keeps its D15 proxy.
+  const showFrame = !!url && state !== 'down' && (site ? helper.status === 'ready' : !framingRefused);
 
   return (
-    <section className="sb-view sb-tool-view" data-view="tool" data-testid="view-tool" data-tool-id={toolId} data-tool-state={state}>
+    <section
+      className="sb-view sb-tool-view"
+      data-view="tool"
+      data-testid="view-tool"
+      data-tool-id={toolId}
+      data-tool-state={state}
+      {...(site ? { 'data-frame-helper': helper.status } : {})}
+    >
       <div className="sb-tool-bar" data-testid="tool-toolbar">
         <span className="sb-tool-bar-dot" style={{ background: dot }} />
         <div className="sb-tool-bar-name">{tool.name}</div>
@@ -131,15 +161,16 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
         </div>
       </div>
       <div className="sb-tool-frame">
-        {url && state !== 'down' && !framingRefused ? (
+        {showFrame ? (
           <iframe
             key={`${tool.id}:${frameN}`}
-            // D15: through the tool's loopback framing proxy; the tool's own URL only when none runs.
-            src={tool.frameUrl ?? url}
+            // D28: a site's own URL (no proxy). D15: a local tool through its loopback framing proxy; its own URL only when none runs.
+            src={site ? url : (tool.frameUrl ?? url)}
             title={tool.name}
             // The tool keeps its own origin, scripts, forms, popups and downloads, but cannot navigate Switchboard's tab.
-            sandbox={TOOL_FRAME_SANDBOX}
+            sandbox={site ? SITE_FRAME_SANDBOX : TOOL_FRAME_SANDBOX}
             data-testid="tool-frame"
+            data-frame-mode={site ? 'site' : tool.frameUrl ? 'proxy' : 'plain'}
             data-frame-n={frameN}
           />
         ) : null}
@@ -148,6 +179,43 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
       {tool.id === CODEBASE_MEMORY_TOOL_ID ? <CodebaseMemoryStrip /> : null}
     </section>
   );
+}
+
+/**
+ * D28: the overlay of a signed-in site while the frame helper does not work here:
+ * none while it is being checked (the frame area stays empty), "needs the frame
+ * helper" without it, "can't open in a frame in this browser" when it is installed
+ * but its header removal does not take effect (Safari today). Both offer the site's
+ * own URL in a new tab.
+ */
+function siteOverlay(url: string, helper: FrameHelperState): Overlay | null {
+  const host = siteHost(url);
+  if (helper.status === 'absent') {
+    return {
+      title: `${host} needs the Switchboard frame helper to open here`,
+      text: 'Install it once in Chrome: docs/frame-helper.md (Safari can’t frame signed-in sites: open it in a new tab)',
+      label: 'Open in new tab',
+      href: url,
+    };
+  }
+  if (helper.status === 'blocked') {
+    return {
+      title: `${host} can't open in a frame in this browser`,
+      text: "The Switchboard frame helper is installed, but this browser didn't let it remove the site's frame headers (Safari's extensions can't yet; in Chrome, give it site access on all sites). See docs/frame-helper.md.",
+      label: 'Open in new tab',
+      href: url,
+    };
+  }
+  return null;
+}
+
+/** A site's host (with its port when it has one), e.g. `acme.atlassian.net`. */
+function siteHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return urlHost(url);
+  }
 }
 
 function OverlayCard({ dot, overlay }: { readonly dot: string; readonly overlay: Overlay }) {

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { CodebaseMemoryStatus, Tool, ToolProbe } from '../../core/api.ts';
+import { FRAME_CHECK_ATTRIBUTE, FRAME_CHECK_PATH } from '../../core/site-tools.ts';
 import type { ToolRecord } from '../db/repos/tools.ts';
 import type { Store } from '../db/store.ts';
 import type { ApiContext } from '../routes.ts';
@@ -24,6 +25,13 @@ const START_ERROR_STATUS: Partial<Record<SupervisorErrorCode, number>> = {
 interface IdParams {
   readonly id: string;
 }
+
+/**
+ * D28: the page {@link FRAME_CHECK_PATH} serves. It refuses every frame, so it can
+ * only show in the Tool view's hidden check frame when the frame helper removed
+ * its `X-Frame-Options` and CSP; `default-src 'none'` keeps it inert either way.
+ */
+export const FRAME_CHECK_PAGE = `<!doctype html><html ${FRAME_CHECK_ATTRIBUTE}="ok"><head><meta charset="utf-8"><title>Switchboard frame check</title></head><body></body></html>`;
 
 /** A stored tool as the API shows it (data model: id, name, url, showInSidebar; + description; + D15's `frameUrl`). */
 export function toTool(record: ToolRecord, frameUrl: string | null = null): Tool {
@@ -62,7 +70,11 @@ async function freeSessionName(store: Store, base: string): Promise<string> {
  *   empty) and `POST /api/codebase-memory/reindex?folder=` (gap #4: starts a
  *   session in that folder from the built-in reindex prompt → `201` Session,
  *   `409 nothing-to-reindex` when the list is empty). Folder refusals as
- *   `docs/folders.md` (`409 no-folder`, `404 not-found`).
+ *   `docs/folders.md` (`409 no-folder`, `404 not-found`);
+ * - additive (D28, `docs/frame-helper.md`): `GET /api/frame-helper/check`, a page
+ *   that refuses every frame (`X-Frame-Options: DENY`, `frame-ancestors 'none'`);
+ *   the Tool view frames it to learn whether the installed frame helper removes
+ *   those headers in this browser.
  */
 export async function registerToolRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, providers, supervisor, folders } = context;
@@ -73,6 +85,15 @@ export async function registerToolRoutes(app: FastifyInstance, context: ApiConte
     const hostname = pageHostname(request);
     return records.map((record) => toTool(record, frames?.frameUrl(record.id, hostname) ?? null));
   };
+
+  app.get(FRAME_CHECK_PATH, async (_request, reply) =>
+    reply
+      .header('cache-control', 'no-store')
+      .header('x-frame-options', 'DENY')
+      .header('content-security-policy', "default-src 'none'; frame-ancestors 'none'")
+      .type('text/html; charset=utf-8')
+      .send(FRAME_CHECK_PAGE),
+  );
 
   app.get('/api/tools', async (request): Promise<Tool[]> => withFrames(await store.tools.list(), request));
 

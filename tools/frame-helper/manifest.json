@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Switchboard frame helper",
+  "version": "1.0.0",
+  "description": "Lets Switchboard (on 127.0.0.1 / localhost) show signed-in sites such as Jira in its tool frame. Frames inside other pages are not touched.",
+  "minimum_chrome_version": "101",
+  "permissions": ["declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"],
+  "declarative_net_request": {
+    "rule_resources": [{ "id": "loopback_frames", "enabled": true, "path": "rules.json" }]
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*", "http://localhost/*"],
+      "js": ["marker.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://*/*"],
+      "js": ["storage-access.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

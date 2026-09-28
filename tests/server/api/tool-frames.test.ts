@@ -6,6 +6,7 @@ import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import type { Providers } from '../../../src/server/providers.ts';
+import { FRAME_CHECK_PAGE } from '../../../src/server/api/tools.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { ToolProxies } from '../../../src/server/tools/proxies.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -39,17 +40,17 @@ afterEach(async () => {
   tmp = undefined;
 });
 
-/** The app with framing proxies (as main.ts wires them: synced with the saved tools first), or without. */
-async function setup(withProxies: boolean): Promise<void> {
+/** The app with framing proxies (as main.ts wires them: synced with the saved tools first), or without; `extra` adds providers. */
+async function setup(withProxies: boolean, extra: Providers = {}): Promise<void> {
   tmp = await makeTempDir('tool-frames');
   store = await openTempStore(tmp);
   token = generateToken();
   const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: PORT };
-  let providers: Providers = {};
+  let providers: Providers = { ...extra };
   if (withProxies) {
     proxies = new ToolProxies({ switchboardPort: PORT });
     await proxies.sync(await store.tools.list());
-    providers = { toolFrames: proxies };
+    providers = { ...providers, toolFrames: proxies };
   }
   app = await buildApp({ config, token, store, webRoot: tmp, providers });
   await app.ready();
@@ -168,5 +169,42 @@ describe('probe: framing "refused" only when the tool refuses framing and no pro
     const none = await stub(htmlAnswer('none', { 'content-security-policy': "frame-ancestors 'none'", 'x-frame-options': 'DENY' }));
     await call('PUT', '/api/tools', [{ id: 'none', name: 'None', url: none.origin }]);
     expect((await call('POST', '/api/tools/none/probe')).json()).toEqual({ state: 'up' });
+  });
+});
+
+describe('signed-in sites (D28, docs/frame-helper.md)', () => {
+  const JIRA = 'https://acme.atlassian.net/jira/software/c/projects/PROJ/boards/1';
+
+  it('a site tool gets no framing proxy (frameUrl null); the probe stays as it is, refusal included', async () => {
+    const probed: string[] = [];
+    await setup(true, {
+      toolProbe: {
+        probe: async (url) => {
+          probed.push(url);
+          // What the real Jira board answers: up, framed only by Atlassian's own sites.
+          return { state: 'up', framing: { xFrameOptions: null, csp: ["frame-ancestors 'self' *.atlassian.net *.jira.com trello.com"] } };
+        },
+      },
+    });
+    const put = await call('PUT', '/api/tools', [{ id: 'jira', name: 'Jira', url: JIRA }]);
+    expect(put.statusCode).toBe(200);
+    expect((put.json() as Tool[]).map((t) => [t.id, t.url, t.frameUrl])).toEqual([['jira', JIRA, null]]);
+    expect(proxies!.proxy('jira')).toBeNull();
+    expect(probed).toEqual([]); // saving a site fetches nothing
+    expect((await call('POST', '/api/tools/jira/probe')).json()).toEqual({ state: 'up', framing: 'refused' });
+    expect(probed).toEqual([JIRA]);
+  });
+
+  it('GET /api/frame-helper/check: a page that refuses every frame, behind the cookie guard', async () => {
+    await setup(false);
+    const check = await call('GET', '/api/frame-helper/check');
+    expect(check.statusCode).toBe(200);
+    expect(check.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(check.headers['x-frame-options']).toBe('DENY');
+    expect(check.headers['content-security-policy']).toBe("default-src 'none'; frame-ancestors 'none'");
+    expect(check.headers['cache-control']).toBe('no-store');
+    expect(check.body).toBe(FRAME_CHECK_PAGE);
+    expect(check.body).toContain('<html data-sb-frame-check="ok">');
+    expect((await app!.inject({ method: 'GET', url: '/api/frame-helper/check', headers: { host: HOST } })).statusCode).toBe(401);
   });
 });

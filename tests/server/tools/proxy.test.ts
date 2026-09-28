@@ -439,6 +439,29 @@ describe('ToolProxies: one proxy per tool with a URL (D15)', () => {
     expect(await refused(restarted!.port)).toBe(true);
   });
 
+  it('D28: a signed-in site (non-loopback https) gets no proxy; a proxied tool that becomes a site loses its proxy', async () => {
+    const tool = await stub(htmlAnswer('local'));
+    const started: string[] = [];
+    const proxies = manager({
+      start: async (options) => {
+        started.push(options.target);
+        return startToolProxy(options);
+      },
+    });
+    await proxies.sync([
+      { id: 'jira', url: 'https://acme.atlassian.net/jira/software/c/projects/PROJ/boards/1' },
+      { id: 'cm', url: tool.origin },
+      { id: 'tls-local', url: `https://localhost:${tool.port}/` },
+    ]);
+    expect(started).toEqual([tool.origin, `https://localhost:${tool.port}/`]); // nothing is started (or fetched) for the site
+    expect(proxies.frameUrl('jira')).toBeNull();
+    expect(proxies.frameUrl('cm')).not.toBeNull();
+    const cmPort = proxies.proxy('cm')!.port;
+    await proxies.sync([{ id: 'cm', url: 'https://grafana.example.com/d/x' }]);
+    expect(proxies.frameUrl('cm')).toBeNull();
+    expect(await refused(cmPort)).toBe(true);
+  });
+
   it('close() stops every proxy and later syncs do nothing', async () => {
     const tool = await stub(htmlAnswer('ok'));
     const proxies = manager();
