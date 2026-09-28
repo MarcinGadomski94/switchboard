@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
+import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { Link, type SessionTab } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
@@ -37,7 +38,8 @@ function isAttachWarning(error: unknown): AttachWarning | null {
 }
 
 /**
- * Session header (SPEC → Session; prototype `vSession` header): status dot, name,
+ * Session header (SPEC → Session; prototype `vSession` header): status dot, name
+ * (D22: its display title; a click renames it in place, `InlineTitle`),
  * root path, Pause / Resume (D7), "⇄ Continue in terminal" / "⇄ Attach here"
  * (M0.4), the chips (k v, mono; loop / workflow chips blue) and the tabs
  * Chat · Timeline · Diff · n · Artifacts · n.
@@ -76,9 +78,13 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
     <div className="sb-sv-header" data-testid="session-header" data-session-id={sessionId}>
       <div className="sb-sv-top">
         <span className="sb-sv-dot" data-testid="session-dot" style={{ background: statusColor(session?.status ?? 'idle') }} />
-        <div className="sb-sv-name" data-testid="session-name">
-          {session?.name ?? sessionId}
-        </div>
+        {session ? (
+          <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
+        ) : (
+          <div className="sb-sv-name" data-testid="session-name">
+            {sessionId}
+          </div>
+        )}
         <div className="sb-sv-root" data-testid="session-root">
           {missing ? 'no such session' : session ? rootLine(session) : ''}
         </div>

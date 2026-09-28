@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { InboxItem } from '../../core/api.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useRouter } from '../router.tsx';
@@ -15,10 +16,11 @@ async function inboxItem(batchId: string): Promise<InboxItem | null> {
   }
 }
 
-/** The session's name from the session list, `null` when it cannot be read. */
+/** The session's display title (D22: its title, else its name) from the session list, `null` when it cannot be read. */
 async function sessionName(sessionId: string): Promise<string | null> {
   try {
-    return (await api.listSessions()).find((session) => session.id === sessionId)?.name ?? null;
+    const session = (await api.listSessions()).find((s) => s.id === sessionId);
+    return session ? displayTitle(session) : null;
   } catch {
     return null;
   }

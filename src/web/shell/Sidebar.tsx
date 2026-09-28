@@ -4,6 +4,7 @@ import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { InlineTitle } from '../components/InlineTitle.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
@@ -192,7 +193,8 @@ export function Sidebar() {
             <span className="sb-session-dot" style={{ background: statusColor(session.status) }} />
             <div className="sb-session-body">
               <div className="sb-session-head">
-                <span className="sb-session-name">{session.name}</span>
+                {/* D22: the display title; a double-click renames it in place. */}
+                <InlineTitle session={session} gesture="double-click" className="sb-session-name" />
                 <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
               </div>
               <div className="sb-session-mode">

@@ -202,7 +202,7 @@ export function chatItems(events: readonly SessionEvent[], questions: readonly Q
 /** The line under an answered batch's bubble (prototype `ssAnswered`, SPEC → Session → Chat). */
 export const ANSWERS_WRITTEN = '● Answers written into the briefs. Blocked agents are resuming…';
 
-/** The composer's placeholder (prototype `draftPh`). */
+/** The composer's placeholder (prototype `draftPh`); `sessionName` is what the session is shown as (D22: its title, else its name). */
 export function composerPlaceholder(sessionName: string): string {
   return `Message ${sessionName}…`;
 }

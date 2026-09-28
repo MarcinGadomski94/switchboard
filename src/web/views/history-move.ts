@@ -1,4 +1,5 @@
 import type { AttachWarningReason, ContinueConversation, FolderCheck, HistoryItem, Session } from '../../core/api.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { folderName } from '../folders/folders.ts';
 
 /**
@@ -90,9 +91,9 @@ export function refusalText(status: number, body: unknown): string {
   return status === 0 ? 'Switchboard is not reachable.' : `The move failed (HTTP ${status}).`;
 }
 
-/** The state after a successful call. */
-export function movedState(session: Pick<Session, 'id' | 'name'>): MoveState {
-  return { kind: 'moved', sessionId: session.id, name: session.name };
+/** The state after a successful call: the session and what it is shown as (D22: its title, else its name). */
+export function movedState(session: Pick<Session, 'id' | 'name'> & Partial<Pick<Session, 'title' | 'displayTitle'>>): MoveState {
+  return { kind: 'moved', sessionId: session.id, name: displayTitle(session) };
 }
 
 /** `items` with the one conversation changed. */

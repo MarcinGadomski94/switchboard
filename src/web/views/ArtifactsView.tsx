@@ -165,7 +165,7 @@ function ArtifactRow({ artifact, now, folderTag }: { readonly artifact: Artifact
       <span className="sb-art-location">{artifactLocation(artifact)}</span>
       <span className="sb-art-session">
         <FolderTag name={folderTag} title={artifact.folderPath} />
-        {artifact.sessionName ?? UNKNOWN}
+        {artifact.sessionTitle ?? artifact.sessionName ?? UNKNOWN}
       </span>
       <span className="sb-art-meta">{artifact.meta ?? ''}</span>
       <span className="sb-art-age">{formatAge(artifact.updatedAt, now)}</span>
@@ -174,7 +174,7 @@ function ArtifactRow({ artifact, now, folderTag }: { readonly artifact: Artifact
   const common = { className: 'sb-art-row', 'data-testid': 'artifact-row', 'data-type': artifact.type, 'data-artifact-id': artifact.id };
   if (artifact.sessionId && artifact.sessionName) {
     return (
-      <Link {...common} to={{ view: 'session', id: artifact.sessionId, tab: 'chat' }} title={`Open ${artifact.sessionName}`}>
+      <Link {...common} to={{ view: 'session', id: artifact.sessionId, tab: 'chat' }} title={`Open ${artifact.sessionTitle ?? artifact.sessionName}`}>
         {cells}
       </Link>
     );

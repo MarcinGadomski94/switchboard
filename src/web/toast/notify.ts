@@ -47,13 +47,14 @@ export function osTitle(sessionName: string): string {
 
 /**
  * The toast + OS notification of a question batch. `item` is the batch's Inbox
- * item (`GET /api/inbox`, id = batch id), which names the session (`source`) and
- * its branch chips; without it the session name comes from `sessionName`, else the
+ * item (`GET /api/inbox`, id = batch id), which names the session (D22: its
+ * `sourceTitle`, the session's title else its name; else `source`) and its branch
+ * chips; without it the session's display title comes from `sessionName`, else the
  * session id. The text is the first question, verbatim (SPEC → Copy rules); the
  * sub line says how many questions the batch holds.
  */
 export function questionNotice(event: QuestionBatchEvent, item: InboxItem | null, sessionName: string | null): QuestionNotice {
-  const name = item?.source || sessionName || event.sessionId;
+  const name = item?.sourceTitle || item?.source || sessionName || event.sessionId;
   const questions = item?.questions?.length ? item.questions : event.questions;
   const text = questions[0]?.text ?? '';
   const branch = (item?.branches ?? []).map((ref) => `${ref.solution} ⎇ ${ref.branch}`).join(' · ');
