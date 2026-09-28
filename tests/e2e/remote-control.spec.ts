@@ -88,9 +88,9 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await expect(toggle).toBeEnabled();
   await expect(page.getByTestId('session-remote-link')).toHaveCount(0);
-  // It sits with the header actions, before Pause, in their style.
+  // It sits with the header actions, before Pause (after D31's model picker), in their style.
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
-  expect(actions).toEqual(['session-remote', 'session-pause', 'session-handoff']);
+  expect(actions).toEqual(['session-model', 'session-remote', 'session-pause', 'session-handoff']);
   await expect(toggle).toHaveCSS('font-size', '12px');
   await expect(toggle).toHaveCSS('border-top-left-radius', '6px');
   const pause = page.getByTestId('session-pause');

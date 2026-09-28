@@ -312,6 +312,149 @@
 }
 
 /*
+ * D31 · Model and effort (not in the prototype): the first header action, styled
+ * as the actions next to it (SPEC tokens), `Opus 5.5 · high ▾`; its popover is a
+ * card like the Remote one: the section labels, the model rows (✓ + name + muted
+ * description, the selected row on the selected-row token) and the effort pills
+ * (the Solutions filter pills: selected = the primary tokens). Sessions without
+ * model information (the demo's) show none of it, so the prototype's header is
+ * unchanged.
+ */
+.sb-sv-model {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+/* One line, even when a long root path squeezes the header. */
+.sb-sv-model-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sb-sv-model-caret {
+  color: var(--muted-2);
+  font-size: 10px;
+}
+
+.sb-sv-model-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 300px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  border-radius: var(--radius-card-lg);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.sb-sv-model-pop-head {
+  display: flex;
+  align-items: center;
+}
+
+.sb-sv-model-pop-label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-sv-model-pop-close {
+  margin-left: auto;
+  color: var(--muted-2);
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.sb-sv-model-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.sb-button.sb-sv-model-option {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: var(--radius-button);
+  color: var(--text-2);
+}
+
+.sb-button.sb-sv-model-option:hover,
+.sb-button.sb-sv-model-option[aria-checked='true'] {
+  background: var(--bg-selected-row);
+}
+
+.sb-button.sb-sv-model-option[aria-checked='true'] {
+  color: var(--text-strong);
+}
+
+.sb-sv-model-check {
+  flex: none;
+  width: 12px;
+  color: var(--status-done);
+}
+
+.sb-sv-model-name {
+  flex: none;
+  white-space: nowrap;
+}
+
+.sb-sv-model-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-2);
+  font-size: 11.5px;
+}
+
+.sb-sv-effort-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb-button.sb-sv-effort-option {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--bg-selected-row);
+  color: var(--text-2);
+}
+
+.sb-button.sb-sv-effort-option[aria-checked='true'] {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+}
+
+.sb-button.sb-sv-model-option:disabled,
+.sb-button.sb-sv-effort-option:disabled {
+  cursor: progress;
+}
+
+.sb-sv-model-pop-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-1);
+}
+
+/*
  * Right panel (M4.3, prototype right column): "Agents & solutions" + summary, the
  * agent cards, "Terminal" + the terminal tail, then the handoff card (M4.1).
  */

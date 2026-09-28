@@ -18,6 +18,7 @@ import type {
   Session,
   SessionTitleInput,
   SessionDetail,
+  SessionModelInput,
   SessionRemoteInput,
   SessionEvent,
   SetupState,
@@ -112,6 +113,8 @@ export const api = {
   renameSession: (id: string, title: string | null) => request<Session>('PUT', `/api/sessions/${enc(id)}/title`, { title } satisfies SessionTitleInput),
   /** D24: Remote Control on / off for the session's live process. */
   setRemote: (id: string, enabled: boolean) => request<Session>('PUT', `/api/sessions/${enc(id)}/remote`, { enabled } satisfies SessionRemoteInput),
+  /** D31: the session's model and / or effort (a field left out keeps its value; `null` = the CLI's default). */
+  setModel: (id: string, input: SessionModelInput) => request<Session>('PUT', `/api/sessions/${enc(id)}/model`, input),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),

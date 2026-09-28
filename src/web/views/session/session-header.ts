@@ -1,4 +1,5 @@
-import type { AttachWarningReason, Session } from '../../../core/api.ts';
+import type { AttachWarningReason, Session, SessionModelInput } from '../../../core/api.ts';
+import { CLI_EFFORT_LEVELS, DEFAULT_MODEL_VALUE, effortLevelsFor, modelOptionFor, normalizeModel } from '../../../core/model-choice.ts';
 import { folderName, samePath } from '../../folders/folders.ts';
 
 /** A session tab (the router's `SessionTab`, restated so this module has no JSX import). */
@@ -180,4 +181,114 @@ export function actionErrorText(status: number, body: unknown): string {
   const message = body && typeof body === 'object' && typeof (body as { message?: unknown }).message === 'string' ? (body as { message: string }).message : null;
   if (status === 0) return 'Switchboard is not reachable.';
   return message ?? `The request failed (HTTP ${status}).`;
+}
+
+/** D31: the popover's section labels and notes. */
+export const MODEL_SECTION = 'Model';
+export const EFFORT_SECTION = 'Effort';
+/** D31: the effort item that goes back to the CLI's default (`effort: null`). */
+export const DEFAULT_EFFORT_LABEL = 'Default';
+/** D31: why the picker is disabled while no claude process of the session has listed its models. */
+export const MODELS_UNKNOWN_REASON = 'No claude process of this session has reported its models yet: the model and effort pickers work once it runs.';
+/** D31: when a change applies (the popover's note and the trigger's tooltip). */
+export const MODEL_APPLIES_LIVE = 'A change applies to the running claude process from its next turn.';
+export const MODEL_APPLIES_LATER = 'A change applies when the session runs again (--model / --effort).';
+
+/** D31: one model in the picker. */
+export interface ModelPickerItem {
+  /** What the route takes (`default` = the CLI's default model). */
+  readonly value: string;
+  readonly label: string;
+  /** The CLI's description, `null` without one. */
+  readonly description: string | null;
+  readonly selected: boolean;
+}
+
+/** D31: one effort level in the picker (`value: null` = the CLI's default). */
+export interface EffortPickerItem {
+  readonly value: string | null;
+  readonly label: string;
+  readonly selected: boolean;
+}
+
+/** D31: what the header's model and effort picker shows (`docs/model-effort.md` → *UI*). */
+export interface ModelPicker {
+  /** The trigger's text: the chosen model's short label, plus ` · <effort>` when an effort is chosen (`Opus 5.5 · high`). */
+  readonly label: string;
+  /** Disabled while the choices are unknown; {@link reason} says why (the tooltip). */
+  readonly disabled: boolean;
+  readonly reason: string | null;
+  /** The tooltip: the reason, else when a change applies. */
+  readonly title: string;
+  /** The models the session's claude process offers, in the CLI's order (plus a stored one it does not list). */
+  readonly models: readonly ModelPickerItem[];
+  /** The chosen model's effort levels after a Default item; `null` when the model has none (the effort picker hides). */
+  readonly efforts: readonly EffortPickerItem[] | null;
+  /** Where the popover's note says a change applies. */
+  readonly note: string;
+}
+
+/** A model's label without a trailing parenthetical (`Default (recommended)` → `Default`), for the compact trigger. */
+export function shortModelLabel(label: string): string {
+  return label.replace(/\s*\([^)]*\)\s*$/, '').trim() || label;
+}
+
+/**
+ * The header's model and effort picker for `session` (D31), or `null` when the
+ * session has no model information (`model: null`: the demo's; no picker). While
+ * no process has reported its models (`available: null`) it shows the stored
+ * choice, disabled with {@link MODELS_UNKNOWN_REASON}. The effort items are the
+ * chosen model's levels (the CLI's `--effort` choices when the model is not in
+ * the list); `null` when the model has none, so the effort picker hides.
+ */
+export function modelPicker(session: Pick<Session, 'model' | 'live'>): ModelPicker | null {
+  const model = session.model;
+  if (!model) return null;
+  const { current, effort, available } = model;
+  const option = modelOptionFor(available, current);
+  const name = option ? shortModelLabel(option.label) : current === null ? 'Default' : current;
+  const levels = available === null ? null : (effortLevelsFor(available, current) ?? CLI_EFFORT_LEVELS);
+  const efforts =
+    levels === null || levels.length === 0
+      ? null
+      : [{ value: null, label: DEFAULT_EFFORT_LABEL, selected: effort === null }, ...levels.map((level) => ({ value: level, label: level, selected: level === effort }))];
+  const shownEffort = effort !== null && (available === null || (efforts !== null && efforts.some((item) => item.value === effort))) ? effort : null;
+  const selectedValue = current ?? DEFAULT_MODEL_VALUE;
+  const models: ModelPickerItem[] = (available ?? []).map((item) => ({
+    value: item.value,
+    label: item.label,
+    description: item.description ?? null,
+    selected: item.value === selectedValue,
+  }));
+  if (available !== null && current !== null && !option) models.push({ value: current, label: current, description: null, selected: true });
+  const note = session.live ? MODEL_APPLIES_LIVE : MODEL_APPLIES_LATER;
+  const reason = available === null ? MODELS_UNKNOWN_REASON : null;
+  return {
+    label: shownEffort === null ? name : `${name} · ${shownEffort}`,
+    disabled: reason !== null,
+    reason,
+    title: reason ?? `Model and effort. ${note}`,
+    models,
+    efforts,
+    note,
+  };
+}
+
+/**
+ * The body of `PUT /api/sessions/{id}/model` for a model picked in the list: the
+ * model, and the stored effort when the new model supports it, else `null` (the
+ * CLI's default; the server refuses an effort the model does not list). `null`
+ * when the model is the one already chosen (nothing to send).
+ */
+export function modelPickBody(model: NonNullable<Session['model']>, value: string): SessionModelInput | null {
+  const next = normalizeModel(value);
+  if (next === model.current) return null;
+  const levels = effortLevelsFor(model.available, next) ?? CLI_EFFORT_LEVELS;
+  const keep = model.effort !== null && levels.includes(model.effort);
+  return { model: value, effort: keep ? model.effort : null };
+}
+
+/** The body for an effort picked in the list (`null` = the CLI's default); `null` when it is the one already chosen. */
+export function effortPickBody(model: NonNullable<Session['model']>, value: string | null): SessionModelInput | null {
+  return value === model.effort ? null : { effort: value };
 }
