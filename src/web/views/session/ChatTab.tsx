@@ -228,6 +228,22 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
   // D26: the one-line height (the prototype's input) and whether the text needs more lines.
   const oneLine = useRef<{ readonly height: number; readonly line: number } | null>(null);
   const [multiline, setMultiline] = useState(false);
+  // Web fonts that finished loading change the line height (`line-height: normal`), so the one-line height is measured again.
+  const [fontLoads, setFontLoads] = useState(0);
+  useEffect(() => {
+    const fonts = document.fonts;
+    let live = true;
+    const loaded = (): void => {
+      if (live) setFontLoads((count) => count + 1);
+    };
+    fonts.addEventListener('loadingdone', loaded);
+    // Fonts that finished between the first measure and this subscription.
+    void fonts.ready.then(loaded);
+    return () => {
+      live = false;
+      fonts.removeEventListener('loadingdone', loaded);
+    };
+  }, []);
 
   // D26: the field grows with its text (up to COMPOSER_MAX_LINES, then scrolls) and shrinks after a send.
   useLayoutEffect(() => {
@@ -237,7 +253,8 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
     const style = getComputedStyle(field);
     const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
     const border = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
-    if (oneLine.current === null && field.value === '') {
+    // Measured whenever the field is empty (its natural one-row height), so a font that loads after the first render counts.
+    if (field.value === '') {
       oneLine.current = { height: field.offsetHeight, line: field.clientHeight - padding };
     }
     const base = oneLine.current;
@@ -248,7 +265,7 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
     field.style.height = `${style.boxSizing === 'border-box' ? height : height - padding - border}px`;
     field.style.overflowY = needed > max ? 'auto' : 'hidden';
     setMultiline(height > base.height + 1);
-  }, [draft]);
+  }, [draft, fontLoads]);
 
   const send = async (): Promise<void> => {
     const text = draftToSend(draft);

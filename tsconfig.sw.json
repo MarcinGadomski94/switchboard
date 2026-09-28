@@ -1,0 +1,20 @@
+{
+  // The service worker (src/web/public/sw.js, D34): plain JavaScript that Vite copies
+  // as-is, type-checked through its JSDoc with the WebWorker lib only.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/web/public/sw.js"]
+}

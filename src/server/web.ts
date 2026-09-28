@@ -22,13 +22,42 @@ export const UNBUILT_PAGE = `<!doctype html>
 </html>
 `;
 
-async function readIndexHtml(webRoot: string): Promise<string | null> {
+/** One installable-app file (D34) and how it is served. */
+export interface AppFile {
+  /** URL path, the same as its path under the web root. */
+  readonly path: string;
+  /** `Content-Type` sent with it. */
+  readonly type: string;
+}
+
+/**
+ * D34 (`docs/install-app.md`): the files that make Switchboard installable, all
+ * public like the page shell (browsers fetch a manifest without credentials) and
+ * holding nothing sensitive. The Host/Origin guard still applies. Each is sent
+ * with `Cache-Control: no-cache`, so a new build reaches an installed app on the
+ * next load. The icons (`/icons/*`, {@link APP_ICONS_PREFIX}) are public too.
+ */
+export const APP_FILES: readonly AppFile[] = [
+  { path: '/manifest.webmanifest', type: 'application/manifest+json; charset=utf-8' },
+  { path: '/sw.js', type: 'text/javascript; charset=utf-8' },
+  { path: '/offline.html', type: 'text/html; charset=utf-8' },
+];
+
+/** D34: the app icons' folder under the web root (`src/web/public/icons`), served without the cookie. */
+export const APP_ICONS_PREFIX = '/icons/';
+
+/** A text file under the web root, `null` when it does not exist. */
+async function readWebFile(webRoot: string, relative: string): Promise<string | null> {
   try {
-    return await readFile(path.join(webRoot, 'index.html'), 'utf8');
+    return await readFile(path.join(webRoot, relative), 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   }
+}
+
+function readIndexHtml(webRoot: string): Promise<string | null> {
+  return readWebFile(webRoot, 'index.html');
 }
 
 /** A request for a file (the last path segment has an extension) rather than a UI route. */
@@ -40,8 +69,10 @@ function isFileRequest(relative: string): boolean {
 /**
  * Serves the UI: every GET that is not `/api` or `/hub` and does not name a file
  * returns `index.html` (client-side routes), and sets the `sb_token` cookie when
- * gap #20 allows it; file requests are served from `webRoot`. Both are public
- * routes; the Host/Origin guard still applies to them.
+ * gap #20 allows it; file requests are served from `webRoot`. D34's
+ * installable-app files ({@link APP_FILES}, the icons) have routes of their own
+ * with fixed types. All of them are public routes; the Host/Origin guard still
+ * applies to them.
  */
 export async function registerWeb(app: FastifyInstance, options: WebOptions): Promise<void> {
   const { webRoot, token } = options;
@@ -54,6 +85,18 @@ export async function registerWeb(app: FastifyInstance, options: WebOptions): Pr
   };
 
   app.get('/', { config: { public: true } }, sendPage);
+  // D34: the installable-app files, never with the cookie (docs/security.md).
+  for (const file of APP_FILES) {
+    app.get(file.path, { config: { public: true } }, async (_request, reply) => {
+      const body = await readWebFile(webRoot, file.path.slice(1));
+      if (body === null) return reply.callNotFound();
+      return reply.header('cache-control', 'no-cache').type(file.type).send(body);
+    });
+  }
+  app.get<{ Params: { '*': string } }>(`${APP_ICONS_PREFIX}*`, { config: { public: true } }, async (request, reply) => {
+    // Static files (`public, max-age=0`: revalidated on every use); never a UI route.
+    return reply.sendFile(`${APP_ICONS_PREFIX.slice(1)}${request.params['*']}`);
+  });
   app.get<{ Params: { '*': string } }>('/*', { config: { public: true } }, async (request, reply) => {
     // Reached for /api and /hub only with a valid cookie (the guard 401s otherwise).
     if (isProtectedPath(request.url)) return reply.callNotFound();

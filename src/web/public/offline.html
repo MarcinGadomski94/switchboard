@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111214">
+<title>Switchboard isn't running</title>
+<!--
+  D34 (docs/install-app.md): the service worker (sw.js) caches this page at install
+  and shows it when a navigation fails because the service is down. Self-contained:
+  inline styles on the SPEC colors, no font or script from the (stopped) service.
+  After changing this file, bump CACHE_VERSION in sw.js (tests/web/service-worker.test.ts
+  pins this file's hash to remind you).
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0c0d; color: #e8e7e3; font: 13px Geist, system-ui, sans-serif; }
+  main { box-sizing: border-box; min-height: 100%; padding: 28px; display: grid; place-items: center; }
+  .box { max-width: 480px; }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; }
+  .mark { width: 22px; height: 22px; border-radius: 6px; background: #e8e7e3; color: #111214; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .name { font-size: 14px; font-weight: 600; }
+  h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; color: #f0efeb; }
+  p { margin: 0 0 18px; font-size: 13.5px; line-height: 1.5; color: #8d8c87; }
+  code { font: 12px 'Geist Mono', ui-monospace, monospace; color: #c9c8c3; background: #0c0d0f; border: 1px solid #26272c; border-radius: 4px; padding: 1px 5px; }
+  button { font: 500 13px Geist, system-ui, sans-serif; background: #e8e7e3; color: #111214; border: 0; border-radius: 7px; padding: 8px 14px; cursor: pointer; }
+  button:focus-visible { outline: 1px solid #8d8c87; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="box">
+    <div class="brand"><div class="mark">S</div><div class="name">Switchboard</div></div>
+    <h1 data-testid="offline-title">Switchboard isn't running on <span id="host">this address</span></h1>
+    <p data-testid="offline-help">Start it with <code>npm start</code> in the repo, or turn on Settings → Start at login.</p>
+    <button type="button" id="retry" data-testid="offline-retry" autofocus>Retry</button>
+  </div>
+</main>
+<script>
+  // The page answers the navigation that failed, so location is the address the app was opened at.
+  document.getElementById('host').textContent = location.host || 'this address';
+  document.getElementById('retry').addEventListener('click', function () { location.reload(); });
+</script>
+</body>
+</html>
