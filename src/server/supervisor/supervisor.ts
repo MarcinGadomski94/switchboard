@@ -97,6 +97,8 @@ export type SessionStartInput = Omit<NewSession, 'workType' | 'mode' | 'phase'> 
 export interface AdoptInput {
   /** Kebab-case and unique (the caller checked it). */
   readonly name: string;
+  /** D22: the conversation's title (trimmed, at most 80 characters), `null` when it has none. */
+  readonly title?: string | null;
   /** Stored as the session's task (its first prompt); never sent. */
   readonly task: string;
   /** The conversation's CLI session id: the session is bound to it, never to a new one. */
@@ -258,7 +260,8 @@ export class SessionSupervisor {
    * recovery, worktrees, diffs, artifacts and loops. The first stdin message is
    * `firstMessage` (default: the task text; `POST /api/sessions` passes the M5.2
    * first-turn payload, `sessions/first-turn.ts`); an empty one leaves the process idle.
-   * The input must already be validated (sessions/validate.ts). `options.beforeSpawn`
+   * The input must already be validated (sessions/validate.ts; D22: its `title`
+   * is stored, `null` when absent). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).
    */
@@ -267,6 +270,7 @@ export class SessionSupervisor {
     const cwd = await canonicalFolder(place.cwd);
     const session = await this.#store.sessions.create({
       name: input.name,
+      title: input.title ?? null,
       task: input.task,
       claudeSessionId: randomUUID(),
       status: 'idle',
@@ -451,6 +455,7 @@ export class SessionSupervisor {
     const cwd = await canonicalFolder(place.cwd);
     const session = await this.#store.sessions.create({
       name: input.name,
+      title: input.title ?? null,
       task: input.task,
       claudeSessionId: input.claudeSessionId,
       status: 'idle',
@@ -709,7 +714,8 @@ export class SessionSupervisor {
       // D6: `auto` is not available for this model; its control_response needs no waiter.
       onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
     });
-    const args = buildClaudeArgs({ start, name: prepared.name, permissionMode, extraArgs: this.#extraArgs });
+    // D22: the CLI's display name is the session's title (as it is now: a rename applies from the next spawn), else its name.
+    const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, extraArgs: this.#extraArgs });
     const proc = new ClaudeProcess({
       command: this.#command,
       args,

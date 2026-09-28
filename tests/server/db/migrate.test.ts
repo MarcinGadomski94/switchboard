@@ -128,6 +128,32 @@ describe('0004 session origin (D16)', () => {
   });
 });
 
+describe('0006 session title (D22)', () => {
+  it('adds a nullable title to an existing database: its sessions keep their names and have no title', async () => {
+    const file = path.join(tmp, 'existing.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 6)).toMatchObject({ name: 'session_title' });
+    // A database as the build before D22 left it (0006 does not depend on any 0005).
+    migrate(database, shipped.filter((m) => m.version <= 4));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 4).map((m) => m.version));
+    expect(database.prepare('SELECT id, name, title FROM sessions').all()).toEqual([{ id: 's-old', name: 'free-talk-640', title: null }]);
+    database.prepare("UPDATE sessions SET title = 'Free talk at 640' WHERE id = 's-old'").run();
+    database.close();
+
+    // The store reads it: the old session's title, a new one without.
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ name: 'free-talk-640', title: 'Free talk at 640' });
+      expect(await store.sessions.create({ name: 'fresh', claudeSessionId: 'c-fresh' })).toMatchObject({ title: null });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

@@ -73,7 +73,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * id, `folderPath`, `folderKind`), `live` (a supervised process is
  * running: its pid is recorded), the handoff command and the chips (session-start
  * answers + the session's observed loops, `src/core/derive/chips.ts`), and its loops
- * (M7.2, the Schedules & loops cards).
+ * (M7.2, the Schedules & loops cards). D22: its `title` (`null` when none) and
+ * `displayTitle` (the title, else the name), what the UI shows.
  */
 export async function toSession(store: Store, record: SessionRecord): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -105,6 +106,8 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),
     loops: loops.map(toLoop),
+    title: record.title,
+    displayTitle: record.title ?? record.name,
   };
 }
 

@@ -7,8 +7,10 @@ import { Table, type TableSpec, defined } from '../table.ts';
 export interface SessionRecord {
   /** Switchboard's id (the `{id}` of `/api/sessions/{id}`). */
   readonly id: string;
-  /** Unique, kebab-case (the API validates the format). */
+  /** Unique, kebab-case (the API validates the format); the worktree and branch are built from it, so it never changes. */
   readonly name: string;
+  /** D22 (0006): the free-text title the UI shows (trimmed, 1–80 characters); `null` = show {@link name}. */
+  readonly title: string | null;
   /** The task text the developer typed in the New-session modal. */
   readonly task: string;
   /** The CLI's session id (`--session-id` / `--resume`); never changes. */
@@ -79,6 +81,7 @@ const SPEC: TableSpec<SessionRecord> = {
   fields: {
     id: ['id', 'text'],
     name: ['name', 'text'],
+    title: ['title', 'text'],
     task: ['task', 'text'],
     claudeSessionId: ['claude_session_id', 'text'],
     status: ['status', 'text'],

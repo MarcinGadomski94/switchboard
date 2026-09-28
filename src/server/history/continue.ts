@@ -2,6 +2,7 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ContinueRefusal, FolderCheck } from '../../core/api.ts';
 import { isTerminalConversation, relativeToRoot, solutionOfPath } from '../../core/history.ts';
+import { TITLE_MAX } from '../../core/session-title.ts';
 import { movedSessionName } from '../../core/terminal-move.ts';
 import type { TranscriptFacts } from '../../core/transcript.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
@@ -45,6 +46,20 @@ function refused(status: number, body: ContinueRefusalBody): ContinueOutcome {
   return { ok: false, status, body };
 }
 
+/**
+ * D22: a moved session's title: the conversation's title (the last custom title,
+ * else the AI title), whitespace collapsed and cut to {@link TITLE_MAX}
+ * characters; `null` when it has none (the session then shows its name, which
+ * came from the first prompt).
+ */
+export function conversationTitle(facts: Pick<TranscriptFacts, 'customTitle' | 'aiTitle'>): string | null {
+  for (const text of [facts.customTitle, facts.aiTitle]) {
+    const title = (text ?? '').replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX).trim();
+    if (title !== '') return title;
+  }
+  return null;
+}
+
 /** HTTP status of a supervisor refusal during the move (as the session routes map them). */
 function supervisorStatus(error: SupervisorError): number {
   if (error.code === 'closing') return 503;
@@ -67,6 +82,7 @@ function supervisorStatus(error: SupervisorError): number {
  *    neither a workspace nor a repo above it: 422 `not-in-a-folder`;
  * 3. **name**: `name` when given (kebab-case, unique: else 422), else the title,
  *    else the first prompt, in kebab-case, made unique (`src/core/terminal-move.ts`);
+ *    D22: the session's **title** is the conversation's title ({@link conversationTitle});
  * 4. **terminal check** (the Attach-here warning): 409 `terminal-open` with the
  *    reasons unless `confirm: true`. Nothing has changed until here (the folder is
  *    added only after this check);
@@ -177,7 +193,14 @@ export class ConversationMover {
     }
     try {
       const record = await this.#supervisor.adopt(
-        { name, task: facts.firstPrompt ?? facts.firstCommand ?? '', claudeSessionId, solutions: this.#solutions(folder, facts), transcript },
+        {
+          name,
+          title: conversationTitle(facts),
+          task: facts.firstPrompt ?? facts.firstCommand ?? '',
+          claudeSessionId,
+          solutions: this.#solutions(folder, facts),
+          transcript,
+        },
         { folder, cwd },
       );
       await this.#folders.markUsed(folder.id);

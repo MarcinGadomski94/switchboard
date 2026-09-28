@@ -24,7 +24,7 @@ export type ClaudeStart =
 /** Input of {@link buildClaudeArgs}. */
 export interface ClaudeArgsInput {
   readonly start: ClaudeStart;
-  /** The Switchboard session name (`--name`: the transcript title). */
+  /** `--name` (the CLI's display name, the transcript title): the session's title, else its name (D22). */
   readonly name: string;
   readonly permissionMode: string;
   /** Dev-only flags appended at the end (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`, the D13 real-CLI smoke). */

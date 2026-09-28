@@ -1,4 +1,5 @@
 import type { NewSession } from '../../core/api.ts';
+import { checkTitle } from '../../core/session-title.ts';
 import { COORDINATIONS, type FolderKind, PHASES, type Phase, QA_STACKS, SESSION_MODES, type SessionMode, WORK_TYPES, type WorkType, isOneOf } from '../../core/model.ts';
 
 /** One validation failure of a request body. */
@@ -10,6 +11,7 @@ export interface FieldError {
 /**
  * A validated NewSession (D14: without `folder`, which the caller resolved; the
  * router-only fields `workType`, `mode`, `phase` are `null` for a repo folder).
+ * D22: `title` is present (trimmed) only when the body had one.
  */
 export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder'> & {
   readonly workType: WorkType | null;
@@ -59,10 +61,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * D22: the optional `title`: omitted or `null` = none; otherwise text of 1–80
+ * characters once trimmed (`checkTitle`), else a failure on field `title`.
+ */
+function titleOf(body: Record<string, unknown>, fail: (field: string, message: string) => void): string | null {
+  const raw = body['title'];
+  if (raw === undefined || raw === null) return null;
+  const check = checkTitle(raw);
+  if (check.ok) return check.title;
+  fail('title', check.message);
+  return null;
+}
+
+/**
  * Validates a `POST /api/sessions` body (contract → NewSession): name unique and
  * kebab-case; solutions not empty; read-only solutions rejected; `qa` required
- * when `workType` is `qa`; every enum from the contract. Unknown fields (and
- * `folder`, which the caller resolves) are ignored.
+ * when `workType` is `qa`; every enum from the contract; D22: an optional `title`
+ * of 1–80 characters (trimmed). Unknown fields (and `folder`, which the caller
+ * resolves) are ignored.
  *
  * D14, a **repo** folder ({@link NewSessionChecks.folder}): the router-only
  * fields (`workType`, `mode`, `phase`, `coordination`, `qa`) are not read and come
@@ -86,6 +102,7 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
 
   const task = body['task'] ?? '';
   if (typeof task !== 'string') fail('task', 'the task must be text');
+  const title = titleOf(body, fail);
 
   const workType = body['workType'];
   if (!isOneOf(WORK_TYPES, workType)) fail('workType', `workType must be one of ${WORK_TYPES.join(', ')}`);
@@ -152,11 +169,12 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
       qa: workType === 'qa' ? qa : null,
       worktrees: worktrees as boolean,
       ultracode: ultracode as boolean,
+      ...(title !== null ? { title } : {}),
     },
   };
 }
 
-/** The fields every folder kind validates the same way: name, task, worktrees, ultracode. */
+/** The fields every folder kind validates the same way: name, task, worktrees, ultracode (D22: and the title). */
 async function commonFields(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void) {
   const name = body['name'];
   if (typeof name !== 'string' || !SESSION_NAME.test(name) || name.length > 64) {
@@ -170,7 +188,8 @@ async function commonFields(body: Record<string, unknown>, checks: NewSessionChe
   if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
-  return { name, task, worktrees, ultracode };
+  const title = titleOf(body, fail);
+  return { name, task, worktrees, ultracode, title };
 }
 
 /** {@link validateNewSession} for a repo folder (D14): one solution, no router fields. */
@@ -180,7 +199,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
     errors.push({ field, message });
   };
   if (!isRecord(body)) return { ok: false, errors: [{ field: '', message: 'the body must be a NewSession object' }] };
-  const { name, task, worktrees, ultracode } = await commonFields(body, checks, fail);
+  const { name, task, worktrees, ultracode, title } = await commonFields(body, checks, fail);
   const solutions = body['solutions'] ?? [];
   if (!Array.isArray(solutions) || !solutions.every((s) => typeof s === 'string')) {
     fail('solutions', 'solutions must be a list of names');
@@ -201,6 +220,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
       qa: null,
       worktrees: worktrees as boolean,
       ultracode: ultracode as boolean,
+      ...(title !== null ? { title } : {}),
     },
   };
 }

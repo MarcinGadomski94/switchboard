@@ -57,6 +57,8 @@ export interface ArtifactRowFields {
   readonly branch: string | null;
   readonly meta: string | null;
   readonly sessionName: string | null;
+  /** D22: the session's display title, when it differs from its name the search matches it too. */
+  readonly sessionTitle?: string | null;
 }
 
 /**
@@ -71,9 +73,14 @@ export function artifactLocation(row: Pick<ArtifactRowFields, 'type' | 'name' | 
   return `${solution} ⎇ ${row.branch}`;
 }
 
-/** The text the search matches: type, name, location, session and status, joined by spaces (the prototype's `a.join(' ')` without the age). */
+/**
+ * The text the search matches: type, name, location, session and status, joined
+ * by spaces (the prototype's `a.join(' ')` without the age); D22: the session's
+ * title after its name when it has one.
+ */
 export function artifactSearchText(row: ArtifactRowFields): string {
-  return [row.type, row.name, artifactLocation(row), row.sessionName ?? '', row.meta ?? ''].join(' ');
+  const title = row.sessionTitle && row.sessionTitle !== row.sessionName ? row.sessionTitle : null;
+  return [row.type, row.name, artifactLocation(row), row.sessionName ?? '', ...(title ? [title] : []), row.meta ?? ''].join(' ');
 }
 
 /** `true` when `q` (trimmed, case-insensitive) is empty or a substring of {@link artifactSearchText}. */

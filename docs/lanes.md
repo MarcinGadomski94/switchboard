@@ -15,6 +15,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 |---|---|---|
 | `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 added `cwd`, `live`, `resumeCommand`, `chips` to Session; M4.2 added `questions` to SessionDetail (`docs/chat.md`) |
 | `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2: the first-message payload (`firstMessage` of `SessionSupervisor.start`, built by `sessions/first-turn.ts`; `docs/new-session.md`); M7.1: the flow lives in `sessions/start.ts` (`startNewSession`), shared with the scheduler |
+| `PUT /api/sessions/{id}/title` (additive, D22) | `api/sessions.ts` | D22: rename (`parseTitleInput`; publishes `sessionUpdated` on the bus); `NewSession.title`, `Session.title` / `displayTitle` (`docs/derivations.md` → *Session titles*) |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); the Attach warning (`409 attach-warning` unless `{ confirm: true }`) + transcript import since M4.1 (`docs/supervisor.md` → *Attach here*) |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
 | `GET /api/sessions/{id}/diff` | `api/sessions.ts` | served since M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`, `FileDiff.uncommitted` since M4.5; `docs/worktrees.md` → *Diff*) |

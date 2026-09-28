@@ -425,7 +425,8 @@ export class Scheduler {
         const template = isRecord(schedule.template) ? schedule.template : {};
         // D14: the run starts in the schedule's folder (a schedule without one: the default folder at run time).
         const folder = schedule.folderId ?? (typeof template['folder'] === 'string' ? template['folder'] : null);
-        const body = { ...template, folder, name: await this.#freeName(schedule.name, now) };
+        // D22: the run's title is the schedule's name (its short name stays `<schedule>-<MMDD>-<HHMM>`).
+        const body = { ...template, folder, name: await this.#freeName(schedule.name, now), title: schedule.name };
         const outcome = await startNewSession(this.#sessions, body, {
           beforeSpawn: async (session) => {
             await this.#store.sessions.update(session.id, { scheduleId: schedule.id });

@@ -38,6 +38,7 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['POST', '/api/sessions/s1/attach', 'M2.1'],
   ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M2.1'],
   ['GET', '/api/sessions/s1/diff?file=a.ts', 'M4.5'],
+  ['PUT', '/api/sessions/s1/title', 'D22'], // additive; an unknown session → 404 (tests/server/api/session-titles.test.ts)
   ['POST', '/api/solutions/mobile/isolate', 'M2.2'],
   ['GET', '/api/inbox', 'M3.2'],
   ['POST', '/api/questions/batch/b1/answers', 'M3.1'],

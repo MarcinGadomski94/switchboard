@@ -150,7 +150,8 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
     expect(items).toHaveLength(await inboxCount(r.w.store));
 
     const [perm, questions, older, newer] = items as [InboxItem, InboxItem, InboxItem, InboxItem];
-    expect(Object.keys(perm).sort()).toEqual([...BASE_KEYS, 'actions', 'permission'].sort());
+    // D22: session items also carry `sourceTitle` (the session's title, else its name).
+    expect(Object.keys(perm).sort()).toEqual([...BASE_KEYS, 'actions', 'permission', 'sourceTitle'].sort());
     expect(perm).toMatchObject({
       sessionId: runner.id,
       source: 'runner',
@@ -166,7 +167,7 @@ describe('M3.2 · GET /api/inbox (real path: fake-claude, no demo data)', () => 
       permission: { toolName: 'Bash', input: { command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' }, agent: 'acme-app-front' },
     });
 
-    expect(Object.keys(questions).sort()).toEqual([...BASE_KEYS, 'questions'].sort());
+    expect(Object.keys(questions).sort()).toEqual([...BASE_KEYS, 'questions', 'sourceTitle'].sort());
     expect(questions).toMatchObject({
       sessionId: asker.id,
       source: 'asker',
