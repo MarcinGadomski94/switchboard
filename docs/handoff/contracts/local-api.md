@@ -276,6 +276,24 @@ Question          { …, "closedReason": "session closed" | null }
 HistoryItem       { …, "closedAt"?: "2026-09-28T18:40:00.000Z" | null }
 ```
 
+## Guided frame-helper setup (D35, 2026-09-28, additive)
+Developer ruling D35 (`docs/decisions.md` → *Frame helper: guided setup*; no Chrome Web Store): Settings → Embedded tools → Frame helper and a site tool's "needs the Switchboard frame helper" page walk the developer through loading the D28 helper unpacked; the service runs the OS openers a page cannot. Additive; the rows above keep their meaning. Details: `docs/frame-helper.md` → *Guided setup (D35)*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | /api/frame-helper | – | 200 FrameHelperInfo |
+| POST | /api/frame-helper/reveal | – (a body or query is ignored) | 204 once the OS file manager was started on the helper's folder · 502 `open-failed` `{ message }` = the opener's error · 501 `not-implemented` (`item: "D35"`) without an opener |
+| POST | /api/frame-helper/open-extensions | – (a body or query is ignored) | 204 once Chrome was started on `chrome://extensions` · 502 `open-failed` `{ message }` (the UI then says to type chrome://extensions in the address bar) · 501 as above |
+
+- **FrameHelperInfo:** `path` = the absolute path of `tools/frame-helper` in the checkout the service runs from (the OS's form), `version` = its `manifest.json` version, read on every request.
+- **The commands** are fixed argv built by the service, spawned detached with `shell: false`, never from request input: reveal = macOS `open -R <path>/manifest.json`, Windows `explorer /select, <path>\manifest.json`, else `xdg-open <path>`; open-extensions = macOS `open -a "Google Chrome" chrome://extensions`, Windows each existing `chrome.exe` of the usual install paths then `cmd /c start "" chrome chrome://extensions`, else `google-chrome` then `chromium` (the next one after a failure). `SWITCHBOARD_OPEN_COMMAND` (an argv prefix) replaces them with a fake in tests.
+- Behind the `sb_token` cookie and the Host/Origin guard like every route.
+
+```json
+FrameHelperInfo      { "path": "/Users/dev/switchboard/tools/frame-helper", "version": "2.0.0" }
+FrameHelperOpenError { "error": "open-failed", "message": "open -a Google Chrome chrome://extensions: Unable to find application named 'Google Chrome'" }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
