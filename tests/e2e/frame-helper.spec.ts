@@ -88,9 +88,10 @@ interface SessionRule {
   readonly condition: { readonly tabIds: number[]; readonly resourceTypes: string[]; readonly requestDomains: string[] };
 }
 
-/** The helper's service worker (a loopback page load or a tab event wakes it). */
+/** The helper's service worker (a loopback page load or a tab event wakes it); never Switchboard's own `/sw.js` (D34). */
 async function helperWorker(): Promise<Worker> {
-  return withHelper.serviceWorkers().find((worker) => worker.url().startsWith('chrome-extension://')) ?? (await withHelper.waitForEvent('serviceworker'));
+  const isHelper = (worker: Worker): boolean => worker.url().startsWith('chrome-extension://');
+  return withHelper.serviceWorkers().find(isHelper) ?? (await withHelper.waitForEvent('serviceworker', { predicate: isHelper }));
 }
 
 /** The helper's session rules right now. */

@@ -90,6 +90,40 @@ export async function candidatePorts(env: NodeJS.ProcessEnv = process.env): Prom
   return freeTestPorts();
 }
 
+/** Waits until `spawned` listens on `port`, exits, or `timeoutMs` passes. */
+function waitListening(spawned: SpawnedServer, port: number, timeoutMs: number): Promise<'up' | 'exited' | 'timeout'> {
+  const listening = `Server listening at http://127.0.0.1:${port}`;
+  return new Promise<'up' | 'exited' | 'timeout'>((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    const check = (): void => {
+      if (spawned.output().includes(listening)) {
+        clearTimeout(timer);
+        resolve('up');
+      }
+    };
+    spawned.child.stdout?.on('data', check);
+    spawned.child.stderr?.on('data', check);
+    void spawned.closed.then(() => {
+      clearTimeout(timer);
+      resolve('exited');
+    });
+  });
+}
+
+/**
+ * Starts the real server entry point on exactly `port` (one of `TEST_PORTS`), e.g.
+ * to bring a stopped server back at the address a page still has open (D34's
+ * offline page). Throws when it does not come up.
+ */
+export async function startServerOn(port: number, env: Record<string, string>, timeoutMs = 15_000): Promise<ServerProcess> {
+  if (!TEST_PORTS.includes(port)) throw new Error(`port ${port} is not a test port (${TEST_PORTS.join(', ')})`);
+  const spawned = spawnServer(port, env);
+  const outcome = await waitListening(spawned, port, timeoutMs);
+  if (outcome === 'up') return { ...spawned, port, baseUrl: `http://127.0.0.1:${port}`, stop: stopper(spawned) };
+  await stopper(spawned)();
+  throw new Error(`server did not start on ${port} (${outcome}):\n${spawned.output()}`);
+}
+
 /**
  * Starts the real server entry point on the first free test port (`TEST_PORTS`), or
  * on `SWITCHBOARD_E2E_PORT` when set, and waits for "Server listening". Retries the
@@ -100,22 +134,7 @@ export async function startServer(env: Record<string, string>, timeoutMs = 15_00
   let lastOutput = '';
   for (const port of await candidatePorts()) {
     const spawned = spawnServer(port, env);
-    const listening = `Server listening at http://127.0.0.1:${port}`;
-    const outcome = await new Promise<'up' | 'exited' | 'timeout'>((resolve) => {
-      const timer = setTimeout(() => resolve('timeout'), timeoutMs);
-      const check = (): void => {
-        if (spawned.output().includes(listening)) {
-          clearTimeout(timer);
-          resolve('up');
-        }
-      };
-      spawned.child.stdout?.on('data', check);
-      spawned.child.stderr?.on('data', check);
-      void spawned.closed.then(() => {
-        clearTimeout(timer);
-        resolve('exited');
-      });
-    });
+    const outcome = await waitListening(spawned, port, timeoutMs);
     lastOutput = spawned.output();
     if (outcome === 'up') {
       return { ...spawned, port, baseUrl: `http://127.0.0.1:${port}`, stop: stopper(spawned) };

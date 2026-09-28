@@ -6,9 +6,9 @@ export const SERVICE_WORKER_URL = '/sw.js';
  * loaded. It only shows Switchboard's offline page when a navigation finds the
  * service down; it caches no UI. The web entry calls this in built UIs only
  * (`vite build`, which the E2E run uses too), never under `npm run dev`'s
- * development build. `updateViaCache: 'none'`: the browser checks the script
- * itself on every navigation, so a new worker is picked up at once. A failure is
- * logged; the app works the same without the worker.
+ * development build. `updateViaCache: 'none'`: the browser's update checks of the
+ * script never come from its HTTP cache, so a new worker is picked up on the next
+ * page load. A failure is logged; the app works the same without the worker.
  */
 export function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return;

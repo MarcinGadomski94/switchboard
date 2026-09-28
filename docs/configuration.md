@@ -29,12 +29,13 @@ Test-only variables (read by the test helpers, never by the server):
 ## npm scripts
 | Script | What it does |
 |---|---|
-| `npm run build` | `vite build`: `src/web` → `dist/web`. |
+| `npm run build` | `vite build`: `src/web` → `dist/web`, plus `src/web/public/` copied as-is (D34: the manifest, `sw.js`, `offline.html`, the icons). |
 | `npm start` | `node src/server/main.ts`: Fastify on 127.0.0.1, serving `dist/web` and the API. Node ≥ 24 runs the TypeScript directly (type stripping, erasable syntax only). |
-| `npm run dev` | `tools/dev.ts`: `vite build` in watch mode into `dist/web` plus `node --watch src/server/main.ts`. There is no Vite dev server or HMR. The UI is served by the real server on the real port, so the Host/Origin guard and the `sb_token` cookie behave as in production. Reload the browser after a rebuild. |
-| `npm run typecheck` | `tsc` over three configs: `tsconfig.json` (server, core, tools, tests, tool configs; Node types, no DOM), `tsconfig.web.json` (React UI, DOM, bundler resolution), `tsconfig.e2e.json` (Playwright specs: adds DOM for `page.evaluate`). |
+| `npm run dev` | `tools/dev.ts`: `vite build` in watch mode into `dist/web` plus `node --watch src/server/main.ts`. There is no Vite dev server or HMR. The UI is served by the real server on the real port, so the Host/Origin guard and the `sb_token` cookie behave as in production. Reload the browser after a rebuild. It builds in development mode, so the page registers no service worker (D34, `docs/install-app.md`). |
+| `npm run typecheck` | `tsc` over four configs: `tsconfig.json` (server, core, tools, tests, tool configs; Node types, no DOM), `tsconfig.web.json` (React UI, DOM, bundler resolution), `tsconfig.e2e.json` (Playwright specs: adds DOM for `page.evaluate`), `tsconfig.sw.json` (D34: the service worker `src/web/public/sw.js`, plain JavaScript checked through its JSDoc with the WebWorker lib). |
 | `npm test` | Vitest: `tests/**/*.test.ts` (unit + integration). |
 | `npm run e2e` | Playwright: `tests/e2e/**/*.spec.ts`, Chromium at 1440×900. It first builds `dist/web` (`tests/e2e/global-setup.ts`). Specs start their own server on a test port (`SWITCHBOARD_TEST_PORTS`, default 4871–4879) with a temp data dir. |
+| `npm run icons` | `tools/icons/render.ts` (D34): rasterises the app icons' SVGs in `src/web/public/icons/` into their PNGs (192, 512, maskable 512, the 180 px `apple-touch-icon`, a 32 px favicon) with Playwright's bundled Chromium. Run it after changing an SVG and commit both (`docs/install-app.md`). |
 | `npm run service:install` | `tools/service/install.ts [--dry-run] [--start] [--platform …]`: registers the per-user background service (launchd agent / systemd `--user` unit / Task Scheduler logon task) with the `SWITCHBOARD_*` settings of the shell; `--dry-run` prints every file and command and changes nothing (`docs/service.md`). |
 | `npm run service:uninstall` | `tools/service/uninstall.ts [--dry-run] [--platform …]`: stops it if its manager runs it and removes the registration. |
 
