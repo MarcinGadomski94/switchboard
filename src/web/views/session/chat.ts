@@ -249,6 +249,19 @@ export const QUICK_REPLIES: readonly QuickReply[] = [
 ];
 
 /** The text `POST /messages` sends for a draft, `null` when there is nothing to send (prototype `sendDraft`: trimmed, empty ignored). */
+/**
+ * What a key press in the composer does (D26): Enter sends; Shift+Enter inserts
+ * a line break (the field's own behaviour); Enter while an IME is composing does
+ * neither (it confirms the composition). Every other key: `null`.
+ */
+export function composerKeyAction(event: { readonly key: string; readonly shiftKey: boolean; readonly isComposing: boolean }): 'send' | 'newline' | null {
+  if (event.key !== 'Enter' || event.isComposing) return null;
+  return event.shiftKey ? 'newline' : 'send';
+}
+
+/** The composer grows with its text up to this many lines, then scrolls (D26). */
+export const COMPOSER_MAX_LINES = 8;
+
 export function draftToSend(draft: string): string | null {
   const text = draft.trim();
   return text === '' ? null : text;

@@ -272,7 +272,7 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   const calendar = await compare(protoPage, appPage, 'calendar-func-fix', MESSAGE_PARTS, { chatRelative: false, inChat: true }, failures);
   const calendarComposer = await compare(protoPage, appPage, 'calendar-func-fix', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
   const placeholders = await Promise.all(
-    [protoPage, appPage].map((page) => page.locator('input[placeholder^="Message "]').first().getAttribute('placeholder')),
+    [protoPage, appPage].map((page) => page.locator('[placeholder^="Message "]').first().getAttribute('placeholder')),
   );
   if (placeholders[0] !== placeholders[1]) failures.push(`placeholder: prototype ${placeholders[0]} vs app ${placeholders[1]}`);
   const calendarClip = { x: 256, y: 0, width: 804, height: 900 };

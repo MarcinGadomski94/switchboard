@@ -9,6 +9,7 @@ import {
   QUICK_REPLIES_LABEL,
   batchWaiting,
   chatItems,
+  composerKeyAction,
   composerPlaceholder,
   draftToSend,
   stepMark,
@@ -174,6 +175,16 @@ describe('answers bubble and composer', () => {
     expect(draftToSend('  hello  ')).toBe('hello');
     expect(draftToSend('   ')).toBeNull();
     expect(composerPlaceholder('free-talk-640')).toBe('Message free-talk-640…');
+  });
+
+  it('D26: Enter sends, Shift+Enter is a new line, Enter while an IME composes does neither', () => {
+    const key = (key: string, shiftKey = false, isComposing = false) => composerKeyAction({ key, shiftKey, isComposing });
+    expect(key('Enter')).toBe('send');
+    expect(key('Enter', true)).toBe('newline');
+    expect(key('Enter', false, true)).toBeNull();
+    expect(key('Enter', true, true)).toBeNull();
+    expect(key('a')).toBeNull();
+    expect(key('a', true)).toBeNull();
   });
 
   it('copy is verbatim from the prototype (quick replies, the answers note)', async () => {

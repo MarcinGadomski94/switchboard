@@ -153,3 +153,51 @@ test('messages, tool steps, composer, quick reply, inline question card → answ
   await expect(input).toHaveValue('Accept recommended: feature-building · single-solution · UI-first · sequential');
   await expect(page.getByTestId('chat-error')).toHaveCount(0);
 });
+
+test('D26: Shift+Enter adds a line (nothing is sent), the field grows up to 8 lines, Enter sends the lines, the field shrinks back', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'chat-lines', 'Reply OK.');
+  await expect.poll(async () => (await detail(page, id)).status).toBe('done');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const chat = page.getByTestId('session-chat');
+  const input = page.getByTestId('chat-input');
+  const sendButton = page.getByTestId('chat-send');
+  await expect(chat.getByTestId('chat-message')).toHaveCount(2);
+  const oneLine = (await input.boundingBox())?.height ?? 0;
+  const sendHeight = (await sendButton.boundingBox())?.height ?? 0;
+  expect(oneLine).toBeGreaterThan(30);
+
+  let posts = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(`/api/sessions/${id}/messages`)) posts += 1;
+  });
+  await input.click();
+  await page.keyboard.type('line one');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('line two');
+  await expect(input).toHaveValue('line one\nline two');
+  expect(posts).toBe(0);
+  // Two lines: the field is taller; Send keeps its one-line height.
+  await expect.poll(async () => (await input.boundingBox())?.height ?? 0).toBeGreaterThan(oneLine + 10);
+  expect(Math.round((await sendButton.boundingBox())?.height ?? 0)).toBe(Math.round(sendHeight));
+
+  // Twelve lines: the field stops at 8 lines and scrolls.
+  for (let line = 3; line <= 12; line += 1) {
+    await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type(`line ${line}`);
+  }
+  const tall = (await input.boundingBox())?.height ?? 0;
+  expect(tall).toBeLessThan(oneLine * 5);
+  await expect(input).toHaveCSS('overflow-y', 'auto');
+  expect(posts).toBe(0);
+
+  // Enter sends every line; the bubble keeps them; the field is one line again.
+  const text = Array.from({ length: 12 }, (_, index) => (index === 0 ? 'line one' : index === 1 ? 'line two' : `line ${index + 1}`)).join('\n');
+  const posted = page.waitForResponse((r) => r.url().endsWith(`/api/sessions/${id}/messages`) && r.request().method() === 'POST');
+  await page.keyboard.press('Enter');
+  expect((await posted).request().postDataJSON()).toEqual({ text });
+  await expect(input).toHaveValue('');
+  await expect.poll(async () => Math.round((await input.boundingBox())?.height ?? 0)).toBe(Math.round(oneLine));
+  const bubble = chat.locator('[data-testid="chat-message"][data-role="user"]').last().getByTestId('chat-text');
+  expect(await bubble.innerText()).toBe(text);
+});

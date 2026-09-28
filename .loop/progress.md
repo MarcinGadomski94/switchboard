@@ -278,3 +278,4 @@ note: all thirteen Blocked items are blocked by the Wave 1 / Wave 2 merge steps 
 - Final · win32 test-litter fix = chdir to the temp dir in the win32 describe (test-only)
 - Final · 33 empty `\var\folders\…` litter folders removed from the repo root
 - Final · docs/visual reports not regenerated; new docs/visual/smoke-solutions.png only
+- D26 Shift+Enter in the composer ✓ 2026-09-28 (main; developer request) · the composer is a textarea (one line = the prototype's input box), Enter sends, Shift+Enter new line, grows to 8 lines · typecheck, `npm test` 1235 + 1 skipped, `npm run e2e` 113/113 (new D26 E2E in session-chat.spec; the visual chat spec's placeholder selector no longer assumes `<input>`)

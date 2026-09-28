@@ -11,11 +11,13 @@ import { refusalText } from '../inbox.ts';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import {
   ANSWERS_WRITTEN,
+  COMPOSER_MAX_LINES,
   type ChatItem,
   QUICK_REPLIES,
   QUICK_REPLIES_LABEL,
   answeredOnText,
   chatItems,
+  composerKeyAction,
   composerPlaceholder,
   draftToSend,
   upsertEvent,
@@ -210,7 +212,31 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement | null>(null);
+  const input = useRef<HTMLTextAreaElement | null>(null);
+  // D26: the one-line height (the prototype's input) and whether the text needs more lines.
+  const oneLine = useRef<{ readonly height: number; readonly line: number } | null>(null);
+  const [multiline, setMultiline] = useState(false);
+
+  // D26: the field grows with its text (up to COMPOSER_MAX_LINES, then scrolls) and shrinks after a send.
+  useLayoutEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    field.style.height = '';
+    const style = getComputedStyle(field);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    const border = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+    if (oneLine.current === null && field.value === '') {
+      oneLine.current = { height: field.offsetHeight, line: field.clientHeight - padding };
+    }
+    const base = oneLine.current;
+    if (!base) return;
+    const needed = field.scrollHeight + border;
+    const max = base.height + (COMPOSER_MAX_LINES - 1) * base.line;
+    const height = Math.max(base.height, Math.min(needed, max));
+    field.style.height = `${style.boxSizing === 'border-box' ? height : height - padding - border}px`;
+    field.style.overflowY = needed > max ? 'auto' : 'hidden';
+    setMultiline(height > base.height + 1);
+  }, [draft]);
 
   const send = async (): Promise<void> => {
     const text = draftToSend(draft);
@@ -230,8 +256,9 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+  // D26: Enter sends, Shift+Enter keeps the field's own line break, Enter while composing (IME) confirms the composition.
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (composerKeyAction({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing }) !== 'send') return;
     event.preventDefault();
     void send();
   };
@@ -256,18 +283,27 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
           </button>
         ))}
       </div>
-      <div className="sb-chat-compose">
-        <input
+      <div className="sb-chat-compose" data-multiline={multiline ? 'true' : undefined}>
+        <textarea
           ref={input}
           className="sb-chat-input"
           data-testid="chat-input"
           aria-label="Message"
+          rows={1}
           value={draft}
           placeholder={placeholder}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button type="button" className="sb-button sb-chat-send" data-testid="chat-send" disabled={sending} aria-busy={sending} onClick={() => void send()}>
+        <button
+          type="button"
+          className="sb-button sb-chat-send"
+          data-testid="chat-send"
+          disabled={sending}
+          aria-busy={sending}
+          style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
+          onClick={() => void send()}
+        >
           Send
         </button>
       </div>

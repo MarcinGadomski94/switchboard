@@ -113,6 +113,18 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - A small "as printed" toggle shows the original text in monospace, as D21 did.
   - A table that can't be parsed into consistent rows falls back to the printed text.
 
+## Signed-in sites in a frame (added 2026-09-28)
+- **D28 Signed-in SaaS tools (Jira) open in a direct frame through a Switchboard browser extension.**
+  - **Why:** the D15 framing proxy serves a tool as `http://127.0.0.1:<port>`, so a site such as `https://acme.atlassian.net` gets none of the developer's login cookies (they belong to `.atlassian.net`). It then sends the frame to `id.atlassian.com`, which answers `X-Frame-Options: DENY`. A direct frame is refused because Jira's `frame-ancestors` lists only Atlassian's own sites.
+  - **The extension:** a small Manifest V3 WebExtension in this repo (`tools/frame-helper/`) with `declarativeNetRequest` rules. It removes `X-Frame-Options` and `Content-Security-Policy` from the response, **only** for `sub_frame` requests whose initiator is a loopback page (`127.0.0.1` / `localhost`), i.e. frames inside Switchboard; every other site keeps its protection.
+  - **Browsers:** Chrome and Chromium browsers load it unpacked. Safari gets the same sources wrapped by Apple's `safari-web-extension-converter` into a local macOS app (Xcode is installed), built by a script in the repo.
+  - **Safari login cookies:** Safari blocks cookies in cross-site frames. The extension offers a one-time "Allow Jira here" button inside the frame that calls `document.requestStorageAccess()` (Storage Access API; Safari needs Jira to have been used in a normal Safari tab within 30 days). If Safari refuses that, the documented fallback is Safari → Settings → Privacy → "Prevent cross-site tracking" off, which is the developer's call.
+  - **Switchboard side:**
+    - The extension announces itself to Switchboard's page (a content script on loopback pages sets a marker with its version).
+    - With the marker, a tool whose URL is a non-loopback `https:` site opens in a **direct** iframe of its own URL, with no proxy. Local tools keep the D15 proxy.
+    - Without the marker, such a tool shows "{host} needs the Switchboard frame helper to open here" with **Open in new tab** and a link to the install steps (`docs/frame-helper.md`).
+  - **Tests:** automated tests load the unpacked extension into Playwright's Chromium against stub sites that refuse framing. The developer verifies Safari and the real Jira live.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

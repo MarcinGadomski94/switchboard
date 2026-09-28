@@ -647,6 +647,16 @@
   background: var(--bg-sidebar);
   color: var(--text);
   outline: none;
+  /* D26: a textarea (Shift+Enter = new line) that looks like the prototype's one-line input; ChatTab sets its height as it grows. */
+  margin: 0;
+  resize: none;
+  line-height: normal;
+  overflow-y: hidden;
+}
+
+/* D26: while the field has several lines, Send keeps its one-line height at the bottom. */
+.sb-chat-compose[data-multiline='true'] .sb-chat-send {
+  align-self: flex-end;
 }
 
 .sb-chat-compose .sb-chat-send {
