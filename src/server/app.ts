@@ -9,6 +9,7 @@ import { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
+import { claudeAgentsLister } from './supervisor/recovery.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
 import { registerWeb } from './web.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
@@ -111,6 +112,8 @@ export function createSupervisor(config: ServerConfig, store: Store, controlHand
     claudeCommand: config.claudeCommand,
     claudeExtraArgs: config.claudeExtraArgs,
     workspaceRoot: config.workspaceRoot,
+    // M4.1: the "Attach here" warning asks `claude agents --json` whether a terminal holds the session.
+    listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand, workspaceRoot: config.workspaceRoot }),
     ...(controlHandler ? { controlHandler } : {}),
   });
 }

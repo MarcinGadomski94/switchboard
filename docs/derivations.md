@@ -9,6 +9,7 @@ One stored event per thing the developer can see. `kind` is the timeline color (
 |---|---|---|---|
 | a user message Switchboard writes to stdin (task, chat message, "Continue.") | one event, written **before** the line is sent | `text` (`loop` for `/loop …`) | `user` (`origin`: `task` / `user` / `resume` / `service`, `delivered`) |
 | `user` with `isReplay: true` | updates that user event: `delivered: true`, `uuid` = the transcript uuid | — | — |
+| a prompt a terminal sent while the session was detached (transcript, on Attach, M4.1) | one event, with the transcript's timestamp (`docs/supervisor.md` → *Attach here*) | `text` (`loop` for `/loop …`) | `user` (`origin: terminal`, `delivered: true`) |
 | `assistant` `text` blocks | the blocks of one `message.id` merge into **one** event (joined with a blank line) | `text` | `assistant` |
 | `assistant` `thinking` blocks | nothing (the CLI sends them empty) | — | — |
 | `assistant` `tool_use` | one event per call; its `tool_result` sets `endTs`, `result`, `isError` | by tool (gap #7) | `tool` |
@@ -64,6 +65,22 @@ Labels are one line (first line, at most 120 characters): the text, `Write · fi
 
 ## Solutions rows (M6.2)
 The live fields of `GET /api/solutions` (which sessions work on a solution, its branches, status, phase, changes, phase ledger, artifacts & follow-ups and codebase-memory freshness) are derived by `LiveSolutions`; the rules are in `docs/solutions.md` → *Live fields* and `src/core/solutions-live.ts`. Conflicts (M6.3: two or more open sessions write one repo and at least one has no worktree of its own) are in `docs/solutions.md` → *Conflicts* and `src/core/conflicts.ts`.
+
+## Session chips (M4.1)
+`src/core/derive/chips.ts`, sent as `Session.chips` and shown in the session header (SPEC → Session: "Chips (k v, mono); loop/workflow chips are blue").
+
+| Chip | From | Value |
+|---|---|---|
+| `work` | `workType` | `feature-building` / `test-authoring (QA)` |
+| `mode` | `mode` | `single-solution` / `orchestrator` |
+| `phase` | `phase` | `UI-first` / `integration` |
+| `stack` | `qaStack`, QA sessions only | `web` / `mobile` / `both` |
+| `scope` | `solutions` | the names joined with ` + ` |
+| `ultracode` (blue) | `ultracode` | `on` |
+| `run` (blue) | each `loops` row of kind `Workflow` (D9) | its label, else the kind |
+| `loop` (blue) | each other `loops` row | its label, else the kind |
+
+The words are the prototype's for a session started from the New-session form (`nsLaunch`). A chip is left out when its source is empty; nothing is invented (D13). The prototype's mock sessions carry hand-written chips with no data source (`bp 360`, `cap 12 items · breaker 2`, `contract …`, `runbook …`, `expires …`, a path-style scope such as `functions/calendar-func`); the app does not show them (`docs/visual/session-header.md`).
 
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.

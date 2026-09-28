@@ -20,9 +20,15 @@ export type UserMessageOrigin =
   /** D7 resume: "Continue.". */
   | 'resume'
   /** Sent by the service itself (restart note, stale answers; M2.4 / M3.1). */
-  | 'service';
+  | 'service'
+  /** Typed in a terminal while the session was detached; imported from the transcript on Attach (M4.1). */
+  | 'terminal';
 
-/** A user message Switchboard wrote to stdin. `delivered` flips when the CLI's `isReplay` echo arrives. */
+/**
+ * A user message Switchboard wrote to stdin (`delivered` flips when the CLI's
+ * `isReplay` echo arrives), or one a terminal sent while the session was detached
+ * (origin `terminal`, imported from the transcript, always delivered).
+ */
 export interface UserPayload {
   readonly type: 'user';
   readonly text: string;

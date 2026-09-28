@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { validateNewSession } from '../sessions/validate.ts';
-import { SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
+import { AttachWarningError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 import { sendWorktreeError } from './worktree-errors.ts';
@@ -20,14 +20,19 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'already-running': 409,
   'request-not-open': 409,
   closing: 503,
+  'attach-warning': 409,
 };
 
 interface IdParams {
   readonly id: string;
 }
 
-/** Sends a supervisor refusal as `{ error: <code>, message }`, rethrows anything else. */
+/** Sends a supervisor refusal as `{ error: <code>, message }` (+ `reasons` for an attach warning), rethrows anything else. */
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
+  if (error instanceof AttachWarningError) {
+    const body: AttachWarning = { error: 'attach-warning', message: error.message, reasons: error.reasons };
+    return reply.code(ERROR_STATUS[error.code]).send(body);
+  }
   if (error instanceof SupervisorError) {
     return reply.code(ERROR_STATUS[error.code]).send({ error: error.code, message: error.message });
   }
@@ -130,9 +135,12 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     }
   });
 
+  // M4.1: `{ confirm: true }` (optional body) attaches despite the terminal warning; without it a warning is a 409 `attach-warning`.
   app.post<{ Params: IdParams }>('/api/sessions/:id/attach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
+    const body = request.body as AttachRequest | null | undefined;
+    const confirm = typeof body === 'object' && body !== null && body.confirm === true;
     try {
-      return await supervisor.attach(request.params.id);
+      return await supervisor.attach(request.params.id, { confirm });
     } catch (error) {
       return sendError(reply, error);
     }

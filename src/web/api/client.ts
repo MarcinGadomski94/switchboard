@@ -1,5 +1,6 @@
 import type {
   AnswerBatch,
+  AttachRequest,
   Artifact,
   FileDiff,
   HistoryItem,
@@ -95,7 +96,9 @@ export const api = {
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),
-  attachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/attach`),
+  /** M4.1: a warning answers 409 `attach-warning` (`AttachWarning` body) until called again with `confirm`. */
+  attachSession: (id: string, confirm = false) =>
+    request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/attach`, confirm ? ({ confirm: true } satisfies AttachRequest) : undefined),
   sessionEvents: (id: string, since?: string) => request<SessionEvent[]>('GET', `/api/sessions/${enc(id)}/events${query({ since })}`),
   sessionDiff: (id: string, file?: string) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file })}`),
 

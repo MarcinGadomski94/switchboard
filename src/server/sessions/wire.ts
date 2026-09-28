@@ -1,10 +1,12 @@
 import type { Agent, Artifact, FileDiff, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import { sessionChips } from '../../core/derive/chips.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { Providers } from '../providers.ts';
+import { resumeCommand } from '../supervisor/argv.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
 export const DETAIL_EVENT_LIMIT = 200;
@@ -63,9 +65,15 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
   return count;
 }
 
-/** `GET /api/sessions` item: the session with its agents and open question count. */
+/**
+ * `GET /api/sessions` item: the session with its agents and open question count,
+ * plus the header's fields (M4.1): `cwd`, `live` (a supervised process is
+ * running: its pid is recorded), the handoff command and the chips (session-start
+ * answers + the session's observed loops, `src/core/derive/chips.ts`).
+ */
 export async function toSession(store: Store, record: SessionRecord): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
+  const loops = await store.loops.list(record.id);
   return {
     id: record.id,
     name: record.name,
@@ -84,6 +92,10 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     lastActivityAt: record.lastActivityAt,
     agents: agents.map(toAgent),
     openQuestionCount: await openQuestionCount(store, record.id),
+    cwd: record.cwd,
+    live: record.pid !== null,
+    resumeCommand: resumeCommand(record.claudeSessionId),
+    chips: sessionChips(record, loops),
   };
 }
 

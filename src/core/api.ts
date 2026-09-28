@@ -11,6 +11,7 @@
  * refine them, additively where it can, and must keep the server and the UI in
  * step because both import this file.
  */
+import type { SessionChip } from './derive/chips.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -24,6 +25,8 @@ import type {
   SessionStatus,
   WorkType,
 } from './model.ts';
+
+export type { SessionChip } from './derive/chips.ts';
 
 /** `POST /api/sessions` body (contract, locked). `coordination` is `null` when not applicable. */
 export interface NewSession {
@@ -79,6 +82,14 @@ export interface Session {
   readonly lastActivityAt: string | null;
   readonly agents: readonly Agent[];
   readonly openQuestionCount: number;
+  /** Additive (M4.1): the folder the session's process runs in (the workspace root), `null` before its first spawn. */
+  readonly cwd: string | null;
+  /** Additive (M4.1): the session has a live supervised `claude` process (Pause applies; else Resume). */
+  readonly live: boolean;
+  /** Additive (M4.1): `claude --resume <claudeSessionId>`, the handoff card's command (prototype copy, M0.4). */
+  readonly resumeCommand: string;
+  /** Additive (M4.1): the header chips (`src/core/derive/chips.ts`). */
+  readonly chips: readonly SessionChip[];
 }
 
 /** A session event (data model). Drives the chat, the timeline and the terminal tail. Provisional: M2.1. */
@@ -131,6 +142,31 @@ export interface SessionDetail extends Session {
 /** `{ resumeCommand }` of `/detach` and `/attach` (contract). */
 export interface ResumeCommand {
   readonly resumeCommand: string;
+}
+
+/** Additive (M4.1): optional body of `POST /api/sessions/{id}/attach`. */
+export interface AttachRequest {
+  /** Attach even though the warning below applies (the developer confirmed it). */
+  readonly confirm?: boolean;
+}
+
+/**
+ * Why "Attach here" asks first (M4.1, gap #5, M0.4): attaching while a terminal
+ * still holds the session forks the conversation.
+ */
+export type AttachWarningReason =
+  /** The transcript changed less than 2 minutes ago. */
+  | { readonly kind: 'transcript-recent'; readonly modifiedAt: string }
+  /** `claude agents --json` lists the session id as live. */
+  | { readonly kind: 'terminal-live'; readonly pid: number }
+  /** `claude agents --json` could not be read, so liveness is unknown. */
+  | { readonly kind: 'liveness-unknown' };
+
+/** Additive (M4.1): the `409` body of `POST /attach` without `confirm` while a warning applies. Nothing was spawned. */
+export interface AttachWarning {
+  readonly error: 'attach-warning';
+  readonly message: string;
+  readonly reasons: readonly AttachWarningReason[];
 }
 
 /** An answer option, verbatim from `AskUserQuestion`. */

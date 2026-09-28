@@ -52,6 +52,11 @@ const SESSION_KEYS = keys<Session>()([
   'lastActivityAt',
   'agents',
   'openQuestionCount',
+  // additive, M4.1 (the session header)
+  'cwd',
+  'live',
+  'resumeCommand',
+  'chips',
 ]);
 const AGENT_KEYS = keys<Agent>()(['id', 'kind', 'name', 'description', 'solutionPath', 'branch', 'status', 'statusText']);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);

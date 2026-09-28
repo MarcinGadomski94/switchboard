@@ -154,6 +154,8 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       worktrees: s.agents.some((a) => a.branch !== ''),
       ultracode: false,
       attached: true,
+      // The header's root path (M4.1): the prototype's workspace root (`D:\acme · workspace root`).
+      cwd: data.solutions.root,
       lastActivityAt: lastActivity,
     });
     sessionIds.set(s.name, session.id);

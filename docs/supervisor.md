@@ -38,8 +38,27 @@
 - **Resume** = `--resume <claudeSessionId>` (same id, same flags) + the stdin message `Continue.`. Refused while the session is detached or already live.
 - **A message to a paused (or ended) attached session** resumes it the same way but sends the message instead of `Continue.`.
 - **Continue in terminal** (`/detach`) = the pause stop, then `attached = false` and `{ resumeCommand: "claude --resume <claudeSessionId>" }` (prototype copy). While detached, messages and Resume answer `409 detached`: the terminal owns the session.
-- **Attach here** (`/attach`) = spawn `--resume` with the same flags and **no** message: the process stays idle (status `idle`), writes nothing and makes no model call until the developer writes (M0.4). When the session already has a live process nothing is spawned (never two live processes on one id). The "terminal still open" warning and the import of the terminal's turns from the transcript are M4.1's.
+- **Attach here** (`/attach`) = the terminal check, the sync back, then spawn `--resume` with the same flags and **no** message: the process stays idle (status `idle`), writes nothing and makes no model call until the developer writes (M0.4). When the session already has a live process nothing is spawned (never two live processes on one id). Details below (*Attach here*, M4.1).
 - **Service shutdown** (app close) stops every process with the same sequence but keeps each session's stored status, so a restart can resume `run` / `need` sessions (D7, M2.4, below). New sessions, messages, Resume and Attach are refused (`503 closing`) while it shuts down.
+
+## Attach here (M4.1, gap #5, M0.4)
+`src/server/supervisor/attach.ts` (file access, the check, the import) + `src/core/transcript-sync.ts` (pure: which entries are new, what they show). `SessionSupervisor.attach(id, { confirm })`; calls on one session run one at a time, so two clicks never spawn two processes.
+
+1. **Live already?** Nothing happens; `{ resumeCommand }`.
+2. **The warning** (skipped with `confirm: true`). Two live processes on one id silently fork the conversation (M0.4 `handoff-conc`), so Switchboard asks first when a terminal may still hold the session:
+   - `transcript-recent`: the transcript's mtime is less than 2 minutes ago (gap #5);
+   - `terminal-live`: `claude agents --json` lists the session id (an idle interactive terminal does not touch the file, M0.3); the list comes from `claudeAgentsLister` (recovery.ts) with the configured CLI, passed as `SupervisorOptions.listLive` (app.ts);
+   - `liveness-unknown`: that list could not be read (or no lister was given).
+   Any reason → `AttachWarningError` → `409 { error: "attach-warning", message, reasons }`; nothing is spawned or written. The UI shows the warning and repeats the call with `{ "confirm": true }` ("Attach anyway").
+3. **Sync back.** stdout never replays history, so the turns the terminal added are read from the transcript and stored as events **before** the spawn:
+   - The transcript is `<configDir>/projects/*/<claudeSessionId>.jsonl` (configDir = `CLAUDE_CONFIG_DIR` from the children's env, else `~/.claude`); every project folder is checked (the slug is lossy, M0.3) and the newest file wins if the id is in two. No file → nothing to import. Read only; Switchboard never writes there.
+   - New entries = the newest leaf's `parentUuid` chain after the sync point `sessions.last_transcript_uuid` (the newest main-chain uuid seen on stdout, `docs/derivations.md`). A sync point on an older branch (the file forked) → the entries after the fork point; no sync point yet → the whole chain; a sync point missing from the file → nothing is imported and an `error` event "Could not sync the terminal's turns" says so. `logicalParentUuid` links a chain across a compaction boundary.
+   - Each new prompt → a `user` event with origin `terminal` (delivered); assistant text blocks of one message → one `assistant` event; `tool_use` → a `tool` event (kind per gap #7) closed by its `tool_result` (`endTs`, `result`, `isError`). Skipped: `model:"<synthetic>"` lines, `isMeta` lines, interrupt markers, thinking blocks, attachment / system entries, entries already stored (same uuid). Events carry the **transcript's timestamps**, so they sit between "Continued in a terminal" and "Attached" (a client that polls `/events?since=` with its newest `ts` would miss them; the UI uses the `/hub` `event` stream). All go to the main agent. Not derived from terminal turns: subagents and artifacts (the Diff tab reads git, M4.5).
+   - The sync point moves to the chain's tip; `lastActivityAt` to the newest imported event.
+   - A failure to read or parse is recorded as an `error` event and the attach goes on.
+4. **Spawn** `--resume <claudeSessionId>` with the baseline flags (`--permission-mode` and `--name` again), `attached = true`, lifecycle `attached`, status `idle`.
+
+Oracle: `tests/server/supervisor/attach.test.ts` (fake-claude, a text-mode `claude -p --resume <id> "<prompt>"` run as the terminal: the warning reasons, the import, the argv, no duplicates on a second attach, concurrent attaches), `tests/core/transcript-sync.test.ts` (the M0.4 transcript fixtures: one chain, the synthetic line, the forked file), `tests/e2e/session-handoff.spec.ts` (the UI flow on the real path).
 
 ## Restart recovery (M2.4, D7)
 `src/server/supervisor/recovery.ts` → `recoverSessions`, called by `main.ts` once at start, **right after the server has bound its port** (a second instance that cannot bind exits before it touches anything: recovering first would let it stop and re-spawn the running instance's processes), and only in normal runs (the demo's sessions are not real). While it runs, reads are served but `sendMessage`, `pause`, `resume`, `detach` and `attach` wait (`SessionSupervisor.holdCommands()`), so no command can spawn a second process on an id whose leftover is still being stopped; closing the app waits for it too. A failure is logged and the service keeps running. Not guarded: a second instance on **another** port with the **same** data folder (single instance per data folder is assumed, as for the database).
@@ -60,12 +79,12 @@ Oracle: `tests/server/supervisor/restart.test.ts` runs `src/server/main.ts` as a
 ## REST (contract rows served at this layer)
 | Route | Behavior |
 |---|---|
-| `GET /api/sessions` | `Session[]` newest first, with agents and the open question count. |
+| `GET /api/sessions` | `Session[]` newest first, with agents and the open question count; since M4.1 also `cwd`, `live` (a pid is recorded), `resumeCommand` and the header `chips` (`docs/derivations.md` → *Session chips*). |
 | `POST /api/sessions` | Validates NewSession (every failure `422 {error:"invalid", errors:[{field,message}]}`, a duplicate name included), creates the worktrees when `worktrees` is true (M2.2, `docs/worktrees.md`; linked through `start(…, { beforeSpawn })`), stores the session, creates the main agent, starts the process; `201` + Session. `409` without a (usable) workspace root. |
 | `GET /api/sessions/{id}` | SessionDetail: the Session + `task`, the newest 200 events, `files` from the diff provider (M4.5; empty until then), artifacts. |
 | `POST /api/sessions/{id}/messages` | `{ text }` (non-empty) → `202`. |
 | `POST /api/sessions/{id}/pause`, `/resume` | The Session after the stop / after the new process got its message. |
-| `POST /api/sessions/{id}/detach`, `/attach` | `{ resumeCommand }`. |
+| `POST /api/sessions/{id}/detach`, `/attach` | `{ resumeCommand }`. `/attach` takes an optional `{ confirm: true }`; without it a terminal warning answers `409 { error: "attach-warning", message, reasons }` (M4.1, *Attach here*). |
 | `GET /api/sessions/{id}/events?since=` | Events with `ts` strictly after `since` (any ISO date; `422` otherwise), oldest first. |
 
 Unknown ids answer `404 {error:"not-found"}`; supervisor refusals `409 {error:<code>, message}`. `GET /api/sessions/{id}/diff` stays 501 until M4.5.

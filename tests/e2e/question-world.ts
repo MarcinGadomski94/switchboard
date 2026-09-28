@@ -16,6 +16,10 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 export interface QuestionWorld {
   readonly server: ServerProcess;
   readonly baseUrl: string;
+  /** The canonical workspace root (the sessions' cwd). Additive (M4.1). */
+  readonly workspace: string;
+  /** The server's `CLAUDE_CONFIG_DIR` (transcripts, live-process files). Additive (M4.1). */
+  readonly configDir: string;
   /** Starts a session in `acme-app-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie). */
   startSession(page: Page, name: string, task: string, worktrees?: boolean): Promise<{ id: string }>;
   stop(): Promise<void>;
@@ -62,6 +66,8 @@ export async function startQuestionWorld(label: string): Promise<QuestionWorld> 
     return {
       server,
       baseUrl: server.baseUrl,
+      workspace,
+      configDir: path.join(tmp, 'claude-config'),
       async startSession(page, name, task, worktrees = false) {
         const result = await page.evaluate(
           async (body) => {
