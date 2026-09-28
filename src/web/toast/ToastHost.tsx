@@ -1,5 +1,6 @@
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useRouter } from '../router.tsx';
+import { useQuestionNotifications } from './useQuestionNotifications.ts';
 import './toast.css';
 
 /** One toast (SPEC → Modals → Toast): dot, title, sub, branch line, text; Jump to session / Later. */
@@ -7,6 +8,7 @@ export interface Toast {
   readonly id: string;
   readonly title: string;
   readonly sub: string;
+  /** Branch line (`solution ⎇ branch`); not rendered when empty. */
   readonly branch: string;
   readonly text: string;
   /** Session opened by "Jump to session"; no jump button without one. */
@@ -22,8 +24,8 @@ interface ToastValue {
 const ToastContext = createContext<ToastValue | null>(null);
 
 /**
- * Holds the toasts. The host shows the newest one; M3.4 adds the sound, the OS
- * notification and the `/hub` `questionBatch` trigger.
+ * Holds the toasts. The host shows the newest one; a toast with the id of one
+ * already listed replaces it.
  */
 export function ToastProvider({ children }: { readonly children: ReactNode }) {
   const [toasts, setToasts] = useState<readonly Toast[]>([]);
@@ -40,10 +42,15 @@ export function useToasts(): ToastValue {
   return value;
 }
 
-/** Renders the newest toast over the shell (positioned against `.sb-shell`). */
+/**
+ * Renders the newest toast over the shell (positioned against `.sb-shell`), and
+ * raises one, with the chime and the OS notification, for every new question
+ * batch (M3.4, `useQuestionNotifications`, `docs/notifications.md`).
+ */
 export function ToastHost() {
-  const { toasts, dismiss } = useToasts();
+  const { toasts, show, dismiss } = useToasts();
   const { navigate } = useRouter();
+  useQuestionNotifications(show, dismiss);
   const toast = toasts[toasts.length - 1];
   if (!toast) return null;
   const jump = (): void => {
@@ -60,7 +67,7 @@ export function ToastHost() {
           ✕
         </button>
       </div>
-      <div className="sb-toast-branch">{toast.branch}</div>
+      {toast.branch ? <div className="sb-toast-branch">{toast.branch}</div> : null}
       <div className="sb-toast-text">{toast.text}</div>
       <div className="sb-toast-actions">
         {toast.sessionId ? (

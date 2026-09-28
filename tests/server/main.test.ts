@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_FILE, openDatabase } from '../../src/server/db/database.ts';
 import { appliedMigrations, loadMigrations, makeMigration, migrate } from '../../src/server/db/migrate.ts';
 import { TOKEN_FILE } from '../../src/server/token.ts';
-import { makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
+import { TEST_PORTS, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../helpers/server-process.ts';
 
 let tmp: string;
@@ -67,7 +67,7 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const db = await openDatabase(path.join(dataDir, DB_FILE));
     migrate(db, [...(await loadMigrations()), makeMigration(9999, 'future', 'CREATE TABLE future (id INTEGER) STRICT;')]);
     db.close();
-    const bad = spawnServer(4879, { SWITCHBOARD_DATA_DIR: dataDir });
+    const bad = spawnServer(TEST_PORTS[TEST_PORTS.length - 1] as number, { SWITCHBOARD_DATA_DIR: dataDir });
     expect(await bad.closed).toBe(1);
     expect(bad.output()).toContain('switchboard: the database has migration 9999 (future)');
     expect(bad.output()).not.toContain('Server listening');

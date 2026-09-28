@@ -51,11 +51,15 @@ export function toArtifact(record: ArtifactRecord): Artifact {
   };
 }
 
-/** Questions of the session's open batches (M3.1 fills the batches). */
+/**
+ * Questions of the session's batches that still wait for the developer (M3.1,
+ * docs/questions.md): open ones, and stale ones not answered yet (they stay
+ * answerable; their answers go out as a user message).
+ */
 async function openQuestionCount(store: Store, sessionId: string): Promise<number> {
-  const batches = await store.questions.listBatches({ sessionId, states: ['open'] });
+  const batches = await store.questions.listBatches({ sessionId, states: ['open', 'stale'] });
   let count = 0;
-  for (const batch of batches) count += (await store.questions.questionsOf(batch.id)).length;
+  for (const batch of batches) if (batch.answeredAt === null) count += (await store.questions.questionsOf(batch.id)).length;
   return count;
 }
 

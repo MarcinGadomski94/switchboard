@@ -24,8 +24,8 @@ The route is behind the same guard as every API call (`docs/security.md`): a for
 | `sessionUpdated` | `Session` | `SessionSupervisor.on('sessionUpdated')` (every status / attachment change), forwarded by `forwardServiceEvents` | M2.1 → wired in M2.3 |
 | `event` | `{ sessionId, event: Event }` | `SessionSupervisor.on('event')` (every event insert or update: a merged assistant text or a closed tool call is sent again with the same `id`) | M2.1 → wired in M2.3 |
 | `worktreeRemovable` | `Worktree` | `WorktreeManager.on('worktreeRemovable')` (once, when a worktree's PR is merged and removal is allowed) | M2.2 → wired in M2.3 |
-| `questionBatch` | `{ sessionId, batchId, questions }` | the question pipeline, `bus.publish` | M3.1 |
-| `inboxChanged` | `{ count }` | whatever changes the Inbox, `bus.publish` | M3.1 / M3.2 / M3.3 |
+| `questionBatch` | `{ sessionId, batchId, questions }` | the question pipeline (`QuestionPipeline.canUseTool`, once per new batch; `docs/questions.md`); the UI raises the toast, chime and OS notification (M3.4, `docs/notifications.md`) | M3.1 |
+| `inboxChanged` | `{ count }` | whatever changes the Inbox, `bus.publish`: the question pipeline on every batch / permission item change, the `SystemItemService` when a system item is raised or closed (count = `inboxCount`) | M3.1 / M3.2 / M3.3 |
 | `scheduleRun` | `{ scheduleId, result }` | the scheduler, `bus.publish` | M7.1 |
 | `system` | `GET /api/system` shape | the hub itself: `providers.system.system()` every **5 s** while a client is connected | real provider M5.3 / M9.2; demo provider when `SWITCHBOARD_DEMO=1` |
 

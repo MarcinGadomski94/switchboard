@@ -40,6 +40,12 @@ export interface NewSession {
   readonly ultracode: boolean;
 }
 
+/**
+ * Additive (M3.3): values the New-session modal opens with instead of its defaults,
+ * e.g. from an Inbox item's "Open fix session" action. Any field may be missing.
+ */
+export type NewSessionPrefill = { readonly [K in keyof NewSession]?: NewSession[K] };
+
 /** An agent of a session (data model; gap #8). Provisional: M2.1 / M4.3. */
 export interface Agent {
   readonly id: string;
@@ -177,6 +183,27 @@ export interface InboxItem {
   readonly branches: readonly BranchRef[];
   readonly questions?: readonly Question[];
   readonly actions?: readonly InboxAction[];
+  /** Additive (M3.1): a permission item's request, verbatim (D6). */
+  readonly permission?: PermissionRequest;
+  /** Additive (M3.3): what "Open fix session" (action `open-fix-session`) opens the New-session modal with. */
+  readonly prefill?: NewSessionPrefill;
+}
+
+/** A permission request as the Inbox shows it (D6: tool + input verbatim). Provisional: M3.1 / M3.2. */
+export interface PermissionRequest {
+  /** The CLI's control `request_id`. */
+  readonly requestId: string;
+  readonly toolName: string;
+  /** The tool input, verbatim. */
+  readonly input: unknown;
+  /** The model's own description of the call. */
+  readonly description: string | null;
+  /** The CLI's reason ("This command requires approval"). */
+  readonly decisionReason: string | null;
+  /** The subagent's task id when a subagent asks. */
+  readonly agentId: string | null;
+  /** The asking agent's name (the subagent through `task_started`, else the main agent). */
+  readonly agent: string | null;
 }
 
 /** `POST /api/questions/batch/{batchId}/answers` body (contract). */

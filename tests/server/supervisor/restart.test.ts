@@ -6,9 +6,11 @@
  */
 import { mkdir, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Session, SessionEvent } from '../../../src/core/api.ts';
 import type { LifecyclePayload, ToolPayload } from '../../../src/core/event-payload.ts';
+import { storeFile } from '../../../src/server/db/store.ts';
 import { RESTART_MESSAGE, RESTART_NOTE } from '../../../src/server/supervisor/recovery.ts';
 import { TOKEN_FILE } from '../../../src/server/token.ts';
 import { fakeClaudeBinEnv } from '../../../tools/fake-claude/command.ts';
@@ -190,10 +192,23 @@ describe('M2.4 crash recovery (server child process + fake-claude, SIGKILL and r
     const ask = needEvents.map((e) => e.payload as ToolPayload).find((p) => p?.type === 'tool' && p.name === 'AskUserQuestion');
     expect(ask?.requestState).toBe('stale');
 
-    // "Answered": the answers reach the session as its next message (M3.1 sends stale
-    // answers this way; until M3.1 the chat message stands in) and the note goes with them.
-    const answers = 'Answers: "Which color?" = "Blue"; "Which size?" = "Large"';
-    expect((await api('POST', `/api/sessions/${need.id}/messages`, { text: answers })).status).toBe(202);
+    // Answered through the contract route (M3.1): the stale batch's answers reach the
+    // resumed idle process as its next message, and the note goes with them.
+    const batchId = ask?.requestId as string;
+    const db = new DatabaseSync(storeFile(dataDir), { readOnly: true });
+    let questionIds: string[] = [];
+    try {
+      const rows = db.prepare('SELECT q.id AS id, b.state AS state FROM questions q JOIN question_batches b ON b.id = q.batch_id WHERE q.batch_id = ? ORDER BY q.position').all(batchId);
+      expect(rows.map((row) => row['state'])).toEqual(['stale', 'stale']);
+      questionIds = rows.map((row) => String(row['id']));
+    } finally {
+      db.close();
+    }
+    const answered = await api('POST', `/api/questions/batch/${batchId}/answers`, {
+      answers: [{ questionId: questionIds[0], answerIndex: 2 }, { questionId: questionIds[1], answerIndex: 1 }],
+    });
+    expect(answered.status).toBe(204);
+    const answers = 'Answers to your earlier questions:\n"Which color should the button be?" = "Blue"\n"Which size should it be?" = "Large"';
     await until(async () => (await stdinOf(logFile, newNeedPid)).length > 0 || undefined, 'the answers message');
     expect(await stdinOf(logFile, newNeedPid)).toEqual([userLine(`${RESTART_NOTE}\n\n${answers}`)]);
     await until(async () => (await statusOf(need.id)) === 'done', 'the need session finishing its turn');

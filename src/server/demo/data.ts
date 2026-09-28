@@ -117,6 +117,8 @@ export interface DemoSystemItem {
   readonly actions: readonly string[];
   /** The failed schedule (its latest run). */
   readonly schedule?: string;
+  /** "Open fix session": the prototype's New-session values (`ns`: name, task, sols, mode, phase). */
+  readonly fixSession?: { readonly name: string; readonly task: string; readonly sols: readonly string[]; readonly mode: string; readonly phase: string };
   /** The removable worktree. */
   readonly worktree?: { readonly repo: string; readonly branch: string; readonly path: string; readonly prNumber: number };
 }
