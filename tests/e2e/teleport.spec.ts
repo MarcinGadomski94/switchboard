@@ -187,9 +187,9 @@ test('pull a remote session into the repo: its history, the local-copy note, one
   // 2. The local copy: its title, its worktree, the note with the remote session's link, the remote history in the chat.
   await expect(page.getByTestId('session-name')).toHaveText(TITLE);
   await expect(page.getByTestId('session-root')).toHaveText(`${worktree} · worktree of app-repo`);
-  await expect(page.getByTestId('session-remote-note')).toContainText(NOTE);
-  await expect(page.getByTestId('session-remote-link')).toHaveText(ID);
-  await expect(page.getByTestId('session-remote-link')).toHaveAttribute('href', `https://claude.ai/code/${ID}`);
+  await expect(page.getByTestId('session-remote-copy-note')).toContainText(NOTE);
+  await expect(page.getByTestId('session-remote-copy-link')).toHaveText(ID);
+  await expect(page.getByTestId('session-remote-copy-link')).toHaveAttribute('href', `https://claude.ai/code/${ID}`);
   const chat = page.getByTestId('session-chat');
   await expect(chat.getByTestId('chat-text')).toHaveText([
     'Remote history 1: add a /health endpoint to the API.',
@@ -235,7 +235,7 @@ test('pull a remote session into the repo: its history, the local-copy note, one
   expect(resumed?.argv[resumed.argv.indexOf('--resume') + 1]).toBe(session?.claudeSessionId);
   expect(resumed?.argv).not.toContain('--teleport');
   await expect.poll(async () => (await sessions(page)).find((listed) => listed.name === NAME)?.status, { timeout: 15_000 }).toMatch(/^(done|run)$/);
-  await expect(page.getByTestId('session-remote-note')).toContainText(NOTE);
+  await expect(page.getByTestId('session-remote-copy-note')).toContainText(NOTE);
 
   // 5. History: tagged like the sidebar, the note as the tag's tooltip.
   await page.getByTestId('nav-history').click();

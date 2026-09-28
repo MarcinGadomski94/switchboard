@@ -176,8 +176,8 @@
   color: var(--status-fail);
 }
 
-/* D25: a local copy of a remote session (not in the prototype; only such sessions show it). */
-.sb-sv-remote {
+/* D25: a local copy of a remote session (not in the prototype; only such sessions show it). Its own class names: D24 uses `.sb-sv-remote` for the Remote buttons. */
+.sb-sv-remote-copy {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -187,7 +187,7 @@
   color: var(--muted-2);
 }
 
-.sb-sv-remote-link {
+.sb-sv-remote-copy-link {
   font: 400 11.5px var(--font-mono);
   color: var(--muted-2);
   text-decoration: underline;
@@ -195,7 +195,7 @@
   text-underline-offset: 2px;
 }
 
-.sb-sv-remote-link:hover {
+.sb-sv-remote-copy-link:hover {
   color: var(--text-strong);
 }
 

@@ -192,11 +192,11 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
         </div>
       </div>
       {session?.remoteSource ? (
-        <div className="sb-sv-remote" data-testid="session-remote-note">
+        <div className="sb-sv-remote-copy" data-testid="session-remote-copy-note">
           <span>{REMOTE_COPY_NOTE}</span>
           <a
-            className="sb-sv-remote-link"
-            data-testid="session-remote-link"
+            className="sb-sv-remote-copy-link"
+            data-testid="session-remote-copy-link"
             href={remoteSessionUrl(session.remoteSource)}
             target="_blank"
             rel="noopener noreferrer"
