@@ -11,3 +11,5 @@ M6.1: `workspace-rules.ts` (router `AGENTS.md` folder rules, the baseline layout
 M6.3: `conflicts.ts` (two or more open sessions writing one repo while one has no worktree of its own: the row flag, the card copy and its "Move … to worktree" actions), documented in `docs/solutions.md` → *Conflicts*.
 
 M6.4: `codebase-memory.ts` (`.claude/.codebase-memory-dirty` lines named after the workspace hook's project ids, the freshness of each Solutions row and the Codebase Memory strip's list), documented in `docs/solutions.md` → *Codebase-memory freshness*.
+
+M7.2: `derive/loops.ts` (loops observed in a session's events: `/loop`, CronCreate, ScheduleWakeup, CronDelete, Workflow, self-started turns = firings), `derive/cron-next.ts` (5-field cron → next match; M7.1's scheduler may reuse it) and `loop-progress.ts` (cap + breaker from a LOOP.md `.loop/progress.md`), documented in `docs/derivations.md` → *Loop cards*.

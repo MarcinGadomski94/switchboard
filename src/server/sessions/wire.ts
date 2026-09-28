@@ -4,6 +4,7 @@ import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
@@ -63,7 +64,7 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
   return count;
 }
 
-/** `GET /api/sessions` item: the session with its agents and open question count. */
+/** `GET /api/sessions` item: the session with its agents and open question count (+ its loops, M7.2). */
 export async function toSession(store: Store, record: SessionRecord): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
   return {
@@ -84,6 +85,7 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     lastActivityAt: record.lastActivityAt,
     agents: agents.map(toAgent),
     openQuestionCount: await openQuestionCount(store, record.id),
+    loops: (await store.loops.list(record.id)).map(toLoop),
   };
 }
 

@@ -40,6 +40,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 | `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item (wired); `remove(id)` → M3.3 "Remove worktree" action (wired); `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
 | `questions` (`QuestionPipeline`, M3.1) | question batches + permission items: the supervisor's `ControlRequestHandler`, answers + Allow once / Deny | `questionBatchItem` / `permissionItem` / `inboxCount` in `src/server/inbox/wire.ts` → M3.2's `GET /api/inbox`; the shared `QuestionCard` (`src/web/components/`) → M3.2 Inbox, M4.2 chat (`docs/questions.md`) |
 | `systemItems` (`SystemItemService`, M3.3) | system Inbox items: "Scheduled run failed", "PR merged" and their actions (`docs/system-items.md`) | **M7.1:** call `scheduleRunFinished(runId)` when a run ends and plug the scheduler in with `useScheduleRunner({ runNow })` ("Retry run" answers 501 until then); `sync()` every 30 s picks up any failed run / removable worktree without an item |
+| `LoopTracker` (M7.2, `src/server/loops/tracker.ts`, made by `buildApp`, not on `ApiContext`) | the `loops` rows from the sessions' events + `.loop/progress.md` (D9, `docs/derivations.md` → *Loop cards*); served as the additive `Session.loops` | publishes `sessionUpdated` when a session's loops change; M4.1's header chips read the same rows |
 | `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's poller (`docs/hub.md`) |
 
 ## Server: providers (`src/server/providers.ts`)
@@ -68,7 +69,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
 | `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |
-| `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
+| `views/SchedulesView.tsx` | Schedules & loops: the view container (`schedules.css`) with the loop cards since M7.2 (`LoopCards.tsx` + `loops.ts` model + `loops.css`; `docs/derivations.md` → *Loop cards*); M7.1 adds the header and the schedule table above `<LoopCards />` | M7.1, M7.2 |
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
 | `views/ToolView.tsx` | Embedded tool | M8.1 |

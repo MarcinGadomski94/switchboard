@@ -6,6 +6,7 @@ import { type HubTimingOptions, SseHub } from './hub/hub.ts';
 import { forwardServiceEvents } from './hub/wire.ts';
 import { QuestionPipeline } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
+import { LoopTracker } from './loops/tracker.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
@@ -92,6 +93,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const providers = options.providers ?? {};
   const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
   const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });
+  // Loop cards (M7.2, D9): the `loops` rows follow the sessions' events. Stopped before
+  // anything closes, so no refresh runs against a closed store; the sweep at start
+  // re-derives the loops whose process the last stop ended.
+  const loops = new LoopTracker({ store: options.store, events: supervisor, bus, workspaceRoot: options.config.workspaceRoot });
+  const sweeping = loops.sweep().catch((error: unknown) => console.error('switchboard loops:', error));
+  app.addHook('preClose', async () => {
+    await sweeping;
+    await loops.close();
+  });
   // Open streams would keep the server from closing: end them before it stops listening.
   app.addHook('preClose', async () => {
     hub.close();
