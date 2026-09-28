@@ -57,3 +57,55 @@ export const FRAME_CHECK_PATH = '/api/frame-helper/check';
 
 /** The attribute (value `ok`) on the `<html>` element of {@link FRAME_CHECK_PATH}'s page. */
 export const FRAME_CHECK_ATTRIBUTE = 'data-sb-frame-check';
+
+/**
+ * D28 ruling (narrowed scope): the most hosts the frame helper keeps for one tab.
+ * The helper refuses a longer list (`tools/frame-helper/background.js`).
+ */
+export const MAX_FRAME_HELPER_HOSTS = 50;
+
+/**
+ * `true` for a host name the frame helper accepts for its tab-scoped rules: a plain,
+ * lower-case DNS name of two or more labels (letters, digits, `-`; punycode for
+ * international names), a dotted IPv4 address, or `localhost`. No wildcards,
+ * ports, paths, brackets, trailing dot or single-label names (a bare `com` would
+ * match every `.com` site, since a rule's `requestDomains` also matches
+ * subdomains). The helper checks the same form (`tools/frame-helper/background.js`,
+ * kept in step by `tests/tools/frame-helper.test.ts`).
+ */
+export function isFrameHelperHost(host: string): boolean {
+  return host.length <= 253 && FRAME_HELPER_HOST.test(host);
+}
+
+const FRAME_HELPER_HOST = /^(?:localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)$/;
+
+/**
+ * D28 ruling: the hosts Switchboard's page gives the frame helper for its own tab.
+ * First `pageHostname` (Switchboard's own host, so the capability check page
+ * {@link FRAME_CHECK_PATH} can show), then the host of every saved **site** tool
+ * ({@link isSiteToolUrl}) in list order. Duplicates and hosts the helper would
+ * refuse ({@link isFrameHelperHost}, e.g. an IPv6 address) are left out, and the
+ * list stops at {@link MAX_FRAME_HELPER_HOSTS}.
+ */
+export function frameHelperHosts(toolUrls: readonly (string | null | undefined)[], pageHostname: string): string[] {
+  const hosts: string[] = [];
+  const add = (host: string): void => {
+    if (hosts.length < MAX_FRAME_HELPER_HOSTS && isFrameHelperHost(host) && !hosts.includes(host)) hosts.push(host);
+  };
+  add(pageHostname.toLowerCase());
+  for (const url of toolUrls) {
+    const host = siteToolHostname(url);
+    if (host !== null) add(host);
+  }
+  return hosts;
+}
+
+/**
+ * The hostname of a site tool's URL (lower case, no port: what
+ * {@link frameHelperHosts} lists), or `null` for anything that is not a site
+ * ({@link isSiteToolUrl}).
+ */
+export function siteToolHostname(url: string | null | undefined): string | null {
+  if (!url || !isSiteToolUrl(url)) return null;
+  return new URL(url).hostname;
+}
