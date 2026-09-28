@@ -9,6 +9,7 @@ A stand-in for the `claude` CLI 2.1.283 that replays the M0 recordings in `tools
 
 ## Argv surface
 Accepted: every flag in `fixtures/manifest.json` argv (scenarios and textRuns): `-p/--print`, `--input-format text|stream-json`, `--output-format text|stream-json`, `--verbose`, `--model`, `--max-turns <n>`, `--permission-mode <acceptEdits|auto|bypassPermissions|default|dontAsk|manual|plan>`, `--permission-prompt-tool`, `--allowedTools` (`--allowed-tools`), `--settings`, `--include-hook-events`, `--forward-subagent-text`, `--replay-user-messages`, `--session-id`, `--resume`, `--fork-session`, `--name`, one positional prompt; `--flag=value` works too. Plus:
+- `--teleport <id>` (D25, *Teleport* below). Mixed with `--resume`, `--session-id` or `--fork-session` → `error: --teleport cannot be combined with …` on stderr, exit 1 (the fake's own guard: the real CLI's answer to the mix was never probed).
 - `--version` / `-v` → `2.1.283 (Claude Code)`, exit 0.
 - `auth status [--json|--text]` → no output, exit 0; exit 1 with `FAKE_CLAUDE_SIGNED_OUT=1`. Callers rely on the exit code only (the real output was never captured).
 - `agents [--json] [--all] [--cwd <dir>]` → the live sessions from `<CLAUDE_CONFIG_DIR>/sessions/*.json` whose pid is still running: `[{pid, cwd, kind, startedAt, sessionId, name, status}]` (M0.1 field order). `--cwd` keeps one canonical cwd; `--all` is accepted and changes nothing.
@@ -22,7 +23,9 @@ Values that change behavior: `--input-format stream-json` (multi-turn over stdin
 | `FAKE_CLAUDE_SCENARIO` | Scenario for the process (default `default`). An unknown name exits 1 before any output. |
 | `CLAUDE_CONFIG_DIR` | Where the transcript and the live-process file go. **Unset = nothing is written** (a stderr warning), and `--resume` exits 1: the fake never touches `~/.claude`. |
 | `FAKE_CLAUDE_LOG` | Appends `{"kind":"argv",pid,cwd,argv,env,claudeEnvKeys}` at start and `{"kind":"stdin",pid,line}` per stdin line (verbatim). `env` holds only `CLAUDE_CONFIG_DIR` and `FAKE_CLAUDE_*` values; `claudeEnvKeys` lists the names of all `CLAUDE*` variables, so a test can check that `CLAUDECODE` / `CLAUDE_CODE_*` were dropped without logging values. |
-| `FAKE_CLAUDE_SIGNED_OUT=1` | `auth status` exits 1. |
+| `FAKE_CLAUDE_SIGNED_OUT=1` | `auth status` exits 1; `--teleport` refuses as not signed in (*Teleport*). |
+| `FAKE_CLAUDE_TELEPORT` | D25: `dirty`, `wrong-repo`, `archived`, `not-pushed` make `--teleport` refuse (*Teleport*); `no-init` makes it report `system/init` only with its first turn. Unset: a teleport that works. |
+| `FAKE_CLAUDE_TELEPORT_REPO` | D25: the `owner/repo` the wrong-repo text names (default `acme/app`). |
 
 ## Scenarios
 Every `manifest.json` scenario name, plus three built-ins:
@@ -48,6 +51,26 @@ Selection: the `k`-th stdin user message plays turn `k` of the current scenario.
 - **Transcript** `projects/<slug(cwd)>/<sessionId>.jsonl` (slug per M0.3; `slugForCwd` in `transcript.ts` is the fake's own copy). Created with the first user message, never at spawn and never by control-only runs. Per message: `queue-operation` enqueue/dequeue, the prompt (`promptSource`/`turnOrigin` `sdk`, `permissionMode`), then each main-chain assistant line, tool_result and interrupt marker with the **same uuid as on stdout**, chained by `parentUuid`, with the CLI envelope (`isSidechain:false, userType:"external", entrypoint:"sdk-cli", cwd, sessionId, version:"2.1.283", gitBranch`). `gitBranch` is read from `.git/HEAD` of the cwd or a parent (worktree `.git` files followed), else `HEAD`. Per turn: `last-prompt` (`leafUuid` = chain tip). A new session with `--name` gets `custom-title` + `agent-name` at its first message and after each turn; resumes never re-append them. Text mode adds `{"type":"mode","mode":"normal"}`. At exit: `cost-state` (the `tx-main` numbers, own `startTime`). Attachment lines are not written.
 - **Resume** `--resume <id>`: the file is looked up in the cwd's project folder, then in every project folder (like the CLI); none → `No conversation found with session ID: <id>`, exit 1. New lines go to that same file with the new cwd. If the file's last chain entry is an interrupt marker, the first new message is preceded by the synthetic assistant line (`model:"<synthetic>"`, `No response requested.`, from `handoff-mid`). `--fork-session`: a new id and a new file under the cwd, starting with a copy of the old entries.
 - **Live-process file** `sessions/<pid>.json` = `{pid, sessionId, cwd, startedAt, version, kind:"interactive", entrypoint:"sdk-cli", status, updatedAt, name}`; `status` is `busy` during a turn, `idle` otherwise; `name` = `--name` or the cwd's folder name. Removed on a normal exit and on SIGTERM; left behind by `crash` and SIGKILL (and then not listed by `agents`, whose pid check skips dead processes).
+
+## Teleport (D25)
+`-p --teleport <id>` does what `docs/spike-remote.md` → *R.3* reads from the CLI's print mode, without a cloud or a network, before anything is printed:
+1. **The checkout.** The cwd must be inside a git work tree (`git rev-parse --is-inside-work-tree`), else the wrong-repo refusal (the CLI's `not_in_repo`). It must have no tracked changes (`git status --porcelain --untracked-files=no`; untracked files are ignored, as in the CLI), else the dirty-tree refusal. `FAKE_CLAUDE_TELEPORT=dirty` forces that one.
+2. **The session download.** `FAKE_CLAUDE_SIGNED_OUT=1` → not signed in; `FAKE_CLAUDE_TELEPORT=wrong-repo` → the wrong repo (`FAKE_CLAUDE_TELEPORT_REPO`, default `acme/app`); `archived` → an archived session.
+3. **The branch.** `FAKE_CLAUDE_TELEPORT=not-pushed` → the branch is not on origin. Otherwise the fake checks out the local branch `claude/<id>` (created from HEAD when missing; `git checkout`, `shell: false`); a git failure (e.g. the branch is checked out in another worktree) is printed as git said it, exit 1.
+4. **The local copy.** A fresh session id (a uuid). With `CLAUDE_CONFIG_DIR` set, its transcript (`projects/<slug(cwd)>/<id>.jsonl`) starts with a fixed **remote history** of two exchanges ("Remote history 1: add a /health endpoint to the API." → "Remote reply 1: …", "Remote history 2: push the branch." → "Remote reply 2: pushed claude/<id>."), chained by `parentUuid`, `gitBranch` = the checked-out branch, timestamps a few minutes back; the first message continues that chain. stdout does not replay it (M0.4: stdout never replays history).
+5. **Reporting.** The `SessionStart:startup` hook pair, then `system/init` with the fresh id at once, before any message (`FAKE_CLAUDE_TELEPORT=no-init`: only with the first turn, as the CLI does for an idle `--resume`; which one the real CLI does is unknown, P6). Then it behaves as a normal session; a later `--resume <that id>` finds its transcript.
+
+Refusals go to stderr, nothing to stdout, with distinct exit codes (the real CLI's codes were never captured):
+
+| Refusal | stderr (one line) | Exit |
+|---|---|---|
+| dirty tree | `Git working directory is not clean. Please commit or stash your changes before using --teleport.` (R.3, verbatim) | 1 |
+| wrong repo | `You must run claude --teleport <id> from a checkout of <owner/repo>` (R.3, verbatim) | 2 |
+| archived | `cloud session <id> is archived and cannot accept new messages` (R.2's text for `--cloud`; the teleport text was never captured) | 3 |
+| not pushed | `Failed to fetch branch claude/<id> from origin: fatal: couldn't find remote ref claude/<id>` (the fake's wrapping of git's message) | 4 |
+| not signed in | `Not logged in · Please run /login` (the fake's wording) | 5 |
+
+Code: `tools/fake-claude/teleport.ts`; tests: `tests/tools/fake-claude-teleport.test.ts`.
 
 ## Not modelled
 Interactive TTY mode, `--output-format json`, the `hook_callback` / `mcp_message` control subtypes, real tool execution (except `[fake:write]`), `/slash` commands, subagent sidechain files, usage error payloads (M9.2 tests the parser with its own payloads), and timing (turns are emitted at once; only wait points take time). SIGINT on Windows is not a catchable signal for child processes, so Windows tests should interrupt over stdin.

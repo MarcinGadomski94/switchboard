@@ -25,6 +25,7 @@ import {
   toolResultText,
   toolToken,
   writeToken, autoModeSupported } from './scenarios.ts';
+import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 
 /** How a turn playback ended. */
@@ -196,6 +197,13 @@ export class Runner {
     if (!this.isScenario(this.scenario)) return this.fail(`fake-claude: unknown scenario "${this.scenario}" (FAKE_CLAUDE_SCENARIO)`);
     const { store } = this.o;
     const resuming = this.args.resume !== null;
+    // D25: `--teleport <id>` checks the cwd, "fetches" the session and checks out its branch before anything is printed.
+    let teleportedBranch: string | null = null;
+    if (this.args.teleport !== null) {
+      const result = await teleportInto(this.o.cwd, this.args.teleport, this.o.env);
+      if (!result.ok) return this.fail(result.refusal.text, result.refusal.code);
+      teleportedBranch = result.branch;
+    }
     this.core = {
       base: await store.fixture(DEFAULT_FIXTURE),
       interrupt: await store.fixture('interrupt'),
@@ -226,6 +234,11 @@ export class Runner {
         if (error instanceof ResumeError) return this.fail(`${error.message}\n`);
         throw error;
       }
+      // D25: the remote history is the local copy's start, in its transcript before anything is reported.
+      if (teleportedBranch !== null) {
+        this.transcript.seed(remoteHistoryEntries(remoteHistory(teleportedBranch)));
+        await this.transcript.flush();
+      }
       this.live = new LiveFile(this.configDir, {
         pid: process.pid,
         sessionId: this.sessionId,
@@ -247,6 +260,11 @@ export class Runner {
 
     const ids = new IdMap();
     for (const line of this.core.preamble.preamble) this.emit(line, this.bareTurn(ids));
+    if (teleportedBranch !== null && reportsInitAtStart(this.o.env)) {
+      // D25: a teleport reports its local session (`system/init`, a fresh id) at once, before any message (`no-init`: with its first turn).
+      const init = (this.core.base.turns[0] ?? []).find((step) => step.t === 'line' && step.line['type'] === 'system' && step.line['subtype'] === 'init');
+      if (init && init.t === 'line') this.emit(init.line, this.bareTurn(ids));
+    }
 
     if (this.args.inputFormat === 'stream-json') {
       if (this.args.prompt !== null) this.enqueue(this.args.prompt);
@@ -940,11 +958,11 @@ export class Runner {
     await this.crash(`fake-claude: internal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
   }
 
-  private async fail(message: string): Promise<void> {
+  private async fail(message: string, code = 1): Promise<void> {
     this.finished = true;
     this.stopFires();
     clearInterval(this.keepAlive);
     this.o.writeStderr(message.endsWith('\n') ? message : `${message}\n`);
-    await this.o.exit(1);
+    await this.o.exit(code);
   }
 }
