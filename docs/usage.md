@@ -1,20 +1,23 @@
-# Max usage meter (M9.2, D17)
+# Max usage meter (M9.2, D17, D23)
 
 The footer's usage rows and the usage warning. Sources and the verdict come from the M0.3 spike (`docs/spike-m0.md` → *Usage %*); the item is BACKLOG M9.2 (adapted after M0). **Never a guessed percentage:** anything missing, erroring or shaped differently is "unknown", and `usagePct` is left out.
 
 **D17 (2026-09-28):** the single "Max" bar became one row per window: **Session** (the 5-hour window) and **Week** (the weekly limit, all models), plus a row per model-specific weekly limit (e.g. Fable) only while it is in use. `/api/system` keeps `usagePct` (the max rule below) and gains the additive `usageWindows` (*`usageWindows`* below). The 90 % warning applies to each window, model windows included.
 
+**D23 (2026-09-28):** the Week bar shows whether usage is on pace for the week: green below the day's allowance, yellow at or above it, with a marker at the allowance (*Weekly pace* below). No API change: the browser computes it from `usageWindows`.
+
 ## Files
 | File | Role |
 |---|---|
-| `src/core/usage.ts` | The rules, pure: parse a `get_usage` answer or a `rate_limit_event`, the state at a moment (max rule, unknown cases), the warnings due, the `/api/system` fields. |
+| `src/core/usage.ts` | The rules, pure: parse a `get_usage` answer or a `rate_limit_event`, the state at a moment (max rule, unknown cases), the warnings due, the `/api/system` fields; D23: `weeklyPace`. |
 | `src/server/usage/meter.ts` | `UsageMeter`: when to read, storing readings, firing warnings, pruning. |
 | `src/server/usage/poller.ts` | `UsagePoller`: the short-lived `claude` process that reads usage while no session is live. |
 | `src/server/usage/wire.ts` | `withUsage(providers, meter)` (adds the fields to `providers.system`) and `createUsageMeter` (normal runs). |
 | `src/server/supervisor/supervisor.ts` | `idleLiveSessionIds()` and `controlRequest()`: a stdin control request to a live session between turns. |
 | `src/server/supervisor/recorder.ts` | Stores every `rate_limit_event` as a reading (M2.1; now through `readingFromRateLimit`). |
 | `src/web/toast/usage-warning.ts`, `useUsageWarnings.ts` | The warning toast. |
-| `src/web/shell/format.ts` → `usageRows` | The footer rows (D17, replacing M1.4's single `maxMeter`): Session and Week from `usageWindows` (each "unknown" without its window), then one row per model window. |
+| `src/web/shell/format.ts` → `usageRows` | The footer rows (D17, replacing M1.4's single `maxMeter`): Session and Week from `usageWindows` (each "unknown" without its window), then one row per model window; D23: the Week row's `pace`. |
+| `src/web/shell/Sidebar.tsx` → `MeterRow`, `shell.css` | One footer row; D23: `data-pace`, the tooltip, the allowance marker and the pace colors. |
 
 ## Readings
 Each reading is one `usage_readings` row: 5-hour and weekly utilization (0–100) with their reset times (ISO), the source, the session it came from (or none), when Switchboard received it, and the CLI's payload verbatim (`raw`). Only the newest reading drives the meter.
@@ -46,6 +49,23 @@ A request that fails (an error `control_response`, no answer within 15 s, the pr
 ### Footer (D17)
 `Sidebar.tsx` shows, under CPU and RAM, a **Session** row and a **Week** row, then one row per model window (its label is the model's name). Each row: the label, a 4 px bar (the prototype's Max bar: `--border-card` track, 2 px radius, `--text` fill = the %), and the value `62% · 1h48` (the % rounded, then the time until the reset in the existing `formatResetsIn` form: `1h48`, `45m`, `74h12`); a window that is not listed reads `unknown`, and before `/api/system` answers every value reads `—`. The rows use the footer's tokens (Geist Mono 11 px, `--muted-2`, 7 px row gap). "Session" is wider than the prototype's 34 px label column, so the usage rows share their own columns (`.sb-usage`, a CSS subgrid): the label column as wide as the widest label and the value column as wide as the widest value, at least 34 / 76 px, so their bars line up with each other and end where the CPU / RAM bars end; CPU and RAM keep the prototype's columns.
 
+## Weekly pace (D23)
+The Week row says whether the week's usage is on pace: the allowance is spread evenly over the window's 7 days, 100 % ÷ 7 ≈ 14.29 % per day, counted from the window's own reset.
+
+**The rule** (`weeklyPace(week, now)` in `src/core/usage.ts`, pure):
+- The window started **7 × 24 h before** its `resetsAt` (the Week window's, i.e. `seven_day.resets_at`). Days start at the reset's time of day, and each day's share is available from the start of that day: during day *n* (1–7) the allowance is *n* × 100 / 7 %. A Thursday 15:00 reset gives days Thu 15:00 → Fri 15:00 … Wed 15:00 → Thu 15:00, so Mon 14:59 is day 4 (57.14 %) and Mon 15:00 is day 5 (71.43 %).
+- **Days are 24-hour periods**, counted back from the reset instant, not calendar days: across a daylight-saving change they stay 24 h long, so in local time their start moves by the hour. Example: a Thu 15:00 CET reset on 29 Oct 2026 (Europe/Warsaw leaves summer time on Sun 25 Oct): days 1–3 start at 16:00 CEST (Thu 22, Fri 23, Sat 24), days 4–7 at 15:00 CET. The rule is pure time arithmetic, so it does not depend on the machine's time zone.
+- The allowance is rounded to 2 decimals like the utilization (14.29, 28.57, 42.86, 57.14, 71.43, 85.71, 100), and **on pace** means `pct < allowance`: a Week at exactly the allowance (as shown) is yellow.
+- It also gives `nextStepAt`, the end of the current day (on day 7, the reset).
+- **Unknown stays unknown** (`null`, no color, no marker, no tooltip): no Week window (D17: missing, malformed, expired), a reset that is not ahead of now (the page's clock may pass it before the next `system` event), or a reset more than 7 days ahead (now would be outside the window it closes).
+
+**The footer** (`usageRows` → `pace`, `MeterRow`, `shell.css`): computed in the browser from `usageWindows`' `key: 'week'` entry and the page's clock (the sidebar re-renders every 30 s and on every `system` event, so a step shows within 30 s; a moved reset is followed as soon as a new window arrives). No API field is added.
+- The row gets `data-pace="on"` (bar fill SPEC *status done*, green) below the allowance or `data-pace="ahead"` (*status need*, yellow) at or above it; the bar width, the value text (`62% · 74h12`) and the 90 % warning are unchanged.
+- A **2 px marker** in `--muted-3` sits on the bar at the allowance (centered on it, as high as the 4 px bar, inside the track; on day 7 half of it shows at the bar's end).
+- The row's `title`: `On pace: 33% of 57.14% allowed until Mon 15:00` or `Ahead of pace: 62% of 57.14% allowed until Mon 15:00`: the utilization and the allowance with up to 2 decimals (trailing zeros dropped: `33%`, `18.4%`, `100%`), then the next step's local weekday and `HH:MM`.
+- The Session row and the model rows never get a pace, color or marker.
+- **Demo mode:** the demo's Week row is "unknown" (D17), so the demo views and the visual specs are unchanged.
+
 ## `usagePct` (the max rule)
 `GET /api/system` and the `system` hub event get, from `providers.system` wrapped by `withUsage`:
 - `usagePct` = the higher of the 5-hour and weekly utilization (the binding limit), rounded to 2 decimals, capped at 100.
@@ -73,3 +93,4 @@ A request that fails (an error `control_response`, no answer within 15 s, the pr
 - `tests/server/usage/wire.test.ts` — `withUsage`, and the `system` hub event carrying `usagePct` once a client connects and the real poller (fake-claude) has read; the `it.fails` for `GET /api/system` until the M5.3 merge.
 - `tests/web/usage-warning.test.ts` — the toast copy, once per window and reset, the storage helpers; D17: the model toast and key.
 - **D17:** `tests/core/usage.test.ts` → *D17: usage windows* (the recorded answer: Session + Week, Fable at 0 % not listed; in use above 0 % or active; the `model_scoped` / `limits` join; every unknown case; Session and Week independent; the model warning once until its reset and its stored state; labels). `tests/server/usage/meter.test.ts` → *D17 model-scoped windows* (a newer `rate_limit_event` keeps them, gone after 10 min or a failed `get_usage`, the warning once across a restart). `tests/server/usage/wire.test.ts` (`usageWindows` on `GET /api/system` and the `system` event from the real poller with fake-claude, and a Fable window with its warning), `tests/server/demo/providers.test.ts` (the demo's Session window, a Week figure when present), `tests/web/format.test.ts` (`usageRows`), `tests/e2e/usage-footer.spec.ts` (the footer on the real path) and the shell / full-pass visual specs (the rows as D17 additions).
+- **D23:** `tests/core/usage.test.ts` → *D23: weekly pace* (the day boundaries at the reset hour, Mon 14:59 → day 4 / 57.14 %, Mon 15:00 → day 5 / 71.43 %; every day's allowance; day 1 right at the previous reset, day 7 just before the next; at the allowance → not on pace; unknown / past / too-far reset → `null`; a week across the Europe/Warsaw DST change). `tests/web/format.test.ts` → *D23* (the Week row's state, marker position and tooltip; Session and model rows without a pace; unknown → none; `MeterRow`'s markup with and without a pace). `tests/e2e/week-pace.spec.ts` (real path, one seeded reading, the page on a fixed clock in UTC: yellow one minute before the step into day 5, green at it, the marker at 57.14 % / 71.43 %, the tooltip, the Session row unchanged, nothing after the reset) and `tests/e2e/usage-footer.spec.ts` (on the page's own clock: day 4, on pace, one marker). The demo's Week row is unknown, so the shell / full-pass visual specs are unchanged.

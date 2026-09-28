@@ -12,6 +12,7 @@ import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import {
   type Meter,
+  type WeekPaceView,
   conflictCount,
   cpuMeter,
   formatAge,
@@ -57,12 +58,18 @@ function isActive(route: Route, view: Route['view'], id?: string): boolean {
   return 'id' in route && route.id === id;
 }
 
-function MeterRow({ label, meter, name, model }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string }) {
+/**
+ * One footer meter: label, 4 px bar, value. D23: with a `pace` (the known Week row)
+ * the row carries `data-pace` (the bar's color, shell.css) and the pace `title`,
+ * and the bar a 2 px marker at the allowance.
+ */
+export function MeterRow({ label, meter, name, model, pace }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string; readonly pace?: WeekPaceView }) {
   return (
-    <div className="sb-meter" data-meter={name} data-model={model}>
+    <div className="sb-meter" data-meter={name} data-model={model} data-pace={pace?.state} title={pace?.title}>
       <span>{label}</span>
       <div className="sb-meter-track">
         <div className="sb-meter-fill" style={{ width: `${meter.pct}%` }} />
+        {pace ? <div className="sb-meter-marker" data-testid="pace-marker" style={{ left: `calc(${pace.markerPct}% - 1px)` }} /> : null}
       </div>
       <span className="sb-meter-value">{meter.text}</span>
     </div>
@@ -227,7 +234,7 @@ export function Sidebar() {
         {/* D17: Session + Week (+ a model's weekly limit while in use) replace the prototype's one "Max" row. */}
         <div className="sb-usage" data-testid="usage-meters">
           {usageRows(info, now).map((row) => (
-            <MeterRow key={row.model ? `model:${row.model}` : row.key} label={row.label} name={row.key} meter={row} {...(row.model ? { model: row.model } : {})} />
+            <MeterRow key={row.model ? `model:${row.model}` : row.key} label={row.label} name={row.key} meter={row} {...(row.model ? { model: row.model } : {})} {...(row.pace ? { pace: row.pace } : {})} />
           ))}
         </div>
       </div>

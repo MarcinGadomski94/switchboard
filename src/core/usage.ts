@@ -16,6 +16,8 @@
  *   model-scoped weekly limit (`rate_limits.model_scoped[]` / `limits[]` of a
  *   `get_usage` answer) while it is in use (above 0 % or active). A model window at
  *   the threshold warns like the other two.
+ * - D23: `weeklyPace` places the Week window against its daily allowance
+ *   (7 days of 24 h back from its reset, `day × 100 / 7` % during day *n*).
  */
 import type { SystemInfo, UsageWarning, UsageWindow, UsageWindowName } from './api.ts';
 import type { UsageSource } from './model.ts';
@@ -336,6 +338,48 @@ export function usageWindows(latest: UsageReadingFields | null, models: readonly
     if (m.pct > 0 || m.isActive) out.push({ key: 'model', label: m.model, pct: m.pct, resetsAt: m.resetsAt, model: m.model, ...(m.asOf ? { asOf: m.asOf } : {}) });
   }
   return out;
+}
+
+/** D23: the weekly window is this many pace days long. */
+export const WEEK_DAYS = 7;
+
+/**
+ * D23: one pace day, **24 hours** counted back from the weekly reset (not a
+ * calendar day): across a daylight-saving change the days stay 24 h long, so their
+ * start moves by the hour in local time (`docs/usage.md` → *Weekly pace*).
+ */
+export const PACE_DAY_MS = 24 * 60 * 60_000;
+
+/** D23: where the weekly usage stands against its daily allowance at a moment ({@link weeklyPace}). */
+export interface WeeklyPace {
+  /** The window's current day, 1–7: day 1 starts 7 × 24 h before the reset, each day at the reset's time. */
+  readonly day: number;
+  /** The allowance during this day, `day × 100 / 7` rounded to 2 decimals like the utilization: 14.29, …, 57.14, 71.43, 85.71, 100. */
+  readonly allowancePct: number;
+  /** When the allowance steps up next: the end of this day, ISO 8601 UTC (on day 7 the reset itself). */
+  readonly nextStepAt: string;
+  /** `pct < allowancePct`: on pace (green); at or above the allowance it is not (yellow). */
+  readonly onPace: boolean;
+}
+
+/**
+ * D23: the weekly window's pace at `now`. The allowance is spread evenly over the
+ * window's 7 days, counted from its own reset time: the window started 7 × 24 h
+ * before `resetsAt`, each day starts at the reset's time of day, and during day
+ * *n* the allowance is *n* × 100 / 7 %. Returns `null` (unknown, never guessed)
+ * when `pct` or `resetsAt` is not usable, when the reset is not ahead of `now`, or
+ * when it is more than 7 days ahead (then `now` is outside the window it closes).
+ */
+export function weeklyPace(week: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date): WeeklyPace | null {
+  const pct = normalizePct(week.pct);
+  const reset = Date.parse(week.resetsAt);
+  const at = now.getTime();
+  if (pct === null || !Number.isFinite(reset) || !Number.isFinite(at) || reset <= at) return null;
+  const start = reset - WEEK_DAYS * PACE_DAY_MS;
+  if (at < start) return null;
+  const day = Math.floor((at - start) / PACE_DAY_MS) + 1;
+  const allowancePct = Math.round(((day * 100) / WEEK_DAYS) * 100) / 100;
+  return { day, allowancePct, nextStepAt: new Date(start + day * PACE_DAY_MS).toISOString(), onPace: pct < allowancePct };
 }
 
 /**
