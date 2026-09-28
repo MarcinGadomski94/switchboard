@@ -6,6 +6,7 @@
  * - A session whose process was live (`run` / `need`, attached) is resumed with
  *   `--resume <claudeSessionId>`: `run` gets {@link RESTART_MESSAGE}, `need` stays
  *   idle and {@link RESTART_NOTE} waits in its outbox for its answers.
+ * - D33: a closed session is never resumed (its leftovers are still cleaned up).
  * - Never two live processes on one id (they fork the conversation, M0.4): a process
  *   left behind by a service that died (its recorded pid, listed by
  *   `claude agents --json` with the same session id) is stopped first with SIGINT →
@@ -111,9 +112,14 @@ export interface RecoveryReport {
   readonly sessions: RecoveredSession[];
 }
 
-/** `true` for a session whose process was live and that D7 resumes. */
-function wantsResume(session: SessionRecord): boolean {
+/** `true` for a session whose stored state says its process was live (`run` / `need`, attached). */
+function wasLive(session: SessionRecord): boolean {
   return session.attached && (session.status === 'run' || session.status === 'need');
+}
+
+/** `true` for a session whose process was live and that D7 resumes. D33: never a closed session. */
+function wantsResume(session: SessionRecord): boolean {
+  return session.closedAt === null && wasLive(session);
 }
 
 /**
@@ -125,7 +131,7 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
   const { store, supervisor } = options;
   const processes = options.processes ?? osProcesses;
   const onError = options.onError ?? ((error: unknown) => console.error('switchboard recovery:', error));
-  const candidates = (await store.sessions.list()).filter((session) => session.pid !== null || wantsResume(session));
+  const candidates = (await store.sessions.list()).filter((session) => session.pid !== null || wasLive(session));
   if (candidates.length === 0) return { sessions: [] };
 
   // D14: sessions run in their own folders, so the list is read once per cwd.
@@ -196,6 +202,8 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
 
     if (!wantsResume(session)) {
       if (reason !== null) onError(new Error(`session ${session.name}: ${reason}`));
+      // D33: a closed session is never resumed; a run / need status its gone process left becomes paused.
+      if (session.closedAt !== null && wasLive(session)) await supervisor.markPausedAfterRestart(session.id);
       return report('cleaned', reason ?? undefined);
     }
 

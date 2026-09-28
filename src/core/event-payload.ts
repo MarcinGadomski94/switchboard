@@ -139,7 +139,11 @@ export type LifecycleAction =
   /** D16: a terminal conversation continued in Switchboard (`--resume` of its id, no message). */
   | 'moved'
   /** D25: a local copy of a remote session was started (`--teleport <session_X>`; `message` names the remote session). */
-  | 'teleported';
+  | 'teleported'
+  /** D33: the developer closed the session (its process, if any, was stopped as by Pause first). */
+  | 'closed'
+  /** D33: the developer reopened a closed session (no process is started). */
+  | 'reopened';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

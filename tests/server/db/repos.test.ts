@@ -76,6 +76,8 @@ describe('sessions', () => {
       remoteEnabled: false,
       remoteSessionUrl: null,
       remoteBridgeId: null,
+      // D33 (0010): open.
+      closedAt: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });
@@ -125,6 +127,21 @@ describe('sessions', () => {
     expect((await store.sessions.list()).map((s) => s.id)).toEqual([b.id, a.id]);
     expect((await store.sessions.list({ statuses: ['need', 'run'] })).map((s) => s.id)).toEqual([b.id]);
     expect(await store.sessions.list({ statuses: [] })).toEqual([]);
+  });
+
+  it('D33: list filters by closed state (open only, closed only), with the status filter too', async () => {
+    const a = await session('a');
+    tick();
+    const b = await store.sessions.create({ name: 'b', claudeSessionId: 'cb', status: 'paused' });
+    tick();
+    const c = await store.sessions.create({ name: 'c', claudeSessionId: 'cc', status: 'need' });
+    await store.sessions.update(b.id, { closedAt: T0 });
+    expect((await store.sessions.list()).map((s) => s.id)).toEqual([c.id, b.id, a.id]);
+    expect((await store.sessions.list({ closed: false })).map((s) => s.id)).toEqual([c.id, a.id]);
+    expect((await store.sessions.list({ closed: true })).map((s) => s.id)).toEqual([b.id]);
+    expect((await store.sessions.list({ closed: false, statuses: ['need', 'paused'] })).map((s) => s.id)).toEqual([c.id]);
+    expect((await store.sessions.update(b.id, { closedAt: null }))?.closedAt).toBeNull();
+    expect((await store.sessions.list({ closed: true })).map((s) => s.id)).toEqual([]);
   });
 
   it('rejects duplicate names / claude ids and values outside the locked enums', async () => {
@@ -282,6 +299,8 @@ describe('questions', () => {
       deliveredAt: null,
       // D24 (0007): answered on the phone first.
       answeredOn: null,
+      // D33 (0010): closed with its session.
+      closedReason: null,
     });
     expect(questions.map((q) => [q.position, q.text, q.header, q.options, q.multiSelect, q.answerIndex])).toEqual([
       [0, 'Wrap or scroll?', 'Chips', input.questions[0]?.options, false, null],
@@ -292,6 +311,25 @@ describe('questions', () => {
     expect(await store.questions.getQuestion(questions[0]!.id)).toEqual(questions[0]);
     expect(await store.questions.listBatches({ sessionId: s.id, states: ['open'] })).toEqual([stored]);
     expect(await store.questions.listBatches({ states: ['stale'] })).toEqual([]);
+  });
+
+  it('D33: closeUnanswered closes a waiting batch without answers (open → stale + label, stale keeps its staleAt); answered or closed ones are left alone', async () => {
+    const s = await session();
+    await batch(s.id);
+    const t1 = tick();
+    expect(await store.questions.closeUnanswered('req-ask', 'session closed')).toMatchObject({ state: 'stale', staleAt: t1, answeredAt: null, closedReason: 'session closed' });
+    tick();
+    expect(await store.questions.closeUnanswered('req-ask', 'other')).toMatchObject({ staleAt: t1, closedReason: 'session closed' });
+    const stale = await store.questions.createBatch({ id: 'req-stale', sessionId: s.id, input }, [{ source: 'main', text: 'a', options: [{ label: 'x' }] }]);
+    const t2 = tick();
+    await store.questions.markStale('req-stale');
+    tick();
+    expect(await store.questions.closeUnanswered('req-stale', 'session closed')).toMatchObject({ state: 'stale', staleAt: t2, closedReason: 'session closed' });
+    const answered = await store.questions.createBatch({ id: 'req-done', sessionId: s.id, input }, [{ source: 'main', text: 'b', options: [{ label: 'y' }] }]);
+    await store.questions.answer('req-done', [{ questionId: answered.questions[0]!.id, answerIndex: 0 }]);
+    expect(await store.questions.closeUnanswered('req-done', 'session closed')).toMatchObject({ state: 'answered', closedReason: null });
+    expect(stale.batch.closedReason).toBeNull();
+    expect(await store.questions.closeUnanswered('missing', 'session closed')).toBeNull();
   });
 
   it('createBatch is atomic', async () => {

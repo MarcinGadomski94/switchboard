@@ -76,6 +76,12 @@ export interface SessionRecord {
   readonly remoteSessionUrl: string | null;
   /** D24: the last bridge's `cse_…` id (the next `reattach_session_id`); kept when Remote is turned off. */
   readonly remoteBridgeId: string | null;
+  /**
+   * D33 (0010): when the developer closed the session (ISO); `null` = open. A
+   * closed session leaves the sidebar's list and is never resumed by restart
+   * recovery; History lists it and Reopen clears this.
+   */
+  readonly closedAt: string | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -87,6 +93,8 @@ export type SessionPatch = Patch<SessionRecord, 'id' | 'createdAt' | 'updatedAt'
 /** Filter of {@link SessionRepository.list}. */
 export interface SessionFilter {
   readonly statuses?: readonly SessionStatus[];
+  /** D33: `false` = only open sessions (`closed_at` NULL), `true` = only closed ones; omitted = both. */
+  readonly closed?: boolean;
 }
 
 const SPEC: TableSpec<SessionRecord> = {
@@ -132,6 +140,7 @@ const SPEC: TableSpec<SessionRecord> = {
     remoteEnabled: ['remote_enabled', 'bool'],
     remoteSessionUrl: ['remote_session_url', 'text'],
     remoteBridgeId: ['remote_bridge_id', 'text'],
+    closedAt: ['closed_at', 'text'],
   },
 };
 
@@ -165,11 +174,15 @@ export class SessionRepository {
 
   /** Sessions, newest first. */
   async list(filter: SessionFilter = {}): Promise<SessionRecord[]> {
+    const where: string[] = [];
+    const params: string[] = [];
     if (filter.statuses) {
       if (filter.statuses.length === 0) return [];
-      return this.#table.select(`status IN (${placeholders(filter.statuses.length)})`, filter.statuses, 'created_at DESC, id');
+      where.push(`status IN (${placeholders(filter.statuses.length)})`);
+      params.push(...filter.statuses);
     }
-    return this.#table.select('', [], 'created_at DESC, id');
+    if (filter.closed !== undefined) where.push(filter.closed ? 'closed_at IS NOT NULL' : 'closed_at IS NULL');
+    return this.#table.select(where.join(' AND '), params, 'created_at DESC, id');
   }
 
   /** Updates the given fields (and `updatedAt`); `null` if there is no such session. */

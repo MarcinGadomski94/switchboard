@@ -47,7 +47,7 @@ const PORT = 4910; // inject() opens no socket; the port feeds the Host check on
 const HOST = `127.0.0.1:${PORT}`;
 
 /** The exact keys of the contract's Question (src/core/api.ts). */
-const QUESTION_KEYS = ['answerIndex', 'answeredAt', 'answeredOn', 'batchId', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
+const QUESTION_KEYS = ['answerIndex', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
 
 interface Rig {
   readonly w: SupervisorWorld;

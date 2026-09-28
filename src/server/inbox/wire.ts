@@ -34,12 +34,17 @@ export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): 
     answeredAt: record.answeredAt,
     // D24: answered on the phone (Remote Control) before Switchboard answered.
     answeredOn: batch.answeredOn,
+    // D33: closed without answers (its session was closed).
+    closedReason: batch.closedReason,
   };
 }
 
-/** `true` while a batch waits for the developer: open, or stale and still unanswered (it stays answerable). */
+/**
+ * `true` while a batch waits for the developer: open, or stale and still
+ * unanswered (it stays answerable), and not closed with its session (D33).
+ */
 export function isBatchWaiting(batch: QuestionBatchRecord): boolean {
-  return batch.answeredAt === null && (batch.state === 'open' || batch.state === 'stale');
+  return batch.answeredAt === null && batch.closedReason === null && (batch.state === 'open' || batch.state === 'stale');
 }
 
 /**

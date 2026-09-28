@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent } from '../../core/api.ts';
+import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
@@ -27,6 +28,9 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   // D25 (POST /api/sessions/teleport): the CLI refused the teleport, or never reported the local copy.
   'teleport-failed': 502,
   'teleport-timeout': 504,
+  // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
+  'close-needs-confirm': 409,
+  closed: 409,
 };
 
 interface IdParams {
@@ -54,15 +58,22 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
  * the UI side, M4.5 the diff; D22 the additive rename, `PUT /api/sessions/{id}/title`,
  * which publishes `sessionUpdated`; D24 the additive Remote toggle, `PUT
  * /api/sessions/{id}/remote`; D25 the additive `POST /api/sessions/teleport`,
- * a local copy of a remote session, {@link SessionTeleporter}). Every route sits
- * behind the security guard.
+ * a local copy of a remote session, {@link SessionTeleporter}; D33 the additive
+ * `POST /api/sessions/{id}/close` and `/reopen`, and `GET /api/sessions` leaving
+ * closed sessions out unless `?closed=include`). Every route sits behind the
+ * security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
 
-  app.get('/api/sessions', async (): Promise<Session[]> => {
+  // D33: closed sessions are left out unless `?closed=include` (History and the New-session name check list them).
+  app.get<{ Querystring: { closed?: unknown } }>('/api/sessions', async (request, reply): Promise<Session[] | FastifyReply> => {
+    const closed = parseClosedFilter(request.query.closed);
+    if (closed === null) {
+      return reply.code(422).send({ error: 'invalid', errors: [{ field: 'closed', message: `closed must be one of ${CLOSED_FILTERS.join(', ')}` }] });
+    }
     // D25: a teleport that has not reported its local session yet is not listed (a refusal deletes it again).
-    const records = (await store.sessions.list()).filter((record) => !supervisor.isStarting(record.id));
+    const records = (await store.sessions.list(closed === 'include' ? {} : { closed: false })).filter((record) => !supervisor.isStarting(record.id));
     return Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
   });
 
@@ -150,6 +161,29 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     }
   });
 
+  // D33 (additive): close. `{ confirm: true }` is needed when the process is live or the session runs or waits (else 409
+  // `close-needs-confirm`); the stop is Pause's, then its waiting questions and permission requests close ("session closed").
+  app.post<{ Params: IdParams }>('/api/sessions/:id/close', async (request, reply): Promise<Session | FastifyReply> => {
+    const confirm = parseCloseInput(request.body);
+    if (confirm === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'confirm', message: 'the body must be empty or { confirm: true | false }' }] });
+    try {
+      const record = await supervisor.close(request.params.id, { confirm, beforePublish: (id) => context.questions.closeSession(id) });
+      return await toSession(store, record, supervisor.activity(record.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D33 (additive): reopen. Only `closedAt` is cleared: no process starts; the next message resumes the session.
+  app.post<{ Params: IdParams }>('/api/sessions/:id/reopen', async (request, reply): Promise<Session | FastifyReply> => {
+    try {
+      const record = await supervisor.reopen(request.params.id);
+      return await toSession(store, record, supervisor.activity(record.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   app.post<{ Params: IdParams }>('/api/sessions/:id/detach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
     try {
       return await supervisor.detach(request.params.id);
@@ -215,6 +249,18 @@ export function parseTitleInput(body: unknown): { readonly ok: true; readonly ti
   if (raw === null || (typeof raw === 'string' && raw.trim() === '')) return { ok: true, title: null };
   const check = checkTitle(raw);
   return check.ok ? { ok: true, title: check.title } : { ok: false, message: check.message };
+}
+
+/**
+ * The body of `POST /api/sessions/{id}/close` (D33, `SessionCloseInput`): none (or
+ * `null`) or `{}` = no confirm, `{ confirm: boolean }` = that; anything else `null`.
+ */
+export function parseCloseInput(body: unknown): boolean | null {
+  if (body === undefined || body === null) return false;
+  if (typeof body !== 'object' || Array.isArray(body)) return null;
+  const confirm = (body as SessionCloseInput & Record<string, unknown>).confirm;
+  if (confirm === undefined) return false;
+  return typeof confirm === 'boolean' ? confirm : null;
 }
 
 /** The body of `PUT /api/sessions/{id}/remote` (D24, `SessionRemoteInput`): `{ enabled: boolean }`, else `null`. */

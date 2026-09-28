@@ -217,6 +217,23 @@ export interface Session {
    * older payloads and fixtures still type-check.
    */
   readonly remoteSource?: string | null;
+  /**
+   * Additive (D33, migration 0010): when the developer closed the session (ISO);
+   * `null` while it is open. `GET /api/sessions` leaves closed sessions out unless
+   * `?closed=include`; History lists them with a "Closed" tag and Reopen. The
+   * server always sends it; optional here so older payloads and fixtures still
+   * type-check.
+   */
+  readonly closedAt?: string | null;
+}
+
+/**
+ * Additive (D33): body of `POST /api/sessions/{id}/close`. `confirm: true` is
+ * needed when the session's process is live or the session runs or waits
+ * (`run` / `need`): the close stops it the way Pause does.
+ */
+export interface SessionCloseInput {
+  readonly confirm?: boolean;
 }
 
 /**
@@ -438,6 +455,13 @@ export interface Question {
    * no `answerIndex`). `null` / absent otherwise.
    */
   readonly answeredOn?: AnsweredOn | null;
+  /**
+   * Additive (D33): why the batch was closed without answers while it still
+   * waited (`session closed`: its session was closed); it then waits no more and
+   * answering it is 409 `not-open`. `null` otherwise; optional here so older
+   * payloads and fixtures still type-check.
+   */
+  readonly closedReason?: string | null;
 }
 
 /** A solution + branch pair (branch chips). */
@@ -719,6 +743,12 @@ export interface HistoryItem {
    * badge. Absent otherwise.
    */
   readonly remoteControl?: boolean;
+  /**
+   * Additive (D33): on a stored session's row, when the session was closed (the
+   * row's "Closed" tag and Reopen, `POST /api/sessions/{id}/reopen`); `null` while
+   * it is open. Absent on a terminal conversation's row.
+   */
+  readonly closedAt?: string | null;
 }
 
 /**

@@ -21,7 +21,7 @@ The route is behind the same guard as every API call (`docs/security.md`): a for
 
 | Event | Payload | Published by | Since |
 |---|---|---|---|
-| `sessionUpdated` | `Session` | `SessionSupervisor.on('sessionUpdated')` (every status / attachment change), forwarded by `forwardServiceEvents` | M2.1 → wired in M2.3 |
+| `sessionUpdated` | `Session` | `SessionSupervisor.on('sessionUpdated')` (every status / attachment change; D33: a close or reopen, carrying `closedAt`, on which the sidebar reloads its list of open sessions), forwarded by `forwardServiceEvents` | M2.1 → wired in M2.3 |
 | `event` | `{ sessionId, event: Event }` | `SessionSupervisor.on('event')` (every event insert or update: a merged assistant text or a closed tool call is sent again with the same `id`) | M2.1 → wired in M2.3 |
 | `worktreeRemovable` | `Worktree` | `WorktreeManager.on('worktreeRemovable')` (once, when a worktree's PR is merged and removal is allowed) | M2.2 → wired in M2.3 |
 | `questionBatch` | `{ sessionId, batchId, questions }` | the question pipeline (`QuestionPipeline.canUseTool`, once per new batch; `docs/questions.md`); the UI raises the toast, chime and OS notification (M3.4, `docs/notifications.md`) | M3.1 |

@@ -249,6 +249,8 @@ describe('History rows (M7.4, gap #5)', () => {
       status: 'done',
       folder: null,
       folderPath: null,
+      // D33: open.
+      closedAt: null,
     });
     expect(historyBranchLine(row!)).toBe('alpha-front ⎇ session/pay-flow · mobile ⎇ session/pay-flow · contracts');
   });
@@ -349,6 +351,23 @@ describe('History rows (M7.4, gap #5)', () => {
     expect(isTerminalConversation(baseFacts({ entrypoint: 'sdk-cli' }))).toBe(false);
     expect(isTerminalConversation(baseFacts({ firstPrompt: null }))).toBe(false);
     expect(isTerminalConversation(baseFacts({ startCwd: null }))).toBe(false);
+  });
+
+  it('D33: a closed stored session is listed next to the open ones with its closedAt; "closed" finds it; terminal rows carry none', () => {
+    const closedAt = '2026-09-28T09:00:00.000Z';
+    const built = rows(
+      [
+        session({ id: 'sb-open', claudeSessionId: 'open', name: 'still-open' }),
+        session({ id: 'sb-closed', claudeSessionId: 'closed', name: 'put-away', status: 'paused', closedAt }),
+      ],
+      [{ facts: baseFacts({ sessionId: 'term' }), mtimeMs: OLD }],
+    );
+    const byId = Object.fromEntries(filterHistory(built, '').map((item) => [item.claudeSessionId, item]));
+    expect(byId['open']?.closedAt).toBeNull();
+    expect(byId['closed']).toMatchObject({ sessionId: 'sb-closed', closedAt, status: 'paused', outcome: 'paused' });
+    expect(byId['term']?.terminal).toBe(true);
+    expect(byId['term']).not.toHaveProperty('closedAt');
+    expect(filterHistory(built, 'CLOSED').map((item) => item.claudeSessionId)).toEqual(['closed']);
   });
 
   it('a stored session keeps one row even when its file mixes sdk-cli and cli, and a newer duplicate file wins', () => {

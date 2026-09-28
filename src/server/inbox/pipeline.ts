@@ -3,6 +3,7 @@ import { mainAgentName } from '../../core/derive/agents.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
+import { SESSION_CLOSED_REASON } from '../../core/session-close.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
@@ -13,7 +14,7 @@ import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { toSession } from '../sessions/wire.ts';
 import { type CanUseToolContext, type ControlRequestHandler, SupervisorError } from '../supervisor/supervisor.ts';
-import { inboxCount, toQuestion } from './wire.ts';
+import { inboxCount, isBatchWaiting, toQuestion } from './wire.ts';
 
 /** The tool whose `can_use_tool` request is a question batch (M0.2). */
 export const ASK_TOOL = 'AskUserQuestion';
@@ -164,6 +165,29 @@ export class QuestionPipeline implements ControlRequestHandler {
     await this.#publishInbox();
   }
 
+  /**
+   * D33: the session was closed. Its question batches that still wait for the
+   * developer (open, or stale and unanswered) are closed without answers with the
+   * label `reason` (`session closed`; `closeUnanswered`: stale + `closedReason`),
+   * and its open permission requests go stale (the stale path): all of them leave
+   * the Inbox, and a closed batch can no longer be answered. Publishes
+   * `inboxChanged` when anything closed. Stale answers already queued for the
+   * session's next run stay queued (they were given before the close).
+   */
+  async closeSession(sessionId: string, reason: string = SESSION_CLOSED_REASON): Promise<void> {
+    let changed = false;
+    for (const batch of await this.#store.questions.listBatches({ sessionId, states: ['open', 'stale'] })) {
+      if (!isBatchWaiting(batch)) continue;
+      await this.#store.questions.closeUnanswered(batch.id, reason);
+      changed = true;
+    }
+    for (const request of await this.#store.permissions.list({ sessionId, states: ['open'] })) {
+      await this.#store.permissions.markStale(request.id);
+      changed = true;
+    }
+    if (changed) await this.#publishInbox();
+  }
+
   /** Queued stale answers went out with a stdin message: record the batch as delivered. */
   async pendingDelivered(_sessionId: string, messages: readonly PendingMessageRecord[]): Promise<void> {
     for (const message of messages) {
@@ -186,6 +210,8 @@ export class QuestionPipeline implements ControlRequestHandler {
   async answerBatch(batchId: string, body: unknown): Promise<AnswerOutcome> {
     const found = await this.#store.questions.getBatchWithQuestions(batchId);
     if (!found) throw new InboxError('not-found', `no question batch ${batchId}`);
+    // D33: closed without answers (its session was closed).
+    if (found.batch.closedReason !== null) throw new InboxError('not-open', `question batch ${batchId} was closed (${found.batch.closedReason})`);
     if (found.batch.answeredAt !== null) {
       // D24: the phone answered it first (Remote Control).
       const where = found.batch.answeredOn ? ` on ${found.batch.answeredOn}` : '';
