@@ -13,3 +13,6 @@
 | Footer | the Max meter showed a real reading from the CLI (M9.2) |
 
 Verdict: **pass**. The supervisor, the stdio question pipeline, the Inbox, the first-turn payload and the D6 fallback all work against the real CLI.
+
+## Run 2026-09-28, afternoon (D14 build)
+The folder (a sandbox workspace with a router `AGENTS.md`) was added through `POST /api/folders` like Settings → Folders → Add… does, then the session started in it. The question reached the Inbox verbatim, "Blue" went back, and the reply was `Blue`. Status `done`, 6 events, 8 s end to end; the D6 fallback (auto → acceptEdits on Haiku) triggered as before. Verdict: **pass**.

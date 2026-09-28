@@ -4,7 +4,7 @@ Built by an unattended overnight run (2026-09-27 → 28) and finished in a devel
 
 ## Summary
 - **All 39 backlog items are on `main` and green.** Overnight, 26 landed on `main`. Three lanes (13 items) passed in their worktrees, but the merge step's conflict resolution was refused by the permission check ("Merge Without Review"). In the morning session, with the developer's approval, the three lanes were merged in the main session (9432139, b72a192, fca998c). The integration fixes are listed under *Morning session*.
-- **Final suites on a clean install** (`rm -rf node_modules dist && npm ci`): typecheck green; `npm test` **913/913** (94 files); build ok; `npm run e2e` **84/84**, including the D13 walkthrough and every visual spec. The full visual pass gates all 14 SPEC surfaces with nothing pending. Nothing was left listening on the test ports, and the working tree is clean.
+- **Final suites on a clean install** (`rm -rf node_modules dist && npm ci`), after D14: typecheck green; `npm test` **948/948** (97 files); build ok; `npm run e2e` **89/89**, including the D13 walkthrough and every visual spec. The full visual pass gates all 14 SPEC surfaces with nothing pending. Nothing was left listening on the test ports, and the working tree is clean.
 - **D13 checks all ran:** (1) the real-path walkthrough E2E (no demo seed) is green and stable over repeats; (2) the **real-CLI smoke on Haiku passed** end to end (`docs/smoke-real-cli.md`); (3) the prototype-string audit is clean.
 - **Developer follow-ups done:** sessions start in **auto** permission mode with an `acceptEdits` fallback (D6; one approved probe on the default model); the **nested mobile clone** (`mobile/acme-app-mobile/`) is recognized; the embedded-tool iframe is **sandboxed**; one `.codebase-memory-dirty` parser.
 
@@ -113,6 +113,15 @@ Other commits on `main`: 6b8c9fe *Wave 1: merge lanes*, 34a1f54 *Wave 2: merge l
 | 05fb890 | Visual reports regenerated on the merged main |
 
 Each merge and fix records its resolutions as `ASSUMED` lines in `.loop/questions.md` (sections *Wave 1 · lane w1-tools · merged*, *Wave 2 · …*, *Follow-ups after the merges*).
+
+## D14 · folders per session (2026-09-28, afternoon)
+Developer ruling D14 (`docs/decisions.md`): there is no single workspace root and no `SWITCHBOARD_WORKSPACE_ROOT` any more. Every session runs in a folder you pick.
+- **Saved folders:** Settings → Folders lets you add (Browse…), remove and mark a default. A folder is a *workspace* (a router `AGENTS.md`, not itself a git main checkout) or a *repo* (a git main checkout); anything else is refused with a reason. An earlier wizard root migrates in as the default, and the first-run wizard now offers a skippable "Add your first folder".
+- **New-session form** (and New scheduled run): a Folder row at the top, with the saved folders (default first), Browse… and the check line. Changing the folder re-reads its solutions. A workspace folder keeps the router sections, and the session runs at its root. A repo folder hides the router sections and shows the repo as the one locked solution; the session runs in the repo, or in its worktree when Worktree is on, and its first message carries only the worktree note.
+- **Everywhere else:** sessions and schedules keep their folder through resume, restart recovery, terminal handoff, worktrees and diffs. Solutions and the Codebase Memory strip have a folder switcher (`?folder=`). Sessions from non-default folders carry a folder tag in the sidebar, Inbox, History, Artifacts and Schedules. History reads the transcripts of every saved folder and every session's folder.
+- **Commits:** 6366555 (decision), server 91e44ce · d167ec7 · d8f05d0, UI b4e2a38 · 5294631 · 67812c4 · 6349f30 · 4bfdc03, demo check 1ec96ec. The separate verification stage was dropped at the developer's request; the lighter check below replaced it.
+- **Checks after a clean install:** typecheck green; `npm test` **948/948** (97 files); `npm run e2e` **89/89**, which includes `folders.spec.ts`, the repo-folder walkthrough (`walkthrough-repo.spec.ts`) and every visual spec. The full pass gates all 14 surfaces, and the Folder row is recorded as a D14 addition, not a finding. `SWITCHBOARD_WORKSPACE_ROOT` appears only in `docs/decisions.md`. The real-CLI smoke passed again on the D14 build: its folder is added through `POST /api/folders`, 8 s end to end.
+- **Assumptions:** the `ASSUMED D14-…` lines at the end of `.loop/questions.md`. The ones to read first: a folder whose `.git` is a file (a worktree) is refused; removing a folder that a schedule uses is refused (409) until the schedule moves; removing the default makes the most recently used folder the default.
 
 ## Blocked and skipped
 None. No item failed its oracle; the overnight "blocked by the merge step" items were merged in the morning session.
