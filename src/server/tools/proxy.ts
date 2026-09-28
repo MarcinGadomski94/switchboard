@@ -17,6 +17,10 @@ import { withFrameAncestors } from './framing.ts';
  *   is refused with 403 (DNS rebinding), one whose target is not a path with 400;
  * - the forwarded request's `Host` is the tool's, and Switchboard's `sb_token` is
  *   removed from its `Cookie` (cookies ignore ports, so the browser sends it here);
+ * - an `Origin` / `Referer` naming the proxy itself is rewritten to the tool's origin
+ *   (the tool's own page, seen through the proxy): the Codebase Memory UI refuses
+ *   any foreign `Origin` with 403, even on its own module scripts (2026-09-28, D15
+ *   amendment). Any other `Origin` / `Referer` passes unchanged;
  * - the answer loses `X-Frame-Options`; every `Content-Security-Policy` gets
  *   `frame-ancestors` = Switchboard's origins (added as its own header when the
  *   tool sends none, so no other site can frame the tool through the proxy);
@@ -85,9 +89,24 @@ function connectionTokens(value: string | string[] | undefined): Set<string> {
 }
 
 /**
+ * `Origin` / `Referer` as the tool sees them: a value naming the proxy's own origin
+ * (`proxyOrigin`, e.g. `http://127.0.0.1:57428`) is rewritten to the tool's origin;
+ * anything else (another site, `null`) is left unchanged. `undefined` stays absent.
+ */
+export function rewriteOriginHeader(name: 'origin' | 'referer', value: string | undefined, proxyOrigin: string, target: URL): string | undefined {
+  if (value === undefined) return undefined;
+  const proxy = proxyOrigin.toLowerCase();
+  const lower = value.toLowerCase();
+  if (name === 'origin') return lower === proxy ? target.origin : value;
+  if (lower === proxy || lower.startsWith(`${proxy}/`)) return target.origin + value.slice(proxyOrigin.length);
+  return value;
+}
+
+/**
  * The request headers sent to the tool: every header of `req` except hop-by-hop
  * ones (an upgrade keeps `Connection: Upgrade` + `Upgrade`), `Host` = the tool's
- * host, and `Cookie` without `sb_token`.
+ * host, `Cookie` without `sb_token`, and `Origin` / `Referer` naming the proxy
+ * rewritten to the tool's origin ({@link rewriteOriginHeader}).
  */
 function upstreamRequestHeaders(req: http.IncomingMessage, target: URL, upgrade: boolean): http.OutgoingHttpHeaders {
   const named = connectionTokens(req.headers.connection);
@@ -98,6 +117,13 @@ function upstreamRequestHeaders(req: http.IncomingMessage, target: URL, upgrade:
     headers[name] = value;
   }
   headers['host'] = target.host;
+  // The proxy's own origin, as the browser named it (the Host was checked before forwarding).
+  const proxyOrigin = `http://${req.headers.host ?? ''}`;
+  for (const name of ['origin', 'referer'] as const) {
+    const value = req.headers[name];
+    const rewritten = rewriteOriginHeader(name, typeof value === 'string' ? value : undefined, proxyOrigin, target);
+    if (rewritten !== undefined) headers[name] = rewritten;
+  }
   const cookie = stripTokenCookie(req.headers.cookie);
   if (cookie !== undefined) headers['cookie'] = cookie;
   if (upgrade) {

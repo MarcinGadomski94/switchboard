@@ -3,7 +3,7 @@ import net from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { switchboardOrigins } from '../../../src/server/tools/framing.ts';
 import { ToolProxies } from '../../../src/server/tools/proxies.ts';
-import { type ToolProxy, proxiedResponseHeaders, rewriteLocation, startToolProxy, stripTokenCookie } from '../../../src/server/tools/proxy.ts';
+import { type ToolProxy, proxiedResponseHeaders, rewriteLocation, rewriteOriginHeader, startToolProxy, stripTokenCookie } from '../../../src/server/tools/proxy.ts';
 import { type ToolStub, htmlAnswer, startToolStub } from '../../helpers/tool-stub.ts';
 
 /**
@@ -86,6 +86,43 @@ function all(rawHeaders: readonly string[], name: string): string[] {
   for (let i = 0; i + 1 < rawHeaders.length; i += 2) if (rawHeaders[i]!.toLowerCase() === name) values.push(rawHeaders[i + 1]!);
   return values;
 }
+
+describe('the framing proxy · Origin / Referer (D15 amendment 2026-09-28)', () => {
+  it('a tool that refuses foreign Origins (like Codebase Memory) serves its own module scripts through the proxy', async () => {
+    // The stub answers 403 to any Origin but its own, as the real Codebase Memory UI does.
+    const tool = await stub((req, res) => {
+      const origin = req.headers.origin;
+      if (origin !== undefined && origin !== toolOrigin) {
+        res.writeHead(403).end('forbidden origin');
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/javascript' }).end('export {};');
+    });
+    const toolOrigin = tool.origin;
+    const proxy = await proxyFor(`${tool.origin}/`);
+    const proxyOrigin = `http://127.0.0.1:${proxy.port}`;
+
+    const own = await send(proxy.port, { path: '/assets/index.js', headers: { origin: proxyOrigin, referer: `${proxyOrigin}/index.html` } });
+    expect(own.status).toBe(200);
+    expect(tool.requests.at(-1)?.headers).toMatchObject({ origin: tool.origin, referer: `${tool.origin}/index.html` });
+
+    // Any other Origin passes unchanged (and this tool refuses it).
+    const foreign = await send(proxy.port, { path: '/assets/index.js', headers: { origin: 'http://evil.example' } });
+    expect(foreign.status).toBe(403);
+    expect(tool.requests.at(-1)?.headers.origin).toBe('http://evil.example');
+  });
+
+  it('rewriteOriginHeader: only values naming the proxy change', () => {
+    const target = new URL('http://localhost:13000/');
+    const proxy = 'http://127.0.0.1:57428';
+    expect(rewriteOriginHeader('origin', proxy, proxy, target)).toBe('http://localhost:13000');
+    expect(rewriteOriginHeader('origin', 'null', proxy, target)).toBe('null');
+    expect(rewriteOriginHeader('origin', 'http://127.0.0.1:4870', proxy, target)).toBe('http://127.0.0.1:4870');
+    expect(rewriteOriginHeader('referer', `${proxy}/graph?x=1`, proxy, target)).toBe('http://localhost:13000/graph?x=1');
+    expect(rewriteOriginHeader('referer', 'http://127.0.0.1:574281/x', proxy, target)).toBe('http://127.0.0.1:574281/x');
+    expect(rewriteOriginHeader('referer', undefined, proxy, target)).toBeUndefined();
+  });
+});
 
 describe('the framing proxy (D15)', () => {
   it('forwards method, path and query to the tool, with the tool as Host; frame-ancestors replaced, X-Frame-Options dropped', async () => {
