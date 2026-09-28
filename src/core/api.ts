@@ -231,6 +231,22 @@ export interface SolutionArtifact {
   readonly sessionId: string | null;
 }
 
+/**
+ * A session in a solution's conflict (M6.3, `docs/solutions.md` → *Conflicts*):
+ * one of the open sessions writing the repo while at least one of them has no
+ * worktree of its own.
+ */
+export interface ConflictSession {
+  readonly sessionId: string;
+  readonly name: string;
+  /** `true` when it writes in its own worktree; `false` = in the main checkout (the card offers "Move … to worktree"). */
+  readonly isolated: boolean;
+  /** The `{repo}` of `POST /api/solutions/{repo}/isolate`: the solution as the session lists it (or its worktree's repo). */
+  readonly repo: string;
+  /** `false` while it continues in a terminal: isolating it is refused (409 `detached`) until it is attached again. */
+  readonly attached: boolean;
+}
+
 /** codebase-memory freshness of a solution (`.claude/.codebase-memory-dirty`, M6.2 / M6.4). */
 export type CodebaseMemoryFreshness = 'fresh' | 'dirty' | 'unknown';
 
@@ -248,7 +264,10 @@ export interface Solution {
   readonly changes: string;
   /** Second-line flag ("⚠ shared working tree", "contract source"); empty when none. */
   readonly flag: string;
+  /** Two or more open sessions write the repo and at least one has no worktree of its own (M6.3). */
   readonly conflict: boolean;
+  /** The sessions in the conflict, oldest first; empty without one (M6.3). */
+  readonly conflictSessions: readonly ConflictSession[];
   readonly branches: readonly SolutionBranch[];
   /** The solution's `phase-ledger.md` entries (gap #12); `null` when it has no such file. M6.2. */
   readonly ledger: readonly PhaseLedgerEntry[] | null;

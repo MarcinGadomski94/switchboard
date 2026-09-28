@@ -264,6 +264,7 @@ function toSolution(solution: ScannedSolution, folder: ScannedFolder): Solution 
     changes: folder.rule === 'read-only' ? 'locked' : '—',
     flag: '',
     conflict: false,
+    conflictSessions: [],
     branches: [],
     ledger: null,
     artifacts: [],
@@ -279,7 +280,7 @@ function toSolution(solution: ScannedSolution, folder: ScannedFolder): Solution 
  * from the folders that have solutions). Groups without solutions are left out.
  * Solutions are sorted by name. The live fields (status, branches, phase,
  * changes, flag, conflict, ledger, artifacts, codebase-memory freshness) are
- * neutral here; `LiveSolutions` (M6.2) fills them.
+ * neutral here; `LiveSolutions` (M6.2, conflicts M6.3) fills them.
  */
 export function toSolutionGroups(scan: WorkspaceScan): SolutionGroup[] {
   const groups: SolutionGroup[] = [];

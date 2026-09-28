@@ -341,3 +341,51 @@
   cursor: pointer;
   text-decoration: none;
 }
+
+/* Conflict warning card (M6.3): the prototype's `sd.warn` card, question-card colors. */
+.sb-sol-conflict {
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sb-sol-conflict-text {
+  font-size: 13px;
+  color: var(--text-strong);
+  line-height: 1.45;
+}
+
+.sb-sol-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-sol-move {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-sol-move:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-sol-move[aria-busy='true'] {
+  cursor: progress;
+}
+
+.sb-sol-conflict-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}

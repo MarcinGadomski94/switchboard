@@ -5,6 +5,7 @@ import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { Link } from '../router.tsx';
 import { statusColor } from '../shell/format.ts';
+import { SolutionConflictCard } from './SolutionConflictCard.tsx';
 import {
   SOLUTION_FILTERS,
   type SolutionFilter,
@@ -78,7 +79,7 @@ function SolutionRow({ solution, selected, onSelect }: { readonly solution: Solu
   );
 }
 
-function SolutionDetail({ solution, toolId }: { readonly solution: Solution; readonly toolId: string | null }) {
+function SolutionDetail({ solution, toolId, onMoved }: { readonly solution: Solution; readonly toolId: string | null; readonly onMoved: () => void }) {
   const fresh = freshnessLine(solution.codebaseMemory);
   return (
     <div className="sb-sol-detail" data-testid="solution-detail" data-solution={solution.name}>
@@ -88,6 +89,7 @@ function SolutionDetail({ solution, toolId }: { readonly solution: Solution; rea
         </div>
         <div className="sb-sol-detail-name">{solution.name}</div>
       </div>
+      <SolutionConflictCard key={solution.path} solution={solution} onMoved={onMoved} />
       <div className="sb-sol-section">
         <div className="sb-sol-label">Branches &amp; worktrees</div>
         {solution.branches.map((branch, index) => (
@@ -141,10 +143,10 @@ function SolutionDetail({ solution, toolId }: { readonly solution: Solution; rea
  * with filter pills, one row per solution (status dot, name + flag, branch chips
  * `⎇ branch · worktree · dot · session`, phase, changes), and the selected
  * solution's detail panel (path, branches & worktrees, phase ledger, artifacts &
- * follow-ups, codebase-memory freshness). Everything comes from
- * `GET /api/solutions` (`LiveSolutions` on the server); session updates and
- * removable worktrees reload it. The conflict warning card and its "Move … to
- * worktree" action are M6.3.
+ * follow-ups, codebase-memory freshness) with the conflict warning card and its
+ * "Move … to worktree" actions (M6.3, `SolutionConflictCard`). Everything comes
+ * from `GET /api/solutions` (`LiveSolutions` on the server); session updates,
+ * removable worktrees and a finished move reload it.
  */
 export function SolutionsView() {
   const solutions = useApi(api.solutions);
@@ -241,7 +243,11 @@ export function SolutionsView() {
           {body}
         </div>
       </div>
-      {selected ? <SolutionDetail solution={selected} toolId={toolId} /> : <div className="sb-sol-detail" data-testid="solution-detail" />}
+      {selected ? (
+        <SolutionDetail solution={selected} toolId={toolId} onMoved={solutions.reload} />
+      ) : (
+        <div className="sb-sol-detail" data-testid="solution-detail" />
+      )}
     </section>
   );
 }

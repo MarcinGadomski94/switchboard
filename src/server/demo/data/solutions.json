@@ -104,6 +104,10 @@
           "changes": "+312",
           "flag": "⚠ shared working tree",
           "flagKind": "warn",
+          "conflictSessions": [
+            "free-talk-feature",
+            "button-rollout"
+          ],
           "branches": [
             {
               "branch": "feature/free-talk-360",

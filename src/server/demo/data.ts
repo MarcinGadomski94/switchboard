@@ -151,6 +151,8 @@ export interface DemoSolution {
   readonly flag: string;
   /** `warn` = conflict (need color), `muted` = informational. */
   readonly flagKind: 'warn' | 'muted' | null;
+  /** The sessions the conflict card names (prototype `sd.warn`), for a `warn` row (M6.3). */
+  readonly conflictSessions?: readonly string[];
   readonly branches: readonly DemoSolutionBranch[];
 }
 

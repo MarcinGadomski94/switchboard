@@ -25,6 +25,7 @@ function solution(overrides: Partial<Solution>): Solution {
     changes: '—',
     flag: '',
     conflict: false,
+    conflictSessions: [],
     branches: [],
     ledger: null,
     artifacts: [],

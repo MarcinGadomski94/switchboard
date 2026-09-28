@@ -89,6 +89,14 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
             changes: sol.changes,
             flag: sol.flag,
             conflict: sol.flagKind === 'warn',
+            // The card's sessions (prototype `sd.warn`); isolated = its branch here has a worktree folder.
+            conflictSessions: (sol.conflictSessions ?? []).map((name) => ({
+              sessionId: name,
+              name,
+              isolated: sol.branches.some((b) => b.owner === name && b.worktree !== null),
+              repo: sol.name,
+              attached: true,
+            })),
             branches: sol.branches.map((b) => ({
               branch: b.branch,
               worktree: b.worktree ? `../${b.worktree}` : null,

@@ -21,8 +21,8 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/inbox` | `api/inbox.ts` | M3.2 (items from M3.1 and M3.3) |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | M3.1 |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | M3.1 (permission items), M3.3 (system items) |
-| `GET /api/solutions` | `api/solutions.ts` | served since M6.1 (the workspace scan, `docs/solutions.md`); live fields since M6.2 (`LiveSolutions`: branches, status, phase, changes, ledger, artifacts, codebase-memory freshness); M6.3 adds `flag` / `conflict` |
-| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
+| `GET /api/solutions` | `api/solutions.ts` | served since M6.1 (the workspace scan, `docs/solutions.md`); live fields since M6.2 (`LiveSolutions`: branches, status, phase, changes, ledger, artifacts, codebase-memory freshness); `flag` / `conflict` / `conflictSessions` since M6.3 (`docs/solutions.md` → *Conflicts*) |
+| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); the UI action since M6.3 (the conflict card) |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
 | `GET /api/history` | `api/history.ts` | M7.4 |
@@ -65,7 +65,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
-| `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); M6.3 adds the conflict card and action, M6.4 refines freshness |
+| `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); M6.4 refines freshness |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |

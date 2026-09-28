@@ -121,6 +121,7 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
       changes: '—',
       flag: '',
       conflict: false,
+      conflictSessions: [],
       branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', status: 'idle' }],
       ledger: [
         { interface: 'FreeTalkService', phase: 'UI-first', seam: 'mock-DI · fixtures/free-talk.json' },

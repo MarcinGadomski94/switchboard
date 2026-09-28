@@ -238,6 +238,7 @@ describe('toSolutionGroups', () => {
       changes: '—',
       flag: '',
       conflict: false,
+      conflictSessions: [],
       branches: [],
       // Neutral until LiveSolutions (M6.2) fills them.
       ledger: null,

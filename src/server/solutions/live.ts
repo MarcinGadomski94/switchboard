@@ -3,6 +3,7 @@ import { readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDiff, Solution, SolutionArtifact, SolutionBranch, SolutionGroup } from '../../core/api.ts';
 import type { Phase, SessionStatus } from '../../core/model.ts';
+import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
 import {
   branchFromHead,
   changesText,
@@ -75,11 +76,13 @@ function isGone(error: unknown): boolean {
  *   diffs (gap #10);
  * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: the sessions'
  *   artifacts for the solution + its `mobile-followups/*.md`;
- * - **codebaseMemory**: the workspace's `.claude/.codebase-memory-dirty`.
+ * - **codebaseMemory**: the workspace's `.claude/.codebase-memory-dirty`;
+ * - **conflict** (M6.3): two or more open sessions write the repo while at
+ *   least one has no worktree of its own (`flag` "⚠ shared working tree",
+ *   `conflictSessions` for the card and its "Move … to worktree" actions).
  *
- * Conflicts (`conflict`, `flag`) stay neutral: M6.3 detects them. Read-only: it
- * reads the database, `.git/HEAD`, `phase-ledger.md`, `mobile-followups/` and
- * the dirty list; git runs only through the diff provider.
+ * Read-only: it reads the database, `.git/HEAD`, `phase-ledger.md`,
+ * `mobile-followups/` and the dirty list; git runs only through the diff provider.
  */
 export class LiveSolutions implements SolutionsProvider {
   readonly #scanner: WorkspaceScanner;
@@ -147,6 +150,8 @@ export class LiveSolutions implements SolutionsProvider {
       worktreesByRow.set(row, [...(worktreesByRow.get(row) ?? []), worktree]);
     }
     const inPlaceByRow = new Map<Row, SessionRecord[]>();
+    // The solution string each in-place session lists for a row (the `{repo}` to isolate it with, M6.3).
+    const inPlaceRepo = new Map<Row, Map<string, string>>();
     for (const session of sessions) {
       if (session.endedAt !== null) continue;
       for (const name of session.solutions) {
@@ -155,6 +160,9 @@ export class LiveSolutions implements SolutionsProvider {
         if ((worktreesByRow.get(row) ?? []).some((w) => w.sessionId === session.id)) continue;
         const list = inPlaceByRow.get(row) ?? [];
         if (!list.includes(session)) inPlaceByRow.set(row, [...list, session]);
+        const repos = inPlaceRepo.get(row) ?? new Map<string, string>();
+        if (!repos.has(session.id)) repos.set(session.id, name);
+        inPlaceRepo.set(row, repos);
       }
     }
 
@@ -170,6 +178,8 @@ export class LiveSolutions implements SolutionsProvider {
         const branches: SolutionBranch[] = [];
         const statuses: SessionStatus[] = [];
         const phases: Phase[] = [];
+        // Open sessions writing the repo, in their worktree or in place (M6.3 conflicts).
+        const writers: RepoWriter[] = [];
         const rowWorktrees = worktreesByRow.get(row) ?? [];
         for (const worktree of rowWorktrees) {
           const session = worktree.sessionId ? (sessionsById.get(worktree.sessionId) ?? null) : null;
@@ -183,13 +193,16 @@ export class LiveSolutions implements SolutionsProvider {
           if (session) {
             statuses.push(session.status);
             if (session.endedAt === null && session.phase) phases.push(session.phase);
+            if (session.endedAt === null) writers.push(writer(session, true, worktree.repo));
           }
         }
         for (const session of inPlaceByRow.get(row) ?? []) {
           branches.push({ branch: head ?? '—', worktree: null, sessionId: session.id, owner: session.name, status: session.status });
           statuses.push(session.status);
           if (session.phase) phases.push(session.phase);
+          writers.push(writer(session, false, inPlaceRepo.get(row)?.get(session.id) ?? row.solution.name));
         }
+        const conflict = row.readOnly ? NO_CONFLICT : repoConflict(writers);
         if (branches.length === 0 && head) branches.push({ branch: head, worktree: null, sessionId: null, owner: IDLE_OWNER, status: 'idle' });
 
         const ledger = await this.#ledger(row.solution.path);
@@ -199,6 +212,9 @@ export class LiveSolutions implements SolutionsProvider {
           status: row.readOnly ? 'idle' : solutionStatus(statuses),
           phase: row.readOnly ? '—' : solutionPhase(ledger, phases),
           changes: changesText(delta.added, delta.removed, row.readOnly),
+          flag: conflict.flag,
+          conflict: conflict.conflict,
+          conflictSessions: conflict.sessions,
           branches,
           ledger,
           artifacts: await this.#artifacts(row, artifacts),
@@ -294,6 +310,11 @@ export class LiveSolutions implements SolutionsProvider {
       return null;
     }
   }
+}
+
+/** An open session writing a row, for the conflict rule (M6.3). */
+function writer(session: SessionRecord, isolated: boolean, repo: string): RepoWriter {
+  return { sessionId: session.id, name: session.name, createdAt: session.createdAt, isolated, repo, attached: session.attached };
 }
 
 /**
