@@ -34,7 +34,12 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
           </div>
           <div className="sb-agents" data-testid="agent-cards">
             {agentCards(session.agents, session).map((card) => (
-              <AgentCardView key={card.id} card={card} activity={activity?.agents[card.id] ?? null} />
+              <AgentCardView
+                key={card.id}
+                card={card}
+                activity={activity?.agents[card.id] ?? null}
+                turnStartedAt={activity && session.agents.find((agent) => agent.id === card.id)?.kind === 'main' ? activity.turnStartedAt : null}
+              />
             ))}
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
@@ -46,7 +51,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
   );
 }
 
-function AgentCardView({ card, activity }: { readonly card: AgentCard; readonly activity: AgentActivity | null }) {
+function AgentCardView({ card, activity, turnStartedAt }: { readonly card: AgentCard; readonly activity: AgentActivity | null; readonly turnStartedAt: string | null }) {
   const color = statusColor(card.status);
   return (
     <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
@@ -59,7 +64,7 @@ function AgentCardView({ card, activity }: { readonly card: AgentCard; readonly 
           {card.description}
         </span>
         <span className="sb-agent-status" data-testid="agent-status" style={{ color }}>
-          {activity ? <AgentActivityText entry={activity} /> : card.statusText}
+          {activity ? <AgentActivityText entry={activity} turnStartedAt={turnStartedAt} /> : card.statusText}
         </span>
       </div>
       <div className="sb-agent-where">

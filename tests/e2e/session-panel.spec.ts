@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import type { SessionDetail } from '../../src/core/api.ts';
+import { THINKING_VERBS } from '../../src/web/activity/activity.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
@@ -89,7 +90,9 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   // A turn that runs: the cursor is the last line; the main agent's status slot shows its live action (D19: thinking + the turn's time).
   await send(page, id, '[fake:hang] Keep working.');
   await expect(lines.last()).toHaveText('▍');
-  await expect(panel.getByTestId('agent-status').first()).toHaveText(/^Thinking… \d+s$/);
+  // D21 ruling: the main agent's card thinks with the chat line's rotating verb (one of Switchboard's list).
+  const verbs = THINKING_VERBS.map((verb) => verb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  await expect(panel.getByTestId('agent-status').first()).toHaveText(new RegExp(`^(${verbs}) \\d+s$`));
   await expect(lines).toHaveCount(8);
   await expect(lines.first()).toHaveText('$ ls');
 

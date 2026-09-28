@@ -153,7 +153,7 @@ export interface ActivityLabel {
 }
 
 /**
- * An agent's action for the sidebar and the agent cards: `Thinking…` / `Writing…`
+ * An agent's action for the sidebar and a subagent's card: `Thinking…` / `Writing…`
  * with the time since the agent became active (the turn, for the main agent),
  * `Bash: npm test` / `Waiting for you` with the time since that began, in the
  * chat line's formats.
@@ -177,25 +177,38 @@ export function sessionActivityLabel(activity: SessionActivity, now: number): Ac
 }
 
 /**
+ * An agent's action for its card (D19) with the main agent's thinking in the chat
+ * line's words: {@link activityLabel}, except that the main agent (`turnStartedAt`
+ * given) thinks with the chat line's rotating verb and the turn's time
+ * (`Pondering…  1m 23s`); a subagent (`null`) reads `Thinking…`. D21 ruling
+ * 2026-09-28: the card, the overview and the chat line use the same verb.
+ */
+export function cardActivityLabel(
+  entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
+  turnStartedAt: string | null,
+  now: number,
+): ActivityLabel {
+  const label = activityLabel(entry, now);
+  return label.state === 'thinking' && turnStartedAt !== null ? { ...label, text: thinkingVerb(turnStartedAt, now) } : label;
+}
+
+/**
  * An agent's action for the agent overview's Status cell (D21): the agent card's
- * label ({@link activityLabel}) with the chat line's glyph in front of a running
- * tool (`● Bash: npm test  0:42`) or a wait (`⏸ Waiting for you  0:12`); the main
- * agent (`turnStartedAt` given) thinks with the chat line's rotating verb and the
- * turn's time (`Pondering…  1m 23s`), a subagent reads `Thinking…`.
+ * label ({@link cardActivityLabel}, so the main agent thinks with the chat line's
+ * verb) with the chat line's glyph in front of a running tool
+ * (`● Bash: npm test  0:42`) or a wait (`⏸ Waiting for you  0:12`).
  */
 export function overviewActivityLabel(
   entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
   turnStartedAt: string | null,
   now: number,
 ): ActivityLabel {
-  const label = activityLabel(entry, now);
+  const label = cardActivityLabel(entry, turnStartedAt, now);
   switch (label.state) {
     case 'tool':
       return { ...label, text: `● ${label.text}` };
     case 'waiting':
       return { ...label, text: `⏸ ${label.text}` };
-    case 'thinking':
-      return turnStartedAt === null ? label : { ...label, text: thinkingVerb(turnStartedAt, now) };
     default:
       return label;
   }

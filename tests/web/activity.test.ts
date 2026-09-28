@@ -5,6 +5,7 @@ import {
   THINKING_VERBS,
   VERB_ROTATE_MS,
   activityLabel,
+  cardActivityLabel,
   chatActivityLine,
   elapsedMs,
   formatClock,
@@ -145,6 +146,17 @@ describe('sidebar row and agent card labels (D19)', () => {
   it('the session row times thinking and writing from the turn start, like the chat line', () => {
     expect(sessionActivityLabel(activity({ since: iso(40) }), at(45))).toEqual({ state: 'thinking', text: 'Thinking…', time: '45s' });
     expect(sessionActivityLabel(activity({ state: 'tool', tool: 'Bash', summary: 'ls', since: iso(40) }), at(45))).toEqual({ state: 'tool', text: 'Bash: ls', time: '0:05' });
+  });
+});
+
+describe('agent card label (D21 ruling: the same verb as the chat line)', () => {
+  it("the main agent's card thinks with the chat line's verb and the turn's time; a subagent's card and other states read as before", () => {
+    const main = { state: 'thinking' as const, since: iso(50), startedAt: START, tool: null, summary: null };
+    expect(cardActivityLabel(main, START, at(83))).toEqual({ state: 'thinking', text: thinkingVerb(START, at(83)), time: '1m 23s' });
+    expect(cardActivityLabel(main, START, at(83)).text).toBe(chatActivityLine(activity(), at(83)).text);
+    const sub = { ...main, startedAt: iso(20) };
+    expect(cardActivityLabel(sub, null, at(62))).toEqual({ state: 'thinking', text: 'Thinking…', time: '42s' });
+    expect(cardActivityLabel({ ...main, state: 'tool', tool: 'Bash', summary: 'ls' }, START, at(53))).toEqual({ state: 'tool', text: 'Bash: ls', time: '0:03' });
   });
 });
 

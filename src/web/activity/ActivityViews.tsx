@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { AgentActivity, SessionActivity } from '../../core/api.ts';
-import { type ActivityLabel, activityLabel, chatActivityLine, overviewActivityLabel, sessionActivityLabel } from './activity.ts';
+import { type ActivityLabel, cardActivityLabel, chatActivityLine, overviewActivityLabel, sessionActivityLabel } from './activity.ts';
 import { useTick } from './useActivity.ts';
 import './activity.css';
 
@@ -62,10 +62,14 @@ export function SessionActivityOr({ activity, children }: { readonly activity: S
   return activity ? <SessionActivityText activity={activity} /> : <>{children}</>;
 }
 
-/** An active agent's action + time for its card's status slot (D19). */
-export function AgentActivityText({ entry }: { readonly entry: AgentActivity }) {
+/**
+ * An active agent's action + time for its card's status slot (D19); the main agent
+ * (`turnStartedAt` = the running turn's start; `null` for a subagent) thinks with
+ * the chat line's rotating verb (D21 ruling).
+ */
+export function AgentActivityText({ entry, turnStartedAt }: { readonly entry: AgentActivity; readonly turnStartedAt: string | null }) {
   const now = useTick(TICK_MS);
-  return <Label label={activityLabel(entry, now)} testId="agent-activity" />;
+  return <Label label={cardActivityLabel(entry, turnStartedAt, now)} testId="agent-activity" />;
 }
 
 /**

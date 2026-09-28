@@ -133,7 +133,9 @@ test('a running turn: chat line, sidebar action and agent card action with a gro
   expect(spinner).toBe('sb-activity-spin');
   await expect(row.getByTestId('session-activity')).toHaveAttribute('data-state', 'thinking');
   await expect(row.getByTestId('session-activity')).toContainText('Thinking…');
-  await expect(card.getByTestId('agent-activity')).toContainText('Thinking…');
+  // D21 ruling: the main agent's card thinks with the chat line's rotating verb.
+  await expect(card.getByTestId('agent-activity')).toHaveAttribute('data-state', 'thinking');
+  expect(THINKING_VERBS).toContain(await card.getByTestId('agent-activity').locator('.sb-activity-label-text').innerText());
 
   await page.getByTestId('session-pause').click();
   await expect.poll(async () => (await detail(page, id)).status).toBe('paused');
