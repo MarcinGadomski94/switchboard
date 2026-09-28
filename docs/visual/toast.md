@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline with `simula
 
 **Gate:** green
 
-Pixel diff of the toast crops (advisory, channel threshold 24): **19.33%**. Side by side (prototype left, app right): `toast-side-by-side.png` (the toast), `toast-page-side-by-side.png` (the page; the main area behind the toast is the demo Inbox in the prototype and a one-item real Inbox in the app).
+Pixel diff of the toast crops (advisory, channel threshold 24): **19.45%**. Side by side (prototype left, app right): `toast-side-by-side.png` (the toast), `toast-page-side-by-side.png` (the page; the main area behind the toast is the demo Inbox in the prototype and a one-item real Inbox in the app).
 
 Text height difference (prototype − app): 18.8 px; parts marked `shift` compare their y after it.
 
@@ -21,14 +21,14 @@ Every part also compares these computed styles: color, background-color, font-fa
 | title | box | 1063,31 76.4×17 | 1063,31 76.4×17 | ok | "qa-free-talk" |
 | sub | box | 1147.4,31.5 79.1×16 | 1147.4,31.5 79.1×16 | ok | "question · now" |
 | close | box | 1397.1,31 9.9×17 | 1397.1,31 9.9×17 | ok | "✕" |
-| branch | box | 1047,57 360×15 | 1047,57 360×15 | ok | "acme-app-front ⎇ session/qa-free-talk" (prototype "acme-app-front ⎇ qa/free-talk-e2e": known difference, D13) |
+| branch | box | 1047,57 360×15 | 1047,57 360×15 | ok | "acme-app-front ⎇ PROJ-1-qa-free-talk" (prototype "acme-app-front ⎇ qa/free-talk-e2e": known difference, D13) |
 | text | top | 1047,81 360×37.7 | 1047,81 360×18.8 | ok | "Which environment should I target?" (prototype "Confluence AC-7 and Figma disagree on the empty-state copy. Which one is the contract?": known difference, D13) |
 | actions | shift | 1047,127.7 360×31 | 1047,108.8 360×31 | ok |  |
 | jump | shift | 1047,127.7 124.1×31 | 1047,108.8 124.1×31 | ok | "Jump to session" |
 | later | shift | 1177.1,127.7 57×31 | 1177.1,108.8 57×31 | ok | "Later" |
 
 ## Known differences (not findings)
-- `branch`: the prototype's mock branch `qa/free-talk-e2e`; the app shows the session's real worktree branch (`session/qa-free-talk`, gap #1).
+- `branch`: the prototype's mock branch `qa/free-talk-e2e`; the app shows the session's real worktree branch (`PROJ-1-qa-free-talk`, D32: the ticket branch the test names).
 - `text`: the prototype shows a hand-written summary of its question; the app shows the question verbatim (SPEC → Copy rules, D13), one line here, so the toast is 18.8 px shorter.
 
 ## Findings

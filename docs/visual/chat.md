@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.16%**, free-talk-feature with the open card **11.02%**, after Send **5.06%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
+Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **1.05%**, free-talk-feature with the open card **11.06%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
 
 Side by side (prototype left, app right): `chat-calendar-side-by-side.png`, `chat-card-side-by-side.png`, `chat-answered-side-by-side.png`.
 
@@ -14,7 +14,7 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
-| calendar-func-fix | chat | box | 256,120 804×678 | 256,120 804×678 | ok | |
+| calendar-func-fix | chat | box | 256,120 804×678 | 256,120 804×679 | ok | |
 | calendar-func-fix | user | box | 578.9,140 455.1×40.9 | 578.9,140 455.1×40.9 | ok | "Reminders fire an hour late after the DST switch. Fix in calendar-fun |
 | calendar-func-fix | userBubble | box | 578.9,140 455.1×40.9 | 578.9,140 455.1×40.9 | ok | "Reminders fire an hour late after the DST switch. Fix in calendar-fun |
 | calendar-func-fix | agent | box | 282,196.9 691.8×82.8 | 282,196.9 691.8×82.8 | ok |  |
@@ -22,16 +22,16 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | calendar-func-fix | steps | box | 282,244.8 691.8×35 | 282,244.8 691.8×35 | ok | "✓ recon · codebase-memory · ReminderScheduler.cs● dotnet build · self |
 | calendar-func-fix | step0 | box | 282,244.8 691.8×16 | 282,244.8 691.8×16 | ok | "✓ recon · codebase-memory · ReminderScheduler.cs" |
 | calendar-func-fix | step1 | box | 282,263.8 691.8×16 | 282,263.8 691.8×16 | ok | "● dotnet build · self-heal 1/3" |
-| calendar-func-fix | composer | box | 256,798 804×102 | 256,798 804×102 | ok |  |
-| calendar-func-fix | quick | box | 278,809 760×26 | 278,809 760×26 | ok | "Quick repliesAccept recommendedMatch Figma exactlyStop and ask design |
-| calendar-func-fix | quickLabel | box | 278,815 90.1×14 | 278,815 90.1×14 | ok | "Quick replies" |
-| calendar-func-fix | pill0 | box | 378.1,809 142.5×26 | 378.1,809 142.5×26 | ok | "Accept recommended" |
-| calendar-func-fix | pill1 | box | 526.6,809 135.5×26 | 526.6,809 135.5×26 | ok | "Match Figma exactly" |
-| calendar-func-fix | pill2 | box | 668.2,809 144.8×26 | 668.2,809 144.8×26 | ok | "Stop and ask designer" |
-| calendar-func-fix | pill3 | box | 818.9,809 132.5×26 | 818.9,809 132.5×26 | ok | "Commit when green" |
-| calendar-func-fix | compose | box | 278,843 760×41 | 278,843 760×41 | ok |  |
-| calendar-func-fix | input | box | 278,843 688.5×41 | 278,843 688.5×41 | ok |  |
-| calendar-func-fix | send | box | 974.5,843 63.5×41 | 974.5,843 63.5×41 | ok | "Send" |
+| calendar-func-fix | composer | box | 256,798 804×102 | 256,799 804×101 | ok |  |
+| calendar-func-fix | quick | box | 278,809 760×26 | 278,810 760×26 | ok | "Quick repliesAccept recommendedMatch Figma exactlyStop and ask design |
+| calendar-func-fix | quickLabel | box | 278,815 90.1×14 | 278,816 90.1×14 | ok | "Quick replies" |
+| calendar-func-fix | pill0 | box | 378.1,809 142.5×26 | 378.1,810 142.5×26 | ok | "Accept recommended" |
+| calendar-func-fix | pill1 | box | 526.6,809 135.5×26 | 526.6,810 135.5×26 | ok | "Match Figma exactly" |
+| calendar-func-fix | pill2 | box | 668.2,809 144.8×26 | 668.2,810 144.8×26 | ok | "Stop and ask designer" |
+| calendar-func-fix | pill3 | box | 818.9,809 132.5×26 | 818.9,810 132.5×26 | ok | "Commit when green" |
+| calendar-func-fix | compose | box | 278,843 760×41 | 278,844 760×40 | ok |  |
+| calendar-func-fix | input | box | 278,843 688.5×41 | 278,844 688.5×40 | ok |  |
+| calendar-func-fix | send | box | 974.5,843 63.5×41 | 974.5,844 63.5×40 | ok | "Send" |
 | free-talk-feature | chat | bottom | 256,147 804×651 | 256,120 804×678 | ok | |
 | free-talk-feature | user | box (y rel. chat) | 492.6,20 541.4×61.8 | 492.6,20 541.4×61.8 | ok | "Free talk screen at 360, web and mobile in parallel. Figma frame is i |
 | free-talk-feature | userBubble | box (y rel. chat) | 492.6,20 541.4×61.8 | 492.6,20 541.4×61.8 | ok | "Free talk screen at 360, web and mobile in parallel. Figma frame is i |

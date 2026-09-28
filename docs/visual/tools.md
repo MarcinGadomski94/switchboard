@@ -6,7 +6,7 @@ Both show the tool unreachable (prototype: its probe of localhost:13000 aborted;
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.49%**, main area (256,0 1184×900) **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **0.59%**, main area (256,0 1184×900) **0.00%**.
 
 Side by side (prototype left, app right): `tools-side-by-side.png`, `tools-main-side-by-side.png`.
 
@@ -42,7 +42,7 @@ Side by side (prototype left, app right): `tools-side-by-side.png`, `tools-main-
 | stripNote | box | 1097,870.5 213.9×15 | 1097,870.5 213.9×15 | ok | "16 projects indexed · full mode" |
 | reindex | box | 1320.9,865 103.1×26 | 1320.9,865 103.1×26 | ok | "Reindex 3 now" |
 | sideCm | box | 10,290 235×48 | 10,290 235×48 | ok | "Codebase Memorylocalhost:13000" |
-| sideCmDot | box | 18,310.5 7×7 | 18,310.5 7×7 | ok |  |
+| sideCmDot | size | 18,310.5 7×7 | 18,302 7×7 | ok |  |
 | sideSw | box | 10,340 235×31 | 10,340 235×31 | ok | "Acme Toolset URL" |
 | sideSwDot | box | 18,352 7×7 | 18,352 7×7 | ok |  |
 

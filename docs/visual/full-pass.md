@@ -17,20 +17,20 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.52% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 9.75% | 11.26% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.86% | 11.39% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.09% | 8.02% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.66% | 5.06% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
-| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.50% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.84% | 0.42% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.21% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
-| History | History | M7.4 | gated | green (72) | green (3) | 0.49% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.49% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.63% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 4.85% | 6.84% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.50% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
-| Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.39% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.61% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 9.87% | 11.29% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.98% | 11.42% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.21% | 8.05% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.78% | 5.09% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.60% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.94% | 0.42% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.30% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
+| History | History | M7.4 | gated | green (72) | green (3) | 0.59% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.59% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.73% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 5.57% | 7.85% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.55% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.47% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on `inbox`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
@@ -59,11 +59,11 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | nav:History:badge | box | 223,237.5 14×2 | 223,237.5 14×2 | ok | copy "" |
 | inbox | toolsLabel | box | 0,254 255×36 | 0,254 255×36 | ok | copy "Tools+ Add" |
 | inbox | tool0 | box | 10,290 235×48 | 10,290 235×48 | ok |  |
-| inbox | tool0:name | box | 35,297 93×34 | 35,297 93×34 | ok | copy "Codebase Memory" |
-| inbox | tool0:host | box | 138,307 99×14 | 138,307 99×14 | ok | copy "localhost:13000" |
+| inbox | tool0:name | none | 35,297 93×34 | 35,297 111.8×17 | ok | copy "Codebase Memory" |
+| inbox | tool0:host | none | 138,307 99×14 | 138,317 99×14 | ok | copy "localhost:13000" |
 | inbox | tool1 | box | 10,340 235×31 | 10,340 235×31 | ok |  |
-| inbox | tool1:name | box | 35,347 51.2×17 | 35,347 51.2×17 | ok | copy "Acme Tool" |
-| inbox | tool1:host | box | 190.8,348.5 46.2×14 | 190.8,348.5 46.2×14 | ok | copy "set URL" |
+| inbox | tool1:name | none | 35,347 51.2×17 | 35,347 51.2×17 | ok | copy "Acme Tool" |
+| inbox | tool1:host | none | 190.8,348.5 46.2×14 | 190.8,348.5 46.2×14 | ok | copy "set URL" |
 | inbox | sessionsLabel | box | 0,371 255×36 | 0,371 255×36 | ok | copy "Sessions6" |
 | inbox | session0 | box | 10,407 235×49 | 10,407 235×49 | ok |  |
 | inbox | session0:dot | box | 18,420 8×8 | 18,420 8×8 | ok |  |

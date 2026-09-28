@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **6.37%**, full page **4.53%**.
+Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **7.18%**, full page **5.13%**.
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `new-session-side-by-side.png` (the panel), `new-session-page-side-by-side.png` (page).
@@ -15,6 +15,9 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 
 ## D16 addition (not a finding)
 **Resume a terminal conversation** (`↻` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (`D16 …` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
+
+## D32 additions (not findings)
+With Worktree on (the prototype's draft) the app's form has a **Branch row** inside section 1 under the name / task row (the name field's box and style, placeholder `PROJ-0001-short-description`, the ticket branch entered through the form like the draft's other values, since Start needs it), and the summary a **`branch` line** right after `# worktrees`. The prototype has neither: section 1 is compared with its height less the row's (`height − <n>` in the table), the sections below it with their y less that too, and the summary lines after `# worktrees` at the app's index + 2 with their y less both added lines. The added parts are checked on their own (`D32 …` rows).
 
 ## D25 addition (not a finding)
 **From a remote session** (`⇣` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (`D25 …` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
@@ -31,28 +34,28 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · title | box | 208,72 120.8×26 | 208,72 120.8×26 | ok | "New session" |
 | draft · sub | box | 340.8,80 216×16 | 340.8,80 216×16 | ok | "Claude Code · background · Max" |
 | draft · recommended | box | 725.5,75 146.5×26 | 725.5,75 146.5×26 | ok | "Accept recommended" |
-| draft · taskSection | box (y − 76) | 208,119 664×58 | 208,119 664×58 | ok |  |
+| draft · taskSection | box (y − 76, height − 44) | 208,119 664×58 | 208,119 664×58 | ok |  |
 | draft · taskLabel | box (y − 76) | 208,119 664×14 | 208,119 664×14 | ok | "1 · Task definition" |
 | draft · nameInput | box (y − 76) | 208,140 220×37 | 208,140 220×37 | ok |  |
 | draft · taskInput | box (y − 76) | 436,140 436×37 | 436,140 436×37 | ok |  |
-| draft · workLabel | box (y − 76) | 208,195 664×14 | 208,195 664×14 | ok | "2 · Work type" |
-| draft · workFeature | box (y − 76) | 208,216 128×33 | 208,216 128×33 | ok | "Feature-building" |
-| draft · workQa | box (y − 76) | 342,216 144.5×33 | 342,216 144.5×33 | ok | "Test-authoring (QA)" |
-| draft · modeLabel | box (y − 76) | 208,267 664×14 | 208,267 664×14 | ok | "3 · Mode" |
-| draft · modeSingle | box (y − 76) | 208,288 120.3×33 | 208,288 120.3×33 | ok | "Single-solution" |
-| draft · modeOrch | box (y − 76) | 334.3,288 172.5×33 | 334.3,288 172.5×33 | ok | "Workspace orchestrator" |
-| draft · solutionsLabel | box (y − 76) | 208,339 664×14 | 208,339 664×14 | ok | "4 · Solutions in scope2 selected · read-only folders locked" |
-| draft · solutionsHint | box (y − 76) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "2 selected · read-only folders locked" |
-| draft · microfrontendsFolder | box (y − 76) | 208,361 120×20 | 208,361 120×20 | ok | "microfrontends/" |
-| draft · mobileFolder | box (y − 76) | 208,427 120×20 | 208,427 120×20 | ok | "mobile/" |
-| draft · mobileChip | box (y − 76) | 338,427 79.6×26 | 338,427 79.6×26 | ok | "✓ mobile" |
-| draft · nugetsFolder | box (y − 76) | 208,461 120×20 | 208,461 120×20 | ok | "nugets/" |
-| draft · nugetsChip1 | box (y − 76) | 338,461 194.8×26 | 338,461 194.8×26 | ok | "components-library-nuget" |
-| draft · nugetsChip2 | box (y − 76) | 538.8,461 137.2×26 | 538.8,461 137.2×26 | ok | "typography-nuget" |
-| draft · phaseSection | size (y − 76) | 208,673 664×54 | 208,607 664×54 | ok |  |
-| draft · phaseLabel | size (y − 76) | 208,673 664×14 | 208,607 664×14 | ok | "5 · Phase" |
-| draft · phaseUi | size (y − 76) | 208,694 71.7×33 | 208,628 71.7×33 | ok | "UI-first" |
-| draft · phaseIntegration | size (y − 76) | 285.7,694 94.1×33 | 285.7,628 94.1×33 | ok | "Integration" |
+| draft · workLabel | box (y − 120) | 208,195 664×14 | 208,195 664×14 | ok | "2 · Work type" |
+| draft · workFeature | box (y − 120) | 208,216 128×33 | 208,216 128×33 | ok | "Feature-building" |
+| draft · workQa | box (y − 120) | 342,216 144.5×33 | 342,216 144.5×33 | ok | "Test-authoring (QA)" |
+| draft · modeLabel | box (y − 120) | 208,267 664×14 | 208,267 664×14 | ok | "3 · Mode" |
+| draft · modeSingle | box (y − 120) | 208,288 120.3×33 | 208,288 120.3×33 | ok | "Single-solution" |
+| draft · modeOrch | box (y − 120) | 334.3,288 172.5×33 | 334.3,288 172.5×33 | ok | "Workspace orchestrator" |
+| draft · solutionsLabel | box (y − 120) | 208,339 664×14 | 208,339 664×14 | ok | "4 · Solutions in scope2 selected · read-only folders locked" |
+| draft · solutionsHint | box (y − 120) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "2 selected · read-only folders locked" |
+| draft · microfrontendsFolder | box (y − 120) | 208,361 120×20 | 208,361 120×20 | ok | "microfrontends/" |
+| draft · mobileFolder | box (y − 120) | 208,427 120×20 | 208,427 120×20 | ok | "mobile/" |
+| draft · mobileChip | box (y − 120) | 338,427 79.6×26 | 338,427 79.6×26 | ok | "✓ mobile" |
+| draft · nugetsFolder | box (y − 120) | 208,461 120×20 | 208,461 120×20 | ok | "nugets/" |
+| draft · nugetsChip1 | box (y − 120) | 338,461 194.8×26 | 338,461 194.8×26 | ok | "components-library-nuget" |
+| draft · nugetsChip2 | box (y − 120) | 538.8,461 137.2×26 | 538.8,461 137.2×26 | ok | "typography-nuget" |
+| draft · phaseSection | size (y − 120) | 208,673 664×54 | 208,607 664×54 | ok |  |
+| draft · phaseLabel | size (y − 120) | 208,673 664×14 | 208,607 664×14 | ok | "5 · Phase" |
+| draft · phaseUi | size (y − 120) | 208,694 71.7×33 | 208,628 71.7×33 | ok | "UI-first" |
+| draft · phaseIntegration | size (y − 120) | 285.7,694 94.1×33 | 285.7,628 94.1×33 | ok | "Integration" |
 | draft · launchLabel | box | 901,50 359×44 | 901,50 359×44 | ok | "Launch" |
 | draft · toggles | box | 901,94 359×78 | 901,94 359×78 | ok |  |
 | draft · summaryLabel | box | 901,172 359×40 | 901,172 359×40 | ok | "Summary" |
@@ -60,10 +63,10 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · actions | box | 901,781 359×69 | 901,781 359×69 | ok |  |
 | draft · cancel | box | 917,797 71.3×37 | 917,797 71.3×37 | ok | "Cancel" |
 | draft · start | box | 996.3,797 247.7×37 | 996.3,797 247.7×37 | ok | "Start session" |
-| draft · microfrontendsChip1 | box (y − 76) | 338,361 137.2×26 | 338,361 137.2×26 | ok | "✓ acme-app-front" |
-| draft · microfrontendsChip2 | box (y − 76) | 481.2,361 130×26 | 481.2,361 130×26 | ok | "workspace-front" |
-| draft · microfrontendsChip3 | box (y − 76) | 617.2,361 94×26 | 617.2,361 94×26 | ok | "auth-front" |
-| draft · microfrontendsChip4 | box (y − 76) | 338,393 187.6×26 | 338,393 187.6×26 | ok | "learning-material-front" |
+| draft · microfrontendsChip1 | box (y − 120) | 338,361 137.2×26 | 338,361 137.2×26 | ok | "✓ acme-app-front" |
+| draft · microfrontendsChip2 | box (y − 120) | 481.2,361 130×26 | 481.2,361 130×26 | ok | "workspace-front" |
+| draft · microfrontendsChip3 | box (y − 120) | 617.2,361 94×26 | 617.2,361 94×26 | ok | "auth-front" |
+| draft · microfrontendsChip4 | box (y − 120) | 338,393 187.6×26 | 338,393 187.6×26 | ok | "learning-material-front" |
 | draft · worktreeRow | box | 921,94 319×33 | 921,94 319×33 | ok |  |
 | draft · worktreeTitle | box | 921,94 277×17 | 921,94 277×17 | ok | "Worktree per solution" |
 | draft · worktreeDesc | box | 921,111 277×16 | 921,111 277×16 | ok | "Kept until the PR is merged on GitHub" |
@@ -82,14 +85,14 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
 | draft · summaryLine6 | box (y − 20.1) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
 | draft · summaryLine7 | box (y − 20.1) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
-| draft · summaryLine8 | box (y − 20.1) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "../acme-app-front-wt-free-talk-640" |
-| draft · summaryLine9 | box (y − 20.1) | 932,397.5 297×20.1 | 932,397.5 297×20.1 | ok | "../mobile-wt-free-talk-640" |
-| draft · summaryLine10 | box (y − 20.1) | 932,417.6 297×11.5 | 932,417.6 297×11.5 | ok | "" |
-| draft · summaryLine11 | box (y − 20.1) | 932,429.1 297×20.1 | 932,429.1 297×20.1 | ok | "✓ answers pre-filled → agent confirms, no re-ask" |
+| draft · summaryLine8 | box (y − 40.3) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "../acme-app-front-wt-free-talk-640" |
+| draft · summaryLine9 | box (y − 40.3) | 932,397.5 297×20.1 | 932,397.5 297×20.1 | ok | "../mobile-wt-free-talk-640" |
+| draft · summaryLine10 | box (y − 40.3) | 932,417.6 297×11.5 | 932,417.6 297×11.5 | ok | "" |
+| draft · summaryLine11 | box (y − 40.3) | 932,429.1 297×20.1 | 932,429.1 297×20.1 | ok | "✓ answers pre-filled → agent confirms, no re-ask" |
 | draft · inputs (value, placeholder) | — | [{"value":"free-talk-640","placeholder":"session-name"},{"va… | same | ok | |
-| draft · readOnlyFolder | size | 208,629 120×20 | 208,639 120×20 | ok | "read-only" |
-| draft · readOnlyChip1 | size | 338,629 108.4×26 | 338,639 108.4×26 | ok | "deprecated/*" |
-| draft · readOnlyChip2 | size | 452.4,629 122.8×26 | 452.4,639 122.8×26 | ok | "infrastructure" |
+| draft · readOnlyFolder | size | 208,629 120×20 | 208,683 120×20 | ok | "read-only" |
+| draft · readOnlyChip1 | size | 338,629 108.4×26 | 338,683 108.4×26 | ok | "deprecated/*" |
+| draft · readOnlyChip2 | size | 452.4,629 122.8×26 | 452.4,683 122.8×26 | ok | "infrastructure" |
 | draft · D14 Folder row between the head and section 1 | addition | — | 208,119 664×58 | ok | |
 | draft · D14 label copy | addition | — | "Folder" | ok | |
 | draft · D14 label style = section 1 label | addition | — | same | ok | |
@@ -108,25 +111,35 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · D25 Remote toggle on the right edge | addition | — | 0 px · 698,115 174×20 | ok | |
 | draft · D25 Remote toggle clear of the label | addition | — | 448.6 px | ok | |
 | draft · D25 Remote toggle above the folder row | addition | — | 5 px | ok | |
-| single · six | size (y − 76) | 208,745 664×54 | 208,679 664×54 | ok |  |
-| single · sixLabel | size (y − 76) | 208,745 664×14 | 208,679 664×14 | ok | "6 · Mobile coordination" |
-| single · sixPills | size (y − 76) | 208,766 664×33 | 208,700 664×33 | ok |  |
-| single · sixPill1 | size (y − 76) | 208,766 153.6×33 | 208,700 153.6×33 | ok | "Sequential follow-up" |
-| single · sixPill2 | size (y − 76) | 367.6,766 105.9×33 | 367.6,700 105.9×33 | ok | "Parallel-twin" |
-| single · sixPill3 | size (y − 76) | 479.5,766 162.9×33 | 479.5,700 162.9×33 | ok | "No mobile counterpart" |
+| draft · D32 Branch row in section 1 | addition | — | true | ok | |
+| draft · D32 Branch row under the name / task row | addition | — | 7 px | ok | |
+| draft · D32 Branch field = the name field's x, width, height | addition | — | 208 220×37 vs 208 220×37 | ok | |
+| draft · D32 Branch field style = the name field's | addition | — | same | ok | |
+| draft · D32 Branch placeholder | addition | — | "PROJ-0001-short-description" | ok | |
+| draft · D32 Branch value | addition | — | "PROJ-640-free-talk" | ok | |
+| draft · D32 Branch note | addition | — | "⎇ the branch of every worktree" | ok | |
+| draft · D32 Branch note font (mono meta) | addition | — | 11px "Geist Mono", monospace | ok | |
+| draft · D32 summary branch line after # worktrees | addition | — | "branch    PROJ-640-free-talk" | ok | |
+| draft · D32 summary branch line = a value line | addition | — | value | ok | |
+| single · six | size (y − 120) | 208,745 664×54 | 208,679 664×54 | ok |  |
+| single · sixLabel | size (y − 120) | 208,745 664×14 | 208,679 664×14 | ok | "6 · Mobile coordination" |
+| single · sixPills | size (y − 120) | 208,766 664×33 | 208,700 664×33 | ok |  |
+| single · sixPill1 | size (y − 120) | 208,766 153.6×33 | 208,700 153.6×33 | ok | "Sequential follow-up" |
+| single · sixPill2 | size (y − 120) | 367.6,766 105.9×33 | 367.6,700 105.9×33 | ok | "Parallel-twin" |
+| single · sixPill3 | size (y − 120) | 479.5,766 162.9×33 | 479.5,700 162.9×33 | ok | "No mobile counterpart" |
 | single · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "mobile    sequential" |
-| qa · six | size (y − 76) | 208,745 664×97 | 208,679 664×97 | ok |  |
-| qa · sixLabel | size (y − 76) | 208,745 664×14 | 208,679 664×14 | ok | "6 · QA contract" |
-| qa · sixPills | size (y − 76) | 208,767 664×33 | 208,701 664×33 | ok |  |
-| qa · sixPill1 | size (y − 76) | 208,767 129.1×33 | 208,701 129.1×33 | ok | "Web · Playwright" |
-| qa · sixPill2 | size (y − 76) | 343.1,767 124.5×33 | 343.1,701 124.5×33 | ok | "Mobile · Appium" |
-| qa · sixPill3 | size (y − 76) | 473.6,767 58.3×33 | 473.6,701 58.3×33 | ok | "Both" |
-| qa · qaFields | size (y − 76) | 208,808 664×34 | 208,742 664×34 | ok |  |
-| qa · qaConfluence | size (y − 76) | 208,808 328×34 | 208,742 328×34 | ok |  |
-| qa · qaFigma | size (y − 76) | 544,808 328×34 | 544,742 328×34 | ok |  |
+| qa · six | size (y − 116) | 208,745 664×97 | 208,679 664×97 | ok |  |
+| qa · sixLabel | size (y − 116) | 208,745 664×14 | 208,679 664×14 | ok | "6 · QA contract" |
+| qa · sixPills | size (y − 116) | 208,767 664×33 | 208,701 664×33 | ok |  |
+| qa · sixPill1 | size (y − 116) | 208,767 129.1×33 | 208,701 129.1×33 | ok | "Web · Playwright" |
+| qa · sixPill2 | size (y − 116) | 343.1,767 124.5×33 | 343.1,701 124.5×33 | ok | "Mobile · Appium" |
+| qa · sixPill3 | size (y − 116) | 473.6,767 58.3×33 | 473.6,701 58.3×33 | ok | "Both" |
+| qa · qaFields | size (y − 116) | 208,808 664×34 | 208,742 664×34 | ok |  |
+| qa · qaConfluence | size (y − 116) | 208,808 328×34 | 208,742 328×34 | ok |  |
+| qa · qaFigma | size (y − 116) | 544,808 328×34 | 544,742 328×34 | ok |  |
 | qa · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      test-authoring (QA)" |
 | qa · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "stack     both" |
-| empty · solutionsHint | box (y − 76) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "0 selected · read-only folders locked" |
+| empty · solutionsHint | box (y − 120) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "0 selected · read-only folders locked" |
 | empty · start | box | 996.3,797 247.7×37 | 996.3,797 247.7×37 | ok | "Start session" |
 | empty · summaryLine0 | box | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
 | empty · summaryLine1 | box (y − 20.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
@@ -136,8 +149,8 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
 | empty · summaryLine6 | box (y − 20.1) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
 | empty · summaryLine7 | box (y − 20.1) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
-| empty · summaryLine8 | box (y − 20.1) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "⚠ pick at least one solution" |
-| empty · summaryLine9 | box (y − 20.1) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
+| empty · summaryLine8 | box (y − 40.3) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "⚠ pick at least one solution" |
+| empty · summaryLine9 | box (y − 40.3) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
 | empty · D14 Folder row between the head and section 1 | addition | — | 208,119 664×58 | ok | |
 | empty · D14 label copy | addition | — | "Folder" | ok | |
 | empty · D14 label style = section 1 label | addition | — | same | ok | |
@@ -145,6 +158,16 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · D14 Browse… | addition | — | "Browse…" | ok | |
 | empty · D14 summary folder line | addition | — | "folder    D:\\acme · workspace" | ok | |
 | empty · D14 summary cwd line after it | addition | — | "cwd       D:\\acme" | ok | |
+| empty · D32 Branch row in section 1 | addition | — | true | ok | |
+| empty · D32 Branch row under the name / task row | addition | — | 7 px | ok | |
+| empty · D32 Branch field = the name field's x, width, height | addition | — | 208 220×37 vs 208 220×37 | ok | |
+| empty · D32 Branch field style = the name field's | addition | — | same | ok | |
+| empty · D32 Branch placeholder | addition | — | "PROJ-0001-short-description" | ok | |
+| empty · D32 Branch value | addition | — | "PROJ-640-free-talk" | ok | |
+| empty · D32 Branch note | addition | — | "⎇ the branch of every worktree" | ok | |
+| empty · D32 Branch note font (mono meta) | addition | — | 11px "Geist Mono", monospace | ok | |
+| empty · D32 summary branch line after # worktrees | addition | — | "branch    PROJ-640-free-talk" | ok | |
+| empty · D32 summary branch line = a value line | addition | — | value | ok | |
 
 ## SPEC tokens (computed)
 | Check | Expected | App | Result |
