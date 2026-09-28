@@ -54,7 +54,7 @@ Order matters. Each item: **AC** = acceptance criteria, **Oracle** = how it's ve
 ## M8 · Tools & settings
 - [ ] **M8.1** Embedded tools: configurable URL, reachability probe, iframe, offline/not-configured states, open in new tab. Codebase Memory (`http://localhost:13000`) and Acme Tool (URL set in Settings). **Oracle:** E2E with a local stub server.
 - [ ] **M8.2** Settings: 7 sections per SPEC, persisted in SQLite (tool URLs included; Embedded tools can add/remove tools). **Oracle:** E2E.
-- [ ] **M8.3** ⌘K / Ctrl+K palette: views, sessions, solutions, tools, New session; arrow keys + Enter. **Oracle:** E2E.
+- [x] **M8.3** ⌘K / Ctrl+K palette: views, sessions, solutions, tools, New session; arrow keys + Enter. **Oracle:** E2E.
 
 ## M9 · Packaging
 - [ ] **M9.1** Runs as a per-user background service: Windows (Task Scheduler at logon, or a Windows Service), macOS (launchd agent), Linux (systemd --user). "Start at login" toggle. Requires Node ≥ 24 on PATH. **Oracle:** generated launchd / systemd / Task Scheduler files verified by unit tests and a `--dry-run` of install/uninstall; a GitHub Actions matrix workflow is written but not run (no remote). Nothing is installed on this machine.

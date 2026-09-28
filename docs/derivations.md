@@ -154,3 +154,19 @@ The demo seed still stores its terminal lines as provisional `channel: "terminal
 **The card** (SPEC → Schedules & loops; prototype inline styles in `loops.css`): session status dot, session name, the label (else the kind) in mono, "Open session" (→ `/sessions/<id>`), the strip, three facts, the note. Border `oklch(0.45 0.08 70)` while the session needs the developer, else `#26272c`. The facts are fixed: **Iteration / cap** (`17 / —`), **Next / expires** (`15:00 / in 6 days`: today's clock, `tomorrow 02:00`, a weekday within a week, else `MM-DD HH:MM`; expiry `in n days` / `in n h` / `in n min` / `expired`), **Breaker** (`tripped (2)` when a state is stored, `2 in a row` for a count only, else "—"). Cards are listed in the order their loops started (oldest first; loops stored at the same moment follow their sessions' start, then the server's order), two per row; with none the grid shows "No loops yet. A card appears when a session runs /loop, ScheduleWakeup, CronCreate or Workflow." Relative times re-render every 30 s.
 
 Not observed, so not shown: the CLI's firing jitter, workflow-internal iterations (workflow agents are not visible in stream-json, M0.1), the prototype's hand-written facts (`Next sweep`, `Progress 7 / 12 items`, `Isolation`), and a breaker "tripped" state for real loops (the threshold is not in the progress file).
+
+## ⌘K palette (M8.3)
+The palette (`src/web/modals/Palette.tsx`, model `palette.ts`) opens with ⌘K / Ctrl+K or the sidebar badge and lists, in the prototype's `PAL` order:
+
+| Kind | Label | Hint | Pick |
+|---|---|---|---|
+| `view` | Inbox, Solutions, Schedules & loops, Artifacts, History, Settings | — | navigate to the view |
+| `action` | New session | — | open the New-session modal (in place of the palette) |
+| `tool` | the tool's name, every tool of `GET /api/tools` in its order (the sidebar filter `showInSidebar` does not apply) | the URL's host (`localhost:13000`), empty when not configured | `/tools/<id>` (the tool view probes it) |
+| `session` | the session's name, `GET /api/sessions` in its order | the sidebar's mode line (`orch · feature · UI-first`), built from the session's fields | `/sessions/<id>` (Chat) |
+| `solution` | the solution's name, `GET /api/solutions` groups and rows in order | the group's folder (`microfrontends/`, `read-only`) | `/solutions` with that solution selected |
+
+- **Filter:** an entry matches when `label kind hint`, lower-cased, contains the query lower-cased (the prototype's rule: no trimming, no fuzzy match); an empty query keeps everything. At most **10** results are shown.
+- **Keys:** typing highlights the first result; ↓ / ↑ move the highlight and stop at the last / first row (no wrap); Enter picks the highlighted row (nothing when there are no results); a click picks a row. Esc and a click on the overlay close (`ModalHost`); ⌘K / Ctrl+K while the palette is open clears the query and highlights the first row again, as reopening does. The highlighted row is scrolled into view.
+- **Data:** each opening loads the three lists again; while one has not answered (or answers an error, e.g. `GET /api/tools` before M8.1) it adds nothing. The session list reloads on `sessionUpdated` (at most once a second) while the palette is open. No list is cached between openings, so a query typed faster than the API answers matches the views and the action only until the lists arrive.
+- **Solution selection:** the Solutions view keeps its selection in local state and has no URL for it, so a picked solution is handed over through a one-shot request (`src/web/views/solution-focus.ts`): the view reads it when it mounts or at once when it is already open, then clears it. Navigating to Solutions any other way keeps the old behavior (the first row is selected).

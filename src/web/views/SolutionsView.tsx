@@ -6,6 +6,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { Link } from '../router.tsx';
 import { statusColor } from '../shell/format.ts';
 import { SolutionConflictCard } from './SolutionConflictCard.tsx';
+import { peekSolutionFocus, useSolutionFocus } from './solution-focus.ts';
 import {
   SOLUTION_FILTERS,
   type SolutionFilter,
@@ -152,7 +153,9 @@ export function SolutionsView() {
   const solutions = useApi(api.solutions);
   const tools = useApi(api.tools);
   const [filter, setFilter] = useState<SolutionFilter>('All');
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // The ⌘K palette's solution results pick the selected row (M8.3).
+  const [selectedPath, setSelectedPath] = useState<string | null>(() => peekSolutionFocus()?.path ?? null);
+  useSolutionFocus(setSelectedPath);
 
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reloadSoon = (): void => {

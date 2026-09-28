@@ -74,7 +74,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/HistoryView.tsx` | History | M7.4 |
 | `views/ToolView.tsx` | Embedded tool | M8.1 |
 | `views/SettingsView.tsx` | Settings | M8.2 |
-| `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
+| `modals/Palette.tsx` | ⌘K palette: done in M8.3 (+ `palette.ts` model, `palette.css`; solution results select through `views/solution-focus.ts`, read by `SolutionsView`; `docs/derivations.md` → *⌘K palette*) | M8.3 |
 
 Each lane adds its view's CSS next to its component (`views/<view>.css`), using the variables in `styles/tokens.css`.
 
