@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Solution, SolutionGroup } from '../../src/core/api.ts';
+import type { Folder, FolderCheck, Solution, SolutionGroup } from '../../src/core/api.ts';
 import {
   DEFAULT_FORM,
   type NewSessionForm,
@@ -8,7 +8,13 @@ import {
   canStart,
   chipGroups,
   figmaUrlList,
+  folderChoices,
   formFromPrefill,
+  isRepoFolder,
+  repoSummaryLines,
+  resolveFormFolder,
+  toNewRepoSession,
+  toSessionBody,
   missingQa,
   readOnlyChipLabel,
   sanitizeName,
@@ -78,6 +84,7 @@ describe('defaults and prefill', () => {
       figmaUrls: '',
       worktrees: true,
       ultracode: false,
+      folder: null,
     });
     expect(RECOMMENDED).toEqual({ workType: 'feature', mode: 'single', phase: 'ui-first', coordination: 'sequential' });
     expect(formFromPrefill(null)).toBe(DEFAULT_FORM);
@@ -275,5 +282,85 @@ describe('start', () => {
     expect(startErrorText(409, { error: 'branch-exists', message: 'branch session/x already exists' })).toBe('Not started: branch session/x already exists');
     expect(startErrorText(500, null)).toBe('Not started: HTTP 500');
     expect(startErrorText(0, null)).toBe('Not started: Switchboard is not reachable.');
+  });
+});
+
+describe('folders (D14)', () => {
+  const check: FolderCheck = { path: '/ws', canonicalPath: '/ws', exists: true, kind: 'workspace', router: null, solutionCount: 2, repoName: null, problem: null, message: '' };
+  function saved(id: string, folderPath: string, kind: Folder['kind'], isDefault = false): Folder {
+    const name = folderPath.split('/').pop() ?? folderPath;
+    return { id, path: folderPath, canonicalPath: folderPath, name, kind, isDefault, addedAt: '2026-09-28T00:00:00.000Z', lastUsedAt: null, check };
+  }
+  const ws = saved('f-ws', '/src/workspace', 'workspace', true);
+  const repo = saved('f-repo', '/src/switchboard', 'repo');
+  const repoFolder = { id: repo.id, path: repo.path, name: repo.name, kind: repo.kind };
+  const wsFolder = { id: ws.id, path: ws.path, name: ws.name, kind: ws.kind };
+
+  it('takes the prefill folder, else the default one once the saved folders are known', () => {
+    expect(formFromPrefill({ folder: ' f-repo ' }).folder).toBe('f-repo');
+    expect(formFromPrefill({ folder: '' }).folder).toBeNull();
+    expect(resolveFormFolder('f-repo', [ws, repo])).toBe('f-repo');
+    expect(resolveFormFolder('gone', [ws, repo])).toBe('f-ws');
+    expect(resolveFormFolder(null, [repo, { ...ws, isDefault: true }])).toBe('f-ws');
+    expect(resolveFormFolder(null, [])).toBeNull();
+  });
+
+  it('lists the saved folders by name, (default) after the default one, the path for a shared name', () => {
+    expect(folderChoices([ws, repo]).map((c) => c.label)).toEqual(['workspace (default)', 'switchboard']);
+    const twin = saved('f-2', '/other/switchboard', 'repo');
+    expect(folderChoices([ws, repo, twin]).map((c) => c.label)).toEqual(['workspace (default)', 'switchboard · /src/switchboard', 'switchboard · /other/switchboard']);
+  });
+
+  it('sends the folder with a workspace session and a NewRepoSession for a repo folder', () => {
+    const body = toSessionBody(form({ name: 'x', solutions: ['mobile'], folder: 'f-ws' }), wsFolder);
+    expect(body).toMatchObject({ name: 'x', solutions: ['mobile'], folder: 'f-ws', workType: 'feature' });
+    expect('folder' in toSessionBody(form({ name: 'x', solutions: ['mobile'] }), null)).toBe(false);
+    expect(toSessionBody(form({ name: 'fix', task: ' Fix it. ', workType: 'qa', solutions: ['mobile'], folder: 'f-repo', worktrees: true }), repoFolder)).toEqual({
+      name: 'fix',
+      task: 'Fix it.',
+      folder: 'f-repo',
+      solutions: ['switchboard'],
+      worktrees: true,
+      ultracode: false,
+    });
+    expect(toNewRepoSession(form({ name: 'fix', worktrees: false, ultracode: true }), repoFolder)).toMatchObject({ worktrees: false, ultracode: true });
+    expect(isRepoFolder(repoFolder)).toBe(true);
+    expect(isRepoFolder(wsFolder)).toBe(false);
+    expect(isRepoFolder(null)).toBe(false);
+  });
+
+  it('a repo folder starts with a free name alone (no solutions, no QA contract)', () => {
+    expect(canStart(form({ name: 'fix', workType: 'qa' }), [], repoFolder)).toBe(true);
+    expect(canStart(form({ name: 'fix' }), ['fix'], repoFolder)).toBe(false);
+    expect(canStart(form({ name: 'fix' }), [], wsFolder)).toBe(false);
+  });
+
+  it('the summary names the folder; a repo shows its cwd (the worktree with Worktree on) and no router lines', () => {
+    const lines = summaryLines(form({ name: 'n', solutions: ['mobile'], folder: 'f-ws' }), '/derived', [], wsFolder).map((l) => l.text);
+    expect(lines.slice(0, 4)).toEqual(['# claude code · background · Max', 'folder    workspace · workspace', 'cwd       /src/workspace', 'work      feature-building']);
+    expect(summaryLines(form({ name: 'n', solutions: ['mobile'] }), '/derived', []).map((l) => l.text)[1]).toBe('cwd       /derived');
+    expect(repoSummaryLines(form({ name: 'fix', worktrees: true }), repoFolder, []).map((l) => [l.text, l.tone])).toEqual([
+      ['# claude code · background · Max', 'comment'],
+      ['folder    switchboard · git repo', 'value'],
+      ['cwd       /src/switchboard-wt-fix', 'value'],
+      ['ultracode off', 'value'],
+      [' ', 'value'],
+      ['# worktree', 'comment'],
+      ['../switchboard-wt-fix', 'path'],
+      [' ', 'value'],
+      ['✓ task + worktree note · no router answers', 'ok'],
+    ]);
+    const inPlace = summaryLines(form({ name: 'fix', worktrees: false }), null, ['fix'], repoFolder).map((l) => l.text);
+    expect(inPlace).toEqual([
+      '# claude code · background · Max',
+      'folder    switchboard · git repo',
+      'cwd       /src/switchboard',
+      'ultracode off',
+      ' ',
+      '# no worktree · edits in place',
+      '⚠ a session with this name exists',
+      ' ',
+      '✓ task only · no router answers',
+    ]);
   });
 });

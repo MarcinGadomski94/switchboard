@@ -68,6 +68,72 @@
   letter-spacing: 0;
 }
 
+/*
+ * D14 · the Folder row above section 1 (not in the prototype): the saved-folder
+ * dropdown (mono, as the name field), Browse… (the wizard's outlined button) and
+ * the check line (the wizard's ✓ / ✕ colors).
+ */
+.sb-ns-folder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.sb-ns-select {
+  flex: 0 0 260px;
+  min-width: 0;
+  appearance: none;
+  padding: 8px 30px 8px 12px;
+  font: 400 12.5px var(--font-mono);
+  cursor: pointer;
+  /* The ▾ of a dropdown, drawn in the muted text color. */
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted-2) 50%), linear-gradient(135deg, var(--muted-2) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
+
+.sb-ns-select:disabled {
+  cursor: default;
+  color: var(--muted-3);
+}
+
+.sb-ns-select option {
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
+
+.sb-ns-browse {
+  flex: none;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 8px 14px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+
+.sb-ns-browse[aria-expanded='true'] {
+  border-color: var(--muted-2);
+  background: var(--border-card);
+  color: var(--text-strong);
+}
+
+.sb-ns-folder-check {
+  flex: 1;
+  min-width: 0;
+  font: 400 12px var(--font-mono);
+  color: oklch(0.76 0.13 150);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-ns-folder-check[data-ok='false'] {
+  color: var(--status-fail);
+}
+
 /* Section 1: name (220px, mono) + task. */
 .sb-ns-task {
   display: grid;
@@ -153,6 +219,11 @@
 .sb-ns-chip[data-locked='true'] {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* D14: a repo folder's one solution: selected and fixed (not a read-only lock). */
+.sb-ns-chip[data-fixed='true'] {
+  cursor: default;
 }
 
 .sb-ns-note {

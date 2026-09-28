@@ -2,7 +2,7 @@ import { mkdir, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import type { ScheduleRunResult } from '../../src/core/model.ts';
-import type { Session } from '../../src/core/api.ts';
+import type { Folder, Session } from '../../src/core/api.ts';
 import { openStore, storeFile } from '../../src/server/db/store.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
@@ -29,6 +29,9 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * 4. The contract's validation through the API: 422 for read-only paths, a
  *    duplicate name, missing solutions, a QA session without `qa`.
  * 5. "Open fix session" opens the form prefilled; Start creates that session.
+ * D14: the Folder row sits above section 1 (the saved workspace, preselected as
+ * the default); the summary names the folder; Start posts its id. Switching
+ * folders and repo folders are in `tests/e2e/folders.spec.ts`.
  */
 
 let tmp: string;
@@ -94,6 +97,10 @@ async function postSession(page: Page, body: unknown): Promise<{ status: number;
     const text = await response.text();
     return { status: response.status, body: text ? (JSON.parse(text) as unknown) : null };
   }, body);
+}
+
+async function savedFolders(page: Page): Promise<Folder[]> {
+  return page.evaluate(async () => (await (await fetch('/api/folders')).json()) as Folder[]);
 }
 
 async function listSessions(page: Page): Promise<Session[]> {
@@ -172,8 +179,9 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await expect(modal.locator('.sb-ns-title')).toHaveText('New session');
   await expect(modal.locator('.sb-ns-sub')).toHaveText('Claude Code · background · Max');
   await expect(modal.getByTestId('ns-recommended')).toHaveText('Accept recommended');
-  await expect(modal.getByTestId('ns-section')).toHaveCount(5);
+  await expect(modal.getByTestId('ns-section')).toHaveCount(6);
   await expect(modal.locator('.sb-ns-form .sb-ns-label')).toHaveText([
+    'Folder',
     '1 · Task definition',
     '2 · Work type',
     '3 · Mode',
@@ -182,6 +190,12 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   ]);
   await expect(modal.getByTestId('ns-name')).toHaveAttribute('placeholder', 'session-name');
   await expect(modal.getByTestId('ns-task')).toHaveAttribute('placeholder', 'What should be implemented?');
+  // D14: the Folder row: the one saved folder, preselected (the default), Browse…, its check line.
+  const [saved] = await savedFolders(page);
+  await expect(modal.getByTestId('ns-folder')).toHaveValue(saved?.id ?? '');
+  await expect(modal.getByTestId('ns-folder').locator('option')).toHaveText(['work space (default)']);
+  await expect(modal.getByTestId('ns-folder-browse')).toHaveText('Browse…');
+  await expect(modal.getByTestId('ns-folder-check')).toBeVisible();
 
   // Pills: the router's recommended answers are selected (#26272c bg, #8d8c87 border).
   await expect(modal.locator('[data-testid="ns-pill"][data-group="work-type"]')).toHaveText(['Feature-building', 'Test-authoring (QA)']);
@@ -217,6 +231,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await expect(start).toHaveCSS('opacity', '0.45');
   expect(await summary(modal)).toEqual([
     '# claude code · background · Max',
+    'folder    work space · workspace',
     `cwd       ${workspace}`,
     'work      feature-building',
     'mode      single-solution',
@@ -331,6 +346,7 @@ test('Start session posts the form, opens the session, and creates the worktrees
   await modal.getByTestId('ns-switch-ultracode').click();
   expect((await summary(modal)).filter((line) => line.startsWith('../'))).toEqual(['../web-front-wt-free-talk-640', '../mobile-wt-free-talk-640']);
 
+  const [folder] = await savedFolders(page);
   const posted = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions');
   await modal.getByTestId('ns-start').click();
   expect((await posted).postDataJSON()).toEqual({
@@ -344,6 +360,7 @@ test('Start session posts the form, opens the session, and creates the worktrees
     qa: null,
     worktrees: true,
     ultracode: true,
+    folder: folder?.id,
   });
   await expect(modal).toHaveCount(0);
   const view = page.getByTestId('view-session');
@@ -447,6 +464,7 @@ test('"Open fix session" opens the form prefilled (M3.3); Start creates that ses
   await expect(modal.getByTestId('ns-switch-ultracode')).toHaveAttribute('aria-checked', 'true');
   expect(await summary(modal)).toEqual([
     '# claude code · background · Max',
+    'folder    work space · workspace',
     `cwd       ${workspace}`,
     'work      feature-building',
     'mode      single-solution',

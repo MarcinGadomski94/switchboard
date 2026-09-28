@@ -1,7 +1,7 @@
 import type { ScheduleInput } from '../../core/api.ts';
 import { MONTH_LABELS, WEEKDAY_LABELS, cronLabel, nextRuns, parseCron } from '../../core/cron.ts';
 import { runSessionName } from '../../core/schedules.ts';
-import { type NewSessionForm, type SummaryLine, canStart, sessionName, summaryLines, toNewSession } from './new-session.ts';
+import { type FormFolder, type NewSessionForm, type SummaryLine, canStart, sessionName, summaryLines, toSessionBody } from './new-session.ts';
 
 /**
  * Pure logic of the New-session modal's Schedule section (M7.1, D8): the modal
@@ -51,11 +51,11 @@ export function cronPreview(text: string, now: Date): CronPreview {
 
 /**
  * "Save schedule" is enabled: what "Start session" needs (solutions, a name no
- * other schedule has, the QA sources) plus a task — the prompt of every run — and
- * a valid cron expression.
+ * other schedule has, the QA sources; for a repo folder only the name, D14) plus
+ * a task — the prompt of every run — and a valid cron expression.
  */
-export function canSaveSchedule(form: NewSessionForm, preview: CronPreview, takenScheduleNames: readonly string[]): boolean {
-  return canStart(form, takenScheduleNames) && form.task.trim() !== '' && preview.ok;
+export function canSaveSchedule(form: NewSessionForm, preview: CronPreview, takenScheduleNames: readonly string[], folder: FormFolder | null = null): boolean {
+  return canStart(form, takenScheduleNames, folder) && form.task.trim() !== '' && preview.ok;
 }
 
 /**
@@ -69,10 +69,11 @@ export function scheduleSummaryLines(
   root: string | null,
   preview: CronPreview,
   takenScheduleNames: readonly string[],
+  folder: FormFolder | null = null,
 ): SummaryLine[] {
   const name = sessionName(form);
   const runName = preview.first ? runSessionName(name, preview.first) : `${name}-<MMDD>-<HHMM>`;
-  const lines = summaryLines({ ...form, name: runName }, root, []);
+  const lines = summaryLines({ ...form, name: runName }, root, [], folder);
   const at = lines.findIndex((line) => line.text.startsWith('ultracode'));
   lines.splice(at + 1, 0, { text: `schedule  ${preview.ok ? preview.label : '—'}`, tone: 'value' });
   const warnings: SummaryLine[] = [];
@@ -83,9 +84,13 @@ export function scheduleSummaryLines(
   return lines;
 }
 
-/** The `POST /api/schedules` body (`ScheduleInput`): the template is exactly what "Start session" would post. */
-export function toScheduleInput(form: NewSessionForm, cron: string, id: string | undefined): ScheduleInput {
-  return { ...(id ? { id } : {}), cron: cron.trim(), template: toNewSession(form) };
+/**
+ * The `POST /api/schedules` body (`ScheduleInput`): the template is exactly what
+ * "Start session" would post, so it carries the form's folder (D14; a repo
+ * folder's template is a `NewRepoSession`).
+ */
+export function toScheduleInput(form: NewSessionForm, cron: string, id: string | undefined, folder: FormFolder | null = null): ScheduleInput {
+  return { ...(id ? { id } : {}), cron: cron.trim(), template: toSessionBody(form, folder) };
 }
 
 /** The line shown when `POST /api/schedules` refuses (`Not saved: …`). */

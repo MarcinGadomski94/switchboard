@@ -1,7 +1,8 @@
-import type { NewSession, NewSessionPrefill, SolutionGroup } from '../../core/api.ts';
+import type { Folder, NewRepoSession, NewSession, NewSessionPrefill, SolutionGroup } from '../../core/api.ts';
 import {
   COORDINATIONS,
   type Coordination,
+  type FolderKind,
   PHASES,
   type Phase,
   QA_STACKS,
@@ -12,6 +13,7 @@ import {
   type WorkType,
   isOneOf,
 } from '../../core/model.ts';
+import { FOLDER_KIND_LABEL, sessionCwd } from '../folders/folders.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
 /**
@@ -20,7 +22,9 @@ import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
  * Switchboard App.dc.html`: the `ns` state, `pills`, `nsGroups`, `nsSummary`,
  * `canLaunch`); the values map onto the contract's `NewSession`
  * (`docs/handoff/contracts/local-api.md`). Rules that are not in the prototype are
- * listed in `docs/new-session.md`.
+ * listed in `docs/new-session.md`. D14 adds the Folder row: the form targets a
+ * saved folder, and a **repo** folder keeps only Task, Worktree and Ultracode
+ * (`docs/folders.md` → *UI*).
  */
 
 /** The form's state. `figmaUrls` is the raw text of its field (URLs separated by spaces, commas or new lines). */
@@ -39,6 +43,22 @@ export interface NewSessionForm {
   readonly figmaUrls: string;
   readonly worktrees: boolean;
   readonly ultracode: boolean;
+  /**
+   * D14: the saved folder's id the session starts in; `null` = the default folder
+   * (the saved folders have not loaded yet, or none is saved).
+   */
+  readonly folder: string | null;
+}
+
+/**
+ * The folder the form targets (D14): a saved {@link Folder}'s id, path, name and
+ * kind. A repo folder hides the router sections and is its own one solution.
+ */
+export type FormFolder = Pick<Folder, 'id' | 'path' | 'name' | 'kind'>;
+
+/** `true` for a repo folder (D14): only Task, Worktree and Ultracode apply. */
+export function isRepoFolder(folder: Pick<FormFolder, 'kind'> | null | undefined): boolean {
+  return folder?.kind === 'repo';
 }
 
 /**
@@ -64,6 +84,7 @@ export const DEFAULT_FORM: NewSessionForm = {
   figmaUrls: '',
   worktrees: true,
   ultracode: false,
+  folder: null,
 };
 
 /** A pill option: value + the prototype's label. */
@@ -147,9 +168,12 @@ export function nameTaken(form: Pick<NewSessionForm, 'name'>, takenNames: readon
 
 /**
  * "Start session" is enabled: at least one solution, a name that is not taken
- * (SPEC), and for QA the stack + both sources the fields mark "(required)".
+ * (SPEC), and for QA the stack + both sources the fields mark "(required)". For a
+ * repo folder (D14) only the name counts: the repo is the one solution and the
+ * router sections do not apply.
  */
-export function canStart(form: NewSessionForm, takenNames: readonly string[]): boolean {
+export function canStart(form: NewSessionForm, takenNames: readonly string[], folder: Pick<FormFolder, 'kind'> | null = null): boolean {
+  if (isRepoFolder(folder)) return sessionName(form) !== '' && !nameTaken(form, takenNames);
   return form.solutions.length > 0 && sessionName(form) !== '' && !nameTaken(form, takenNames) && missingQa(form).length === 0;
 }
 
@@ -158,7 +182,7 @@ export function toggleSolution(solutions: readonly string[], solution: string): 
   return solutions.includes(solution) ? solutions.filter((s) => s !== solution) : [...solutions, solution];
 }
 
-/** The `POST /api/sessions` body (contract → NewSession). */
+/** The `POST /api/sessions` body (contract → NewSession; D14: `folder` when the form names one). */
 export function toNewSession(form: NewSessionForm): NewSession {
   const qa = showsQa(form) && form.stack !== null ? { stack: form.stack, confluenceUrl: form.confluenceUrl.trim(), figmaUrls: figmaUrlList(form.figmaUrls) } : null;
   return {
@@ -172,7 +196,25 @@ export function toNewSession(form: NewSessionForm): NewSession {
     qa,
     worktrees: form.worktrees,
     ultracode: form.ultracode,
+    ...(form.folder ? { folder: form.folder } : {}),
   };
+}
+
+/** The `POST /api/sessions` body for a repo folder (D14, `NewRepoSession`): the repo is the one solution, no router fields. */
+export function toNewRepoSession(form: NewSessionForm, folder: Pick<FormFolder, 'id' | 'name'>): NewRepoSession {
+  return {
+    name: sessionName(form),
+    task: form.task.trim(),
+    folder: folder.id,
+    solutions: [folder.name],
+    worktrees: form.worktrees,
+    ultracode: form.ultracode,
+  };
+}
+
+/** What "Start session" posts: a {@link NewRepoSession} for a repo folder, else a {@link NewSession}. */
+export function toSessionBody(form: NewSessionForm, folder: FormFolder | null): NewSession | NewRepoSession {
+  return folder && isRepoFolder(folder) ? toNewRepoSession(form, folder) : toNewSession(form);
 }
 
 /**
@@ -200,7 +242,40 @@ export function formFromPrefill(prefill: NewSessionPrefill | null | undefined): 
   }
   if (typeof prefill.worktrees === 'boolean') form.worktrees = prefill.worktrees;
   if (typeof prefill.ultracode === 'boolean') form.ultracode = prefill.ultracode;
+  if (typeof prefill.folder === 'string' && prefill.folder.trim() !== '') form.folder = prefill.folder.trim();
   return form;
+}
+
+/**
+ * The folder a form opens with once the saved folders are known (D14): its own
+ * (a prefill's, e.g. a schedule's Edit or "Open fix session") while it is saved,
+ * else the default folder, else none.
+ */
+export function resolveFormFolder(current: string | null, folders: readonly Folder[]): string | null {
+  if (current && folders.some((folder) => folder.id === current)) return current;
+  return (folders.find((folder) => folder.isDefault) ?? folders[0])?.id ?? null;
+}
+
+/** One entry of the Folder dropdown: the saved folder's id and its text. */
+export interface FolderChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly path: string;
+  readonly kind: FolderKind;
+}
+
+/**
+ * The Folder dropdown (D14): the saved folders in the API's order (the default
+ * first, then most recently used, then the order added), each by name, `(default)`
+ * after the default one; a name two folders share gets its path.
+ */
+export function folderChoices(folders: readonly Folder[]): FolderChoice[] {
+  const count = new Map<string, number>();
+  for (const folder of folders) count.set(folder.name, (count.get(folder.name) ?? 0) + 1);
+  return folders.map((folder) => {
+    const name = (count.get(folder.name) ?? 0) > 1 ? `${folder.name} · ${folder.path}` : folder.name;
+    return { id: folder.id, label: folder.isDefault ? `${name} (default)` : name, path: folder.path, kind: folder.kind };
+  });
 }
 
 /** One solution chip of section 4. */
@@ -271,7 +346,7 @@ export function chipGroups(groups: readonly SolutionGroup[] | null, selected: re
   return rows;
 }
 
-/** The workspace root the summary's `cwd` line shows: derived from the first scanned solution; `null` before the scan. */
+/** The workspace root derived from the first scanned solution (the summary's `cwd` before the folder is known); `null` before the scan. */
 export function workspaceRoot(groups: readonly SolutionGroup[] | null): string | null {
   const first = groups?.flatMap((group) => [...group.solutions])[0];
   return first ? workspaceRootOf(first) : null;
@@ -299,18 +374,23 @@ const COORDINATION_SUMMARY: Readonly<Record<Coordination, string>> = {
 
 /**
  * The live summary (prototype `nsSummary`): what the session will start with,
- * in the router's terms, the worktree folders, and why Start is disabled.
+ * in the router's terms, the worktree folders, and why Start is disabled. D14:
+ * a `folder` line (its name and kind) before `cwd` once the folder is known,
+ * and `cwd` is the folder's; a repo folder has only the folder, the cwd (the repo,
+ * or its worktree with Worktree on) and ultracode ({@link repoSummaryLines}).
  */
-export function summaryLines(form: NewSessionForm, root: string | null, takenNames: readonly string[]): SummaryLine[] {
+export function summaryLines(form: NewSessionForm, root: string | null, takenNames: readonly string[], folder: FormFolder | null = null): SummaryLine[] {
+  if (folder && isRepoFolder(folder)) return repoSummaryLines(form, folder, takenNames);
   const name = sessionName(form);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
-  const lines: SummaryLine[] = [
-    { text: '# claude code · background · Max', tone: 'comment' },
-    value(`cwd       ${root ?? '—'}`),
+  const lines: SummaryLine[] = [{ text: '# claude code · background · Max', tone: 'comment' }];
+  if (folder) lines.push(value(`folder    ${folder.name} · ${FOLDER_KIND_LABEL[folder.kind]}`));
+  lines.push(
+    value(`cwd       ${folder?.path ?? root ?? '—'}`),
     value(`work      ${form.workType === 'qa' ? 'test-authoring (QA)' : 'feature-building'}`),
     value(`mode      ${form.mode === 'orchestrator' ? 'workspace orchestrator' : 'single-solution'}`),
     value(`phase     ${form.phase === 'ui-first' ? 'UI-first' : 'integration'}`),
-  ];
+  );
   if (showsQa(form)) lines.push(value(`stack     ${form.stack ?? '—'}`));
   else if (showsCoordination(form)) lines.push(value(`mobile    ${COORDINATION_SUMMARY[form.coordination]}`));
   lines.push(value(`ultracode ${form.ultracode ? 'on' : 'off'}`), value(' '));
@@ -323,6 +403,29 @@ export function summaryLines(form: NewSessionForm, root: string | null, takenNam
   if (missing.includes('confluence')) lines.push({ text: '⚠ add the Confluence page URL', tone: 'warn' });
   if (missing.includes('figma')) lines.push({ text: '⚠ add the Figma frame URLs', tone: 'warn' });
   lines.push(value(' '), { text: '✓ answers pre-filled → agent confirms, no re-ask', tone: 'ok' });
+  return lines;
+}
+
+/**
+ * The summary for a repo folder (D14): the folder, the cwd the session gets (the
+ * repo, or `<parent>/<repo>-wt-<name>` with Worktree on), ultracode, the worktree,
+ * and the first message: the task alone, plus the worktree note with a worktree
+ * (no router answers: a single repo has no router).
+ */
+export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, takenNames: readonly string[]): SummaryLine[] {
+  const name = sessionName(form);
+  const value = (text: string): SummaryLine => ({ text, tone: 'value' });
+  const lines: SummaryLine[] = [
+    { text: '# claude code · background · Max', tone: 'comment' },
+    value(`folder    ${folder.name} · ${FOLDER_KIND_LABEL[folder.kind]}`),
+    value(`cwd       ${sessionCwd(folder, form.worktrees, name)}`),
+    value(`ultracode ${form.ultracode ? 'on' : 'off'}`),
+    value(' '),
+    { text: form.worktrees ? '# worktree' : '# no worktree · edits in place', tone: 'comment' },
+  ];
+  if (form.worktrees) lines.push({ text: worktreeFolder(folder.name, name), tone: 'path' });
+  if (nameTaken(form, takenNames)) lines.push({ text: '⚠ a session with this name exists', tone: 'warn' });
+  lines.push(value(' '), { text: form.worktrees ? '✓ task + worktree note · no router answers' : '✓ task only · no router answers', tone: 'ok' });
   return lines;
 }
 

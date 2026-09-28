@@ -1,12 +1,16 @@
-import { type MouseEvent, useState } from 'react';
-import type { NewSessionPrefill, Schedule } from '../../core/api.ts';
+import { type MouseEvent, useEffect, useState } from 'react';
+import type { NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { AddFolderPanel } from '../folders/AddFolderPanel.tsx';
+import { defaultFolder, folderById, folderCheckLine } from '../folders/folders.ts';
+import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import {
   COORDINATION_OPTIONS,
+  type FormFolder,
   MODE_OPTIONS,
   type NewSessionForm,
   PHASE_OPTIONS,
@@ -16,13 +20,16 @@ import {
   WORK_TYPE_OPTIONS,
   canStart,
   chipGroups,
+  folderChoices,
   formFromPrefill,
+  isRepoFolder,
+  resolveFormFolder,
   sanitizeName,
   showsCoordination,
   showsQa,
   startErrorText,
   summaryLines,
-  toNewSession,
+  toSessionBody,
   toggleSolution,
   workspaceRoot,
 } from './new-session.ts';
@@ -36,7 +43,7 @@ const SESSIONS_RELOAD_MS = 1_000;
 /** The message of a failed `GET /api/solutions` (as in the Solutions view). */
 function solutionsErrorText(error: ApiError): string {
   const body = error.body as { error?: unknown; message?: unknown } | null;
-  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository in Settings.';
+  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository with Browse… above.';
   if (typeof body?.message === 'string') return body.message;
   return error.unreachable ? 'Switchboard is not reachable.' : `The solutions could not be loaded (HTTP ${error.status}).`;
 }
@@ -101,8 +108,11 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * Inbox's "Open fix session") replaces the defaults; the dialog also carries it as
  * `data-prefill` (JSON). With `schedule` (M7.1, D8: "+ New scheduled run", or a
  * schedule's Edit with its id + cron) it adds section 7 · Schedule and "Save
- * schedule" posts `POST /api/schedules` instead (`docs/schedules.md`). Details:
- * `docs/new-session.md`.
+ * schedule" posts `POST /api/schedules` instead (`docs/schedules.md`). D14: the
+ * Folder row at the top (the saved folders, Browse… to add one, the check line);
+ * the chips are the chosen folder's scan, and a repo folder keeps only Task,
+ * Worktree and Ultracode with the repo as its one locked solution. Details:
+ * `docs/new-session.md`, `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
   onClose,
@@ -114,7 +124,7 @@ export function NewSessionModal({
   readonly schedule?: ScheduleDraft | null;
 }) {
   const { navigate } = useRouter();
-  const solutions = useApi(api.solutions);
+  const folders = useSavedFolders();
   const sessions = useApi(api.listSessions);
   useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
 
@@ -125,27 +135,53 @@ export function NewSessionModal({
   const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const update = (patch: Partial<NewSessionForm>): void => {
     setForm((current) => ({ ...current, ...patch }));
     setError(null);
   };
 
+  // D14: once the saved folders are known, the form's folder is a saved one (its own while saved, else the default).
+  useEffect(() => {
+    const list = folders.data;
+    if (!list) return;
+    setForm((current) => {
+      const folder = resolveFormFolder(current.folder, list);
+      return folder === current.folder ? current : { ...current, folder };
+    });
+  }, [folders.data]);
+  const folderReady = folders.data !== null || folders.error !== null;
+  const target = folderById(folders.data, form.folder) ?? (form.folder ? null : defaultFolder(folders.data));
+  const folder: FormFolder | null = target ? { id: target.id, path: target.path, name: target.name, kind: target.kind } : null;
+  const repo = isRepoFolder(folder);
+  // The chips are the chosen folder's scan (D14): read again when the folder changes, tagged with it so a switch never shows the last folder's chips.
+  const scanFolder = folder?.id ?? form.folder ?? undefined;
+  const solutions = useApi(
+    (): Promise<{ readonly folder: string | undefined; readonly groups: SolutionGroup[] }> =>
+      folderReady ? api.solutions(scanFolder).then((groups) => ({ folder: scanFolder, groups })) : new Promise(() => undefined),
+    [scanFolder, folderReady],
+  );
+  const scan = solutions.data && solutions.data.folder === scanFolder ? solutions.data.groups : null;
+  const scanError = scan === null && !solutions.loading ? solutions.error : null;
+
   const takenNames = (sessions.data ?? []).map((session) => session.name);
-  const scanned = solutions.data ?? (solutions.error ? [] : null);
+  const scanned = scan ?? (scanError ? [] : null);
   const groups = chipGroups(scanned, form.solutions);
   const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id).map((s) => s.name);
   const preview = cronPreview(cron, new Date());
   const lines = scheduling
-    ? scheduleSummaryLines(form, workspaceRoot(solutions.data), preview, takenScheduleNames)
-    : summaryLines(form, workspaceRoot(solutions.data), takenNames);
-  const startable = (scheduling ? canSaveSchedule(form, preview, takenScheduleNames) : canStart(form, takenNames)) && !busy;
+    ? scheduleSummaryLines(form, workspaceRoot(scan), preview, takenScheduleNames, folder)
+    : summaryLines(form, workspaceRoot(scan), takenNames, folder);
+  const startable = (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
   const title = scheduling ? (schedule.id ? 'Edit scheduled run' : 'New scheduled run') : 'New session';
+  const choices = folderChoices(folders.data ?? []);
+  const checkLine = folderCheckLine(target?.check ?? null);
 
   const saveSchedule = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      await api.createSchedule(toScheduleInput(form, cron, schedule?.id));
+      await api.createSchedule(toScheduleInput(form, cron, schedule?.id, folder));
       onClose();
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
@@ -161,7 +197,7 @@ export function NewSessionModal({
     setBusy(true);
     setError(null);
     try {
-      const session = await api.createSession(toNewSession(form));
+      const session = await api.createSession(toSessionBody(form, folder));
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -190,9 +226,57 @@ export function NewSessionModal({
               {title}
             </div>
             <div className="sb-ns-sub">Claude Code · background · Max</div>
-            <button type="button" className="sb-button sb-ns-recommended" data-testid="ns-recommended" onClick={() => update(RECOMMENDED)}>
-              Accept recommended
-            </button>
+            {repo ? null : (
+              <button type="button" className="sb-button sb-ns-recommended" data-testid="ns-recommended" onClick={() => update(RECOMMENDED)}>
+                Accept recommended
+              </button>
+            )}
+          </div>
+
+          <div className="sb-ns-section sb-ns-section--folder" data-testid="ns-section" data-section="folder" data-kind={folder?.kind}>
+            <div className="sb-ns-label">Folder</div>
+            <div className="sb-ns-folder-row">
+              <select
+                className="sb-ns-input sb-ns-select"
+                data-testid="ns-folder"
+                aria-label="Folder"
+                value={form.folder ?? ''}
+                disabled={choices.length === 0}
+                title={target?.path}
+                onChange={(event) => update({ folder: event.target.value, solutions: [] })}
+              >
+                {choices.length === 0 ? <option value="">{folders.data ? 'No folder saved yet' : 'Loading folders…'}</option> : null}
+                {choices.map((choice) => (
+                  <option key={choice.id} value={choice.id} title={choice.path}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="sb-button sb-ns-browse"
+                data-testid="ns-folder-browse"
+                aria-expanded={adding}
+                onClick={() => setAdding((open) => !open)}
+              >
+                Browse…
+              </button>
+              {checkLine ? (
+                <span className="sb-ns-folder-check" data-testid="ns-folder-check" data-ok={String(checkLine.ok)} title={checkLine.text}>
+                  {checkLine.text}
+                </span>
+              ) : null}
+            </div>
+            {adding ? (
+              <AddFolderPanel
+                testId="ns-folder-add"
+                onAdded={(added) => {
+                  setAdding(false);
+                  update({ folder: added.id, solutions: [] });
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            ) : null}
           </div>
 
           <div className="sb-ns-section" data-testid="ns-section" data-section="task">
@@ -218,24 +302,47 @@ export function NewSessionModal({
             </div>
           </div>
 
-          <div className="sb-ns-section" data-testid="ns-section" data-section="work-type">
-            <div className="sb-ns-label">2 · Work type</div>
-            <Pills group="work-type" label="Work type" options={WORK_TYPE_OPTIONS} value={form.workType} onPick={(workType) => update({ workType })} />
-          </div>
+          {repo ? null : (
+            <div className="sb-ns-section" data-testid="ns-section" data-section="work-type">
+              <div className="sb-ns-label">2 · Work type</div>
+              <Pills group="work-type" label="Work type" options={WORK_TYPE_OPTIONS} value={form.workType} onPick={(workType) => update({ workType })} />
+            </div>
+          )}
 
-          <div className="sb-ns-section" data-testid="ns-section" data-section="mode">
-            <div className="sb-ns-label">3 · Mode</div>
-            <Pills group="mode" label="Mode" options={MODE_OPTIONS} value={form.mode} onPick={(mode) => update({ mode })} />
-          </div>
+          {repo ? null : (
+            <div className="sb-ns-section" data-testid="ns-section" data-section="mode">
+              <div className="sb-ns-label">3 · Mode</div>
+              <Pills group="mode" label="Mode" options={MODE_OPTIONS} value={form.mode} onPick={(mode) => update({ mode })} />
+            </div>
+          )}
 
           <div className="sb-ns-section sb-ns-section--solutions" data-testid="ns-section" data-section="solutions">
             <div className="sb-ns-label sb-ns-label--row">
-              4 · Solutions in scope
+              {repo ? '2 · Solution in scope' : '4 · Solutions in scope'}
               <span className="sb-ns-hint" data-testid="ns-solutions-hint">
-                {form.solutions.length} selected · read-only folders locked
+                {repo ? '1 selected · a git repo is one solution' : `${form.solutions.length} selected · read-only folders locked`}
               </span>
             </div>
-            {groups.map((group) => (
+            {repo && folder ? (
+              <div className="sb-ns-group" data-testid="ns-group" data-folder={`${folder.name}/`}>
+                <span className="sb-ns-folder">{`${folder.name}/`}</span>
+                <div className="sb-ns-chips">
+                  <button
+                    type="button"
+                    className="sb-button sb-ns-chip"
+                    data-testid="ns-chip"
+                    data-solution={folder.name}
+                    data-selected="true"
+                    data-fixed="true"
+                    disabled
+                    title="A git repo folder is its own one solution"
+                  >
+                    {`✓ ${folder.name}`}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {(repo ? [] : groups).map((group) => (
               <div key={group.folder} className="sb-ns-group" data-testid="ns-group" data-folder={group.folder}>
                 <span className="sb-ns-folder">{group.folder}</span>
                 <div className="sb-ns-chips">
@@ -259,31 +366,33 @@ export function NewSessionModal({
                 </div>
               </div>
             ))}
-            {solutions.error && !solutions.data ? (
+            {!repo && scanError ? (
               <div className="sb-ns-note" data-testid="ns-solutions-note">
-                {solutionsErrorText(solutions.error)}
+                {solutionsErrorText(scanError)}
               </div>
             ) : null}
-            {solutions.data && solutions.data.length === 0 ? (
+            {!repo && scan && scan.length === 0 ? (
               <div className="sb-ns-note" data-testid="ns-solutions-note">
                 No solutions found in the workspace.
               </div>
             ) : null}
           </div>
 
-          <div className="sb-ns-section" data-testid="ns-section" data-section="phase">
-            <div className="sb-ns-label">5 · Phase</div>
-            <Pills group="phase" label="Phase" options={PHASE_OPTIONS} value={form.phase} onPick={(phase) => update({ phase })} />
-          </div>
+          {repo ? null : (
+            <div className="sb-ns-section" data-testid="ns-section" data-section="phase">
+              <div className="sb-ns-label">5 · Phase</div>
+              <Pills group="phase" label="Phase" options={PHASE_OPTIONS} value={form.phase} onPick={(phase) => update({ phase })} />
+            </div>
+          )}
 
-          {showsCoordination(form) ? (
+          {!repo && showsCoordination(form) ? (
             <div className="sb-ns-section" data-testid="ns-section" data-section="coordination">
               <div className="sb-ns-label">6 · Mobile coordination</div>
               <Pills group="coordination" label="Mobile coordination" options={COORDINATION_OPTIONS} value={form.coordination} onPick={(coordination) => update({ coordination })} />
             </div>
           ) : null}
 
-          {showsQa(form) ? (
+          {!repo && showsQa(form) ? (
             <div className="sb-ns-section sb-ns-section--qa" data-testid="ns-section" data-section="qa">
               <div className="sb-ns-label">6 · QA contract</div>
               <Pills group="stack" label="Stack under test" options={STACK_OPTIONS} value={form.stack} onPick={(stack) => update({ stack })} />
@@ -314,6 +423,7 @@ export function NewSessionModal({
             <ScheduleSection
               cron={cron}
               preview={preview}
+              number={repo ? 3 : 7}
               onCron={(value) => {
                 setCron(value);
                 setError(null);
@@ -325,7 +435,13 @@ export function NewSessionModal({
         <div className="sb-ns-side">
           <div className="sb-ns-side-label">Launch</div>
           <div className="sb-ns-toggles">
-            <Toggle name="worktrees" title="Worktree per solution" description="Kept until the PR is merged on GitHub" on={form.worktrees} onToggle={() => update({ worktrees: !form.worktrees })} />
+            <Toggle
+              name="worktrees"
+              title={repo ? 'Worktree' : 'Worktree per solution'}
+              description="Kept until the PR is merged on GitHub"
+              on={form.worktrees}
+              onToggle={() => update({ worktrees: !form.worktrees })}
+            />
             <Toggle name="ultracode" title="Ultracode (workflows)" description="Dispatch via the Workflow tool" on={form.ultracode} onToggle={() => update({ ultracode: !form.ultracode })} />
           </div>
           <div className="sb-ns-side-label sb-ns-side-label--summary">Summary</div>

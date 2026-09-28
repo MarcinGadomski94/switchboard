@@ -33,6 +33,14 @@ import {
  * functions than the prototype's hard-coded `G` and no `other/` row, so the
  * solutions section is shorter and everything below it sits higher (those parts
  * are compared with geometry `size`: x, width, height).
+ *
+ * D14 additions (not findings): the **Folder row** above section 1 (the saved
+ * folder dropdown, Browse… and the check line) and the summary's **`folder`
+ * line** before `cwd`. The prototype has neither, so the app's form child k + 1
+ * is compared with the prototype's child k (k ≥ 1, {@link appPathOf}) and their
+ * y relative to the first section (1 · Task definition), and the app's summary
+ * line i + 1 with the prototype's line i (i ≥ 1) with its y less the added
+ * line's height. The added parts are checked on their own ({@link d14Additions}).
  */
 
 interface PartSpec {
@@ -44,8 +52,30 @@ interface PartSpec {
 
 const FORM = [0];
 const SIDE = [1];
+const SUMMARY = [...SIDE, 3];
 const SOLUTIONS = [...FORM, 4];
 const PHASE = [...FORM, 5];
+
+/** D14: the app's Folder row is the form's child 1 (after the head), so the prototype's form child k ≥ 1 is the app's k + 1. */
+const FOLDER_ROW = [...FORM, 1];
+/** D14: the app's summary line 1 is the added `folder` line, so the prototype's summary line i ≥ 1 is the app's i + 1. */
+const FOLDER_LINE = [...SUMMARY, 1];
+
+/** The app's path of a prototype path (D14, see the module comment). */
+function appPathOf(path: readonly number[]): readonly number[] {
+  const [a, b, c] = path;
+  if (a !== undefined && a === FORM[0] && b !== undefined && b >= 1) return [a, b + 1, ...path.slice(2)];
+  if (a !== undefined && a === SIDE[0] && b !== undefined && b === SUMMARY[1] && c !== undefined && c >= 1) return [a, b, c + 1, ...path.slice(3)];
+  return path;
+}
+
+/** What {@link appPathOf} shifted: the form below the Folder row, or the summary below the `folder` line. */
+function shiftOf(path: readonly number[]): 'form' | 'summary' | null {
+  const [a, b, c] = path;
+  if (a === FORM[0] && b !== undefined && b >= 1) return 'form';
+  if (a === SIDE[0] && b === SUMMARY[1] && c !== undefined && c >= 1) return 'summary';
+  return null;
+}
 
 /** Parts of the draft state. */
 function draftParts(): Record<string, PartSpec> {
@@ -187,29 +217,48 @@ function fmtBox(part: Part): string {
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
 }
 
-/** Compares measured parts; appends report rows and findings. */
+/** How far the D14 additions move the app's parts down (px): the form below the Folder row, the summary below the `folder` line. */
+interface Offsets {
+  readonly form: number;
+  readonly summary: number;
+}
+
+/** Measures the D14 offsets of a state: the first section's y on both pages, the added summary line's height. */
+async function measureOffsets(protoPage: Page, appPage: Page): Promise<Offsets> {
+  const firstSection = [...FORM, 1];
+  const proto = await measurePanel(protoPage, { first: firstSection });
+  const app = await measurePanel(appPage, { first: appPathOf(firstSection), folderLine: FOLDER_LINE });
+  const form = (app['first']?.box.y ?? 0) - (proto['first']?.box.y ?? 0);
+  return { form, summary: app['folderLine']?.box.height ?? 0 };
+}
+
+/** Compares measured parts; appends report rows and findings. `offsets` (D14) are taken off the app's y of shifted parts. */
 function compareParts(
   state: string,
-  specs: Record<string, { readonly geometry: Geometry; readonly copy: boolean }>,
+  specs: Record<string, { readonly geometry: Geometry; readonly copy: boolean; readonly shift?: 'form' | 'summary' | null }>,
   proto: Record<string, Part | null>,
   app: Record<string, Part | null>,
   rows: string[],
   failures: string[],
+  offsets: Offsets = { form: 0, summary: 0 },
 ): void {
   for (const [name, spec] of Object.entries(specs)) {
     const label = `${state} · ${name}`;
     const p = proto[name];
-    const a = app[name];
-    if (!p || !a) {
+    const measured = app[name];
+    if (!p || !measured) {
       failures.push(`${label}: missing (${p ? 'app' : 'prototype'})`);
       continue;
     }
+    const dy = spec.shift ? offsets[spec.shift] : 0;
+    const a: Part = dy ? { ...measured, box: { ...measured.box, y: measured.box.y - dy } } : measured;
     const boxIssues = compareBoxes(label, p.box, a.box, spec.geometry);
     const copyIssues = spec.copy && p.text !== a.text ? [`${label}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map((prop) => `${label}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`);
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
-    rows.push(`| ${label} | ${spec.geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`);
+    const geometry = spec.shift ? `${spec.geometry} (y − ${round(dy)})` : spec.geometry;
+    rows.push(`| ${label} | ${geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`);
   }
 }
 
@@ -221,8 +270,51 @@ async function measureAndCompare(
   rows: string[],
   failures: string[],
 ): Promise<void> {
-  const paths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
-  compareParts(state, specs, await measurePanel(protoPage, paths), await measurePanel(appPage, paths), rows, failures);
+  const protoPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
+  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, appPathOf(part.path)]));
+  const shifted = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path) }]));
+  const offsets = await measureOffsets(protoPage, appPage);
+  compareParts(state, shifted, await measurePanel(protoPage, protoPaths), await measurePanel(appPage, appPaths), rows, failures, offsets);
+}
+
+/**
+ * The D14 additions of a state, checked on their own (the prototype has none):
+ * the Folder row sits between the head and section 1 with the section label's
+ * style, its dropdown shows the demo's folder, Browse… and the check line are in
+ * the row, and the summary's `folder` line names the folder.
+ */
+async function d14Additions(state: string, appPage: Page, rows: string[], failures: string[]): Promise<void> {
+  const app = await measurePanel(appPage, {
+    head: [...FORM, 0],
+    row: FOLDER_ROW,
+    label: [...FOLDER_ROW, 0],
+    controls: [...FOLDER_ROW, 1],
+    select: [...FOLDER_ROW, 1, 0],
+    browse: [...FOLDER_ROW, 1, 1],
+    first: [...FORM, 2],
+    firstLabel: [...FORM, 2, 0],
+    folderLine: FOLDER_LINE,
+    cwdLine: [...SUMMARY, 2],
+  });
+  const selected = await appPage.evaluate(() => (document.querySelector('[data-testid="ns-folder"]') as HTMLSelectElement | null)?.selectedOptions[0]?.textContent ?? null);
+  const checks: Array<[string, boolean, string]> = [];
+  const row = app['row'];
+  const head = app['head'];
+  const first = app['first'];
+  const label = app['label'];
+  const firstLabel = app['firstLabel'];
+  checks.push(['Folder row between the head and section 1', !!row && !!head && !!first && row.box.y >= head.box.y + head.box.height && first.box.y >= row.box.y + row.box.height, row ? fmtBox(row) : 'missing']);
+  checks.push(['label copy', label?.text === 'Folder', JSON.stringify(label?.text ?? null)]);
+  const labelStyle = COMPARED_STYLES.filter((prop) => label?.style[prop] !== firstLabel?.style[prop]);
+  checks.push(['label style = section 1 label', !!label && !!firstLabel && labelStyle.length === 0, labelStyle.join(', ') || 'same']);
+  checks.push(['dropdown: the demo folder (the default)', selected?.endsWith('(default)') === true, JSON.stringify(selected)]);
+  checks.push(['Browse…', app['browse']?.text === 'Browse…', JSON.stringify(app['browse']?.text ?? null)]);
+  checks.push(['summary folder line', app['folderLine']?.text.startsWith('folder    ') === true && app['folderLine']?.text.endsWith(' · workspace') === true, JSON.stringify(app['folderLine']?.text ?? null)]);
+  checks.push(['summary cwd line after it', app['cwdLine']?.text.startsWith('cwd ') === true, JSON.stringify(app['cwdLine']?.text ?? null)]);
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D14 ${what}: ${note}`);
+    rows.push(`| ${state} · D14 ${what} | addition | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
 }
 
 /** Clicks the prototype's pill or chip with exactly this text (its onClick sits on the text's parent span). */
@@ -275,17 +367,19 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   if (JSON.stringify(protoInputs) !== JSON.stringify(appInputs)) failures.push(`draft · inputs: prototype ${JSON.stringify(protoInputs)} vs app ${JSON.stringify(appInputs)}`);
   rows.push(`| draft · inputs (value, placeholder) | — | ${JSON.stringify(protoInputs).slice(0, 60)}… | same | ${JSON.stringify(protoInputs) === JSON.stringify(appInputs) ? 'ok' : 'FAIL'} | |`);
   // Section 4's last child is the read-only row (label + one row per group).
-  const lastGroup = (page: Page) => page.evaluate((path) => {
-    let el: Element | undefined | null = findPanelIn(document);
-    for (const index of path) el = el?.children[index];
-    return (el?.children.length ?? 0) - 1;
-  }, SOLUTIONS);
-  const protoGroups = await lastGroup(protoPage);
-  const appGroups = await lastGroup(appPage);
+  const lastGroup = (page: Page, section: readonly number[]) =>
+    page.evaluate((path) => {
+      let el: Element | undefined | null = findPanelIn(document);
+      for (const index of path) el = el?.children[index];
+      return (el?.children.length ?? 0) - 1;
+    }, [...section]);
+  const protoGroups = await lastGroup(protoPage, SOLUTIONS);
+  const appGroups = await lastGroup(appPage, appPathOf(SOLUTIONS));
   const readOnly = readOnlyParts(protoGroups, appGroups);
   const protoRo = await measurePanel(protoPage, Object.fromEntries(Object.entries(readOnly).map(([n, s]) => [n, s.proto])));
-  const appRo = await measurePanel(appPage, Object.fromEntries(Object.entries(readOnly).map(([n, s]) => [n, s.app])));
+  const appRo = await measurePanel(appPage, Object.fromEntries(Object.entries(readOnly).map(([n, s]) => [n, appPathOf(s.app)])));
   compareParts('draft', readOnly, protoRo, appRo, rows, failures);
+  await d14Additions('draft', appPage, rows, failures);
 
   // SPEC tokens as computed styles of the app (New session: 1080px, `1fr | 360px`, pills, chips, toggles, summary).
   const computed = await appPage.evaluate(() => {
@@ -387,7 +481,8 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   };
   const qaPaths = Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, part.path]));
   const protoQa = await measurePanel(protoPage, qaPaths);
-  const appQa = await measurePanel(appPage, qaPaths);
+  const appQa = await measurePanel(appPage, Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, appPathOf(part.path)])));
+  const qaOffsets = await measureOffsets(protoPage, appPage);
   // The prototype draws the two sources as static boxes; the app's are inputs whose placeholder is that copy (muted, #76756f).
   const placeholderCopy = await appPage.evaluate(() => [
     (document.querySelector('[data-testid="ns-confluence"]') as HTMLInputElement).placeholder,
@@ -404,7 +499,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
     const a = appQa[name];
     if (a) appQa[name] = { ...a, style: { ...a.style, color: placeholderCopy[2] ?? '', cursor: a.style['cursor'] === 'text' ? 'auto' : (a.style['cursor'] ?? '') } };
   }
-  compareParts('qa', qa, protoQa, appQa, rows, failures);
+  compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path) }])), protoQa, appQa, rows, failures, qaOffsets);
 
   // State 4: back to the draft's work type, no solutions → "⚠ pick at least one solution", Start at 45%.
   await protoClick(protoPage, 'Feature-building');
@@ -419,6 +514,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   };
   for (let i = 0; i < 10; i++) empty[`summaryLine${i}`] = { path: [...SIDE, 3, i], geometry: 'box', copy: true };
   await measureAndCompare('empty', protoPage, appPage, empty, rows, failures);
+  await d14Additions('empty', appPage, rows, failures);
 
   await writeReport({
     'new-session.md': report({ rows, computedRows, failures, panel: panelDiff.percent, full: fullDiff.percent }),
@@ -441,6 +537,9 @@ Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 10
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): \`new-session-side-by-side.png\` (the panel), \`new-session-page-side-by-side.png\` (page).
+
+## D14 additions (not findings)
+The Folder row above section 1 (saved-folder dropdown, Browse…, check line) and the summary's \`folder\` line before \`cwd\` are not in the prototype. The app's form child k + 1 is compared with the prototype's child k (k ≥ 1), with y relative to section 1 (\`y − <offset>\` in the table); the app's summary line i + 1 with the prototype's line i (i ≥ 1), with y less the added line's height. The added parts are checked on their own (\`D14 …\` rows): the row sits between the head and section 1 with the section label's style, the dropdown shows the default folder, the summary names it.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. States: \`draft\` (the prototype's draft), \`single\` (Single-solution: section 6 · Mobile coordination), \`qa\` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), \`empty\` (no solutions: the warning line, Start at 45%). Styles compared: ${COMPARED_STYLES.join(', ')}.
