@@ -1,5 +1,5 @@
 import type { UsageWarning } from '../../core/api.ts';
-import { USAGE_WINDOW_LABELS } from '../../core/usage.ts';
+import { usageWindowLabel } from '../../core/usage.ts';
 import { formatResetsIn } from '../shell/format.ts';
 import type { ToastContent } from './notify.ts';
 
@@ -18,18 +18,19 @@ export const SHOWN_WARNINGS_KEY = 'switchboard.usageWarningsShown';
 /** At most this many keys are remembered (a warning per window and reset; old ones are useless). */
 const MAX_REMEMBERED = 20;
 
-/** One key per window and reset: a later reset of the same window is a new warning. */
-export function usageWarningKey(warning: Pick<UsageWarning, 'window' | 'resetsAt'>): string {
-  return `${warning.window}@${warning.resetsAt}`;
+/** One key per window (D17: per model for a model-scoped one) and reset: a later reset of the same window is a new warning. */
+export function usageWarningKey(warning: Pick<UsageWarning, 'window' | 'resetsAt' | 'model'>): string {
+  const window = warning.window === 'model' ? `model:${warning.model ?? ''}` : warning.window;
+  return `${window}@${warning.resetsAt}`;
 }
 
 /**
  * The toast for a warning: `Max usage 91%` · `5-hour window`, and the text
  * `Your Max 5-hour window reached 91% (warning at 90%). It resets in 1h48. Nothing is paused automatically.`
- * No session to jump to (only "Later").
+ * A model-scoped window (D17) reads `Fable weekly limit`. No session to jump to (only "Later").
  */
 export function usageWarningToast(warning: UsageWarning, now: number = Date.now()): ToastContent {
-  const label = USAGE_WINDOW_LABELS[warning.window];
+  const label = usageWindowLabel(warning);
   const pct = Math.round(warning.pct);
   return {
     id: `usage-${usageWarningKey(warning)}`,

@@ -601,10 +601,36 @@ export interface SystemInfo {
   readonly usageResetsAt?: string;
   /** Additive (M9.2, `docs/usage.md`): the usage warnings in force (fired, window not reset yet); omitted when none. */
   readonly usageWarnings?: readonly UsageWarning[];
+  /**
+   * Additive (D17, `docs/usage.md`): each usage window known now, for the footer's
+   * rows: `session` (5-hour), `week` (weekly, all models), then a `model` window per
+   * model-scoped weekly limit while it is in use. A window that is unknown is left
+   * out (never guessed); the field is omitted when none is known.
+   */
+  readonly usageWindows?: readonly UsageWindow[];
 }
 
 /** A Max usage window (M9.2): `get_usage` `rate_limits.five_hour` / `seven_day`. */
 export type UsageWindowName = 'five_hour' | 'seven_day';
+
+/** Additive (D17): what a {@link UsageWindow} is: the 5-hour session, the weekly limit (all models), or one model's weekly limit. */
+export type UsageWindowKey = 'session' | 'week' | 'model';
+
+/** Additive (D17, `docs/usage.md`): one usage window known now (`SystemInfo.usageWindows`). */
+export interface UsageWindow {
+  readonly key: UsageWindowKey;
+  /** The footer row's label: `Session`, `Week`, or the model's name (`Fable`). */
+  readonly label: string;
+  /** Utilization 0–100. */
+  readonly pct: number;
+  /** When the window resets (ISO 8601 UTC). */
+  readonly resetsAt: string;
+  /** `key: 'model'` only: the model's display name as the CLI sends it. */
+  readonly model?: string;
+}
+
+/** Additive (D17): the window a {@link UsageWarning} is about; `model` = a model-scoped weekly limit named by `UsageWarning.model`. */
+export type UsageWarningWindow = UsageWindowName | 'model';
 
 /**
  * Additive (M9.2): a usage warning. It fires once when a window reaches the
@@ -612,7 +638,9 @@ export type UsageWindowName = 'five_hour' | 'seven_day';
  * nothing is paused). The UI shows it as a toast once per window and reset.
  */
 export interface UsageWarning {
-  readonly window: UsageWindowName;
+  readonly window: UsageWarningWindow;
+  /** Additive (D17): `window: 'model'` only, the model's display name (`Fable`). */
+  readonly model?: string;
   /** The window's utilization when the warning fired (0–100). */
   readonly pct: number;
   /** The threshold it reached (Settings `usage.warnAtPct`, default 90). */

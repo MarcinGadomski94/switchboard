@@ -39,6 +39,21 @@ describe('usage warning toast', () => {
     expect(usageWarningToast(SEVEN, NOW)).toMatchObject({ title: 'Max usage 90%', sub: 'weekly limit' });
   });
 
+  it('D17: a model-scoped weekly limit names its model; its key is per model, apart from the weekly limit', () => {
+    const fable: UsageWarning = { window: 'model', model: 'Fable', pct: 92, threshold: 90, resetsAt: '2026-10-01T13:00:00.000Z', firedAt: '2026-09-27T21:50:00.000Z' };
+    expect(usageWarningToast(fable, NOW)).toEqual({
+      id: 'usage-model:Fable@2026-10-01T13:00:00.000Z',
+      title: 'Max usage 92%',
+      sub: 'Fable weekly limit',
+      branch: '',
+      text: 'Your Max Fable weekly limit reached 92% (warning at 90%). It resets in 87h08. Nothing is paused automatically.',
+      sessionId: null,
+    });
+    const opus = { ...fable, model: 'Opus' };
+    expect(new Set([usageWarningKey(fable), usageWarningKey(opus), usageWarningKey(SEVEN)]).size).toBe(3);
+    expect(warningsToShow([SEVEN, fable, opus], new Set([usageWarningKey(fable)]), NOW)).toEqual([SEVEN, opus]);
+  });
+
   it('one toast per window and reset: shown ones and ones whose window already reset are skipped', () => {
     expect(warningsToShow([FIVE, SEVEN], new Set(), NOW)).toEqual([FIVE, SEVEN]);
     expect(warningsToShow([FIVE, SEVEN], new Set([usageWarningKey(FIVE)]), NOW)).toEqual([SEVEN]);

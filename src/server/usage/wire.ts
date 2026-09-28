@@ -9,7 +9,7 @@ import { UsagePoller } from './poller.ts';
  * `providers.system` with the meter's usage fields (M9.2): `usagePct` and
  * `usageResetsAt` only when the meter knows them (anything the base provider
  * said about usage is dropped, never mixed in), plus the warnings in force as
- * `usageWarnings`. The route and the `system` hub event both read
+ * `usageWarnings` and (D17) the windows known now as `usageWindows`. The route and the `system` hub event both read
  * `providers.system`, so both carry them. Without a base provider (M5.3's
  * `SystemProbe` not wired yet) the providers are returned unchanged.
  */
@@ -18,7 +18,7 @@ export function withUsage(providers: Providers, meter: Pick<UsageMeter, 'systemF
   if (!base) return providers;
   const system: SystemProvider = {
     async system(...args: Parameters<SystemProvider['system']>): Promise<SystemInfo> {
-      const { usagePct, usageResetsAt, usageWarnings, ...info } = await base.system(...args);
+      const { usagePct, usageResetsAt, usageWarnings, usageWindows, ...info } = await base.system(...args);
       return { ...info, ...(await meter.systemFields()) };
     },
   };

@@ -244,9 +244,18 @@ export interface DemoSetup {
 /**
  * `system.json`: the sidebar footer as the prototype shows it + CLI / gh status.
  * `processes` is the prototype's `sessions + 3` (its footer reads "9 bg processes").
+ * D17: `max` is the Session window; an optional `week` (same `18% · 74h12` form)
+ * would be the Week window. The prototype has only the one Max figure.
  */
 export interface DemoSystem {
-  readonly footer: { readonly service: string; readonly processes: number; readonly cpu: string; readonly ram: string; readonly max: string };
+  readonly footer: {
+    readonly service: string;
+    readonly processes: number;
+    readonly cpu: string;
+    readonly ram: string;
+    readonly max: string;
+    readonly week?: string;
+  };
   readonly cli: string;
   readonly signedIn: boolean;
   readonly ghSignedIn: boolean;
