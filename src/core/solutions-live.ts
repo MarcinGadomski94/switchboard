@@ -1,11 +1,11 @@
 /**
  * Pure rules behind the live fields of the Solutions view (M6.2,
  * `docs/solutions.md` → *Live fields*): the gap #12 phase-ledger parser, the
- * row's phase / status / changes summaries, the current branch from `.git/HEAD`
- * and the codebase-memory freshness match against `.claude/.codebase-memory-dirty`.
- * No file system: `src/server/solutions/live.ts` reads the files.
+ * row's phase / status / changes summaries and the current branch from
+ * `.git/HEAD`. The codebase-memory freshness rules are in `codebase-memory.ts`
+ * (M6.4). No file system: `src/server/solutions/live.ts` reads the files.
  */
-import type { CodebaseMemoryFreshness, PhaseLedgerEntry } from './api.ts';
+import type { PhaseLedgerEntry } from './api.ts';
 import type { Phase, SessionStatus } from './model.ts';
 
 /** The phase labels a ledger or a session can have (the prototype's copy). */
@@ -155,48 +155,4 @@ export function branchFromHead(head: string): string | null {
   if (ref) return (ref[1] as string).trim() || null;
   if (/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i.test(text)) return text.slice(0, 7);
   return null;
-}
-
-/**
- * The codebase-memory project id of a folder, as the workspace's dirty-tracker
- * hook writes it into `.claude/.codebase-memory-dirty`: the absolute path with `\`
- * turned into `/`, then every run of `:`, `/` and `\` turned into one `-`, and
- * leading / trailing `-` removed (`D:/…/nugets/auth-nuget` →
- * `D-…-nugets-auth-nuget`).
- */
-export function codebaseMemoryProjectId(root: string, relativePath: string): string {
-  const base = root.replace(/\\/g, '/').replace(/\/+$/, '');
-  const absolute = relativePath === '' ? base : `${base}/${relativePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')}`;
-  return absolute.replace(/[:/\\]+/g, '-').replace(/^-+|-+$/g, '');
-}
-
-/** The non-empty, trimmed lines of a `.codebase-memory-dirty` file. */
-export function dirtyProjects(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
-}
-
-/**
- * Freshness of one solution against the dirty list (`null` = the file could not
- * be read): `dirty` when a line equals its project id (case-insensitive), or, for
- * a solution that is a whole top-level folder (`mobile/`, depth 0), when a line
- * starts with its id + `-` (the hook records `<root>-mobile-<first subfolder>`
- * for edits there); otherwise `fresh`.
- */
-export function freshness(
-  dirty: readonly string[] | null,
-  root: string,
-  relativePath: string,
-  wholeFolder: boolean,
-): CodebaseMemoryFreshness {
-  if (dirty === null) return 'unknown';
-  const id = codebaseMemoryProjectId(root, relativePath).toLowerCase();
-  for (const line of dirty) {
-    const project = line.toLowerCase();
-    if (project === id) return 'dirty';
-    if (wholeFolder && project.startsWith(`${id}-`)) return 'dirty';
-  }
-  return 'fresh';
 }

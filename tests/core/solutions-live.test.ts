@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   branchFromHead,
   changesText,
-  codebaseMemoryProjectId,
-  dirtyProjects,
-  freshness,
   parsePhaseLedger,
   phaseLabel,
   solutionPhase,
@@ -97,28 +94,5 @@ describe('row summaries', () => {
     expect(branchFromHead('ref: refs/heads/feature/free-talk-360\n')).toBe('feature/free-talk-360');
     expect(branchFromHead('0123456789abcdef0123456789abcdef01234567\n')).toBe('0123456');
     expect(branchFromHead('garbage')).toBeNull();
-  });
-});
-
-describe('codebase-memory freshness (.claude/.codebase-memory-dirty)', () => {
-  it('project ids follow the dirty-tracker hook: separators collapsed to one dash', () => {
-    expect(codebaseMemoryProjectId('D:\\riderprojects\\acme\\workspace', 'nugets/auth-nuget')).toBe(
-      'D-riderprojects-acme-workspace-nugets-auth-nuget',
-    );
-    expect(codebaseMemoryProjectId('/Users/dev/Acme Corp/workspace/', 'microfrontends/web-front')).toBe(
-      'Users-dev-Acme Corp-workspace-microfrontends-web-front',
-    );
-  });
-
-  it('dirty on an exact (case-insensitive) id; a whole folder also by the hook’s `<id>-<subfolder>` lines', () => {
-    const root = '/ws';
-    const lines = dirtyProjects('ws-microfrontends-web-front\r\n\n  WS-MOBILE-src  \nws-nugets-auth-nuget-v2\n');
-    expect(lines).toEqual(['ws-microfrontends-web-front', 'WS-MOBILE-src', 'ws-nugets-auth-nuget-v2']);
-    expect(freshness(lines, root, 'microfrontends/web-front', false)).toBe('dirty');
-    expect(freshness(lines, root, 'mobile', true)).toBe('dirty');
-    // A longer repo name is another project, not this one.
-    expect(freshness(lines, root, 'nugets/auth-nuget', false)).toBe('fresh');
-    expect(freshness([], root, 'mobile', true)).toBe('fresh');
-    expect(freshness(null, root, 'mobile', true)).toBe('unknown');
   });
 });

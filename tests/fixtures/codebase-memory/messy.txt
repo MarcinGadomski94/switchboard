@@ -1,0 +1,10 @@
+﻿   Users-dev-Acme Corp-workspace-microfrontends-acme-app-front   
+
+users-dev-acme corp-workspace-MICROFRONTENDS-acme-app-front
+Users-dev-Acme Corp-workspace-nugets-auth-nuget-v2
+Users-dev-Other Place-workspace-nugets-auth-nuget
+Users-dev-Acme Corp-workspace-deprecated-microfrontends-old-front
+Users-dev-Acme Corp-workspace-tools-scripts
+Users-dev-Acme Corp-workspace
+	 
+Users-dev-Acme Corp-workspace-other-switchboardUsers-dev-Acme Corp-workspace-mobile

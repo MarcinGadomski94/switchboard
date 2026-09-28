@@ -3,30 +3,22 @@ import { readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDiff, Solution, SolutionArtifact, SolutionBranch, SolutionGroup } from '../../core/api.ts';
 import type { Phase, SessionStatus } from '../../core/model.ts';
+import { solutionFreshness } from '../../core/codebase-memory.ts';
 import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
-import {
-  branchFromHead,
-  changesText,
-  dirtyProjects,
-  freshness,
-  parsePhaseLedger,
-  solutionPhase,
-  solutionStatus,
-} from '../../core/solutions-live.ts';
+import { branchFromHead, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
 import { toSolutionGroups } from '../../core/workspace-rules.ts';
 import { solutionCandidates } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
 import type { DiffProvider, SolutionsProvider } from '../providers.ts';
+import { readDirtyList } from './codebase-memory.ts';
 import type { WorkspaceScanner } from './scanner.ts';
 
 /** A solution's phase ledger file, at its root (gap #12). */
 export const PHASE_LEDGER_FILE = 'phase-ledger.md';
 /** Follow-ups routed into a solution (router → *Mobile-followups routing*). */
 export const FOLLOWUPS_FOLDER = 'mobile-followups';
-/** The dirty list of the codebase-memory freshness hooks, under the workspace root. */
-export const CODEBASE_MEMORY_DIRTY_FILE = path.join('.claude', '.codebase-memory-dirty');
 /** Owner copy of a branch no session works on (the prototype's `⎇ main · idle`). */
 export const IDLE_OWNER = 'idle';
 /** Owner copy of a worktree whose session no longer exists. */
@@ -47,8 +39,6 @@ export interface LiveSolutionsOptions {
 interface Row {
   readonly solution: Solution;
   readonly readOnly: boolean;
-  /** Top-level folder solution (`mobile/`, `infrastructure/`). */
-  readonly wholeFolder: boolean;
   /** `.git` is a directory. */
   readonly git: boolean;
   /** Canonical path (worktree rows store canonical repo paths), or the configured one when it cannot be resolved. */
@@ -76,7 +66,8 @@ function isGone(error: unknown): boolean {
  *   diffs (gap #10);
  * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: the sessions'
  *   artifacts for the solution + its `mobile-followups/*.md`;
- * - **codebaseMemory**: the workspace's `.claude/.codebase-memory-dirty`;
+ * - **codebaseMemory**: the workspace's `.claude/.codebase-memory-dirty` (M6.4,
+ *   `src/core/codebase-memory.ts`);
  * - **conflict** (M6.3): two or more open sessions write the repo while at
  *   least one has no worktree of its own (`flag` "⚠ shared working tree",
  *   `conflictSessions` for the card and its "Move … to worktree" actions).
@@ -106,16 +97,14 @@ export class LiveSolutions implements SolutionsProvider {
   async solutions(): Promise<SolutionGroup[]> {
     const scan = await this.#scanner.scan();
     const groups = toSolutionGroups(scan);
-    const scanned = new Map(scan.folders.flatMap((folder) => folder.solutions.map((s) => [s.path, { git: s.git, depth: folder.depth }] as const)));
+    const gitByPath = new Map(scan.folders.flatMap((folder) => folder.solutions.map((s) => [s.path, s.git] as const)));
     const rows: Row[] = await Promise.all(
       groups.flatMap((group) =>
         group.solutions.map(async (solution): Promise<Row> => {
-          const info = scanned.get(solution.path);
           return {
             solution,
             readOnly: solution.rule === 'read-only',
-            wholeFolder: (info?.depth ?? 1) === 0,
-            git: info?.git ?? false,
+            git: gitByPath.get(solution.path) ?? false,
             canonical: await realpath(solution.path).catch(() => solution.path),
           };
         }),
@@ -126,8 +115,9 @@ export class LiveSolutions implements SolutionsProvider {
       this.#store.sessions.list(),
       this.#store.worktrees.list(),
       this.#store.artifacts.list(),
-      this.#readDirty(scan.root),
+      readDirtyList(scan.root),
     ]);
+    if (dirty.state === 'unreadable') this.#onError(dirty.error);
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     const writable = rows.filter((row) => !row.readOnly);
 
@@ -218,7 +208,7 @@ export class LiveSolutions implements SolutionsProvider {
           branches,
           ledger,
           artifacts: await this.#artifacts(row, artifacts),
-          codebaseMemory: freshness(dirty, scan.root, row.solution.relativePath, row.wholeFolder),
+          codebaseMemory: solutionFreshness(dirty.projects, dirty.roots, row.solution.relativePath),
         });
       }),
     );
@@ -298,17 +288,6 @@ export class LiveSolutions implements SolutionsProvider {
       out.push({ type: 'FOLLOWUP', name, meta: '', sessionId: null });
     }
     return out;
-  }
-
-  /** The dirty list's project ids; `[]` without the file, `null` when it cannot be read. */
-  async #readDirty(root: string): Promise<string[] | null> {
-    try {
-      return dirtyProjects(await readFile(path.join(root, CODEBASE_MEMORY_DIRTY_FILE), 'utf8'));
-    } catch (error) {
-      if (isGone(error)) return [];
-      this.#onError(error);
-      return null;
-    }
   }
 }
 

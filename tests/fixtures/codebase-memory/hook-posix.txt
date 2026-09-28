@@ -1,0 +1,6 @@
+Users-dev-Acme Corp-workspace-functions-calendar-func
+Users-dev-Acme Corp-workspace-microfrontends-acme-app-front
+Users-dev-Acme Corp-workspace-mobile-Acme.Mobile
+Users-dev-Acme Corp-workspace-mobile-Acme.Mobile.Gateway
+Users-dev-Acme Corp-workspace-nugets-components-library-nuget
+Users-dev-Acme Corp-workspace-other-switchboard
