@@ -20,6 +20,7 @@ import {
   messageText,
   reportedPermissionMode,
   resolveInside,
+  sayToken,
   scenarioToken,
   toolResultText,
   toolToken,
@@ -82,6 +83,8 @@ interface TurnState {
   readonly extra: Array<readonly [string, string]>;
   readonly write: WriteSpec | null;
   readonly tool: ToolSpec | null;
+  /** `[fake:say]`: the reply text that replaces the recorded one. */
+  readonly say: string | null;
   open: OpenRequest | null;
 }
 
@@ -422,6 +425,8 @@ export class Runner {
     const writePath = msg.fired ? null : writeToken(msg.text);
     const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null ? null : sayToken(msg.text);
+    let say: string | null = null;
     if (msg.fired) {
       // A turn of its own (a cron firing): no stdin message, so no replay echo.
       steps = (this.core.base.turns[0] ?? []).filter((s) => s.t !== 'replay');
@@ -450,6 +455,15 @@ export class Runner {
       steps = txMain.turns[0] ?? [];
       scenario = 'tx-main';
       turnIndex = 0;
+    } else if (said !== null && 'error' in said) {
+      await this.crash(`fake-claude: [fake:say]: ${said.error}`);
+      return 'crash';
+    } else if (said !== null) {
+      // The default turn ("OK") with the given reply text.
+      steps = this.core.base.turns[0] ?? [];
+      say = said.text;
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
     } else {
       const token = scenarioToken(msg.text);
       if (token !== null) {
@@ -476,7 +490,7 @@ export class Runner {
       if (template) steps = applyMaxTurns(steps, this.args.maxTurns, template);
     }
 
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, open: null };
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(steps, turn);
@@ -777,7 +791,7 @@ export class Runner {
   }
 
   private bareTurn(ids: IdMap): TurnState {
-    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, open: null };
+    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, say: null, open: null };
   }
 
   private passes(line: JsonObject): boolean {
@@ -797,6 +811,7 @@ export class Runner {
     if (line['type'] === 'system' && line['subtype'] === 'init') this.patchInit(line, turn);
     if (turn.write) this.patchWrite(line, turn.write);
     if (turn.tool) this.patchTool(line, turn.tool);
+    if (turn.say !== null) this.patchSay(line, turn.say);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
     this.writeJson(line);
@@ -849,6 +864,17 @@ export class Runner {
       if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;
     }
     if ('tool_use_result' in line) line['tool_use_result'] = text;
+  }
+
+  /** `[fake:say]`: the main agent's reply text (and the result's) becomes `text`. */
+  private patchSay(line: JsonObject, text: string): void {
+    if (line['type'] === 'assistant' && line['parent_tool_use_id'] === null) {
+      for (const block of asArray(asObject(line['message'])?.['content'])) {
+        if (isObject(block) && block['type'] === 'text') block['text'] = text;
+      }
+    } else if (line['type'] === 'result' && typeof line['result'] === 'string') {
+      line['result'] = text;
+    }
   }
 
   private onResult(line: JsonObject): void {
