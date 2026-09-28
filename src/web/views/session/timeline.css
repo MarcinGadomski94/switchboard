@@ -1,0 +1,255 @@
+/*
+ * Timeline tab (TimelineTab.tsx, SPEC → Session → Timeline). Values are the
+ * prototype's inline styles (docs/handoff/prototype/Switchboard App.dc.html, the
+ * `tTimeline` markup) and its `K` map of block colors (gap #7); colors from SPEC →
+ * Design tokens (styles/tokens.css). `error` blocks follow the K pattern on the
+ * fail hue (docs/derivations.md → Timeline tab).
+ */
+.sb-timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sb-timeline__axis {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-timeline__ticks {
+  display: flex;
+  justify-content: space-between;
+}
+
+.sb-timeline__row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.sb-timeline__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb-timeline__name {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.sb-timeline__sub {
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-timeline__lane {
+  position: relative;
+  height: 34px;
+  background: #101113;
+  border-radius: 6px;
+  border: 1px solid var(--border-row);
+}
+
+.sb-timeline__block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 10.5px/24px var(--font-mono);
+}
+
+/* Block colors: the prototype's K map [bg, border, text]. */
+.sb-timeline__block[data-kind='plan'] {
+  background: oklch(0.26 0.02 250);
+  border-color: oklch(0.38 0.04 250);
+  color: var(--text-2);
+}
+
+.sb-timeline__block[data-kind='impl'] {
+  background: oklch(0.3 0.06 250);
+  border-color: oklch(0.45 0.09 250);
+  color: var(--text);
+}
+
+.sb-timeline__block[data-kind='loop'] {
+  background: oklch(0.3 0.06 300);
+  border-color: oklch(0.45 0.09 300);
+  color: var(--text);
+}
+
+.sb-timeline__block[data-kind='ask'] {
+  background: oklch(0.32 0.07 70);
+  border-color: oklch(0.5 0.1 70);
+  color: #f5f4f0;
+}
+
+.sb-timeline__block[data-kind='ok'] {
+  background: oklch(0.3 0.06 150);
+  border-color: oklch(0.45 0.09 150);
+  color: var(--text);
+}
+
+.sb-timeline__block[data-kind='error'] {
+  background: oklch(0.3 0.06 25);
+  border-color: oklch(0.45 0.09 25);
+  color: var(--text);
+}
+
+.sb-timeline__playhead {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--text);
+}
+
+.sb-timeline__controls {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.sb-timeline__play-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb-button.sb-timeline__play {
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.sb-timeline__now {
+  font: 500 11px var(--font-mono);
+  color: var(--text);
+}
+
+.sb-timeline__scrubber {
+  width: 100%;
+  accent-color: var(--text);
+}
+
+.sb-timeline__bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.sb-timeline__log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-timeline__log-head {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-timeline__log-row {
+  display: grid;
+  grid-template-columns: 44px 8px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12.5px;
+}
+
+.sb-timeline__log-time {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-timeline__log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+/* Log dot colors: the prototype's K map [dot]. */
+.sb-timeline__log-dot[data-kind='plan'] {
+  background: var(--muted-2);
+}
+
+.sb-timeline__log-dot[data-kind='impl'] {
+  background: var(--status-run);
+}
+
+.sb-timeline__log-dot[data-kind='loop'] {
+  background: oklch(0.72 0.12 300);
+}
+
+.sb-timeline__log-dot[data-kind='ask'] {
+  background: var(--status-need);
+}
+
+.sb-timeline__log-dot[data-kind='ok'] {
+  background: var(--status-done);
+}
+
+.sb-timeline__log-dot[data-kind='error'] {
+  background: var(--status-fail);
+}
+
+.sb-timeline__log-who {
+  color: var(--muted-2);
+}
+
+.sb-timeline__terminal {
+  background: var(--bg-code);
+  border: 1px solid var(--border-row);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: 400 11px/1.7 var(--font-mono);
+  min-height: 160px;
+}
+
+.sb-timeline__term-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #bfbeb8;
+}
+
+/* Line colors: the prototype's lineColor. */
+.sb-timeline__term-line[data-tone='cmd'] {
+  color: var(--muted-4);
+}
+
+.sb-timeline__term-line[data-tone='ok'] {
+  color: oklch(0.78 0.12 150);
+}
+
+.sb-timeline__term-line[data-tone='warn'] {
+  color: oklch(0.8 0.13 70);
+}
+
+.sb-timeline__term-line[data-tone='err'] {
+  color: oklch(0.72 0.16 25);
+}

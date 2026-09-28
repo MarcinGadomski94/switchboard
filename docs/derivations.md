@@ -87,3 +87,31 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 - `sessions.last_activity_at`: the newest event's `ts`.
 - `usage_readings`: every `rate_limit_event` (utilization × 100, `resetsAt` epoch seconds → ISO), source `rate_limit_event`. The meter itself is M9.2.
 - `system_items` (M3.3, `docs/system-items.md`): a `schedule_runs` row with `result = 'fail'` → one "Scheduled run failed" item (title = the run summary, detail = the green streak before it, chips from the run's session, the "Open fix session" prefill from the schedule template); a live worktree with `removable = 1` → one "PR merged" item. One item per run / worktree, open or closed.
+
+## Timeline tab (M4.4)
+`src/web/views/session/timeline.ts` (pure, `tests/web/timeline.test.ts`), rendered by `TimelineTab.tsx`. The UI computes it from the session's events (`GET /api/sessions/{id}/events`, then every `/hub` `event` for the session, new or updated, the newest copy of an event winning; fetched again when the hub stream reopens) and agents (`GET /api/sessions/{id}`, then `sessionUpdated`; fetched again when an event names an agent the tab does not know, because a new subagent is not a session status change). No demo special case: the demo seed's timeline blocks are ordinary events with a kind, `ts`, `endTs` and an agent.
+
+- **Blocks** = events of kind `plan` / `impl` / `loop` / `ask` / `ok` (SPEC) plus `error`, so failures show. `tool` (Agent/Task, TodoWrite, MCP tools…) and `text` (chat, lifecycle) events are not blocks. Colors: the prototype's `K` map (`[bg, border, text, log dot]`); `error` follows the same pattern on the fail hue (`oklch(0.3 0.06 25)` / `oklch(0.45 0.09 25)` / `#e8e7e3` / the fail status color). A block runs from `ts` to `endTs`. An **open** block (a tool call without its result, an open permission request) runs to now while the session is `run` / `need` (the tab re-renders every second then), otherwise to the axis end. Anything else is a point, drawn at the block's minimum width (padding + border = 14 px), kept inside the lane.
+- **Lanes** = the session's agents: the main agent first, then the others in the order of their first block, agents without blocks last. Events of an unknown agent, or of none (service events after a restart), go to the main agent's lane. Second line = the agent's `solutionPath`; the main agent without one shows `workspace root` (its process runs there); a subagent without one shows nothing (the stream does not say where it works, gap #8).
+- **Axis** = the first event's `ts` (text included: the task starts the session) to the newest `ts` / `endTs`, or now while an open block runs; at least 1 s. 7 ticks at 0/6 … 6/6. Clock labels are local `H:MM` rounded to the minute (the prototype's `10:02`), or `H:MM:SS` when the span is under 6 minutes so a short session's ticks differ; the log's times are always `H:MM` (44 px column).
+- **Playhead / scrubber**: value 0–1000 (the prototype's range input), playhead at value / 10 %, the clock label = axis start + value / 1000 × span. Blocks that start after the playhead are drawn at opacity 0.35. ▶ plays from the scrubber (from 0 when it is at the end), 8 steps every 50 ms; ❚❚ pauses. The scrubber stays at the end when new events arrive, so the view follows a live session.
+- **"Events up to {clock}"**: the blocks that start at or before the playhead, by start time (then event id), the last 8: `H:MM`, a dot in the kind's log color, `<lane name> · <label>`.
+
+## Terminal tail (M4.4, shared with the right panel of M4.3)
+`src/web/views/session/terminal-tail.ts` (pure, `tests/web/terminal-tail.test.ts`). Switchboard has no TTY, so the tail is rendered from the stored events, never invented. One or two lines per event, oldest first, the newest 8 kept (the whole session, not cut at the playhead: the prototype shows the full tail under the timeline):
+
+| Event | Line(s) |
+|---|---|
+| `tool` Bash | `$ <first command line>`; after the result: its last non-empty output line, or `✕ <first line>` on an error |
+| `tool` AskUserQuestion with its request open | `⏸ <label>` |
+| any other `tool` | `● <label>` while running, `✓ <label>` / `✕ <label>` after the result |
+| `request` (permission) | `⏸ <label>` open, `✓` / `✕` (deny) after the response, `⚠ <label> · stale` / `· cancelled` |
+| `denied` | `✕ <label>` |
+| `result` | `✓ <label>` / `✕ <label>` |
+| `lifecycle` | the label (`Started`, `Paused`, …); `✕ <label>` when it failed |
+| `mode-mismatch` | `⚠ <label>` |
+| `user`, `assistant`, `agent-prompt` (the chat), unknown shapes | nothing |
+
+A subagent's lines start with `[<agent name>] ` (the prototype's `[web]`); the main agent's lines have no tag. Colors = the prototype's `lineColor` after that tag: `$` `#6d6c67`, `✓` green, `⏸` / `⚠` amber, `✕` red, anything else `#bfbeb8`.
+
+The demo seed still stores its terminal lines as provisional `channel: "terminal"` payloads (M2.1 note in `docs/demo.md`), which this real-path tail does not render, so the demo Timeline's terminal stays empty until those lines are mapped onto real payloads.

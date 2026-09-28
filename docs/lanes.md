@@ -62,7 +62,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons, tabs | M4.1 |
 | `views/session/ChatTab.tsx` | Chat | M4.2 |
 | `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.3 |
-| `views/session/TimelineTab.tsx` | Timeline | M4.4 |
+| `views/session/TimelineTab.tsx` | Timeline: done in M4.4 (+ `timeline.ts` model, `terminal-tail.ts` terminal tail for M4.3's right panel too, `timeline.css`; `docs/derivations.md` → *Timeline tab*, *Terminal tail*) | M4.4 |
 | `views/session/DiffTab.tsx` | Diff | M4.5 |
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
