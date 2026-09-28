@@ -206,6 +206,14 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **No composer:** subagents take no messages, so a note reads "Subagents take no messages · reply in the main chat". Questions a subagent asked still show as their cards, answered in the main chat as before.
   - Subagents whose messages Switchboard never saw (e.g. inside a Workflow) have no chat to open.
 
+## Finished subagents (added 2026-09-28)
+- **D37 Finished subagents leave the right panel.**
+  - A subagent whose status is **done** leaves the agent cards and the D21 overview table. Failed, running, waiting, idle and paused ones stay, and the main agent always stays.
+  - Under the cards, one collapsed line "✓ N finished" (when N > 0) expands them in place. The panel summary still counts every agent.
+  - The chat's Agent step link (D36) always opens a finished subagent's chat.
+  - The prototype's demo panel shows done subagents, so the visual oracle records this as a developer ruling, like D29.
+  - Built together with D36 (same files).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
