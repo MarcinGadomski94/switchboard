@@ -13,6 +13,7 @@ import {
   FIRE_PROMPT,
   KEEP_RECORDED_PERMISSION_MODE,
   SIBLINGS,
+  REMOTE_CONTROL_UNAVAILABLE,
   WRITE_CONTENT,
   applyMaxTurns,
   fireToken,
@@ -24,6 +25,9 @@ import {
   scenarioToken,
   toolResultText,
   toolToken,
+  remoteAnswerToken,
+  remoteControlError,
+  remoteControlMode,
   writeToken, autoModeSupported } from './scenarios.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 
@@ -85,6 +89,8 @@ interface TurnState {
   readonly tool: ToolSpec | null;
   /** `[fake:say]`: the reply text that replaces the recorded one. */
   readonly say: string | null;
+  /** D24 `[fake:remote-answer <ms>]`: "the phone" answers this turn's request after that many ms. */
+  readonly remoteAnswerMs: number | null;
   open: OpenRequest | null;
 }
 
@@ -138,6 +144,27 @@ async function exists(file: string): Promise<boolean> {
 }
 
 /**
+ * D24: the answer "the phone" gives to an open request (`[fake:remote-answer]`):
+ * AskUserQuestion → every question's first option; any other tool → allowed with
+ * its input unchanged. Shaped as the host's `control_response.response`.
+ */
+function phoneAnswer(open: OpenRequest): JsonObject {
+  const input = asObject(open.input) ?? {};
+  if (open.toolName !== 'AskUserQuestion') {
+    return { subtype: 'success', request_id: open.requestId, response: { behavior: 'allow', updatedInput: input } };
+  }
+  const answers: JsonObject = {};
+  for (const question of asArray(input['questions'])) {
+    if (!isObject(question)) continue;
+    const text = asString(question['question']);
+    const first = asArray(question['options'])[0];
+    const label = isObject(first) ? asString(first['label']) : undefined;
+    if (text !== undefined && label !== undefined) answers[text] = label;
+  }
+  return { subtype: 'success', request_id: open.requestId, response: { behavior: 'allow', updatedInput: { ...input, answers } } };
+}
+
+/**
  * One fake `claude -p` process: replays the M0 fixtures with the stream-json
  * protocol recorded in `docs/spike-m0.md` (turns per stdin message, blocking
  * `can_use_tool` requests, interrupts, SIGINT, EOF, control requests) and
@@ -173,6 +200,11 @@ export class Runner {
   private readonly keepAlive: NodeJS.Timeout;
   /** The next `[fake:fire]` turn. */
   private fireTimer: NodeJS.Timeout | null = null;
+  /** D24: the Remote Control bridge (`remote_control` `enabled: true`), `null` while off. */
+  private bridge: { id: string } | null = null;
+  private bridgeEpoch = 0;
+  /** D24: pending `[fake:remote-answer]` timers. */
+  private readonly remoteTimers = new Set<NodeJS.Timeout>();
 
   constructor(options: RunnerOptions) {
     this.o = options;
@@ -343,7 +375,12 @@ export class Runner {
       case 'get_session_cost':
         return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_session_cost', -1] : ['usage-ctl', 'get_session_cost', 0]);
       case 'initialize':
-        return this.replyFrom(requestId, ['ctl-init', 'initialize', 0]);
+        // D24: `FAKE_CLAUDE_REMOTE_CONTROL=unavailable` reports Remote Control unavailable (the recording says true).
+        return this.replyFrom(requestId, ['ctl-init', 'initialize', 0], (response) => {
+          if (remoteControlMode(this.o.env) === 'unavailable') response['remote_control_available'] = false;
+        });
+      case 'remote_control':
+        return this.onRemoteControl(requestId, request ?? {});
       case 'set_permission_mode': {
         const mode = asString(request?.['mode']) ?? '';
         if (mode === 'auto' && !autoModeSupported()) return this.replyFrom(requestId, ['ctl-init', 'set_permission_mode', 0]);
@@ -359,8 +396,74 @@ export class Runner {
     }
   }
 
-  /** Replies with the recorded `control_response` to the `nth` stdin request of `subtype` in `fixture` (-1 = last). */
-  private async replyFrom(requestId: string, [fixtureName, subtype, nth]: [string, string, number]): Promise<void> {
+  /**
+   * D24: `remote_control` (`docs/spike-remote.md` → R.6; the reply shape was read in
+   * the CLI's code, never recorded). `enabled: true` → success `{session_url,
+   * connect_url, environment_id, bridge_epoch, bridge_session_id}` for
+   * `session_FAKE<id>` / `cse_FAKE<id>` (`<id>` = the session id without dashes), or
+   * for the `cse_…` id of `reattach_session_id` (the same claude.ai entry);
+   * `enabled: false` → success `{}` and the bridge is off. The env switches
+   * (`FAKE_CLAUDE_REMOTE_CONTROL`, `FAKE_CLAUDE_REMOTE_CONTROL_ERROR`) turn it into errors.
+   */
+  private onRemoteControl(requestId: string, request: JsonObject): void {
+    const reply = (response: JsonObject): void =>
+      this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response } });
+    const fail = (error: string): void => this.writeJson({ type: 'control_response', response: { subtype: 'error', request_id: requestId, error } });
+    const failure = remoteControlError(this.o.env);
+    if (failure !== null) return fail(failure);
+    if (request['enabled'] !== true) {
+      this.bridge = null;
+      return reply({});
+    }
+    const mode = remoteControlMode(this.o.env);
+    if (mode === 'unavailable') return fail(REMOTE_CONTROL_UNAVAILABLE);
+    const reattach = asString(request['reattach_session_id']);
+    if (reattach !== undefined && !/^cse_[A-Za-z0-9_]+$/.test(reattach)) return fail(`fake-claude: reattach_session_id must be a cse_… id, got "${reattach}"`);
+    const id = reattach !== undefined ? reattach.slice('cse_'.length) : `FAKE${this.sessionId.replace(/-/g, '')}`;
+    this.bridge = { id };
+    this.bridgeEpoch += 1;
+    if (mode === 'no-url') return reply({ bridge_session_id: `cse_${id}`, bridge_epoch: this.bridgeEpoch });
+    reply({
+      session_url: `https://claude.ai/code/session_${id}`,
+      connect_url: `https://claude.ai/code?environment=env_${id}`,
+      environment_id: `env_${id}`,
+      bridge_epoch: this.bridgeEpoch,
+      bridge_session_id: `cse_${id}`,
+    });
+  }
+
+  /** D24 `[fake:remote-answer <ms>]`: after `ms`, "the phone" answers the turn's open request (if Remote Control is on). */
+  private scheduleRemoteAnswer(turn: TurnState): void {
+    const open = turn.open;
+    if (!open || turn.remoteAnswerMs === null) return;
+    const timer = setTimeout(() => {
+      this.remoteTimers.delete(timer);
+      this.remoteAnswer(turn, open.requestId);
+    }, turn.remoteAnswerMs);
+    this.remoteTimers.add(timer);
+  }
+
+  private remoteAnswer(turn: TurnState, requestId: string): void {
+    const open = turn.open;
+    if (this.finished || !open || open.requestId !== requestId) return;
+    const waiter = this.waiter;
+    // Answered meanwhile (the host's control_response, an interrupt, EOF): nothing to do.
+    if (!waiter || waiter.requestId !== requestId) return;
+    if (!this.bridge) {
+      this.o.writeStderr('fake-claude: [fake:remote-answer]: Remote Control is off, so the request stays open\n');
+      return;
+    }
+    // The CLI resolves the request with claude.ai's answer and withdraws it from the host (R.6).
+    this.writeJson({ type: 'control_cancel_request', request_id: requestId });
+    waiter.resolve({ kind: 'response', response: phoneAnswer(open) });
+  }
+
+  /** Replies with the recorded `control_response` to the `nth` stdin request of `subtype` in `fixture` (-1 = last); `patch` may change the inner `response`. */
+  private async replyFrom(
+    requestId: string,
+    [fixtureName, subtype, nth]: [string, string, number],
+    patch?: (response: JsonObject) => void,
+  ): Promise<void> {
     const fixture = await this.o.store.fixture(fixtureName);
     const requests = fixture.stdin.filter((l) => l['type'] === 'control_request' && requestOf(l)?.['subtype'] === subtype);
     const request = nth < 0 ? requests[requests.length + nth] : requests[nth];
@@ -371,6 +474,8 @@ export class Runner {
     const line = rewriteLine(recorded, this.ctx([]), new IdMap());
     const response = asObject(line['response']);
     if (response) response['request_id'] = requestId;
+    const inner = asObject(response?.['response']);
+    if (patch && inner) patch(inner);
     this.writeJson(line);
   }
 
@@ -426,6 +531,7 @@ export class Runner {
     const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
     const said = msg.fired || writePath !== null || toolCall !== null ? null : sayToken(msg.text);
+    const remoteAnswerMs = msg.fired ? null : remoteAnswerToken(msg.text);
     let say: string | null = null;
     if (msg.fired) {
       // A turn of its own (a cron firing): no stdin message, so no replay echo.
@@ -490,7 +596,7 @@ export class Runner {
       if (template) steps = applyMaxTurns(steps, this.args.maxTurns, template);
     }
 
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, open: null };
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(steps, turn);
@@ -517,6 +623,8 @@ export class Runner {
   private stopFires(): void {
     if (this.fireTimer) clearTimeout(this.fireTimer);
     this.fireTimer = null;
+    for (const timer of this.remoteTimers) clearTimeout(timer);
+    this.remoteTimers.clear();
   }
 
   private async play(steps: readonly PlayStep[], turn: TurnState): Promise<Outcome> {
@@ -547,6 +655,7 @@ export class Runner {
               toolName: String(request['tool_name']),
               input: request['input'] ?? null,
             };
+            this.scheduleRemoteAnswer(turn);
           }
           break;
         }
@@ -791,7 +900,7 @@ export class Runner {
   }
 
   private bareTurn(ids: IdMap): TurnState {
-    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, say: null, open: null };
+    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, say: null, remoteAnswerMs: null, open: null };
   }
 
   private passes(line: JsonObject): boolean {

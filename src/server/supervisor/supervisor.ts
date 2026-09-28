@@ -19,6 +19,8 @@ import { ClaudeProcess, type ProcessExit } from './process.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
+import { LiveRemote, RemoteControlError } from './remote.ts';
+import type { AnsweredOn } from '../../core/remote-control.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -52,8 +54,12 @@ export interface CanUseToolContext {
 export interface ControlRequestHandler {
   /** A `can_use_tool` request arrived (AskUserQuestion = a question batch; anything else = a permission item). */
   canUseTool?(context: CanUseToolContext): void | Promise<void>;
-  /** The CLI withdrew the request (`control_cancel_request`, after an interrupt): never answer it. */
-  cancelled?(sessionId: string, requestId: string): void | Promise<void>;
+  /**
+   * The CLI withdrew the request (`control_cancel_request`): never answer it. After
+   * an interrupt (M0.2) `answeredOn` is `null`; D24: while Remote Control is on and
+   * Switchboard is not stopping the process it is `claude.ai`: the phone answered first.
+   */
+  cancelled?(sessionId: string, requestId: string, answeredOn?: AnsweredOn | null): void | Promise<void>;
   /** The process ended with these requests still open: they are stale. */
   orphaned?(sessionId: string, requestIds: readonly string[]): void | Promise<void>;
   /**
@@ -154,7 +160,13 @@ export type SupervisorErrorCode =
   | 'already-running'
   | 'request-not-open'
   | 'closing'
-  | 'attach-warning';
+  | 'attach-warning'
+  /** D24: Remote Control needs a live process. */
+  | 'not-live'
+  /** D24: the process's `initialize` did not report `remote_control_available: true`. */
+  | 'remote-unavailable'
+  /** D24: the `remote_control` request failed; the message is the CLI's text, verbatim. */
+  | 'remote-failed';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -197,6 +209,8 @@ interface Live {
   /** How a stop ended the process: `eof` or the last signal sent. */
   stoppedBy: string | null;
   status: SessionStatus;
+  /** D24: Remote Control on this process (`initialize`, the bridge; remote.ts). */
+  readonly remote: LiveRemote;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -570,10 +584,15 @@ export class SessionSupervisor {
    */
   async controlRequest(sessionId: string, line: ControlRequestLine, timeoutMs: number): Promise<ControlResponseMessage | null> {
     const live = this.#live.get(sessionId);
-    if (!live || live.stopping || !live.proc.write(line)) return null;
+    return live ? this.#controlOn(live, line, timeoutMs) : null;
+  }
+
+  /** {@link controlRequest} on one live process; the line is written synchronously (D24: `initialize` before any user message). */
+  #controlOn(live: Live, line: ControlRequestLine, timeoutMs: number): Promise<ControlResponseMessage | null> {
+    if (live.stopping || !live.proc.write(line)) return Promise.resolve(null);
     const box: { response?: ControlResponseMessage } = {};
     // Registered right after the write, before any stdout line can be processed.
-    const answered = await this.#waitFor(
+    return this.#waitFor(
       live,
       (message) => {
         if (message.kind !== 'control-response' || message.requestId !== line.request_id) return false;
@@ -581,8 +600,35 @@ export class SessionSupervisor {
         return true;
       },
       timeoutMs,
-    );
-    return answered ? (box.response ?? null) : null;
+    ).then((answered) => (answered ? (box.response ?? null) : null));
+  }
+
+  // ── Remote Control (D24, remote.ts, docs/remote-control.md) ────────────
+
+  /**
+   * Turns Remote Control on or off for the session's live process (`PUT
+   * /api/sessions/{id}/remote`); the session as stored afterwards. Remote stays on
+   * across pause/resume and restart recovery: each new process reattaches it.
+   * @throws {SupervisorError} `not-found`; `not-live` without a live process (or
+   * while it is being stopped); `remote-unavailable` when its `initialize` did not
+   * report `remote_control_available: true`; `remote-failed` with the CLI's error
+   * text, verbatim.
+   */
+  async setRemote(sessionId: string, enabled: boolean): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    await this.#get(sessionId);
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.running) {
+      throw new SupervisorError('not-live', 'Remote Control needs a running claude process: resume the session first');
+    }
+    try {
+      await live.remote.set(enabled);
+    } catch (error) {
+      if (error instanceof RemoteControlError) throw new SupervisorError(error.code, error.message);
+      throw error;
+    }
+    return this.#get(sessionId);
   }
 
   // ── restart recovery (M2.4, recovery.ts) ──────────────────────────────
@@ -725,6 +771,8 @@ export class SessionSupervisor {
         requestedPermissionMode: permissionMode,
         stopReason: null,
         endedAt: null,
+        // D24: unknown (not available) until this process's `initialize` answers.
+        remoteAvailable: false,
       })) ?? session;
     const mainAgentId = await this.#mainAgentId(prepared);
     const holder: { live?: Live } = {};
@@ -740,6 +788,8 @@ export class SessionSupervisor {
       onActivity: (value) => activity.push(value),
       // D6: `auto` is not available for this model; its control_response needs no waiter.
       onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
+      // D24: a withdrawn request was answered on claude.ai while Remote Control is on.
+      answeredOn: () => holder.live?.remote.answeredOn() ?? null,
     });
     // D22: the CLI's display name is the session's title (as it is now: a rename applies from the next spawn), else its name.
     const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, extraArgs: this.#extraArgs });
@@ -764,9 +814,23 @@ export class SessionSupervisor {
       stopping: null,
       stoppedBy: null,
       status: prepared.status,
+      remote: new LiveRemote({
+        request: (line, timeoutMs) => (holder.live ? this.#controlOn(holder.live, line, timeoutMs) : Promise.resolve(null)),
+        session: () => this.#store.sessions.get(session.id),
+        update: async (patch) => {
+          await this.#store.sessions.update(session.id, patch);
+        },
+        record: (kind, label, payload) => this.#enqueue(live, async () => {
+          await recorder.recordLifecycle(kind, label, payload);
+        }),
+        publish: () => this.#emitSession(session.id),
+        current: () => this.#live.get(session.id) === live && !live.stopping && live.proc.running,
+      }),
     };
     holder.live = live;
     this.#live.set(session.id, live);
+    // D24: `initialize` goes out first (before any user message); its reply says whether Remote Control is available.
+    live.remote.handshake().catch((error: unknown) => this.#onError(error));
     live.finished = proc.exited.then((exit) => this.#enqueue(live, () => this.#onExit(live, exit)));
     await this.#store.sessions.update(session.id, { pid: proc.pid });
     await this.#enqueue(live, async () => {
@@ -807,6 +871,8 @@ export class SessionSupervisor {
 
   async #onLine(live: Live, line: string): Promise<void> {
     const message = parseStreamLine(line);
+    // D24: read before the recorder closes the request (the recorder asks the same question).
+    const answeredOn = message.kind === 'control-cancel' ? live.remote.answeredOn() : null;
     if (message.kind === 'control-request') {
       live.proc.write(controlErrorLine(message.requestId, `Switchboard does not handle control request subtype "${message.subtype}"`));
     }
@@ -820,7 +886,7 @@ export class SessionSupervisor {
     }
     if (message.kind === 'control-cancel' && this.#handler.cancelled) {
       try {
-        await this.#handler.cancelled(live.sessionId, message.requestId);
+        await this.#handler.cancelled(live.sessionId, message.requestId, answeredOn);
       } catch (error) {
         this.#onError(error);
       }

@@ -10,6 +10,9 @@ import type { BranchRef, HistoryItem } from './api.ts';
 import type { FolderKind, Phase, SessionMode, SessionOrigin, SessionStatus, WorkType } from './model.ts';
 import type { TranscriptFacts } from './transcript.ts';
 
+/** D24: the badge of a terminal conversation that had Remote Control on (a `bridge-session` line); the search matches it too. */
+export const REMOTE_CONTROL_BADGE = 'Remote Control';
+
 /** The mode line of a session moved in from a terminal (D16; developer ruling 2026-09-28). */
 export const MOVED_MODE_LINE = 'terminal · moved';
 
@@ -338,6 +341,8 @@ function terminalRow(transcript: HistoryTranscript, input: HistoryInput): Histor
     terminal: true,
     firstPrompt: clip(facts.firstPrompt ?? facts.firstCommand ?? '', SUMMARY_MAX) || null,
     cwd: facts.startCwd,
+    // D24: it had Remote Control on (a `bridge-session` line): the row's badge.
+    ...(facts.remoteControl ? { remoteControl: true } : {}),
   };
   return {
     item,
@@ -352,6 +357,7 @@ function terminalRow(transcript: HistoryTranscript, input: HistoryInput): Histor
       facts.lastPrompt,
       ...facts.cwds,
       facts.sessionId,
+      facts.remoteControl ? REMOTE_CONTROL_BADGE : null,
     ]),
   };
 }

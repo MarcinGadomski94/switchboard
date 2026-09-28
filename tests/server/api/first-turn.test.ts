@@ -12,7 +12,7 @@ import { seedFolder } from '../../helpers/folders.ts';
 import { delay } from '../../helpers/fake-claude.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
-import { type FakeLogLine, type SupervisorWorld, makeSupervisorWorld, payloadType, readFakeLog, until, waitForStatus } from '../../helpers/supervisor.ts';
+import { type FakeLogLine, type SupervisorWorld, isHandshake, makeSupervisorWorld, payloadType, readFakeLog, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * M5.2 oracle: the first-turn payload on the real code path (D13, no demo).
@@ -114,7 +114,7 @@ async function start(s: SupervisorWorld, body: NewSession): Promise<{ session: S
     return log.find((line) => line.kind === 'argv' && line.argv?.includes(session.claudeSessionId));
   }, `the spawn of ${body.name}`);
   if (pid !== null) expect(spawn.pid).toBe(pid);
-  const stdin = (await readFakeLog(s.logFile)).filter((line) => line.kind === 'stdin' && line.pid === spawn.pid).map((line) => line.line as string);
+  const stdin = (await readFakeLog(s.logFile)).filter((line) => line.kind === 'stdin' && line.pid === spawn.pid && !isHandshake(JSON.parse(line.line as string) as Record<string, unknown>)).map((line) => line.line as string);
   return { session, spawn, stdin };
 }
 
@@ -213,7 +213,7 @@ describe('first-turn payload (M5.2) through POST /api/sessions + fake-claude', (
     expect((await call('POST', `/api/sessions/${session.id}/messages`, { text: 'Build the free talk screen at 640 on web.' })).statusCode).toBe(202);
     const lines = await until(async () => {
       const log = await readFakeLog(s.logFile);
-      const own = log.filter((line) => line.kind === 'stdin' && line.pid === spawn.pid).map((line) => line.line as string);
+      const own = log.filter((line) => line.kind === 'stdin' && line.pid === spawn.pid && !isHandshake(JSON.parse(line.line as string) as Record<string, unknown>)).map((line) => line.line as string);
       return own.length > 0 ? own : undefined;
     }, 'the first message');
     expect(lines[0]).toBe(userLine(`${block}\n\nBuild the free talk screen at 640 on web.`));
@@ -223,7 +223,7 @@ describe('first-turn payload (M5.2) through POST /api/sessions + fake-claude', (
     expect((await call('POST', `/api/sessions/${session.id}/messages`, { text: 'Next.' })).statusCode).toBe(202);
     const again = await until(async () => {
       const log = await readFakeLog(s.logFile);
-      const own = log.filter((line) => line.kind === 'stdin' && line.pid === spawn.pid).map((line) => line.line as string);
+      const own = log.filter((line) => line.kind === 'stdin' && line.pid === spawn.pid && !isHandshake(JSON.parse(line.line as string) as Record<string, unknown>)).map((line) => line.line as string);
       return own.length > 1 ? own : undefined;
     }, 'the second message');
     expect(again[1]).toBe(userLine('Next.'));

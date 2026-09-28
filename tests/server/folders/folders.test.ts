@@ -14,7 +14,7 @@ import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, readFakeLog, until, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, isHandshake, makeSupervisorWorld, newSession, readFakeLog, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * D14 oracle (server): saved folders instead of one workspace root. The folder
@@ -358,7 +358,7 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
   async function spawnOf(s: SupervisorWorld, session: Session): Promise<{ cwd: string; first: string }> {
     const spawn = await until(async () => (await readFakeLog(s.logFile)).find((line) => line.kind === 'argv' && line.argv?.includes(session.claudeSessionId)), 'the spawn');
     const first = await until(async () => {
-      const line = (await readFakeLog(s.logFile)).find((entry) => entry.kind === 'stdin' && entry.pid === spawn.pid);
+      const line = (await readFakeLog(s.logFile)).find((entry) => entry.kind === 'stdin' && entry.pid === spawn.pid && !isHandshake(JSON.parse(entry.line as string) as Record<string, unknown>));
       return line ? ((JSON.parse(line.line as string) as { message: { content: string } }).message.content) : undefined;
     }, 'the first message');
     return { cwd: spawn.cwd ?? '', first };

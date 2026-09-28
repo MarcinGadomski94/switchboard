@@ -8,6 +8,8 @@
  * (`truncated: true` marks it); the full data stays in the CLI's transcript.
  */
 
+import type { AnsweredOn } from './remote-control.ts';
+
 /** Longest string kept in an event payload. */
 export const PAYLOAD_TEXT_LIMIT = 4000;
 
@@ -66,6 +68,8 @@ export interface ToolPayload {
   readonly requestId?: string;
   /** For AskUserQuestion: the request's state. */
   readonly requestState?: RequestState;
+  /** D24: the request was answered outside Switchboard (`claude.ai`: Remote Control; its state is `cancelled`). */
+  readonly answeredOn?: AnsweredOn;
 }
 
 /** State of a `can_use_tool` request as the supervisor sees it. */
@@ -85,6 +89,8 @@ export interface RequestPayload {
   readonly state: RequestState;
   /** `allow` / `deny` once responded. */
   readonly behavior?: string;
+  /** D24: the request was answered outside Switchboard (`claude.ai`: Remote Control; its state is `cancelled`). */
+  readonly answeredOn?: AnsweredOn;
 }
 
 /** An automatic denial (`system/permission_denied`). */
@@ -156,6 +162,24 @@ export interface ModeMismatchPayload {
   readonly fallback?: string;
 }
 
+/**
+ * D24: Remote Control on the session's process was turned on or off, or a
+ * `remote_control` request failed (`docs/remote-control.md`). The event is `text`
+ * (on / off) or `error` (failed); the chat shows it as a step line.
+ */
+export interface RemotePayload {
+  readonly type: 'remote';
+  readonly action: 'on' | 'off' | 'failed';
+  /** `true` when the request reattached a stored claude.ai entry (`reattach_session_id`), e.g. after a resume. */
+  readonly reattach?: boolean;
+  /** `on`: the claude.ai link. */
+  readonly url?: string;
+  /** `failed`: what was asked (`true` = turn on / reconnect, `false` = turn off). */
+  readonly enabled?: boolean;
+  /** `failed`: the CLI's error text, verbatim (or why there was no reply). */
+  readonly error?: string;
+}
+
 /** Every event payload the supervisor writes. */
 export type EventPayload =
   | UserPayload
@@ -166,7 +190,8 @@ export type EventPayload =
   | DeniedPayload
   | ResultPayload
   | LifecyclePayload
-  | ModeMismatchPayload;
+  | ModeMismatchPayload
+  | RemotePayload;
 
 /** `text` cut to {@link PAYLOAD_TEXT_LIMIT} characters. */
 export function clip(text: string, limit = PAYLOAD_TEXT_LIMIT): { text: string; truncated: boolean } {

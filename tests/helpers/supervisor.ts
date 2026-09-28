@@ -180,9 +180,19 @@ export async function spawnedArgv(file: string): Promise<FakeLogLine[]> {
   return (await readFakeLog(file)).filter((line) => line.kind === 'argv');
 }
 
-/** The stdin lines one process received, parsed. */
-export async function stdinOf(file: string, pid: number): Promise<Array<Record<string, unknown>>> {
+/** `true` for the `initialize` control request the supervisor writes first to every process (D24, the Remote Control handshake). */
+export function isHandshake(line: Record<string, unknown>): boolean {
+  return line['type'] === 'control_request' && (line['request'] as { subtype?: unknown } | undefined)?.subtype === 'initialize';
+}
+
+/**
+ * The stdin lines one process received, parsed, without the spawn handshake
+ * (`initialize`, D24: every process gets it first; {@link isHandshake}), unless
+ * `options.all`.
+ */
+export async function stdinOf(file: string, pid: number, options: { readonly all?: boolean } = {}): Promise<Array<Record<string, unknown>>> {
   return (await readFakeLog(file))
     .filter((line) => line.kind === 'stdin' && line.pid === pid && typeof line.line === 'string')
-    .map((line) => JSON.parse(line.line as string) as Record<string, unknown>);
+    .map((line) => JSON.parse(line.line as string) as Record<string, unknown>)
+    .filter((line) => options.all === true || !isHandshake(line));
 }

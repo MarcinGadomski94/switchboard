@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AnswerDelivery, QuestionState } from '../../../core/model.ts';
+import type { AnsweredOn } from '../../../core/remote-control.ts';
 import { type RepoContext, placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
 import { StoreError, Table, type TableSpec, defined } from '../table.ts';
@@ -21,6 +22,8 @@ export interface QuestionBatchRecord {
   /** How the answers reached the CLI; `null` until they did. */
   readonly deliveredVia: AnswerDelivery | null;
   readonly deliveredAt: string | null;
+  /** D24 (0007): `claude.ai` when the phone answered first (Remote Control); the batch is `answered` without answers. */
+  readonly answeredOn: AnsweredOn | null;
 }
 
 /** An option of a question, verbatim from `input.questions[i].options[j]`. */
@@ -100,6 +103,7 @@ const BATCH_SPEC: TableSpec<QuestionBatchRecord> = {
     staleAt: ['stale_at', 'text'],
     deliveredVia: ['delivered_via', 'text'],
     deliveredAt: ['delivered_at', 'text'],
+    answeredOn: ['answered_on', 'text'],
   },
 };
 
@@ -226,6 +230,21 @@ export class QuestionRepository {
       const batch = this.#batches.get(batchId);
       if (!batch || batch.state !== 'open') return batch;
       return this.#batches.update(batchId, { state: 'stale', staleAt: this.#ctx.now() });
+    });
+  }
+
+  /**
+   * D24: the batch was answered outside Switchboard (`where`: `claude.ai`, the
+   * phone through Remote Control) and the CLI withdrew its request. An `open`
+   * batch becomes `answered` with `answeredAt` and `answeredOn` and no answers, so
+   * it leaves the Inbox and can no longer be answered here; a batch in any other
+   * state is left alone. Returns the batch, or `null`.
+   */
+  async closeAnsweredElsewhere(batchId: string, where: AnsweredOn): Promise<QuestionBatchRecord | null> {
+    return transaction(this.#ctx.db, () => {
+      const batch = this.#batches.get(batchId);
+      if (!batch || batch.state !== 'open' || batch.answeredAt !== null) return batch;
+      return this.#batches.update(batchId, { state: 'answered', answeredAt: this.#ctx.now(), answeredOn: where });
     });
   }
 

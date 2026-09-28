@@ -62,6 +62,18 @@ export interface SessionRecord {
   readonly lastActivityAt: string | null;
   readonly detachedAt: string | null;
   readonly endedAt: string | null;
+  /**
+   * D24 (0007): what the live process's `initialize` reported as
+   * `remote_control_available` (`false` from each spawn until the reply); `null`
+   * for a session Switchboard never ran a process for (the demo seed).
+   */
+  readonly remoteAvailable: boolean | null;
+  /** D24: Remote Control is on (a new process reattaches it). */
+  readonly remoteEnabled: boolean;
+  /** D24: the claude.ai link of the last bridge; kept when Remote is turned off. */
+  readonly remoteSessionUrl: string | null;
+  /** D24: the last bridge's `cse_…` id (the next `reattach_session_id`); kept when Remote is turned off. */
+  readonly remoteBridgeId: string | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -113,6 +125,10 @@ const SPEC: TableSpec<SessionRecord> = {
     lastActivityAt: ['last_activity_at', 'text'],
     detachedAt: ['detached_at', 'text'],
     endedAt: ['ended_at', 'text'],
+    remoteAvailable: ['remote_available', 'bool'],
+    remoteEnabled: ['remote_enabled', 'bool'],
+    remoteSessionUrl: ['remote_session_url', 'text'],
+    remoteBridgeId: ['remote_bridge_id', 'text'],
   },
 };
 

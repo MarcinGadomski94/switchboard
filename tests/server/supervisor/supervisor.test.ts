@@ -419,7 +419,10 @@ describe('SessionSupervisor · pause / resume (D7)', () => {
       const text = await readFile(path.join(w.root, 'stub.log'), 'utf8').catch(() => '');
       return text.includes('cli-1') ? text : undefined;
     }, 'the error reply');
-    expect(JSON.parse(logged.trim().split('\n')[0] as string)).toEqual({
+    // D24: the first line is the `initialize` handshake the stub never answers; the error reply follows.
+    const lines = logged.trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(lines[0]).toMatchObject({ type: 'control_request', request: { subtype: 'initialize', hooks: null } });
+    expect(lines.find((line) => line['type'] === 'control_response')).toEqual({
       type: 'control_response',
       response: { subtype: 'error', request_id: 'cli-1', error: 'Switchboard does not handle control request subtype "hook_callback"' },
     });

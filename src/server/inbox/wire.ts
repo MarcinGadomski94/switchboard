@@ -32,6 +32,8 @@ export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): 
     state: batch.state,
     answerIndex: record.answerIndex,
     answeredAt: record.answeredAt,
+    // D24: answered on the phone (Remote Control) before Switchboard answered.
+    answeredOn: batch.answeredOn,
   };
 }
 
