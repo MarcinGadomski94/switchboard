@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { AgentActivity, SessionActivity } from '../../core/api.ts';
-import { type ActivityLabel, activityLabel, chatActivityLine, sessionActivityLabel } from './activity.ts';
+import { type ActivityLabel, activityLabel, chatActivityLine, overviewActivityLabel, sessionActivityLabel } from './activity.ts';
 import { useTick } from './useActivity.ts';
 import './activity.css';
 
@@ -40,9 +40,9 @@ function LiveChatLine({ activity }: { readonly activity: SessionActivity }) {
   );
 }
 
-function Label({ label, testId }: { readonly label: ActivityLabel; readonly testId: string }) {
+function Label({ label, testId, titled = false }: { readonly label: ActivityLabel; readonly testId: string; readonly titled?: boolean }) {
   return (
-    <span className="sb-activity-label" data-testid={testId} data-state={label.state}>
+    <span className="sb-activity-label" data-testid={testId} data-state={label.state} title={titled ? `${label.text} ${label.time}` : undefined}>
       <span className="sb-activity-label-text">{label.text}</span>{' '}
       <span className="sb-activity-label-time" data-testid={`${testId}-time`}>
         {label.time}
@@ -66,4 +66,15 @@ export function SessionActivityOr({ activity, children }: { readonly activity: S
 export function AgentActivityText({ entry }: { readonly entry: AgentActivity }) {
   const now = useTick(TICK_MS);
   return <Label label={activityLabel(entry, now)} testId="agent-activity" />;
+}
+
+/**
+ * An active agent's action + time for the agent overview's Status cell (D21): the
+ * card's action with the chat line's `●` / `⏸`, the main agent's thinking as the
+ * chat line's verb (`turnStartedAt` = the running turn's start; `null` for a
+ * subagent). The whole action is the tooltip, since the cell cuts it with `…`.
+ */
+export function OverviewActivityText({ entry, turnStartedAt }: { readonly entry: AgentActivity; readonly turnStartedAt: string | null }) {
+  const now = useTick(TICK_MS);
+  return <Label label={overviewActivityLabel(entry, turnStartedAt, now)} testId="overview-activity" titled />;
 }
