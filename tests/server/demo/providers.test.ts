@@ -104,7 +104,7 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
 
   it('tools (M8.1): every probe is down without touching the network; the prototype dirty list with its times', async () => {
     const { toolProbe, codebaseMemory } = createDemoProviders(await loadDemoData(), () => NOW);
-    expect(await toolProbe.probe('http://localhost:13000')).toBe('down');
+    expect(await toolProbe.probe('http://localhost:13000')).toEqual({ state: 'down', framing: null });
     const status = await codebaseMemory.status(DEMO_FOLDER);
     expect(status.indexed).toEqual({ projects: 16, mode: 'full' });
     expect(

@@ -20,6 +20,7 @@ import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
 import { loadOrCreateToken } from './token.ts';
+import { ToolProxies } from './tools/proxies.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
 import { demoFolderChecks } from './demo/folders.ts';
@@ -61,7 +62,11 @@ async function main(): Promise<void> {
     const loginService = createLoginService({ config, settings: store.settings, redirect: serviceRedirect });
     // CLI / gh sign-in + machine metrics (M5.3, gap #11) through the configured commands.
     const system = new SystemProbe({ claudeCommand: config.claudeCommand, ghCommand: config.ghCommand, cwd: config.dataDir, processCount: () => supervisor.liveCount });
-    let providers: Providers = { diff: worktrees, solutions, system, loginService };
+    // D15 (docs/tools.md → Framing proxy): each tool with a URL behind its own loopback framing proxy; the demo runs none.
+    const toolProxies = config.demo
+      ? null
+      : new ToolProxies({ switchboardPort: config.port, onError: (error, toolId) => console.error(`switchboard tool proxy (${toolId}):`, error) });
+    let providers: Providers = { diff: worktrees, solutions, system, loginService, ...(toolProxies ? { toolFrames: toolProxies } : {}) };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
@@ -95,9 +100,12 @@ async function main(): Promise<void> {
       await scheduler.close();
       await systemItems.close();
       await usage?.stop();
+      await toolProxies?.close();
       await supervisor.shutdown();
       await store.close();
     });
+    // The saved tools' framing proxies, before the first request can ask for a `frameUrl`.
+    await toolProxies?.sync(await store.tools.list());
     // Installed before listening: a signal right after "Server listening" (tests stop
     // the server immediately) must still close cleanly with exit 0.
     installShutdown(app);

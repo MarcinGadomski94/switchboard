@@ -1,6 +1,7 @@
 import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
 import type { FolderRef } from './folders/ref.ts';
+import type { FramingHeaders } from './tools/framing.ts';
 
 /**
  * Live data that is computed rather than stored (docs/database.md → "Not stored"),
@@ -56,12 +57,32 @@ export interface LoginServiceProvider {
   setStartAtLogin(enabled: boolean): Promise<LoginServiceStatus>;
 }
 
+/** What one probe of a tool URL found (M8.1; D15 adds the framing headers). */
+export interface ToolProbeReport {
+  readonly state: ToolProbe['state'];
+  /** D15: the answer's `X-Frame-Options` / CSP headers; `null` when the tool is down (or the provider does not look). */
+  readonly framing: FramingHeaders | null;
+}
+
 /**
  * Reachability of an embedded tool's URL (M8.1). Real implementation: a
  * server-side GET with a 3 s timeout (`tools/probe.ts`), used when none is given.
  */
 export interface ToolProbeProvider {
-  probe(url: string): Promise<ToolProbe['state']>;
+  probe(url: string): Promise<ToolProbeReport>;
+}
+
+/**
+ * D15: the embedded tools' framing proxies (`docs/tools.md` → *Framing proxy*).
+ * Real implementation: `ToolProxies` (`tools/proxies.ts`), created, synced and
+ * closed by main.ts in normal runs. Demo mode has none, so its tools keep
+ * `frameUrl: null`.
+ */
+export interface ToolFrameProvider {
+  /** Starts, restarts (changed URL) or stops proxies so they match the saved tools. */
+  sync(tools: ReadonlyArray<{ readonly id: string; readonly url: string | null }>): Promise<void>;
+  /** The proxy URL that frames `toolId` for a page on `hostname` (`127.0.0.1` or `localhost`); `null` without a running proxy. */
+  frameUrl(toolId: string, hostname?: string): string | null;
 }
 
 /**
@@ -81,5 +102,7 @@ export interface Providers {
   readonly history?: HistoryProvider;
   readonly loginService?: LoginServiceProvider;
   readonly toolProbe?: ToolProbeProvider;
+  /** D15: without it (demo mode, tests that do not pass one) every tool's `frameUrl` is `null`. */
+  readonly toolFrames?: ToolFrameProvider;
   readonly codebaseMemory?: CodebaseMemoryProvider;
 }

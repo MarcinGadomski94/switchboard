@@ -63,8 +63,8 @@ function solution(overrides: Partial<Solution>): Solution {
 }
 
 const TOOLS: Tool[] = [
-  { id: 'cm', name: 'Codebase Memory', url: 'http://localhost:13000', description: 'code graph', showInSidebar: true },
-  { id: 'sw', name: 'Acme Tool', url: null, description: null, showInSidebar: false },
+  { id: 'cm', name: 'Codebase Memory', url: 'http://localhost:13000', description: 'code graph', showInSidebar: true, frameUrl: null },
+  { id: 'sw', name: 'Acme Tool', url: null, description: null, showInSidebar: false, frameUrl: null },
 ];
 
 const SESSIONS: Session[] = [

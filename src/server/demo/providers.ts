@@ -67,8 +67,11 @@ export function parseBranchRefs(text: string): BranchRef[] {
     .map(([solution, branch]) => ({ solution, branch }));
 }
 
-/** Demo providers over `data`; `now` anchors the relative values (usage reset, History dates). */
-export function createDemoProviders(data: DemoData, now: () => Date = () => new Date()): Required<Providers> {
+/**
+ * Demo providers over `data`; `now` anchors the relative values (usage reset, History dates).
+ * Every provider except D15's framing proxies (`toolFrames`): the demo runs none.
+ */
+export function createDemoProviders(data: DemoData, now: () => Date = () => new Date()): Required<Omit<Providers, 'toolFrames'>> {
   const sessionNames = new Set(data.sessions.map((s) => s.name));
 
   const diff: DiffProvider = {
@@ -177,10 +180,10 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
   };
 
   // The prototype's screenshots show the tools unreachable (its live probe of
-  // localhost:13000 fails); the demo never touches the network.
+  // localhost:13000 fails); the demo never touches the network (and has no framing proxies, D15).
   const toolProbe: ToolProbeProvider = {
     async probe() {
-      return 'down';
+      return { state: 'down', framing: null };
     },
   };
 
