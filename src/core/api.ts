@@ -679,6 +679,13 @@ export interface UsageWindow {
   readonly resetsAt: string;
   /** `key: 'model'` only: the model's display name as the CLI sends it. */
   readonly model?: string;
+  /**
+   * `key: 'model'` only, additive: when the value comes from a `get_usage` reading
+   * older than `MODEL_WINDOW_MAX_AGE_MS`, that reading's time (ISO 8601); the footer
+   * shows `as of <age>` instead of the reset (developer ruling 2026-09-28: keep the
+   * last value, marked old). Absent while the reading is fresh.
+   */
+  readonly asOf?: string;
 }
 
 /** Additive (D17): the window a {@link UsageWarning} is about; `model` = a model-scoped weekly limit named by `UsageWarning.model`. */

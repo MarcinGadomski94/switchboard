@@ -83,9 +83,10 @@ export interface UsageRow extends Meter {
   readonly model?: string;
 }
 
-/** The value of a known window: `62% · 1h48` (bar = the %). */
+/** The value of a known window: `62% · 1h48` (bar = the %); an old model reading reads `4% · as of 25m`. */
 function windowMeter(window: UsageWindow, now: number): Meter {
-  return { pct: clampPct(window.pct), text: `${Math.round(window.pct)}% · ${formatResetsIn(window.resetsAt, now)}` };
+  const when = window.asOf ? `as of ${formatAge(window.asOf, now)}` : formatResetsIn(window.resetsAt, now);
+  return { pct: clampPct(window.pct), text: `${Math.round(window.pct)}% · ${when}` };
 }
 
 /**

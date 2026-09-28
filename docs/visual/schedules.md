@@ -5,8 +5,8 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): header + table (256,0 1184×346) **0.33%**, full page **0.50%**.
-Known data differences, not findings: the Next column is computed from the real clock and the cron (app: "in 16h 7m", "in 2h 7m", "in 22h 37m", "5 Oct 07:00"; the prototype's "in 23h 22m", "in 1h 12m", "tomorrow 08:30", "Mon 07:00" are mock values), the failed run's age follows the seed time (checked as "Failed 38m ago · Android XamlC" ± a minute), the loop cards below the table are M7.2's (another lane), and the sidebar shows other lanes' data where their routes still answer 501 in this lane.
+Pixel diff (advisory, channel threshold 24): header + table (256,0 1184×346) **0.30%**, full page **0.82%**.
+Known data differences, not findings: the Next column is computed from the real clock and the cron (app: "in 12h 16m", "in 2h 16m", "in 18h 46m", "5 Oct 07:00"; the prototype's "in 23h 22m", "in 1h 12m", "tomorrow 08:30", "Mon 07:00" are mock values), the failed run's age follows the seed time (checked as "Failed 38m ago · Android XamlC" ± a minute), the loop cards below the table are M7.2's (another lane), and the sidebar shows other lanes' data where their routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `schedules-side-by-side.png` (header + table), `schedules-page-side-by-side.png` (page).
 

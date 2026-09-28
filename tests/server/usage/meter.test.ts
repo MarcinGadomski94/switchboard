@@ -349,7 +349,7 @@ describe('UsageMeter · D17 model-scoped windows', () => {
     };
   }
 
-  it('a Fable limit in use gets a window; a newer rate_limit_event keeps it; it is unknown once the get_usage reading is over 10 min old', async () => {
+  it('a Fable limit in use gets a window; a newer rate_limit_event keeps it; after 10 min it stays, marked with its reading time', async () => {
     poller.outcome = { kind: 'response', message: controlResponse('p', withFable(35)) };
     const m = meter();
     await m.tick();
@@ -360,9 +360,9 @@ describe('UsageMeter · D17 model-scoped windows', () => {
     await store.usage.add({ source: 'rate_limit_event', sessionId, fiveHourPct: 12, fiveHourResetsAt: FIVE_RESET, sevenDayPct: 19, sevenDayResetsAt: SEVEN_RESET });
     expect((await m.systemFields()).usageWindows).toEqual([...windows(12, 19), FABLE_ROW]);
 
-    // More than 10 min after the get_usage reading: unknown, left out (never an old number shown as current).
+    // More than 10 min after the get_usage reading: kept, marked with the reading's time (developer ruling 2026-09-28).
     now = START + 10 * MIN + 1;
-    expect((await m.systemFields()).usageWindows).toEqual(windows(12, 19));
+    expect((await m.systemFields()).usageWindows).toEqual([...windows(12, 19), { ...FABLE_ROW, asOf: new Date(START).toISOString() }]);
   });
 
   it('0 % and not active: no model window; a failed get_usage after a good one makes it unknown', async () => {

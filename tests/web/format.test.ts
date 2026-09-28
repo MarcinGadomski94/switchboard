@@ -60,6 +60,9 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
       pct: 100,
       text: '104% · 45m',
     });
+    // An old reading (developer ruling 2026-09-28): the last value stays, marked with its age.
+    const old = { ...fable, pct: 4, asOf: new Date(NOW - 25 * 60_000).toISOString() };
+    expect(usageRows({ ...SYSTEM, usageWindows: [...(SYSTEM.usageWindows ?? []), old] }, NOW)[2]).toMatchObject({ label: 'Fable', pct: 4, text: '4% · as of 25m' });
   });
 
   it('D17: a window the server does not list reads "unknown", never derived from usagePct; "—" before /api/system answers', () => {

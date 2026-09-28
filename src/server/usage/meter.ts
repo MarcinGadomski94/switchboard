@@ -177,16 +177,18 @@ export class UsageMeter {
   }
 
   /**
-   * D17: the model-scoped weekly limits of the newest `get_usage` reading, when it
-   * is at most {@link MODEL_WINDOW_MAX_AGE_MS} old (a `rate_limit_event` has none,
-   * so a newer one does not hide them); empty otherwise (unknown).
+   * D17: the model-scoped weekly limits of the newest `get_usage` reading (a
+   * `rate_limit_event` has none, so a newer one does not hide them). A reading
+   * older than {@link MODEL_WINDOW_MAX_AGE_MS} is kept and marked with its time
+   * (`asOf`, shown as "as of <age>"; developer ruling 2026-09-28); a window whose
+   * reset has passed is dropped as before (`usageWindows`).
    */
   async #modelWindows(now: Date): Promise<ModelWindowReading[]> {
     const reading = await this.#store.usage.latest('get_usage');
     if (!reading) return [];
     const age = now.getTime() - Date.parse(reading.receivedAt);
-    if (!(age <= MODEL_WINDOW_MAX_AGE_MS)) return [];
-    return modelWindowsFromGetUsage(reading.raw);
+    const windows = modelWindowsFromGetUsage(reading.raw);
+    return age <= MODEL_WINDOW_MAX_AGE_MS ? windows : windows.map((w) => ({ ...w, asOf: reading.receivedAt }));
   }
 
   /** Stores a reading taken now (`get_usage` from a live session or the poller). */

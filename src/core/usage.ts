@@ -115,6 +115,8 @@ export interface ModelWindowReading {
   readonly resetsAt: string | null;
   /** `limits[].is_active` of its `weekly_scoped` entry (`false` when absent). */
   readonly isActive: boolean;
+  /** When the reading is older than {@link MODEL_WINDOW_MAX_AGE_MS}: its time, shown as "as of" (else absent). */
+  readonly asOf?: string;
 }
 
 /** The warnings already fired: per window, the warning (kept until its `resetsAt`); D17: per model under `model`. */
@@ -331,7 +333,7 @@ export function usageWindows(latest: UsageReadingFields | null, models: readonly
   if (windows.five_hour) out.push({ key: 'session', label: USAGE_ROW_LABELS.session, ...windows.five_hour });
   if (windows.seven_day) out.push({ key: 'week', label: USAGE_ROW_LABELS.week, ...windows.seven_day });
   for (const m of validModelWindows(models, now)) {
-    if (m.pct > 0 || m.isActive) out.push({ key: 'model', label: m.model, pct: m.pct, resetsAt: m.resetsAt, model: m.model });
+    if (m.pct > 0 || m.isActive) out.push({ key: 'model', label: m.model, pct: m.pct, resetsAt: m.resetsAt, model: m.model, ...(m.asOf ? { asOf: m.asOf } : {}) });
   }
   return out;
 }
