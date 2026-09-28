@@ -1,5 +1,6 @@
-import type { Session, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
+import { USAGE_ROW_LABELS } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -73,13 +74,39 @@ export function formatResetsIn(iso: string, now: number = Date.now()): string {
   return hours > 0 ? `${hours}h${String(rest).padStart(2, '0')}` : `${rest}m`;
 }
 
-/** Max usage meter (`40% · 2h05`); `unknown` without a reading (ARCHITECTURE → Usage meter). */
-export function maxMeter(system: SystemInfo | null, now: number = Date.now()): Meter {
-  if (!system) return { pct: 0, text: UNKNOWN };
-  if (system.usagePct === undefined) return { pct: 0, text: 'unknown' };
-  const pct = Math.round(system.usagePct);
-  const reset = system.usageResetsAt ? ` · ${formatResetsIn(system.usageResetsAt, now)}` : '';
-  return { pct: clampPct(system.usagePct), text: `${pct}%${reset}` };
+/** One usage row of the footer (D17): Session, Week, or a model's weekly limit. */
+export interface UsageRow extends Meter {
+  /** `session`, `week` or `model` (the `data-meter` value). */
+  readonly key: UsageWindow['key'];
+  readonly label: string;
+  /** `key: 'model'`: the model's name. */
+  readonly model?: string;
+}
+
+/** The value of a known window: `62% · 1h48` (bar = the %). */
+function windowMeter(window: UsageWindow, now: number): Meter {
+  return { pct: clampPct(window.pct), text: `${Math.round(window.pct)}% · ${formatResetsIn(window.resetsAt, now)}` };
+}
+
+/**
+ * The footer's usage rows (D17, `docs/usage.md`): always **Session** and **Week**
+ * (`unknown` while `usageWindows` has no such window, `—` before `/api/system`
+ * answers), then one row per model window the server lists (it lists them only
+ * while in use). Nothing is derived from `usagePct`: unknown stays unknown.
+ */
+export function usageRows(system: SystemInfo | null, now: number = Date.now()): UsageRow[] {
+  const windows = system?.usageWindows ?? [];
+  const fixed = (key: 'session' | 'week'): UsageRow => {
+    const label = USAGE_ROW_LABELS[key];
+    const window = windows.find((w) => w.key === key);
+    if (window) return { key, label, ...windowMeter(window, now) };
+    return { key, label, pct: 0, text: system ? 'unknown' : UNKNOWN };
+  };
+  return [
+    fixed('session'),
+    fixed('week'),
+    ...windows.filter((w) => w.key === 'model').map((w): UsageRow => ({ key: 'model', label: w.label, model: w.model ?? w.label, ...windowMeter(w, now) })),
+  ];
 }
 
 /** `3 bg processes` (gap #11: live supervised claude processes). */

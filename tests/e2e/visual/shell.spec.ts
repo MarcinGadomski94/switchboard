@@ -18,6 +18,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
+import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
 
 /**
  * Visual oracle for the empty shell (M1.4, D10): the app's sidebar chrome against
@@ -25,10 +26,17 @@ import {
  * implement the API routes (501 today) its data-driven parts (tool rows, session
  * rows, badges, footer values) are empty, so those parts are compared only where
  * their geometry does not depend on the data (`size` / `bottom` below).
+ *
+ * D17: the prototype's one "Max" row became Session + Week rows, so the footer is
+ * taller (its bottom edge stays). The rows above them are compared with y relative
+ * to the footer's top (`anchor`); the new rows are listed and checked on the
+ * footer's own rules (`usage-rows.ts`), not against the prototype.
  */
 
 /** Child-index paths from the shell grid (harness.measure). */
-const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonly geometry: Geometry; readonly copy: boolean }>> = {
+const PARTS: Readonly<
+  Record<string, { readonly path: readonly number[]; readonly geometry: Geometry; readonly copy: boolean; /** y relative to this part's top (both pages). */ readonly anchor?: readonly number[] }>
+> = {
   sidebar: { path: [0], geometry: 'box', copy: false },
   main: { path: [1], geometry: 'box', copy: false },
   brand: { path: [0, 0], geometry: 'box', copy: false },
@@ -53,12 +61,12 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   footer: { path: [0, 8], geometry: 'bottom', copy: false },
   // "claude code" wraps in the prototype only because its row also holds "9 bg processes".
   footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true },
-  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true },
-  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false },
-  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true },
-  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false },
-  maxLabel: { path: [0, 8, 3, 0], geometry: 'box', copy: true },
-  maxTrack: { path: [0, 8, 3, 1], geometry: 'box', copy: false },
+  // D17: the footer grows upward by the Week row, so its rows are compared relative to its top.
+  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH },
+  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH },
+  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH },
+  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH },
+  // The prototype's Max row (maxLabel / maxTrack) has no counterpart: D17's Session + Week rows, see usage-rows.ts.
 };
 
 /** Computed styles compared between the two pages for every part. */
@@ -95,8 +103,9 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
   await openApp(appPage, app.baseUrl, '/');
 
   const paths = Object.fromEntries(Object.entries(PARTS).map(([name, part]) => [name, part.path]));
-  const proto = await measure(protoPage, paths);
-  const shell = await measure(appPage, paths);
+  const anchors = Object.fromEntries(Object.entries(PARTS).flatMap(([, part]) => (part.anchor ? [[`@${part.anchor.join('.')}`, part.anchor]] : [])));
+  const proto = await measure(protoPage, { ...paths, ...anchors });
+  const shell = await measure(appPage, { ...paths, ...anchors });
   const failures: string[] = [];
   const rows: string[] = [];
 
@@ -108,7 +117,10 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
       failures.push(`${name}: missing (${p ? 'app' : 'prototype'})`);
       continue;
     }
-    const boxIssues = compareBoxes(name, p.box, a.box, spec.geometry);
+    const anchorName = spec.anchor ? `@${spec.anchor.join('.')}` : null;
+    const relative = (part: Part, side: Record<string, Part | null>): Part =>
+      anchorName ? { ...part, box: { ...part.box, y: part.box.y - (side[anchorName]?.box.y ?? Number.NaN) } } : part;
+    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, shell).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to the footer's top, D17)` : m));
     failures.push(...boxIssues);
     let copyNote = '';
     if (spec.copy) {
@@ -123,9 +135,14 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     }
     failures.push(...styleIssues);
     rows.push(
-      `| ${name} | ${spec.geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
+      `| ${name} | ${spec.geometry}${anchorName ? ' (y rel. footer)' : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
     );
   }
+
+  // D17: the Session / Week rows, listed next to the prototype's Max row and gated on the footer's own rules.
+  const usage = await usageRowChecks(protoPage, appPage, 'D17');
+  failures.push(...usage.failures);
+  const usageRows = usage.checks.map((c) => `| ${c.part} | ${c.proto.replaceAll('|', '\\|')} | ${c.app.replaceAll('|', '\\|')} | ${c.result} | ${c.note.replaceAll('|', '\\|')} |`);
 
   // SPEC tokens: every color of SPEC → Design tokens is defined on :root.
   const tokens = await rootTokens(appPage);
@@ -204,7 +221,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
   const pairSidebar = await sideBySide(appPage, protoSidebar, appSidebar);
 
   await writeReport({
-    'shell.md': report({ rows, tokenRows, computedRows, failures, full: full.percent, sidebar: side.percent }),
+    'shell.md': report({ rows, usageRows, tokenRows, computedRows, failures, full: full.percent, sidebar: side.percent }),
     'shell-side-by-side.png': pairFull,
     'shell-sidebar-side-by-side.png': pairSidebar,
   });
@@ -219,6 +236,7 @@ function fmtBox(part: Part): string {
 
 function report(input: {
   rows: string[];
+  usageRows: string[];
   tokenRows: string[];
   computedRows: string[];
   failures: string[];
@@ -238,11 +256,18 @@ The app's routes answer 501 until the lanes land, so the prototype's data (badge
 Side by side (prototype left, app right): \`shell-side-by-side.png\`, \`shell-sidebar-side-by-side.png\`.
 
 ## Boxes (±2 px) and copy
-Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height (y depends on the data above) · \`bottom\` = x, width, bottom edge · \`none\` = copy and styles only (the box depends on data in the same row).
+Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height (y depends on the data above) · \`bottom\` = x, width, bottom edge · \`none\` = copy and styles only (the box depends on data in the same row) · \`(y rel. footer)\` = y measured from the footer's top on both pages (D17: the footer is taller by the Week row, its bottom edge stays).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
 ${input.rows.join('\n')}
+
+## D17 usage rows (listed, not compared with the prototype)
+The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. \`listed\` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
+
+| Part | Prototype | App | Result | Notes |
+|---|---|---|---|---|
+${input.usageRows.join('\n')}
 
 ## SPEC color tokens defined as CSS variables
 | Token | SPEC values | Result |

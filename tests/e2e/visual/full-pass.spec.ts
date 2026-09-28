@@ -16,6 +16,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
+import { usageRowChecks } from './usage-rows.ts';
 
 /**
  * Full visual pass (M9.3, D10): every view and modal SPEC names, on whatever this
@@ -39,6 +40,11 @@ import {
  *   once it is implemented.
  * - Advisory pixel diff of the page and of the main area / panel, and a
  *   side-by-side PNG of every surface that is implemented here.
+ * - D17: the prototype's footer has one "Max" row, the app Session + Week rows. The
+ *   footer keeps its bottom edge and grows upward, so Settings and the footer's
+ *   rows above the usage rows are compared with y relative to the footer's top;
+ *   the usage rows are listed and checked on the footer's own rules
+ *   (`usage-rows.ts`), not against the prototype.
  *
  * The per-view detail (every row, card and state) is gated by the view's own spec
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
@@ -384,7 +390,7 @@ interface Row {
   /** Which part of the page (the report prints the sidebar once in full). */
   readonly group?: 'sidebar' | 'content';
   readonly part: string;
-  readonly geometry: Geometry | 'relative' | 'listed';
+  readonly geometry: Geometry | 'relative' | 'listed' | 'D17 rules';
   readonly proto: string;
   readonly app: string;
   readonly result: 'ok' | 'FAIL' | 'pending' | 'listed';
@@ -459,6 +465,8 @@ interface PartCheck {
   readonly styles: readonly string[];
   /** `relative`: compared with y relative to this part (both pages). */
   readonly anchor?: readonly number[];
+  /** How the report names the anchor (default: the SESSIONS label). */
+  readonly anchorName?: string;
   /** Listed, not gated (data this branch does not serve, or derived copy). */
   readonly pending?: string;
   /** Copy listed only (known data difference), the box and styles still gated. */
@@ -511,16 +519,20 @@ function sidebarChecks(served: Served): PartCheck[] {
     });
   }
   const systemPending = served.system ? undefined : `${AREAS.system.url} answers 501 (${AREAS.system.item})`;
-  out.push({ name: 'settings', path: SETTINGS, geometry: served.tools && served.system ? 'box' : 'size', copy: true, styles: text });
-  out.push({ name: 'footer', path: FOOTER, geometry: served.system ? 'box' : 'bottom', copy: false, styles: ['background-color', 'border-top-color'] });
-  out.push({ name: 'footer:service', path: [...FOOTER, 0], geometry: served.system ? 'box' : 'bottom', copy: false, styles: text });
-  out.push({ name: 'footer:label', path: [...FOOTER, 0, 1], geometry: served.system ? 'box' : 'none', copy: true, styles: text });
-  out.push({ name: 'footer:processes', path: [...FOOTER, 0, 2], geometry: 'box', copy: true, styles: text, pending: systemPending });
-  ['CPU', 'RAM', 'Max'].forEach((label, i) => {
+  // D17: the footer keeps its bottom edge and grows upward by the Week row (usage-rows.ts gates by how much), so
+  // Settings and the footer's rows are compared with y relative to the footer's top.
+  const inFooter = { geometry: 'relative' as const, anchor: FOOTER, anchorName: "the footer's top (D17)" };
+  out.push({ name: 'settings', path: SETTINGS, ...(served.tools && served.system ? inFooter : { geometry: 'size' as const }), copy: true, styles: text });
+  out.push({ name: 'footer', path: FOOTER, geometry: 'bottom', copy: false, styles: ['background-color', 'border-top-color'] });
+  out.push({ name: 'footer:service', path: [...FOOTER, 0], ...(served.system ? inFooter : { geometry: 'bottom' as const }), copy: false, styles: text });
+  out.push({ name: 'footer:label', path: [...FOOTER, 0, 1], ...(served.system ? inFooter : { geometry: 'none' as const }), copy: true, styles: text });
+  out.push({ name: 'footer:processes', path: [...FOOTER, 0, 2], ...inFooter, copy: true, styles: text, pending: systemPending });
+  // The prototype's third meter, "Max", has no counterpart: D17's Session + Week rows (usage-rows.ts).
+  ['CPU', 'RAM'].forEach((label, i) => {
     const meter = [...FOOTER, i + 1];
-    out.push({ name: `footer:${label}`, path: [...meter, 0], geometry: 'box', copy: true, styles: text });
-    out.push({ name: `footer:${label}:track`, path: [...meter, 1], geometry: 'box', copy: false, styles: ['background-color', 'border-radius'] });
-    out.push({ name: `footer:${label}:value`, path: [...meter, 2], geometry: 'box', copy: true, styles: text, pending: systemPending });
+    out.push({ name: `footer:${label}`, path: [...meter, 0], ...inFooter, copy: true, styles: text });
+    out.push({ name: `footer:${label}:track`, path: [...meter, 1], ...inFooter, copy: false, styles: ['background-color', 'border-radius'] });
+    out.push({ name: `footer:${label}:value`, path: [...meter, 2], ...inFooter, copy: true, styles: text, pending: systemPending });
   });
   return out;
 }
@@ -559,7 +571,7 @@ function compare(surface: string, checks: readonly PartCheck[], proto: Record<st
         issues.push(`${check.name}: anchor missing`);
       } else {
         const rel = (part: Part, base: Part): Box => ({ ...part.box, y: part.box.y - base.box.y });
-        issues.push(...compareBoxes(check.name, rel(p, anchor.proto), rel(a, anchor.app), 'box').map((m) => `${m} (y relative to the SESSIONS label)`));
+        issues.push(...compareBoxes(check.name, rel(p, anchor.proto), rel(a, anchor.app), 'box').map((m) => `${m} (y relative to ${check.anchorName ?? 'the SESSIONS label'})`));
       }
     } else {
       issues.push(...compareBoxes(check.name, p.box, a.box, check.geometry));
@@ -674,6 +686,16 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       const paths = pathsOf(sidebar);
       sidebarTally = { checks: 0, failures: 0 };
       track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, paths)), sidebarTally, 'sidebar');
+      // D17: the usage rows, listed next to the prototype's Max row and gated on the footer's own rules.
+      const usage = await usageRowChecks(protoPage, appPage, surface.id);
+      track(
+        {
+          rows: usage.checks.map((c) => ({ surface: surface.id, part: c.part, geometry: c.result === 'listed' ? 'listed' : 'D17 rules', proto: c.proto, app: c.app, result: c.result, note: c.note })),
+          failures: usage.failures,
+        },
+        sidebarTally,
+        'sidebar',
+      );
     } else {
       notes.push('no trigger on this branch (Settings → "Run setup again" arrives with M8.2 + M5.3)');
     }
@@ -811,7 +833,7 @@ ${table.join('\n')}
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on \`${first ?? '—'}\`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
-Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to the SESSIONS label (the tool rows above it are pending) · \`none\` = copy and styles only · \`listed\` = recorded, not gated.
+Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · \`none\` = copy and styles only · \`listed\` = recorded, not gated · \`D17 rules\` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|

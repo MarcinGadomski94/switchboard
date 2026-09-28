@@ -88,13 +88,17 @@ test('the shell renders from the real API and shows only what the API returns', 
     }
   }
 
-  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3), usage unknown until M9.2, the real address.
+  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3, D17: memory in use), the real address. D17: Session
+  // and Week rows; fake-claude's recorded 5-hour window has reset, so Session stays unknown; Week is unknown until the
+  // meter's first reading with this page connected (then the recorded 18 % while its reset is ahead).
+
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
   await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '']);
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
-  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/, 'unknown']);
+  await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM', 'Session', 'Week']);
+  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/, 'unknown', /^(unknown|18% · \d+h\d\d)$/]);
 });
 
 test('the nav switches views client-side and deep links load the right view', async ({ page }) => {

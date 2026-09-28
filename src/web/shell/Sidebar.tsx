@@ -15,12 +15,12 @@ import {
   conflictCount,
   cpuMeter,
   formatAge,
-  maxMeter,
   modeLine,
   processCount,
   ramMeter,
   statusColor,
   urlHost,
+  usageRows,
 } from './format.ts';
 
 /** `sessionUpdated` comes in bursts; the Solutions badge source reloads at most this often (M6.3). */
@@ -57,9 +57,9 @@ function isActive(route: Route, view: Route['view'], id?: string): boolean {
   return 'id' in route && route.id === id;
 }
 
-function MeterRow({ label, meter, name }: { readonly label: string; readonly meter: Meter; readonly name: string }) {
+function MeterRow({ label, meter, name, model }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string }) {
   return (
-    <div className="sb-meter" data-meter={name}>
+    <div className="sb-meter" data-meter={name} data-model={model}>
       <span>{label}</span>
       <div className="sb-meter-track">
         <div className="sb-meter-fill" style={{ width: `${meter.pct}%` }} />
@@ -224,7 +224,12 @@ export function Sidebar() {
         </div>
         <MeterRow label="CPU" name="cpu" meter={cpuMeter(info)} />
         <MeterRow label="RAM" name="ram" meter={ramMeter(info)} />
-        <MeterRow label="Max" name="max" meter={maxMeter(info, now)} />
+        {/* D17: Session + Week (+ a model's weekly limit while in use) replace the prototype's one "Max" row. */}
+        <div className="sb-usage" data-testid="usage-meters">
+          {usageRows(info, now).map((row) => (
+            <MeterRow key={row.model ? `model:${row.model}` : row.key} label={row.label} name={row.key} meter={row} {...(row.model ? { model: row.model } : {})} />
+          ))}
+        </div>
       </div>
     </aside>
   );
