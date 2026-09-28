@@ -23,6 +23,7 @@ import type {
   Settings,
   SolutionGroup,
   SystemInfo,
+  TeleportSession,
   Tool,
   ToolProbe,
   Worktree,
@@ -102,6 +103,8 @@ export const api = {
   listSessions: () => request<Session[]>('GET', '/api/sessions'),
   /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`. */
   createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
+  /** D25, additive: continue a remote session locally (201 Session; 422 / 409, or 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text). */
+  teleportSession: (body: TeleportSession) => request<Session>('POST', '/api/sessions/teleport', body),
   getSession: (id: string) => request<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
   /** D22, additive: rename (`null` or an empty title clears it; 422 on field `title` beyond 80 characters). */

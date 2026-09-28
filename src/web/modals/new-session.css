@@ -578,3 +578,57 @@
   border-radius: 14px;
   padding: 3px 11px;
 }
+
+/*
+ * D25 · From a remote session (not in the prototype): the pill sits on the
+ * Folder label line out of the flow (like D16's pill on section 1's), so the
+ * Folder row and everything below keep their boxes. While it is on, the remote
+ * field takes the task's place, the optional first message sits under the row,
+ * and a mono hint under the folder row says why only git repo folders are offered.
+ */
+.sb-ns-section--folder {
+  position: relative;
+}
+
+.sb-ns-remote-toggle {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 2px 10px;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-ns-remote-toggle:hover:not(:disabled),
+.sb-ns-remote-toggle[aria-pressed='true'] {
+  border-color: var(--muted-2);
+  color: var(--text-strong);
+}
+
+.sb-ns-remote-toggle[aria-pressed='true'] {
+  background: var(--border-card);
+}
+
+.sb-ns-remote-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-ns-input--remote {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.sb-ns-remote-hint {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+/* A refused teleport's text is the CLI's, verbatim: keep its lines. */
+.sb-ns-error[data-remote='true'] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

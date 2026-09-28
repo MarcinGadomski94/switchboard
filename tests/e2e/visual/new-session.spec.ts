@@ -356,6 +356,47 @@ async function d16Addition(state: string, appPage: Page, rows: string[], failure
   }
 }
 
+/**
+ * The D25 addition of a state, checked on its own (the prototype has none):
+ * **From a remote session** sits in the Folder section out of the flow (absolute,
+ * so the Folder row's box, which the D14 rows check, is unchanged), on the Folder
+ * label line's right edge, clear of the label's text and above the folder row.
+ */
+async function d25Addition(state: string, appPage: Page, rows: string[], failures: string[]): Promise<void> {
+  const facts = await appPage.evaluate(() => {
+    const toggle = document.querySelector<HTMLElement>('[data-testid="ns-remote"]');
+    const section = toggle?.parentElement;
+    const label = section?.children[0];
+    const row = section?.children[1];
+    if (!toggle || !section || !label || !row || section.getAttribute('data-section') !== 'folder') return null;
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    const text = range.getBoundingClientRect();
+    const box = toggle.getBoundingClientRect();
+    return {
+      copy: (toggle.textContent ?? '').trim(),
+      pressed: toggle.getAttribute('aria-pressed'),
+      position: getComputedStyle(toggle).position,
+      rightGap: section.getBoundingClientRect().right - box.right,
+      clearOfLabel: box.left - text.right,
+      aboveRow: row.getBoundingClientRect().top - box.bottom,
+      box: `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}`,
+    };
+  });
+  const checks: Array<[string, boolean, string]> = [
+    ['Remote toggle copy', facts?.copy === '⇣ From a remote session', JSON.stringify(facts?.copy ?? null)],
+    ['Remote toggle off', facts?.pressed === 'false', JSON.stringify(facts?.pressed ?? null)],
+    ['Remote toggle out of the flow', facts?.position === 'absolute', facts?.position ?? 'missing'],
+    ['Remote toggle on the right edge', facts !== null && Math.abs(facts.rightGap) <= 2, facts ? `${round(facts.rightGap)} px · ${facts.box}` : 'missing'],
+    ['Remote toggle clear of the label', facts !== null && facts.clearOfLabel > 0, facts ? `${round(facts.clearOfLabel)} px` : 'missing'],
+    ['Remote toggle above the folder row', facts !== null && facts.aboveRow >= 0, facts ? `${round(facts.aboveRow)} px` : 'missing'],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D25 ${what}: ${note}`);
+    rows.push(`| ${state} · D25 ${what} | addition | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
+}
+
 /** Clicks the prototype's pill or chip with exactly this text (its onClick sits on the text's parent span). */
 async function protoClick(page: Page, text: string): Promise<void> {
   await page.getByText(text, { exact: true }).first().click();
@@ -420,6 +461,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   compareParts('draft', readOnly, protoRo, appRo, rows, failures);
   await d14Additions('draft', appPage, rows, failures);
   await d16Addition('draft', appPage, rows, failures);
+  await d25Addition('draft', appPage, rows, failures);
 
   // SPEC tokens as computed styles of the app (New session: 1080px, `1fr | 360px`, pills, chips, toggles, summary).
   const computed = await appPage.evaluate(() => {
@@ -583,6 +625,9 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 
 ## D16 addition (not a finding)
 **Resume a terminal conversation** (\`↻\` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (\`D16 …\` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
+
+## D25 addition (not a finding)
+**From a remote session** (\`⇣\` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (\`D25 …\` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. States: \`draft\` (the prototype's draft), \`single\` (Single-solution: section 6 · Mobile coordination), \`qa\` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), \`empty\` (no solutions: the warning line, Start at 45%). Styles compared: ${COMPARED_STYLES.join(', ')}.

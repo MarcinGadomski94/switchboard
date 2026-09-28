@@ -173,6 +173,29 @@
   color: var(--status-fail);
 }
 
+/* D25: a local copy of a remote session (not in the prototype; only such sessions show it). */
+.sb-sv-remote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-2);
+}
+
+.sb-sv-remote-link {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+  text-decoration: underline;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 2px;
+}
+
+.sb-sv-remote-link:hover {
+  color: var(--text-strong);
+}
+
 /*
  * Right panel (M4.3, prototype right column): "Agents & solutions" + summary, the
  * agent cards, "Terminal" + the terminal tail, then the handoff card (M4.1).

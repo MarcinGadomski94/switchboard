@@ -2,6 +2,7 @@ import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core
 import type { SessionStatus } from '../../core/model.ts';
 import { WEEKDAY_LABELS } from '../../core/cron.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
+import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { USAGE_ROW_LABELS, weeklyPace } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
@@ -24,9 +25,14 @@ export function formatAge(iso: string | null, now: number = Date.now()): string 
 /**
  * The sidebar's mode line, as the prototype builds it for a new session:
  * `orch|single · QA|feature · UI-first|integration`. Parts the session does not
- * have are left out.
+ * have are left out. D16: `terminal · moved`; D25: `remote · local copy` for a
+ * local copy of a remote session.
  */
-export function modeLine(session: Pick<Session, 'mode' | 'workType' | 'phase'> & { readonly origin?: Session['origin'] }): string {
+export function modeLine(
+  session: Pick<Session, 'mode' | 'workType' | 'phase'> & { readonly origin?: Session['origin']; readonly remoteSource?: Session['remoteSource'] },
+): string {
+  // D25: a local copy of a remote session has no session-start answers either.
+  if (session.remoteSource) return REMOTE_MODE_LINE;
   // D16: a session moved in from a terminal has no session-start answers (developer ruling 2026-09-28).
   if (session.origin === 'terminal') return MOVED_MODE_LINE;
   const parts: string[] = [];

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
+import { REMOTE_COPY_NOTE, remoteSessionUrl } from '../../../core/remote-session.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { Link, type SessionTab } from '../../router.tsx';
@@ -48,6 +49,9 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  * shows the command). "⇄ Attach here" = `POST /attach`; when a terminal may still
  * hold the session (gap #5) the service answers 409 `attach-warning`, the warning
  * shows here, and "Attach anyway" repeats it with `{ confirm: true }`.
+ *
+ * D25: a local copy of a remote session gets a note under the top row (new work
+ * stays local) with a link to the remote session on claude.ai.
  */
 export function SessionHeader({ sessionId, session, missing, tab, files, artifacts, onChanged }: SessionHeaderProps) {
   const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | null>(null);
@@ -116,6 +120,20 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           </button>
         </div>
       </div>
+      {session?.remoteSource ? (
+        <div className="sb-sv-remote" data-testid="session-remote-note">
+          <span>{REMOTE_COPY_NOTE}</span>
+          <a
+            className="sb-sv-remote-link"
+            data-testid="session-remote-link"
+            href={remoteSessionUrl(session.remoteSource)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {session.remoteSource}
+          </a>
+        </div>
+      ) : null}
       {warning ? (
         <div className="sb-sv-warning" role="alertdialog" aria-label="Attach here" data-testid="attach-warning">
           <div className="sb-sv-warning-text" data-testid="attach-warning-text">

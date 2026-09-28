@@ -45,6 +45,20 @@ import {
   resumePickOf,
   resumeSummaryLines,
 } from './resume-conversation.ts';
+import {
+  FROM_REMOTE_SESSION,
+  NO_REPO_FOLDER_HINT,
+  REMOTE_LAUNCH_NOTE,
+  REMOTE_PLACEHOLDER,
+  REMOTE_TASK_PLACEHOLDER,
+  REPO_FOLDERS_HINT,
+  canStartRemote,
+  remoteFormFolder,
+  remoteNames,
+  remoteSummaryLines,
+  repoFolders,
+  toTeleportBody,
+} from './remote-session.ts';
 import { ScheduleSection } from './ScheduleSection.tsx';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
@@ -127,7 +141,10 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * a terminal conversation** (next to the task) lists the folder's terminal
  * conversations not in Switchboard yet; picking one replaces the task, hides the
  * router sections and the toggles (a moved session has neither), and Start moves
- * it (`POST /api/history/{id}/continue`) instead of posting a new session. D22:
+ * it (`POST /api/history/{id}/continue`) instead of posting a new session. D25:
+ * **From a remote session** (on the Folder label line) replaces the task with a
+ * claude.ai/code URL or id field, offers only git repo folders, hides the router
+ * sections and the toggles, and Start posts `POST /api/sessions/teleport`. D22:
  * the name field takes free text as the session's title; the summary's worktree
  * and branch lines show the short name derived from it, and Start posts both
  * (`startNames` in new-session.ts). Details: `docs/new-session.md`,
@@ -167,6 +184,10 @@ export function NewSessionModal({
     navigate({ view: 'session', id, tab: 'chat' });
   });
   const resuming = resume !== null && !scheduling;
+  // D25: "From a remote session": the remote field replaces the task (never while scheduling).
+  const [remoteMode, setRemoteMode] = useState(false);
+  const [remote, setRemote] = useState('');
+  const remoting = remoteMode && !scheduling;
   const conversations = useApi((): Promise<HistoryItem[] | null> => (resumeOpen ? api.history() : Promise.resolve(null)), [resumeOpen]);
   const pickFolder = (id: string): void => {
     update({ folder: id, solutions: [] });
@@ -176,16 +197,20 @@ export function NewSessionModal({
   };
 
   // D14: once the saved folders are known, the form's folder is a saved one (its own while saved, else the default).
+  // D25: from a remote session, a saved git repo folder (the first one when the form's is not).
   useEffect(() => {
     const list = folders.data;
     if (!list) return;
     setForm((current) => {
-      const folder = resolveFormFolder(current.folder, list);
-      return folder === current.folder ? current : { ...current, folder };
+      const folder = remoting ? remoteFormFolder(current.folder, list) : resolveFormFolder(current.folder, list);
+      // A folder switched for the remote option leaves no solutions of the other folder behind.
+      return folder === current.folder ? current : { ...current, folder, ...(remoting ? { solutions: [] } : {}) };
     });
-  }, [folders.data]);
+  }, [folders.data, remoting]);
   const folderReady = folders.data !== null || folders.error !== null;
-  const target = folderById(folders.data, form.folder) ?? (form.folder ? null : defaultFolder(folders.data));
+  const anyTarget = folderById(folders.data, form.folder) ?? (form.folder ? null : defaultFolder(folders.data));
+  // D25: from a remote session, only a git repo folder is a target.
+  const target = remoting && anyTarget?.kind !== 'repo' ? null : anyTarget;
   const folder: FormFolder | null = target ? { id: target.id, path: target.path, name: target.name, displayName: target.displayName, kind: target.kind } : null;
   const repo = isRepoFolder(folder);
   // The chips are the chosen folder's scan (D14): read again when the folder changes, tagged with it so a switch never shows the last folder's chips.
@@ -205,18 +230,23 @@ export function NewSessionModal({
   const preview = cronPreview(cron, new Date());
   const lines = scheduling
     ? scheduleSummaryLines(form, workspaceRoot(scan), preview, takenScheduleNames, folder)
-    : resume
-      ? resumeSummaryLines(resume, folder, form.name, takenNames)
-      : summaryLines(form, workspaceRoot(scan), takenNames, folder);
+    : remoting
+      ? remoteSummaryLines(remote, folder, form.name, form.task, takenNames)
+      : resume
+        ? resumeSummaryLines(resume, folder, form.name, takenNames)
+        : summaryLines(form, workspaceRoot(scan), takenNames, folder);
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
-  const startable = resuming
-    ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
-    : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
-  const hideRouter = repo || resuming;
+  const startable = remoting
+    ? canStartRemote(remote, form.name, folder) && !busy
+    : resuming
+      ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
+      : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
+  const hideRouter = repo || resuming || remoting;
   const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
   const title = scheduling ? (schedule.id ? 'Edit scheduled run' : 'New scheduled run') : 'New session';
-  const choices = folderChoices(folders.data ?? []);
+  // D25: from a remote session, only git repo folders.
+  const choices = folderChoices(remoting ? repoFolders(folders.data ?? []) : (folders.data ?? []));
   const checkLine = folderCheckLine(target?.check ?? null);
 
   const saveSchedule = async (): Promise<void> => {
@@ -233,9 +263,37 @@ export function NewSessionModal({
     }
   };
 
+  const toggleRemote = (): void => {
+    const next = !remoteMode;
+    setRemoteMode(next);
+    setError(null);
+    if (next) {
+      // The remote field replaces the task: a picked terminal conversation does not carry over.
+      setResume(null);
+      setResumeOpen(false);
+      moves.close();
+    }
+  };
+
   const start = async (): Promise<void> => {
     if (!startable) return;
     if (scheduling) return saveSchedule();
+    if (remoting && folder) {
+      // D25: a new worktree of the repo, `claude --teleport` there; a refusal shows the CLI's text verbatim.
+      setBusy(true);
+      setError(null);
+      try {
+        const session = await api.teleportSession(toTeleportBody(remote, folder, form.name, form.task));
+        onClose();
+        navigate({ view: 'session', id: session.id, tab: 'chat' });
+      } catch (caught) {
+        const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+        setError(startErrorText(apiError.status, apiError.body));
+        sessions.reload();
+        setBusy(false);
+      }
+      return;
+    }
     if (resume) {
       // D16: the picked conversation moves into Switchboard as the same conversation; D22: typed text is its title.
       setError(null);
@@ -294,7 +352,9 @@ export function NewSessionModal({
                 title={target?.path}
                 onChange={(event) => pickFolder(event.target.value)}
               >
-                {choices.length === 0 ? <option value="">{folders.data ? 'No folder saved yet' : 'Loading folders…'}</option> : null}
+                {choices.length === 0 ? (
+                  <option value="">{folders.data ? (remoting ? 'No git repo folder saved yet' : 'No folder saved yet') : 'Loading folders…'}</option>
+                ) : null}
                 {choices.map((choice) => (
                   <option key={choice.id} value={choice.id} title={choice.path}>
                     {choice.label}
@@ -326,6 +386,23 @@ export function NewSessionModal({
                 onCancel={() => setAdding(false)}
               />
             ) : null}
+            {remoting ? (
+              <div className="sb-ns-remote-hint" data-testid="ns-remote-hint">
+                {choices.length === 0 ? NO_REPO_FOLDER_HINT : REPO_FOLDERS_HINT}
+              </div>
+            ) : null}
+            {scheduling ? null : (
+              <button
+                type="button"
+                className="sb-button sb-ns-remote-toggle"
+                data-testid="ns-remote"
+                aria-pressed={remoting}
+                disabled={busy || moveRunning}
+                onClick={toggleRemote}
+              >
+                {`⇣ ${FROM_REMOTE_SESSION}`}
+              </button>
+            )}
           </div>
 
           <div className="sb-ns-section sb-ns-section--task" data-testid="ns-section" data-section="task">
@@ -336,12 +413,25 @@ export function NewSessionModal({
                 data-testid="ns-name"
                 aria-label="Session name"
                 value={form.name}
-                placeholder={resuming && resume ? resumeNamePreview(resume, takenNames) : 'session-name'}
+                placeholder={remoting ? remoteNames(remote, '', takenNames).name : resuming && resume ? resumeNamePreview(resume, takenNames) : 'session-name'}
                 spellCheck={false}
                 // D22: the field takes free text (the title of a new or a moved session); a schedule's name stays kebab-case.
                 onChange={(event) => update({ name: scheduling ? sanitizeName(event.target.value) : event.target.value })}
               />
-              {resuming && resume ? (
+              {remoting ? (
+                <input
+                  className="sb-ns-input sb-ns-input--remote"
+                  data-testid="ns-remote-input"
+                  aria-label="Remote session"
+                  value={remote}
+                  placeholder={REMOTE_PLACEHOLDER}
+                  spellCheck={false}
+                  onChange={(event) => {
+                    setRemote(event.target.value);
+                    setError(null);
+                  }}
+                />
+              ) : resuming && resume ? (
                 <div className="sb-ns-input sb-ns-resume-picked" data-testid="ns-resume-picked" data-claude-session-id={resume.claudeSessionId} title={resume.firstPrompt ?? undefined}>
                   <span className="sb-ns-resume-picked-title">{`↻ ${resume.name}`}</span>
                   <span className="sb-ns-resume-picked-meta">{formatHistoryDate(resume.startedAt)}</span>
@@ -371,7 +461,17 @@ export function NewSessionModal({
                 />
               )}
             </div>
-            {resumeOpen && !scheduling ? (
+            {remoting ? (
+              <input
+                className="sb-ns-input"
+                data-testid="ns-remote-task"
+                aria-label="First message"
+                value={form.task}
+                placeholder={REMOTE_TASK_PLACEHOLDER}
+                onChange={(event) => update({ task: event.target.value })}
+              />
+            ) : null}
+            {resumeOpen && !scheduling && !remoting ? (
               <div className="sb-ns-resume-list" data-testid="ns-resume-list" role="listbox" aria-label={RESUME_TERMINAL_CONVERSATION}>
                 {conversations.data === null ? (
                   <div className="sb-ns-resume-empty" data-testid="ns-resume-empty">
@@ -412,7 +512,7 @@ export function NewSessionModal({
                 className="sb-button sb-ns-resume-toggle"
                 data-testid="ns-resume"
                 aria-expanded={resumeOpen}
-                disabled={moveRunning}
+                disabled={moveRunning || remoting}
                 onClick={() => setResumeOpen((open) => !open)}
               >
                 {`↻ ${RESUME_TERMINAL_CONVERSATION}`}
@@ -434,7 +534,7 @@ export function NewSessionModal({
             </div>
           )}
 
-          {resuming ? null : (
+          {resuming || remoting ? null : (
             <div className="sb-ns-section sb-ns-section--solutions" data-testid="ns-section" data-section="solutions">
               <div className="sb-ns-label sb-ns-label--row">
                 {repo ? '2 · Solution in scope' : '4 · Solutions in scope'}
@@ -555,7 +655,11 @@ export function NewSessionModal({
         <div className="sb-ns-side">
           <div className="sb-ns-side-label">Launch</div>
           <div className="sb-ns-toggles">
-            {resuming ? (
+            {remoting ? (
+              <div className="sb-ns-note" data-testid="ns-remote-note">
+                {REMOTE_LAUNCH_NOTE}
+              </div>
+            ) : resuming ? (
               <div className="sb-ns-note" data-testid="ns-resume-note">
                 Continues where the conversation started: no worktree, no first message.
               </div>
@@ -581,7 +685,7 @@ export function NewSessionModal({
             ))}
           </div>
           {error ? (
-            <div className="sb-ns-error" data-testid="ns-error" role="alert">
+            <div className="sb-ns-error" data-testid="ns-error" data-remote={remoting ? 'true' : undefined} role="alert">
               {error}
             </div>
           ) : null}
@@ -622,7 +726,7 @@ export function NewSessionModal({
               disabled={!startable}
               onClick={() => void start()}
             >
-              {scheduling ? 'Save schedule' : 'Start session'}
+              {scheduling ? 'Save schedule' : remoting && busy ? 'Pulling…' : 'Start session'}
             </button>
           </div>
         </div>
