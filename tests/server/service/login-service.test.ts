@@ -153,6 +153,18 @@ describe('LoginService on Linux (systemd --user)', () => {
 });
 
 describe('LoginService on Windows (Task Scheduler)', () => {
+  // Off Windows, a win32 path built from a POSIX temp dir (`\var\folders\…\data\service`)
+  // has no drive, so it is relative: the executor would create it under the cwd, i.e. the
+  // repo root. Run these tests from the temp dir so everything they write stays in it.
+  let cwd: string;
+  beforeEach(() => {
+    cwd = process.cwd();
+    process.chdir(tmp);
+  });
+  afterEach(() => {
+    process.chdir(cwd);
+  });
+
   it('writes the task XML (UTF-16) + env file and registers the task; off deletes it when it exists', async () => {
     const login = service('win32');
     const { definition, envFile } = servicePaths(location('win32'));
