@@ -131,7 +131,10 @@ describe('the Safari build (build-safari.ts)', () => {
   it('is wired as npm run frame-helper:safari and its output folder is gitignored', async () => {
     const pkg = JSON.parse(await readFile(path.join(REPO_ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
     expect(pkg.scripts['frame-helper:safari']).toBe('node tools/frame-helper/build-safari.ts');
-    expect((await readFile(path.join(REPO_ROOT, '.gitignore'), 'utf8')).split('\n')).toContain('.frame-helper-safari/');
+    const ignored = (await readFile(path.join(REPO_ROOT, '.gitignore'), 'utf8')).split('\n');
+    expect(ignored).toContain('.frame-helper-safari/');
+    // Chrome writes its indexed ruleset into an unpacked extension's folder on every load.
+    expect(ignored).toContain('tools/frame-helper/_metadata/');
   });
 });
 

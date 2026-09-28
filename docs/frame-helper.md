@@ -62,7 +62,7 @@ What remains, and is the developer's call:
 3. Keep **Site access: On all sites** (the default for an unpacked extension). With a narrower setting the rule may not apply, and Switchboard shows "can't open in a frame in this browser".
 4. **Reload the Switchboard tab.** Content scripts only run in pages loaded after the install.
 
-After pulling changes to `tools/frame-helper/`, press the reload arrow on the extension's card.
+After pulling changes to `tools/frame-helper/`, press the reload arrow on the extension's card. Chrome writes its indexed copy of the rules into `tools/frame-helper/_metadata/` each time it loads the folder; that folder is gitignored.
 
 ## Install · Safari
 
