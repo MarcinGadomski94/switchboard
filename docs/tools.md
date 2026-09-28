@@ -65,3 +65,6 @@ The real Codebase Memory UI (v0.11.0) answers 403 to any request whose `Origin` 
 
 ### Stable proxy port (developer ruling 2026-09-28)
 Each tool keeps the proxy port it got the first time, remembered in the settings table (`tools.proxyPort.<id>`, `settingsProxyPorts` in `src/server/tools/proxies.ts`). A restart or a URL change starts the proxy on that port again, so the tool's origin inside the frame, and whatever it stores there (localStorage), survives. Only when the port is taken does the proxy take a new OS-assigned one, which is then remembered.
+
+### Sidebar rows (D29, developer ruling 2026-09-28)
+A TOOLS row shows the tool's name in full on its first line; a URL that does not fit beside it moves to its own line (right-aligned) and is cut with … (`.sb-tool` wraps, `.sb-tool-host` ellipsis), the whole URL as its tooltip. The sidebar never scrolls sideways. Oracle: `tests/e2e/tools.spec.ts` (a long URL), `tests/e2e/visual/tools.spec.ts` (`sidebarRuling`).

@@ -334,3 +334,28 @@ test('Codebase Memory strip: the dirty projects and "Reindex 2 now" start a real
   await expect(page.getByTestId('cm-reindex')).toHaveCount(0);
   expect((await api.post('/api/codebase-memory/reindex')).status()).toBe(409);
 });
+
+test('a long tool URL is cut with … in the sidebar: the name shows in full, the sidebar never scrolls sideways (developer ruling)', async ({ page }) => {
+  const before = (await (await api.get('/api/tools')).json()) as Tool[];
+  const longUrl = `http://127.0.0.1:${cmStub.port}/jira/software/c/projects/PROJ/boards/1/with/a/path/much/longer/than/the/sidebar/is/wide`;
+  await putTools([...before, { name: 'Jira board', url: longUrl, description: 'the board', showInSidebar: true }]);
+  try {
+    await page.goto(`${server.baseUrl}/`);
+    const row = page.getByTestId('sidebar-tools').locator('a', { hasText: 'Jira board' });
+    await expect(row).toHaveCount(1);
+    const name = row.locator('.sb-tool-name');
+    const host = row.getByTestId('sidebar-tool-host');
+    await expect(host).toHaveAttribute('title', longUrl);
+    // The name is not cut; the URL is (… at its end), and nothing leaves the row or the sidebar.
+    expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await host.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect(host).toHaveCSS('text-overflow', 'ellipsis');
+    const rowBox = await row.boundingBox();
+    const hostBox = await host.boundingBox();
+    expect((hostBox?.x ?? 0) + (hostBox?.width ?? 0)).toBeLessThanOrEqual((rowBox?.x ?? 0) + (rowBox?.width ?? 0) + 0.5);
+    const sidebar = page.locator('.sb-sidebar');
+    expect(await sidebar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  } finally {
+    await putTools(before);
+  }
+});

@@ -320,7 +320,9 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
+  /* Developer ruling 2026-09-28: the panel scrolls down only, never sideways; its rows cut long text with …. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sb-sv-panel-head {
@@ -415,6 +417,11 @@
   border-radius: 4px;
   padding: 1px 6px;
   white-space: nowrap;
+  /* A long branch keeps at most 60% of the row, cut with … (shorter ones keep their width, as in the prototype). */
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sb-term-label {

@@ -67,6 +67,9 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   await send(page, id, `Now the panel. [fake:write ${worktreeFile}]`);
   await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-app-front']);
   await expect(panel.getByTestId('agent-branch')).toHaveText(['⎇ session/panel-e2e']);
+  // Developer ruling 2026-09-28: the panel never scrolls sideways (long temp paths and the branch are cut with …).
+  expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(panel).toHaveCSS('overflow-x', 'hidden');
   await expect.poll(async () => (await detail(page, id)).status).toBe('done');
 
   // An Agent call adds a subagent card; its Read shows in the tail with its name.

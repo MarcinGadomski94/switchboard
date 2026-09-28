@@ -57,10 +57,10 @@ function AgentCardView({ card, activity, turnStartedAt }: { readonly card: Agent
     <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
       <div className="sb-agent-top">
         <span className="sb-agent-dot" style={{ background: color }} />
-        <span className="sb-agent-name" data-testid="agent-name">
+        <span className="sb-agent-name" data-testid="agent-name" title={card.name}>
           {card.name}
         </span>
-        <span className="sb-agent-desc" data-testid="agent-desc">
+        <span className="sb-agent-desc" data-testid="agent-desc" title={card.description || undefined}>
           {card.description}
         </span>
         <span className="sb-agent-status" data-testid="agent-status" style={{ color }}>
@@ -68,11 +68,11 @@ function AgentCardView({ card, activity, turnStartedAt }: { readonly card: Agent
         </span>
       </div>
       <div className="sb-agent-where">
-        <span className="sb-agent-path" data-testid="agent-path">
+        <span className="sb-agent-path" data-testid="agent-path" title={card.path}>
           {card.path}
         </span>
         {card.branch ? (
-          <span className="sb-agent-branch" data-testid="agent-branch">
+          <span className="sb-agent-branch" data-testid="agent-branch" title={card.branch}>
             ⎇ {card.branch}
           </span>
         ) : null}

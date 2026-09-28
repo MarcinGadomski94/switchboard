@@ -496,8 +496,12 @@ function sidebarChecks(served: Served): PartCheck[] {
   for (let i = 0; i < TOOL_COUNT; i++) {
     const row = [...TOOLS, i];
     out.push({ name: `tool${i}`, path: row, geometry: 'box', copy: false, styles: text, pending: toolsPending });
-    out.push({ name: `tool${i}:name`, path: [...row, 1], geometry: 'box', copy: true, styles: text, pending: toolsPending });
-    out.push({ name: `tool${i}:host`, path: [...row, 2], geometry: 'box', copy: true, styles: text, pending: toolsPending });
+    // Developer ruling 2026-09-28: the name stays whole on the first line and a URL that does not fit moves
+    // to its own line (cut with …), where the prototype wraps the name next to the URL. The row keeps the
+    // prototype's box (checked above); the name and URL boxes inside it differ by design, so only their copy
+    // and styles are compared here (the ruled layout is checked in tools.spec.ts → sidebarRuling).
+    out.push({ name: `tool${i}:name`, path: [...row, 1], geometry: 'none', copy: true, styles: text, pending: toolsPending });
+    out.push({ name: `tool${i}:host`, path: [...row, 2], geometry: 'none', copy: true, styles: text, pending: toolsPending });
   }
   // Without tool rows everything from SESSIONS down sits higher: compared by size / relative to the label.
   const sessionsGeometry: Geometry = served.tools ? 'box' : 'size';

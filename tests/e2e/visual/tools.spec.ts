@@ -55,9 +55,12 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   chip3: { path: [1, 0, 2, 3], geometry: 'box', copy: true },
   stripNote: { path: [1, 0, 2, 4], geometry: 'box', copy: true },
   reindex: { path: [1, 0, 2, 5], geometry: 'box', copy: true },
-  // Sidebar TOOLS rows: dot colors from the probe state.
+  // Sidebar TOOLS rows: dot colors from the probe state. Developer ruling 2026-09-28: the name stays whole
+  // on the first line and a URL that does not fit moves to its own line, cut with … (the prototype wraps
+  // "Codebase Memory" next to its host). The rows keep the prototype's boxes; the dot sits on the name's
+  // line instead of the row's middle (x and size compared). The ruled layout is checked below (`sidebarRuling`).
   sideCm: { path: [0, 4, 0], geometry: 'box', copy: true },
-  sideCmDot: { path: [0, 4, 0, 0], geometry: 'box', copy: false },
+  sideCmDot: { path: [0, 4, 0, 0], geometry: 'size', copy: false },
   sideSw: { path: [0, 4, 1], geometry: 'box', copy: true },
   sideSwDot: { path: [0, 4, 1, 0], geometry: 'box', copy: false },
 };
@@ -171,6 +174,27 @@ test('Codebase Memory tool view matches the prototype (tokens, boxes ±2 px, cop
     const got = computed[key as keyof typeof computed];
     if (got !== want) failures.push(`computed ${key}: expected ${String(want)}, got ${String(got)}`);
     computedRows.push(`| ${key} | ${String(want)} | ${String(got)} | ${got === want ? 'ok' : 'FAIL'} |`);
+  }
+
+  // Developer ruling 2026-09-28 (sidebar TOOLS rows): each name on one line and never cut; the host cut
+  // with … inside its row; the sidebar never scrolls sideways.
+  const sidebarRuling = await appPage.evaluate(() =>
+    [...document.querySelectorAll('.sb-tool')].map((row) => {
+      const name = row.querySelector('.sb-tool-name')!;
+      const host = row.querySelector('.sb-tool-host')!;
+      const rowBox = row.getBoundingClientRect();
+      const hostBox = host.getBoundingClientRect();
+      return {
+        nameOneLine: name.getClientRects().length === 1 && name.getBoundingClientRect().height < parseFloat(getComputedStyle(name).fontSize) * 1.6,
+        nameWhole: name.scrollWidth <= name.clientWidth,
+        hostEllipsis: getComputedStyle(host).textOverflow === 'ellipsis',
+        hostInRow: hostBox.right <= rowBox.right + 0.5,
+        sidebarNoSideScroll: document.querySelector('.sb-sidebar')!.scrollWidth <= document.querySelector('.sb-sidebar')!.clientWidth,
+      };
+    }),
+  );
+  for (const [index, row] of sidebarRuling.entries()) {
+    for (const [check, ok] of Object.entries(row)) if (!ok) failures.push(`sidebar tool row ${index}: ${check}`);
   }
 
   // Advisory pixel diff + side-by-side captures (page, and the main area).

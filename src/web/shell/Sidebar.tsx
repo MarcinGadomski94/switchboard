@@ -87,7 +87,9 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
     <Link to={{ view: 'tool', id: tool.id }} className="sb-tool" data-tool-state={state} aria-current={active ? 'page' : undefined}>
       <span className="sb-tool-dot" style={{ background: TOOL_DOT[state] }} />
       <span className="sb-tool-name">{tool.name}</span>
-      <span className="sb-tool-host">{urlHost(tool.url) || 'set URL'}</span>
+      <span className="sb-tool-host" data-testid="sidebar-tool-host" title={tool.url ?? undefined}>
+        {urlHost(tool.url) || 'set URL'}
+      </span>
     </Link>
   );
 }

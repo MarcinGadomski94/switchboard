@@ -279,3 +279,4 @@ note: all thirteen Blocked items are blocked by the Wave 1 / Wave 2 merge steps 
 - Final · 33 empty `\var\folders\…` litter folders removed from the repo root
 - Final · docs/visual reports not regenerated; new docs/visual/smoke-solutions.png only
 - D26 Shift+Enter in the composer ✓ 2026-09-28 (main; developer request) · the composer is a textarea (one line = the prototype's input box), Enter sends, Shift+Enter new line, grows to 8 lines · typecheck, `npm test` 1235 + 1 skipped, `npm run e2e` 113/113 (new D26 E2E in session-chat.spec; the visual chat spec's placeholder selector no longer assumes `<input>`)
+- D29 side panels never scroll sideways ✓ 2026-09-28 (main; developer request) · sidebar tool URLs move to their own line and are cut with …, names whole; right panel overflow-x hidden, branch chips cut past 60% · typecheck, `npm test` 1235 + 1 skipped, `npm run e2e` 114/114 (full pass: tool name/URL boxes compared by copy + styles only, by the ruling)

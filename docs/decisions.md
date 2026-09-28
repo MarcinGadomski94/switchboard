@@ -125,6 +125,11 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - Without the marker, such a tool shows "{host} needs the Switchboard frame helper to open here" with **Open in new tab** and a link to the install steps (`docs/frame-helper.md`).
   - **Tests:** automated tests load the unpacked extension into Playwright's Chromium against stub sites that refuse framing. The developer verifies Safari and the real Jira live.
 
+## Side panels never scroll sideways (added 2026-09-28)
+- **D29 The sidebar and the session's right panel scroll down only, never sideways.**
+  - **Sidebar TOOLS rows:** the name always shows in full on the first line. A URL that doesn't fit beside it moves to its own line, right-aligned as in the prototype, and is cut with … there; the full URL is the tooltip. The prototype instead wraps a long name next to its URL, so the full visual pass compares these rows' name and URL boxes by copy and styles only, and `tools.spec` checks the ruled layout.
+  - **Right panel:** `overflow-x: hidden`. Agent names wrap as in the prototype. Paths, descriptions and terminal lines are cut with …. A branch chip keeps its width up to 60% of its row, then is cut with …. Name, description, path and branch carry their full text as a tooltip.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

@@ -28,6 +28,8 @@
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+  /* Developer ruling 2026-09-28: the sidebar never scrolls sideways; long text is cut with … instead. */
+  overflow-x: hidden;
 }
 
 .sb-brand {
@@ -171,6 +173,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Developer ruling 2026-09-28: the name stays whole on the first line; a URL that does not fit beside it
+     moves to its own line (right-aligned, as in the prototype) and is cut with … there. */
+  flex-wrap: wrap;
+  row-gap: 3px;
   padding: 7px 8px;
   border-radius: 7px;
   cursor: pointer;
@@ -198,6 +204,12 @@
 .sb-tool-name {
   font-size: 13px;
   color: var(--text-2);
+  /* The name shows in full; only a name wider than the whole row is cut. */
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sb-tool[aria-current='page'] .sb-tool-name {
@@ -208,6 +220,11 @@
   margin-left: auto;
   font: 400 11px var(--font-mono);
   color: var(--muted-4);
+  /* A long URL gives way to the name: cut with …, the whole URL as the tooltip. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sb-sessions {
