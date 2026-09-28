@@ -44,6 +44,11 @@ export interface FolderServiceOptions {
   readonly home?: string;
   /** Called when a background step fails (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
+  /**
+   * Checks answered without the disk, by path (demo mode: the prototype's
+   * `D:\\acme` folder, which is not on this machine, `demoFolderChecks`).
+   */
+  readonly knownChecks?: ReadonlyMap<string, FolderCheck>;
 }
 
 /** Message of `no-folder`. */
@@ -59,11 +64,13 @@ export class FolderService {
   readonly #store: Store;
   readonly #home: string;
   readonly #onError: (error: unknown) => void;
+  readonly #knownChecks: ReadonlyMap<string, FolderCheck>;
 
   constructor(options: FolderServiceOptions) {
     this.#store = options.store;
     this.#home = options.home ?? os.homedir();
     this.#onError = options.onError ?? ((error) => console.error('switchboard folders:', error));
+    this.#knownChecks = options.knownChecks ?? new Map();
   }
 
   /** A service whose stored folders were reconciled with the disk ({@link reconcile}). */
@@ -111,7 +118,8 @@ export class FolderService {
 
   /** `GET /api/folders/check?path=`: what `input` is (D14 kinds), without saving anything. */
   check(input: string): Promise<FolderCheck> {
-    return inspectFolder(input, { home: this.#home });
+    const known = this.#knownChecks.get(input);
+    return known ? Promise.resolve(known) : inspectFolder(input, { home: this.#home });
   }
 
   /** The default folder's record, or `null` when none is saved. */

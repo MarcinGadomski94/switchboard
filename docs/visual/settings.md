@@ -8,7 +8,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
 - Claude Code: **0.16%** / 1.15%
-- Workspace & solutions: **3.65%** / 4.01%
+- Workspace & solutions: **3.69%** / 4.05%
 - Sessions & worktrees: **0.38%** / 1.32%
 - Notifications & usage: **0.06%** / 1.06%
 - Schedules: **0.06%** / 1.06%
@@ -95,7 +95,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | exempt: "Workspace & solutions" → "Folders" |
 | root | none | 520,64 860×63 | 520,320 860×63 | ok |  |
 | rootLabel | none | 520,78 781.2×18 | 520,334 781.2×18 | ok | exempt: "Workspace root" → "Solutions in ws" |
-| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-hoXf5v/ws" |
+| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-9knZa7/ws" |
 | rootValue | size | 1317.2,81 62.8×28 | 1317.2,337 62.8×28 | ok | "Rescan" |
 | scan | size | 520,141 860×290 | 520,397 860×290 | ok |  |
 | scan0 | size | 521,142 858×36 | 521,398 858×36 | ok |  |
@@ -138,9 +138,9 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | scan7Count | size | 717,403.5 40×16 | 717,659.5 40×16 | ok | "1" |
 | scan7Examples | size | 769,403.5 464×16 | 769,659.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
 | scan7Rule | size | 1245,404.5 120×14 | 1245,660.5 120×14 | ok | "read-only" |
-| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-h |
+| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-9 |
 | D14 the temp root: a workspace with its router | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 0 solutions" |
-| D14 the demo folder: not the default, its check line | addition | — | — | ok | "✕ enter an absolute path" |
+| D14 the demo folder: not the default, its check line | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 12 solutions" |
 | D14 Add… | addition | — | — | ok | Add… |
 | D14 the scan block names the default folder | addition | — | — | ok | Solutions in ws |
 

@@ -21,6 +21,8 @@ import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
 import { loadOrCreateToken } from './token.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
+import { loadDemoData } from './demo/data.ts';
+import { demoFolderChecks } from './demo/folders.ts';
 
 /** `<repo>/dist/web`, the Vite build output served as the UI. */
 const WEB_ROOT = path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
@@ -36,7 +38,8 @@ async function main(): Promise<void> {
   try {
     // D14 (docs/folders.md): no workspace root. The saved folders (reconciled with the disk
     // here) say where each session, scan and schedule works; the wizard only offers to add one.
-    const folders = await FolderService.open({ store });
+    // Demo mode answers the check of its own (prototype) folder, which is not on this machine.
+    const folders = await FolderService.open({ store, ...(config.demo ? { knownChecks: demoFolderChecks(await loadDemoData()) } : {}) });
     const setup = new SetupService({ store, folders, autoOpen: setupWizardAutoOpen() });
     // `/hub` events (docs/hub.md): services created here that publish take this bus.
     const bus = new HubBus();
