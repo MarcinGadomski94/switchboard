@@ -3,13 +3,23 @@
  * running turn is doing now, derived in memory from the process's stream-json and
  * never guessed. The recorder feeds an {@link ActivityTracker} as lines arrive; its
  * {@link ActivityTracker.snapshot} is `Session.activity` and the `/hub` `activity`
- * payload. Pure: the clock is injected, nothing is stored.
+ * payload. D30: the snapshot also carries the pending background tasks
+ * (`./background.ts`), and shows them (state `background`) while no turn runs.
+ * Pure: the clock is injected, nothing is stored.
  */
-import type { ActivityState, AgentActivity, SessionActivity } from '../api.ts';
+import type { ActivityState, AgentActivity, BackgroundTask, BackgroundTaskKind, SessionActivity } from '../api.ts';
 import { AGENT_TOOLS } from './event-kind.ts';
 
 /** Longest tool summary (characters, `…` included). */
 export const SUMMARY_MAX = 80;
+
+/** D30: the tool behind each kind of background task (the `tool` of a `background` activity). */
+export const BACKGROUND_TOOLS: Readonly<Record<BackgroundTaskKind, string>> = {
+  bash: 'Bash',
+  agent: 'Agent',
+  monitor: 'Monitor',
+  wakeup: 'ScheduleWakeup',
+};
 
 function text(input: Readonly<Record<string, unknown>>, key: string): string | null {
   const value = input[key];
@@ -106,6 +116,9 @@ interface OpenRequest {
  *   `waiting` while any request is open, else it shows the main agent's state.
  * - **Subagents** get an entry when they start (or first act) and lose it when
  *   they end.
+ * - **Background** (D30): {@link snapshot} takes the pending background tasks; they
+ *   ride along while a turn runs, and make the snapshot a `background` one while
+ *   none does.
  */
 export class ActivityTracker {
   readonly #main: string;
@@ -249,10 +262,14 @@ export class ActivityTracker {
     return { state: entry.phase, since: entry.phaseSince, startedAt: entry.startedAt, tool: null, summary: null };
   }
 
-  /** The current activity, `null` outside a turn. */
-  snapshot(): SessionActivity | null {
+  /**
+   * The current activity with the main agent's pending background tasks (D30,
+   * oldest first). Outside a turn: `background` while any task is pending (since
+   * the oldest one started; the main agent's entry the same), else `null`.
+   */
+  snapshot(background: readonly BackgroundTask[] = []): SessionActivity | null {
     const turnStartedAt = this.#turnStartedAt;
-    if (turnStartedAt === null) return null;
+    if (turnStartedAt === null) return background.length > 0 ? this.#backgroundSnapshot(background) : null;
     const agents: Record<string, AgentActivity> = {};
     for (const [id, entry] of this.#agents) agents[id] = this.#agentActivity(id, entry);
     const main = agents[this.#main] ?? { state: 'thinking' as ActivityState, since: turnStartedAt, startedAt: turnStartedAt, tool: null, summary: null };
@@ -261,7 +278,16 @@ export class ActivityTracker {
       waiting.length > 0
         ? { state: 'waiting' as ActivityState, since: earliest(waiting.map((r) => r.since)), tool: null, summary: null }
         : { state: main.state, since: main.since, tool: main.tool, summary: main.summary };
-    return { turnStartedAt, ...top, thinkingTokens: this.#tokens, agents };
+    return { turnStartedAt, ...top, thinkingTokens: this.#tokens, agents, background: [...background] };
+  }
+
+  /** D30: no turn runs, the oldest pending task shows (its tool, its summary, since it started). */
+  #backgroundSnapshot(background: readonly BackgroundTask[]): SessionActivity {
+    const oldest = [...background].sort((a, b) => (a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0))[0] as BackgroundTask;
+    const since = oldest.startedAt;
+    const tool = BACKGROUND_TOOLS[oldest.kind];
+    const main: AgentActivity = { state: 'background', since, startedAt: since, tool, summary: oldest.summary };
+    return { turnStartedAt: since, state: 'background', since, tool, summary: oldest.summary, thinkingTokens: null, agents: { [this.#main]: main }, background: [...background] };
   }
 }
 

@@ -25,7 +25,7 @@ const at = (seconds: number): number => t0 + seconds * 1000;
 const iso = (seconds: number): string => new Date(at(seconds)).toISOString();
 
 function activity(fields: Partial<SessionActivity> = {}): SessionActivity {
-  return { turnStartedAt: START, state: 'thinking', since: START, tool: null, summary: null, thinkingTokens: null, agents: {}, ...fields };
+  return { turnStartedAt: START, state: 'thinking', since: START, tool: null, summary: null, thinkingTokens: null, agents: {}, background: [], ...fields };
 }
 
 describe('elapsed, clock and token formats', () => {

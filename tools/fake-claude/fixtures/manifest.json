@@ -913,6 +913,32 @@
       "stdin": "handoff-midturn.stdin.ndjson",
       "stdinPlan": "wait 1 s; send line 1; 2.5 s after the Bash tool_use send line 2 (interrupt); after the result close stdin",
       "note": "M0.4 D7 Pause while a foreground Bash tool runs: control_response, rejected tool_result, [Request interrupted by user for tool use], result/error_during_execution (aborted_tools); EOF -> exit 1 (a clean pause, not a failure). Transcript: transcripts/handoff-mid.jsonl"
+    },
+    "bg-bash": {
+      "cwd": ".spike/sandbox/bg-bash",
+      "argv": [
+        "claude",
+        "-p",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "haiku",
+        "--max-turns",
+        "3",
+        "--permission-mode",
+        "acceptEdits",
+        "--allowedTools",
+        "Bash(sleep *)",
+        "--replay-user-messages"
+      ],
+      "exitCode": 0,
+      "stdout": "bg-bash.ndjson",
+      "stdin": "bg-bash.stdin.ndjson",
+      "stdinPlan": "send line 1; close stdin after the second result (origin task-notification)",
+      "note": "D30 probe 2026-09-28 (CLI 2.1.283): Bash run_in_background -> system/task_started (local_bash) + tool_result \"Command running in background with ID: <id>\" (tool_use_result.backgroundTaskId); the turn ends; ~5 s later system/task_updated completed + system/task_notification {task_id, tool_use_id, status, summary}, no user line for the notification on stdout even with --replay-user-messages; then system/init and a turn whose result has origin.kind \"task-notification\""
     }
   },
   "accountReplacedWith": {

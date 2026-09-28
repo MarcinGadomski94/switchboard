@@ -12,6 +12,7 @@ import {
   clipInput,
 } from '../../core/event-payload.ts';
 import { ActivityTracker } from '../../core/derive/activity.ts';
+import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import {
   type SessionPlace,
@@ -113,6 +114,8 @@ export class StreamRecorder {
   readonly #answeredOn: (() => AnsweredOn | null) | undefined;
   /** D19: what the running turn does now (in memory only). */
   readonly #activity: ActivityTracker;
+  /** D30: the main agent's pending background tasks (in memory only). */
+  readonly #background: BackgroundTracker;
   /** The last activity reported to `onActivity`, as JSON. */
   #activityKey = 'null';
 
@@ -151,6 +154,7 @@ export class StreamRecorder {
     this.#onActivity = options.onActivity;
     this.#answeredOn = options.answeredOn;
     this.#activity = new ActivityTracker({ mainAgentId: options.mainAgentId, ...(options.now ? { now: options.now } : {}) });
+    this.#background = new BackgroundTracker(options.now ? { now: options.now } : {});
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
@@ -191,20 +195,36 @@ export class StreamRecorder {
     this.#stopping = true;
   }
 
-  /** D19: what the running turn is doing now (`docs/derivations.md` → *Live activity*); `null` when no turn runs. */
+  /**
+   * D19: what the running turn is doing now (`docs/derivations.md` → *Live
+   * activity*), with the pending background tasks (D30); while no turn runs, the
+   * background wait, else `null`.
+   */
   activity(): SessionActivity | null {
-    return this.#activity.snapshot();
+    return this.#activity.snapshot(this.#background.list());
   }
 
-  /** D19: the process ended: no turn runs any more. */
+  /** D19: the process ended: no turn runs any more; D30: no background task is pending either. */
   endActivity(): void {
     this.#activity.endTurn();
+    this.#background.clear();
     this.#syncActivity();
+  }
+
+  /** A turn starts (D19); D30: when none ran, the wake-ups have fired. */
+  #startTurn(): void {
+    if (!this.#activity.running) this.#background.turnStarted();
+    this.#activity.startTurn();
+  }
+
+  /** D30: the CLI reported a task's end (`system/task_notification`, or a `<task-notification>` text). */
+  #taskNotified(taskId: string | null, toolUseId: string | null): void {
+    this.#background.notified(taskId, toolUseId);
   }
 
   /** Reports the activity to `onActivity` when it differs from the last one reported. */
   #syncActivity(): void {
-    const activity = this.#activity.snapshot();
+    const activity = this.activity();
     const key = JSON.stringify(activity);
     if (key === this.#activityKey) return;
     this.#activityKey = key;
@@ -357,7 +377,9 @@ export class StreamRecorder {
       case 'task-progress':
         return this.#onTaskProgress(message);
       case 'task-updated':
+        return this.#onTaskEnd(message.taskId, message.status);
       case 'task-notification':
+        this.#taskNotified(message.taskId || null, message.toolUseId);
         return this.#onTaskEnd(message.taskId, message.status);
       case 'thinking-tokens': {
         // D19: ticks without `parent_tool_use_id` are the main agent's (the only ones observed).
@@ -386,7 +408,7 @@ export class StreamRecorder {
     if (!startup) {
       if (this.#pendingTurns === 0 && !this.#cliTurn) this.#cliTurn = true;
       // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
-      this.#activity.startTurn();
+      this.#startTurn();
     }
     const patch: { observedPermissionMode?: string | null; cliVersion?: string | null } = {};
     if (message.permissionMode !== this.#observedMode) {
@@ -421,8 +443,15 @@ export class StreamRecorder {
   }
 
   async #onReplay(message: Extract<StreamMessage, { kind: 'replay' }>): Promise<void> {
+    // D30: a task's end as a replayed `<task-notification>` (not seen on CLI 2.1.283) is no stdin message of ours.
+    const notification = parseTaskNotification(message.text);
+    if (notification) {
+      if (endsTask(notification)) this.#taskNotified(notification.taskId, notification.toolUseId);
+      await this.#setTranscriptUuid(message.uuid, null);
+      return;
+    }
     // The CLI took up a stdin message (D19: the turn starts, if `init` did not start it already).
-    this.#activity.startTurn();
+    this.#startTurn();
     const at = this.#pendingUserEvents.findIndex((pending) => pending.text === message.text);
     const pending = at >= 0 ? this.#pendingUserEvents.splice(at, 1)[0] : this.#pendingUserEvents.shift();
     if (pending) {
@@ -473,6 +502,8 @@ export class StreamRecorder {
         });
         this.#tools.set(block.id, { eventId: event.id, name: block.name, input: block.input, command, agentId });
         this.#activity.toolStarted(agentId, block.id, block.name, block.input);
+        // D30: the main agent's calls that may start background work.
+        if (agentId === this.#mainAgentId) this.#background.called(block.id, block.name, block.input);
         if (AGENT_TOOLS.includes(block.name) && block.id) await this.#createSubagent(block.id, block.input);
       }
     }
@@ -502,6 +533,12 @@ export class StreamRecorder {
   async #onToolResult(message: Extract<StreamMessage, { kind: 'tool-result' }>): Promise<void> {
     for (const result of message.results) {
       this.#activity.toolEnded(result.toolUseId);
+      // D30: the structured `tool_use_result` belongs to the line's one result.
+      this.#background.resulted(result.toolUseId, {
+        text: result.text,
+        isError: result.isError,
+        ...(message.results.length === 1 ? { detail: message.toolUseResult } : {}),
+      });
       const entry = this.#tools.get(result.toolUseId);
       if (!entry) continue;
       const cut = clip(result.text);
@@ -527,6 +564,13 @@ export class StreamRecorder {
   }
 
   async #onUserText(message: Extract<StreamMessage, { kind: 'user-text' }>): Promise<void> {
+    // D30: a task's end as a `<task-notification>` user line (not seen on CLI 2.1.283, which keeps it in the transcript).
+    const notification = message.parentToolUseId ? null : parseTaskNotification(message.text);
+    if (notification) {
+      if (endsTask(notification)) this.#taskNotified(notification.taskId, notification.toolUseId);
+      await this.#setTranscriptUuid(message.uuid, message.parentToolUseId);
+      return;
+    }
     if (!message.interrupt && message.parentToolUseId && message.text.trim() !== '') {
       const agentId = await this.#agentFor(message.parentToolUseId);
       const cut = clip(message.text);

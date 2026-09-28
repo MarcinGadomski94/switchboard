@@ -97,7 +97,17 @@ const QUESTION_KEYS = keys<Question>()([
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
-const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()(['turnStartedAt', 'state', 'since', 'tool', 'summary', 'thinkingTokens', 'agents']);
+const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()([
+  'turnStartedAt',
+  'state',
+  'since',
+  'tool',
+  'summary',
+  'thinkingTokens',
+  'agents',
+  // additive, D30 (background work)
+  'background',
+]);
 const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
