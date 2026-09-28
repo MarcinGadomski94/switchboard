@@ -162,6 +162,32 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | calendar-func-fix | description cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
 | calendar-func-fix | solution cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
 
+## D27 additions (not findings)
+- The newest status table the agent printed is drawn as a table under "As reported by the agent · <age>", with an "as printed" toggle that opens the original in a popover over the main area; nothing in the right panel scrolls sideways. The demo's chat prints no status table, so nothing above changes. The table is checked on its own on a separate page of free-talk-feature whose session detail carries this session's orchestrator table (4 columns, `├─┼─┤` rows, 🟢 / ✅ statuses) as its `reportedTable`:
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+| free-talk-feature | place: under the derived table, in the overview | 2 overview-table | 2 overview-table | ok |
+| free-talk-feature | heading copy | As reported by the agent · 3m | As reported by the agent · 3m | ok |
+| free-talk-feature | toggle: copy, mono 11px muted | as printed "Geist Mono", monospace 11px rgb(141, 140, 135) | as printed "Geist Mono", monospace 11px rgb(141, 140, 135) | ok |
+| free-talk-feature | columns: every printed one, in order | Agent,Description,Solution,Status | Agent,Description,Solution,Status | ok |
+| free-talk-feature | column shares % (±0.5) | 18.18 / 36.36 / 18.18 / 27.27 | 18.13 / 36.26 / 18.13 / 27.21 | ok |
+| free-talk-feature | cells (the Status without its emoji) | 1. D24 Remote ¦ Remote Control toggle, link + QR, reattach on resume ¦ switchboard/.worktrees/remote-control ¦ running ; 2. D25 Teleport ¦ "From a remote session" → local copy in a worktree ¦ switchboard/.worktrees/teleport ¦ merged | 1. D24 Remote ¦ Remote Control toggle, link + QR, reattach on resume ¦ switchboard/.worktrees/remote-control ¦ running ; 2. D25 Teleport ¦ "From a remote session" → local copy in a worktree ¦ switchboard/.worktrees/teleport ¦ merged | ok |
+| free-talk-feature | fits the panel, nothing overflows | true false | true false | ok |
+| free-talk-feature | table: Geist Mono 11px, collapsed, fixed (the derived table's) | "Geist Mono", monospace 11px collapse fixed | "Geist Mono", monospace 11px collapse fixed | ok |
+| free-talk-feature | header: bg-card, text-2, 1px border-control | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | ok |
+| free-talk-feature | cell lines: 1px border-control | 1px rgb(44, 45, 50) | 1px rgb(44, 45, 50) | ok |
+| free-talk-feature | Agent cells: text, ellipsis | rgb(232, 231, 227) ellipsis nowrap | rgb(232, 231, 227) ellipsis nowrap | ok |
+| free-talk-feature | other cells: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
+| free-talk-feature | Status colors: run, done | oklch(0.72 0.12 250) / oklch(0.74 0.13 150) | oklch(0.72 0.12 250) / oklch(0.74 0.13 150) | ok |
+| free-talk-feature | Status dots: run, done | oklch(0.72 0.12 250) / oklch(0.74 0.13 150) | oklch(0.72 0.12 250) / oklch(0.74 0.13 150) | ok |
+| free-talk-feature | Status dot: 7px circle (the agent card's) | 7px 7px 50% | 7px 7px 50% | ok |
+| free-talk-feature | "as printed": popover left of the panel, inside the window | true | true | ok |
+| free-talk-feature | "as printed": the whole table unwrapped (no scrolling at 1440) | pre true | pre true | ok |
+| free-talk-feature | "as printed": the text as printed | equal | equal | ok |
+| free-talk-feature | "as printed": bg-card, border-card, 10px radius | rgb(23, 24, 27) rgb(38, 39, 44) 10px | rgb(23, 24, 27) rgb(38, 39, 44) 10px | ok |
+| free-talk-feature | "as printed" open: nothing in the panel overflows | true false | true false | ok |
+
 ## D14 additions (not findings)
 - The handoff card ends with `cwd <Session.cwd>`: the folder to run `claude --resume` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry `top`) and by its prototype copy without that line; the line is checked on its own.
 

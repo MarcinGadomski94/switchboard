@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test';
+import { type Browser, type Page, expect, test } from '@playwright/test';
 import {
   BOX_TOLERANCE_PX,
   type Box,
@@ -44,6 +44,14 @@ import {
  * ({@link overviewOffset}: x, width and height as they are, y relative to the
  * panel's parts under the overview), exactly as before otherwise; the overview is
  * checked on its own ({@link checkOverview}).
+ *
+ * D27 addition (not a finding): the demo's chat prints no status table, so the
+ * prototype comparisons are unchanged. The reported table is checked on its own
+ * ({@link checkReported}) on a separate page of the same demo session whose
+ * `GET /api/sessions/free-talk-feature` answer carries a `reportedTable` (the box
+ * table an orchestrator printed): drawn as a table under the derived one, with its
+ * tokens, the columns' shares, the Status colors and dots, and nothing in the
+ * panel wider than the panel, also with the "as printed" popover open.
  */
 
 interface PartSpec {
@@ -382,6 +390,135 @@ async function checkOverview(protoPage: Page, appPage: Page, label: string, fail
   return rows;
 }
 
+/** D27: the status table injected into the demo session's detail (as this session's orchestrator printed it). */
+const REPORTED_BOX = [
+  '┌──────────────────┬──────────────────────────────────────────────────────┬───────────────────────────────────────┬────────────┐',
+  '│ Agent            │ Description                                          │ Solution                              │ Status     │',
+  '├──────────────────┼──────────────────────────────────────────────────────┼───────────────────────────────────────┼────────────┤',
+  '│ 1. D24 Remote    │ Remote Control toggle, link + QR, reattach on resume │ switchboard/.worktrees/remote-control │ 🟢 running │',
+  '├──────────────────┼──────────────────────────────────────────────────────┼───────────────────────────────────────┼────────────┤',
+  '│ 2. D25 Teleport  │ "From a remote session" → local copy in a worktree   │ switchboard/.worktrees/teleport       │ ✅ merged  │',
+  '└──────────────────┴──────────────────────────────────────────────────────┴───────────────────────────────────────┴────────────┘',
+].join('\n');
+
+/** D27: the column shares of `Agent · Description · Solution · Status` (`reportedColumnWidths`). */
+const REPORTED_SHARES = [18.18, 36.36, 18.18, 27.27] as const;
+
+/**
+ * D27: the reported table on its own (the prototype has none, and the demo's chat
+ * prints none): a separate page of the demo's free-talk-feature whose session
+ * detail carries {@link REPORTED_BOX} as its `reportedTable`. Checks its place
+ * (under the derived table), the heading and toggle copy and type, the columns in
+ * order and their shares, the rows' cells (the Status without its emoji), the
+ * derived table's tokens, the Status colors and dots, that nothing in the panel is
+ * wider than the panel, and, with "as printed" open, the popover left of the panel
+ * with the whole table unwrapped and the panel still not scrolling sideways.
+ */
+async function checkReported(browser: Browser, failures: string[]): Promise<string[]> {
+  const page = await newVisualPage(browser);
+  const at = new Date(Date.now() - 3 * 60_000).toISOString();
+  await page.route('**/api/sessions/free-talk-feature', async (route) => {
+    const response = await route.fetch();
+    const json = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...json, reportedTable: { text: REPORTED_BOX, format: 'box', at } } });
+  });
+  await openAppSession(page, 'free-talk-feature', 4);
+  await expect(page.getByTestId('overview-reported-table')).toBeVisible();
+  const [runColor, doneColor] = await canonicalColors(page, ['oklch(0.72 0.12 250)', 'oklch(0.74 0.13 150)']);
+  const read = () =>
+    page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('[data-testid="session-right-panel"]');
+      const overview = panel?.querySelector<HTMLElement>('[data-testid="agent-overview"]');
+      const reported = overview?.querySelector<HTMLElement>('[data-testid="overview-reported"]');
+      const table = reported?.querySelector<HTMLElement>('[data-testid="overview-reported-table"]');
+      if (!panel || !overview || !reported || !table) return null;
+      const css = (el: Element | null | undefined, prop: string) => (el ? getComputedStyle(el).getPropertyValue(prop) : '');
+      const texts = (root: Element, selector: string) => [...root.querySelectorAll(selector)].map((el) => (el.textContent ?? '').trim());
+      const panelBox = panel.getBoundingClientRect();
+      const tableBox = table.getBoundingClientRect();
+      const rows = [...table.querySelectorAll('[data-testid="overview-reported-row"]')];
+      const statuses = [...table.querySelectorAll<HTMLElement>('[data-kind="status"]')];
+      const dots = [...table.querySelectorAll<HTMLElement>('[data-testid="overview-reported-dot"]')];
+      const first = rows[0];
+      const cell = (kind: string) => first?.querySelector(`[data-kind="${kind}"]`) ?? null;
+      const toggle = reported.querySelector('[data-testid="overview-printed-toggle"]');
+      const head = reported.querySelector('[data-testid="overview-reported-head"]');
+      const popover = document.querySelector<HTMLElement>('[data-testid="overview-printed-popover"]');
+      const popBox = popover?.getBoundingClientRect() ?? null;
+      const pre = popover?.querySelector('pre') ?? null;
+      return {
+        place: [...overview.children].indexOf(reported),
+        afterDerived: overview.children[reported ? [...overview.children].indexOf(reported) - 1 : 0]?.getAttribute('data-testid') ?? '',
+        head: (head?.textContent ?? '').trim(),
+        toggle: `${(toggle?.textContent ?? '').trim()} ${css(toggle, 'font-family')} ${css(toggle, 'font-size')} ${css(toggle, 'color')}`,
+        columns: texts(table, '[data-testid="overview-reported-column"]'),
+        shares: [...table.querySelectorAll('th')].map((th) => (th.getBoundingClientRect().width / tableBox.width) * 100),
+        cells: rows.map((row) => texts(row, '[data-testid="overview-reported-cell"]')),
+        fits: tableBox.x >= panelBox.x && tableBox.x + tableBox.width <= panelBox.x + panel.clientWidth + 0.5,
+        overflow: table.scrollWidth > table.clientWidth + 0.5 || panel.scrollWidth > panel.clientWidth + 0.5,
+        tableType: `${css(table, 'font-family')} ${css(table, 'font-size')} ${css(table, 'border-collapse')} ${css(table, 'table-layout')}`,
+        header: `${css(table.querySelector('th'), 'background-color')} ${css(table.querySelector('th'), 'color')} ${css(table.querySelector('th'), 'border-top-width')} ${css(table.querySelector('th'), 'border-top-color')}`,
+        cellLine: `${css(cell('agent'), 'border-bottom-width')} ${css(cell('agent'), 'border-bottom-color')}`,
+        agent: `${css(cell('agent'), 'color')} ${css(cell('agent'), 'text-overflow')} ${css(cell('agent'), 'white-space')}`,
+        text: `${css(cell('text'), 'color')} ${css(cell('text'), 'text-overflow')} ${css(cell('text'), 'white-space')}`,
+        statusColors: statuses.map((el) => css(el, 'color')),
+        dotColors: dots.map((el) => css(el, 'background-color')),
+        dot: `${css(dots[0], 'width')} ${css(dots[0], 'height')} ${css(dots[0], 'border-top-left-radius')}`,
+        popover: popBox
+          ? {
+              left: popBox.x >= 0 && popBox.y >= 0 && popBox.x + popBox.width <= panelBox.x && popBox.y + popBox.height <= window.innerHeight,
+              unwrapped: pre ? `${css(pre, 'white-space')} ${pre.scrollWidth <= pre.clientWidth}` : 'none',
+              text: (pre?.textContent ?? '').replace(/\n$/, ''),
+              look: `${css(popover, 'background-color')} ${css(popover, 'border-top-color')} ${css(popover, 'border-top-left-radius')}`,
+            }
+          : null,
+      };
+    });
+  const closed = await read();
+  await page.getByTestId('overview-printed-toggle').click();
+  await expect(page.getByTestId('overview-printed-popover')).toBeVisible();
+  const open = await read();
+  await page.context().close();
+  if (!closed || !open) {
+    failures.push('free-talk-feature reported table (D27): missing');
+    return ['| free-talk-feature | reported table (D27) | present | missing | FAIL |'];
+  }
+  const shareOk = closed.shares.length === REPORTED_SHARES.length && closed.shares.every((share, i) => Math.abs(share - (REPORTED_SHARES[i] ?? 0)) <= 0.5);
+  const checks: Array<[string, string, string, boolean?]> = [
+    ['place: under the derived table, in the overview', '2 overview-table', `${closed.place} ${closed.afterDerived}`],
+    ['heading copy', 'As reported by the agent · 3m', closed.head],
+    ['toggle: copy, mono 11px muted', `as printed "Geist Mono", monospace 11px ${hexToRgb('#8d8c87')}`, closed.toggle],
+    ['columns: every printed one, in order', 'Agent,Description,Solution,Status', closed.columns.join(',')],
+    ['column shares % (±0.5)', REPORTED_SHARES.join(' / '), closed.shares.map((share) => share.toFixed(2)).join(' / '), shareOk],
+    [
+      'cells (the Status without its emoji)',
+      '1. D24 Remote ¦ Remote Control toggle, link + QR, reattach on resume ¦ switchboard/.worktrees/remote-control ¦ running ; 2. D25 Teleport ¦ "From a remote session" → local copy in a worktree ¦ switchboard/.worktrees/teleport ¦ merged',
+      closed.cells.map((row) => row.join(' ¦ ')).join(' ; '),
+    ],
+    ['fits the panel, nothing overflows', 'true false', `${closed.fits} ${closed.overflow}`],
+    ['table: Geist Mono 11px, collapsed, fixed (the derived table\'s)', '"Geist Mono", monospace 11px collapse fixed', closed.tableType],
+    ['header: bg-card, text-2, 1px border-control', `${hexToRgb('#17181b')} ${hexToRgb('#c9c8c3')} 1px ${hexToRgb('#2c2d32')}`, closed.header],
+    ['cell lines: 1px border-control', `1px ${hexToRgb('#2c2d32')}`, closed.cellLine],
+    ['Agent cells: text, ellipsis', `${hexToRgb('#e8e7e3')} ellipsis nowrap`, closed.agent],
+    ['other cells: muted, ellipsis', `${hexToRgb('#8d8c87')} ellipsis nowrap`, closed.text],
+    ['Status colors: run, done', `${runColor} / ${doneColor}`, closed.statusColors.join(' / ')],
+    ['Status dots: run, done', `${runColor} / ${doneColor}`, closed.dotColors.join(' / ')],
+    ['Status dot: 7px circle (the agent card\'s)', '7px 7px 50%', closed.dot],
+    ['"as printed": popover left of the panel, inside the window', 'true', String(open.popover?.left ?? false)],
+    ['"as printed": the whole table unwrapped (no scrolling at 1440)', 'pre true', open.popover?.unwrapped ?? 'none'],
+    ['"as printed": the text as printed', 'equal', open.popover?.text === REPORTED_BOX ? 'equal' : JSON.stringify(open.popover?.text ?? '').slice(0, 60)],
+    ['"as printed": bg-card, border-card, 10px radius', `${hexToRgb('#17181b')} ${hexToRgb('#26272c')} 10px`, open.popover?.look ?? 'none'],
+    ['"as printed" open: nothing in the panel overflows', 'true false', `${open.fits} ${open.overflow}`],
+  ];
+  const rows: string[] = [];
+  for (const [check, want, got, verdict] of checks) {
+    const ok = verdict ?? want === got;
+    if (!ok) failures.push(`free-talk-feature reported table (D27) ${check}: expected ${want}, got ${got}`);
+    rows.push(`| free-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
+  }
+  return rows;
+}
+
 test('Right panel matches the prototype (agent cards, summary, terminal tail, handoff card + copy)', async ({ browser }) => {
   const protoPage = await newVisualPage(browser);
   const appPage = await newVisualPage(browser);
@@ -496,8 +633,19 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
     computedRows.push(`| ${key} | ${want} | ${got} | ${got === want ? 'ok' : 'FAIL'} |`);
   }
 
+  // D27: the reported table on its own (a separate page; the demo prints none).
+  const reportedRows = await checkReported(browser, failures);
+
   await writeReport({
-    'session-panel.md': report({ rows, computedRows, overviewRows, failures, diffs: { free: freeDiff.percent, calendar: calendarDiff.percent }, rollout: { proto: protoRollout, app: appRollout } }),
+    'session-panel.md': report({
+      rows,
+      computedRows,
+      overviewRows,
+      reportedRows,
+      failures,
+      diffs: { free: freeDiff.percent, calendar: calendarDiff.percent },
+      rollout: { proto: protoRollout, app: appRollout },
+    }),
     'session-panel-free-talk-side-by-side.png': await sideBySide(appPage, protoFree, appFree),
     'session-panel-calendar-side-by-side.png': await sideBySide(appPage, protoCalendar, appCalendar),
   });
@@ -509,6 +657,7 @@ function report(input: {
   rows: string[];
   computedRows: string[];
   overviewRows: string[];
+  reportedRows: string[];
   failures: string[];
   diffs: { free: number; calendar: number };
   rollout: { proto: string[]; app: string[] };
@@ -542,6 +691,13 @@ ${input.computedRows.join('\n')}
 | Session | Check | Expected | App | Result |
 |---|---|---|---|---|
 ${input.overviewRows.join('\n')}
+
+## D27 additions (not findings)
+- The newest status table the agent printed is drawn as a table under "As reported by the agent · <age>", with an "as printed" toggle that opens the original in a popover over the main area; nothing in the right panel scrolls sideways. The demo's chat prints no status table, so nothing above changes. The table is checked on its own on a separate page of free-talk-feature whose session detail carries this session's orchestrator table (4 columns, \`├─┼─┤\` rows, 🟢 / ✅ statuses) as its \`reportedTable\`:
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+${input.reportedRows.join('\n')}
 
 ## D14 additions (not findings)
 - The handoff card ends with \`cwd <Session.cwd>\`: the folder to run \`claude --resume\` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry \`top\`) and by its prototype copy without that line; the line is checked on its own.
