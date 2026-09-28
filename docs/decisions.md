@@ -148,6 +148,23 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - If the CLI refuses a change, its text is shown and the stored choice is left unchanged.
   - Sessions without a choice use the CLI's defaults, exactly as today.
 
+## Ticket branches and closing sessions (added 2026-09-28)
+- **D32 A worktree's branch is named after its ticket.**
+  - **The rule:** whenever a session creates a git worktree, the developer names its branch. The name is **required** and must be a Jira-style ticket key, its number and a kebab description: `^[A-Z][A-Z0-9]*-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$` (e.g. `PROJ-0001-test-branch-name`, `PROJD-0001-test-ticket-name`). There is no `session/` prefix. It replaces `session/{name}` for those worktrees.
+  - **In the New-session form:** a **Branch** field appears whenever a worktree will be created (a workspace session with Worktrees on: one branch name used in every solution's repo; a repo-folder session in a worktree).
+    - It is pre-filled when the title starts with a ticket key ("PROJ-1984 Purchase complete" → `PROJ-1984-purchase-complete`), and typed text is tidied the same way.
+    - Start stays disabled until the name is valid. The summary shows the branch.
+    - A branch that already exists in a repo is refused with the server's message.
+  - **"Move … to worktree" (M6.3):** asks for the branch name the same way.
+  - **Unchanged:** worktree folder names (`../{repo}-wt-{name}`, from the short name), scheduled runs, and teleport's initial branch (the CLI checks out the remote branch) keep their current naming.
+- **D33 Sessions can be closed out of the sidebar and reopened from History.**
+  - **Close:** a sidebar row (on hover) and the session header offer **Close**.
+    - Closing a session that is running or waiting asks for confirmation, then stops its process (its conversation stays resumable).
+    - A closed session leaves the sidebar and the palette's session list. Its open questions stop being asked, and its Inbox items close.
+    - Its worktree and branch are kept.
+  - **History:** lists closed sessions with a "Closed" tag and a **Reopen** action. Reopen puts the session back in the sidebar as paused/idle; sending a message resumes it.
+  - Stored as `sessions.closed_at` (null = open).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
