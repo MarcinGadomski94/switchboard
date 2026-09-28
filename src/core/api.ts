@@ -968,6 +968,24 @@ export interface ToolProbe {
 }
 
 /**
+ * Additive (D35, `docs/frame-helper.md` → *Guided setup*): `GET /api/frame-helper`,
+ * the frame helper's folder and version in the checkout the service runs from.
+ */
+export interface FrameHelperInfo {
+  /** Absolute path of `tools/frame-helper` (the folder Chrome's "Load unpacked" takes), in the service's OS form. */
+  readonly path: string;
+  /** The `version` of its `manifest.json`. */
+  readonly version: string;
+}
+
+/** Additive (D35): the 502 of `POST /api/frame-helper/reveal` and `/open-extensions` when the OS opener failed. */
+export interface FrameHelperOpenError {
+  readonly error: 'open-failed';
+  /** The opener's own error (its stderr, or how it ended), e.g. `open -a Google Chrome chrome://extensions: Unable to find application named 'Google Chrome'`. */
+  readonly message: string;
+}
+
+/**
  * One project listed in the workspace's `.claude/.codebase-memory-dirty` (M8.1
  * strip, gap #4; the file M6.4 reads for freshness). Additive, not in the contract.
  */

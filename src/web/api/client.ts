@@ -9,6 +9,7 @@ import type {
   Folder,
   FolderCheck,
   FolderListing,
+  FrameHelperInfo,
   HistoryItem,
   InboxItem,
   IsolateRequest,
@@ -163,6 +164,12 @@ export const api = {
   /** Additive (M8.1, docs/tools.md): the Codebase Memory strip and its "Reindex n now" (gap #4). */
   codebaseMemory: (folder?: string) => request<CodebaseMemoryStatus>('GET', `/api/codebase-memory${query({ folder })}`),
   reindexCodebaseMemory: (folder?: string) => request<Session>('POST', `/api/codebase-memory/reindex${query({ folder })}`),
+  // D35, additive (docs/frame-helper.md → Guided setup): the frame-helper setup; the two POSTs answer 204, or 502 `open-failed` with the opener's error.
+  frameHelper: () => request<FrameHelperInfo>('GET', '/api/frame-helper'),
+  /** Opens the OS file manager on `tools/frame-helper`. */
+  revealFrameHelper: () => request<null>('POST', '/api/frame-helper/reveal'),
+  /** Opens `chrome://extensions` in Chrome (a page cannot open `chrome://` URLs itself). */
+  openChromeExtensions: () => request<null>('POST', '/api/frame-helper/open-extensions'),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
 

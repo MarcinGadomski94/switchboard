@@ -146,6 +146,16 @@
   cursor: pointer;
 }
 
+/* D35: Set up frame helper, the card's second action (SPEC: the first is primary, the rest outlined). */
+.sb-tool-overlay-outlined {
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  padding: 5px 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
 /* Codebase Memory strip */
 .sb-cm-strip {
   padding: 9px 16px;

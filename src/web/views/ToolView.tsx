@@ -6,6 +6,7 @@ import { useApi } from '../api/useApi.ts';
 import { Link, useRouter } from '../router.tsx';
 import { urlHost } from '../shell/format.ts';
 import { type FrameHelperStatus, siteFrameStatus } from '../tools/frame-helper.ts';
+import { FrameHelperSetupPanel, useFrameHelperSetup } from '../tools/FrameHelperSetup.tsx';
 import { useFrameHelper, useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { TOOLBAR_STATE, TOOL_DOT, probeTool, useToolFramingRefused, useToolState } from '../tools/probe.ts';
 import { CodebaseMemoryStrip } from './tool/CodebaseMemoryStrip.tsx';
@@ -37,6 +38,8 @@ interface Overlay {
   readonly action?: () => void;
   /** Opens this URL in a new tab (D15: the tool's own URL). */
   readonly href?: string;
+  /** D35: a second, outlined **Set up frame helper** button that opens the guided setup under the buttons. */
+  readonly setup?: boolean;
 }
 
 /**
@@ -191,16 +194,18 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
  * none while it is being checked (the frame area stays empty), "needs the frame
  * helper" without it, "can't open in a frame in this browser" when it is installed
  * but its header removal does not take effect (Safari today) or it did not take the
- * site's host. Both offer the site's own URL in a new tab.
+ * site's host. Both offer the site's own URL in a new tab; D35: "needs the frame
+ * helper" also offers **Set up frame helper** (the guided setup).
  */
 function siteOverlay(url: string, status: FrameHelperStatus): Overlay | null {
   const host = siteHost(url);
   if (status === 'absent') {
     return {
       title: `${host} needs the Switchboard frame helper to open here`,
-      text: 'Install it once in Chrome: docs/frame-helper.md (Safari can’t frame signed-in sites: open it in a new tab)',
+      text: 'Set it up once in Chrome with Set up frame helper below (Safari can’t frame signed-in sites: open it in a new tab)',
       label: 'Open in new tab',
       href: url,
+      setup: true,
     };
   }
   if (status === 'blocked') {
@@ -224,6 +229,7 @@ function siteHost(url: string): string {
 }
 
 function OverlayCard({ dot, overlay }: { readonly dot: string; readonly overlay: Overlay }) {
+  const [setupOpen, setSetupOpen] = useState(false);
   return (
     <div className="sb-tool-overlay" data-testid="tool-overlay">
       <div className="sb-tool-overlay-card">
@@ -244,8 +250,34 @@ function OverlayCard({ dot, overlay }: { readonly dot: string; readonly overlay:
               {overlay.label}
             </button>
           )}
+          {overlay.setup ? (
+            <button
+              type="button"
+              className="sb-button sb-tool-overlay-outlined"
+              data-testid="tool-overlay-setup"
+              aria-expanded={setupOpen}
+              onClick={() => setSetupOpen((open) => !open)}
+            >
+              Set up frame helper
+            </button>
+          ) : null}
         </div>
+        {overlay.setup && setupOpen ? <OverlaySetup /> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * D35: the guided setup inside the "needs the frame helper" card, with its status
+ * line. Once the helper is loaded, its step 4 reloads this tab and the view frames
+ * the site by itself (Chrome adds the helper's marker only to pages loaded after it).
+ */
+function OverlaySetup() {
+  const setup = useFrameHelperSetup(true);
+  return (
+    <div className="sb-fh-overlay-panel">
+      <FrameHelperSetupPanel setup={setup} showStatus />
     </div>
   );
 }

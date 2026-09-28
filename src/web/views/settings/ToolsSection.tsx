@@ -5,6 +5,7 @@ import { useApi } from '../../api/useApi.ts';
 import { useRouter } from '../../router.tsx';
 import { announceToolsChanged } from '../../tools/events.ts';
 import { TOOL_DOT, probeTool, useToolState } from '../../tools/probe.ts';
+import { FrameHelperRow } from './FrameHelperRow.tsx';
 import { TOOL_CARD_STATE } from './model.ts';
 import { SectionTitle } from './rows.tsx';
 
@@ -38,7 +39,7 @@ function sentence(text: string): string {
  * on each card and an "Add a tool" card (name + URL). Every change is saved by
  * Switchboard through `PUT /api/tools` (the whole list), and the sidebar's TOOLS
  * rows reload. A URL is saved when the field loses focus or on Enter, and before
- * Test / Open.
+ * Test / Open. D35: the Frame helper row (status + guided setup) follows the cards.
  */
 export function ToolsSection() {
   const loaded = useApi(api.tools);
@@ -179,6 +180,8 @@ export function ToolsSection() {
           The tools could not be loaded.
         </div>
       ) : null}
+      {/* D35: the frame helper's status and guided setup, after the cards (the prototype's parts keep their places). */}
+      <FrameHelperRow />
     </>
   );
 }

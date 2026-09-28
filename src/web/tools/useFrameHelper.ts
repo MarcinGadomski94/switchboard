@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import type { Tool } from '../../core/api.ts';
 import { FRAME_CHECK_ATTRIBUTE, FRAME_CHECK_PATH, FRAME_HELPER_ATTRIBUTE, frameHelperHosts } from '../../core/site-tools.ts';
 import {
@@ -10,6 +10,7 @@ import {
   readFrameHelperMarker,
   watchFrameHelper,
 } from './frame-helper.ts';
+import { SETUP_POLL_MS } from './frame-helper-setup.ts';
 
 /*
  * D28: the frame helper watch (`frame-helper.ts`) on this page: the `<html>`
@@ -144,4 +145,26 @@ export function useFrameHelperSites(tools: readonly Pick<Tool, 'url'>[] | null):
     // `key` stands for `hosts` (a new array on every render).
   }, [key]);
   return useSyncExternalStore(sites.subscribe, sites.state);
+}
+
+/**
+ * D35 (guided setup): the helper's marker on this page (its version, `null`
+ * without one), live: read on mount, on every change of the `<html>` attribute,
+ * and every `pollMs` while `poll` is on (the setup panel is open). Unlike
+ * {@link useFrameHelper} it runs no capability check.
+ */
+export function useFrameHelperMarker(poll: boolean, pollMs: number = SETUP_POLL_MS): string | null {
+  const [marker, setMarker] = useState<string | null>(() => readFrameHelperMarker(document.documentElement));
+  useEffect(() => {
+    const read = (): void => setMarker(readFrameHelperMarker(document.documentElement));
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: [FRAME_HELPER_ATTRIBUTE] });
+    const timer = poll ? window.setInterval(read, pollMs) : undefined;
+    return () => {
+      observer.disconnect();
+      window.clearInterval(timer);
+    };
+  }, [poll, pollMs]);
+  return marker;
 }

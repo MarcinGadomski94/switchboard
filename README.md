@@ -177,6 +177,7 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 
 - **Local tools:** go through a small local proxy, so tools that refuse to be framed still open.
 - **Signed-in sites** such as Jira: need the **frame helper** browser extension (`tools/frame-helper`), loaded in **Chrome**. It lifts the framing headers only for your saved site tools, and only in Switchboard's tab.
+  - **Setting it up:** Settings → Embedded tools → **Frame helper → Set up** (or **Set up frame helper** on the site's page) walks you through it. It opens Chrome's extensions page, reveals the folder in Finder, copies its path, then asks you to reload the tab. The one click only you can make is **Load unpacked**.
 - **Safari:** can't do this; those tools open in a new tab.
 
 [`docs/tools.md`](docs/tools.md) · [`docs/frame-helper.md`](docs/frame-helper.md)
@@ -201,7 +202,6 @@ If the service isn't running, the app window shows "Switchboard isn't running" w
 Opening `localhost:4870` takes you to `127.0.0.1:4870`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
 ### Coming (being built)
-- A guided one-click frame helper setup.
 - Opening a **subagent's own chat** from the main chat, and hiding finished subagents from the right panel.
 
 ---
@@ -278,6 +278,6 @@ docs/         one doc per area, the decisions log, the handoff spec
 | `listen EADDRINUSE … 127.0.0.1:4870` on start | Another Switchboard (or another app) holds the port: stop it, or set `SWITCHBOARD_PORT`. |
 | Setup wizard says "Not signed in" | Run `claude` in a terminal and sign in; check `claude auth status`. |
 | Remote toggle is disabled | Its tooltip says why. Usually the process isn't live yet, or the CLI isn't signed in with a claude.ai subscription (no `ANTHROPIC_API_KEY` in Switchboard's environment). |
-| Jira shows "needs the Switchboard frame helper" | Load `tools/frame-helper` in Chrome ([`docs/frame-helper.md`](docs/frame-helper.md)); after an update press reload on it in `chrome://extensions`. |
+| Jira shows "needs the Switchboard frame helper" | Click **Set up frame helper** and follow the steps ([`docs/frame-helper.md`](docs/frame-helper.md)); after an update press reload on it in `chrome://extensions`. |
 | A tool "refuses to load in a frame" in Safari | Expected: Safari can't lift framing headers. Use Open in new tab, or Chrome. |
 | A session looks stuck | The chat line shows what it's doing. "⏳ Waiting for …" means a background task is still running. |

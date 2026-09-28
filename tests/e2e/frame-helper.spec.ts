@@ -332,7 +332,7 @@ test('without the frame helper: "needs the Switchboard frame helper" with Open i
   await expect(view).toHaveAttribute('data-tool-state', 'up');
   await expect(view).toHaveAttribute('data-frame-helper', 'absent');
   await expect(page.getByTestId('tool-overlay-title')).toHaveText(`${SITE}:${site.port} needs the Switchboard frame helper to open here`);
-  await expect(page.getByTestId('tool-overlay-text')).toHaveText('Install it once in Chrome: docs/frame-helper.md (Safari can’t frame signed-in sites: open it in a new tab)');
+  await expect(page.getByTestId('tool-overlay-text')).toHaveText('Set it up once in Chrome with Set up frame helper below (Safari can’t frame signed-in sites: open it in a new tab)');
   const action = page.getByTestId('tool-overlay-action');
   await expect(action).toHaveText('Open in new tab');
   await expect(action).toHaveAttribute('href', siteUrl);

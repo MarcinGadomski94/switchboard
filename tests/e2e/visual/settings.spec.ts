@@ -371,6 +371,7 @@ test('Settings matches the prototype in every section (tokens, boxes ±2 px, cop
     }
 
     if (section.key === 'workspace') rows.push(...(await folderAdditions(appPage, failures)));
+    if (section.key === 'tools') rows.push(...(await frameHelperAdditions(appPage, failures)));
 
     if (section.key === 'notify') {
       const shown = await appPage.locator('.sb-set-select').evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent ?? '');
@@ -486,6 +487,99 @@ async function folderAdditions(page: Page, failures: string[]): Promise<string[]
   return rows;
 }
 
+/**
+ * The D35 addition of the Embedded tools section, checked on its own (the
+ * prototype has none): the Frame helper row after the tool cards (the prototype's
+ * parts keep their places), in the settings rows' style, its status and Set up in
+ * the value and small-action styles, and the setup panel it opens in the tool
+ * cards' style, its buttons in the small-action style. The panel is closed again
+ * before the section's screenshots.
+ */
+async function frameHelperAdditions(page: Page, failures: string[]): Promise<string[]> {
+  const rows: string[] = [];
+  const read = () =>
+    page.evaluate(() => {
+      const box = (el: Element | null) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      };
+      const style = (el: Element | null) => {
+        if (!el) return null;
+        const c = getComputedStyle(el);
+        return {
+          color: c.color,
+          font: `${c.fontWeight} ${c.fontSize} ${c.fontFamily}`,
+          bg: c.backgroundColor,
+          border: `${c.borderTopWidth} ${c.borderTopColor}`,
+          radius: c.borderTopLeftRadius,
+          padding: `${c.paddingTop} ${c.paddingLeft}`,
+          divider: `${c.borderBottomWidth} ${c.borderBottomColor}`,
+        };
+      };
+      const section = document.querySelector('[data-testid="settings-frame-helper"]');
+      const row = section?.querySelector('.sb-set-row') ?? null;
+      const panel = section?.querySelector('[data-testid="frame-helper-setup"]') ?? null;
+      return {
+        last: document.querySelector('[data-testid="settings-content"]')?.lastElementChild === section,
+        list: box(document.querySelector('[data-testid="settings-tools"]')),
+        row: box(row),
+        rowStyle: style(row),
+        label: row?.querySelector('.sb-set-row-label')?.textContent ?? null,
+        labelStyle: style(row?.querySelector('.sb-set-row-label') ?? null),
+        descStyle: style(row?.querySelector('.sb-set-row-desc') ?? null),
+        status: section?.querySelector('[data-testid="frame-helper-status"]')?.textContent ?? null,
+        statusStyle: style(section?.querySelector('[data-testid="frame-helper-status"]') ?? null),
+        toggle: section?.querySelector('[data-testid="frame-helper-setup-toggle"]')?.textContent ?? null,
+        toggleStyle: style(section?.querySelector('[data-testid="frame-helper-setup-toggle"]') ?? null),
+        panel: box(panel),
+        panelStyle: style(panel),
+        steps: panel ? panel.querySelectorAll('.sb-fh-step').length : 0,
+        buttons: panel ? [...panel.querySelectorAll('button')].map((b) => style(b)) : [],
+        pathStyle: style(panel?.querySelector('[data-testid="frame-helper-path"]') ?? null),
+      };
+    });
+  const near = (a: number | undefined, b: number | undefined): boolean => a !== undefined && b !== undefined && Math.abs(a - b) <= 2;
+  const mono12 = '400 12px "Geist Mono", monospace';
+  const action = { color: hexToRgb('#c9c8c3'), font12: '12px', border: `1px ${hexToRgb('#2c2d32')}`, radius: '6px', padding: '5px 10px' };
+  const isAction = (s: { color: string; font: string; border: string; radius: string; padding: string } | null | undefined): boolean =>
+    !!s && s.color === action.color && s.font.includes(` ${action.font12} `) && s.border === action.border && s.radius === action.radius && s.padding === action.padding;
+
+  const closed = await read();
+  const checks: Array<[string, boolean, string]> = [
+    ['the row is the content\'s last part, under the tool cards', closed.last && !!closed.row && !!closed.list && closed.row.y >= closed.list.y + closed.list.height, JSON.stringify(closed.row)],
+    ['the row spans the cards\' width', near(closed.row?.x, closed.list?.x) && near(closed.row?.width, closed.list?.width), JSON.stringify(closed.row)],
+    ['a settings row: label "Frame helper" (13.5px), description (12.5px #8d8c87), #1f2024 divider',
+      closed.label === 'Frame helper' &&
+        closed.labelStyle?.font.includes(' 13.5px ') === true &&
+        closed.descStyle?.font.includes(' 12.5px ') === true &&
+        closed.descStyle?.color === hexToRgb('#8d8c87') &&
+        closed.rowStyle?.divider === `1px ${hexToRgb('#1f2024')}`,
+      JSON.stringify({ label: closed.label, labelStyle: closed.labelStyle?.font, desc: closed.descStyle?.color, divider: closed.rowStyle?.divider })],
+    ['status "Not detected yet" in the value style (Geist Mono 12px, #8d8c87)', closed.status === 'Not detected yet' && closed.statusStyle?.font === mono12 && closed.statusStyle?.color === hexToRgb('#8d8c87'), JSON.stringify(closed.status)],
+    ['Set up in the small outlined action style (.sb-set-action)', closed.toggle === 'Set up' && isAction(closed.toggleStyle), JSON.stringify(closed.toggleStyle)],
+  ];
+  await page.getByTestId('frame-helper-setup-toggle').click();
+  await page.getByTestId('frame-helper-setup').waitFor();
+  const open = await read();
+  checks.push(
+    ['Set up opens the panel inline, under the row, as wide', !!open.panel && !!open.row && open.panel.y >= open.row.y + open.row.height && near(open.panel.x, open.row.x) && near(open.panel.width, open.row.width), JSON.stringify(open.panel)],
+    ['the panel in the tool cards\' style (#16171a, 1px #26272c, 10px)',
+      open.panelStyle?.bg === hexToRgb('#16171a') && open.panelStyle?.border === `1px ${hexToRgb('#26272c')}` && open.panelStyle?.radius === '10px',
+      JSON.stringify(open.panelStyle)],
+    ['four steps; every button in the small outlined action style', open.steps === 4 && open.buttons.length === 4 && open.buttons.every(isAction), `${open.steps} steps, ${open.buttons.length} buttons`],
+    ['the folder path in Geist Mono 12px', open.pathStyle?.font === mono12, JSON.stringify(open.pathStyle?.font)],
+    ['the toggle reads Close while it is open', open.toggle === 'Close', JSON.stringify(open.toggle)],
+  );
+  await page.getByTestId('frame-helper-setup-toggle').click();
+  await page.getByTestId('frame-helper-setup').waitFor({ state: 'detached' });
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`tools.D35 ${what}: ${note}`);
+    rows.push(`| D35 ${what} | addition | — | — | ${ok ? 'ok' : 'FAIL'} | ${note.replaceAll('|', '\\|').slice(0, 80)} |`);
+  }
+  return rows;
+}
+
 function fmtBox(part: Part): string {
   const { x, y, width, height } = part.box;
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
@@ -511,6 +605,9 @@ Side by side (main area, prototype left, app right): ${input.sections.map((s) =>
 
 ## D14 (folders per session)
 *Workspace & solutions* is **Folders**: the saved workspaces and git repos (kind, path, check line, default marker, Make default, Remove), Add…, then the scan of the default folder (or the one clicked). The prototype's root row and scan table are compared with that scan block by size (the list above moves it down); the list, the lede and Add… are D14 additions (\`D14 …\` rows). The Sessions section's "Working folder" row says sessions start in their own folder.
+
+## D35 (not findings)
+Embedded tools ends with a **Frame helper** row (the helper's status and **Set up**) after the tool cards, and Set up opens the guided setup panel under it. Neither is in the prototype: the prototype's parts keep their places and are compared as before; the row and the panel are checked on their own (\`D35 …\` rows: after the cards and as wide, the settings row's label / description / divider style, the status in the value style, Set up and the panel's buttons in the small outlined action style, the panel in the tool cards' style) with the panel closed again before the screenshots.
 
 ## Copy that differs on purpose
 ${COPY_EXEMPT.map(([part, reason]) => `- \`${part}\`: ${reason}`).join('\n')}

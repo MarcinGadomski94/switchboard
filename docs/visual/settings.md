@@ -7,18 +7,21 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 **Gate:** green
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
-- Claude Code: **0.16%** / 1.63%
+- Claude Code: **0.17%** / 1.64%
 - Workspace & solutions: **3.76%** / 4.59%
 - Sessions & worktrees: **0.38%** / 1.81%
 - Notifications & usage: **0.06%** / 1.55%
 - Schedules: **0.06%** / 1.55%
-- Embedded tools: **0.49%** / 1.90%
+- Embedded tools: **0.86%** / 2.20%
 - GitHub: **0.09%** / 1.57%
 
 Side by side (main area, prototype left, app right): `settings-claude-side-by-side.png`, `settings-workspace-side-by-side.png`, `settings-sessions-side-by-side.png`, `settings-notify-side-by-side.png`, `settings-schedules-side-by-side.png`, `settings-tools-side-by-side.png`, `settings-github-side-by-side.png`.
 
 ## D14 (folders per session)
 *Workspace & solutions* is **Folders**: the saved workspaces and git repos (kind, path, check line, default marker, Make default, Remove), Add…, then the scan of the default folder (or the one clicked). The prototype's root row and scan table are compared with that scan block by size (the list above moves it down); the list, the lede and Add… are D14 additions (`D14 …` rows). The Sessions section's "Working folder" row says sessions start in their own folder.
+
+## D35 (not findings)
+Embedded tools ends with a **Frame helper** row (the helper's status and **Set up**) after the tool cards, and Set up opens the guided setup panel under it. Neither is in the prototype: the prototype's parts keep their places and are compared as before; the row and the panel are checked on their own (`D35 …` rows: after the cards and as wide, the settings row's label / description / divider style, the status in the value style, Set up and the panel's buttons in the small outlined action style, the panel in the tool cards' style) with the panel closed again before the screenshots.
 
 ## Copy that differs on purpose
 - `*.nav2`: D14: the section is "Folders" (the saved workspaces and git repos) instead of "Workspace & solutions"
@@ -62,7 +65,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | service | box | 520,196 860×64 | 520,196 860×64 | ok |  |
 | serviceLabel | box | 520,210 671.2×18 | 520,210 671.2×18 | ok | "Background service" |
 | serviceDesc | box | 520,228 671.2×17 | 520,228 671.2×17 | ok | "Starts and supervises Claude Code processes" |
-| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4970 · running" |
+| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4930 · running" |
 | bind | box | 520,262 860×64 | 520,262 860×64 | ok |  |
 | bindLabel | box | 520,276 743.2×18 | 520,276 743.2×18 | ok | "Bind address" |
 | bindDesc | box | 520,294 743.2×17 | 520,294 743.2×17 | ok | "The service never listens beyond this PC" |
@@ -95,7 +98,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | exempt: "Workspace & solutions" → "Folders" |
 | root | none | 520,64 860×63 | 520,320 860×63 | ok |  |
 | rootLabel | none | 520,78 781.2×18 | 520,334 781.2×18 | ok | exempt: "Workspace root" → "Solutions in ws" |
-| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-mhvNRF/ws" |
+| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-wuodub/ws" |
 | rootValue | size | 1317.2,81 62.8×28 | 1317.2,337 62.8×28 | ok | "Rescan" |
 | scan | size | 520,141 860×290 | 520,397 860×290 | ok |  |
 | scan0 | size | 521,142 858×36 | 521,398 858×36 | ok |  |
@@ -138,7 +141,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | scan7Count | size | 717,403.5 40×16 | 717,659.5 40×16 | ok | "1" |
 | scan7Examples | size | 769,403.5 464×16 | 769,659.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
 | scan7Rule | size | 1245,404.5 120×14 | 1245,660.5 120×14 | ok | "read-only" |
-| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-m |
+| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-w |
 | D14 the temp root: a workspace with its router | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 0 solutions" |
 | D14 the demo folder: not the default, its check line | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 12 solutions" |
 | D14 Add… | addition | — | — | ok | Add… |
@@ -287,6 +290,16 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | card1Url | box | 537,235 696.9×35 | 537,235 696.9×35 | ok |  |
 | card1Test | box | 1241.9,235 53.8×35 | 1241.9,235 53.8×35 | ok | "Test" |
 | card1Open | box | 1303.7,235 59.3×35 | 1303.7,235 59.3×35 | ok | "Open" |
+| D35 the row is the content's last part, under the tool cards | addition | — | — | ok | {"x":520,"y":407,"width":860,"height":64} |
+| D35 the row spans the cards' width | addition | — | — | ok | {"x":520,"y":407,"width":860,"height":64} |
+| D35 a settings row: label "Frame helper" (13.5px), description (12.5px #8d8c87), #1f2024 divider | addition | — | — | ok | {"label":"Frame helper","labelStyle":"400 13.5px Geist, system-ui, sans-serif"," |
+| D35 status "Not detected yet" in the value style (Geist Mono 12px, #8d8c87) | addition | — | — | ok | "Not detected yet" |
+| D35 Set up in the small outlined action style (.sb-set-action) | addition | — | — | ok | {"color":"rgb(201, 200, 195)","font":"400 12px Geist, system-ui, sans-serif","bg |
+| D35 Set up opens the panel inline, under the row, as wide | addition | — | — | ok | {"x":520,"y":473,"width":860,"height":278} |
+| D35 the panel in the tool cards' style (#16171a, 1px #26272c, 10px) | addition | — | — | ok | {"color":"rgb(232, 231, 227)","font":"400 16px Geist, system-ui, sans-serif","bg |
+| D35 four steps; every button in the small outlined action style | addition | — | — | ok | 4 steps, 4 buttons |
+| D35 the folder path in Geist Mono 12px | addition | — | — | ok | "400 12px \"Geist Mono\", monospace" |
+| D35 the toggle reads Close while it is open | addition | — | — | ok | "Close" |
 
 ## GitHub
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
