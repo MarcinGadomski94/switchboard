@@ -137,7 +137,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 ## Background work and live model choice (added 2026-09-28)
 - **D30 A session waiting on background work shows that it is still working.**
   - **Why:** agents often wait for a GitHub Action (or a build, a subagent or a timer) by starting a background task and ending their turn: `Bash` with `run_in_background: true` (result "Command running in background with ID: <id>"), an async `Agent` ("Async agent launched successfully"), `Monitor`, `ScheduleWakeup`. The CLI process stays alive and continues by itself when the task ends, but Switchboard only saw the turn end and showed the session as idle.
-  - **Tracking:** Switchboard tracks each such task from its `tool_use` / `tool_result`. It stays pending until the CLI's completion message arrives: a `user` message with `origin: {kind: "task-notification"}` whose text has `<task-id>`, `<tool-use-id>` and `<status>`, or until the process exits or is paused.
+  - **Tracking:** Switchboard tracks each such task from its `tool_use` / `tool_result`. It stays pending until the CLI reports its end on stdout: a `system/task_notification` line with `task_id`, `tool_use_id`, `status` and `summary` (verified by a real probe; the `<task-notification>` user message exists only in the transcript), or until the process exits or is paused.
   - **Display:** while any task is pending and no turn runs, the session counts as working in the background. It shows in:
     - the chat's activity line: `⏳ Waiting for GitHub Actions: gh run view …  3:21`, or `⏳ Waiting for a background task: <summary>`, or `⏳ Waking up at 18:40`;
     - the sidebar row: the action and time, with the running dot pulsing;

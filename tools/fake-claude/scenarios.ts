@@ -110,6 +110,55 @@ export function fireToken(text: string): { count: number; everyMs: number } | nu
   return { count: Math.min(Number(match[1]), 100), everyMs: Math.max(Number(match[2]), 10) };
 }
 
+/** D30: the background command recorded in the `bg-bash` fixture (the D30 probe); `[fake:background]` replaces it. */
+export const RECORDED_BACKGROUND_COMMAND = 'sleep 5; echo done';
+
+/** D30: the background task id recorded in the `bg-bash` fixture; each `[fake:background]` gets a fresh one. */
+export const RECORDED_BACKGROUND_TASK = 'b6kg3qgya';
+
+/** D30: the command `[fake:background-gh <seconds>]` runs in the background: a GitHub Actions wait like the ones agents write. */
+export const GH_WAIT_COMMAND = 'for i in $(seq 1 60); do gh run view 4242 --json status --jq .status | grep -qx completed && break; sleep 20; done';
+
+/** D30: the reason of the `ScheduleWakeup` call `[fake:wakeup <seconds>]` makes. */
+export const WAKEUP_REASON = 'fake-claude: check again later';
+
+/** Longest background delay a D30 token accepts (seconds). */
+const MAX_BACKGROUND_SECONDS = 3_600;
+
+/** What a D30 token asks for: a background `Bash` that ends after `seconds`, or a `ScheduleWakeup` that fires after `seconds`. */
+export type BackgroundSpec =
+  | { readonly kind: 'bash'; readonly seconds: number; readonly command: string }
+  | { readonly kind: 'wakeup'; readonly seconds: number };
+
+function seconds(value: string | undefined): number {
+  return Math.min(Number(value ?? 0), MAX_BACKGROUND_SECONDS);
+}
+
+/**
+ * D30 background tokens in a stdin user message (`docs/fake-claude.md` → *Scenarios*):
+ * - `[fake:background <seconds> <cmd>]`: the `bg-bash` recording with `<cmd>` (up to
+ *   the closing `]`, so it cannot contain one) run in the background: its turn ends,
+ *   and `<seconds>` later the task's end and a turn of the CLI's own follow;
+ * - `[fake:background-gh <seconds>]`: the same with {@link GH_WAIT_COMMAND};
+ * - `[fake:wakeup <seconds>]`: a `ScheduleWakeup` call (`delaySeconds` = `<seconds>`,
+ *   not clamped as the real tool is), then `<seconds>` later a turn of its own.
+ * `<seconds>` may have decimals and is capped at an hour.
+ * @returns the spec, `{ error }` for a malformed token, `null` without one.
+ */
+export function backgroundToken(text: string): BackgroundSpec | { error: string } | null {
+  const gh = /\[fake:background-gh\s+(\d+(?:\.\d+)?)\]/.exec(text);
+  if (gh) return { kind: 'bash', seconds: seconds(gh[1]), command: GH_WAIT_COMMAND };
+  const bash = /\[fake:background\s+(\d+(?:\.\d+)?)\s+([^\]]+)\]/.exec(text);
+  const command = bash?.[2]?.trim();
+  if (bash && command) return { kind: 'bash', seconds: seconds(bash[1]), command };
+  const wake = /\[fake:wakeup\s+(\d+(?:\.\d+)?)\]/.exec(text);
+  if (wake) return { kind: 'wakeup', seconds: seconds(wake[1]) };
+  if (/\[fake:(?:background|background-gh|wakeup)(?:\s|\])/.test(text)) {
+    return { error: 'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>] or [fake:wakeup <seconds>]' };
+  }
+  return null;
+}
+
 /**
  * `[fake:remote-answer <ms>]` in a stdin user message (D24): when this message's
  * turn opens a question or permission request, "the phone" answers it `ms`

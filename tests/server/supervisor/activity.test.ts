@@ -197,6 +197,9 @@ describe('live activity · the recorder on recorded streams (D19)', () => {
       thinking(245, { main: 'thinking', 'general-purpose': 'thinking' }),
       thinking(330, { main: 'thinking', 'general-purpose': 'thinking' }),
       writing(330, { main: 'writing', 'general-purpose': 'thinking' }),
+      // D30: the turn is over but the async agent is still pending: the session waits in the background …
+      { state: 'background', tool: 'Agent', summary: 'Ask user to choose environment', tokens: null, agents: { main: 'background' } },
+      // … until the CLI reports its end (`system/task_notification`).
       null,
     ]);
     // Then only the CLI's own turn: a fresh turn (no tokens carried over, the finished subagent gone), idle at its result.
@@ -214,6 +217,100 @@ describe('live activity · the recorder on recorded streams (D19)', () => {
     w.recorder.endActivity();
     expect(w.recorder.activity()).toBeNull();
     expect(w.emitted.at(-1)).toBeNull();
+  });
+});
+
+describe('background work · the recorder (D30)', () => {
+  const background = (tool: string, summary: string): Compact => ({ state: 'background', tool, summary, tokens: null, agents: { main: 'background' } });
+
+  it('bg-bash (the D30 probe): the turn ends, the session waits in the background until system/task_notification, then the CLI\'s own turn', async () => {
+    const w = await recorderWorld();
+    const lines = await fixtureLines('bg-bash');
+    await w.feed(lines);
+    const names = await w.names();
+    expect(w.emitted.map((a) => compact(a, names))).toEqual([
+      thinking(null),
+      thinking(50),
+      thinking(172),
+      tool('Bash', 'sleep 5; echo done', 172),
+      // The tool_result confirms the background start: the turn goes on, the task rides along.
+      thinking(172),
+      writing(172),
+      background('Bash', 'sleep 5; echo done'),
+      null,
+      thinking(null),
+      writing(null),
+      null,
+    ]);
+    // The pending task: the CLI's task id, the call's time, not a GitHub wait; the list rides along while the turn still ran.
+    const callAt = lines.findIndex((l) => l.includes('"run_in_background":true')) + 1;
+    const task = { id: 'b6kg3qgya', toolUseId: 'toolu_015CF9hU9QYxEENHZV9RFzmY', kind: 'bash', summary: 'sleep 5; echo done', startedAt: w.at(callAt), github: false };
+    expect(w.emitted[4]?.background).toEqual([task]);
+    const waiting = w.emitted[6] as SessionActivity;
+    expect(waiting).toMatchObject({ turnStartedAt: w.at(callAt), since: w.at(callAt), background: [task] });
+    expect(waiting.agents[w.mainId]).toEqual({ state: 'background', since: w.at(callAt), startedAt: w.at(callAt), tool: 'Bash', summary: 'sleep 5; echo done' });
+    expect(w.recorder.activity()).toBeNull();
+  });
+
+  it('a <task-notification> user line (replayed or not) ends the task like system/task_notification; a replayed one is no message of ours', async () => {
+    for (const replay of [false, true]) {
+      const w = await recorderWorld();
+      const lines = (await fixtureLines('bg-bash')).filter((l) => !l.includes('"subtype":"task_notification"'));
+      const cut = lines.findIndex((l) => l.includes('"subtype":"task_updated"'));
+      await w.feed(lines.slice(0, cut));
+      expect(w.recorder.activity()?.state).toBe('background');
+      // A pending message of ours (queued meanwhile) must not be taken for it.
+      const pending = await w.recorder.recordUserMessage('Queued while waiting', 'user');
+      const text = '<task-notification>\n<task-id>b6kg3qgya</task-id>\n<tool-use-id>toolu_015CF9hU9QYxEENHZV9RFzmY</tool-use-id>\n<status>completed</status>\n</task-notification>';
+      const line = { type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null, session_id: 's', uuid: 'u-notification', ...(replay ? { isReplay: true } : {}) };
+      await w.feed([JSON.stringify(line)]);
+      expect(w.recorder.activity()).toBeNull();
+      expect((await store!.events.get(pending.id))?.payload).toMatchObject({ type: 'user', delivered: false });
+      await store?.close();
+      store = undefined;
+      await removeTempDir(tmp as string);
+      tmp = undefined;
+    }
+  });
+
+  it('a monitor event notice (no final status) leaves the task pending; the process ending clears it', async () => {
+    const w = await recorderWorld();
+    const lines = await fixtureLines('bg-bash');
+    const cut = lines.findIndex((l) => l.includes('"subtype":"task_updated"'));
+    await w.feed(lines.slice(0, cut));
+    const notice = { type: 'user', message: { role: 'user', content: '<task-notification><task-id>b6kg3qgya</task-id><event>line 1</event></task-notification>' }, parent_tool_use_id: null, session_id: 's', uuid: 'u-event' };
+    await w.feed([JSON.stringify(notice)]);
+    expect(w.recorder.activity()?.background).toHaveLength(1);
+    w.recorder.endActivity();
+    expect(w.recorder.activity()).toBeNull();
+    expect(w.emitted.at(-1)).toBeNull();
+  });
+});
+
+describe('background work · real path (D30)', () => {
+  it('fake-claude: the wait outlives the turn in Session.activity (the status stays the turn\'s); Pause ends it, the last event is null', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const seen: Array<SessionActivity | null> = [];
+    w.supervisor.on('activity', (payload) => seen.push(payload.activity));
+    const session = await w.supervisor.start(newSession({ task: 'Start the dev server. [fake:background 30 npm run dev]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const waiting = w.supervisor.activity(session.id);
+    expect(waiting).toMatchObject({ state: 'background', tool: 'Bash', summary: 'npm run dev', thinkingTokens: null });
+    expect(waiting?.background).toMatchObject([{ kind: 'bash', github: false, summary: 'npm run dev' }]);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('done');
+    // The throttled event follows (the turn arrived in one burst: its trailing value is the wait).
+    const wait = async (check: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 5_000;
+      while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    };
+    await wait(() => seen.at(-1)?.state === 'background');
+    expect(seen.at(-1)?.background).toHaveLength(1);
+    await w.supervisor.pause(session.id);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('paused');
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    await wait(() => seen.at(-1) === null);
+    expect(seen.at(-1)).toBeNull();
   });
 });
 

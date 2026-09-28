@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionActivity } from '../../src/core/api.ts';
+import type { BackgroundTask, SessionActivity } from '../../src/core/api.ts';
 import { ActivityTracker } from '../../src/core/derive/activity.ts';
 import {
   THINKING_VERBS,
   VERB_ROTATE_MS,
   activityLabel,
+  backgroundLine,
+  backgroundText,
   cardActivityLabel,
   chatActivityLine,
   elapsedMs,
   formatClock,
+  formatClockTime,
   formatElapsed,
   formatTokens,
   overviewActivityLabel,
   sessionActivityLabel,
+  oldestBackgroundTask,
   thinkingVerb,
   toolText,
 } from '../../src/web/activity/activity.ts';
@@ -25,7 +29,7 @@ const at = (seconds: number): number => t0 + seconds * 1000;
 const iso = (seconds: number): string => new Date(at(seconds)).toISOString();
 
 function activity(fields: Partial<SessionActivity> = {}): SessionActivity {
-  return { turnStartedAt: START, state: 'thinking', since: START, tool: null, summary: null, thinkingTokens: null, agents: {}, ...fields };
+  return { turnStartedAt: START, state: 'thinking', since: START, tool: null, summary: null, thinkingTokens: null, agents: {}, background: [], ...fields };
 }
 
 describe('elapsed, clock and token formats', () => {
@@ -174,5 +178,95 @@ describe('agent overview Status cell (D21)', () => {
     expect(overviewActivityLabel(main, START, at(83)).text).toBe(chatActivityLine(activity(), at(83)).text);
     expect(overviewActivityLabel(entry, null, at(62))).toEqual({ state: 'thinking', text: 'Thinking…', time: '42s' });
     expect(overviewActivityLabel({ ...entry, state: 'writing' }, START, at(100))).toEqual({ state: 'writing', text: 'Writing…', time: '1m 20s' });
+  });
+});
+
+describe('background work (D30)', () => {
+  const GH = 'gh run view 4242 --json status --jq .status';
+  const task = (fields: Partial<BackgroundTask> = {}): BackgroundTask => ({
+    id: 'b1',
+    toolUseId: 'toolu_1',
+    kind: 'bash',
+    summary: GH,
+    startedAt: iso(0),
+    github: true,
+    ...fields,
+  });
+  /** The activity the service sends while no turn runs and `tasks` are pending (the oldest shows). */
+  const waiting = (tasks: BackgroundTask[]): SessionActivity => {
+    const oldest = [...tasks].sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0] as BackgroundTask;
+    const tool = oldest.kind === 'wakeup' ? 'ScheduleWakeup' : 'Bash';
+    return activity({
+      state: 'background',
+      turnStartedAt: oldest.startedAt,
+      since: oldest.startedAt,
+      tool,
+      summary: oldest.summary,
+      agents: { main: { state: 'background', since: oldest.startedAt, startedAt: oldest.startedAt, tool, summary: oldest.summary } },
+      background: tasks,
+    });
+  };
+  /** `18:40` local time as ISO. */
+  const localAt = (hours: number, minutes: number): string => new Date(2026, 8, 28, hours, minutes, 30).toISOString();
+
+  it('the words: a GitHub wait, any other background task, a wake-up at its local time', () => {
+    expect(backgroundText(task())).toBe(`Waiting for GitHub Actions: ${GH}`);
+    expect(backgroundText(task({ github: false, summary: 'npm run e2e' }))).toBe('Waiting for a background task: npm run e2e');
+    expect(backgroundText(task({ kind: 'agent', github: false, summary: 'Review the diff' }))).toBe('Waiting for a background task: Review the diff');
+    expect(backgroundText(task({ kind: 'wakeup', github: false, summary: 'Check CI', wakeAt: localAt(18, 40) }))).toBe('Waking up at 18:40');
+    expect(backgroundText(task({ kind: 'wakeup', github: false, summary: 'Check CI', wakeAt: localAt(7, 5) }))).toBe('Waking up at 07:05');
+    expect(formatClockTime('not a date')).toBe('');
+  });
+
+  it('the chat line: ⏳, the oldest task\'s words, the time since it started (a clock), no tokens', () => {
+    expect(chatActivityLine(waiting([task()]), at(201))).toEqual({ state: 'background', glyph: '⏳', text: `Waiting for GitHub Actions: ${GH}`, time: '3:21', tokens: null });
+    const wake = task({ kind: 'wakeup', github: false, summary: 'Check CI', startedAt: iso(30), wakeAt: localAt(18, 40) });
+    expect(chatActivityLine(waiting([wake]), at(42))).toEqual({ state: 'background', glyph: '⏳', text: 'Waking up at 18:40', time: '0:12', tokens: null });
+  });
+
+  it('several tasks: the oldest shows (whatever the order) and `+N more`', () => {
+    const tasks = [task({ id: 'b2', toolUseId: 't2', github: false, summary: 'npm run dev', startedAt: iso(60) }), task(), task({ id: 'a3', kind: 'agent', github: false, summary: 'Review', startedAt: iso(90) })];
+    expect(oldestBackgroundTask(tasks)?.id).toBe('b1');
+    expect(oldestBackgroundTask([])).toBeNull();
+    expect(chatActivityLine(waiting(tasks), at(125))).toEqual({
+      state: 'background',
+      glyph: '⏳',
+      text: `Waiting for GitHub Actions: ${GH}`,
+      time: '2:05',
+      tokens: null,
+      more: '+2 more',
+    });
+    expect(backgroundLine(tasks.slice(0, 2), { since: iso(0), tool: 'Bash', summary: null }, at(10))).toEqual({ text: `Waiting for GitHub Actions: ${GH}`, more: '+1 more', time: '0:10' });
+  });
+
+  it('without the list (an older payload) the activity\'s own summary and time stand in', () => {
+    expect(chatActivityLine(activity({ state: 'background', since: iso(5), tool: 'Bash', summary: 'npm run dev', background: [] }), at(65))).toEqual({
+      state: 'background',
+      glyph: '⏳',
+      text: 'Waiting for a background task: npm run dev',
+      time: '1:00',
+      tokens: null,
+    });
+  });
+
+  it('the sidebar row, the main agent\'s card and its overview cell show the same wait (the overview with ⏳)', () => {
+    const tasks = [task(), task({ id: 'b2', toolUseId: 't2', github: false, summary: 'npm run dev', startedAt: iso(60) })];
+    const session = waiting(tasks);
+    const main = session.agents['main']!;
+    expect(sessionActivityLabel(session, at(201))).toEqual({ state: 'background', text: `Waiting for GitHub Actions: ${GH}`, time: '3:21', more: '+1 more' });
+    expect(cardActivityLabel(main, session.turnStartedAt, at(201), session.background)).toEqual({ state: 'background', text: `Waiting for GitHub Actions: ${GH}`, time: '3:21', more: '+1 more' });
+    expect(overviewActivityLabel(main, session.turnStartedAt, at(201), session.background)).toEqual({
+      state: 'background',
+      text: `⏳ Waiting for GitHub Actions: ${GH}`,
+      time: '3:21',
+      more: '+1 more',
+    });
+    expect(activityLabel(main, at(201), [task({ github: false, summary: 'npm run dev' })])).toEqual({ state: 'background', text: 'Waiting for a background task: npm run dev', time: '3:21' });
+  });
+
+  it('while a turn runs the pending list changes nothing in the line', () => {
+    const running = activity({ state: 'tool', tool: 'Bash', summary: 'npm test', since: iso(18), background: [task()] });
+    expect(chatActivityLine(running, at(60))).toEqual({ state: 'tool', glyph: '●', text: 'Bash: npm test', time: '0:42', tokens: null });
+    expect(sessionActivityLabel(running, at(60))).toEqual({ state: 'tool', text: 'Bash: npm test', time: '0:42' });
   });
 });

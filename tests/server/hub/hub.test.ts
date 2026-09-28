@@ -1,6 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { Agent, AgentActivity, HubEvents, Question, Session, SessionActivity, SessionEvent, SystemInfo, Worktree } from '../../../src/core/api.ts';
+import type {
+  Agent,
+  AgentActivity,
+  BackgroundTask,
+  HubEvents,
+  Question,
+  Session,
+  SessionActivity,
+  SessionEvent,
+  SystemInfo,
+  Worktree,
+} from '../../../src/core/api.ts';
 import { HUB_EVENT_NAMES } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -14,7 +25,7 @@ import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { rawRequest } from '../../helpers/net.ts';
 import { type HubStream, type SseParser, listenOnFreeTestPort, openHub, requestJson } from '../../helpers/sse.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForEvent, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * Contract oracle for `/hub` (M2.3, D5, contracts/local-api.md → Event hub):
@@ -103,8 +114,20 @@ const QUESTION_KEYS = keys<Question>()([
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
-const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()(['turnStartedAt', 'state', 'since', 'tool', 'summary', 'thinkingTokens', 'agents']);
+const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()([
+  'turnStartedAt',
+  'state',
+  'since',
+  'tool',
+  'summary',
+  'thinkingTokens',
+  'agents',
+  // additive, D30 (background work)
+  'background',
+]);
 const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
+/** D30: `wakeAt` only on a wake-up. */
+const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github']).filter((key) => key !== 'wakeAt');
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
@@ -321,6 +344,39 @@ describe('/hub · events (contract, field by field)', () => {
     const detail = (await requestJson(port, 'GET', `/api/sessions/${session.id}`, cookie)).body as Session;
     expect(detail.activity).toBeNull();
     expect(stream.payloads<Session>('sessionUpdated').filter((s) => s.id === session.id).at(-1)?.activity).toBeNull();
+    expectWellFormed(stream.parser);
+  });
+
+  it('activity (D30, additive): a background wait streams state `background` with its task after the turn, then null once the task ended and the CLI\'s own turn is over', async () => {
+    const stream = await connect();
+    const created = await requestJson(port, 'POST', '/api/sessions', cookie, newSession({ name: 'hub-background', task: 'Wait for the CI run. [fake:background-gh 4]' }));
+    expect(created.status).toBe(201);
+    const session = created.body as Session;
+    const mine = (): Array<HubEvents['activity']> => stream.payloads<HubEvents['activity']>('activity').filter((a) => a.sessionId === session.id);
+    await stream.waitFor(() => mine().some((a) => a.activity?.state === 'background'), 'the background activity');
+    const waiting = mine().find((a) => a.activity?.state === 'background')?.activity as SessionActivity;
+    expect(keysOf(waiting)).toEqual(SESSION_ACTIVITY_KEYS);
+    const summary = 'gh run view 4242 --json status --jq .status';
+    expect(waiting).toMatchObject({ state: 'background', tool: 'Bash', summary, thinkingTokens: null, since: waiting.turnStartedAt });
+    expect(waiting.background).toHaveLength(1);
+    const task = waiting.background[0] as BackgroundTask;
+    expect(keysOf(task)).toEqual(BACKGROUND_TASK_KEYS);
+    expect(task).toMatchObject({ kind: 'bash', github: true, summary, startedAt: waiting.since });
+    expect(task.toolUseId).toMatch(/^toolu_/);
+    const main = (await sw.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
+    expect(Object.keys(waiting.agents)).toEqual([main?.id]);
+    expect(keysOf(waiting.agents[main?.id ?? ''])).toEqual(AGENT_ACTIVITY_KEYS);
+    // REST agrees while it waits; the session's status is the finished turn's (D30 changes the activity only).
+    const detail = (await requestJson(port, 'GET', `/api/sessions/${session.id}`, cookie)).body as Session;
+    expect(detail.status).toBe('done');
+    expect(detail.activity).toMatchObject({ state: 'background', background: [{ id: task.id, toolUseId: task.toolUseId }] });
+    // The task ends (its notification, then the CLI's own turn, a burst the throttle folds): idle again, the last event null.
+    await waitForEvent(sw.store, session.id, (e) => (e.payload as { taskNotification?: boolean }).taskNotification === true, 15_000);
+    await stream.waitFor(() => mine().at(-1)?.activity === null, 'the idle activity after the CLI\'s turn');
+    const after = mine().slice(mine().findIndex((a) => a.activity?.state === 'background'));
+    expect(after.every((a) => a.activity === null || a.activity.state === 'background' || a.activity.background.length === 0)).toBe(true);
+    const listed = ((await requestJson(port, 'GET', '/api/sessions', cookie)).body as Session[]).find((s) => s.id === session.id);
+    expect(listed?.activity).toBeNull();
     expectWellFormed(stream.parser);
   });
 

@@ -124,9 +124,38 @@ export interface Agent {
  * Additive (D19): what a session's running turn (or one of its agents) is doing
  * now: `thinking` (the model is working, `system/thinking_tokens` ticks), `tool` (a
  * `tool_use` waits for its `tool_result`), `writing` (after a text block), `waiting`
- * (a question or permission request is open). `docs/derivations.md` → *Live activity*.
+ * (a question or permission request is open). Additive (D30): `background` (no turn
+ * runs, but the main agent waits for background work it started,
+ * {@link SessionActivity.background}). `docs/derivations.md` → *Live activity*.
  */
-export type ActivityState = 'thinking' | 'tool' | 'writing' | 'waiting';
+export type ActivityState = 'thinking' | 'tool' | 'writing' | 'waiting' | 'background';
+
+/**
+ * Additive (D30): what a pending background task is: a `Bash` run in the background,
+ * an async `Agent` / `Task`, a `Monitor`, or a `ScheduleWakeup`.
+ */
+export type BackgroundTaskKind = 'bash' | 'agent' | 'monitor' | 'wakeup';
+
+/**
+ * Additive (D30): background work the main agent started and whose end the CLI has
+ * not reported yet (`docs/derivations.md` → *Background work*). Derived in memory
+ * from the stream-json, never stored.
+ */
+export interface BackgroundTask {
+  /** The CLI's task id (the background command's, the async agent's, the monitor's); the `tool_use` id when the CLI gave none (a wake-up). */
+  readonly id: string;
+  /** The `tool_use` that started it. */
+  readonly toolUseId: string;
+  readonly kind: BackgroundTaskKind;
+  /** Short literal text (D19's summaries; for a GitHub wait the `gh …` command, for a wake-up its reason); at most 80 characters. */
+  readonly summary: string;
+  /** When it started (ISO): its tool call. */
+  readonly startedAt: string;
+  /** `wakeup` only: when the CLI wakes the session (ISO): the call's time + `delaySeconds`. */
+  readonly wakeAt?: string;
+  /** The command runs `gh run`, `gh pr checks` or `gh workflow`: a wait for GitHub Actions. */
+  readonly github: boolean;
+}
 
 /** Additive (D19): one agent's current action while the session's turn runs. */
 export interface AgentActivity {
@@ -145,21 +174,29 @@ export interface AgentActivity {
  * Additive (D19): the live activity of a session while a turn runs, derived in
  * memory from the process's stream-json (never stored, never guessed). The
  * top-level state is `waiting` while any request is open, else the main agent's.
+ * D30: also while no turn runs but background tasks are pending (state
+ * `background`); `null` only when neither.
  */
 export interface SessionActivity {
-  /** When the running turn started (ISO): the user message was taken up, or the CLI started a turn by itself. */
+  /**
+   * When the running turn started (ISO): the user message was taken up, or the CLI
+   * started a turn by itself. D30, state `background` (no turn runs): the oldest
+   * pending task's start, like `since`.
+   */
   readonly turnStartedAt: string;
   readonly state: ActivityState;
-  /** When the top-level state began (ISO); for `tool`, when that tool call started. */
+  /** When the top-level state began (ISO); for `tool`, when that tool call started; for `background`, when the oldest pending task started. */
   readonly since: string;
-  /** `tool`: the main agent's running tool; otherwise `null`. */
+  /** `tool`: the main agent's running tool; `background`: the tool that started the oldest pending task; otherwise `null`. */
   readonly tool: string | null;
-  /** `tool`: its short summary; otherwise `null`. */
+  /** `tool` / `background`: that call's short summary; otherwise `null`. */
   readonly summary: string | null;
-  /** Estimated thinking tokens so far this turn (the sum of the `system/thinking_tokens` deltas); `null` before the first tick. */
+  /** Estimated thinking tokens so far this turn (the sum of the `system/thinking_tokens` deltas); `null` before the first tick (and in `background`). */
   readonly thinkingTokens: number | null;
-  /** Each active agent's own action, keyed by agent id (`Agent.id`): the main agent and the subagents working now. */
+  /** Each active agent's own action, keyed by agent id (`Agent.id`): the main agent and the subagents working now (in `background`: the main agent, state `background`). */
   readonly agents: Readonly<Record<string, AgentActivity>>;
+  /** Additive (D30): the main agent's pending background tasks, oldest first; empty when none (also while a turn runs). */
+  readonly background: readonly BackgroundTask[];
 }
 
 /** `GET /api/sessions` item: a session with its agents and open question count. Provisional: M4.1. */
@@ -198,7 +235,7 @@ export interface Session {
   readonly origin: SessionOrigin;
   /** Additive (M4.1): the session has a live supervised `claude` process (Pause applies; else Resume). */
   readonly live: boolean;
-  /** Additive (D19): what the running turn is doing now; `null` when no turn runs (always for a session without a live process). */
+  /** Additive (D19): what the running turn is doing now; `null` when no turn runs (always for a session without a live process). D30: also set (state `background`) while no turn runs but background tasks are pending. */
   readonly activity: SessionActivity | null;
   /** Additive (M4.1): `claude --resume <claudeSessionId>`, the handoff card's command (prototype copy, M0.4). */
   readonly resumeCommand: string;
@@ -1159,7 +1196,7 @@ export interface HubEvents {
   readonly worktreeRemovable: Worktree;
   readonly scheduleRun: { readonly scheduleId: string; readonly result: ScheduleRunResult };
   readonly system: SystemInfo;
-  /** Additive (D19): a session's live activity changed (at most one per second per session; `null` = the turn ended). */
+  /** Additive (D19): a session's live activity changed (at most one per second per session; `null` = the turn ended; D30: and no background task is pending). */
   readonly activity: { readonly sessionId: string; readonly activity: SessionActivity | null };
 }
 

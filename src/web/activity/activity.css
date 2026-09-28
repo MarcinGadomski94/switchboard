@@ -1,7 +1,8 @@
 /*
  * D19 live activity (docs/chat.md → Live activity line): the chat line above the
  * composer, the sidebar row's action and pulsing dot, the agent cards' action.
- * Everything here applies only while a turn runs; idle views are untouched.
+ * Everything here applies only while a turn runs (D30: or background work is
+ * pending); idle views are untouched.
  * Prototype tokens: mono meta type, muted text, the running blue for the spinner.
  */
 
@@ -38,6 +39,12 @@
   color: var(--status-need);
 }
 
+/* D30: background work pending: the hourglass, amber and still (text presentation where the font has one). */
+.sb-activity-glyph[data-glyph='⏳'] {
+  color: var(--status-need);
+  font-variant-emoji: text;
+}
+
 .sb-activity-text {
   min-width: 0;
   overflow: hidden;
@@ -53,6 +60,14 @@
 
 .sb-activity-tokens {
   color: var(--muted-3);
+}
+
+/* D30: `+N more` beside the oldest background task: always shown, like the time. */
+.sb-activity-more,
+.sb-activity-label-more {
+  flex: none;
+  color: var(--muted-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Sidebar row and agent card: action (cut with …) then its time, which always shows. */

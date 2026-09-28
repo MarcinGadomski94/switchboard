@@ -1,4 +1,4 @@
-import type { ActivityState, AgentActivity, SessionActivity } from '../../core/api.ts';
+import type { ActivityState, AgentActivity, BackgroundTask, SessionActivity } from '../../core/api.ts';
 
 /**
  * The live activity's copy (D19, `docs/chat.md` → *Live activity line*): the
@@ -42,6 +42,11 @@ export const VERB_ROTATE_MS = 4_000;
 export const WRITING = 'Writing…';
 export const THINKING = 'Thinking…';
 export const WAITING = 'Waiting for you';
+
+/** D30: the background wait's words (`<words>: <summary>`, a wake-up `Waking up at HH:MM`). */
+export const WAITING_GITHUB = 'Waiting for GitHub Actions';
+export const WAITING_BACKGROUND = 'Waiting for a background task';
+export const WAKING_UP = 'Waking up at';
 
 /** Milliseconds from `iso` to `now`, never negative (0 for an unreadable time). */
 export function elapsedMs(iso: string, now: number): number {
@@ -104,8 +109,64 @@ export function toolText(tool: string | null, summary: string | null): string {
   return summary && summary !== name ? `${name}: ${summary}` : name;
 }
 
-/** The glyph in front of the chat line: the spinner while working, `●` for a running tool, `⏸` while waiting. */
-export type ActivityGlyph = 'spinner' | '●' | '⏸';
+/** The glyph in front of the chat line: the spinner while working, `●` for a running tool, `⏸` while waiting, `⏳` while background work runs (D30). */
+export type ActivityGlyph = 'spinner' | '●' | '⏸' | '⏳';
+
+/** `HH:MM` (24 h, local time) of an ISO time; empty for an unreadable one. */
+export function formatClockTime(iso: string): string {
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return '';
+  return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
+}
+
+/** D30: the oldest of the pending background tasks (the one the views show); `null` without any. */
+export function oldestBackgroundTask(tasks: readonly BackgroundTask[]): BackgroundTask | null {
+  let oldest: BackgroundTask | null = null;
+  for (const task of tasks) if (oldest === null || task.startedAt < oldest.startedAt) oldest = task;
+  return oldest;
+}
+
+/**
+ * D30: one background task's words: a wake-up → `Waking up at 18:40`; a GitHub wait
+ * → `Waiting for GitHub Actions: <summary>`; anything else → `Waiting for a
+ * background task: <summary>`.
+ */
+export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'>): string {
+  if (task.kind === 'wakeup' && task.wakeAt) return `${WAKING_UP} ${formatClockTime(task.wakeAt)}`;
+  return `${task.github ? WAITING_GITHUB : WAITING_BACKGROUND}: ${task.summary}`;
+}
+
+/** D30: a background wait as the views show it: the oldest task's words, `+N more` for the others, the time since it started. */
+export interface BackgroundLine {
+  readonly text: string;
+  /** `+2 more` with several tasks; `null` with one. */
+  readonly more: string | null;
+  /** `3:21`: since the oldest task started. */
+  readonly time: string;
+}
+
+/**
+ * D30: the background wait (the chat line, the sidebar row, the main agent's card
+ * and overview cell): the oldest pending task ({@link backgroundText}), `+N more`
+ * when others are pending, and the time since it started (`3:21`, a running tool's
+ * clock). Without the list (an older payload), the activity's own `summary` and
+ * `since` stand in.
+ */
+export function backgroundLine(
+  tasks: readonly BackgroundTask[],
+  fallback: Pick<AgentActivity, 'since' | 'tool' | 'summary'>,
+  now: number,
+): BackgroundLine {
+  const oldest = oldestBackgroundTask(tasks);
+  if (oldest === null) {
+    return { text: `${WAITING_BACKGROUND}: ${fallback.summary ?? fallback.tool ?? 'Tool'}`, more: null, time: formatClock(elapsedMs(fallback.since, now)) };
+  }
+  return {
+    text: backgroundText(oldest),
+    more: tasks.length > 1 ? `+${tasks.length - 1} more` : null,
+    time: formatClock(elapsedMs(oldest.startedAt, now)),
+  };
+}
 
 /** The chat's activity line (D19). */
 export interface ChatActivityLine {
@@ -117,17 +178,25 @@ export interface ChatActivityLine {
   readonly time: string;
   /** `↓ 1.2k tokens` while thinking once a tick arrived; else `null`. */
   readonly tokens: string | null;
+  /** D30 `background` with several tasks: `+N more`; absent otherwise. */
+  readonly more?: string;
 }
 
 /**
  * The chat line (D19): thinking → a rotating verb, the time since the turn
  * started and `↓ n tokens` when known; a running tool → `● <Tool>: <summary>` and
  * the time since that tool started; writing → `Writing…` and the turn's time;
- * waiting → `Waiting for you` and the time since the request opened.
+ * waiting → `Waiting for you` and the time since the request opened. D30:
+ * background → `⏳`, the oldest task's words ({@link backgroundLine}), `+N more`,
+ * the time since it started.
  */
 export function chatActivityLine(activity: SessionActivity, now: number): ChatActivityLine {
   const turn = formatElapsed(elapsedMs(activity.turnStartedAt, now));
   switch (activity.state) {
+    case 'background': {
+      const line = backgroundLine(activity.background ?? [], activity, now);
+      return { state: 'background', glyph: '⏳', text: line.text, time: line.time, tokens: null, ...(line.more ? { more: line.more } : {}) };
+    }
     case 'tool':
       return { state: 'tool', glyph: '●', text: toolText(activity.tool, activity.summary), time: formatClock(elapsedMs(activity.since, now)), tokens: null };
     case 'waiting':
@@ -150,16 +219,27 @@ export interface ActivityLabel {
   readonly state: ActivityState;
   readonly text: string;
   readonly time: string;
+  /** D30 `background` with several tasks: `+N more`; absent otherwise. */
+  readonly more?: string;
 }
 
 /**
  * An agent's action for the sidebar and a subagent's card: `Thinking…` / `Writing…`
  * with the time since the agent became active (the turn, for the main agent),
  * `Bash: npm test` / `Waiting for you` with the time since that began, in the
- * chat line's formats.
+ * chat line's formats. D30: `background` → the chat line's background words and
+ * time, from the session's pending tasks (`background`).
  */
-export function activityLabel(entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>, now: number): ActivityLabel {
+export function activityLabel(
+  entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
+  now: number,
+  background: readonly BackgroundTask[] = [],
+): ActivityLabel {
   switch (entry.state) {
+    case 'background': {
+      const line = backgroundLine(background, entry, now);
+      return { state: 'background', text: line.text, time: line.time, ...(line.more ? { more: line.more } : {}) };
+    }
     case 'tool':
       return { state: 'tool', text: toolText(entry.tool, entry.summary), time: formatClock(elapsedMs(entry.since, now)) };
     case 'waiting':
@@ -171,9 +251,9 @@ export function activityLabel(entry: Pick<AgentActivity, 'state' | 'since' | 'st
   }
 }
 
-/** The session's action for its sidebar row: the top-level state, timed like the chat line. */
+/** The session's action for its sidebar row: the top-level state, timed like the chat line (D30: the background wait likewise). */
 export function sessionActivityLabel(activity: SessionActivity, now: number): ActivityLabel {
-  return activityLabel({ ...activity, startedAt: activity.turnStartedAt }, now);
+  return activityLabel({ ...activity, startedAt: activity.turnStartedAt }, now, activity.background ?? []);
 }
 
 /**
@@ -181,14 +261,17 @@ export function sessionActivityLabel(activity: SessionActivity, now: number): Ac
  * line's words: {@link activityLabel}, except that the main agent (`turnStartedAt`
  * given) thinks with the chat line's rotating verb and the turn's time
  * (`Pondering…  1m 23s`); a subagent (`null`) reads `Thinking…`. D21 ruling
- * 2026-09-28: the card, the overview and the chat line use the same verb.
+ * 2026-09-28: the card, the overview and the chat line use the same verb. D30: the
+ * main agent's background wait reads like the chat line's, from `background` (the
+ * session's pending tasks).
  */
 export function cardActivityLabel(
   entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
   turnStartedAt: string | null,
   now: number,
+  background: readonly BackgroundTask[] = [],
 ): ActivityLabel {
-  const label = activityLabel(entry, now);
+  const label = activityLabel(entry, now, background);
   return label.state === 'thinking' && turnStartedAt !== null ? { ...label, text: thinkingVerb(turnStartedAt, now) } : label;
 }
 
@@ -196,19 +279,23 @@ export function cardActivityLabel(
  * An agent's action for the agent overview's Status cell (D21): the agent card's
  * label ({@link cardActivityLabel}, so the main agent thinks with the chat line's
  * verb) with the chat line's glyph in front of a running tool
- * (`● Bash: npm test  0:42`) or a wait (`⏸ Waiting for you  0:12`).
+ * (`● Bash: npm test  0:42`), a wait (`⏸ Waiting for you  0:12`) or, D30, a
+ * background wait (`⏳ Waiting for GitHub Actions: gh run view 42  3:21`).
  */
 export function overviewActivityLabel(
   entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
   turnStartedAt: string | null,
   now: number,
+  background: readonly BackgroundTask[] = [],
 ): ActivityLabel {
-  const label = cardActivityLabel(entry, turnStartedAt, now);
+  const label = cardActivityLabel(entry, turnStartedAt, now, background);
   switch (label.state) {
     case 'tool':
       return { ...label, text: `● ${label.text}` };
     case 'waiting':
       return { ...label, text: `⏸ ${label.text}` };
+    case 'background':
+      return { ...label, text: `⏳ ${label.text}` };
     default:
       return label;
   }
