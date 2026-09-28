@@ -1,0 +1,148 @@
+/*
+ * D35: the guided frame-helper setup (Settings → Embedded tools → Frame helper,
+ * and a site tool's "needs the frame helper" page). SPEC tokens only; the buttons
+ * are the settings' small outlined action (`.sb-set-action`: 12px, #2c2d32 border,
+ * 6px radius, 5px 10px padding, #c9c8c3).
+ */
+.sb-fh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card-2);
+  text-align: left;
+}
+
+.sb-fh-status {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-fh-status[data-status='on'] {
+  color: var(--status-done);
+}
+
+.sb-fh-status[data-status='older'] {
+  color: var(--status-need);
+}
+
+.sb-fh-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb-fh-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sb-fh-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: 50%;
+  font: 500 10.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-fh-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-fh-text {
+  font-size: var(--fs-body);
+  line-height: 18px;
+  color: var(--text);
+}
+
+.sb-fh-text b {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-fh-path {
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  background: var(--bg-code);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-button);
+  padding: 5px 8px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.sb-fh-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb-fh-button {
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.sb-fh-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-selected-card);
+}
+
+.sb-fh-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sb-fh-note {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-fh-note[data-kind='error'] {
+  color: var(--status-need);
+}
+
+/* Settings → Embedded tools: the Frame helper row under the tool cards, its panel under it. */
+.sb-fh-settings {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-fh-settings-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sb-fh-settings-control .sb-fh-status {
+  max-width: 300px;
+  text-align: right;
+}
+
+/* A site's "needs the frame helper" card: the panel under its buttons, divided by a row line. */
+.sb-fh-overlay-panel .sb-fh-panel {
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-row);
+  border-radius: 0;
+  background: transparent;
+}
