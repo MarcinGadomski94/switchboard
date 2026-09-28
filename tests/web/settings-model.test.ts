@@ -66,6 +66,9 @@ describe('Settings model (M8.2)', () => {
     expect(resolveSection('tools')).toBe('tools');
     expect(resolveSection('github')).toBe('github');
     expect(resolveSection('nope')).toBe('claude');
+    // D14: Workspace & solutions became Folders; its old key stays and `folders` opens it too.
+    expect(resolveSection('workspace')).toBe('workspace');
+    expect(resolveSection('folders')).toBe('workspace');
   });
 
   it('builds the scan table per top-level folder, splitting the read-only group back into its folders', () => {

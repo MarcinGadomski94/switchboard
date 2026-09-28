@@ -221,36 +221,7 @@
   color: var(--status-fail);
 }
 
-/* Browse…: one folder's subfolders. */
-.sb-wz-browser {
-  display: flex;
-  flex-direction: column;
-  max-width: 560px;
-  max-height: 210px;
-  overflow: auto;
-  border: 1px solid var(--border-card);
-  border-radius: 9px;
-  background: var(--bg-card-2);
-  padding: 4px;
-}
-
-.sb-wz-browser-path {
-  font: 400 11.5px var(--font-mono);
-  color: var(--muted-3);
-  padding: 6px 10px;
-  overflow-wrap: anywhere;
-}
-
-.sb-wz-folder {
-  font: 400 12.5px var(--font-mono);
-  color: var(--text-2);
-  padding: 6px 10px;
-  border-radius: var(--radius-button);
-}
-
-.sb-wz-folder:hover {
-  background: var(--bg-selected-row);
-}
+/* Browse…: the shared listing (`.sb-fp-browser`, src/web/folders/folders.css, D14). */
 
 /* Step 3: the scan table. */
 .sb-wz-scan {

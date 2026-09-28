@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FolderCheck, FolderListing, SetupState, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import type { SetupState, SolutionGroup, SystemInfo } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
+import { FolderBrowserList } from '../folders/FolderTag.tsx';
+import { samePath } from '../folders/folders.ts';
+import { useFolderPicker } from '../folders/useFolders.ts';
 import { notifyOs } from '../toast/notify.ts';
 import {
   LAST_STEP,
@@ -12,14 +15,10 @@ import {
   nextLabel,
   notificationState,
   railItems,
-  rootLine,
   scanRows,
   stepPosition,
 } from './setup-wizard.ts';
 import './setup-wizard.css';
-
-/** How long the root field waits after typing before it checks the folder (ms). */
-const CHECK_DELAY_MS = 250;
 
 /** The message of a refused call: the server's `message`, else the error's. */
 function errorMessage(error: unknown): string {
@@ -92,9 +91,10 @@ function ScanStep({ groups, error }: { readonly groups: readonly SolutionGroup[]
  * First-run setup wizard (M5.3, SPEC → Modals → Setup wizard; `docs/setup.md`):
  * 960×620, a steps rail with ✓/number dots, Back / Skip / Continue → Finish.
  * 1. Claude Code CLI + login and the GitHub CLI (`GET /api/system?fresh=1`).
- * 2. A folder (D14: a workspace or a git repo; skippable): typed or picked with
- *    Browse…, checked as you type (`GET /api/folders/check`); Continue adds it
- *    (`POST /api/folders`; the first one becomes the default).
+ * 2. Add your first folder (D14: a workspace or a git repo; skippable): typed or
+ *    picked with Browse…, checked as you type (`GET /api/folders/check`, the
+ *    shared folder picker `useFolderPicker`); Continue adds it (`POST /api/folders`;
+ *    the first one becomes the default), an empty field just moves on.
  * 3. The scan of the default folder (`GET /api/solutions`).
  * 4. Notifications: asks the browser, then confirms with an OS notification.
  * 5. The usage warning threshold; Finish marks the setup done (`POST /api/setup/complete`).
@@ -106,11 +106,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
   const [setup, setSetup] = useState<SetupState | null>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [systemError, setSystemError] = useState<string | null>(null);
-  const [rootInput, setRootInput] = useState('');
-  const [rootCheck, setRootCheck] = useState<FolderCheck | null>(null);
-  const [browse, setBrowse] = useState<FolderListing | null>(null);
-  const [rootError, setRootError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const picker = useFolderPicker();
   const [groups, setGroups] = useState<SolutionGroup[] | null>(null);
   const [scanError, setScanError] = useState<ApiError | null>(null);
   const [permission, setPermission] = useState(currentPermission);
@@ -132,8 +128,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
         if (cancelled) return;
         setSetup(state);
         const saved = defaultFolder(state);
-        setRootInput(saved?.path ?? '');
-        setRootCheck(saved?.check ?? null);
+        if (saved) picker.setInput(saved.path);
       },
       () => undefined,
     );
@@ -179,79 +174,16 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
     };
   }, [step]);
 
-  // The folder field is checked a moment after typing stops.
-  useEffect(() => {
-    if (!setup) return;
-    const typed = rootInput.trim();
-    if (!typed) {
-      setRootCheck(null);
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      api.checkFolder(typed).then(
-        (check) => {
-          if (!cancelled) setRootCheck(check);
-        },
-        () => undefined,
-      );
-    }, CHECK_DELAY_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [rootInput, setup]);
-
-  const openFolder = (target?: string): void => {
-    api.folders(target).then(
-      (listing) => {
-        setBrowse(listing);
-        if (target !== undefined) setRootInput(listing.path);
-      },
-      (error: unknown) => {
-        // A typed folder that is not there: start from the default folder instead.
-        if (target !== undefined && error instanceof ApiError && error.status === 404) openFolder(undefined);
-        else setRootError(errorMessage(error));
-      },
-    );
-  };
-
-  const toggleBrowse = (): void => {
-    if (browse) {
-      setBrowse(null);
-      return;
-    }
-    setRootError(null);
-    const typed = rootInput.trim();
-    api.folders(typed || undefined).then(
-      (listing) => setBrowse(listing),
-      (error: unknown) => {
-        if (typed && error instanceof ApiError && error.status === 404) openFolder(undefined);
-        else setRootError(errorMessage(error));
-      },
-    );
-  };
-
-  const saveRootAndContinue = async (): Promise<void> => {
-    const typed = rootInput.trim();
-    if (!typed || (setup && setup.folders.some((folder) => folder.path === typed))) {
+  const saveFolderAndContinue = async (): Promise<void> => {
+    const typed = picker.input.trim();
+    if (!typed || (setup && setup.folders.some((folder) => samePath(folder.path, typed) || samePath(folder.canonicalPath, typed)))) {
       setStep(2);
       return;
     }
-    setSaving(true);
-    setRootError(null);
-    try {
-      const added = await api.addFolder(typed);
-      setSetup(await api.setup());
-      setRootInput(added.path);
-      setRootCheck(added.check);
-      setBrowse(null);
-      setStep(2);
-    } catch (error) {
-      setRootError(errorMessage(error));
-    } finally {
-      setSaving(false);
-    }
+    const added = await picker.add();
+    if (!added) return;
+    setSetup(await api.setup().catch(() => setup));
+    setStep(2);
   };
 
   const finish = async (): Promise<void> => {
@@ -266,7 +198,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
   };
 
   const next = (): void => {
-    if (step === 1) void saveRootAndContinue();
+    if (step === 1) void saveFolderAndContinue();
     else if (step === LAST_STEP) void finish();
     else setStep(step + 1);
   };
@@ -284,7 +216,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
   };
 
   const current = WIZARD_STEPS[step] ?? WIZARD_STEPS[0]!;
-  const line = rootLine(rootInput.trim() ? rootCheck : null);
+  const line = picker.line;
   const notice = notificationState(permission);
   const warnAt = setup?.warnAtPct ?? 90;
 
@@ -336,19 +268,16 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
                 <input
                   className="sb-wz-field"
                   data-testid="wz-root-input"
-                  value={rootInput}
+                  value={picker.input}
                   spellCheck={false}
                   placeholder="A workspace (router AGENTS.md) or a git repository"
                   aria-label="Folder"
-                  onChange={(event) => {
-                    setRootInput(event.target.value);
-                    setRootError(null);
-                  }}
+                  onChange={(event) => picker.setInput(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter') void saveRootAndContinue();
+                    if (event.key === 'Enter') void saveFolderAndContinue();
                   }}
                 />
-                <button type="button" className="sb-button sb-wz-browse" data-testid="wz-browse" onClick={toggleBrowse}>
+                <button type="button" className="sb-button sb-wz-browse" data-testid="wz-browse" onClick={picker.toggleBrowse}>
                   Browse…
                 </button>
               </div>
@@ -357,26 +286,10 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
                   {line.text}
                 </div>
               )}
-              {browse && (
-                <div className="sb-wz-browser" data-testid="wz-browser">
-                  <div className="sb-wz-browser-path" data-testid="wz-browser-path">
-                    {browse.path}
-                  </div>
-                  {browse.parent !== null && (
-                    <button type="button" className="sb-button sb-wz-folder" data-testid="wz-folder-up" onClick={() => openFolder(browse.parent ?? undefined)}>
-                      ../
-                    </button>
-                  )}
-                  {browse.folders.map((folder) => (
-                    <button key={folder.path} type="button" className="sb-button sb-wz-folder" data-testid="wz-folder" onClick={() => openFolder(folder.path)}>
-                      {`${folder.name}/`}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {rootError && (
+              {picker.listing && <FolderBrowserList listing={picker.listing} onOpen={picker.openFolder} testId="wz" />}
+              {picker.error && (
                 <div className="sb-wz-error" data-testid="wz-root-error">
-                  {`Not saved: ${rootError}`}
+                  {`Not added: ${picker.error}`}
                 </div>
               )}
             </>
@@ -420,7 +333,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
             <button type="button" className="sb-button sb-wz-skip" data-testid="wz-skip" onClick={onClose}>
               Skip
             </button>
-            <button type="button" className="sb-button sb-wz-next" data-testid="wz-next" disabled={saving} onClick={next}>
+            <button type="button" className="sb-button sb-wz-next" data-testid="wz-next" disabled={picker.adding} onClick={next}>
               {nextLabel(step)}
             </button>
           </div>

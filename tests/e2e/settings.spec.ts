@@ -126,7 +126,7 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
   await expect(page.locator('.sb-set-nav-title')).toHaveText('Settings');
   await expect(page.locator('.sb-set-nav-item')).toHaveText([
     'Claude Code',
-    'Workspace & solutions',
+    'Folders',
     'Sessions & worktrees',
     'Notifications & usage',
     'Schedules',
@@ -150,7 +150,7 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
 
   // Every section by its nav item (client-side) and its URL.
   const sections: Array<[key: string, title: string]> = [
-    ['workspace', 'Workspace & solutions'],
+    ['workspace', 'Folders'],
     ['sessions', 'Sessions & worktrees'],
     ['notify', 'Notifications & usage'],
     ['schedules', 'Schedules'],
@@ -173,18 +173,31 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
   await expect(view).toHaveAttribute('data-section', 'claude');
 });
 
-test('Workspace & solutions: the configured root with the router title; Rescan scans again', async ({ page }) => {
+test('Folders (D14): the saved default folder with its kind and check line; its scan; Rescan scans again', async ({ page }) => {
   const calls = recordApi(page);
   await page.goto(`${server.baseUrl}/settings/workspace`);
-  await expect(row(page, 'workspace-root').locator('.sb-set-row-desc')).toHaveText(`${workspace} · AGENTS.md (Workspace Router)`);
+  const folder = page.getByTestId('settings-folder');
+  await expect(folder).toHaveCount(1);
+  await expect(folder.getByTestId('settings-folder-name')).toHaveText('work space');
+  await expect(folder.getByTestId('settings-folder-kind')).toHaveText('workspace');
+  await expect(folder.getByTestId('settings-folder-default')).toHaveText('default');
+  await expect(folder.getByTestId('settings-folder-path')).toHaveText(workspace);
+  await expect(folder.getByTestId('settings-folder-check')).toHaveText('✓ AGENTS.md (Workspace Router) · 6 solutions');
+  await expect(folder.getByTestId('settings-folder-make-default')).toHaveCount(0);
+  await expect(row(page, 'workspace-root').locator('.sb-set-row-label')).toHaveText('Solutions in work space');
+  await expect(row(page, 'workspace-root').locator('.sb-set-row-desc')).toHaveText(workspace);
   // The sidebar (conflict badge) and the section each ask once on load.
   await expect.poll(() => calls.filter((c) => c.path === '/api/solutions').length).toBe(2);
   await page.getByTestId('settings-rescan').click();
   await expect.poll(() => calls.filter((c) => c.path === '/api/solutions').length).toBe(3);
   expect(await getSettings()).toMatchObject({ 'workspace.root': workspace, 'workspace.router': 'AGENTS.md (Workspace Router)' });
+  // /settings/folders opens the same section.
+  await page.goto(`${server.baseUrl}/settings/folders`);
+  await expect(page.getByTestId('view-settings')).toHaveAttribute('data-section', 'workspace');
+  await expect(page.getByTestId('settings-title')).toHaveText('Folders');
 });
 
-test('Workspace & solutions scan table + GitHub repositories from the real scan (M6.1 GET /api/solutions)', async ({ page }) => {
+test('Folders scan table + GitHub repositories from the real scan (M6.1 GET /api/solutions)', async ({ page }) => {
   await page.goto(`${server.baseUrl}/settings/workspace`);
   const scan = page.getByTestId('settings-scan');
   await expect(scan.locator('.sb-set-scan-row')).toHaveCount(5, { timeout: 5_000 });
@@ -208,7 +221,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Session-start questions',
   ]);
   await expect(page.locator('.sb-set-row').getByTestId('setting-value')).toHaveText([
-    'workspace root',
+    "the session's folder",
     'on',
     '../{repo}-wt-{session}',
     'keep until merged',
@@ -451,7 +464,8 @@ test('rows render contract-shaped data from /api/system, /api/schedules and /api
   ];
   await page.route('**/api/system', (route) => route.fulfill({ json: system }));
   await page.route('**/api/schedules', (route) => route.fulfill({ json: schedules }));
-  await page.route('**/api/solutions', (route) => route.fulfill({ json: groups }));
+  // D14: Settings → Folders asks for its folder's scan (`?folder=<id>`).
+  await page.route(/\/api\/solutions(\?.*)?$/, (route) => route.fulfill({ json: groups }));
 
   await page.goto(`${server.baseUrl}/settings/claude`);
   await expect(row(page, 'cli').locator('.sb-set-row-desc')).toHaveText('/opt/bin/claude');

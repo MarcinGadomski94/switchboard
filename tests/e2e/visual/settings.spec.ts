@@ -37,12 +37,20 @@ import {
  * schedules, and a scan with the prototype's folders, counts and rules under the
  * temp root. Copy that differs on purpose is listed in {@link COPY_EXEMPT} with
  * the reason, and reported.
+ *
+ * D14: *Workspace & solutions* became **Folders** (nav label and title). The
+ * prototype's workspace-root row and scan table are compared with the app's
+ * scan block below the saved-folder list (geometry `size`: the list above moves
+ * them down); the list itself, the lede and Add… are D14 additions, checked on
+ * their own ({@link folderAdditions}).
  */
 
 interface PartSpec {
   readonly path: readonly number[];
   readonly geometry: Geometry;
   readonly copy: boolean;
+  /** The app's path when it differs from the prototype's (D14: the Folders section). */
+  readonly app?: readonly number[];
 }
 
 interface SectionSpec {
@@ -53,7 +61,10 @@ interface SectionSpec {
   readonly parts: Readonly<Record<string, PartSpec>>;
 }
 
-const box = (path: readonly number[], copy = true, geometry: Geometry = 'box'): PartSpec => ({ path, geometry, copy });
+const box = (path: readonly number[], copy = true, geometry: Geometry = 'box', app?: readonly number[]): PartSpec => ({ path, geometry, copy, ...(app ? { app } : {}) });
+
+/** D14: the app's Folders section keeps the scan block (the default folder's row + table) at content child 4. */
+const APP_SCAN_BLOCK = [1, 0, 1, 4];
 
 /**
  * A settings row at content child `i`: the row, its label, description and
@@ -108,19 +119,19 @@ const SECTIONS: readonly SectionSpec[] = [
     ready: 'infrastructure/',
     parts: {
       ...NAV,
-      // The temp root path is longer than D:\\acme and wraps: the row is taller, so
-      // everything below keeps x, width and height but moves down (geometry `size`).
-      ...rowParts('root', 1, 1, { copyDesc: false, inner: 'size' }),
-      root: box([1, 0, 1, 1], false, 'none'),
-      rootDesc: box([1, 0, 1, 1, 0, 1], false, 'none'),
-      scan: box([1, 0, 1, 2], false, 'size'),
+      // D14: the prototype's root row is the app's "Solutions in <default folder>" row (the temp path wraps, the list above moves it: `size` / `none`).
+      root: box([1, 0, 1, 1], false, 'none', [...APP_SCAN_BLOCK, 0]),
+      rootLabel: box([1, 0, 1, 1, 0, 0], true, 'none', [...APP_SCAN_BLOCK, 0, 0, 0]),
+      rootDesc: box([1, 0, 1, 1, 0, 1], false, 'none', [...APP_SCAN_BLOCK, 0, 0, 1]),
+      rootValue: box([1, 0, 1, 1, 1], true, 'size', [...APP_SCAN_BLOCK, 0, 1]),
+      scan: box([1, 0, 1, 2], false, 'size', [...APP_SCAN_BLOCK, 1]),
       ...Object.fromEntries(
         [0, 1, 2, 3, 4, 5, 6, 7].flatMap((r) => [
-          [`scan${r}`, box([1, 0, 1, 2, r], false, 'size')],
-          [`scan${r}Folder`, box([1, 0, 1, 2, r, 0], true, 'size')],
-          [`scan${r}Count`, box([1, 0, 1, 2, r, 1], true, 'size')],
-          [`scan${r}Examples`, box([1, 0, 1, 2, r, 2], false, 'size')],
-          [`scan${r}Rule`, box([1, 0, 1, 2, r, 3], true, 'size')],
+          [`scan${r}`, box([1, 0, 1, 2, r], false, 'size', [...APP_SCAN_BLOCK, 1, r])],
+          [`scan${r}Folder`, box([1, 0, 1, 2, r, 0], true, 'size', [...APP_SCAN_BLOCK, 1, r, 0])],
+          [`scan${r}Count`, box([1, 0, 1, 2, r, 1], true, 'size', [...APP_SCAN_BLOCK, 1, r, 1])],
+          [`scan${r}Examples`, box([1, 0, 1, 2, r, 2], false, 'size', [...APP_SCAN_BLOCK, 1, r, 2])],
+          [`scan${r}Rule`, box([1, 0, 1, 2, r, 3], true, 'size', [...APP_SCAN_BLOCK, 1, r, 3])],
         ]),
       ),
     },
@@ -131,7 +142,8 @@ const SECTIONS: readonly SectionSpec[] = [
     ready: 'Session-start questions',
     parts: {
       ...NAV,
-      ...rowParts('folder', 1, 1),
+      // D14: sessions start in their own folder (the copy says so; the value's width moves the texts: `none`).
+      ...rowParts('folder', 1, 1, { copyDesc: false, copyValue: false, inner: 'none' }),
       ...rowParts('worktrees', 2, 1),
       ...rowParts('location', 3, 1),
       ...rowParts('cleanup', 4, 1),
@@ -208,10 +220,15 @@ const SECTIONS: readonly SectionSpec[] = [
 
 /** Copy that differs from the prototype on purpose (not compared), with the reason. */
 const COPY_EXEMPT: ReadonlyArray<readonly [part: string, reason: string]> = [
+  ['*.nav2', 'D14: the section is "Folders" (the saved workspaces and git repos) instead of "Workspace & solutions"'],
+  ['workspace.title', 'D14: "Folders" instead of "Workspace & solutions"'],
+  ['workspace.rootLabel', 'D14: "Solutions in <folder>" (the default folder, or the one clicked in the list) instead of "Workspace root"'],
+  ['sessions.folderDesc', 'D14: "A workspace session starts at its root, so the router applies; a repo session in the repo" (sessions pick their folder)'],
+  ['sessions.folderValue', 'D14: "the session\'s folder" instead of "workspace root"'],
   ['claude.accountValue', '"Max · signed in": the plan is not in `/api/system`, so the app shows "signed in" (never invented)'],
   ['claude.serviceValue', 'the address carries the test port (127.0.0.1:49xx) instead of 4870'],
   ['claude.permissionsDesc', 'D6: permission requests also surface in the Inbox ("Only agent questions and permission requests surface here.")'],
-  ['workspace.rootDesc', 'the temp workspace path instead of D:\\acme (gap #17: OS paths); the router title matches'],
+  ['workspace.rootDesc', 'the temp workspace path instead of D:\\acme (gap #17: OS paths); D14: the router title moved to the folder\'s check line in the list above'],
   ['workspace.scan*Examples', 'examples are solution names from the scan; the prototype writes prose ("MAUI app + Mobile Gateway BFF")'],
   ['notify.warnValue', 'a <select>; its shown value is checked apart ("90%")'],
   ['tools.lede', 'gap #13: "URLs are saved in Switchboard." instead of "in this browser"'],
@@ -300,7 +317,8 @@ async function stubOtherLanes(page: Page): Promise<void> {
   groups.push({ folder: 'read-only', note: 'deprecated/ · infrastructure/ · never edited', rule: 'read-only', solutions: readOnly });
   await page.route('**/api/system', (route) => route.fulfill({ json: system }));
   await page.route('**/api/schedules', (route) => route.fulfill({ json: schedules }));
-  await page.route('**/api/solutions', (route) => route.fulfill({ json: groups }));
+  // D14: Settings → Folders reads the scan of a saved folder (`?folder=<id>`).
+  await page.route(/\/api\/solutions(\?.*)?$/, (route) => route.fulfill({ json: groups }));
 }
 
 test('Settings matches the prototype in every section (tokens, boxes ±2 px, copy)', async ({ browser }) => {
@@ -315,7 +333,9 @@ test('Settings matches the prototype in every section (tokens, boxes ±2 px, cop
   const sections: Array<{ key: string; label: string; rows: string[]; main: number; full: number }> = [];
   const shots: Record<string, Buffer> = {};
   const exempt = (key: string, name: string): boolean =>
-    COPY_EXEMPT.some(([part]) => new RegExp(`^${part.replace('.', '\\.').replace('*', '\\d+')}$`).test(`${key}.${name}`));
+    COPY_EXEMPT.some(([part]) =>
+      part.startsWith('*.') ? name === part.slice(2) : new RegExp(`^${part.replace('.', '\\.').replace('*', '\\d+')}$`).test(`${key}.${name}`),
+    );
 
   for (const section of SECTIONS) {
     await protoPage.getByText(section.label, { exact: true }).first().click();
@@ -324,8 +344,9 @@ test('Settings matches the prototype in every section (tokens, boxes ±2 px, cop
     await appPage.getByText(section.ready, { exact: true }).first().waitFor();
 
     const paths = Object.fromEntries(Object.entries(section.parts).map(([name, part]) => [name, part.path]));
+    const appPaths = Object.fromEntries(Object.entries(section.parts).map(([name, part]) => [name, part.app ?? part.path]));
     const proto = await measure(protoPage, paths);
-    const view = await measure(appPage, paths);
+    const view = await measure(appPage, appPaths);
     const rows: string[] = [];
     for (const [name, spec] of Object.entries(section.parts)) {
       const p = proto[name];
@@ -348,6 +369,8 @@ test('Settings matches the prototype in every section (tokens, boxes ±2 px, cop
       failures.push(...issues);
       rows.push(`| ${name} | ${spec.geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${issues.length ? 'FAIL' : 'ok'} | ${copyNote.replaceAll('|', '\\|')} |`);
     }
+
+    if (section.key === 'workspace') rows.push(...(await folderAdditions(appPage, failures)));
 
     if (section.key === 'notify') {
       const shown = await appPage.locator('.sb-set-select').evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent ?? '');
@@ -433,6 +456,36 @@ test('Settings matches the prototype in every section (tokens, boxes ±2 px, cop
   expect(failures).toEqual([]);
 });
 
+/**
+ * The D14 additions of the Folders section, checked on their own (the prototype
+ * has none): the lede, the saved folders (the temp root first as the default,
+ * then the demo's folder), each with its kind, path and check line, and Add….
+ */
+async function folderAdditions(page: Page, failures: string[]): Promise<string[]> {
+  const rows: string[] = [];
+  const folders = await page.getByTestId('settings-folder').evaluateAll((els) =>
+    els.map((el) => ({
+      name: el.querySelector('[data-testid="settings-folder-name"]')?.textContent ?? '',
+      kind: el.querySelector('[data-testid="settings-folder-kind"]')?.textContent ?? '',
+      isDefault: el.querySelector('[data-testid="settings-folder-default"]') !== null,
+      path: el.querySelector('[data-testid="settings-folder-path"]')?.textContent ?? '',
+      check: el.querySelector('[data-testid="settings-folder-check"]')?.textContent ?? '',
+    })),
+  );
+  const checks: Array<[string, boolean, string]> = [
+    ['two saved folders, the temp root the default', folders.length === 2 && folders[0]?.isDefault === true && folders[0]?.path === root, JSON.stringify(folders.map((f) => f.path))],
+    ['the temp root: a workspace with its router', folders[0]?.kind === 'workspace' && folders[0]?.check === '✓ AGENTS.md (Workspace Router) · 0 solutions', JSON.stringify(folders[0]?.check ?? null)],
+    ['the demo folder: not the default, its check line', folders[1]?.isDefault === false && (folders[1]?.check.startsWith('✓') || folders[1]?.check.startsWith('✕')) === true, JSON.stringify(folders[1]?.check ?? null)],
+    ['Add…', (await page.getByTestId('settings-folder-add').textContent()) === 'Add…', 'Add…'],
+    ['the scan block names the default folder', (await page.locator('[data-row="workspace-root"] .sb-set-row-label').textContent()) === `Solutions in ${path.basename(root)}`, `Solutions in ${path.basename(root)}`],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`workspace.D14 ${what}: ${note}`);
+    rows.push(`| D14 ${what} | addition | — | — | ${ok ? 'ok' : 'FAIL'} | ${note.replaceAll('|', '\\|').slice(0, 80)} |`);
+  }
+  return rows;
+}
+
 function fmtBox(part: Part): string {
   const { x, y, width, height } = part.box;
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
@@ -455,6 +508,9 @@ Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full 
 ${input.sections.map((s) => `- ${s.label}: **${s.main.toFixed(2)}%** / ${s.full.toFixed(2)}%`).join('\n')}
 
 Side by side (main area, prototype left, app right): ${input.sections.map((s) => `\`settings-${s.key}-side-by-side.png\``).join(', ')}.
+
+## D14 (folders per session)
+*Workspace & solutions* is **Folders**: the saved workspaces and git repos (kind, path, check line, default marker, Make default, Remove), Add…, then the scan of the default folder (or the one clicked). The prototype's root row and scan table are compared with that scan block by size (the list above moves it down); the list, the lede and Add… are D14 additions (\`D14 …\` rows). The Sessions section's "Working folder" row says sessions start in their own folder.
 
 ## Copy that differs on purpose
 ${COPY_EXEMPT.map(([part, reason]) => `- \`${part}\`: ${reason}`).join('\n')}

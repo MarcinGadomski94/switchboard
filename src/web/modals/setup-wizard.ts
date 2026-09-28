@@ -1,4 +1,4 @@
-import type { FolderCheck, FolderRule, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import type { FolderRule, SolutionGroup, SystemInfo } from '../../core/api.ts';
 
 /**
  * The first-run setup wizard's rules and copy (M5.3, SPEC → Modals → Setup
@@ -20,7 +20,12 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
     title: 'Claude Code on this PC',
     text: 'Switchboard starts and drives Claude Code in the background, signed in with your Max plan. It also reads PR status through the GitHub CLI.',
   },
-  { label: 'Workspace root', title: 'Workspace root', text: 'The folder that holds your router AGENTS.md. Every session starts here.' },
+  // D14: the M5.3 "Workspace root" step; every session now picks its folder (the check line: `folders/folders.ts`).
+  {
+    label: 'Add your first folder',
+    title: 'Add your first folder',
+    text: 'A workspace (the folder that holds your router AGENTS.md) or a git repository. Each session picks its folder when it starts. You can skip this and add folders later in Settings → Folders.',
+  },
   { label: 'Scan solutions', title: 'Solutions found', text: 'Scanned the folders your router defines. The folder rules are applied as written.' },
   {
     label: 'Notifications',
@@ -89,30 +94,6 @@ export function checkRows(info: SystemInfo): CheckRow[] {
     ? { ok: true, label: 'GitHub CLI signed in', detail: 'gh auth status · used to detect merged PRs' }
     : { ok: false, label: 'GitHub CLI not signed in', detail: 'gh auth status failed · merged PRs are not detected' };
   return [cli, login, gh];
-}
-
-/** A status line under the folder field. */
-export interface RootLine {
-  readonly ok: boolean;
-  readonly text: string;
-}
-
-/**
- * The line under the folder field (prototype: `✓ AGENTS.md (Workspace Router)
- * found · 640 lines`; D14: a git repo is `✓ git repo · single solution`): the
- * router file's first `# ` heading and line count, or what is wrong with the
- * folder (the server's words).
- */
-export function rootLine(check: FolderCheck | null): RootLine | null {
-  if (!check) return null;
-  if (check.kind === 'repo') return { ok: true, text: '✓ git repo · single solution' };
-  if (check.kind === 'workspace') {
-    const title = check.router?.title ?? null;
-    const name = !title ? 'AGENTS.md' : title.startsWith('AGENTS.md') ? title : `AGENTS.md (${title})`;
-    const lines = check.router?.lines ?? 0;
-    return { ok: true, text: `✓ ${name} found · ${lines} line${lines === 1 ? '' : 's'}` };
-  }
-  return { ok: false, text: `✕ ${check.message}` };
 }
 
 /** One row of the scan table (prototype `scan`: folder, count, examples, rule). */

@@ -79,8 +79,12 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
   return (
     <>
       <SectionTitle>Sessions &amp; worktrees</SectionTitle>
-      <Row id="working-folder" label="Working folder" description="Sessions always start at the workspace root, so the router applies">
-        <Value>workspace root</Value>
+      <Row
+        id="working-folder"
+        label="Working folder"
+        description="A workspace session starts at the folder root, so the router applies; a repo session in the repo or its worktree"
+      >
+        <Value>the session&apos;s folder</Value>
       </Row>
       <Row id="worktrees" label="Worktree per session" description="One worktree per solution the session writes to">
         <ToggleValue label="Worktree per session" value={settings['sessions.worktrees']} disabled={busy} onToggle={() => flip('sessions.worktrees')} />

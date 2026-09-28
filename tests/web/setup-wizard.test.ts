@@ -1,14 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { FolderCheck, Solution, SolutionGroup, SystemInfo } from '../../src/core/api.ts';
+import type { Solution, SolutionGroup, SystemInfo } from '../../src/core/api.ts';
 import {
   WIZARD_STEPS,
   checkRows,
   nextLabel,
   notificationState,
   railItems,
-  rootLine,
   scanRows,
   stepPosition,
 } from '../../src/web/modals/setup-wizard.ts';
@@ -49,12 +48,19 @@ function solution(name: string, relativePath: string, rule: Solution['rule']): S
 }
 
 describe('setup wizard model (M5.3)', () => {
-  it('steps, titles and texts are the prototype’s WZ, verbatim', async () => {
+  it('steps, titles and texts are the prototype’s WZ, verbatim, except step 2 (D14: “Add your first folder”)', async () => {
     const source = await readFile(PROTOTYPE, 'utf8');
     const match = /const WZ = (\[\[.*?\]\]);/.exec(source);
     expect(match).not.toBeNull();
     const wz = JSON.parse((match?.[1] ?? '[]').replace(/'/g, '"')) as string[][];
-    expect(WIZARD_STEPS.map((s) => [s.label, s.title, s.text])).toEqual(wz);
+    const steps = WIZARD_STEPS.map((s) => [s.label, s.title, s.text]);
+    expect(steps.filter((_, i) => i !== 1)).toEqual(wz.filter((_, i) => i !== 1));
+    expect(wz[1]?.[0]).toBe('Workspace root');
+    expect(steps[1]).toEqual([
+      'Add your first folder',
+      'Add your first folder',
+      'A workspace (the folder that holds your router AGENTS.md) or a git repository. Each session picks its folder when it starts. You can skip this and add folders later in Settings → Folders.',
+    ]);
     expect(stepPosition(0)).toBe('Step 1 of 5');
     expect(stepPosition(4)).toBe('Step 5 of 5');
     expect([0, 1, 2, 3, 4].map(nextLabel)).toEqual(['Continue', 'Continue', 'Continue', 'Continue', 'Finish']);
@@ -91,34 +97,6 @@ describe('setup wizard model (M5.3)', () => {
     const missing = checkRows({ ...INFO, cli: null, cliVersion: null, signedIn: false });
     expect(missing[0]).toEqual({ ok: false, label: 'Claude Code CLI not found', detail: 'install Claude Code or set SWITCHBOARD_CLAUDE_BIN' });
     expect(missing[1]).toEqual({ ok: false, label: 'Not signed in', detail: 'claude auth status needs the CLI' });
-  });
-
-  it('the root line: the prototype’s “✓ AGENTS.md (Workspace Router) found · 640 lines”, or what is wrong', () => {
-    // D14: the folder field's line comes from a FolderCheck (`GET /api/folders/check`).
-    const check = (fields: Partial<FolderCheck>): FolderCheck => ({
-      path: '/ws',
-      canonicalPath: '/ws',
-      exists: true,
-      kind: 'workspace',
-      router: null,
-      solutionCount: 3,
-      repoName: null,
-      problem: null,
-      message: '',
-      ...fields,
-    });
-    expect(rootLine(check({ router: { title: 'AGENTS.md (Workspace Router)', lines: 640 } }))).toEqual({
-      ok: true,
-      text: '✓ AGENTS.md (Workspace Router) found · 640 lines',
-    });
-    expect(rootLine(check({ router: { title: 'Workspace Router', lines: 1 } }))?.text).toBe('✓ AGENTS.md (Workspace Router) found · 1 line');
-    expect(rootLine(check({ router: { title: null, lines: 3 } }))?.text).toBe('✓ AGENTS.md found · 3 lines');
-    expect(rootLine(check({ kind: 'repo', repoName: 'switchboard', solutionCount: 1 }))).toEqual({ ok: true, text: '✓ git repo · single solution' });
-    const refused = (problem: FolderCheck['problem'], message: string): FolderCheck => check({ kind: null, solutionCount: null, problem, message });
-    expect(rootLine(refused('unsupported', 'no AGENTS.md here and not a git repository'))).toEqual({ ok: false, text: '✕ no AGENTS.md here and not a git repository' });
-    expect(rootLine(refused('missing', 'folder not found'))).toEqual({ ok: false, text: '✕ folder not found' });
-    expect(rootLine(refused('not-absolute', 'enter an absolute path'))).toEqual({ ok: false, text: '✕ enter an absolute path' });
-    expect(rootLine(null)).toBeNull();
   });
 
   it('scan rows: one per top folder, the read-only group split back, three names + “, …”, the strictest rule', () => {

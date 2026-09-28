@@ -7,10 +7,14 @@ import type { ToolState } from '../../tools/probe.ts';
  * value here is invented: what the API does not know reads "unknown".
  */
 
-/** The seven sections, in the prototype's order (`SN`); the key is the URL segment (`/settings/<key>`). */
+/**
+ * The seven sections, in the prototype's order (`SN`); the key is the URL segment
+ * (`/settings/<key>`). D14: *Workspace & solutions* became *Folders* (the key
+ * stays, so old links keep working; `/settings/folders` opens it too).
+ */
 export const SETTINGS_SECTIONS = [
   { key: 'claude', label: 'Claude Code' },
-  { key: 'workspace', label: 'Workspace & solutions' },
+  { key: 'workspace', label: 'Folders' },
   { key: 'sessions', label: 'Sessions & worktrees' },
   { key: 'notify', label: 'Notifications & usage' },
   { key: 'schedules', label: 'Schedules' },
@@ -21,8 +25,9 @@ export const SETTINGS_SECTIONS = [
 /** A section key. */
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['key'];
 
-/** The section of a `/settings[/:section]` route: Claude Code for none or an unknown one. */
+/** The section of a `/settings[/:section]` route: Claude Code for none or an unknown one; `folders` is Folders (D14). */
 export function resolveSection(section: string | null): SettingsSection {
+  if (section === 'folders') return 'workspace';
   return SETTINGS_SECTIONS.find((s) => s.key === section)?.key ?? 'claude';
 }
 
@@ -52,7 +57,7 @@ export function onOff(value: boolean): string {
   return value ? 'on' : 'off';
 }
 
-/** Repositories row: every solution the workspace scan found. */
+/** Repositories row: every solution the default folder's scan found. */
 export function repoCount(groups: readonly SolutionGroup[] | null): string {
   if (!groups) return UNKNOWN_VALUE;
   const n = groups.reduce((sum, group) => sum + group.solutions.length, 0);
@@ -85,15 +90,23 @@ const RULE_RANK: Readonly<Record<FolderRule, number>> = { editable: 0, 'on-reque
 /** At most this many names are listed per row before ", …". */
 const EXAMPLES = 3;
 
-/** The workspace-root folder a solution path sits in (`microfrontends/`), or `null` when it is not under `root`. */
-function topFolder(solutionPath: string, root: string | null): string | null {
-  if (!root) return null;
+/**
+ * The workspace-root folder a solution path sits in (`microfrontends/`), or `null`
+ * when it is not under `root`. D14: a saved folder has two forms of its path (as
+ * added and canonical), so `root` may list several; the first that holds the
+ * path counts.
+ */
+function topFolder(solutionPath: string, root: string | readonly string[] | null): string | null {
+  const roots = root === null ? [] : typeof root === 'string' ? [root] : root;
   const normalize = (p: string): string => p.replaceAll('\\', '/').replace(/\/+$/, '');
-  const base = normalize(root);
   const full = normalize(solutionPath);
-  if (!full.toLowerCase().startsWith(`${base.toLowerCase()}/`)) return null;
-  const first = full.slice(base.length + 1).split('/')[0];
-  return first ? `${first}/` : null;
+  for (const candidate of roots) {
+    const base = normalize(candidate);
+    if (!base || !full.toLowerCase().startsWith(`${base.toLowerCase()}/`)) continue;
+    const first = full.slice(base.length + 1).split('/')[0];
+    if (first) return `${first}/`;
+  }
+  return null;
 }
 
 /**
@@ -106,7 +119,7 @@ function topFolder(solutionPath: string, root: string | null): string | null {
  * examples = the first three names (", …" when there are more), rule = the
  * strictest rule of its solutions.
  */
-export function scanRows(groups: readonly SolutionGroup[], root: string | null): ScanRow[] {
+export function scanRows(groups: readonly SolutionGroup[], root: string | readonly string[] | null): ScanRow[] {
   const rows = new Map<string, { names: string[]; rule: FolderRule }>();
   for (const group of groups) {
     const noted = group.note.split(' · ').filter((part) => part.endsWith('/'));

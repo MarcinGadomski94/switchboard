@@ -33,13 +33,31 @@ import {
  * router AGENTS.md, typed into the app's field); step 3's rows (the demo's
  * workspace scan, i.e. the Solutions view's rows, against the prototype's
  * hard-coded `scan`), compared on the first row only.
+ *
+ * D14 (not findings): step 2 is "Add your first folder" instead of "Workspace
+ * root" (its rail label, title and text: {@link D14_COPY}), its text runs to two
+ * lines, so the field row and the check line below it are compared with y
+ * relative to the text's bottom; the check line is D14's (`✓ AGENTS.md
+ * (Workspace Router) · <n> solutions` instead of "… found · 640 lines"), checked
+ * against the app's own rule.
  */
 
 interface PartSpec {
   readonly path: readonly number[];
   readonly geometry: Geometry;
   readonly copy: boolean;
+  /** D14: compared with the app's y less the step text's extra height (the parts below step 2's text). */
+  readonly belowText?: boolean;
 }
+
+/** D14: step 2's copy that differs from the prototype on purpose (part → why). */
+const D14_COPY: Readonly<Record<string, string>> = {
+  step2: 'D14: the rail item reads "2Add your first folder"',
+  step2Label: 'D14: "Add your first folder" instead of "Workspace root"',
+  title: 'D14: step 2 is "Add your first folder"',
+  text: 'D14: "A workspace (the folder that holds your router AGENTS.md) or a git repository. …" (sessions pick their folder; the step is skippable)',
+  rootLine: 'D14: the folder check line "✓ AGENTS.md (Workspace Router) · <n> solutions" (the prototype: "… found · 640 lines")',
+};
 
 const RAIL = [0];
 const MAIN = [1];
@@ -85,9 +103,15 @@ function frameParts(actions: number): Record<string, PartSpec> {
   for (let i = 1; i <= 5; i++) {
     out[`step${i}`] = { path: [...RAIL, i], geometry: 'box', copy: true };
     out[`step${i}Dot`] = { path: [...RAIL, i, 0], geometry: 'box', copy: true };
-    out[`step${i}Label`] = { path: [...RAIL, i, 1], geometry: 'box', copy: true };
+    // D14: step 2's label is longer ("Add your first folder"): its width follows the copy.
+    out[`step${i}Label`] = { path: [...RAIL, i, 1], geometry: i === 2 ? 'none' : 'box', copy: true };
   }
   return out;
+}
+
+/** Step 2's frame (D14): the title and the two-line text, compared by x, y and width. */
+function folderFrameParts(): Record<string, PartSpec> {
+  return { ...frameParts(5), text: { path: [...MAIN, 2], geometry: 'top', copy: true } };
 }
 
 function checksParts(): Record<string, PartSpec> {
@@ -105,10 +129,10 @@ function checksParts(): Record<string, PartSpec> {
 
 function rootParts(): Record<string, PartSpec> {
   return {
-    rootRow: { path: [...MAIN, 3], geometry: 'box', copy: false },
-    rootField: { path: [...MAIN, 3, 0], geometry: 'box', copy: false },
-    browse: { path: [...MAIN, 3, 1], geometry: 'box', copy: true },
-    rootLine: { path: [...MAIN, 4], geometry: 'box', copy: true },
+    rootRow: { path: [...MAIN, 3], geometry: 'box', copy: false, belowText: true },
+    rootField: { path: [...MAIN, 3, 0], geometry: 'box', copy: false, belowText: true },
+    browse: { path: [...MAIN, 3, 1], geometry: 'box', copy: true, belowText: true },
+    rootLine: { path: [...MAIN, 4], geometry: 'box', copy: true, belowText: true },
   };
 }
 
@@ -185,28 +209,42 @@ function fmtBox(part: Part): string {
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
 }
 
-async function measureAndCompare(state: string, protoPage: Page, appPage: Page, specs: Record<string, PartSpec>, rows: string[], failures: string[]): Promise<void> {
+async function measureAndCompare(
+  state: string,
+  protoPage: Page,
+  appPage: Page,
+  specs: Record<string, PartSpec>,
+  rows: string[],
+  failures: string[],
+  d14 = false,
+): Promise<void> {
   const paths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
-  const proto = await measurePanel(protoPage, paths);
-  const app = await measurePanel(appPage, paths);
+  const proto = await measurePanel(protoPage, { ...paths, '@text': [...MAIN, 2] });
+  const app = await measurePanel(appPage, { ...paths, '@text': [...MAIN, 2] });
+  // D14: step 2's text is taller than the prototype's; the parts below it move down by the difference.
+  const extra = (app['@text']?.box.height ?? 0) - (proto['@text']?.box.height ?? 0);
   for (const [name, spec] of Object.entries(specs)) {
     const label = `${state} · ${name}`;
     const p = proto[name];
-    const a = app[name];
-    if (!p || !a) {
+    const measured = app[name];
+    if (!p || !measured) {
       failures.push(`${label}: missing (${p ? 'app' : 'prototype'})`);
       continue;
     }
+    const a: Part = spec.belowText ? { ...measured, box: { ...measured.box, y: measured.box.y - extra } } : measured;
+    const exempt = (d14 || name.startsWith('step2')) && D14_COPY[name] !== undefined;
     // The app's field is an <input>: its text cursor is the input's own (the prototype's static box has none), and
     // its Browse… works (a pointer), where the prototype's is inert (no handler, so no pointer).
     const accepted = (name === 'rootField' && a.style['cursor'] === 'text') || (name === 'browse' && a.style['cursor'] === 'pointer');
     const appStyle = accepted ? { ...a.style, cursor: p.style['cursor'] ?? '' } : a.style;
     const boxIssues = compareBoxes(label, p.box, a.box, spec.geometry);
-    const copyIssues = spec.copy && p.text !== a.text ? [`${label}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
+    const copyIssues = spec.copy && !exempt && p.text !== a.text ? [`${label}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== appStyle[prop]).map((prop) => `${label}.${prop}: prototype ${p.style[prop]} vs app ${appStyle[prop]}`);
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
-    rows.push(`| ${label} | ${spec.geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`);
+    const geometry = spec.belowText && extra ? `${spec.geometry} (y − ${round(extra)})` : spec.geometry;
+    const copy = exempt ? `D14: ${JSON.stringify(p.text).slice(0, 40)} → ${JSON.stringify(a.text).slice(0, 50)}` : spec.copy ? JSON.stringify(a.text).slice(0, 70) : '';
+    rows.push(`| ${label} | ${geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${copy.replaceAll('|', '\\|')} |`);
   }
 }
 
@@ -260,12 +298,13 @@ test('Setup wizard matches the prototype on all five steps (tokens, boxes ±2 px
   const panelDiff = await pixelDiff(appPage, protoStep1, appStep1);
   const fullDiff = await pixelDiff(appPage, protoFull, appFull);
 
-  // Step 2: the root (typed into the app's field; the prototype shows its own path).
+  // Step 2: the first folder (typed into the app's field; the prototype shows its own path). D14: its copy and check line.
   await protoClick(protoPage, 'Continue');
   await wizard.getByTestId('wz-next').click();
+  await expect(wizard.getByTestId('wz-title')).toHaveText('Add your first folder');
   await wizard.getByTestId('wz-root-input').fill(root);
-  await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ AGENTS.md (Workspace Router) found · 640 lines');
-  await measureAndCompare('step 2', protoPage, appPage, { ...frameParts(5), ...rootParts() }, rows, failures);
+  await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ AGENTS.md (Workspace Router) · 0 solutions');
+  await measureAndCompare('step 2', protoPage, appPage, { ...folderFrameParts(), ...rootParts() }, rows, failures, true);
   const protoStep2 = await protoPage.screenshot({ clip });
   const appStep2 = await appPage.screenshot({ clip });
 
@@ -361,8 +400,13 @@ Known data differences: step 1's login row ("Signed in · claude auth status · 
 
 Side by side (prototype left, app right): \`setup-wizard-side-by-side.png\` (step 1), \`setup-wizard-root-side-by-side.png\` (step 2), \`setup-wizard-scan-side-by-side.png\` (step 3), \`setup-wizard-usage-side-by-side.png\` (step 5), \`setup-wizard-page-side-by-side.png\` (page, step 1).
 
+## D14 (not findings)
+Step 2 is "Add your first folder" (a workspace or a git repo; skippable): its rail label, title and text differ from the prototype's "Workspace root" (${Object.entries(D14_COPY)
+    .map(([part, why]) => `\`${part}\`: ${why}`)
+    .join('; ')}). Its text runs to two lines, so the field row, Browse… and the check line are compared with y less the text's extra height (\`y − <px>\`), the check line's copy checked against the app's own rule instead of the prototype's.
+
 ## Boxes (±2 px), copy and computed styles
-Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. Styles compared: ${COMPARED_STYLES.join(', ')} (the app's root field is an \`<input>\`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).
+Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height; \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')} (the app's root field is an \`<input>\`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|

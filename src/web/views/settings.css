@@ -174,6 +174,84 @@
   color: var(--status-fail);
 }
 
+/* Folders (D14): the saved folders, Add…, the selected folder's scan. */
+.sb-set-folders {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-set-folder-text {
+  cursor: pointer;
+  outline: none;
+}
+
+.sb-set-folder-text:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 2px;
+}
+
+.sb-set-folder[data-selected='true'] .sb-set-folder-name {
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--muted-3);
+  text-underline-offset: 3px;
+}
+
+.sb-set-folder-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.sb-set-folder-kind,
+.sb-set-folder-default {
+  font: 500 10px/14px var(--font-mono);
+  padding: 0 5px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-chip);
+  color: var(--muted-1);
+}
+
+/* The default marker: the branch-chip blue (SPEC). */
+.sb-set-folder-default {
+  border-color: transparent;
+  background: var(--branch-bg);
+  color: var(--branch-fg);
+}
+
+.sb-set-folder-check {
+  margin-top: 2px;
+  font: 400 11.5px var(--font-mono);
+  color: oklch(0.76 0.13 150);
+  overflow-wrap: anywhere;
+}
+
+.sb-set-folder-check[data-ok='false'] {
+  color: var(--status-fail);
+}
+
+.sb-set-folder-actions {
+  display: flex;
+  gap: var(--space-8);
+  flex: none;
+}
+
+.sb-set-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-set-folder-add {
+  padding-top: 16px;
+}
+
+.sb-set-folder-scan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 18px;
+}
+
 /* Workspace & solutions: the scan table */
 .sb-set-scan {
   display: flex;

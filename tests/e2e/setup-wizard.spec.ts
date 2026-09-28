@@ -17,18 +17,17 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * plain folders `nugets/ui-nuget`, `other/tool`, `infrastructure`).
  * 1. First run without a saved folder (D14): the wizard opens by itself and
  *    walks its five steps: the `claude --version` / `claude auth status` /
- *    `gh auth status` rows, the first folder chosen with Browse… (a wrong folder
- *    refused first) and added (`POST /api/folders`, the default), the real scan
- *    of it, the notification permission (mocked `Notification`) with its
- *    confirmation, the usage threshold; Back and the rail move between steps;
- *    Finish stores it. The folder is used at once (a session starts there) and
- *    after a restart; the wizard does not open again.
+ *    `gh auth status` rows; "Add your first folder" (skippable: Continue with an
+ *    empty field moves on and the scan says there is no folder yet; a git repo
+ *    reads `✓ git repo · single solution`; a plain folder is refused and not
+ *    added; the workspace chosen with Browse… is added with `POST /api/folders`
+ *    and becomes the default); the real scan of it, the notification permission
+ *    (mocked `Notification`) with its confirmation, the usage threshold; Back and
+ *    the rail move between steps; Finish stores it. The folder is used at once (a
+ *    session starts there) and after a restart; the wizard does not open again.
  * 2. Signed out (claude + gh), a folder saved already: failing rows, the saved
- *    folder shown, Skip / Esc close it, it stays closed in this tab and opens
- *    again in a new one because the setup is not finished.
- *
- * D14 note: step 2 still carries the M5.3 copy ("Workspace root"); the UI stage
- * turns it into "Add your first folder".
+ *    folder shown with its check line, Skip / Esc close it, it stays closed in
+ *    this tab and opens again in a new one because the setup is not finished.
  */
 
 let tmp: string;
@@ -182,7 +181,7 @@ test.describe('first run without a saved folder', () => {
     await expect(wizard.locator('.sb-wz-brand')).toHaveText('SSet up Switchboard');
     await expect(wizard.locator('.sb-wz-note')).toHaveText('Everything stays on this PC. Switchboard never stores your Claude login.');
     const rail = wizard.getByTestId('wz-rail-step');
-    await expect(rail).toHaveText(['1Claude Code CLI + login', '2Workspace root', '3Scan solutions', '4Notifications', '5Usage warnings']);
+    await expect(rail).toHaveText(['1Claude Code CLI + login', '2Add your first folder', '3Scan solutions', '4Notifications', '5Usage warnings']);
     await expect(rail.nth(0)).toHaveAttribute('data-state', 'current');
     await expect(rail.nth(0).locator('.sb-wz-dot')).toHaveCSS('background-color', 'rgb(232, 231, 227)');
 
@@ -202,23 +201,37 @@ test.describe('first run without a saved folder', () => {
     await expect(checks.first().locator('.sb-wz-check-mark')).toHaveCSS('color', 'oklch(0.76 0.13 150)');
     await expect(wizard.getByTestId('wz-next')).toHaveText('Continue');
 
-    // Step 2: no root yet. A missing folder and a folder without AGENTS.md are refused.
+    // Step 2 (D14): "Add your first folder", nothing saved yet. It is skippable: Continue with an empty field moves on.
     await wizard.getByTestId('wz-next').click();
-    await expectStep(wizard, 1, 'Workspace root');
-    await expect(wizard.getByTestId('wz-text')).toHaveText('The folder that holds your router AGENTS.md. Every session starts here.');
+    await expectStep(wizard, 1, 'Add your first folder');
+    await expect(wizard.getByTestId('wz-text')).toHaveText(
+      'A workspace (the folder that holds your router AGENTS.md) or a git repository. Each session picks its folder when it starts. You can skip this and add folders later in Settings → Folders.',
+    );
     await expect(rail.nth(0)).toHaveAttribute('data-state', 'done');
     await expect(rail.nth(0).locator('.sb-wz-dot')).toHaveText('✓');
     const input = wizard.getByTestId('wz-root-input');
     await expect(input).toHaveValue('');
+    await expect(input).toHaveAttribute('placeholder', 'A workspace (router AGENTS.md) or a git repository');
     await expect(wizard.getByTestId('wz-root-line')).toHaveCount(0);
+    await wizard.getByTestId('wz-next').click();
+    await expectStep(wizard, 2, 'Solutions found');
+    await expect(wizard.getByTestId('wz-scan-error')).toHaveText('No folder yet. Add one in step 2.');
+    expect((await setupState(page)).folders).toEqual([]);
+    await wizard.getByTestId('wz-back').click();
+    await expectStep(wizard, 1, 'Add your first folder');
+
+    // A missing folder, a git repo (fine, not added yet) and a folder without AGENTS.md (refused, not added).
     await input.fill(path.join(tmp, 'nope'));
     await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ folder not found');
     await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'false');
+    await input.fill(path.join(workspace, 'mobile'));
+    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ git repo · single solution');
+    await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'true');
     await input.fill(path.join(tmp, 'not a workspace'));
     await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ no AGENTS.md here and not a git repository');
     await wizard.getByTestId('wz-next').click();
-    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not saved: no AGENTS.md here and not a git repository');
-    await expectStep(wizard, 1, 'Workspace root');
+    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not added: no AGENTS.md here and not a git repository');
+    await expectStep(wizard, 1, 'Add your first folder');
     expect((await setupState(page)).folders).toEqual([]);
 
     // Browse…: from the typed folder's parent down to the workspace.
@@ -230,7 +243,8 @@ test.describe('first run without a saved folder', () => {
     await expect(wizard.getByTestId('wz-browser-path')).toHaveText(workspace);
     await expect(wizard.getByTestId('wz-folder')).toHaveText(['deprecated/', 'infrastructure/', 'microfrontends/', 'mobile/', 'nugets/', 'other/']);
     await expect(input).toHaveValue(workspace);
-    await expect(wizard.getByTestId('wz-root-line')).toHaveText(`✓ AGENTS.md (Workspace Router) found · ${routerLines} lines`);
+    await expect(wizard.getByTestId('wz-root-error')).toHaveCount(0);
+    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ AGENTS.md (Workspace Router) · 6 solutions');
     await expect(wizard.getByTestId('wz-root-line')).toHaveCSS('color', 'oklch(0.76 0.13 150)');
     await wizard.getByTestId('wz-folder-up').click();
     await expect(wizard.getByTestId('wz-browser-path')).toHaveText(tmp);
@@ -282,7 +296,7 @@ test.describe('first run without a saved folder', () => {
     await wizard.getByTestId('wz-back').click();
     await expectStep(wizard, 3, 'Notifications');
     await rail.nth(1).click();
-    await expectStep(wizard, 1, 'Workspace root');
+    await expectStep(wizard, 1, 'Add your first folder');
     await expect(input).toHaveValue(workspace);
     await rail.nth(4).click();
     await expectStep(wizard, 4, 'Usage-limit warnings');
@@ -368,11 +382,11 @@ test.describe('signed out, a folder saved already', () => {
 
     // The saved (default) folder is shown with its check line.
     await wizard.getByTestId('wz-next').click();
-    await expectStep(wizard, 1, 'Workspace root');
+    await expectStep(wizard, 1, 'Add your first folder');
     const input = wizard.getByTestId('wz-root-input');
     await expect(input).toHaveValue(workspace);
     await expect(wizard.getByTestId('wz-browse')).toHaveCount(1);
-    await expect(wizard.getByTestId('wz-root-line')).toHaveText(`✓ AGENTS.md (Workspace Router) found · ${routerLines} lines`);
+    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ AGENTS.md (Workspace Router) · 6 solutions');
     // Adding a saved folder again answers the one saved (200), nothing new.
     const again = await page.evaluate(async (folder) => {
       const response = await fetch('/api/folders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: folder }) });

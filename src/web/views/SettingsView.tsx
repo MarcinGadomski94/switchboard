@@ -15,7 +15,7 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
     case 'claude':
       return <ClaudeSection settings={settings} />;
     case 'workspace':
-      return <WorkspaceSection settings={settings} />;
+      return <WorkspaceSection />;
     case 'sessions':
       return <SessionsSection settings={settings} save={save} />;
     case 'notify':
@@ -32,7 +32,8 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
 /**
  * Settings (SPEC → Settings, M8.2, `docs/settings.md`): `230px nav | content (max
  * 860px)` with the seven sections of the prototype, one per URL
- * (`/settings/<section>`, Claude Code by default). Preferences are stored by the
+ * (`/settings/<section>`, Claude Code by default); D14 turned *Workspace &
+ * solutions* into *Folders* (`/settings/workspace`, also `/settings/folders`). Preferences are stored by the
  * service in SQLite (`GET/PUT /api/settings`); tool URLs through `PUT /api/tools`.
  */
 export function SettingsView({ section }: { readonly section: string | null }) {

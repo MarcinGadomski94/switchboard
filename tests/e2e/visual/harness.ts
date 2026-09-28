@@ -151,7 +151,9 @@ export type Geometry =
   /** x, width, height (the y position depends on data above it) */
   | 'size'
   /** x, width and the bottom edge (anchored to the viewport bottom) */
-  | 'bottom';
+  | 'bottom'
+  /** x, y and width (the height grows with content the prototype does not have, e.g. a D14 line at the bottom) */
+  | 'top';
 
 /** Differences of `app` from `proto` beyond {@link BOX_TOLERANCE_PX}, as messages. */
 export function compareBoxes(name: string, proto: Box, app: Box, geometry: Geometry): string[] {
@@ -161,7 +163,7 @@ export function compareBoxes(name: string, proto: Box, app: Box, geometry: Geome
     ['width', proto.width, app.width],
   ];
   if (geometry === 'box' || geometry === 'size') checks.push(['height', proto.height, app.height]);
-  if (geometry === 'box') checks.push(['y', proto.y, app.y]);
+  if (geometry === 'box' || geometry === 'top') checks.push(['y', proto.y, app.y]);
   if (geometry === 'bottom') checks.push(['bottom', proto.y + proto.height, app.y + app.height]);
   return checks
     .filter(([, a, b]) => Math.abs(a - b) > BOX_TOLERANCE_PX)

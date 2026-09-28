@@ -1,0 +1,169 @@
+/*
+ * Saved folders in the UI (D14): the folder tag of mixed lists, the Browse…
+ * listing and the add-a-folder panel shared by Settings → Folders and the
+ * New-session form. The prototype has no folders; the values follow its mono
+ * labels, chips and the setup wizard's Browse… (M5.3) over the SPEC tokens.
+ */
+
+/* The folder tag: a small mono chip (SPEC radius 4px chips, mono meta). */
+.sb-folder-tag {
+  display: inline-block;
+  flex: none;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: 1px;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-chip);
+  font: 500 10px/12px var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--muted-1);
+  text-transform: none;
+}
+
+/* Browse…: one folder's subfolders (the wizard's list, M5.3). */
+.sb-fp-browser {
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--border-card);
+  border-radius: 9px;
+  background: var(--bg-card-2);
+  padding: 4px;
+}
+
+.sb-fp-browser-path {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+.sb-fp-folder {
+  font: 400 12.5px var(--font-mono);
+  color: var(--text-2);
+  padding: 6px 10px;
+  border-radius: var(--radius-button);
+  text-align: left;
+}
+
+.sb-fp-folder:hover {
+  background: var(--bg-selected-row);
+}
+
+/* The add-a-folder panel (Settings → Folders → Add…, the New-session form's Browse…). */
+.sb-fp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: 12px 14px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card-2);
+}
+
+.sb-fp-row {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.sb-fp-field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 7px 10px;
+  font: 400 12.5px var(--font-mono);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-fp-field::placeholder {
+  color: var(--muted-3);
+}
+
+.sb-fp-add {
+  border-radius: var(--radius-card);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+}
+
+.sb-fp-add:disabled {
+  opacity: 0.45;
+}
+
+.sb-fp-cancel {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 7px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* A check line: ✓ green, ✕ the fail color (the wizard's root line, M5.3). */
+.sb-fp-line {
+  font: 400 12px var(--font-mono);
+  color: oklch(0.76 0.13 150);
+  overflow-wrap: anywhere;
+}
+
+.sb-fp-line[data-ok='false'] {
+  color: var(--status-fail);
+}
+
+.sb-fp-error {
+  font: 400 12px var(--font-mono);
+  color: var(--status-fail);
+}
+
+.sb-fp-browser-wrap .sb-fp-browser {
+  max-width: none;
+}
+
+/*
+ * The folder switcher (Solutions' header, the Codebase Memory strip): a dropdown
+ * that reads as the surrounding mono text (Settings' `.sb-set-select`), with a ▾.
+ */
+.sb-folder-switch {
+  appearance: none;
+  field-sizing: content;
+  max-width: 420px;
+  border: 0;
+  margin: 0;
+  padding: 0 14px 0 0;
+  background-color: transparent;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 7px) 55%, calc(100% - 3px) 55%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  font: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+  outline: none;
+  text-overflow: ellipsis;
+}
+
+.sb-folder-switch:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sb-folder-switch:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 2px;
+}
+
+.sb-folder-switch option {
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
