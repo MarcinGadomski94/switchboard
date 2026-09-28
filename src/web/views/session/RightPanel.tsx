@@ -1,10 +1,14 @@
+import type { ReactNode } from 'react';
 import type { AgentActivity, BackgroundTask, SessionDetail } from '../../../core/api.ts';
 import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
+import { Link } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import { AgentOverview } from './AgentOverview.tsx';
+import { hasSubagentChat } from './chat.ts';
 import { HandoffCard } from './HandoffCard.tsx';
 import { type AgentCard, agentCards, agentSummary, terminalLines } from './right-panel.ts';
+import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
 
 /**
@@ -18,7 +22,8 @@ import { TerminalTail } from './TerminalTail.tsx';
  * and time in the status slot (the live activity, `activity` events; D30: the main
  * agent's background wait too, in the running color). D21: the
  * agent overview (`AgentOverview`) is the panel's first section, above the
- * header; the prototype's parts follow it unchanged.
+ * header; the prototype's parts follow it unchanged. D36: a subagent's card opens
+ * its chat.
  */
 export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
   const activity = useLiveActivity(sessionId, session);
@@ -34,15 +39,20 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
             </span>
           </div>
           <div className="sb-agents" data-testid="agent-cards">
-            {agentCards(session.agents, session).map((card) => (
-              <AgentCardView
-                key={card.id}
-                card={card}
-                activity={activity?.agents[card.id] ?? null}
-                turnStartedAt={activity && session.agents.find((agent) => agent.id === card.id)?.kind === 'main' ? activity.turnStartedAt : null}
-                background={activity?.background ?? []}
-              />
-            ))}
+            {agentCards(session.agents, session).map((card, index) => {
+              const agent = session.agents[index];
+              return (
+                <AgentCardView
+                  key={card.id}
+                  sessionId={sessionId}
+                  card={card}
+                  opensChat={agent ? hasSubagentChat(agent) : false}
+                  activity={activity?.agents[card.id] ?? null}
+                  turnStartedAt={activity && agent?.kind === 'main' ? activity.turnStartedAt : null}
+                  background={activity?.background ?? []}
+                />
+              );
+            })}
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
@@ -53,13 +63,51 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
   );
 }
 
-function AgentCardView({
+/** A card's box: a link to the subagent's chat (D36) when it has one, else the prototype's plain card. */
+function CardBox({
+  sessionId,
   card,
+  opensChat,
+  children,
+}: {
+  readonly sessionId: string;
+  readonly card: AgentCard;
+  readonly opensChat: boolean;
+  readonly children: ReactNode;
+}) {
+  if (opensChat) {
+    return (
+      <Link
+        to={{ view: 'session', id: sessionId, tab: 'chat', agentId: card.id }}
+        className="sb-agent sb-agent--link"
+        data-testid="agent-card"
+        data-agent-id={card.id}
+        data-status={card.status}
+        title={OPEN_SUBAGENT_CHAT}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
+      {children}
+    </div>
+  );
+}
+
+function AgentCardView({
+  sessionId,
+  card,
+  opensChat,
   activity,
   turnStartedAt,
   background,
 }: {
+  readonly sessionId: string;
   readonly card: AgentCard;
+  /** D36: a subagent with a chat to open (the card links to it). */
+  readonly opensChat: boolean;
   readonly activity: AgentActivity | null;
   readonly turnStartedAt: string | null;
   /** D30: the session's pending background tasks (the main agent's background wait). */
@@ -68,7 +116,7 @@ function AgentCardView({
   // D30: an agent waiting on background work reads as working (the running color).
   const color = statusColor(activity?.state === 'background' ? 'run' : card.status);
   return (
-    <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
+    <CardBox sessionId={sessionId} card={card} opensChat={opensChat}>
       <div className="sb-agent-top">
         <span className="sb-agent-dot" style={{ background: color }} />
         <span className="sb-agent-name" data-testid="agent-name" title={card.name}>
@@ -91,6 +139,6 @@ function AgentCardView({
           </span>
         ) : null}
       </div>
-    </div>
+    </CardBox>
   );
 }

@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import type { ReportedTable, SessionActivity, SessionDetail } from '../../../core/api.ts';
 import { OverviewActivityText } from '../../activity/ActivityViews.tsx';
 import { useTick } from '../../activity/useActivity.ts';
+import { Link, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
+import { hasSubagentChat } from './chat.ts';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import {
   OVERVIEW_COLUMNS,
@@ -20,6 +22,7 @@ import {
   reportedHeading,
   reportedTableView,
 } from './agent-overview.ts';
+import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import './agent-overview.css';
 
 /** The printed table's age refreshes as often as the sidebar's ages. */
@@ -36,10 +39,12 @@ const AGE_TICK_MS = 30_000;
  * printed" toggle shows the original text in a popover over the main area (a
  * box-drawing table as a chat code block, a pipe table through the chat's
  * Markdown renderer, D20); a table that cannot be parsed shows as printed,
- * wrapped. Nothing in the panel scrolls sideways.
+ * wrapped. Nothing in the panel scrolls sideways. D36: a subagent's row opens its
+ * chat (the whole row, and its name as a keyboard-focusable link).
  */
 export function AgentOverview({ session, activity }: { readonly session: SessionDetail; readonly activity: SessionActivity | null }) {
   const rows = overviewRows(session.agents, session);
+  const chats = new Set(session.agents.filter(hasSubagentChat).map((agent) => agent.id));
   return (
     <section className="sb-overview" data-testid="agent-overview">
       <div className="sb-sv-panel-label sb-overview-label">{OVERVIEW_LABEL}</div>
@@ -61,7 +66,7 @@ export function AgentOverview({ session, activity }: { readonly session: Session
         </thead>
         <tbody>
           {rows.map((row) => (
-            <OverviewRowView key={row.id} row={row} activity={activity} />
+            <OverviewRowView key={row.id} sessionId={session.id} row={row} activity={activity} opensChat={chats.has(row.id)} />
           ))}
         </tbody>
       </table>
@@ -70,12 +75,45 @@ export function AgentOverview({ session, activity }: { readonly session: Session
   );
 }
 
-function OverviewRowView({ row, activity }: { readonly row: OverviewRow; readonly activity: SessionActivity | null }) {
+function OverviewRowView({
+  sessionId,
+  row,
+  activity,
+  opensChat,
+}: {
+  readonly sessionId: string;
+  readonly row: OverviewRow;
+  readonly activity: SessionActivity | null;
+  /** D36: a subagent with a chat to open (the row links to it). */
+  readonly opensChat: boolean;
+}) {
+  const { navigate } = useRouter();
   const entry = activity?.agents[row.id] ?? null;
+  const chat = { view: 'session', id: sessionId, tab: 'chat', agentId: row.id } as const;
   return (
-    <tr data-testid="overview-row" data-agent-id={row.id} data-status={row.status}>
+    <tr
+      data-testid="overview-row"
+      data-agent-id={row.id}
+      data-status={row.status}
+      data-opens-chat={opensChat ? 'true' : undefined}
+      onClick={
+        opensChat
+          ? (event) => {
+              // The name's link handles its own clicks; a click elsewhere on the row opens the chat too.
+              if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              navigate(chat);
+            }
+          : undefined
+      }
+    >
       <td className="sb-overview-agent" data-testid="overview-agent" title={row.name}>
-        {row.name}
+        {opensChat ? (
+          <Link to={chat} className="sb-overview-open" data-testid="overview-open" title={OPEN_SUBAGENT_CHAT}>
+            {row.name}
+          </Link>
+        ) : (
+          row.name
+        )}
       </td>
       <td className="sb-overview-desc" data-testid="overview-description" title={row.description || undefined}>
         {row.description}

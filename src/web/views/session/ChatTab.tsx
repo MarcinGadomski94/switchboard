@@ -1,41 +1,30 @@
-import { Fragment, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AnswerBatch, SessionDetail, SessionEvent } from '../../../core/api.ts';
-import { closedBatchText } from '../../../core/session-close.ts';
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { AnswerBatch, SessionActivity, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
-import { QuestionCard } from '../../components/QuestionCard.tsx';
-import { answeredLines } from '../../components/question-card.ts';
 import { refusalText } from '../inbox.ts';
-import { ChatMarkdown } from './ChatMarkdown.tsx';
+import { type Answering, ChatItemView } from './ChatItems.tsx';
 import {
-  ANSWERS_WRITTEN,
   COMPOSER_MAX_LINES,
-  type ChatItem,
   QUICK_REPLIES,
   QUICK_REPLIES_LABEL,
-  answeredOnText,
   chatItems,
   composerKeyAction,
   composerPlaceholder,
   draftToSend,
   upsertEvent,
 } from './chat.ts';
+import { SubagentChatView } from './SubagentChat.tsx';
+import { mainChatPlace, rememberMainChat } from './subagent-chat.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
 
 function refusal(error: unknown): string {
   return error instanceof ApiError ? refusalText(error.status, error.body) : refusalText(0, null);
-}
-
-/** An answer being sent from the inline card (per batch). */
-interface Answering {
-  readonly batchId: string;
-  readonly busy: boolean;
-  readonly error: string | null;
 }
 
 /** Props of {@link ChatTab}. */
@@ -45,6 +34,8 @@ export interface ChatTabProps {
   readonly session: SessionDetail | null;
   /** Reloads the session detail (after an answer; the view also reloads on its `/hub` events). */
   readonly onChanged: () => void;
+  /** D36: a subagent's id (`/sessions/{id}/agents/{agentId}`): its own chat instead of the main conversation. */
+  readonly agentId?: string | null;
 }
 
 /**
@@ -56,21 +47,22 @@ export interface ChatTabProps {
  * answered), then the composer: quick-reply pills fill the draft, Enter or Send
  * posts it to `POST /api/sessions/{id}/messages`. It stays scrolled to the newest
  * item unless the developer scrolled up. D19: while a turn runs, the live activity
- * line sits above the composer (`ChatActivityLine`).
+ * line sits above the composer (`ChatActivityLine`). D36: with `agentId`, the same
+ * events show that subagent's own chat (`SubagentChatView`); an Agent / Task step
+ * line opens it, and the main chat comes back at the place it was left.
  */
-export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
+export function ChatTab({ sessionId, session, onChanged, agentId = null }: ChatTabProps) {
   const [events, setEvents] = useState<readonly SessionEvent[]>([]);
-  const [answering, setAnswering] = useState<Answering | null>(null);
-  const scroller = useRef<HTMLDivElement | null>(null);
-  const stick = useRef(true);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     api.sessionEvents(sessionId).then(
-      (loaded) => {
+      (fetched) => {
         if (cancelled) return;
         // Events the stream delivered while loading stay (merged by id).
-        setEvents((current) => current.reduce(upsertEvent, [...loaded]));
+        setEvents((current) => current.reduce(upsertEvent, [...fetched]));
+        setLoaded(true);
       },
       () => undefined,
     );
@@ -84,17 +76,70 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
   });
 
   const activity = useLiveActivity(sessionId, session);
-  const mainAgentId = session?.agents.find((agent) => agent.kind === 'main')?.id ?? null;
-  const items = session ? chatItems(events, session.questions, mainAgentId) : [];
+  if (agentId !== null) {
+    return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} />;
+  }
+  return <MainChat sessionId={sessionId} session={session} events={events} loaded={loaded} activity={activity} onChanged={onChanged} />;
+}
 
-  // Keep the newest item in view while the developer is at the bottom.
+/** `true` while the conversation is at (or within {@link STICK_PX} of) its bottom. */
+function atBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+}
+
+/** Props of {@link MainChat}. */
+interface MainChatProps {
+  readonly sessionId: string;
+  readonly session: SessionDetail | null;
+  readonly events: readonly SessionEvent[];
+  /** The events arrived (the remembered place can be restored). */
+  readonly loaded: boolean;
+  readonly activity: SessionActivity | null;
+  readonly onChanged: () => void;
+}
+
+/**
+ * The main conversation (M4.2), its activity line and the composer. D36: its
+ * place (scroll and whether it follows new items) is remembered per session, so
+ * coming back from a subagent's chat shows it where it was left; a subagent's
+ * question card can ask to bring its batch into view instead.
+ */
+function MainChat({ sessionId, session, events, loaded, activity, onChanged }: MainChatProps) {
+  const [answering, setAnswering] = useState<Answering | null>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const stick = useRef(true);
+  const restored = useRef(false);
+
+  const mainAgentId = session?.agents.find((agent) => agent.kind === 'main')?.id ?? null;
+  const items = session ? chatItems(events, session.questions, mainAgentId, session.agents) : [];
+
+  // Keep the newest item in view while the developer is at the bottom; D36: first, go back to the remembered place.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (!restored.current && loaded && session) {
+      restored.current = true;
+      const place = mainChatPlace(sessionId);
+      const card = place?.reveal ? [...el.querySelectorAll<HTMLElement>('[data-batch-id]')].find((node) => node.dataset['batchId'] === place.reveal) : undefined;
+      if (card) {
+        card.scrollIntoView({ block: 'nearest' });
+        stick.current = atBottom(el);
+        rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
+        return;
+      }
+      if (place && !place.stick) {
+        stick.current = false;
+        el.scrollTop = place.top;
+        return;
+      }
+    }
+    if (stick.current) el.scrollTop = el.scrollHeight;
   });
   const onScroll = (): void => {
     const el = scroller.current;
-    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+    if (!el) return;
+    stick.current = atBottom(el);
+    rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
   };
 
   const answer = async (batchId: string, body: AnswerBatch): Promise<void> => {
@@ -113,7 +158,7 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
     <>
       <div className="sb-chat" data-testid="session-chat" data-session-id={sessionId} ref={scroller} onScroll={onScroll}>
         {items.map((item) => (
-          <ChatItemView key={item.key} item={item} answering={answering} onAnswer={answer} />
+          <ChatItemView key={item.key} sessionId={sessionId} item={item} answering={answering} onAnswer={answer} />
         ))}
       </div>
       <ChatActivityLine activity={activity} />
@@ -126,96 +171,6 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
         }}
       />
     </>
-  );
-}
-
-function ChatItemView({
-  item,
-  answering,
-  onAnswer,
-}: {
-  readonly item: ChatItem;
-  readonly answering: Answering | null;
-  readonly onAnswer: (batchId: string, body: AnswerBatch) => Promise<void>;
-}) {
-  if (item.kind === 'user') {
-    return (
-      <div className="sb-chat-message" data-testid="chat-message" data-role="user" data-origin={item.origin} data-delivered={item.delivered ? 'true' : 'false'}>
-        <div className="sb-chat-bubble" data-testid="chat-text">
-          <ChatMarkdown text={item.text} />
-        </div>
-      </div>
-    );
-  }
-  if (item.kind === 'agent') {
-    return (
-      <div className="sb-chat-message" data-testid="chat-message" data-role="agent">
-        {item.text ? (
-          <div className="sb-chat-bubble" data-testid="chat-text">
-            <ChatMarkdown text={item.text} />
-          </div>
-        ) : null}
-        {item.steps.length > 0 ? (
-          <div className="sb-chat-steps" data-testid="chat-steps">
-            {item.steps.map((step) => (
-              <div key={step.id} className="sb-chat-step" data-testid="chat-step" data-mark={step.mark}>
-                {`${step.mark} ${step.label}`}
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-  if (item.waiting) {
-    const mine = answering?.batchId === item.batchId ? answering : null;
-    return (
-      <QuestionCard
-        questions={item.questions}
-        variant="chat"
-        busy={mine?.busy ?? false}
-        error={mine?.error ?? null}
-        onSend={(body) => onAnswer(item.batchId, body)}
-      />
-    );
-  }
-  // D33: closed with its session before it was answered: no answers, the label says why.
-  const closedReason = item.questions.find((question) => question.closedReason)?.closedReason ?? null;
-  if (closedReason) {
-    return (
-      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId} data-closed={closedReason}>
-        <div className="sb-chat-answers-bubble">
-          <div data-testid="chat-answer">{closedBatchText(closedReason)}</div>
-        </div>
-      </div>
-    );
-  }
-  // D24: the phone answered it first (Remote Control): the CLI withdrew it, so Switchboard holds no answers.
-  const answeredOn = item.questions.find((question) => question.answeredOn)?.answeredOn ?? null;
-  if (answeredOn) {
-    return (
-      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId} data-answered-on={answeredOn}>
-        <div className="sb-chat-answers-bubble">
-          <div data-testid="chat-answer">{answeredOnText(answeredOn)}</div>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <Fragment>
-      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId}>
-        <div className="sb-chat-answers-bubble">
-          {answeredLines(item.questions).map((line, index) => (
-            <div key={index} data-testid="chat-answer">
-              {line}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="sb-chat-answers-note" data-testid="chat-answers-note">
-        {ANSWERS_WRITTEN}
-      </div>
-    </Fragment>
   );
 }
 

@@ -276,6 +276,17 @@ Question          { …, "closedReason": "session closed" | null }
 HistoryItem       { …, "closedAt"?: "2026-09-28T18:40:00.000Z" | null }
 ```
 
+## Subagent chats (D36, 2026-09-28, additive)
+Developer ruling D36 (`docs/decisions.md` → *Subagent chats*): a subagent's own conversation opens from the chat. Additive; nothing above or below changes meaning. Details: `docs/chat.md` → *Subagent chats*.
+
+- **Agent** (in `Session.agents`, `SessionDetail.agents` and `sessionUpdated`) gains `toolUseId`: the id of the Agent / Task `tool_use` that started the subagent (the main agent's call event has it as `payload.toolUseId`; the subagent's own lines carry it as `parent_tool_use_id`); `null` for the main agent and for agents no call was seen for. Optional in `src/core/api.ts` so older fixtures type-check; the server always sends it.
+- **No events filter:** `GET /api/sessions/{id}/events` already returns every event of the session (it does not page), with each event's `agentId`, so the UI filters a subagent's events itself. No new route, query or `/hub` event.
+- The UI address `/sessions/{id}/agents/{agentId}` is a page of the app (the server answers it with `index.html`, like every non-file GET), not an API route.
+
+```json
+Agent { …, "toolUseId": "toolu_01E5QUrP9sKnU8eg6FiNuCbb" | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

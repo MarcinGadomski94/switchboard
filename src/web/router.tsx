@@ -9,6 +9,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * |---|---|
  * | `/`, `/inbox` | Inbox |
  * | `/sessions/:id[/:tab]` | Session (tab: chat · timeline · diff · artifacts) |
+ * | `/sessions/:id/agents/:agentId` | Session, chat tab: that subagent's own chat (D36) |
  * | `/solutions` | Solutions |
  * | `/schedules` | Schedules & loops |
  * | `/artifacts` | Artifacts |
@@ -30,7 +31,13 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 /** The parsed current location. */
 export type Route =
   | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'artifacts' | 'history' }
-  | { readonly view: 'session'; readonly id: string; readonly tab: SessionTab }
+  | {
+      readonly view: 'session';
+      readonly id: string;
+      readonly tab: SessionTab;
+      /** D36: a subagent's id: the chat tab shows that subagent's own chat (`/sessions/{id}/agents/{agentId}`). */
+      readonly agentId?: string;
+    }
   | { readonly view: 'tool'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
 
@@ -47,12 +54,14 @@ function decode(segment: string): string {
 /** Parses a pathname into a {@link Route}. */
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean).map(decode);
-  const [head, a, b] = parts;
+  const [head, a, b, c] = parts;
   if (head === undefined) return { view: 'inbox' };
   if ((SIMPLE_VIEWS as readonly string[]).includes(head) && parts.length === 1) {
     return { view: head as (typeof SIMPLE_VIEWS)[number] };
   }
   if (head === 'sessions' && a) {
+    // D36: `/sessions/{id}/agents/{agentId}` is the chat tab in subagent mode.
+    if (b === 'agents' && c) return { view: 'session', id: a, tab: 'chat', agentId: c };
     const tab = (SESSION_TABS as readonly string[]).includes(b ?? '') ? (b as SessionTab) : 'chat';
     return { view: 'session', id: a, tab };
   }
@@ -65,6 +74,7 @@ export function parseRoute(pathname: string): Route {
 export function routePath(route: Route): string {
   switch (route.view) {
     case 'session':
+      if (route.agentId) return `/sessions/${encodeURIComponent(route.id)}/agents/${encodeURIComponent(route.agentId)}`;
       return `/sessions/${encodeURIComponent(route.id)}${route.tab === 'chat' ? '' : `/${route.tab}`}`;
     case 'tool':
       return `/tools/${encodeURIComponent(route.id)}`;
@@ -78,6 +88,23 @@ export function routePath(route: Route): string {
 interface RouterValue {
   readonly route: Route;
   readonly navigate: (to: Route | string, options?: { readonly replace?: boolean }) => void;
+  /**
+   * D36: returns to `to`: one step back in the browser's history when the current
+   * entry was opened from `to` inside the app (so Back and Forward stay in step),
+   * else a plain navigation to it (a reloaded or pasted address).
+   */
+  readonly backTo: (to: Route) => void;
+}
+
+/** What the router keeps in `history.state` (D36): the path an entry was opened from inside the app. */
+interface RouterHistoryState {
+  readonly from?: string;
+}
+
+/** D36: the path the current history entry was opened from inside the app, `null` when unknown. */
+function openedFrom(): string | null {
+  const state = window.history.state as RouterHistoryState | null;
+  return state && typeof state.from === 'string' ? state.from : null;
 }
 
 const RouterContext = createContext<RouterValue | null>(null);
@@ -96,12 +123,20 @@ export function RouterProvider({ children }: { readonly children: ReactNode }) {
     const target = typeof to === 'string' ? to : routePath(to);
     if (target !== window.location.pathname) {
       if (options?.replace) window.history.replaceState(null, '', target);
-      else window.history.pushState(null, '', target);
+      else window.history.pushState({ from: window.location.pathname } satisfies RouterHistoryState, '', target);
     }
     setPathname(target);
   }, []);
 
-  const value = useMemo<RouterValue>(() => ({ route: parseRoute(pathname), navigate }), [pathname, navigate]);
+  const backTo = useCallback(
+    (to: Route) => {
+      if (openedFrom() === routePath(to)) window.history.back();
+      else navigate(to);
+    },
+    [navigate],
+  );
+
+  const value = useMemo<RouterValue>(() => ({ route: parseRoute(pathname), navigate, backTo }), [pathname, navigate, backTo]);
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 

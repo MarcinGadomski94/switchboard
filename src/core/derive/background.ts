@@ -43,6 +43,16 @@ const ENDS_WITH_TURN = /terminated when you give your final response|stopped whe
 const AGENT_LAUNCHED = 'Async agent launched successfully';
 const AGENT_ID = /agentId: ([A-Za-z0-9_-]+)/;
 
+/**
+ * `true` when an `Agent` / `Task` call's `tool_result` text is the CLI's async
+ * launch notice ("Async agent launched successfully …"): the agent runs in the
+ * background, so the text is no result of its work (D36: its chat shows no
+ * Result block).
+ */
+export function isAsyncAgentLaunch(text: string): boolean {
+  return text.includes(AGENT_LAUNCHED);
+}
+
 /** A `Monitor` start; group 1 = the task id. */
 const MONITOR_STARTED = /Monitor started \(task ([^,\s)]+)/;
 

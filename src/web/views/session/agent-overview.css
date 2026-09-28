@@ -196,3 +196,18 @@
   overflow: auto;
 }
 
+/* D36: a subagent's row opens its chat: the whole row, and its name as a link in the name's own look. */
+.sb-overview-table tr[data-opens-chat='true'] {
+  cursor: pointer;
+}
+
+.sb-overview-table .sb-overview-open,
+.sb-overview-table .sb-overview-open:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+.sb-overview-table tr[data-opens-chat='true']:hover .sb-overview-open {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

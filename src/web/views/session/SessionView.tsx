@@ -21,9 +21,10 @@ const RELOAD_MS = 500;
  * `sessionUpdated` and `event` (status, attachment, tab counts) and, since M4.2,
  * `questionBatch` (the chat's inline card). M4.2–M4.6 fill the tabs and the panel
  * (docs/lanes.md); since M4.3 the panel reads the same detail (agents, recent
- * events, status: `docs/session-panel.md`).
+ * events, status: `docs/session-panel.md`). D36: `agentId` (the address
+ * `/sessions/{id}/agents/{agentId}`) turns the chat tab into that subagent's own chat.
  */
-export function SessionView({ sessionId, tab }: { readonly sessionId: string; readonly tab: SessionTab }) {
+export function SessionView({ sessionId, tab, agentId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null }) {
   const detail = useApi(() => api.getSession(sessionId), [sessionId]);
   const reload = useThrottled(detail.reload, RELOAD_MS);
   useHubEvent('sessionUpdated', (session) => {
@@ -39,7 +40,14 @@ export function SessionView({ sessionId, tab }: { readonly sessionId: string; re
 
   const session = detail.data && detail.data.id === sessionId ? detail.data : null;
   return (
-    <section className="sb-view sb-sv" data-view="session" data-testid="view-session" data-session-id={sessionId} data-tab={tab}>
+    <section
+      className="sb-view sb-sv"
+      data-view="session"
+      data-testid="view-session"
+      data-session-id={sessionId}
+      data-tab={tab}
+      data-agent-id={agentId ?? undefined}
+    >
       <div className="sb-sv-main">
         <SessionHeader
           sessionId={sessionId}
@@ -50,7 +58,7 @@ export function SessionView({ sessionId, tab }: { readonly sessionId: string; re
           artifacts={session?.artifacts.length ?? 0}
           onChanged={detail.reload}
         />
-        {tab === 'chat' ? <ChatTab sessionId={sessionId} session={session} onChanged={detail.reload} /> : null}
+        {tab === 'chat' ? <ChatTab sessionId={sessionId} session={session} onChanged={detail.reload} agentId={agentId} /> : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}

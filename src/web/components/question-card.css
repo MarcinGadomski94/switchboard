@@ -97,3 +97,12 @@
   font-weight: 500;
   cursor: pointer;
 }
+
+/* D36: a subagent's question card is read-only in its own chat (answered in the main chat or the Inbox). */
+.sb-qcard--readonly .sb-qcard__option {
+  cursor: default;
+}
+
+.sb-qcard--readonly .sb-qcard__status a {
+  color: var(--question-label);
+}

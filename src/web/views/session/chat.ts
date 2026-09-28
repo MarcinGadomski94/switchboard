@@ -1,6 +1,9 @@
 import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
-import type { Question, SessionEvent } from '../../../core/api.ts';
+import type { Agent, Question, SessionEvent } from '../../../core/api.ts';
+import { isAsyncAgentLaunch } from '../../../core/derive/background.ts';
+import { AGENT_TOOLS } from '../../../core/derive/event-kind.ts';
 import type {
+  AgentPromptPayload,
   AssistantPayload,
   ModelPayload,
   RemotePayload,
@@ -74,11 +77,20 @@ export interface ChatStep {
   readonly mark: StepMark;
   /** The event's one-line label (`Write · out.txt`, `Bash · npm test`, `Permission · …`). */
   readonly label: string;
+  /**
+   * D36: on an Agent / Task call, the id of the subagent it started when that
+   * subagent has a chat to open ({@link hasSubagentChat}): the step line links to it.
+   */
+  readonly subagentId?: string;
 }
 
 /** What the chat shows, top to bottom. */
 export type ChatItem =
-  /** A user bubble (right): typed here, the task, "Continue.", a service note or a terminal prompt. */
+  /**
+   * A user bubble (right): typed here, the task, "Continue.", a service note or a
+   * terminal prompt; D36, in a subagent's chat, a later prompt the main agent sent
+   * it (origin `agent-prompt`).
+   */
   | {
       readonly kind: 'user';
       readonly key: string;
@@ -164,20 +176,42 @@ function batches(questions: readonly Question[]): Map<string, Question[]> {
   return out;
 }
 
+/** What {@link conversationItems} does beyond the main chat's rules. */
+interface ConversationOptions {
+  /** D36: Agent / Task call ids → the subagent whose chat that call's step line opens. */
+  readonly chats: ReadonlyMap<string, string>;
+  /** Batches with no AskUserQuestion call among the events: last (the main chat) or left out (a subagent's chat, D36). */
+  readonly trailingBatches: boolean;
+  /** D36: a subagent's prompt lines (`agent-prompt`) are user bubbles (its chat); the main chat has none. */
+  readonly prompts: boolean;
+}
+
 /**
- * The chat's items (`docs/chat.md`):
- * - only the main conversation: events of the main agent (or of no agent); a
- *   subagent's own lines belong to its agent card and the timeline;
- * - in time order (`ts`, then id);
- * - user messages → user bubbles; assistant text → an agent block; tool calls,
- *   permission requests, automatic denials, failed turns and a permission-mode
- *   mismatch → step lines under the agent block before them (a block without
- *   text when the turn started with a tool);
- * - an AskUserQuestion call → its question batch (by `requestId` = batch id) at
- *   that place: the card while it waits, else the answers bubble; batches without
- *   a matching event in `events` go at the end, in batch order.
+ * D36: `true` when a subagent has a chat to open: a subagent started by an
+ * Agent / Task call Switchboard saw (its `toolUseId`); the main agent and agents
+ * seen without one (the demo's; a Workflow's never appear) have none.
  */
-export function chatItems(events: readonly SessionEvent[], questions: readonly Question[], mainAgentId: string | null): ChatItem[] {
+export function hasSubagentChat(agent: Pick<Agent, 'kind' | 'toolUseId'>): boolean {
+  return agent.kind === 'subagent' && typeof agent.toolUseId === 'string' && agent.toolUseId !== '';
+}
+
+/** D36: Agent / Task call ids → the subagents that have a chat to open (keyed by the call that started them). */
+export function subagentChats(agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const agent of agents) if (hasSubagentChat(agent) && agent.toolUseId) out.set(agent.toolUseId, agent.id);
+  return out;
+}
+
+/** The Agent / Task call payload of an event, `null` for any other event. */
+function agentCall(event: SessionEvent): ToolPayload | null {
+  const payload = payloadOf(event);
+  if (payload?.type !== 'tool') return null;
+  const tool = payload as ToolPayload;
+  return AGENT_TOOLS.includes(tool.name) ? tool : null;
+}
+
+/** Items of an already filtered and sorted conversation (the rules of {@link chatItems}). */
+function conversationItems(sorted: readonly SessionEvent[], questions: readonly Question[], options: ConversationOptions): ChatItem[] {
   const grouped = batches(questions);
   const placed = new Set<string>();
   const out: ChatItem[] = [];
@@ -193,16 +227,20 @@ export function chatItems(events: readonly SessionEvent[], questions: readonly Q
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: '', steps: [] };
       out.push(block);
     }
-    block.steps.push({ id: event.id, mark, label: stepLabel(event) });
+    const call = agentCall(event);
+    const subagentId = call ? options.chats.get(call.toolUseId) : undefined;
+    block.steps.push({ id: event.id, mark, label: stepLabel(event), ...(subagentId ? { subagentId } : {}) });
   };
 
-  const main = [...events].filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);
-  for (const event of main) {
+  for (const event of sorted) {
     const payload = payloadOf(event);
     const type = payload?.type;
     if (type === 'user') {
       const user = payload as UserPayload;
       out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: withoutSessionStartBlock(user.text), origin: user.origin, delivered: user.delivered });
+      block = null;
+    } else if (type === 'agent-prompt' && options.prompts) {
+      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true });
       block = null;
     } else if (type === 'assistant') {
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, steps: [] };
@@ -224,8 +262,89 @@ export function chatItems(events: readonly SessionEvent[], questions: readonly Q
       if (type === 'result') block = null;
     }
   }
-  for (const [batchId, list] of grouped) if (!placed.has(batchId)) pushBatch(batchId, list);
+  if (options.trailingBatches) for (const [batchId, list] of grouped) if (!placed.has(batchId)) pushBatch(batchId, list);
   return out;
+}
+
+/**
+ * The chat's items (`docs/chat.md`):
+ * - only the main conversation: events of the main agent (or of no agent); a
+ *   subagent's own lines belong to its agent card, the timeline and (D36) its own
+ *   chat ({@link subagentChat});
+ * - in time order (`ts`, then id);
+ * - user messages → user bubbles; assistant text → an agent block; tool calls,
+ *   permission requests, automatic denials, failed turns and a permission-mode
+ *   mismatch → step lines under the agent block before them (a block without
+ *   text when the turn started with a tool); D36: an Agent / Task call whose
+ *   subagent has a chat (`agents`, {@link hasSubagentChat}) carries its id, so its
+ *   step line opens that chat;
+ * - an AskUserQuestion call → its question batch (by `requestId` = batch id) at
+ *   that place: the card while it waits, else the answers bubble; batches without
+ *   a matching event in `events` go at the end, in batch order.
+ */
+export function chatItems(
+  events: readonly SessionEvent[],
+  questions: readonly Question[],
+  mainAgentId: string | null,
+  agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[] = [],
+): ChatItem[] {
+  const main = [...events].filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);
+  return conversationItems(main, questions, { chats: subagentChats(agents), trailingBatches: true, prompts: false });
+}
+
+/** D36: a subagent's result: the text its Agent / Task call returned to the main agent. */
+export interface SubagentResult {
+  readonly text: string;
+  /** The call's `tool_result` was an error (e.g. interrupted). */
+  readonly isError: boolean;
+}
+
+/** D36: what a subagent's own chat shows (`docs/chat.md` → *Subagent chats*). */
+export interface SubagentChat {
+  /**
+   * The brief the main agent gave it: the `prompt` of the Agent / Task call that
+   * started it, else its first prompt line (`agent-prompt`); `null` when neither
+   * was seen.
+   */
+  readonly brief: string | null;
+  /** Its messages, tool steps and question batches, by the main chat's rules (its batches only where it asked them). */
+  readonly items: readonly ChatItem[];
+  /**
+   * Its result: the call's `tool_result` text once it arrived; `null` before, and
+   * for an agent that runs in the background, whose call returns only the CLI's
+   * launch notice (`isAsyncAgentLaunch`).
+   */
+  readonly result: SubagentResult | null;
+}
+
+/**
+ * D36: a subagent's own chat from the session's events (filtered here: the chat
+ * already loads them all, `GET /api/sessions/{id}/events`):
+ * - the brief (see {@link SubagentChat.brief});
+ * - its own events (`agentId` = the subagent's id) as the main chat shows them,
+ *   except its first prompt line, which is the brief delivered; later prompt lines
+ *   are user bubbles; its question batches sit at their calls, and batches it did
+ *   not ask are not its; a nested Agent call links to that subagent's chat;
+ * - the result (see {@link SubagentChat.result}).
+ */
+export function subagentChat(
+  events: readonly SessionEvent[],
+  questions: readonly Question[],
+  agent: Pick<Agent, 'id' | 'toolUseId'>,
+  agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[] = [],
+): SubagentChat {
+  const call = agent.toolUseId ? (events.map(agentCall).find((tool) => tool !== null && tool.toolUseId === agent.toolUseId) ?? null) : null;
+  const own = events.filter((event) => event.agentId === agent.id).sort(byTime);
+  const firstPrompt = own.find((event) => payloadOf(event)?.type === 'agent-prompt') ?? null;
+  const prompt = call && typeof call.input['prompt'] === 'string' && call.input['prompt'] !== '' ? call.input['prompt'] : null;
+  const brief = prompt ?? (firstPrompt ? (firstPrompt.payload as AgentPromptPayload).text : null);
+  const items = conversationItems(
+    own.filter((event) => event !== firstPrompt),
+    questions,
+    { chats: subagentChats(agents), trailingBatches: false, prompts: true },
+  );
+  const result = call && call.result !== undefined && !isAsyncAgentLaunch(call.result) ? { text: call.result, isError: call.isError === true } : null;
+  return { brief, items, result };
 }
 
 /** The line under an answered batch's bubble (prototype `ssAnswered`, SPEC → Session → Chat). */
