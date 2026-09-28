@@ -1,7 +1,8 @@
 import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
+import { WEEKDAY_LABELS } from '../../core/cron.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
-import { USAGE_ROW_LABELS } from '../../core/usage.ts';
+import { USAGE_ROW_LABELS, weeklyPace } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -77,6 +78,19 @@ export function formatResetsIn(iso: string, now: number = Date.now()): string {
   return hours > 0 ? `${hours}h${String(rest).padStart(2, '0')}` : `${rest}m`;
 }
 
+/**
+ * D23: the Week row's pace ({@link weeklyPace}): the bar's color, the allowance
+ * marker and the row's tooltip. Absent while the week or its reset is unknown.
+ */
+export interface WeekPaceView {
+  /** The row's `data-pace`: `on` below the allowance (bar in SPEC status done, green), `ahead` at or above it (status need, yellow). */
+  readonly state: 'on' | 'ahead';
+  /** Where the marker sits on the bar: the current allowance, 0–100 (`57.14`). */
+  readonly markerPct: number;
+  /** The row's `title`: `On pace: 33% of 57.14% allowed until Mon 15:00` (local weekday and time of the next step). */
+  readonly title: string;
+}
+
 /** One usage row of the footer (D17): Session, Week, or a model's weekly limit. */
 export interface UsageRow extends Meter {
   /** `session`, `week` or `model` (the `data-meter` value). */
@@ -84,6 +98,32 @@ export interface UsageRow extends Meter {
   readonly label: string;
   /** `key: 'model'`: the model's name. */
   readonly model?: string;
+  /** D23, `key: 'week'` only: the pace while the week and its reset are known. */
+  readonly pace?: WeekPaceView;
+}
+
+/** A percentage with up to 2 decimals and no trailing zeros: `33%`, `57.14%`, `100%`. */
+function pacePct(value: number): string {
+  return `${Number(value.toFixed(2))}%`;
+}
+
+const pad2 = (value: number): string => String(value).padStart(2, '0');
+
+/** `Mon 15:00`: local weekday and time (the schedule table's `clockTime` form, not imported: that module imports this one). */
+function weekdayTime(date: Date): string {
+  return `${WEEKDAY_LABELS[date.getDay()]} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** D23: the Week row's pace at `now`, `null` while unknown (never guessed). */
+function weekPaceView(week: UsageWindow, now: number): WeekPaceView | null {
+  const pace = weeklyPace(week, new Date(now));
+  if (!pace) return null;
+  const verdict = pace.onPace ? 'On pace' : 'Ahead of pace';
+  return {
+    state: pace.onPace ? 'on' : 'ahead',
+    markerPct: pace.allowancePct,
+    title: `${verdict}: ${pacePct(week.pct)} of ${pacePct(pace.allowancePct)} allowed until ${weekdayTime(new Date(pace.nextStepAt))}`,
+  };
 }
 
 /** The value of a known window: `62% · 1h48` (bar = the %); an old model reading reads `4% · as of 25m`. */
@@ -96,14 +136,18 @@ function windowMeter(window: UsageWindow, now: number): Meter {
  * The footer's usage rows (D17, `docs/usage.md`): always **Session** and **Week**
  * (`unknown` while `usageWindows` has no such window, `—` before `/api/system`
  * answers), then one row per model window the server lists (it lists them only
- * while in use). Nothing is derived from `usagePct`: unknown stays unknown.
+ * while in use). Nothing is derived from `usagePct`: unknown stays unknown. D23:
+ * a known Week row carries its `pace` (color, allowance marker, tooltip).
  */
 export function usageRows(system: SystemInfo | null, now: number = Date.now()): UsageRow[] {
   const windows = system?.usageWindows ?? [];
   const fixed = (key: 'session' | 'week'): UsageRow => {
     const label = USAGE_ROW_LABELS[key];
     const window = windows.find((w) => w.key === key);
-    if (window) return { key, label, ...windowMeter(window, now) };
+    if (window) {
+      const pace = key === 'week' ? weekPaceView(window, now) : null;
+      return { key, label, ...windowMeter(window, now), ...(pace ? { pace } : {}) };
+    }
     return { key, label, pct: 0, text: system ? 'unknown' : UNKNOWN };
   };
   return [

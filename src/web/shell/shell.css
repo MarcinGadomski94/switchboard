@@ -386,6 +386,32 @@
   background: var(--text);
 }
 
+/*
+ * D23: the Week row while its pace is known (`data-pace`, docs/usage.md → Weekly
+ * pace): the bar is green (status done) below the day's allowance and yellow
+ * (status need) at or above it, with a 2 px marker at the allowance. Without a
+ * pace (unknown week or reset) the row keeps the D17 look: no color, no marker.
+ */
+.sb-usage .sb-meter[data-pace] .sb-meter-track {
+  position: relative;
+}
+
+.sb-usage .sb-meter[data-pace='on'] .sb-meter-fill {
+  background: var(--status-done);
+}
+
+.sb-usage .sb-meter[data-pace='ahead'] .sb-meter-fill {
+  background: var(--status-need);
+}
+
+.sb-meter-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--muted-3);
+}
+
 .sb-meter-value {
   text-align: right;
 }
