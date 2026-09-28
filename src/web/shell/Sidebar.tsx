@@ -14,6 +14,7 @@ import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
 import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
+import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import {
   type Meter,
   type WeekPaceView,
@@ -144,6 +145,7 @@ export function Sidebar() {
 
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);
   useProbeOnLoad(tools.data);
+  useFrameHelperSites(tools.data); // D28 ruling: the saved site tools' hosts, for the frame helper's rules in this tab
   const sessionList = sessions.data ?? [];
   const reachable = system.reachable ?? sessions.reachable;
 

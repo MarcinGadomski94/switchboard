@@ -1,10 +1,20 @@
-import { useEffect, useSyncExternalStore } from 'react';
-import { FRAME_CHECK_ATTRIBUTE, FRAME_CHECK_PATH, FRAME_HELPER_ATTRIBUTE } from '../../core/site-tools.ts';
-import { CHECK_TIMEOUT_MS, type FrameHelperEnvironment, type FrameHelperState, readFrameHelperMarker, watchFrameHelper } from './frame-helper.ts';
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
+import type { Tool } from '../../core/api.ts';
+import { FRAME_CHECK_ATTRIBUTE, FRAME_CHECK_PATH, FRAME_HELPER_ATTRIBUTE, frameHelperHosts } from '../../core/site-tools.ts';
+import {
+  CHECK_TIMEOUT_MS,
+  type FrameHelperEnvironment,
+  type FrameHelperSites,
+  type FrameHelperState,
+  createSitesSync,
+  readFrameHelperMarker,
+  watchFrameHelper,
+} from './frame-helper.ts';
 
 /*
  * D28: the frame helper watch (`frame-helper.ts`) on this page: the `<html>`
- * marker, a MutationObserver, timers and the hidden capability-check frame.
+ * marker, a MutationObserver, timers, the hidden capability-check frame, and the
+ * host list the page gives the helper for its tab (`window.postMessage`).
  */
 
 /**
@@ -43,6 +53,31 @@ export function checkFraming(doc: Document, timeoutMs: number = CHECK_TIMEOUT_MS
   });
 }
 
+/** This page's host list for the helper (one per page). */
+const sites = createSitesSync({
+  post: (message) => window.postMessage(message, window.location.origin),
+  setTimer(run, ms) {
+    const id = window.setTimeout(run, ms);
+    return () => window.clearTimeout(id);
+  },
+});
+
+let listening = false;
+
+/** Listens (once) for the helper's answers, and sends the list again after a back/forward-cache restore. */
+function listenToHelper(): void {
+  if (listening) return;
+  listening = true;
+  window.addEventListener('message', (event) => {
+    // Only this window itself (the helper's content script posts here); never a framed tool.
+    if (event.source === window && event.origin === window.location.origin) sites.receive(event.data);
+  });
+  window.addEventListener('pageshow', (event) => {
+    // The helper drops a tab's rules when it leaves Switchboard; a restored page asks again.
+    if (event.persisted) sites.resend();
+  });
+}
+
 /** The {@link FrameHelperEnvironment} of this page. */
 function pageEnvironment(): FrameHelperEnvironment {
   return {
@@ -55,6 +90,12 @@ function pageEnvironment(): FrameHelperEnvironment {
     setTimer(run, ms) {
       const id = window.setTimeout(run, ms);
       return () => window.clearTimeout(id);
+    },
+    sitesSettled() {
+      // A list sent before the helper's content script listened (a late marker) got no answer: send it again.
+      const state = sites.state();
+      if (!state.answered && !state.pending) sites.resend();
+      return sites.settled();
     },
     checkFraming: () => checkFraming(document),
   };
@@ -84,4 +125,23 @@ export function useFrameHelper(enabled: boolean): FrameHelperState {
     });
   }, [enabled]);
   return useSyncExternalStore(subscribe, () => current);
+}
+
+/**
+ * D28 ruling (narrowed scope): gives the frame helper this page's host list,
+ * {@link frameHelperHosts} of `tools` (the saved site tools' hosts, after this
+ * page's own host for the capability check), whenever `tools` loads or changes
+ * (`null` = not loaded yet: nothing is sent), and returns what the helper confirmed
+ * for this tab. The helper keeps them as rules for this tab only. Sent in a layout
+ * effect, so a view never paints a state from before its list went out.
+ */
+export function useFrameHelperSites(tools: readonly Pick<Tool, 'url'>[] | null): FrameHelperSites {
+  const hosts = tools === null ? null : frameHelperHosts(tools.map((tool) => tool.url), window.location.hostname);
+  const key = hosts === null ? null : hosts.join(' ');
+  useLayoutEffect(() => {
+    listenToHelper();
+    if (hosts !== null) sites.send(hosts);
+    // `key` stands for `hosts` (a new array on every render).
+  }, [key]);
+  return useSyncExternalStore(sites.subscribe, sites.state);
 }
