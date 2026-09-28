@@ -197,6 +197,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     3. **Load unpacked:** **Reveal in Finder** (the service opens Finder, or Explorer, on `tools/frame-helper`) and **Copy path** (the folder's absolute path, to paste with ⌘⇧G in the file dialog).
   - **Status:** it watches for the helper's marker and turns green by itself ("Frame helper 2.0.0 is on") the moment Chrome loads it. An older helper reads "Reload the frame helper in chrome://extensions". Safari reads "Safari can't frame signed-in sites; they open in a new tab".
   - **Service routes** (behind the token, like every route): `GET /api/frame-helper` (the folder path and the version from its manifest), `POST /api/frame-helper/reveal`, `POST /api/frame-helper/open-extensions`. Their commands are configurable, so tests use fakes and never open a real browser or Finder.
+  - **Developer ruling (2026-09-28):** Chrome marks only pages loaded after the helper, so the setup keeps a 4th step, **Reload this tab**, before it turns green. The extension gets no extra permission for that.
 
 ## Subagent chats (added 2026-09-28)
 - **D36 A subagent's own conversation opens from the chat, and one step brings you back.**
