@@ -176,6 +176,16 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 - **D33:** after closing the session on screen, the Inbox opens, as built.
 - **Notifications:** a question toast and its OS notification close once the developer opens their session, or once their batch leaves the Inbox. A batch of the session on screen raises no toast (`docs/notifications.md`).
 
+## Installable app (added 2026-09-28)
+- **D34 Switchboard can be installed from the browser as a local app (a PWA).**
+  - **Manifest:** Switchboard serves a web app manifest (`/manifest.webmanifest`): name "Switchboard", `start_url` and `scope` `/`, `display: standalone`, background and theme colors from the SPEC tokens, and icons (192 and 512 px PNG, a maskable one, and an SVG).
+  - **Page head:** the page links the manifest and sets a theme color, an `apple-touch-icon` and the Apple web-app metas, so Safari's **File → Add to Dock** gets the name and icon.
+  - **No token for these files:** the manifest, the icons and the service worker are served without the token cookie, like the page shell (browsers fetch a manifest without credentials). The Host/Origin guard still applies. They hold nothing sensitive.
+  - **Service worker** (`/sw.js`): everything goes to the network; the worker caches nothing but its own offline page, so an installed app never shows a stale UI. When a navigation fails because the service is down, it shows that page instead of the browser's error: "Switchboard isn't running on <host:port>", with how to start it (`npm start`, or Settings → Start at login) and a **Retry** button.
+  - **Settings:** an **Install as app** button appears when the browser offers installation (Chrome's `beforeinstallprompt`). In Safari, a one-line hint says "File → Add to Dock". Neither shows when Switchboard already runs as an installed app (`display-mode: standalone`).
+  - **Icons:** made once from an SVG of the sidebar's brand mark, rasterised with the test Chromium by a script in the repo, and committed.
+  - **Unchanged:** the installed app is the same origin (`http://127.0.0.1:<port>`), so it keeps its token cookie and needs the service running.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
