@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionEvent } from '../../core/api.ts';
+import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
@@ -18,6 +18,7 @@ import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFi
 import { ClaudeProcess, type ProcessExit } from './process.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
+import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -110,6 +111,8 @@ export interface AdoptInput {
 export interface SupervisorEvents {
   readonly sessionUpdated: Session;
   readonly event: { readonly sessionId: string; readonly event: SessionEvent };
+  /** D19: a session's live activity changed (at most one per `activityIntervalMs` per session; `null` = no turn runs). */
+  readonly activity: { readonly sessionId: string; readonly activity: SessionActivity | null };
 }
 
 /** Options for {@link SessionSupervisor}. */
@@ -131,6 +134,8 @@ export interface SupervisorOptions {
   readonly listLive?: LiveProcessLister;
   /** Called when processing a line or an exit throws (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
+  /** D19: the minimum gap between two `activity` notifications of one session (default {@link ACTIVITY_INTERVAL_MS}). */
+  readonly activityIntervalMs?: number;
 }
 
 /** Options of {@link SessionSupervisor.attach}. */
@@ -179,6 +184,8 @@ interface Live {
   readonly sessionId: string;
   readonly proc: ClaudeProcess;
   readonly recorder: StreamRecorder;
+  /** D19: the session's `activity` notifications, at most one per interval. */
+  readonly activity: LatestThrottle<SessionActivity | null>;
   readonly waiters: Set<Waiter>;
   /** Serializes line and exit handling. */
   queue: Promise<void>;
@@ -211,7 +218,12 @@ export class SessionSupervisor {
   readonly #live = new Map<string, Live>();
   /** Attach calls run one at a time per session (the check and the spawn must not interleave). */
   readonly #attaching = new Map<string, Promise<unknown>>();
-  readonly #listeners = { sessionUpdated: new Set<Listener<'sessionUpdated'>>(), event: new Set<Listener<'event'>>() };
+  readonly #listeners = {
+    sessionUpdated: new Set<Listener<'sessionUpdated'>>(),
+    event: new Set<Listener<'event'>>(),
+    activity: new Set<Listener<'activity'>>(),
+  };
+  readonly #activityIntervalMs: number;
   #closing = false;
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
   #gate: Promise<void> = Promise.resolve();
@@ -225,6 +237,7 @@ export class SessionSupervisor {
     this.#handler = options.controlHandler ?? {};
     this.#onError = options.onError ?? ((error) => console.error('switchboard supervisor:', error));
     this.#listLive = options.listLive ?? null;
+    this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -247,6 +260,15 @@ export class SessionSupervisor {
   /** The live process's pid, or `null`. */
   pid(sessionId: string): number | null {
     return this.#live.get(sessionId)?.proc.pid ?? null;
+  }
+
+  /**
+   * D19: what the session's running turn is doing now (`Session.activity`,
+   * `docs/derivations.md` → *Live activity*); `null` without a live process or
+   * while no turn runs. Always current (the `activity` notifications are throttled).
+   */
+  activity(sessionId: string): SessionActivity | null {
+    return this.#live.get(sessionId)?.recorder.activity() ?? null;
   }
 
   // ── commands ───────────────────────────────────────────────────────────
@@ -701,11 +723,16 @@ export class SessionSupervisor {
       })) ?? session;
     const mainAgentId = await this.#mainAgentId(prepared);
     const holder: { live?: Live } = {};
+    const activity = new LatestThrottle<SessionActivity | null>({
+      intervalMs: this.#activityIntervalMs,
+      send: (value) => this.#emitActivity(session.id, value),
+    });
     const recorder = new StreamRecorder({
       store: this.#store,
       session: prepared,
       mainAgentId,
       onEvent: (event) => this.#emitEvent(event),
+      onActivity: (value) => activity.push(value),
       // D6: `auto` is not available for this model; its control_response needs no waiter.
       onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
     });
@@ -724,6 +751,7 @@ export class SessionSupervisor {
       sessionId: session.id,
       proc,
       recorder,
+      activity,
       waiters: new Set(),
       queue: Promise.resolve(),
       finished: Promise.resolve(),
@@ -863,6 +891,8 @@ export class SessionSupervisor {
       }
     }
     await live.recorder.closeRunningAgents();
+    // D19: no turn runs once the process is gone.
+    live.recorder.endActivity();
     const now = new Date().toISOString();
     const patch: { -readonly [K in keyof SessionPatch]: SessionPatch[K] } = { pid: null, stopReason: null };
     const base = { pid: live.proc.pid, code: exit.code, signal: exit.signal };
@@ -932,6 +962,16 @@ export class SessionSupervisor {
     this.#emitEvent(event);
   }
 
+  #emitActivity(sessionId: string, activity: SessionActivity | null): void {
+    for (const listener of this.#listeners.activity) {
+      try {
+        listener({ sessionId, activity });
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+  }
+
   #emitEvent(record: EventRecord): void {
     const listeners = this.#listeners.event;
     if (listeners.size === 0) return;
@@ -950,7 +990,7 @@ export class SessionSupervisor {
     if (listeners.size === 0) return;
     const record = await this.#store.sessions.get(sessionId);
     if (!record) return;
-    const session = await toSession(this.#store, record);
+    const session = await toSession(this.#store, record, this.activity(sessionId));
     for (const listener of listeners) {
       try {
         listener(session);

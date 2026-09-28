@@ -95,6 +95,23 @@ describe('parseStreamLine (M0 fixtures)', () => {
     expect(denied?.toolUseId).toMatch(/^toolu_/);
   });
 
+  it('tool-use: system/thinking_tokens ticks (D19), the estimate restarting per model message', async () => {
+    const ticks = only(await fixture('tool-use'), 'thinking-tokens');
+    expect(ticks.map((t) => [t.estimatedTokens, t.estimatedTokensDelta, t.parentToolUseId])).toEqual([
+      [50, 50, null],
+      [100, 50, null],
+      [228, 128, null],
+      [50, 50, null],
+      [128, 78, null],
+    ]);
+    expect(parseStreamLine('{"type":"system","subtype":"thinking_tokens","parent_tool_use_id":"toolu_1"}')).toMatchObject({
+      kind: 'thinking-tokens',
+      estimatedTokens: null,
+      estimatedTokensDelta: null,
+      parentToolUseId: 'toolu_1',
+    });
+  });
+
   it('never throws: non-JSON, arrays and unknown types', () => {
     expect(parseStreamLine('not json').kind).toBe('invalid');
     expect(parseStreamLine('{broken').kind).toBe('invalid');

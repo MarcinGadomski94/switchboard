@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { SessionActivity } from '../../core/api.ts';
 import type { ArtifactType, EventKind, SessionStatus } from '../../core/model.ts';
 import {
   type EventPayload,
@@ -10,6 +11,7 @@ import {
   clip,
   clipInput,
 } from '../../core/event-payload.ts';
+import { ActivityTracker } from '../../core/derive/activity.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import {
   type SessionPlace,
@@ -52,6 +54,10 @@ export interface RecorderOptions {
    * support it): the supervisor sends `set_permission_mode` with this mode.
    */
   readonly onPermissionFallback?: (mode: string) => void;
+  /** D19: called whenever the live activity ({@link StreamRecorder.activity}) changes, with the new value. */
+  readonly onActivity?: (activity: SessionActivity | null) => void;
+  /** Clock of the live activity's timestamps (tests pass a fake one). */
+  readonly now?: () => Date;
 }
 
 interface ToolEntry {
@@ -89,6 +95,11 @@ export class StreamRecorder {
   readonly #mainAgentId: string;
   readonly #onEvent: (event: EventRecord) => void;
   readonly #onPermissionFallback: ((mode: string) => void) | undefined;
+  readonly #onActivity: ((activity: SessionActivity | null) => void) | undefined;
+  /** D19: what the running turn does now (in memory only). */
+  readonly #activity: ActivityTracker;
+  /** The last activity reported to `onActivity`, as JSON. */
+  #activityKey = 'null';
 
   /** User messages written to stdin whose turn has not produced its `result` yet. */
   #pendingTurns = 0;
@@ -120,6 +131,8 @@ export class StreamRecorder {
     this.#mainAgentId = options.mainAgentId;
     this.#onEvent = options.onEvent;
     this.#onPermissionFallback = options.onPermissionFallback;
+    this.#onActivity = options.onActivity;
+    this.#activity = new ActivityTracker({ mainAgentId: options.mainAgentId, ...(options.now ? { now: options.now } : {}) });
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
@@ -157,6 +170,26 @@ export class StreamRecorder {
   /** Marks the start of a Switchboard-initiated stop. */
   beginStop(): void {
     this.#stopping = true;
+  }
+
+  /** D19: what the running turn is doing now (`docs/derivations.md` → *Live activity*); `null` when no turn runs. */
+  activity(): SessionActivity | null {
+    return this.#activity.snapshot();
+  }
+
+  /** D19: the process ended: no turn runs any more. */
+  endActivity(): void {
+    this.#activity.endTurn();
+    this.#syncActivity();
+  }
+
+  /** Reports the activity to `onActivity` when it differs from the last one reported. */
+  #syncActivity(): void {
+    const activity = this.#activity.snapshot();
+    const key = JSON.stringify(activity);
+    if (key === this.#activityKey) return;
+    this.#activityKey = key;
+    this.#onActivity?.(activity);
   }
 
   // ── events ─────────────────────────────────────────────────────────────
@@ -212,6 +245,8 @@ export class StreamRecorder {
     const open = this.#openRequests.get(requestId);
     if (!open) return;
     this.#openRequests.delete(requestId);
+    this.#activity.requestClosed(requestId);
+    this.#syncActivity();
     await this.#setRequestState(open, 'responded', behavior);
   }
 
@@ -220,8 +255,10 @@ export class StreamRecorder {
     const ids = [...this.#openRequests.keys()];
     for (const [id, open] of this.#openRequests) {
       this.#openRequests.delete(id);
+      this.#activity.requestClosed(id);
       await this.#setRequestState(open, 'stale');
     }
+    this.#syncActivity();
     return ids;
   }
 
@@ -229,9 +266,13 @@ export class StreamRecorder {
   async closeRunningAgents(): Promise<void> {
     for (const taskId of this.#runningAgents) {
       const agent = await this.#store.agents.findByTaskId(this.#sessionId, taskId);
-      if (agent) await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt: new Date().toISOString() });
+      if (agent) {
+        await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt: new Date().toISOString() });
+        this.#activity.agentEnded(agent.id);
+      }
     }
     this.#runningAgents.clear();
+    this.#syncActivity();
   }
 
   async #setRequestState(open: OpenRequest, state: RequestState, behavior?: string): Promise<void> {
@@ -264,8 +305,13 @@ export class StreamRecorder {
     await this.#store.sessions.update(this.#sessionId, { lastTranscriptUuid: uuid });
   }
 
-  /** Records one parsed stdout message. */
+  /** Records one parsed stdout message (and reports the live activity when it changed, D19). */
   async handle(message: StreamMessage): Promise<void> {
+    await this.#dispatch(message);
+    this.#syncActivity();
+  }
+
+  async #dispatch(message: StreamMessage): Promise<void> {
     switch (message.kind) {
       case 'init':
         return this.#onInit(message);
@@ -292,6 +338,12 @@ export class StreamRecorder {
       case 'task-updated':
       case 'task-notification':
         return this.#onTaskEnd(message.taskId, message.status);
+      case 'thinking-tokens': {
+        // D19: ticks without `parent_tool_use_id` are the main agent's (the only ones observed).
+        const agentId = await this.#agentFor(message.parentToolUseId);
+        this.#activity.thinkingTokens(agentId, message.estimatedTokens, message.estimatedTokensDelta);
+        return;
+      }
       case 'permission-denied':
         await this.#append('ask', `Denied · ${message.toolName ?? 'tool'}${message.decisionReason ? ` (${message.decisionReason})` : ''}`, {
           type: 'denied',
@@ -308,6 +360,8 @@ export class StreamRecorder {
 
   async #onInit(message: Extract<StreamMessage, { kind: 'init' }>): Promise<void> {
     if (this.#pendingTurns === 0 && !this.#cliTurn) this.#cliTurn = true;
+    // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
+    this.#activity.startTurn();
     const patch: { observedPermissionMode?: string | null; cliVersion?: string | null } = {};
     if (message.permissionMode !== this.#observedMode) {
       this.#observedMode = message.permissionMode;
@@ -341,6 +395,8 @@ export class StreamRecorder {
   }
 
   async #onReplay(message: Extract<StreamMessage, { kind: 'replay' }>): Promise<void> {
+    // The CLI took up a stdin message (D19: the turn starts, if `init` did not start it already).
+    this.#activity.startTurn();
     const at = this.#pendingUserEvents.findIndex((pending) => pending.text === message.text);
     const pending = at >= 0 ? this.#pendingUserEvents.splice(at, 1)[0] : this.#pendingUserEvents.shift();
     if (pending) {
@@ -356,8 +412,10 @@ export class StreamRecorder {
   async #onAssistant(message: Extract<StreamMessage, { kind: 'assistant' }>): Promise<void> {
     const agentId = await this.#agentFor(message.parentToolUseId);
     for (const block of message.blocks) {
+      if (block.type === 'thinking') this.#activity.thinking(agentId);
       if (block.type === 'text') {
         if (block.text.trim() === '') continue;
+        this.#activity.writing(agentId);
         const key = message.messageId ?? message.uuid ?? '';
         const merged = key ? this.#textByMessage.get(key) : undefined;
         if (merged) {
@@ -388,6 +446,7 @@ export class StreamRecorder {
           toolUseId: block.id,
         });
         this.#tools.set(block.id, { eventId: event.id, name: block.name, input: block.input, command, agentId });
+        this.#activity.toolStarted(agentId, block.id, block.name, block.input);
         if (AGENT_TOOLS.includes(block.name) && block.id) await this.#createSubagent(block.id, block.input);
       }
     }
@@ -396,7 +455,10 @@ export class StreamRecorder {
 
   async #createSubagent(toolUseId: string, input: Readonly<Record<string, unknown>>): Promise<void> {
     const existing = await this.#store.agents.findByToolUseId(this.#sessionId, toolUseId);
-    if (existing) return;
+    if (existing) {
+      if (existing.status === 'run') this.#activity.agentStarted(existing.id);
+      return;
+    }
     const seed = subagentFromToolUse(input);
     const agent = await this.#store.agents.create({
       sessionId: this.#sessionId,
@@ -408,10 +470,12 @@ export class StreamRecorder {
       status: 'run',
     });
     this.#agentByToolUse.set(toolUseId, agent.id);
+    this.#activity.agentStarted(agent.id);
   }
 
   async #onToolResult(message: Extract<StreamMessage, { kind: 'tool-result' }>): Promise<void> {
     for (const result of message.results) {
+      this.#activity.toolEnded(result.toolUseId);
       const entry = this.#tools.get(result.toolUseId);
       if (!entry) continue;
       const cut = clip(result.text);
@@ -433,6 +497,7 @@ export class StreamRecorder {
     const agent = await this.#store.agents.findByToolUseId(this.#sessionId, toolUseId);
     if (!agent || agent.taskId || agent.status !== 'run') return;
     await this.#store.agents.update(agent.id, { status: isError ? 'fail' : 'done', statusText: null, endedAt: new Date().toISOString() });
+    this.#activity.agentEnded(agent.id);
   }
 
   async #onUserText(message: Extract<StreamMessage, { kind: 'user-text' }>): Promise<void> {
@@ -447,6 +512,8 @@ export class StreamRecorder {
   async #onResult(message: Extract<StreamMessage, { kind: 'result' }>): Promise<void> {
     if (message.taskNotification || this.#pendingTurns === 0) this.#cliTurn = false;
     else this.#pendingTurns--;
+    // D19: a turn's result → idle (a queued message's turn starts when the CLI takes it up).
+    this.#activity.endTurn();
     this.#failedCommands.clear();
     this.#textByMessage.clear();
     if (this.#stopping) return;
@@ -488,6 +555,7 @@ export class StreamRecorder {
     if (message.toolName === 'AskUserQuestion' && tool) {
       await this.#patchPayload<ToolPayload>(tool.eventId, (payload) => ({ ...payload, requestId: message.requestId, requestState: 'open' }));
       this.#openRequests.set(message.requestId, { eventId: tool.eventId, toolName: message.toolName, onToolEvent: true });
+      this.#activity.requestOpened(message.requestId, tool.agentId);
       return;
     }
     const agent = message.agentId ? await this.#store.agents.findByTaskId(this.#sessionId, message.agentId) : null;
@@ -504,12 +572,14 @@ export class StreamRecorder {
       state: 'open',
     }, { agentId: agent?.id ?? this.#mainAgentId, toolUseId: message.toolUseId });
     this.#openRequests.set(message.requestId, { eventId: event.id, toolName: message.toolName, onToolEvent: false });
+    this.#activity.requestOpened(message.requestId, agent?.id ?? this.#mainAgentId);
   }
 
   async #onCancel(requestId: string): Promise<void> {
     const open = this.#openRequests.get(requestId);
     if (!open) return;
     this.#openRequests.delete(requestId);
+    this.#activity.requestClosed(requestId);
     await this.#setRequestState(open, 'cancelled');
   }
 
@@ -536,6 +606,7 @@ export class StreamRecorder {
       });
     }
     if (agent && message.toolUseId) this.#agentByToolUse.set(message.toolUseId, agent.id);
+    if (agent) this.#activity.agentStarted(agent.id);
     this.#runningAgents.add(message.taskId);
   }
 
@@ -554,6 +625,7 @@ export class StreamRecorder {
       const next: SessionStatus = agentStatusFromTask(status);
       await this.#store.agents.update(agent.id, { status: next, statusText: null, endedAt: new Date().toISOString() });
     }
+    if (agent) this.#activity.agentEnded(agent.id);
     this.#runningAgents.delete(taskId);
   }
 

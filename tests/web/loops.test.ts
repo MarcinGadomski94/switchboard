@@ -55,6 +55,7 @@ function session(overrides: Partial<Session> = {}): Session {
     folderPath: null,
     folderKind: null,
     live: false,
+    activity: null,
     resumeCommand: 'claude --resume c1',
     chips: [],
     loops: [loop()],

@@ -10,6 +10,7 @@ export interface HubSources {
   readonly supervisor?: {
     on(name: 'sessionUpdated', listener: (payload: HubEvents['sessionUpdated']) => void): () => void;
     on(name: 'event', listener: (payload: HubEvents['event']) => void): () => void;
+    on(name: 'activity', listener: (payload: HubEvents['activity']) => void): () => void;
   };
   readonly worktrees?: {
     on(name: 'worktreeRemovable', listener: (payload: HubEvents['worktreeRemovable']) => void): () => void;
@@ -26,6 +27,8 @@ export function forwardServiceEvents(bus: HubBus, sources: HubSources): () => vo
   if (supervisor) {
     offs.push(supervisor.on('sessionUpdated', (session) => bus.publish('sessionUpdated', session)));
     offs.push(supervisor.on('event', (event) => bus.publish('event', event)));
+    // D19: the live activity, at most one per second per session (the supervisor throttles).
+    offs.push(supervisor.on('activity', (activity) => bus.publish('activity', activity)));
   }
   if (worktrees) offs.push(worktrees.on('worktreeRemovable', (worktree) => bus.publish('worktreeRemovable', worktree)));
   return () => {

@@ -49,6 +49,6 @@ export async function registerHistoryRoutes(app: FastifyInstance, context: ApiCo
   app.post<{ Params: ContinueParams }>('/api/history/:claudeSessionId/continue', async (request, reply) => {
     const outcome = await mover.continue(request.params.claudeSessionId, request.body);
     if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
-    return reply.code(201).send(await toSession(context.store, outcome.record));
+    return reply.code(201).send(await toSession(context.store, outcome.record, context.supervisor.activity(outcome.record.id)));
   });
 }
