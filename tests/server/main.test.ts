@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_FILE, openDatabase } from '../../src/server/db/database.ts';
 import { appliedMigrations, loadMigrations, makeMigration, migrate } from '../../src/server/db/migrate.ts';
 import { TOKEN_FILE } from '../../src/server/token.ts';
-import { makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
+import { TEST_PORTS, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../helpers/server-process.ts';
 
 let tmp: string;
@@ -67,7 +67,7 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const db = await openDatabase(path.join(dataDir, DB_FILE));
     migrate(db, [...(await loadMigrations()), makeMigration(9999, 'future', 'CREATE TABLE future (id INTEGER) STRICT;')]);
     db.close();
-    const bad = spawnServer(4879, { SWITCHBOARD_DATA_DIR: dataDir });
+    const bad = spawnServer(TEST_PORTS[TEST_PORTS.length - 1]!, { SWITCHBOARD_DATA_DIR: dataDir }); // exits before it binds
     expect(await bad.closed).toBe(1);
     expect(bad.output()).toContain('switchboard: the database has migration 9999 (future)');
     expect(bad.output()).not.toContain('Server listening');
@@ -103,7 +103,9 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const db = new DatabaseSync(path.join(dataDir, DB_FILE), { readOnly: true });
     try {
       expect(db.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 0 });
-      expect(db.prepare('SELECT count(*) AS n FROM tools').get()).toEqual({ n: 0 });
+      // Only the default tools of a fresh install (0002_default_tools.sql, M8.1), and no demo seed marker.
+      expect(db.prepare('SELECT id FROM tools ORDER BY position').all()).toEqual([{ id: 'cm' }, { id: 'sw' }]);
+      expect(db.prepare(`SELECT count(*) AS n FROM settings WHERE key = 'demo.seed'`).get()).toEqual({ n: 0 });
     } finally {
       db.close();
     }

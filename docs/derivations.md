@@ -83,3 +83,7 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 - `sessions.last_transcript_uuid`: the uuid of the newest **main-chain** stdout line that the CLI also writes to the transcript (replayed prompt, assistant line, tool result, interrupt marker). This is the Attach sync point (M4.1).
 - `sessions.last_activity_at`: the newest event's `ts`.
 - `usage_readings`: every `rate_limit_event` (utilization × 100, `resetsAt` epoch seconds → ISO), source `rate_limit_event`. The meter itself is M9.2.
+
+## Embedded tools (M8.1, `docs/tools.md`)
+- **Tool reachability**: `up` = any HTTP response to one server-side `GET` of the saved URL within 3 s (redirects not followed); `down` = anything else. The UI state (`idle` until probed, `checking`, `up`, `down`, `unset` once a URL-less tool was probed) follows the prototype's `tstate`.
+- **`.codebase-memory-dirty` lines → strip chips**: a line is a codebase-memory project id (the workspace hook's rule: runs of `:` `/` `\` → `-`). An id under the workspace root's id (configured path or real path) followed by `-<category>-<repo>` names that repo (`mobile-…` = `mobile`); other ids show verbatim without a path. No times (`markedAt: null`) and no indexed count (`indexed: null`): the file holds neither and the service never calls codebase-memory (gap #4).

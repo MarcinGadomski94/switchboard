@@ -182,6 +182,12 @@
   background: var(--bg-selected-nav);
 }
 
+/* The row is a link: keep the prototype's inherited text color, not the global link color (M8.1). */
+.sb-tool,
+.sb-tool:hover {
+  color: var(--text);
+}
+
 .sb-tool-dot {
   width: 7px;
   height: 7px;

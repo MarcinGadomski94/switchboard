@@ -22,7 +22,7 @@ Switchboard keeps its state in one SQLite database through Node's built-in `node
 - JSON lives in TEXT columns with `CHECK (json_valid(…))`. List columns also require `json_type(…) = 'array'`. Values that hold verbatim CLI data (`question_batches.input`, `permission_requests.input`, the `options` of a question) are stored exactly as received.
 - Booleans are stored as `0`/`1` with a CHECK, nullable fields read back as `null`, and a field that is left out takes the table default.
 - CHECK constraints are used only for enumerations that the contract or the architecture data model locks: session `status`, `work_type`, `mode`, `phase`, `coordination`, `qa_stack`, event `kind`, artifact `type` and question batch `state`. The TypeScript unions and runtime lists for them are in `src/core/model.ts`. Other small vocabularies are TypeScript unions without a CHECK, so a later item can extend them without a migration: agent kind/status, permission and system-item states, schedule-run result and trigger, loop kind, usage source and pending-message kind.
-- `work_type` and `mode` are nullable in the database, even though `NewSession` requires them. Sessions that the service starts itself (gap #4 reindex, schedules) may not have them. The API validates `NewSession`.
+- `work_type` and `mode` are nullable in the database, even though `NewSession` requires them. Sessions that the service starts itself (gap #4 reindex, schedules) may not have them: `SessionSupervisor.start` takes a `SessionStartInput` (NewSession with `workType`/`mode`/`phase` nullable; the M8.1 reindex session passes `null`). The API validates `NewSession`.
 
 ## Tables
 | Table | Entity (ARCHITECTURE → Data model / Stored state) | Notes |
@@ -37,7 +37,7 @@ Switchboard keeps its state in one SQLite database through Node's built-in `node
 | `artifacts` | Artifact | `type` is the locked list, `meta` is the short copy, and `path`/`url`/`data` are optional. |
 | `schedules` + `schedule_runs` | Schedule + runs | `template` = the session config + prompt (D8). A run has `ts`, `finished_at`, `result`, `summary`, `session_id` and `triggered_by` (cron/manual). No default schedules (gap #6). |
 | `loops` | Loop | `iteration`, `cap`, `breaker_count` and the times stay `null` unless observed or read from `.loop/progress.md` (D9). `iterations` feeds the strip. |
-| `tools` | Tool | `url` null = not configured. `position` = sort order. No default rows: M8.1 adds Codebase Memory and Acme Tool. |
+| `tools` | Tool | `url` null = not configured. `position` = sort order. `0002_default_tools.sql` (M8.1) adds Codebase Memory (`cm`, `http://localhost:13000`) and Acme Tool (`sw`, no URL) once per database; later removals stick (`docs/tools.md`). |
 | `settings` | Setting | key → JSON value. Nothing is stored until something is set. |
 | `usage_readings` | Usage reading | 5-hour / 7-day percentages 0–100 (callers convert `rate_limit_event`'s 0–1) with their reset times, source and raw payload. `null` = unknown, never invented. |
 | `history_cache` | History cache | Transcript path → `(size, mtime_ms)` + the parsed row. `item` null = the file shows no row. |

@@ -59,6 +59,17 @@ export interface StartOptions {
   readonly beforeSpawn?: (session: SessionRecord) => Promise<void>;
 }
 
+/**
+ * What {@link SessionSupervisor.start} stores: a validated NewSession, or a session
+ * the service starts itself (gap #4 reindex, schedules) without a work type, mode
+ * or phase (the database allows them `null`, docs/database.md).
+ */
+export type SessionStartInput = Omit<NewSession, 'workType' | 'mode' | 'phase'> & {
+  readonly workType: NewSession['workType'] | null;
+  readonly mode: NewSession['mode'] | null;
+  readonly phase: NewSession['phase'] | null;
+};
+
 /** Notifications for the `/hub` (M2.3), same names and payloads as the contract. */
 export interface SupervisorEvents {
   readonly sessionUpdated: Session;
@@ -190,7 +201,7 @@ export class SessionSupervisor {
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).
    */
-  async start(input: NewSession, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
+  async start(input: SessionStartInput, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
     this.#assertOpen();
     const cwd = await this.#workspaceCwd();
     const session = await this.#store.sessions.create({

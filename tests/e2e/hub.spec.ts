@@ -5,6 +5,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { stubToolProbes } from './probes.ts';
 
 /**
  * The page's `/hub` client (src/web/api/useHub.ts) over the real SSE route
@@ -36,6 +37,11 @@ test.afterAll(async () => {
   // SIGTERM → app.close(): the open /hub stream must not keep the server from exiting cleanly.
   if (server) expect(await server.stop()).toBe(0);
   await removeTempDir(tmp);
+});
+
+// The sidebar probes the default tools on load; answered in the browser (tests/e2e/probes.ts).
+test.beforeEach(async ({ page }) => {
+  await stubToolProbes(page);
 });
 
 test('the sidebar follows a new session live through /hub (sessionUpdated), without a reload', async ({ page }) => {

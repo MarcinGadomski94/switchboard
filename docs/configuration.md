@@ -17,7 +17,8 @@ Test-only variables (read by the test helpers, never by the server):
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SWITCHBOARD_E2E_PORT` | none | Pins the port test servers use (`tests/helpers/server-process.ts`); must be one of 4871–4879. Unset: the first free port in that range. |
+| `SWITCHBOARD_TEST_PORTS` | `4871-4879` | The test port pool (`tests/helpers/net.ts` → `TEST_PORTS`) as `<first>-<last>`, 2–20 ports, never including 4870. Parallel lane worktrees set their own range (e.g. `SWITCHBOARD_TEST_PORTS=4930-4939 npm test`) so their suites never share ports. Every test server, stub server and socket test binds only inside the pool. |
+| `SWITCHBOARD_E2E_PORT` | none | Pins the port test servers use (`tests/helpers/server-process.ts`); must be one of the test ports (`SWITCHBOARD_TEST_PORTS`). Unset: the first free port in the pool. |
 | `SWITCHBOARD_VISUAL_REPORT` | off | `1` makes the visual-oracle specs also write their reports into `docs/visual/` (`docs/visual/README.md`); they always write to `test-results/visual/`. |
 
 ## npm scripts
@@ -28,10 +29,10 @@ Test-only variables (read by the test helpers, never by the server):
 | `npm run dev` | `tools/dev.ts`: `vite build` in watch mode into `dist/web` plus `node --watch src/server/main.ts`. There is no Vite dev server or HMR. The UI is served by the real server on the real port, so the Host/Origin guard and the `sb_token` cookie behave as in production. Reload the browser after a rebuild. |
 | `npm run typecheck` | `tsc` over three configs: `tsconfig.json` (server, core, tools, tests, tool configs; Node types, no DOM), `tsconfig.web.json` (React UI, DOM, bundler resolution), `tsconfig.e2e.json` (Playwright specs: adds DOM for `page.evaluate`). |
 | `npm test` | Vitest: `tests/**/*.test.ts` (unit + integration). |
-| `npm run e2e` | Playwright: `tests/e2e/**/*.spec.ts`, Chromium at 1440×900. It first builds `dist/web` (`tests/e2e/global-setup.ts`). Specs start their own server on a 4871–4879 port with a temp data dir. |
+| `npm run e2e` | Playwright: `tests/e2e/**/*.spec.ts`, Chromium at 1440×900. It first builds `dist/web` (`tests/e2e/global-setup.ts`). Specs start their own server on a test port (`SWITCHBOARD_TEST_PORTS`, default 4871–4879) with a temp data dir. |
 
 ## Ignored folders
-Every tool config excludes `.worktrees/` (parallel lane worktrees), `.spike/`, `dist/` and `node_modules/`: the tsconfigs (`exclude`), `vite.config.ts` (`server.watch.ignored`, `build.watch.exclude` in dev), `vitest.config.ts` (`test.exclude`, `server.watch.ignored`) and `playwright.config.ts` (`testIgnore`).
+Every tool config excludes `.worktrees/` (parallel lane worktrees), `.spike/`, `dist/` and `node_modules/`: the tsconfigs (`exclude`), `vite.config.ts` (`server.watch.ignored`, `build.watch.exclude` in dev), `vitest.config.ts` (`test.exclude`, `server.watch.ignored`) and `playwright.config.ts` (`testIgnore`, a pattern anchored inside `tests/e2e/`, because Playwright matches absolute paths and a lane worktree itself lives under `.worktrees/`).
 
 ## Pinned tool versions
 Exact versions live in `package.json` + `package-lock.json`. The fonts are `@fontsource/geist` and `@fontsource/geist-mono` 5.3.0 (OFL, the Google Fonts files; gap #19). The prototype's runtime for the offline visual harness is pinned as devDependencies at the versions the prototype requests: `prototype-react` = `npm:react@18.3.1`, `prototype-react-dom` = `npm:react-dom@18.3.1` and `@babel/standalone` 7.29.0; an `overrides` entry points the aliased react-dom's React peer at the app's React (`$react`), because only its UMD file is used, never its module. `@playwright/test` is pinned to **1.62.1** because its Chromium (revision 1234) is the one already in `~/Library/Caches/ms-playwright`, so no browser download is needed. Moving to a newer Playwright means running `npx playwright install chromium` (allowed by D12).

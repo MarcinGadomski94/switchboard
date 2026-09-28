@@ -75,6 +75,23 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
     expect((await history.history('various'))[0]?.branches).toEqual([]);
   });
 
+  it('tools (M8.1): every probe is down without touching the network; the prototype dirty list with its times', async () => {
+    const { toolProbe, codebaseMemory } = createDemoProviders(await loadDemoData(), () => NOW);
+    expect(await toolProbe.probe('http://localhost:13000')).toBe('down');
+    const status = await codebaseMemory.status();
+    expect(status.indexed).toEqual({ projects: 16, mode: 'full' });
+    expect(
+      status.projects.map((p) => {
+        const at = new Date(p.markedAt!);
+        return [p.name, p.path, `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`];
+      }),
+    ).toEqual([
+      ['mobile', null, '10:31'],
+      ['acme-app-front', null, '10:22'],
+      ['components-library-nuget', null, '09:58'],
+    ]);
+  });
+
   it('parses deltas and branch lists', () => {
     expect(parseDelta('+51 −12')).toEqual({ added: 51, removed: 12 });
     expect(parseDelta('+118')).toEqual({ added: 118, removed: 0 });

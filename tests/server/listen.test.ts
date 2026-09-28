@@ -6,7 +6,7 @@ import { loadConfig } from '../../src/server/config.ts';
 import { BindRefusedError, assertLoopbackBind, listenLoopback } from '../../src/server/listen.ts';
 import type { Store } from '../../src/server/db/store.ts';
 import { generateToken } from '../../src/server/token.ts';
-import { freeTestPorts, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
+import { TEST_PORTS, freeTestPorts, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { openTempStore } from '../helpers/store.ts';
 
 let tmp: string;
@@ -70,8 +70,7 @@ describe('bind address', () => {
     const { app, port } = await listenOnTestPort();
     const address = app.server.address();
     expect(address).toMatchObject({ address: '127.0.0.1', family: 'IPv4', port });
-    expect(port).toBeGreaterThanOrEqual(4871);
-    expect(port).toBeLessThanOrEqual(4879);
+    expect(TEST_PORTS).toContain(port);
 
     const lan = lanAddress();
     if (lan) {

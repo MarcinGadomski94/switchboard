@@ -1,0 +1,210 @@
+/* Embedded tool (SPEC → Tools, M8.1). Values are the prototype's (vTool markup). */
+.sb-tool-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Toolbar */
+.sb-tool-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-tool-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sb-tool-bar-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sb-tool-bar-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-tool-url {
+  flex: 1;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-1);
+  background: var(--bg-code);
+  border: 1px solid var(--border-divider);
+  border-radius: var(--radius-button-lg);
+  padding: 6px 10px;
+}
+
+.sb-tool-url-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-tool-url-state {
+  margin-left: auto;
+}
+
+.sb-tool-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-tool-action,
+.sb-tool-action:hover {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.sb-tool-action[aria-disabled='true'] {
+  cursor: default;
+}
+
+/* Frame area */
+.sb-tool-frame {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-code);
+}
+
+.sb-tool-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.sb-tool-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  /* The prototype's overlay backdrop (not a SPEC token). */
+  background: #0f1012;
+}
+
+.sb-tool-overlay-card {
+  width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 24px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-question);
+  background: var(--bg-card-2);
+}
+
+.sb-tool-overlay-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.sb-tool-overlay-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sb-tool-overlay-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-1);
+}
+
+.sb-tool-overlay-actions {
+  display: flex;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.sb-tool-overlay-button {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-button-lg);
+  padding: 6px 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Codebase Memory strip */
+.sb-cm-strip {
+  padding: 9px 16px;
+  border-top: 1px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-cm-strip-file {
+  color: var(--text-2);
+}
+
+.sb-cm-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* The prototype's dirty-chip border (not a SPEC token). */
+  border: 1px solid oklch(0.42 0.07 70);
+  border-radius: var(--radius-chip-lg);
+  padding: 2px 8px;
+  color: var(--text);
+}
+
+.sb-cm-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-need);
+}
+
+.sb-cm-chip-time {
+  color: var(--muted-3);
+}
+
+.sb-cm-strip-note {
+  margin-left: auto;
+  color: var(--muted-3);
+}
+
+.sb-cm-strip-note[data-error='true'] {
+  color: var(--status-fail);
+}
+
+.sb-cm-reindex,
+.sb-cm-reindex:hover {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 10px;
+  color: var(--text);
+  cursor: pointer;
+  /* The prototype's inline family (not --font-ui). */
+  font-family: Geist, sans-serif;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.sb-cm-reindex[aria-disabled='true'] {
+  cursor: progress;
+}

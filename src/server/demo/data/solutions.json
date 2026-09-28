@@ -357,6 +357,10 @@
       "ts": "09:58"
     }
   ],
+  "codebaseMemoryIndexed": {
+    "projects": 16,
+    "mode": "full"
+  },
   "newSessionGroups": [
     {
       "folder": "microfrontends/",

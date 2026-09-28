@@ -288,6 +288,28 @@ export interface ToolProbe {
 }
 
 /**
+ * One project listed in the workspace's `.claude/.codebase-memory-dirty` (M8.1
+ * strip, gap #4; the file M6.4 reads for freshness). Additive, not in the contract.
+ */
+export interface CodebaseMemoryProject {
+  /** The line of the file verbatim: codebase-memory's project id. */
+  readonly id: string;
+  /** The repo folder name (`acme-app-front`, `mobile`), else the id. */
+  readonly name: string;
+  /** Absolute repo path when the id belongs to the workspace root, else `null`. */
+  readonly path: string | null;
+  /** When the project was marked dirty; `null` when unknown (the file keeps no times). */
+  readonly markedAt: string | null;
+}
+
+/** `GET /api/codebase-memory` (additive, M8.1): the Codebase Memory tool's strip. */
+export interface CodebaseMemoryStatus {
+  readonly projects: readonly CodebaseMemoryProject[];
+  /** Indexed-project count and index mode; `null` when unknown (never invented). */
+  readonly indexed: { readonly projects: number; readonly mode: string } | null;
+}
+
+/**
  * `GET /api/system` (contract fields) and the `system` hub event. Units, which the
  * contract leaves open: `cpu` and `usagePct` are percentages 0–100, `ramUsed` and
  * `ramTotal` are bytes, `processes` = live supervised `claude` processes (gap #11).

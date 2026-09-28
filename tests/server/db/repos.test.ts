@@ -523,7 +523,15 @@ describe('loops', () => {
 });
 
 describe('tools', () => {
+  it('a fresh database has the default tools (0002_default_tools.sql, M8.1)', async () => {
+    expect((await store.tools.list()).map((t) => [t.id, t.name, t.url, t.description, t.showInSidebar, t.position])).toEqual([
+      ['cm', 'Codebase Memory', 'http://localhost:13000', 'code graph for your indexed solutions', true, 0],
+      ['sw', 'Acme Tool', null, 'AI chat connected to other tools', true, 1],
+    ]);
+  });
+
   it('CRUD and replaceAll (PUT /api/tools)', async () => {
+    await store.tools.replaceAll([]); // start without the default tools
     const cm = await store.tools.create({ id: 'cm', name: 'Codebase Memory', url: 'http://localhost:13000', description: 'code graph', position: 0 });
     const sw = await store.tools.create({ id: 'sw', name: 'Acme Tool', position: 1 });
     expect(sw).toMatchObject({ url: null, showInSidebar: true, description: null });

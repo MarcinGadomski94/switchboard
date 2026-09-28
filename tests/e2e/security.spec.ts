@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { stubToolProbes } from './probes.ts';
 
 /**
  * Real browser check of gap #20: loading the UI sets an HttpOnly, SameSite=Strict
@@ -24,6 +25,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server?.stop();
   await removeTempDir(tmp);
+});
+
+// The sidebar probes the default tools on load; answered in the browser (tests/e2e/probes.ts).
+test.beforeEach(async ({ page }) => {
+  await stubToolProbes(page);
 });
 
 test('UI load sets the sb_token cookie and the page can call the API', async ({ page, context }) => {

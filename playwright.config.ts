@@ -8,7 +8,9 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
-  testIgnore: ['**/.worktrees/**', '**/.spike/**', '**/dist/**', '**/node_modules/**'],
+  // Matched against absolute paths, so only folders *inside* tests/e2e count: a lane
+  // worktree lives under <repo>/.worktrees/ and must still find its own specs.
+  testIgnore: /tests[\\/]e2e[\\/](?:.*[\\/])?(?:\.worktrees|\.spike|dist|node_modules)[\\/]/,
   // Builds dist/web from the current src/web before any spec runs.
   globalSetup: './tests/e2e/global-setup.ts',
   outputDir: 'test-results',

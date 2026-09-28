@@ -5,10 +5,28 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Ports tests may bind: 127.0.0.1:4871–4879. Never 4870, which the developer may
+ * The test port pool from `SWITCHBOARD_TEST_PORTS` (`<first>-<last>`, e.g.
+ * `4930-4939`, so parallel lane worktrees can run their suites side by side
+ * without sharing ports), default 4871–4879. The range must hold 2–20 ports and
+ * may never include 4870, the real app's port.
+ */
+export function testPortRange(raw: string | undefined): number[] {
+  if (raw === undefined || raw.trim() === '') return [4871, 4872, 4873, 4874, 4875, 4876, 4877, 4878, 4879];
+  const match = /^(\d+)-(\d+)$/.exec(raw.trim());
+  const first = Number(match?.[1]);
+  const last = Number(match?.[2]);
+  if (!match || first < 1024 || last > 65535 || last - first < 1 || last - first > 19 || (first <= 4870 && last >= 4870)) {
+    throw new Error(`SWITCHBOARD_TEST_PORTS must be "<first>-<last>" (2–20 ports, never 4870), got "${raw}"`);
+  }
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+}
+
+/**
+ * Ports tests may bind: 127.0.0.1:4871–4879 unless `SWITCHBOARD_TEST_PORTS`
+ * says otherwise ({@link testPortRange}). Never 4870, which the developer may
  * use for the real app.
  */
-export const TEST_PORTS: readonly number[] = [4871, 4872, 4873, 4874, 4875, 4876, 4877, 4878, 4879];
+export const TEST_PORTS: readonly number[] = testPortRange(process.env['SWITCHBOARD_TEST_PORTS']);
 
 /** Absolute repo root. */
 export const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');

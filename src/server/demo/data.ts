@@ -164,6 +164,8 @@ export interface DemoSolutions {
   >;
   readonly artifacts: Readonly<Record<string, ReadonlyArray<{ readonly type: string; readonly name: string; readonly meta: string }>>>;
   readonly codebaseMemoryDirty: ReadonlyArray<{ readonly project: string; readonly ts: string }>;
+  /** The strip's "16 projects indexed · full mode" (M8.1). */
+  readonly codebaseMemoryIndexed: { readonly projects: number; readonly mode: string };
   readonly newSessionGroups: ReadonlyArray<{ readonly folder: string; readonly solutions: readonly string[] }>;
   readonly newSessionDraft: Readonly<Record<string, unknown>>;
 }

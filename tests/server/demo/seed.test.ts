@@ -153,7 +153,7 @@ describe('seedDemo (gap #21)', () => {
     expect(() => assertDemoDataDir(path.join(tmp, 'data'), '/home/u/.local/share/switchboard')).not.toThrow();
     const started = await startDemo(store, path.join(tmp, 'data'));
     expect(started.seed).toEqual({ seeded: true, sessions: 6 });
-    expect(Object.keys(started.providers).sort()).toEqual(['diff', 'history', 'solutions', 'system']);
+    expect(Object.keys(started.providers).sort()).toEqual(['codebaseMemory', 'diff', 'history', 'solutions', 'system', 'toolProbe']);
   });
 
   it('maps agent folders to solution names', () => {

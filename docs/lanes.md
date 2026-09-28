@@ -27,7 +27,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
 | `GET /api/history` | `api/history.ts` | M7.4 |
 | `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
-| `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | M8.1 |
+| `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | served since M8.1 (`docs/tools.md`); additive `GET /api/codebase-memory` + `POST /api/codebase-memory/reindex` (gap #4) in the same module |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
 | `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
 
@@ -49,6 +49,8 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `SolutionsProvider` (workspace scan) | M6.1 / M6.2 | same |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
 | `HistoryProvider` (transcripts) | M7.4 | same |
+| `ToolProbeProvider` (tool reachability, M8.1) | `tools/probe.ts` (server-side GET, 3 s), the route's default | always `down`, no network |
+| `CodebaseMemoryProvider` (`.codebase-memory-dirty`, M8.1 strip) | `tools/codebase-memory.ts` over the workspace root, the route's default | the prototype's dirty list + indexed count |
 
 ## UI: views and parts (`src/web/…`)
 | File | What | Item |
@@ -69,7 +71,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
-| `views/ToolView.tsx` | Embedded tool | M8.1 |
+| `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
 | `views/SettingsView.tsx` | Settings | M8.2 |
 | `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
 
@@ -88,3 +90,5 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `tests/e2e/visual/shell.spec.ts`: the visual oracle for the shell (`docs/visual/shell.md`).
 - `tests/server/api/routes.test.ts`: every contract route is registered and guarded.
 - `tests/server/demo/*.test.ts`: demo data verbatim against the prototype, the seed, the demo providers.
+- Test ports: each lane runs its suites on its own pool, `SWITCHBOARD_TEST_PORTS=<first>-<last>` (`docs/configuration.md`); stub HTTP servers come from `tests/helpers/stub-http.ts`.
+- Specs that load the UI and are not about tools call `stubToolProbes(page)` (`tests/e2e/probes.ts`, M8.1): the sidebar probes configured tools on load, and the default Codebase Memory URL is the developer's `http://localhost:13000`.

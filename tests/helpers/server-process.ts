@@ -63,7 +63,7 @@ function stopper(spawned: SpawnedServer): () => Promise<number | null> {
 
 /**
  * The ports {@link startServer} tries: only `SWITCHBOARD_E2E_PORT` when it is set
- * (it must be one of the 4871–4879 test ports), else every free test port.
+ * (it must be one of the TEST_PORTS), else every free test port.
  */
 export async function candidatePorts(env: NodeJS.ProcessEnv = process.env): Promise<number[]> {
   const pinned = env['SWITCHBOARD_E2E_PORT'];
@@ -76,7 +76,7 @@ export async function candidatePorts(env: NodeJS.ProcessEnv = process.env): Prom
 }
 
 /**
- * Starts the real server entry point on the first free test port (4871–4879), or
+ * Starts the real server entry point on the first free test port (TEST_PORTS), or
  * on `SWITCHBOARD_E2E_PORT` when set, and waits for "Server listening". Retries the
  * next port if another test took it. `env` must point SWITCHBOARD_DATA_DIR at a
  * temp folder.
@@ -111,5 +111,5 @@ export async function startServer(env: Record<string, string>, timeoutMs = 15_00
     }
     if (!lastOutput.includes('EADDRINUSE')) break;
   }
-  throw new Error(`server did not start on a free test port (4871-4879):\n${lastOutput}`);
+  throw new Error(`server did not start on a free test port (${TEST_PORTS.join(', ')}):\n${lastOutput}`);
 }

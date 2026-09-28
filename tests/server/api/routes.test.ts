@@ -38,9 +38,6 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['GET', '/api/history?q=x', 'M7.4'],
   ['GET', '/api/settings', 'M8.2'],
   ['PUT', '/api/settings', 'M8.2'],
-  ['GET', '/api/tools', 'M8.1'],
-  ['PUT', '/api/tools', 'M8.1'],
-  ['POST', '/api/tools/cm/probe', 'M8.1'],
   ['GET', '/api/system', 'M5.3'],
 ];
 
@@ -56,6 +53,11 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/sessions/s1/attach', 'M2.1'],
   ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M2.1'],
   ['POST', '/api/solutions/mobile/isolate', 'M2.2'],
+  ['GET', '/api/tools', 'M8.1'],
+  ['PUT', '/api/tools', 'M8.1'],
+  ['POST', '/api/tools/nope/probe', 'M8.1'], // an unknown tool: nothing is fetched (tests/server/api/tools.test.ts)
+  ['GET', '/api/codebase-memory', 'M8.1'], // additive (docs/tools.md)
+  ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no workspace root here → 409, nothing starts
 ];
 
 let tmp: string;

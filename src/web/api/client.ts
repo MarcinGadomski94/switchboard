@@ -1,6 +1,7 @@
 import type {
   AnswerBatch,
   Artifact,
+  CodebaseMemoryStatus,
   FileDiff,
   HistoryItem,
   InboxItem,
@@ -121,6 +122,9 @@ export const api = {
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),
   probeTool: (id: string) => request<ToolProbe>('POST', `/api/tools/${enc(id)}/probe`),
+  /** Additive (M8.1, docs/tools.md): the Codebase Memory strip and its "Reindex n now" (gap #4). */
+  codebaseMemory: () => request<CodebaseMemoryStatus>('GET', '/api/codebase-memory'),
+  reindexCodebaseMemory: () => request<Session>('POST', '/api/codebase-memory/reindex'),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
 } as const;
