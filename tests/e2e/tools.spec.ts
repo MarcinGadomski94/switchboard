@@ -6,7 +6,7 @@ import { DIRTY_FILE, projectId, readDirtyProjects, reindexPrompt } from '../../s
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
-import { type StubServer, htmlPage, startStubServer, unusedTestPort } from '../helpers/stub-http.ts';
+import { type StubHandler, type StubServer, htmlPage, startStubServer, unusedTestPort } from '../helpers/stub-http.ts';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
@@ -17,7 +17,9 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * server-side probe (the page never fetches the tool's origin itself), the iframe,
  * Reload, New tab, Edit, the "isn't configured" and "is not reachable" overlays
  * with Retry, and the Codebase Memory strip whose "Reindex n now" starts a real
- * (fake-claude) session from the built-in prompt (gap #4).
+ * (fake-claude) session from the built-in prompt (gap #4). D15: the Codebase Memory
+ * stand-in refuses framing like the real one (`frame-ancestors 'none'` +
+ * `X-Frame-Options: DENY`), and the iframe still shows it through its framing proxy.
  */
 let tmp: string;
 let workspace: string;
@@ -39,16 +41,37 @@ async function putTools(tools: ReadonlyArray<Partial<Tool>>): Promise<Tool[]> {
   return (await response.json()) as Tool[];
 }
 
-/** Records the page's requests: probes (`POST /api/tools/…/probe`) and anything sent to a stub's origin. */
-function recordRequests(page: Page): { probes: string[]; toStubs: Array<{ url: string; type: string }> } {
+/** Records the page's requests: probes (`POST /api/tools/…/probe`), anything sent to a stub's origin, and to `proxyPort` (D15). */
+function recordRequests(page: Page, proxyPort?: number): { probes: string[]; toStubs: Array<{ url: string; type: string }>; toProxy: Array<{ url: string; type: string }> } {
   const probes: string[] = [];
   const toStubs: Array<{ url: string; type: string }> = [];
+  const toProxy: Array<{ url: string; type: string }> = [];
   page.on('request', (req) => {
     const url = new URL(req.url());
     if (req.method() === 'POST' && /^\/api\/tools\/[^/]+\/probe$/.test(url.pathname)) probes.push(url.pathname);
     if (stubs.some((s) => url.port === String(s.port))) toStubs.push({ url: req.url(), type: req.resourceType() });
+    if (proxyPort !== undefined && url.port === String(proxyPort)) toProxy.push({ url: req.url(), type: req.resourceType() });
   });
-  return { probes, toStubs };
+  return { probes, toStubs, toProxy };
+}
+
+/** D15: the Codebase Memory stand-in answers like the real UI: it refuses every frame. */
+function refusesFraming(text: string): StubHandler {
+  return (_req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': "default-src 'self'; frame-ancestors 'none'",
+      'x-frame-options': 'DENY',
+    });
+    res.end(`<!doctype html><html><head><title>${text}</title></head><body><h1 data-testid="stub">${text}</h1></body></html>`);
+  };
+}
+
+/** The saved tool `id` as the API shows it now (its `frameUrl` included). */
+async function toolOf(id: string): Promise<Tool> {
+  const tool = ((await (await api.get('/api/tools')).json()) as Tool[]).find((t) => t.id === id);
+  if (!tool) throw new Error(`no tool ${id}`);
+  return tool;
 }
 
 test.beforeAll(async () => {
@@ -63,7 +86,7 @@ test.beforeAll(async () => {
     path.join(workspace, DIRTY_FILE),
     `${rootId}-microfrontends-acme-app-front\n${rootId}-nugets-components-library-nuget\n`,
   );
-  cmStub = await stub(htmlPage('Codebase Memory stub'));
+  cmStub = await stub(refusesFraming('Codebase Memory stub'));
   const dataDir = path.join(tmp, 'data');
   // D14: the workspace is a saved folder (the default) in the server's database.
   await seedFolderInDataDir(dataDir, workspace);
@@ -98,7 +121,12 @@ test.afterAll(async () => {
 });
 
 test('Codebase Memory: toolbar, server-side probe, iframe, Reload, New tab, Edit', async ({ page }) => {
-  const seen = recordRequests(page);
+  // D15: the iframe loads the tool's framing proxy, its own loopback port.
+  const cm = await toolOf('cm');
+  expect(cm.frameUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+  const proxyPort = Number(new URL(cm.frameUrl!).port);
+  expect([server.port, cmStub.port]).not.toContain(proxyPort);
+  const seen = recordRequests(page, proxyPort);
   await page.goto(`${server.baseUrl}/tools/cm`);
   const view = page.getByTestId('view-tool');
   await expect(view).toHaveAttribute('data-tool-id', 'cm');
@@ -121,9 +149,9 @@ test('Codebase Memory: toolbar, server-side probe, iframe, Reload, New tab, Edit
   });
   expect(dot).toBe(done);
 
-  // The iframe shows the tool.
+  // The iframe shows the tool, although it answers `frame-ancestors 'none'` + `X-Frame-Options: DENY`: through its proxy (D15).
   const frame = page.getByTestId('tool-frame');
-  await expect(frame).toHaveAttribute('src', `http://127.0.0.1:${cmStub.port}`);
+  await expect(frame).toHaveAttribute('src', cm.frameUrl!);
   await expect(page.frameLocator('[data-testid="tool-frame"]').getByTestId('stub')).toHaveText('Codebase Memory stub');
   // Audit 2026-09-28: sandboxed, and the tool still loads and runs (no top navigation of Switchboard).
   await expect(page.getByTestId('tool-frame')).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads');
@@ -134,11 +162,13 @@ test('Codebase Memory: toolbar, server-side probe, iframe, Reload, New tab, Edit
   await expect(row.locator('.sb-tool-host')).toHaveText(`127.0.0.1:${cmStub.port}`);
   await expect(row).toHaveAttribute('aria-current', 'page');
 
-  // The probe runs on the service: the page only ever loads the stub as the iframe document.
+  // The probe runs on the service, the frame through the proxy: the page never loads the tool's own origin.
   await expect.poll(() => seen.probes.filter((p) => p === '/api/tools/cm/probe').length).toBeGreaterThanOrEqual(1);
-  expect(seen.toStubs.length).toBeGreaterThan(0);
-  expect(seen.toStubs.every((r) => r.type === 'document')).toBe(true);
-  await expect.poll(() => cmStub.requests.length).toBeGreaterThanOrEqual(2); // probe GET + iframe GET
+  expect(seen.toStubs).toEqual([]);
+  expect(seen.toProxy.length).toBeGreaterThan(0);
+  expect(seen.toProxy.every((r) => r.type === 'document')).toBe(true);
+  await expect.poll(() => cmStub.requests.length).toBeGreaterThanOrEqual(2); // probe GET + iframe GET (via the proxy)
+  await expect(page.getByTestId('tool-overlay')).toHaveCount(0); // the service knows the proxy frames it: no "refuses" fallback
 
   // ↻ Reload: a new frame and a new probe.
   const probesBefore = seen.probes.length;
@@ -150,7 +180,7 @@ test('Codebase Memory: toolbar, server-side probe, iframe, Reload, New tab, Edit
   await expect(page.frameLocator('[data-testid="tool-frame"]').getByTestId('stub')).toHaveText('Codebase Memory stub');
   await expect(page.getByTestId('tool-state')).toHaveText('connected');
 
-  // ↗ New tab opens the tool's URL.
+  // ↗ New tab opens the tool's own URL (not the proxy).
   const newTab = page.getByTestId('tool-new-tab');
   await expect(newTab).toHaveAttribute('target', '_blank');
   await expect(newTab).toHaveAttribute('rel', 'noopener');
@@ -211,9 +241,50 @@ test('a URL nobody answers: "is not reachable" (offline), then Retry once the to
     await expect(page.getByTestId('tool-overlay')).toHaveCount(0);
     await expect(page.getByTestId('tool-state')).toHaveText('connected');
     await expect(page.frameLocator('[data-testid="tool-frame"]').getByTestId('stub')).toHaveText('Acme Tool stub');
+    // D15: its proxy started when the URL was saved and forwards to the tool once it runs.
+    await expect(page.getByTestId('tool-frame')).toHaveAttribute('src', (await toolOf('sw')).frameUrl!);
   } finally {
     await putTools([tools[0]!, { ...tools[1]!, url: null }]);
   }
+});
+
+test('D15 fallback: no framing proxy and the tool refuses framing → "refuses to load in a frame" with New tab', async ({ page }) => {
+  // The service reports `framing: "refused"` only while no proxy runs for the tool (demo mode, a proxy
+  // that failed to start; tests/server/api/tool-frames.test.ts drives that for real). Here the page gets
+  // that answer, with `frameUrl: null`, from the browser; everything else is the real service.
+  const tools = (await (await api.get('/api/tools')).json()) as Tool[];
+  await page.route(/\/api\/tools$/, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 200, json: tools.map((t) => ({ ...t, frameUrl: null })) }) : route.continue(),
+  );
+  await page.route(/\/api\/tools\/cm\/probe$/, (route) => route.fulfill({ status: 200, json: { state: 'up', framing: 'refused' } }));
+  await page.goto(`${server.baseUrl}/tools/cm`);
+  await expect(page.getByTestId('view-tool')).toHaveAttribute('data-tool-state', 'up');
+  await expect(page.getByTestId('tool-state')).toHaveText('connected');
+  await expect(page.getByTestId('tool-overlay-title')).toHaveText(`127.0.0.1:${cmStub.port} refuses to load in a frame`);
+  await expect(page.getByTestId('tool-overlay-text')).toHaveText(
+    'Codebase Memory runs but refuses to load in a frame (X-Frame-Options / frame-ancestors), use New tab.',
+  );
+  await expect(page.getByTestId('tool-frame')).toHaveCount(0);
+  const action = page.getByTestId('tool-overlay-action');
+  await expect(action).toHaveText('↗ New tab');
+  await expect(action).toHaveAttribute('href', `http://127.0.0.1:${cmStub.port}`);
+  await expect(action).toHaveAttribute('target', '_blank');
+  await expect(action).toHaveAttribute('rel', 'noopener');
+  const popupOpened = page.waitForEvent('popup');
+  await action.click();
+  const popup = await popupOpened;
+  await popup.waitForLoadState();
+  await expect(popup.getByTestId('stub')).toHaveText('Codebase Memory stub');
+  await popup.close();
+
+  // Without a refusal and without a proxy the tool's own URL is framed directly…
+  await page.unroute(/\/api\/tools\/cm\/probe$/);
+  await page.getByTestId('tool-reload').click();
+  await expect(page.getByTestId('tool-overlay')).toHaveCount(0);
+  await expect(page.getByTestId('tool-frame')).toHaveAttribute('src', `http://127.0.0.1:${cmStub.port}`);
+  // …and the browser blocks it (frame-ancestors 'none'): the blank frame D15's proxy is there for.
+  await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('chrome-error:'))).toBe(true);
+  await expect(page.frameLocator('[data-testid="tool-frame"]').getByTestId('stub')).toHaveCount(0);
 });
 
 test('Codebase Memory strip: the dirty projects and "Reindex 2 now" start a real session from the built-in prompt', async ({ page }) => {

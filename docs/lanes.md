@@ -60,6 +60,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `HistoryProvider` (transcripts) | `history/transcripts.ts` (`TranscriptHistory`, M7.4), the route's default | the prototype's `HIST` rows (`various` as the solutions line) |
 | `LoginServiceProvider` ("Start at login": the per-user service definition) | `LoginService` (M9.1, `src/server/service/login-service.ts`), wired in `main.ts` | `src/server/demo/login-service.ts` (in-memory, starts on, never touches the OS) |
 | `ToolProbeProvider` (tool reachability, M8.1) | `tools/probe.ts` (server-side GET, 3 s), the route's default | always `down`, no network |
+| `ToolFrameProvider` (framing proxies, D15) | `tools/proxies.ts` (`ToolProxies`, one `tools/proxy.ts` per tool), created, synced and closed in main.ts | none: every `frameUrl` is `null` |
 | `CodebaseMemoryProvider` (`.codebase-memory-dirty`, M8.1 strip) | `tools/codebase-memory.ts` over the folder asked for (D14; a repo folder: empty), the route's default | the prototype's dirty list + indexed count (any folder) |
 
 ## UI: views and parts (`src/web/…`)

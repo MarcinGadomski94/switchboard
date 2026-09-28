@@ -8,8 +8,8 @@ import { TOOL_DOT, probeTool, useToolState } from '../../tools/probe.ts';
 import { TOOL_CARD_STATE } from './model.ts';
 import { SectionTitle } from './rows.tsx';
 
-/** A tool as `PUT /api/tools` takes it (a new one has no id yet; the service makes one). */
-type ToolDraft = Omit<Tool, 'id'> & { readonly id?: string };
+/** A tool as `PUT /api/tools` takes it (a new one has no id yet; the service makes one; `frameUrl` is the service's, D15). */
+type ToolDraft = Omit<Tool, 'id' | 'frameUrl'> & { readonly id?: string };
 
 /** Field errors of a refused `PUT /api/tools` (`422 {error:"invalid", errors:[{field, message}]}`). */
 function fieldErrors(error: unknown): Array<{ field: string; message: string }> {

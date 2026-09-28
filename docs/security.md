@@ -26,5 +26,15 @@ Installed as the first `onRequest` hook, so it also covers 404s and every route 
 ## Why a framed or cross-site Switchboard page cannot act
 A cross-site iframe or link that loads the UI gets `Sec-Fetch-Site: cross-site`, so no cookie is set. A cookie that already exists is `SameSite=Strict`, so the browser does not send it on cross-site requests. A same-site page on another loopback port fails the Origin check.
 
+## Tool framing proxies (D15)
+Embedded tools are framed through one reverse proxy per tool (`src/server/tools/proxy.ts`, details in `docs/tools.md` → *Framing proxy*). Each is a second listening socket, so it follows the same rules as the service, adapted to what it is:
+- **Loopback only**, 127.0.0.1 with an OS-assigned port; the bound address is checked after `listen` like `listenLoopback` does.
+- **Host guard:** the same `isAllowedHost` rule with the proxy's port (`127.0.0.1:<port>` / `localhost:<port>`), else 403 before anything is forwarded (HTTP and WebSocket upgrades). A rebinding domain cannot reach the tool through it.
+- **One upstream:** it connects only to the saved tool URL's host and port (the same saved URLs the probe may fetch). Only a path is accepted as request target (no absolute-form proxy requests, no `CONNECT`), and redirects are passed to the browser, never followed.
+- **The token never leaves:** browsers send cookies to every port of a host, so the frame's requests carry `sb_token`. The proxy removes every `sb_token` pair from `Cookie` before forwarding; the tool's own cookies pass.
+- **A different origin, on purpose:** the tool runs at `http://127.0.0.1:<proxy port>`, not at Switchboard's origin, so it cannot use Switchboard's API: its API calls carry its own `Origin` and fail the Origin check (403). Its no-cors GETs are same-site and may carry the cookie, as for any other local app today, but their answers are opaque and every state-changing route needs an allowed `Origin`. The proxy itself has no cookie check: it grants nothing the tool's own port does not already offer on this machine.
+- **Clickjacking:** `X-Frame-Options` is dropped and `frame-ancestors` is set to Switchboard's two origins in every CSP, **added** when the tool sends none, so only a Switchboard page can frame the tool through the proxy. The iframe keeps its sandbox (no `allow-top-navigation`).
+- The proxies start with the service and stop with it; demo mode runs none.
+
 ## Tests
-`tests/server/security.test.ts` (inject), `tests/server/listen.test.ts` (real socket on a test port; also checks the port is closed on the machine's LAN address), `tests/server/main.test.ts` (the real `npm start` entry point), `tests/e2e/security.spec.ts` (real Chromium: cookie attributes, HttpOnly invisible to `document.cookie`, the page's own fetch passes, no cookie → 401).
+`tests/server/security.test.ts` (inject), `tests/server/listen.test.ts` (real socket on a test port; also checks the port is closed on the machine's LAN address), `tests/server/main.test.ts` (the real `npm start` entry point), `tests/e2e/security.spec.ts` (real Chromium: cookie attributes, HttpOnly invisible to `document.cookie`, the page's own fetch passes, no cookie → 401). D15's proxy guard: `tests/server/tools/proxy.test.ts` (foreign Hosts, absolute-form targets, `sb_token` stripping, HTTP and upgrades).

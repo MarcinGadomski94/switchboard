@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { CodebaseMemoryStatus, Tool, ToolProbe } from '../../core/api.ts';
 import type { ToolRecord } from '../db/repos/tools.ts';
 import type { Store } from '../db/store.ts';
@@ -7,6 +7,7 @@ import { toSession } from '../sessions/wire.ts';
 import { sendFolderError } from './folders.ts';
 import { SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { REINDEX_SESSION_NAME, dirtyFileCodebaseMemory, reindexPrompt } from '../tools/codebase-memory.ts';
+import { refusesFraming } from '../tools/framing.ts';
 import { httpToolProbe } from '../tools/probe.ts';
 import { validateTools } from '../tools/validate.ts';
 import type { PendingRoute } from './not-implemented.ts';
@@ -24,9 +25,14 @@ interface IdParams {
   readonly id: string;
 }
 
-/** A stored tool as the API shows it (data model: id, name, url, showInSidebar; + description). */
-export function toTool(record: ToolRecord): Tool {
-  return { id: record.id, name: record.name, url: record.url, description: record.description, showInSidebar: record.showInSidebar };
+/** A stored tool as the API shows it (data model: id, name, url, showInSidebar; + description; + D15's `frameUrl`). */
+export function toTool(record: ToolRecord, frameUrl: string | null = null): Tool {
+  return { id: record.id, name: record.name, url: record.url, description: record.description, showInSidebar: record.showInSidebar, frameUrl };
+}
+
+/** The host name the page used to reach Switchboard: `localhost`, else `127.0.0.1` (the Host guard allows only these). */
+function pageHostname(request: FastifyRequest): string {
+  return /^localhost(?::|$)/i.test(request.headers.host?.trim() ?? '') ? 'localhost' : '127.0.0.1';
 }
 
 /** The first free session name: `base`, then `base-2`, `base-3`, … */
@@ -44,7 +50,12 @@ async function freeSessionName(store: Store, base: string): Promise<string> {
  *   an invalid body;
  * - `POST /api/tools/{id}/probe` → `{ state: up|down }` from a server-side GET with
  *   a 3 s timeout (`providers.toolProbe`, else `tools/probe.ts`); `404` for an
- *   unknown tool, `409 not-configured` for a tool without a URL;
+ *   unknown tool, `409 not-configured` for a tool without a URL; D15 adds
+ *   `framing: "refused"` when the tool's answer keeps this page from framing it
+ *   and no framing proxy runs for it;
+ * - D15: every Tool carries `frameUrl`, its framing proxy for the page's host name
+ *   (`providers.toolFrames`; `null` without one), and `PUT` re-syncs the proxies
+ *   (a changed URL restarts its proxy) before it answers;
  * - additive, not in the contract: `GET /api/codebase-memory?folder=` (the Codebase
  *   Memory strip: the folder's `.codebase-memory-dirty` projects; D14: `folder` as
  *   for `GET /api/solutions`, the default when omitted; a repo folder's list is
@@ -56,21 +67,33 @@ async function freeSessionName(store: Store, base: string): Promise<string> {
 export async function registerToolRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, providers, supervisor, folders } = context;
   const prober = providers.toolProbe ?? httpToolProbe;
+  const frames = providers.toolFrames ?? null;
   const codebaseMemory = providers.codebaseMemory ?? dirtyFileCodebaseMemory();
+  const withFrames = (records: readonly ToolRecord[], request: FastifyRequest): Tool[] => {
+    const hostname = pageHostname(request);
+    return records.map((record) => toTool(record, frames?.frameUrl(record.id, hostname) ?? null));
+  };
 
-  app.get('/api/tools', async (): Promise<Tool[]> => (await store.tools.list()).map(toTool));
+  app.get('/api/tools', async (request): Promise<Tool[]> => withFrames(await store.tools.list(), request));
 
   app.put('/api/tools', async (request, reply): Promise<Tool[] | FastifyReply> => {
     const result = validateTools(request.body);
     if (!result.ok) return reply.code(422).send({ error: 'invalid', errors: result.errors });
-    return (await store.tools.replaceAll(result.value)).map(toTool);
+    const stored = await store.tools.replaceAll(result.value);
+    // D15: a new or changed URL gets its (re)started proxy before the answer names it.
+    await frames?.sync(stored);
+    return withFrames(stored, request);
   });
 
   app.post<{ Params: IdParams }>('/api/tools/:id/probe', async (request, reply): Promise<ToolProbe | FastifyReply> => {
     const tool = await store.tools.get(request.params.id);
     if (!tool) return reply.code(404).send({ error: 'not-found', message: `no tool ${request.params.id}` });
     if (!tool.url) return reply.code(409).send({ error: 'not-configured', message: `${tool.name} has no URL` });
-    return { state: await prober.probe(tool.url) };
+    const report = await prober.probe(tool.url);
+    // D15: a refusal matters only when the iframe would load the tool itself (no proxy runs for it).
+    const page = `http://${pageHostname(request)}:${context.config.port}`;
+    const refused = report.state === 'up' && !frames?.frameUrl(tool.id) && refusesFraming(report.framing, page, tool.url);
+    return refused ? { state: report.state, framing: 'refused' } : { state: report.state };
   });
 
   app.get<{ Querystring: { folder?: string } }>('/api/codebase-memory', async (request, reply): Promise<CodebaseMemoryStatus | FastifyReply> => {

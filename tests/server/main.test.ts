@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_FILE, openDatabase } from '../../src/server/db/database.ts';
 import { appliedMigrations, loadMigrations, makeMigration, migrate } from '../../src/server/db/migrate.ts';
 import { TOKEN_FILE } from '../../src/server/token.ts';
+import net from 'node:net';
+import type { Tool } from '../../src/core/api.ts';
 import { TEST_PORTS, makeTempDir, rawRequest, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../helpers/server-process.ts';
+import { htmlAnswer, startToolStub } from '../helpers/tool-stub.ts';
 
 let tmp: string;
 let server: ServerProcess | undefined;
@@ -108,6 +111,55 @@ describe('npm start entry point (src/server/main.ts)', () => {
       expect(db.prepare(`SELECT count(*) AS n FROM settings WHERE key = 'demo.seed'`).get()).toEqual({ n: 0 });
     } finally {
       db.close();
+    }
+  });
+
+  it('D15: the tools\' framing proxies start with the service, follow PUT /api/tools and stop with it; none in demo mode', async () => {
+    const dataDir = path.join(tmp, 'data');
+    const tool = await startToolStub(htmlAnswer('Framed tool', { 'content-security-policy': "frame-ancestors 'none'", 'x-frame-options': 'DENY' }));
+    try {
+      server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir });
+      const token = (await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).trim();
+      const api = (method: string, route: string, body?: unknown) =>
+        fetch(`${server!.baseUrl}${route}`, {
+          method,
+          headers: { cookie: `sb_token=${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+      const tools = (await (await api('GET', '/api/tools')).json()) as Tool[];
+      // Started with the service for the default Codebase Memory URL (never fetched here).
+      expect(tools[0]?.frameUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+      expect(tools[1]?.frameUrl).toBeNull();
+      const saved = (await (await api('PUT', '/api/tools', [{ ...tools[0], url: tool.origin }, tools[1]])).json()) as Tool[];
+      const frameUrl = saved[0]!.frameUrl!;
+      expect(frameUrl).not.toBe(tools[0]?.frameUrl);
+      const framed = await fetch(frameUrl, { headers: { cookie: `sb_token=${token}` } });
+      expect(framed.status).toBe(200);
+      expect(await framed.text()).toContain('Framed tool');
+      expect(framed.headers.get('x-frame-options')).toBeNull();
+      expect(framed.headers.get('content-security-policy')).toBe(`frame-ancestors http://127.0.0.1:${server.port} http://localhost:${server.port}`);
+      expect(tool.requests.at(-1)?.headers.cookie).toBeUndefined();
+
+      expect(await server.stop()).toBe(0);
+      server = undefined;
+      const proxyPort = Number(new URL(frameUrl).port);
+      const refused = await new Promise<boolean>((resolve) => {
+        const socket = net.connect({ host: '127.0.0.1', port: proxyPort });
+        socket.once('connect', () => {
+          socket.destroy();
+          resolve(false);
+        });
+        socket.once('error', () => resolve(true));
+      });
+      expect(refused).toBe(true);
+
+      const demoDir = path.join(tmp, 'demo');
+      server = await startServer({ SWITCHBOARD_DATA_DIR: demoDir, SWITCHBOARD_DEMO: '1' });
+      const demoToken = (await readFile(path.join(demoDir, TOKEN_FILE), 'utf8')).trim();
+      const demoTools = await rawRequest({ port: server.port, path: '/api/tools', headers: { host: `127.0.0.1:${server.port}`, cookie: `sb_token=${demoToken}` } });
+      expect((JSON.parse(demoTools.body) as Tool[]).map((t) => t.frameUrl)).toEqual([null, null]);
+    } finally {
+      await tool.close();
     }
   });
 

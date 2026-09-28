@@ -590,11 +590,23 @@ export interface Tool {
   readonly url: string | null;
   readonly description: string | null;
   readonly showInSidebar: boolean;
+  /**
+   * Additive (D15): the tool's loopback framing proxy, which the Tool view's iframe
+   * loads (`docs/tools.md` → *Framing proxy*); `null` when the tool has no URL or no
+   * proxy runs for it (demo mode). Ignored in a `PUT /api/tools` body.
+   */
+  readonly frameUrl: string | null;
 }
 
 /** `POST /api/tools/{id}/probe` (contract). */
 export interface ToolProbe {
   readonly state: 'up' | 'down';
+  /**
+   * Additive (D15): present only when the tool is up, refuses to be framed by this
+   * page (`X-Frame-Options` / CSP `frame-ancestors`) and no framing proxy runs for
+   * it, so the Tool view offers New tab instead of a blank frame.
+   */
+  readonly framing?: 'refused';
 }
 
 /**

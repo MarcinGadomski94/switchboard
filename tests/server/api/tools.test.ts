@@ -76,8 +76,8 @@ describe('GET/PUT /api/tools (M8.1, gaps #13, #14)', () => {
     const response = await call('GET', '/api/tools');
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual<Tool[]>([
-      { id: 'cm', name: 'Codebase Memory', url: 'http://localhost:13000', description: 'code graph for your indexed solutions', showInSidebar: true },
-      { id: 'sw', name: 'Acme Tool', url: null, description: 'AI chat connected to other tools', showInSidebar: true },
+      { id: 'cm', name: 'Codebase Memory', url: 'http://localhost:13000', description: 'code graph for your indexed solutions', showInSidebar: true, frameUrl: null },
+      { id: 'sw', name: 'Acme Tool', url: null, description: 'AI chat connected to other tools', showInSidebar: true, frameUrl: null },
     ]);
   });
 
@@ -100,7 +100,7 @@ describe('GET/PUT /api/tools (M8.1, gaps #13, #14)', () => {
 
     // An empty URL = not configured.
     const cleared = await call('PUT', '/api/tools', [{ id: 'sw', name: 'Acme Tool', url: '' }]);
-    expect(cleared.json()).toEqual([{ id: 'sw', name: 'Acme Tool', url: null, description: null, showInSidebar: true }]);
+    expect(cleared.json()).toEqual([{ id: 'sw', name: 'Acme Tool', url: null, description: null, showInSidebar: true, frameUrl: null }]);
   });
 
   it('422 on an invalid body; nothing changes', async () => {
