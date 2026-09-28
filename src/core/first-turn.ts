@@ -161,16 +161,26 @@ export function firstTurnPayload(task: string, block: string): string {
 
 /**
  * A user message as the chat shows it: without the session-start answers block
- * (or the repo worktree note, D14) Switchboard appended ({@link firstTurnPayload}).
- * The block goes to the agent unchanged; the bubble shows what the developer
- * typed, as in the prototype.
+ * (or the repo worktree note, D14) Switchboard added. The block goes to the agent
+ * unchanged; the bubble shows what the developer typed, as in the prototype.
+ *
+ * The block is one paragraph (no blank line inside) that starts with its header,
+ * and sits either after the task ({@link firstTurnPayload}) or, when the session
+ * started without a task, in front of the developer's first message (the outbox
+ * goes first, `SessionSupervisor` joins with a blank line). Only that paragraph
+ * is removed; the text before and after it stays.
  */
 export function withoutSessionStartBlock(text: string): string {
   let shown = text;
   for (const header of [SESSION_START_HEADER[0], REPO_WORKTREE_NOTE_HEADER]) {
-    if (shown.startsWith(header)) return '';
-    const at = shown.indexOf(`\n\n${header}`);
-    if (at !== -1) shown = shown.slice(0, at);
+    const atStart = shown.startsWith(header);
+    const inside = atStart ? -1 : shown.indexOf(`\n\n${header}`);
+    if (!atStart && inside === -1) continue;
+    const blockStart = atStart ? 0 : inside + 2;
+    const blockEnd = shown.indexOf('\n\n', blockStart);
+    const before = atStart ? '' : shown.slice(0, inside);
+    const after = blockEnd === -1 ? '' : shown.slice(blockEnd + 2);
+    shown = before !== '' && after !== '' ? `${before}\n\n${after}` : before + after;
   }
   return shown;
 }

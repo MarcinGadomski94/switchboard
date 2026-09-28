@@ -1,6 +1,7 @@
 import { type Page, expect, test } from '@playwright/test';
 import type { SessionDetail, SessionEvent } from '../../src/core/api.ts';
 import type { ToolPayload } from '../../src/core/event-payload.ts';
+import { SESSION_START_HEADER } from '../../src/core/first-turn.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
@@ -200,4 +201,25 @@ test('D26: Shift+Enter adds a line (nothing is sent), the field grows up to 8 li
   await expect.poll(async () => Math.round((await input.boundingBox())?.height ?? 0)).toBe(Math.round(oneLine));
   const bubble = chat.locator('[data-testid="chat-message"][data-role="user"]').last().getByTestId('chat-text');
   expect(await bubble.innerText()).toBe(text);
+});
+
+test('a session started without a task: the first message shows what the developer typed; the answers block reaches the agent only (bug 2026-09-28)', async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'chat-no-task', '');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const chat = page.getByTestId('session-chat');
+  const input = page.getByTestId('chat-input');
+  await input.fill('apply rules from AGENTS.md. Reply OK.');
+  await input.press('Enter');
+  // The bubble is the typed text, not empty and not the block.
+  const bubble = chat.locator('[data-testid="chat-message"][data-role="user"]').first().getByTestId('chat-text');
+  await expect(bubble).toHaveText('apply rules from AGENTS.md. Reply OK.');
+  // What the agent got: the answers block first, then the typed text.
+  await expect
+    .poll(async () => {
+      const list = await events(page, id);
+      const user = list.find((event) => (event.payload as { type?: string } | null)?.type === 'user');
+      return (user?.payload as { text?: string } | undefined)?.text ?? '';
+    })
+    .toMatch(new RegExp(`^${SESSION_START_HEADER[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*\\n\\napply rules from AGENTS\\.md\\. Reply OK\\.$`));
 });

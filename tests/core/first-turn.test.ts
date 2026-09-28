@@ -185,4 +185,16 @@ describe('withoutSessionStartBlock (chat display)', () => {
   it('shows nothing for a message that is only the block', () => {
     expect(withoutSessionStartBlock(block)).toBe('');
   });
+
+  it('a session started without a task: the block goes in front of the first message, which the chat shows (bug 2026-09-28)', () => {
+    // SessionSupervisor joins the outbox (the block) and the typed text with a blank line.
+    expect(withoutSessionStartBlock(`${block}\n\napply rules from AGENTS.md.`)).toBe('apply rules from AGENTS.md.');
+    expect(withoutSessionStartBlock(`${block}\n\nFirst paragraph.\n\nSecond paragraph.`)).toBe('First paragraph.\n\nSecond paragraph.');
+    const note = repoWorktreeNote({ path: '/src/tool-wt-x', branch: 'session/x', base: 'main', repoPath: '/src/tool' });
+    expect(withoutSessionStartBlock(`${note}\n\nStart with the tests.`)).toBe('Start with the tests.');
+    // Another outbox note before the block (e.g. the restart note) stays, the text after it too.
+    expect(withoutSessionStartBlock(`Restart note.\n\n${block}\n\nMy first message.`)).toBe('Restart note.\n\nMy first message.');
+    // A task with paragraphs keeps them all when the block follows.
+    expect(withoutSessionStartBlock(firstTurnPayload('Para one.\n\nPara two.', block))).toBe('Para one.\n\nPara two.');
+  });
 });
