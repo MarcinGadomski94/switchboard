@@ -3,8 +3,16 @@
  * *Claude Code integration* → *Process and flags*; `docs/spike-m0.md`).
  */
 
-/** The permission mode passed on every spawn (D6 fallback: `auto` is unproven headless, M0.1/M0.2). */
-export const DEFAULT_PERMISSION_MODE = 'acceptEdits';
+/**
+ * The permission mode passed on every spawn (D6): `auto`, the mode the developer uses
+ * interactively. It engages headless on models that support it (probe 2026-09-28,
+ * `docs/spike-m0.md` → *D6 follow-up*); on other models the CLI silently reports
+ * `default`, and the recorder switches the session to {@link FALLBACK_PERMISSION_MODE}.
+ */
+export const DEFAULT_PERMISSION_MODE = 'auto';
+
+/** D6 fallback when `auto` is not available for the session's model (M0.1/M0.2: Haiku). */
+export const FALLBACK_PERMISSION_MODE = 'acceptEdits';
 
 /** How the process picks up its conversation. */
 export type ClaudeStart =

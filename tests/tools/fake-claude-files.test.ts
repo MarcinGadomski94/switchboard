@@ -149,7 +149,7 @@ describe('fake-claude transcripts (CLAUDE_CONFIG_DIR)', () => {
       'Create a file named notes.txt containing the text ALPHA using the Write tool. Then reply with the single word DONE.',
       'Reply with exactly the word: finished',
     ]);
-    expect(prompts[0]).toMatchObject({ promptSource: 'sdk', turnOrigin: 'sdk', permissionMode: 'acceptEdits' });
+    expect(prompts[0]).toMatchObject({ promptSource: 'sdk', turnOrigin: 'sdk', permissionMode: 'auto' });
     const toolResult = entries.find((e) => e['toolUseResult'] !== undefined) as JsonObject;
     expect(obj(toolResult['toolUseResult'])['type']).toBe('create');
     expect(typeof toolResult['sourceToolAssistantUUID']).toBe('string');

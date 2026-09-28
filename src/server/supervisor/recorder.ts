@@ -36,6 +36,7 @@ import { readingFromRateLimit } from '../../core/usage.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { DEFAULT_PERMISSION_MODE, FALLBACK_PERMISSION_MODE } from './argv.ts';
 
 /** Options for {@link StreamRecorder}. */
 export interface RecorderOptions {
@@ -45,6 +46,11 @@ export interface RecorderOptions {
   readonly mainAgentId: string;
   /** Called after every event insert or update. */
   readonly onEvent: (event: EventRecord) => void;
+  /**
+   * D6: `auto` was requested but the CLI reports another mode (the model does not
+   * support it): the supervisor sends `set_permission_mode` with this mode.
+   */
+  readonly onPermissionFallback?: (mode: string) => void;
 }
 
 interface ToolEntry {
@@ -77,9 +83,10 @@ export class StreamRecorder {
   readonly #sessionId: string;
   readonly #sessionName: string;
   readonly #root: string | null;
-  readonly #requestedMode: string | null;
+  #requestedMode: string | null;
   readonly #mainAgentId: string;
   readonly #onEvent: (event: EventRecord) => void;
+  readonly #onPermissionFallback: ((mode: string) => void) | undefined;
 
   /** User messages written to stdin whose turn has not produced its `result` yet. */
   #pendingTurns = 0;
@@ -109,6 +116,7 @@ export class StreamRecorder {
     this.#requestedMode = options.session.requestedPermissionMode;
     this.#mainAgentId = options.mainAgentId;
     this.#onEvent = options.onEvent;
+    this.#onPermissionFallback = options.onPermissionFallback;
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
@@ -282,11 +290,12 @@ export class StreamRecorder {
       case 'task-notification':
         return this.#onTaskEnd(message.taskId, message.status);
       case 'permission-denied':
-        await this.#append('ask', `Denied · ${message.toolName ?? 'tool'}`, {
+        await this.#append('ask', `Denied · ${message.toolName ?? 'tool'}${message.decisionReason ? ` (${message.decisionReason})` : ''}`, {
           type: 'denied',
           toolName: message.toolName,
           toolUseId: message.toolUseId,
           message: message.message,
+          decisionReason: message.decisionReason,
         }, { toolUseId: message.toolUseId, uuid: message.uuid });
         return;
       default:
@@ -306,6 +315,18 @@ export class StreamRecorder {
       patch.cliVersion = message.version;
     }
     if (Object.keys(patch).length > 0) await this.#store.sessions.update(this.#sessionId, patch);
+    if (this.#requestedMode === DEFAULT_PERMISSION_MODE && message.permissionMode !== DEFAULT_PERMISSION_MODE && this.#onPermissionFallback) {
+      // D6: `auto` is not available for this model (the CLI silently reports `default`): switch to the fallback.
+      this.#requestedMode = FALLBACK_PERMISSION_MODE;
+      await this.#store.sessions.update(this.#sessionId, { requestedPermissionMode: FALLBACK_PERMISSION_MODE });
+      this.#onPermissionFallback(FALLBACK_PERMISSION_MODE);
+      await this.#append(
+        'text',
+        `Auto mode is not available for this model: permissions use ${FALLBACK_PERMISSION_MODE}`,
+        { type: 'mode-mismatch', requested: DEFAULT_PERMISSION_MODE, observed: message.permissionMode, fallback: FALLBACK_PERMISSION_MODE },
+      );
+      return;
+    }
     if (this.#requestedMode && message.permissionMode !== this.#requestedMode && !this.#modeMismatchFlagged) {
       this.#modeMismatchFlagged = true;
       await this.#append(

@@ -93,6 +93,8 @@ export interface DeniedPayload {
   readonly toolName: string | null;
   readonly toolUseId: string | null;
   readonly message: string | null;
+  /** The CLI's `decision_reason` (`Classifier unavailable`: auto mode's check gave no verdict). */
+  readonly decisionReason?: string | null;
 }
 
 /** A turn's `result` (not recorded for turns Switchboard interrupted to stop the process). */
@@ -148,6 +150,8 @@ export interface ModeMismatchPayload {
   readonly type: 'mode-mismatch';
   readonly requested: string;
   readonly observed: string | null;
+  /** Set when Switchboard switched to this mode itself (D6: `auto` → `acceptEdits`); the event is `text`, not `error`. */
+  readonly fallback?: string;
 }
 
 /** Every event payload the supervisor writes. */

@@ -660,3 +660,11 @@ If step 2 says "No conversation found", or step 4 or 5 shows a **different** ses
   - Interrupt mid-tool + EOF → the `handoff-midturn` tail and exit 1.
   - A resume after an interrupted turn adds the synthetic assistant line.
   - A text-mode `-p "<prompt>"` run prints only the final text.
+
+## D6 follow-up: auto mode on the default model (2026-09-28)
+One developer-approved probe with the CLI's **default model** (`claude-opus-5-5[1m]`), max 3 turns, cwd `.spike/sandbox/auto-probe/`, script `.spike/auto-probe.mjs` (not committed; output kept out of the fixtures because it holds the developer's paths).
+
+- `claude -p --input-format stream-json --output-format stream-json --verbose --permission-mode auto --permission-prompt-tool stdio --max-turns 3`, prompt "run `ls` and reply with the count".
+- `system/init.permissionMode` = **`auto`**: auto mode engages headless on a model that supports it.
+- The safe `ls` could not be observed running: the server-side auto-mode classifier was having an outage at that moment, so both Bash calls were denied **automatically**: `system/permission_denied` with `decision_reason: "Classifier unavailable"`, listed in `result.permission_denials`. **No `can_use_tool` request reached the host**: in auto mode a classifier outage denies instead of asking.
+- **Verdict / change.** Sessions now start with `--permission-mode auto` (D6). When `system/init` reports another mode (a model without auto mode silently reports `default`), the recorder sends `set_permission_mode acceptEdits` once and records a `text` event "Auto mode is not available for this model: permissions use acceptEdits" (a later mismatch is still flagged as an error). Automatic denials now carry their reason in the event label (`Denied · Bash (Classifier unavailable)`), so a classifier outage is visible in the chat, Timeline and terminal tail. `tools/fake-claude` simulates a model with auto mode by default; `FAKE_CLAUDE_AUTO_MODE=unsupported` simulates one without (Haiku, as recorded in M0).

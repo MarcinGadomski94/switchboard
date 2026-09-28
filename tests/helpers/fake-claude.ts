@@ -17,7 +17,7 @@ export const BASELINE = [
   '--permission-prompt-tool',
   'stdio',
   '--permission-mode',
-  'acceptEdits',
+  'auto',
 ] as const;
 
 /** One stdin user message line. */

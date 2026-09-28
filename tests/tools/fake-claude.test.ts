@@ -97,7 +97,7 @@ describe('fake-claude stream-json turns', () => {
     expect(inits).toHaveLength(2);
     for (const init of inits) {
       expect(init['cwd']).toBe(env.cwd);
-      expect(init['permissionMode']).toBe('acceptEdits');
+      expect(init['permissionMode']).toBe('auto');
       expect(init['tools']).toContain('AskUserQuestion');
     }
     const replays = fake.lines.filter((l) => l['isReplay'] === true);
@@ -549,7 +549,8 @@ describe('fake-claude control requests (usage, initialize)', () => {
   });
 
   it('ctl-init: initialize, set_permission_mode auto (error auto_mode_model) and acceptEdits (success)', async () => {
-    const fake = start(BASELINE);
+    // A model without auto mode (Haiku, as M0 recorded).
+    const fake = start(BASELINE, { FAKE_CLAUDE_AUTO_MODE: 'unsupported' });
     fake.send({ type: 'control_request', request_id: 'i1', request: { subtype: 'initialize', hooks: null } });
     fake.send({ type: 'control_request', request_id: 'i2', request: { subtype: 'set_permission_mode', mode: 'auto' } });
     fake.send({ type: 'control_request', request_id: 'i3', request: { subtype: 'set_permission_mode', mode: 'acceptEdits' } });
@@ -561,6 +562,16 @@ describe('fake-claude control requests (usage, initialize)', () => {
     expect(obj(init?.['response'])['models']).toBeInstanceOf(Array);
     expect(auto).toMatchObject({ subtype: 'error', request_id: 'i2', error_code: 'auto_mode_model' });
     expect(accept).toEqual({ subtype: 'success', request_id: 'i3', response: { mode: 'acceptEdits' } });
+  });
+
+  it('auto mode on a model that has it (the default): set_permission_mode auto succeeds', async () => {
+    const fake = start(BASELINE);
+    fake.send({ type: 'control_request', request_id: 'a1', request: { subtype: 'set_permission_mode', mode: 'auto' } });
+    await fake.waitFor((l) => l['type'] === 'control_response', 1);
+    fake.end();
+    expect((await fake.exited).code).toBe(0);
+    const [auto] = fake.lines.filter((l) => l['type'] === 'control_response').map((l) => obj(l['response']));
+    expect(auto).toEqual({ subtype: 'success', request_id: 'a1', response: { mode: 'auto' } });
   });
 
   it('perm-auto keeps the recorded init.permissionMode "default" (the silent auto fallback)', async () => {

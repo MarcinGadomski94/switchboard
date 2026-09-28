@@ -5,7 +5,7 @@ import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
 import type { SessionStatus } from '../../core/model.ts';
-import { type ControlRequestLine, type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, userMessageLine } from '../../core/stdin.ts';
+import { type ControlRequestLine, type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, setPermissionModeLine, userMessageLine } from '../../core/stdin.ts';
 import { type CanUseToolMessage, type ControlResponseMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
@@ -615,14 +615,16 @@ export class SessionSupervisor {
         endedAt: null,
       })) ?? session;
     const mainAgentId = await this.#mainAgentId(prepared);
+    const holder: { live?: Live } = {};
     const recorder = new StreamRecorder({
       store: this.#store,
       session: prepared,
       mainAgentId,
       onEvent: (event) => this.#emitEvent(event),
+      // D6: `auto` is not available for this model; its control_response needs no waiter.
+      onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
     });
     const args = buildClaudeArgs({ start, name: prepared.name, permissionMode, extraArgs: this.#extraArgs });
-    const holder: { live?: Live } = {};
     const proc = new ClaudeProcess({
       command: this.#command,
       args,

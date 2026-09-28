@@ -26,12 +26,24 @@ export const SIBLINGS: Readonly<Record<string, { allow?: string; deny?: string }
 export const KEEP_RECORDED_PERMISSION_MODE: ReadonlySet<string> = new Set(['perm-auto']);
 
 /**
- * `system/init.permissionMode` for a requested `--permission-mode`, as recorded on
- * CLI 2.1.283 (M0.1): `manual` is reported as `default`, and `auto` silently
- * falls back to `default` (Haiku, the only model M0 could probe, has no auto mode).
+ * Whether the simulated model has auto mode. By default it has, like the CLI's
+ * default model (probe 2026-09-28, `docs/spike-m0.md` → *D6 follow-up*);
+ * `FAKE_CLAUDE_AUTO_MODE=unsupported` simulates a model without it (Haiku, as M0
+ * recorded): `auto` is then silently reported as `default` and
+ * `set_permission_mode auto` fails with `auto_mode_model`.
  */
-export function reportedPermissionMode(requested: string | null): string {
-  if (requested === null || requested === 'manual' || requested === 'auto') return 'default';
+export function autoModeSupported(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['FAKE_CLAUDE_AUTO_MODE'] !== 'unsupported';
+}
+
+/**
+ * `system/init.permissionMode` for a requested `--permission-mode`, as recorded on
+ * CLI 2.1.283 (M0.1): `manual` is reported as `default`; `auto` stays `auto` on a
+ * model with auto mode and silently falls back to `default` on one without.
+ */
+export function reportedPermissionMode(requested: string | null, autoSupported: boolean = autoModeSupported()): string {
+  if (requested === null || requested === 'manual') return 'default';
+  if (requested === 'auto') return autoSupported ? 'auto' : 'default';
   return requested;
 }
 

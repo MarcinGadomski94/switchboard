@@ -322,3 +322,8 @@ The BLOCKED lines for M4.4, M4.5, M4.6, M7.2, M8.3 are resolved by this merge. T
 - ASSUMED W2-tabs-merge · demo terminal lines are stored as `kind: 'text'` (was `ok`) with the same `result` payload, so the terminal tail still shows them but the Timeline (M4.4) no longer draws them as blocks / log rows the prototype does not have · revert: the `kind` in src/server/demo/seed.ts
 - ASSUMED W2-tabs-merge · the Diff tab visual spec pins its container with `flex: none` too: inside the merged session view the tab is a growing flex child and ignored the pinned height · revert: n/a
 - Open (follow-up): two terminal-tail renderers remain (M4.3 `right-panel.ts`, M4.4 `session/terminal-tail.ts`, which also renders results as `✓ <label>` where M4.3 shows the text verbatim). Not merged into one here (behavior differs; needs a decision on the canonical rendering).
+
+## Follow-ups after the merges (2026-09-28, developer-approved)
+- ASSUMED D6-auto · sessions start with `--permission-mode auto`; a model without auto mode is switched to `acceptEdits` once via `set_permission_mode` (text event, no error); probe result in docs/spike-m0.md → *D6 follow-up* · revert: `DEFAULT_PERMISSION_MODE` in src/server/supervisor/argv.ts
+- ASSUMED D6-auto · automatic denials show their reason (`Denied · Bash (Classifier unavailable)`): in auto mode a classifier outage denies without asking the host, so it must be visible · revert: the `permission-denied` case in src/server/supervisor/recorder.ts
+- ASSUMED D6-auto · `tools/fake-claude` now simulates a model **with** auto mode by default (the CLI's default model); `FAKE_CLAUDE_AUTO_MODE=unsupported` = Haiku as recorded · revert: `autoModeSupported` in tools/fake-claude/scenarios.ts

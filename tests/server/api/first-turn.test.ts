@@ -90,7 +90,7 @@ function expectedArgv(claudeSessionId: string, name: string): string[] {
     '--permission-prompt-tool',
     'stdio',
     '--permission-mode',
-    'acceptEdits',
+    'auto',
     '--session-id',
     claudeSessionId,
     '--name',

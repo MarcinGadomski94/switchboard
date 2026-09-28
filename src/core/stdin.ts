@@ -45,6 +45,11 @@ export function interruptLine(requestId: string): ControlRequestLine {
   return { type: 'control_request', request_id: requestId, request: { subtype: 'interrupt' } };
 }
 
+/** The `set_permission_mode` control request (D6 fallback, `docs/spike-m0.md` → *D6: auto mode headless*). */
+export function setPermissionModeLine(requestId: string, mode: string): ControlRequestLine {
+  return { type: 'control_request', request_id: requestId, request: { subtype: 'set_permission_mode', mode } };
+}
+
 /** A success reply to a CLI control request. */
 export function controlSuccessLine(requestId: string, response: unknown): ControlResponseLine {
   return { type: 'control_response', response: { subtype: 'success', request_id: requestId, response } };

@@ -23,8 +23,7 @@ import {
   scenarioToken,
   toolResultText,
   toolToken,
-  writeToken,
-} from './scenarios.ts';
+  writeToken, autoModeSupported } from './scenarios.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 
 /** How a turn playback ended. */
@@ -344,7 +343,7 @@ export class Runner {
         return this.replyFrom(requestId, ['ctl-init', 'initialize', 0]);
       case 'set_permission_mode': {
         const mode = asString(request?.['mode']) ?? '';
-        if (mode === 'auto') return this.replyFrom(requestId, ['ctl-init', 'set_permission_mode', 0]);
+        if (mode === 'auto' && !autoModeSupported()) return this.replyFrom(requestId, ['ctl-init', 'set_permission_mode', 0]);
         this.permissionMode = mode;
         this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: { mode } } });
         return;

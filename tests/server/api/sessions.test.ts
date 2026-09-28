@@ -144,7 +144,7 @@ describe('session routes over the real supervisor + fake-claude', () => {
     }, 'the attach spawn in the fake log');
     expect(spawns[1]?.pid).toBe((await w.store.sessions.get(session.id))?.pid);
     expect(spawns[1]?.argv).toContain('--resume');
-    expect(spawns[1]?.argv).toContain('acceptEdits');
+    expect(spawns[1]?.argv).toContain('auto');
     await delay(300);
     expect(await stdinOf(w.logFile, spawns[1]?.pid ?? -1)).toEqual([]);
 

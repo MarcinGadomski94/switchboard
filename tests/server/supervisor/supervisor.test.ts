@@ -50,7 +50,7 @@ describe('SessionSupervisor · start (argv, env, cwd, first message)', () => {
     expect(session.pid).toBeGreaterThan(0);
     expect(session.status).toBe('run');
     expect(session.cwd).toBe(w.workspace);
-    expect(session.requestedPermissionMode).toBe('acceptEdits');
+    expect(session.requestedPermissionMode).toBe('auto');
     await waitForStatus(w.store, session.id, ['done']);
 
     const [spawned, ...more] = await spawnedArgv(w.logFile);
@@ -72,7 +72,7 @@ describe('SessionSupervisor · start (argv, env, cwd, first message)', () => {
     expect(stdin[0]).toEqual({ type: 'user', message: { role: 'user', content: newSession().task } });
 
     const stored = await w.store.sessions.get(session.id);
-    expect(stored?.observedPermissionMode).toBe('acceptEdits');
+    expect(stored?.observedPermissionMode).toBe('auto');
     expect(stored?.cliVersion).toBe('2.1.283');
     expect(stored?.pid).toBe(session.pid);
     expect(w.supervisor.isLive(session.id)).toBe(true);
@@ -188,18 +188,37 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(events.at(-1)?.kind).toBe('ok');
   });
 
-  it('perm-auto: init.permissionMode ≠ requested is flagged; the automatic denial is an ask event', async () => {
+  it('perm-auto: auto silently reported as default → switched to acceptEdits (D6 fallback); the automatic denial is an ask event', async () => {
     const { w, session } = await start({ scenario: 'perm-auto' });
     await waitForStatus(w.store, session.id, ['done']);
     const events = await w.store.events.list(session.id);
     const mismatch = events.find((e) => payloadType(e) === 'mode-mismatch');
-    expect(mismatch?.kind).toBe('error');
-    expect(mismatch?.payload).toEqual({ type: 'mode-mismatch', requested: 'acceptEdits', observed: 'default' });
+    expect(mismatch?.kind).toBe('text');
+    expect(mismatch?.label).toBe('Auto mode is not available for this model: permissions use acceptEdits');
+    expect(mismatch?.payload).toEqual({ type: 'mode-mismatch', requested: 'auto', observed: 'default', fallback: 'acceptEdits' });
     expect(events.filter((e) => payloadType(e) === 'mode-mismatch')).toHaveLength(1);
+    expect((await w.store.sessions.get(session.id))?.requestedPermissionMode).toBe('acceptEdits');
+    const stdin = await stdinOf(w.logFile, session.pid ?? -1);
+    expect(stdin).toContainEqual(expect.objectContaining({ type: 'control_request', request: { subtype: 'set_permission_mode', mode: 'acceptEdits' } }));
     const denied = events.find((e) => payloadType(e) === 'denied');
     expect(denied?.kind).toBe('ask');
     expect(denied?.label).toBe('Denied · Write');
     expect((await w.store.sessions.get(session.id))?.observedPermissionMode).toBe('default');
+  });
+
+  it('a model without auto mode: one switch to acceptEdits, later turns report it, no mismatch error (D6)', async () => {
+    const { w, session } = await start({ scenario: 'multiturn', parentEnv: { FAKE_CLAUDE_AUTO_MODE: 'unsupported' } });
+    await waitForStatus(w.store, session.id, ['done']);
+    // The second turn's system/init shows the mode the switch set.
+    await w.supervisor.sendMessage(session.id, 'What code word did I ask you to remember? Reply with just the word.');
+    await waitForStatus(w.store, session.id, ['done']);
+    const events = await w.store.events.list(session.id);
+    const modeEvents = events.filter((e) => payloadType(e) === 'mode-mismatch');
+    expect(modeEvents.map((e) => e.kind)).toEqual(['text']);
+    expect(events.filter((e) => e.kind === 'error')).toHaveLength(0);
+    const stored = await w.store.sessions.get(session.id);
+    expect(stored?.requestedPermissionMode).toBe('acceptEdits');
+    expect(stored?.observedPermissionMode).toBe('acceptEdits');
   });
 
   it('written files become artifacts (CONTRACT at the root; DOC + DIFF inside a solution)', async () => {

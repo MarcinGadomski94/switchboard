@@ -203,6 +203,8 @@ export interface PermissionDeniedMessage extends Base {
   readonly toolName: string | null;
   readonly toolUseId: string | null;
   readonly message: string | null;
+  /** Why it was denied (`Classifier unavailable` when auto mode's safety check gave no verdict). */
+  readonly decisionReason: string | null;
 }
 
 /** Any JSON object the parser does not lift (`system/thinking_tokens`, `system/commands_changed`, …). */
@@ -368,6 +370,7 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         toolName: str(obj['tool_name']),
         toolUseId: str(obj['tool_use_id']),
         message: str(obj['message']),
+        decisionReason: str(obj['decision_reason']),
       };
     default:
       return { ...base, kind: 'other', type: 'system', subtype };
