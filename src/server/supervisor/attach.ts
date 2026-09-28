@@ -118,6 +118,14 @@ export interface ImportOptions {
   readonly transcript: string;
   /** Called after every event insert or update (the `/hub` `event`). */
   readonly onEvent: (event: EventRecord) => void;
+  /** Origin of the imported prompts (default `terminal`; D25 imports a local copy's remote history as `remote`). */
+  readonly origin?: Extract<UserPayload['origin'], 'terminal' | 'remote'>;
+  /**
+   * D25: import the whole newest chain, ignoring the stored sync point (entries
+   * already stored, same uuid, are still skipped). For a teleported local copy,
+   * whose remote history sits in front of the turns Switchboard already saw.
+   */
+  readonly fromStart?: boolean;
 }
 
 /** What {@link importTerminalTurns} did. */
@@ -143,8 +151,9 @@ export interface ImportResult {
  */
 export async function importTerminalTurns(options: ImportOptions): Promise<ImportResult> {
   const { store, session, mainAgentId, onEvent } = options;
+  const origin = options.origin ?? 'terminal';
   const entries = parseTranscript(await readFile(options.transcript, 'utf8'));
-  const slice = entriesSince(entries, session.lastTranscriptUuid);
+  const slice = entriesSince(entries, options.fromStart === true ? null : session.lastTranscriptUuid);
   if (!slice.found) return { imported: 0, found: false, forked: false, tip: session.lastTranscriptUuid };
   const texts = new Map<string, { eventId: number; text: string }>();
   const tools = new Map<string, number>();
@@ -163,7 +172,7 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     if (item.kind !== 'tool-result' && (await store.events.hasUuid(session.id, item.uuid))) continue;
     switch (item.kind) {
       case 'prompt': {
-        const payload: UserPayload = { type: 'user', text: item.text, origin: 'terminal', delivered: true };
+        const payload: UserPayload = { type: 'user', text: item.text, origin, delivered: true };
         await append({
           sessionId: session.id,
           agentId: mainAgentId,

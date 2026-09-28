@@ -8,6 +8,7 @@
  */
 import type { BranchRef, HistoryItem } from './api.ts';
 import type { FolderKind, Phase, SessionMode, SessionOrigin, SessionStatus, WorkType } from './model.ts';
+import { REMOTE_MODE_LINE } from './remote-session.ts';
 import type { TranscriptFacts } from './transcript.ts';
 
 /** The mode line of a session moved in from a terminal (D16; developer ruling 2026-09-28). */
@@ -66,6 +67,8 @@ export interface HistorySession {
   readonly folderPath: string | null;
   /** D16: `terminal` when the session was moved in from a terminal (optional: `switchboard` when absent). */
   readonly origin?: SessionOrigin;
+  /** D25: the remote session a teleported session is a local copy of (optional: none when absent). */
+  readonly remoteSource?: string | null;
 }
 
 /**
@@ -119,9 +122,15 @@ export function clip(text: string, max: number): string {
 
 /**
  * The sidebar's mode line (`src/web/shell/format.ts` `modeLine`, the prototype's
- * new-session wording): `orch|single · QA|feature · UI-first|integration`.
+ * new-session wording): `orch|single · QA|feature · UI-first|integration`. D16:
+ * `terminal · moved` for a session moved in from a terminal; D25: `remote · local
+ * copy` for a local copy of a remote session.
  */
-export function sessionModeLine(session: Pick<HistorySession, 'mode' | 'workType' | 'phase'> & { readonly origin?: HistorySession['origin'] }): string {
+export function sessionModeLine(
+  session: Pick<HistorySession, 'mode' | 'workType' | 'phase'> & { readonly origin?: HistorySession['origin']; readonly remoteSource?: string | null },
+): string {
+  // D25: a local copy of a remote session has no session-start answers either.
+  if (session.remoteSource) return REMOTE_MODE_LINE;
   // D16: a session moved in from a terminal has no session-start answers (developer ruling 2026-09-28).
   if (session.origin === 'terminal') return MOVED_MODE_LINE;
   const parts: string[] = [];

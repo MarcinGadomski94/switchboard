@@ -22,7 +22,9 @@ export type UserMessageOrigin =
   /** Sent by the service itself (restart note, stale answers; M2.4 / M3.1). */
   | 'service'
   /** Typed in a terminal while the session was detached; imported from the transcript on Attach (M4.1). */
-  | 'terminal';
+  | 'terminal'
+  /** D25: a prompt of the remote session a teleported session is a local copy of; imported from the local copy's transcript. */
+  | 'remote';
 
 /**
  * A user message Switchboard wrote to stdin (`delivered` flips when the CLI's
@@ -129,7 +131,9 @@ export type LifecycleAction =
   /** M2.4: the session was not resumed after the restart (`message` says why). */
   | 'not-resumed'
   /** D16: a terminal conversation continued in Switchboard (`--resume` of its id, no message). */
-  | 'moved';
+  | 'moved'
+  /** D25: a local copy of a remote session was started (`--teleport <session_X>`; `message` names the remote session). */
+  | 'teleported';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

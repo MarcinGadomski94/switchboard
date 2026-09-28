@@ -43,6 +43,8 @@ export interface WorldOptions {
   readonly extraArgs?: readonly string[];
   /** The Attach warning's live-process list; default `claude agents --json` of the world's CLI, `null` = none (liveness unknown). */
   readonly listLive?: LiveProcessLister | null;
+  /** D25: how long a `--teleport` process may take to report `system/init` (the supervisor's default when omitted). */
+  readonly teleportInitTimeoutMs?: number;
 }
 
 /** Parent env without CLAUDE* / FAKE_CLAUDE_* (the test runner may run inside Claude Code). */
@@ -80,6 +82,7 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     listLive: options.listLive === undefined ? claudeAgentsLister({ claudeCommand, env }) : options.listLive ?? undefined,
     timeouts: { ack: 3_000, result: 5_000, exit: 5_000, signal: 2_000, ...options.timeouts },
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
+    ...(options.teleportInitTimeoutMs !== undefined ? { teleportInitTimeoutMs: options.teleportInitTimeoutMs } : {}),
     onError: (error) => errors.push(error),
   });
   const folder = folderRef(workspace);

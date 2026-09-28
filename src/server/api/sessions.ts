@@ -4,6 +4,7 @@ import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
+import { SessionTeleporter } from '../sessions/teleport.ts';
 import { AttachWarningError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 
@@ -19,6 +20,9 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'request-not-open': 409,
   closing: 503,
   'attach-warning': 409,
+  // D25 (POST /api/sessions/teleport): the CLI refused the teleport, or never reported the local copy.
+  'teleport-failed': 502,
+  'teleport-timeout': 504,
 };
 
 interface IdParams {
@@ -44,13 +48,16 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
 /**
  * Registers the session routes (M2.1: the supervisor's layer; M4.x / M5.x add to
  * the UI side, M4.5 the diff; D22 the additive rename, `PUT /api/sessions/{id}/title`,
- * which publishes `sessionUpdated`). Every route sits behind the security guard.
+ * which publishes `sessionUpdated`; D25 the additive `POST /api/sessions/teleport`,
+ * a local copy of a remote session, {@link SessionTeleporter}). Every route sits
+ * behind the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
 
   app.get('/api/sessions', async (): Promise<Session[]> => {
-    const records = await store.sessions.list();
+    // D25: a teleport that has not reported its local session yet is not listed (a refusal deletes it again).
+    const records = (await store.sessions.list()).filter((record) => !supervisor.isStarting(record.id));
     return Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
   });
 
@@ -63,6 +70,15 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  // D25 (additive): continue a remote session locally: `{ remote, folder, title?, task? }` → 201 Session,
+  // 422 `invalid`, 409 (folder / worktree refusals), 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text.
+  const teleporter = new SessionTeleporter({ store, supervisor, worktrees: context.worktrees, folders: context.folders });
+  app.post('/api/sessions/teleport', async (request, reply) => {
+    const outcome = await teleporter.teleport(request.body);
+    if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+    return reply.code(201).send(await toSession(store, outcome.record, supervisor.activity(outcome.record.id)));
   });
 
   app.get<{ Params: IdParams }>('/api/sessions/:id', async (request, reply): Promise<SessionDetail | FastifyReply> => {
