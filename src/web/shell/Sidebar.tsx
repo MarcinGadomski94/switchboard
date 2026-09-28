@@ -204,7 +204,12 @@ export function Sidebar() {
             className="sb-session"
             aria-current={isActive(route, 'session', session.id) ? 'page' : undefined}
           >
-            <span className="sb-session-dot" data-activity={activityOf(session.id)?.state} style={{ background: statusColor(session.status) }} />
+            {/* D30: waiting on background work reads as working: the running color, pulsing. */}
+            <span
+              className="sb-session-dot"
+              data-activity={activityOf(session.id)?.state}
+              style={{ background: statusColor(activityOf(session.id)?.state === 'background' ? 'run' : session.status) }}
+            />
             <div className="sb-session-body">
               <div className="sb-session-head">
                 {/* D22: the display title; a double-click renames it in place. */}

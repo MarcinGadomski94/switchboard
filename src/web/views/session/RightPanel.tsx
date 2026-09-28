@@ -1,4 +1,4 @@
-import type { AgentActivity, SessionDetail } from '../../../core/api.ts';
+import type { AgentActivity, BackgroundTask, SessionDetail } from '../../../core/api.ts';
 import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { statusColor } from '../../shell/format.ts';
@@ -15,7 +15,8 @@ import { TerminalTail } from './TerminalTail.tsx';
  * `GET /api/sessions/{id}` (agents, recent events, status), which SessionView
  * reloads on the session's `/hub` events. Rules: `right-panel.ts`,
  * `docs/session-panel.md`. D19: an active agent's card shows its current action
- * and time in the status slot (the live activity, `activity` events). D21: the
+ * and time in the status slot (the live activity, `activity` events; D30: the main
+ * agent's background wait too, in the running color). D21: the
  * agent overview (`AgentOverview`) is the panel's first section, above the
  * header; the prototype's parts follow it unchanged.
  */
@@ -39,6 +40,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
                 card={card}
                 activity={activity?.agents[card.id] ?? null}
                 turnStartedAt={activity && session.agents.find((agent) => agent.id === card.id)?.kind === 'main' ? activity.turnStartedAt : null}
+                background={activity?.background ?? []}
               />
             ))}
           </div>
@@ -51,8 +53,20 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
   );
 }
 
-function AgentCardView({ card, activity, turnStartedAt }: { readonly card: AgentCard; readonly activity: AgentActivity | null; readonly turnStartedAt: string | null }) {
-  const color = statusColor(card.status);
+function AgentCardView({
+  card,
+  activity,
+  turnStartedAt,
+  background,
+}: {
+  readonly card: AgentCard;
+  readonly activity: AgentActivity | null;
+  readonly turnStartedAt: string | null;
+  /** D30: the session's pending background tasks (the main agent's background wait). */
+  readonly background: readonly BackgroundTask[];
+}) {
+  // D30: an agent waiting on background work reads as working (the running color).
+  const color = statusColor(activity?.state === 'background' ? 'run' : card.status);
   return (
     <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
       <div className="sb-agent-top">
@@ -64,7 +78,7 @@ function AgentCardView({ card, activity, turnStartedAt }: { readonly card: Agent
           {card.description}
         </span>
         <span className="sb-agent-status" data-testid="agent-status" style={{ color }}>
-          {activity ? <AgentActivityText entry={activity} turnStartedAt={turnStartedAt} /> : card.statusText}
+          {activity ? <AgentActivityText entry={activity} turnStartedAt={turnStartedAt} background={background} /> : card.statusText}
         </span>
       </div>
       <div className="sb-agent-where">

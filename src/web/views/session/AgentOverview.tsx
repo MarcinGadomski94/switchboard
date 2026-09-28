@@ -83,8 +83,18 @@ function OverviewRowView({ row, activity }: { readonly row: OverviewRow; readonl
       <td className="sb-overview-solution" data-testid="overview-solution" title={row.solutionPath ?? undefined}>
         {row.solution}
       </td>
-      <td className="sb-overview-status" data-testid="overview-status" style={{ color: statusColor(row.status) }} title={entry ? undefined : row.statusText}>
-        {entry ? <OverviewActivityText entry={entry} turnStartedAt={row.main && activity ? activity.turnStartedAt : null} /> : row.statusText}
+      {/* D30: an agent waiting on background work reads as working (the running color). */}
+      <td
+        className="sb-overview-status"
+        data-testid="overview-status"
+        style={{ color: statusColor(entry?.state === 'background' ? 'run' : row.status) }}
+        title={entry ? undefined : row.statusText}
+      >
+        {entry ? (
+          <OverviewActivityText entry={entry} turnStartedAt={row.main && activity ? activity.turnStartedAt : null} background={activity?.background ?? []} />
+        ) : (
+          row.statusText
+        )}
       </td>
     </tr>
   );

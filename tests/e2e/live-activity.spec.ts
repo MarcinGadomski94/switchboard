@@ -5,7 +5,10 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
 
 /**
  * D19 live activity on the real path (D13, no demo seed): `node src/server/main.ts`
- * with fake-claude as the CLI. A turn that stays running shows, live over `/hub`:
+ * with fake-claude as the CLI. D30: a session whose turn ended while background work
+ * it started still runs (a `gh run view` wait, `[fake:background-gh]`) shows that wait
+ * the same way until the CLI reports its end and runs its own turn. A turn that
+ * stays running shows, live over `/hub`:
  * - the chat line above the composer (`● Bash: <command>  0:0n` for the recorded
  *   slow Bash call, `interrupt-tool`; the rotating verb, the turn's time and the
  *   thinking tokens for a turn that keeps thinking, `hang`);
@@ -142,6 +145,84 @@ test('a running turn: chat line, sidebar action and agent card action with a gro
   await expect(line).toHaveCount(0);
   await expect(row.getByTestId('session-activity')).toHaveCount(0);
   await expect(card.getByTestId('agent-activity')).toHaveCount(0);
+});
+
+/** The computed value of a CSS color token in the page (e.g. `--status-run`). */
+async function tokenColor(page: Page, token: string): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+test('D30: a background GitHub Actions wait after the turn: chat line, sidebar row, agent card and overview with a growing time; gone once its notification\'s turn ran', async ({ page }) => {
+  const GH = 'gh run view 4242 --json status --jq .status';
+  const WAIT = `Waiting for GitHub Actions: ${GH}`;
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'background-e2e', 'Wait for the CI run. [fake:background-gh 20]');
+  await expect.poll(async () => (await detail(page, id)).activity?.state).toBe('background');
+  const waiting = await detail(page, id);
+  // The turn is over (its status is the turn's), the wait is the activity.
+  expect(waiting.status).toBe('done');
+  expect(waiting.activity).toMatchObject({ state: 'background', tool: 'Bash', summary: GH, thinkingTokens: null });
+  expect(waiting.activity?.background).toMatchObject([{ kind: 'bash', github: true, summary: GH }]);
+
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  await expect(page.getByTestId('session-chat')).toContainText('STARTED');
+
+  // Chat: ⏳ (amber, still), the wait's words and the time since it started, above the composer.
+  const line = page.getByTestId('chat-activity');
+  await expect(line).toHaveAttribute('data-state', 'background');
+  const glyph = page.getByTestId('chat-activity-glyph');
+  await expect(glyph).toHaveText('⏳');
+  await expect(glyph).toHaveAttribute('data-glyph', '⏳');
+  await expect(glyph).toHaveCSS('color', await tokenColor(page, '--status-need'));
+  await expect(glyph).toHaveCSS('animation-name', 'none');
+  await expect(page.getByTestId('chat-activity-text')).toHaveText(WAIT);
+  await expect(page.getByTestId('chat-activity-time')).toHaveText(/^0:\d{2}$/);
+  await expect(page.getByTestId('chat-activity-more')).toHaveCount(0);
+  await expect(page.getByTestId('chat-activity-tokens')).toHaveCount(0);
+  await expectGrowing(page.getByTestId('chat-activity-time'), 'the wait clock');
+  const order = await page.locator('.sb-sv-main > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+  expect(order.indexOf('chat-composer')).toBe(order.indexOf('chat-activity') + 1);
+
+  // Sidebar: the wait and its time in place of the mode line; the dot pulses in the running color.
+  const row = page.getByTestId('sidebar-sessions').locator('a').filter({ hasText: 'background-e2e' });
+  await expect(row.getByTestId('session-activity')).toHaveAttribute('data-state', 'background');
+  await expect(row.getByTestId('session-activity')).toContainText(WAIT);
+  await expect(row.locator('.sb-session-mode')).not.toContainText('single · feature · UI-first');
+  await expectGrowing(row.getByTestId('session-activity-time'), 'the sidebar time');
+  const dot = row.locator('.sb-session-dot');
+  await expect(dot).toHaveAttribute('data-activity', 'background');
+  await expect(dot).toHaveCSS('animation-name', 'sb-activity-pulse');
+  await expect(dot).toHaveCSS('background-color', await tokenColor(page, '--status-run'));
+
+  // Right panel: the main agent's card and its overview row show the same wait (the overview with ⏳).
+  const card = page.getByTestId('session-right-panel').getByTestId('agent-card').first();
+  await expect(card.getByTestId('agent-activity')).toHaveAttribute('data-state', 'background');
+  await expect(card.getByTestId('agent-activity')).toContainText(WAIT);
+  await expectGrowing(card.getByTestId('agent-activity-time'), 'the agent card time');
+  const overview = page.getByTestId('overview-row').first().getByTestId('overview-activity');
+  await expect(overview).toHaveAttribute('data-state', 'background');
+  await expect(overview).toContainText(`⏳ ${WAIT}`);
+
+  // The task ends: the CLI's own turn runs (its reply lands in the chat) and every indicator goes.
+  await expect(page.getByTestId('session-chat')).toContainText('FINISHED', { timeout: 40_000 });
+  await expect(line).toHaveCount(0);
+  await expect(row.getByTestId('session-activity')).toHaveCount(0);
+  await expect(row.locator('.sb-session-mode')).toHaveText('single · feature · UI-first');
+  await expect(dot).not.toHaveAttribute('data-activity');
+  await expect(dot).toHaveCSS('animation-name', 'none');
+  await expect(card.getByTestId('agent-activity')).toHaveCount(0);
+  await expect(card.getByTestId('agent-status')).toHaveText('done');
+  const after = await detail(page, id);
+  expect(after.activity).toBeNull();
+  expect(after.status).toBe('done');
+  expect(after.events.some((event) => (event.payload as { taskNotification?: boolean }).taskNotification === true)).toBe(true);
 });
 
 test('an idle session: no activity line, the mode line and a still dot, as before', async ({ page }) => {
