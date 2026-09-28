@@ -6,6 +6,7 @@ import { type ControlResponseMessage, type RateLimitMessage, parseStreamLine } f
 import {
   DEFAULT_WARN_AT_PCT,
   type GetUsageOutcome,
+  PACE_DAY_MS,
   type ModelWindowReading,
   type UsageReadingFields,
   activeWarnings,
@@ -22,6 +23,7 @@ import {
   usageWindows,
   validWindows,
   warnThreshold,
+  weeklyPace,
 } from '../../src/core/usage.ts';
 import { REPO_ROOT } from '../helpers/net.ts';
 
@@ -398,5 +400,80 @@ describe('D17: usage windows (Session, Week, a model row while in use)', () => {
     expect(usageWindowLabel({ window: 'five_hour' })).toBe('5-hour window');
     expect(usageWindowLabel({ window: 'seven_day' })).toBe('weekly limit');
     expect(usageWindowLabel({ window: 'model', model: 'Fable' })).toBe('Fable weekly limit');
+  });
+});
+
+describe('D23: weekly pace (the Week window against its daily allowance)', () => {
+  // A Thursday 15:00 reset: days Thu 15:00 → Fri 15:00 … Wed 15:00 → Thu 15:00 (UTC instants; the rule is pure time arithmetic).
+  const RESET = '2026-10-01T15:00:00.000Z';
+  const START = Date.parse('2026-09-24T15:00:00.000Z');
+  const at = (iso: string): Date => new Date(iso);
+  const pace = (pct: number, now: Date, resetsAt = RESET) => weeklyPace({ pct, resetsAt }, now);
+
+  it('days start at the reset hour: Mon 14:59 is day 4 (57.14 %), Mon 15:00 is day 5 (71.43 %)', () => {
+    expect(pace(33, at('2026-09-28T14:59:00.000Z'))).toEqual({ day: 4, allowancePct: 57.14, nextStepAt: '2026-09-28T15:00:00.000Z', onPace: true });
+    expect(pace(33, at('2026-09-28T14:59:59.999Z'))).toMatchObject({ day: 4, allowancePct: 57.14 });
+    expect(pace(33, at('2026-09-28T15:00:00.000Z'))).toEqual({ day: 5, allowancePct: 71.43, nextStepAt: '2026-09-29T15:00:00.000Z', onPace: true });
+  });
+
+  it('each day n allows n × 100 / 7 %, rounded to 2 decimals like the utilization', () => {
+    const allowances = [1, 2, 3, 4, 5, 6, 7].map((day) => pace(0, new Date(START + (day - 1) * PACE_DAY_MS + 60_000)));
+    expect(allowances.map((p) => [p?.day, p?.allowancePct])).toEqual([
+      [1, 14.29],
+      [2, 28.57],
+      [3, 42.86],
+      [4, 57.14],
+      [5, 71.43],
+      [6, 85.71],
+      [7, 100],
+    ]);
+  });
+
+  it('day 1 starts right at the previous reset; day 7 lasts until just before the next one, whose reset is its next step', () => {
+    expect(pace(0, new Date(START))).toEqual({ day: 1, allowancePct: 14.29, nextStepAt: '2026-09-25T15:00:00.000Z', onPace: true });
+    expect(pace(3, at('2026-09-24T15:00:00.001Z'))).toMatchObject({ day: 1, allowancePct: 14.29, onPace: true });
+    expect(pace(90, at('2026-10-01T14:59:59.999Z'))).toEqual({ day: 7, allowancePct: 100, nextStepAt: RESET, onPace: true });
+  });
+
+  it('on pace while below the allowance; at the allowance or above it is not (yellow)', () => {
+    const monday = at('2026-09-28T12:00:00.000Z');
+    expect(pace(57.13, monday)?.onPace).toBe(true);
+    expect(pace(57.14, monday)?.onPace).toBe(false);
+    expect(pace(62, monday)?.onPace).toBe(false);
+    const tuesday = at('2026-09-29T12:00:00.000Z');
+    expect(pace(71.42, tuesday)?.onPace).toBe(true);
+    expect(pace(71.43, tuesday)?.onPace).toBe(false);
+    const wednesday = at('2026-10-01T12:00:00.000Z');
+    expect(pace(99.99, wednesday)?.onPace).toBe(true);
+    expect(pace(100, wednesday)?.onPace).toBe(false);
+  });
+
+  it('unknown stays unknown: a reset now or past, an unparseable reset, no usable pct, or a reset more than 7 days ahead → null', () => {
+    expect(pace(10, at(RESET))).toBeNull();
+    expect(pace(10, at('2026-10-02T09:00:00.000Z'))).toBeNull();
+    expect(pace(10, at('2026-09-28T12:00:00.000Z'), 'soon')).toBeNull();
+    expect(pace(Number.NaN, at('2026-09-28T12:00:00.000Z'))).toBeNull();
+    expect(pace(-1, at('2026-09-28T12:00:00.000Z'))).toBeNull();
+    expect(pace(10, new Date(START - 1))).toBeNull();
+    expect(pace(10, new Date('invalid'))).toBeNull();
+  });
+
+  it('across a daylight-saving change the days stay 24 h long, so in local time they start an hour earlier after it', () => {
+    // Europe/Warsaw leaves summer time on Sun 2026-10-25 (03:00 CEST → 02:00 CET). A Thu 15:00 CET reset:
+    const reset = '2026-10-29T14:00:00.000Z';
+    const warsaw = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const steps: string[] = [];
+    let now = new Date('2026-10-22T14:00:00.000Z'); // the window's start: 7 × 24 h before the reset (Thu 16:00 CEST)
+    for (let day = 1; day <= 7; day++) {
+      const p = weeklyPace({ pct: 10, resetsAt: reset }, now);
+      expect(p?.day).toBe(day);
+      expect(Date.parse(p?.nextStepAt ?? '') - now.getTime()).toBe(PACE_DAY_MS);
+      steps.push(warsaw.format(new Date(p?.nextStepAt ?? '')));
+      now = new Date(p?.nextStepAt ?? '');
+    }
+    expect(steps).toEqual(['Fri 16:00', 'Sat 16:00', 'Sun 15:00', 'Mon 15:00', 'Tue 15:00', 'Wed 15:00', 'Thu 15:00']);
+    // The step into day 4 is 24 h after the one into day 3, not at 16:00 local.
+    expect(weeklyPace({ pct: 10, resetsAt: reset }, new Date('2026-10-25T13:59:59.999Z'))?.day).toBe(3);
+    expect(weeklyPace({ pct: 10, resetsAt: reset }, new Date('2026-10-25T14:00:00.000Z'))?.day).toBe(4);
   });
 });
