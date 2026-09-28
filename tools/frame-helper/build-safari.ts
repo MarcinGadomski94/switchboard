@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** The extension's own files (everything else in the folder, this script included, stays out). */
-export const EXTENSION_FILES: readonly string[] = ['manifest.json', 'rules.json', 'marker.js', 'storage-access.js'];
+export const EXTENSION_FILES: readonly string[] = ['manifest.json', 'background.js', 'marker.js', 'storage-access.js'];
 
 /** The macOS app's name (the converter's `--app-name`). */
 export const APP_NAME = 'Switchboard Frame Helper';
@@ -25,29 +25,12 @@ export const BUNDLE_ID = 'local.switchboard.framehelper';
 /** Output folder, relative to the repo root (gitignored). */
 export const OUTPUT_DIR = '.frame-helper-safari';
 
-/** One `declarativeNetRequest` rule, as far as {@link safariRules} needs it. */
-export interface DnrRule {
-  readonly id: number;
-  readonly condition: Readonly<Record<string, unknown>>;
-  readonly [key: string]: unknown;
-}
-
 /**
- * The rules as Safari gets them: `initiatorDomains` becomes `domains`, everything
- * else is unchanged. WebKit turns `initiatorDomains` into an `if-frame-url` pattern
- * that wants a `/` right after the host, so it never matches a page with a port
- * (Switchboard's `http://127.0.0.1:4870/`); `domains` becomes `if-domain`, the top
- * page's host on any port, supported since Safari 15. Chrome keeps
- * `initiatorDomains` (its `domains` is a deprecated alias of it).
+ * The manifest as Safari gets it: without Chrome's own `minimum_chrome_version`.
+ * The rest is unchanged: the rules are session rules the service worker
+ * (`background.js`) sets at run time (`tabIds` + `requestDomains`, no
+ * `initiatorDomains`), so no static rule needs a Safari form any more.
  */
-export function safariRules(rules: readonly DnrRule[]): DnrRule[] {
-  return rules.map((rule) => {
-    const { initiatorDomains, ...condition } = rule.condition;
-    return initiatorDomains === undefined ? rule : { ...rule, condition: { ...condition, domains: initiatorDomains } };
-  });
-}
-
-/** The manifest as Safari gets it: without Chrome's own `minimum_chrome_version`. */
 export function safariManifest(manifest: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const { minimum_chrome_version: _chromeOnly, ...rest } = manifest;
   return rest;
@@ -139,13 +122,12 @@ async function main(): Promise<void> {
     );
   }
 
-  // 1. Stage the extension's own files, in Safari's form (docs/frame-helper.md → Safari).
+  // 1. Stage the extension's own files, the manifest in Safari's form (docs/frame-helper.md → Safari).
   await rm(stagedDir, { recursive: true, force: true });
   await mkdir(stagedDir, { recursive: true });
   for (const file of EXTENSION_FILES) {
     const text = await readFile(path.join(sourceDir, file), 'utf8');
-    if (file === 'rules.json') await writeFile(path.join(stagedDir, file), `${JSON.stringify(safariRules(JSON.parse(text) as DnrRule[]), null, 2)}\n`);
-    else if (file === 'manifest.json') await writeFile(path.join(stagedDir, file), `${JSON.stringify(safariManifest(JSON.parse(text) as Record<string, unknown>), null, 2)}\n`);
+    if (file === 'manifest.json') await writeFile(path.join(stagedDir, file), `${JSON.stringify(safariManifest(JSON.parse(text) as Record<string, unknown>), null, 2)}\n`);
     else await writeFile(path.join(stagedDir, file), text);
   }
 
