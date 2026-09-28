@@ -12,6 +12,8 @@ M5.2: `first-turn.ts` (the first stdin message of a new session: the task + the 
 
 M6.1: `workspace-rules.ts` (router `AGENTS.md` folder rules, the baseline layout, the read-only check of a NewSession solution, `GET /api/solutions` grouping), documented in `docs/solutions.md`; the file-system walk is `src/server/solutions/scanner.ts`.
 
+D14: `model.ts` `FOLDER_KINDS` (workspace / repo), `workspace-rules.ts` `repoFolderScan` (a repo folder as one solution), `first-turn.ts` `repoWorktreeNote` (a repo session's only appended text), `derive/artifacts.ts` `locateSessionFile` (files mapped in the session's own folder), `history.ts` `HistoryRoot` (History under every folder); documented in `docs/folders.md`.
+
 M6.3: `conflicts.ts` (two or more open sessions writing one repo while one has no worktree of its own: the row flag, the card copy and its "Move … to worktree" actions), documented in `docs/solutions.md` → *Conflicts*.
 
 M7.1: `cron.ts` (5-field cron in local time: parse, next runs, the readable preview) and `schedules.ts` (the session name of a scheduled run), documented in `docs/schedules.md`; the timer and runs are `src/server/schedules/`.

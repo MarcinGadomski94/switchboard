@@ -12,8 +12,8 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `usage.warnAtPct` | editable | whole number 1–100 | `90` | M9.2: the usage warning threshold |
 | `service.startAtLogin` | read-only | boolean | stored value, `false` until set | M9.1 owns the toggle and writes it when it installs the service |
 | `service.address` | read-only | string | `127.0.0.1:<port>` from the configuration | Claude Code → Background service |
-| `workspace.root` | read-only | string \| null | `SWITCHBOARD_WORKSPACE_ROOT`, `null` when not configured | Workspace & solutions |
-| `workspace.router` | read-only | string \| null | the first `# ` heading of `<root>/AGENTS.md` (first 16 KiB, read asynchronously), `AGENTS.md` without one, `null` without the file or a root | Workspace & solutions |
+| `workspace.root` | read-only | string \| null | D14: the default saved folder's path (`docs/folders.md`), `null` while no folder is saved | Workspace & solutions (the UI stage turns it into Folders) |
+| `workspace.router` | read-only | string \| null | the first `# ` heading of `<default folder>/AGENTS.md` (first 16 KiB, read asynchronously), `AGENTS.md` without one, `null` without the file, without a default folder, or when the default folder is a repo (D14) | Workspace & solutions |
 | `github.prPollMinutes` | read-only | number | the worktree manager's `DEFAULT_PR_POLL_MS` (5) | GitHub → PR merge detection |
 
 Nothing is stored until something is set; a stored value of the wrong type reads as the default. `GET` never returns other rows of the `settings` table (e.g. the demo marker `demo.seed`).
@@ -32,7 +32,7 @@ Values the API cannot tell read **unknown** (never invented).
 The demo seed stores `service.startAtLogin: true` (`src/server/demo/data/setup.json` → `settings`), so Claude Code shows the prototype's "Start at login · on".
 
 ## Tests
-- `tests/server/api/settings.test.ts`: defaults + reported values, PUT subsets, the values surviving a reopened database, every 422 case, root/router variants, stored mistyped values, the guard.
+- `tests/server/api/settings.test.ts`: defaults + reported values, PUT subsets, the values surviving a reopened database, every 422 case, default-folder / router variants (none, missing, no `AGENTS.md`, no heading, a repo), stored mistyped values, the guard.
 - `tests/web/settings-model.test.ts`: the scan table, the unknown values, repos/poll copy, schedule dots, notification copy, threshold options, `cronLabel` against the prototype's four schedules.
 - `tests/e2e/settings.spec.ts` (oracle, real code path): the real server with fake-claude / fake gh, a fixture workspace and stub tool servers: every section and deep link, Run setup again, the router title, Rescan, toggles and threshold persisted across a service restart, Send test / Allow with a mocked `Notification` and `AudioContext`, the tool editor (invalid URL, save, Test, clear, add, Open, remove, reload) with the sidebar following. One test renders the scan table and the repository count from the real scan; it is marked `test.fail` until the lane merge wires M6.1's `GET /api/solutions` (D13), and the merge must remove that line. Another pins how contract-shaped `/api/system`, `/api/schedules` and `/api/solutions` answers render (answered in the browser).
 - `tests/e2e/visual/settings.spec.ts`: D10 for all seven sections (`docs/visual/settings.md`).

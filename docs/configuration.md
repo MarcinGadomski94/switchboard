@@ -3,11 +3,12 @@
 ## Environment variables
 Read once at startup by `src/server/config.ts`. An invalid value makes `npm start` exit 1 with a message.
 
+There is no workspace variable (D14): which folder a session, a scan or a schedule works in comes from the **saved folders** in the database (Settings → Folders, the setup wizard, `POST /api/folders`; `docs/folders.md`). Tests save their fixture folders through the store or the API (`tests/helpers/folders.ts`).
+
 | Variable | Default | Notes |
 |---|---|---|
 | `SWITCHBOARD_PORT` | `4870` | Integer 1–65535. Tests use 4871–4879. The bind address is fixed to 127.0.0.1 and has no variable (`docs/security.md`). |
 | `SWITCHBOARD_DATA_DIR` | per-user app-data folder | macOS `~/Library/Application Support/Switchboard`, Windows `%LOCALAPPDATA%\Switchboard` (else `~\AppData\Local\Switchboard`), Linux `$XDG_DATA_HOME/switchboard` when XDG_DATA_HOME is absolute, else `~/.local/share/switchboard` (gap #18). Holds the token (`sb_token`) and the database `switchboard.db` (`docs/database.md`), which is created and migrated at startup. A relative value resolves against the working directory. Tests always pass a temp folder. |
-| `SWITCHBOARD_WORKSPACE_ROOT` | none (`null`) | The workspace Switchboard manages. There is no default: `null` means not configured. A relative value resolves against the working directory. When it is not set, the root chosen in the setup wizard (M5.3, stored in the database) is used; when it is set, it wins and the wizard shows it read-only (`docs/setup.md`). |
 | `SWITCHBOARD_CLAUDE_BIN` | `claude` | The Claude Code CLI. A value that starts with `[` is a JSON array used as an argv prefix, e.g. `["/path/to/node","/repo/tools/fake-claude/main.ts"]`, which is how tests point the supervisor at `tools/fake-claude` on every OS (`fakeClaudeBinEnv()` in `tools/fake-claude/command.ts`; surface in `docs/fake-claude.md`). Always spawned with `shell: false`. |
 | `SWITCHBOARD_CLAUDE_EXTRA_ARGS` | none | **Dev-only.** A JSON array of flags appended to every supervised `claude` spawn, after the baseline (`docs/supervisor.md`), e.g. `["--model","haiku","--max-turns","3"]` for the D13 real-CLI smoke. Never shell-parsed; anything but an array of non-empty strings makes `npm start` exit 1. Leave unset in normal runs. |
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI, same format as `SWITCHBOARD_CLAUDE_BIN`. The worktree manager runs `gh pr view <branch> --json number,state,url,headRefOid` for each registered worktree 15 s after start and then every 5 minutes (`docs/worktrees.md`); tests point it at `tools/fake-gh` (`fakeGhBinEnv()`). git itself is taken from `PATH`. |
