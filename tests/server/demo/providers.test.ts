@@ -72,7 +72,8 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
     });
     expect(new Date(rows[0]!.startedAt).getMonth()).toBe(8);
     expect((await history.history('speaking')).map((r) => r.name)).toEqual(['speaking-page-360', 'qa-speaking-page']);
-    expect((await history.history('various'))[0]?.branches).toEqual([]);
+    expect((await history.history('various'))[0]).toMatchObject({ branches: [], solutions: ['various'] });
+    expect(rows[0]?.solutions).toEqual([]);
   });
 
   it('tools (M8.1): every probe is down without touching the network; the prototype dirty list with its times', async () => {

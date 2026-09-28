@@ -129,6 +129,8 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
             mode: row.mode,
             summary: row.summary,
             branches: parseBranchRefs(row.branches),
+            // `various` (the prototype's prod-monitoring row) has no branch refs; it stays readable as the solutions line.
+            solutions: parseBranchRefs(row.branches).length === 0 ? [row.branches] : [],
             outcome: row.outcome,
             status: row.status,
           };

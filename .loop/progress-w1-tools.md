@@ -1,9 +1,10 @@
 ## Current
-item: (none; M7.3 done)
-attempt: 3/5
-last oracle: M7.3 PASS · `SWITCHBOARD_TEST_PORTS=4930-4939 npx playwright test` 28/28 (tests/e2e/artifacts.spec.ts 7/7: 6 real-path with fake-claude + temp git worktree, 1 demo; visual/artifacts.spec.ts gate green, main-area pixel diff 2.39% All / 0.00% Diffs; settings scan-table test still an expected failure until the M6.1 merge) · `npm run typecheck` green · `npm test` 414/414 (31 files) · nothing listening on 4930–4939
-runs: 1 = green (artifacts.spec alone); 2 = red (demo filter check read the previous filter's rows while both counts were "3 of 13"; fixed with `aria-busy` + settle waits); 3 = green (full suite incl. visual)
+item: (none; M7.4 done)
+attempt: 2/5
+last oracle: M7.4 PASS · `SWITCHBOARD_TEST_PORTS=4930-4939 npx playwright test` 33/33 (tests/e2e/history.spec.ts 4/4 on the real path: temp CLAUDE_CONFIG_DIR with the rewritten fixture transcripts, cli variants, forked file, stub, other root, headless file, a fake-claude session with DB data + a mixed sdk-cli/cli file, search; visual/history.spec.ts gate green, main-area pixel diff 0.00%; settings scan-table test still an expected failure until the M6.1 merge) · `npm run typecheck` green · `npm test` 444/444 (33 files) · nothing listening on 4930–4939
+runs: 1 = green (history.spec alone); 2 = green (full suite incl. visual)
 ## Done
+- M7.4 ✓ 2026-09-28 (commit: see git log "M7.4: History") · attempts 2/5 · plan: core `src/core/transcript.ts` (streaming transcript parser: prompts / commands, titles, pr-link, cwds, newest-leaf last text skipping `<synthetic>`, slug + prefix) + `src/core/history.ts` (rows: stored sessions + terminal `cli` sessions, hidden stubs / headless / other roots, mode + branch line, outcome, search, date format); server `src/server/history/transcripts.ts` (`TranscriptHistory`: `$CLAUDE_CONFIG_DIR`/`~/.claude`, root-prefixed folders, top-level `*.jsonl`, readline streaming, cache by (size, mtime) in memory + `history_cache`, pruning, read-only) + real `GET /api/history?q=` (route default; demo provider kept); wire `HistoryItem.solutions`; UI `HistoryView` + `history.css`; tests: vitest `tests/core/history.test.ts`, `tests/server/api/history.test.ts`, helper `tests/helpers/transcripts.ts`, routes/demo tests; E2E `tests/e2e/history.spec.ts`, visual `tests/e2e/visual/history.spec.ts`; docs derivations (History), database, lanes, core README, visual README + `docs/visual/history*`
 - M7.3 ✓ 2026-09-28 (commit: see git log "M7.3: Global artifacts view") · attempts 3/5 · plan: core `src/core/artifacts-view.ts` (pills, `type=` parsing, location label, search match) + wire `ArtifactListItem`; server real `GET /api/artifacts?type=&q=` (`api/artifacts.ts`, 400 on unknown types, newest first, session names); UI `ArtifactsView` + `artifacts.css` (title + n of m + search, pills, table, rows link to the session's Chat, empty states, reload on /hub, aria-busy); tests: vitest `tests/core/artifacts-view.test.ts` + `tests/server/api/artifacts.test.ts`, routes.test row moved, shell.spec expects 200 []; E2E `tests/e2e/artifacts.spec.ts`, visual `tests/e2e/visual/artifacts.spec.ts`; docs derivations (Artifacts view), lanes, core README, visual README + `docs/visual/artifacts*`
 - M8.2 ✓ 2026-09-28 (commit: see git log "M8.2: Settings") · attempts 3/5 · plan: server `src/server/settings/settings.ts` + real GET/PUT /api/settings (keys in `src/core/settings.ts`: editable worktrees/ultracode/warnAtPct, read-only address/startAtLogin/root/router title/PR poll); UI `SettingsView` + `views/settings/{model,rows,sections,WorkspaceSection,ToolsSection,notify}` + `settings.css` (7 sections, toggles, threshold select, Send test/Allow, scan table, schedules with `src/core/cron-label.ts`, tool editor with add/remove); sidebar reload via `tools/events.ts`; demo seed startAtLogin; tests: vitest settings.test.ts + settings-model.test.ts, E2E settings.spec.ts (real path + restart persistence + mocked Notification/AudioContext; scan table `test.fail` until M6.1 merge), visual settings.spec.ts; docs/settings.md + lanes/database/demo/derivations/tools/visual rows
 - M8.1 ✓ 2026-09-28 (commit: see git log "M8.1: Embedded tools") · attempts 4/5 · plan: server `src/server/tools/{probe,codebase-memory,validate}.ts` + real GET/PUT /api/tools + POST /api/tools/{id}/probe (3 s server-side GET) + additive GET /api/codebase-memory + POST /api/codebase-memory/reindex (gap #4 session via the supervisor, `SessionStartInput`); migration 0002 default tools (cm localhost:13000, sw no URL); providers `toolProbe` / `codebaseMemory` (+ demo: always down, prototype dirty list + indexed); UI ToolView (toolbar, iframe, overlays, Reload/New tab/Edit) + `tools/probe.ts` shared state (sidebar dots) + CodebaseMemoryStrip; tests: vitest tools.test.ts, E2E tools.spec.ts on stub servers, visual tools.spec.ts; test port pool env + testIgnore fix + probe stubs in existing UI specs; docs/tools.md + derivations/database/configuration/demo/lanes/visual rows
@@ -12,6 +13,17 @@ runs: 1 = green (artifacts.spec alone); 2 = red (demo filter check read the prev
 ## Breaker
 consecutive_blocked: 0
 ## Assumptions (see .loop/questions-w1-tools.md)
+- M7.4 · history_cache holds parsed facts; rows decided per request
+- M7.4 · additive `HistoryItem.solutions`; demo `various`
+- M7.4 · outcome: worktree PR → pr-link → status word
+- M7.4 · terminal active/ended by 2-min mtime window
+- M7.4 · summary fallbacks (task / prompts), no away_summary
+- M7.4 · name cut 60 chars; `terminal · /loop 1h` mode
+- M7.4 · stored mode line = sidebar rule
+- M7.4 · terminal branch/solutions from cwds by router layout
+- M7.4 · dangling parentUuid → previous chain entry
+- M7.4 · no root → stored sessions only
+- M7.4 · rows not clickable; 150 ms search; reload on sessionUpdated; "No sessions yet."
 - M7.3 · wire `ArtifactListItem` (+ sessionName, updatedAt), newest first
 - M7.3 · `type=` comma list of artifact types, 400 on unknown
 - M7.3 · search on the service over type/name/location/session/status

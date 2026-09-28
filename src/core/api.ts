@@ -265,17 +265,27 @@ export interface Schedule {
   readonly nextRunAt: string | null;
 }
 
-/** `GET /api/history` item (M7.4, docs/spike-m0.md → What History needs). Provisional: M7.4. */
+/**
+ * `GET /api/history` item (M7.4, docs/spike-m0.md → What History needs;
+ * `docs/derivations.md` → *History*, rules in `src/core/history.ts`).
+ */
 export interface HistoryItem {
   readonly claudeSessionId: string;
-  /** Switchboard's id when the session is in the DB. */
+  /** Switchboard's id when the session is in the DB; `null` for a terminal-started session. */
   readonly sessionId: string | null;
+  /** DB `createdAt`, else the transcript's first timestamp. */
   readonly startedAt: string;
   readonly name: string;
+  /** `orch · feature · UI-first` for a stored session; `terminal` (+ ` · /loop 1h` when it started with a command) otherwise. */
   readonly mode: string;
+  /** The last main-chain assistant text (collapsed, at most 240 characters). */
   readonly summary: string;
   readonly branches: readonly BranchRef[];
+  /** Additive (M7.4): solutions in the session without a branch in {@link branches} (in-place sessions, terminal folders). */
+  readonly solutions: readonly string[];
+  /** `PR #n merged`, a status word (`running`, `done`, …), or `active` / `ended` for a terminal session. */
   readonly outcome: string;
+  /** The outcome's color (terminal sessions: `run` while active, else `idle`). */
   readonly status: SessionStatus;
 }
 

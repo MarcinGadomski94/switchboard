@@ -25,7 +25,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | served since M7.3 (`docs/derivations.md` → *Artifacts view*): `ArtifactListItem[]` (+ `sessionName`, `updatedAt`), `type=` comma list, `q=` search; session artifacts M4.6 |
-| `GET /api/history` | `api/history.ts` | M7.4 |
+| `GET /api/history` | `api/history.ts` | served since M7.4 (`docs/derivations.md` → *History*): `providers.history`, else `history/transcripts.ts` (`TranscriptHistory`: stored sessions + transcripts under `$CLAUDE_CONFIG_DIR`/`~/.claude`); `HistoryItem` + additive `solutions` |
 | `GET/PUT /api/settings` | `api/settings.ts` | served since M8.2 (`docs/settings.md`): editable preferences + read-only values the service reports; keys in `src/core/settings.ts` (M5.1 reads the New-session defaults, M9.1 writes `service.startAtLogin`, M9.2 reads `usage.warnAtPct`) |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | served since M8.1 (`docs/tools.md`); additive `GET /api/codebase-memory` + `POST /api/codebase-memory/reindex` (gap #4) in the same module |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
@@ -48,7 +48,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
 | `SolutionsProvider` (workspace scan) | M6.1 / M6.2 | same |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
-| `HistoryProvider` (transcripts) | M7.4 | same |
+| `HistoryProvider` (transcripts) | `history/transcripts.ts` (`TranscriptHistory`, M7.4), the route's default | the prototype's `HIST` rows (`various` as the solutions line) |
 | `ToolProbeProvider` (tool reachability, M8.1) | `tools/probe.ts` (server-side GET, 3 s), the route's default | always `down`, no network |
 | `CodebaseMemoryProvider` (`.codebase-memory-dirty`, M8.1 strip) | `tools/codebase-memory.ts` over the workspace root, the route's default | the prototype's dirty list + indexed count |
 
@@ -70,7 +70,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/SolutionsView.tsx` | Solutions | M6.2 (M6.3 conflict action, M6.4 freshness) |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
 | `views/ArtifactsView.tsx` | Global artifacts (+ `views/artifacts.css`; filters, search and the location label in `src/core/artifacts-view.ts`) | M7.3 |
-| `views/HistoryView.tsx` | History | M7.4 |
+| `views/HistoryView.tsx` | History (+ `views/history.css`; rows, dates and the solutions/branches line in `src/core/history.ts`) | M7.4 |
 | `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
 | `views/SettingsView.tsx` | Settings (+ `views/settings.css`, `views/settings/*`; the sidebar reloads its tools on `tools/events.ts`) | M8.2 |
 | `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |

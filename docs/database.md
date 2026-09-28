@@ -40,7 +40,7 @@ Switchboard keeps its state in one SQLite database through Node's built-in `node
 | `tools` | Tool | `url` null = not configured. `position` = sort order. `0002_default_tools.sql` (M8.1) adds Codebase Memory (`cm`, `http://localhost:13000`) and Acme Tool (`sw`, no URL) once per database; later removals stick (`docs/tools.md`). |
 | `settings` | Setting | key → JSON value. Nothing is stored until something is set. The keys `GET/PUT /api/settings` knows are in `src/core/settings.ts` (`docs/settings.md`, M8.2). |
 | `usage_readings` | Usage reading | 5-hour / 7-day percentages 0–100 (callers convert `rate_limit_event`'s 0–1) with their reset times, source and raw payload. `null` = unknown, never invented. |
-| `history_cache` | History cache | Transcript path → `(size, mtime_ms)` + the parsed row. `item` null = the file shows no row. |
+| `history_cache` | History cache | Transcript path → `(size, mtime_ms)` + the parsed transcript facts (M7.4: `TranscriptFacts` of `src/core/transcript.ts`, versioned; whether the file becomes a row is decided at request time, `docs/derivations.md` → *History*). |
 | `pending_messages` | (outbox) | User messages owed to a session the next time it runs: answers to a stale batch, the restart note of a `need` session (M2.4/M3.1). They survive restarts. |
 
 Not stored, because it is computed live: diff files (git, gap #10), the solution scan and phase ledgers (M6), codebase-memory freshness (M6.4) and system metrics (M9).

@@ -9,3 +9,5 @@ M2.1: `stream-json.ts` (typed view of the CLI's stdout), `stdin.ts` (the lines S
 M8.2: `settings.ts` (the keys of `GET/PUT /api/settings`, defaults, which are editable; `docs/settings.md`) and `cron-label.ts` (readable cron labels in the prototype's wording).
 
 M7.3: `artifacts-view.ts` (the global Artifacts view: type filters, `type=` parsing, the "Solution · branch" label and the search match, shared by `GET /api/artifacts` and the UI; `docs/derivations.md` → *Artifacts view*).
+
+M7.4: `transcript.ts` (streaming parser of a Claude Code transcript into the facts History needs: prompts, commands, titles, the newest leaf's last text, slugs) and `history.ts` (which sessions History lists and what each row shows, the search match, the date format; shared by `GET /api/history` and the UI; `docs/derivations.md` → *History*).
