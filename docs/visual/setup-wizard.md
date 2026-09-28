@@ -13,6 +13,9 @@ Side by side (prototype left, app right): `setup-wizard-side-by-side.png` (step 
 ## D14 (not findings)
 Step 2 is "Add your first folder" (a workspace or a git repo; skippable): its rail label, title and text differ from the prototype's "Workspace root" (`step2`: D14: the rail item reads "2Add your first folder"; `step2Label`: D14: "Add your first folder" instead of "Workspace root"; `title`: D14: step 2 is "Add your first folder"; `text`: D14: "A workspace (the folder that holds your router AGENTS.md) or a git repository. …" (sessions pick their folder; the step is skippable); `rootLine`: D14: the folder check line "✓ AGENTS.md (Workspace Router) · <n> solutions" (the prototype: "… found · 640 lines")). Its text runs to two lines, so the field row, Browse… and the check line are compared with y less the text's extra height (`y − <px>`), the check line's copy checked against the app's own rule instead of the prototype's.
 
+## D18 (not findings)
+Step 2 adds an optional **Name** row (the folder's custom name) under the check line. It is not in the prototype: it is checked on its own (`step 2 · D18 …` rows: between the check line and the actions, the "Name" label in the form's mono section-label style, the step's field style, the folder's own name as the placeholder), and step 2's Back / Skip / Continue are the app's main child 6 (the prototype's 5), compared at their usual boxes.
+
 ## Boxes (±2 px), copy and computed styles
 Geometry: `box` = x, y, width, height; `size` = x, width, height; `top` = x, y, width. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space (the app's root field is an `<input>`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).
 
@@ -93,6 +96,11 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height; `top` = x, y, 
 | step 2 · rootField | box (y − 41.8) | 526,281.9 470.1×37 | 526,281.9 470.1×37 | ok |  |
 | step 2 · browse | box (y − 41.8) | 1004.1,281.9 81.9×37 | 1004.1,281.9 81.9×37 | ok | "Browse…" |
 | step 2 · rootLine | box (y − 41.8) | 526,334.9 638×16 | 526,334.9 638×16 | ok | D14: "✓ AGENTS.md (Workspace Router) found ·  → "✓ AGENTS.md (Workspace Router) · 0 solutions" |
+| step 2 · D18 Name row between the check line and the actions | addition | — | 526,408.8 560×37 | ok | |
+| step 2 · D18 label copy | addition | — | "Name" | ok | |
+| step 2 · D18 label: the mono section label (10.5px, uppercase) | addition | — | 10.5px uppercase | ok | |
+| step 2 · D18 field: the step field style | addition | — | 13px 1px | ok | |
+| step 2 · D18 placeholder: the folder's own name | addition | — | "acme" | ok | |
 | step 3 · panel | box | 239,139 962×622 | 239,139 962×622 | ok |  |
 | step 3 · rail | box | 240,140 250×620 | 240,140 250×620 | ok |  |
 | step 3 · brand | box | 258,164 213×22 | 258,164 213×22 | ok |  |
