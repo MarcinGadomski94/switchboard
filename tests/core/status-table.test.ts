@@ -353,7 +353,7 @@ describe('reportedStatus (D27): the Status cell\'s color and text', () => {
   it('anything else is idle, shown as printed (other emoji kept; words inside words do not count)', () => {
     expect(reportedStatus('not started')).toEqual({ status: 'idle', text: 'not started' });
     expect(reportedStatus('undone')).toEqual({ status: 'idle', text: 'undone' });
-    expect(reportedStatus('🔵 planning')).toEqual({ status: 'idle', text: '🔵 planning' });
+    expect(reportedStatus('🟣 planning')).toEqual({ status: 'idle', text: '🟣 planning' });
     expect(reportedStatus('  ')).toEqual({ status: 'idle', text: '' });
     expect(reportedStatus('—')).toEqual({ status: 'idle', text: '—' });
   });
@@ -369,7 +369,28 @@ describe('reportedStatus (D27): the Status cell\'s color and text', () => {
   });
 
   it('the glyph and word lists are D27\'s', () => {
-    expect(STATUS_GLYPHS).toEqual({ '🟢': 'run', '✅': 'done', '✓': 'done', '🟡': 'need', '⏳': 'need', '⏸': 'need', '❌': 'fail', '✕': 'fail', '🔴': 'fail' });
+    // Developer ruling 2026-09-28 added ✔ (done), ✖ ✗ (failed), 🔵 (running) and 🟠 (waiting).
+    expect(STATUS_GLYPHS).toEqual({
+      '🟢': 'run',
+      '🔵': 'run',
+      '✅': 'done',
+      '✓': 'done',
+      '✔': 'done',
+      '🟡': 'need',
+      '🟠': 'need',
+      '⏳': 'need',
+      '⏸': 'need',
+      '❌': 'fail',
+      '✕': 'fail',
+      '✖': 'fail',
+      '✗': 'fail',
+      '🔴': 'fail',
+    });
+    expect(reportedStatus('🔵 planning')).toEqual({ status: 'run', text: 'planning' });
+    expect(reportedStatus('✔️ merged')).toEqual({ status: 'done', text: 'merged' });
+    expect(reportedStatus('✖ build broke')).toEqual({ status: 'fail', text: 'build broke' });
+    expect(reportedStatus('✗')).toEqual({ status: 'fail', text: 'failed' });
+    expect(reportedStatus('🟠 review')).toEqual({ status: 'need', text: 'review' });
     expect(STATUS_WORDS).toEqual({
       running: 'run',
       testing: 'run',

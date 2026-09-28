@@ -269,28 +269,26 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(table.getByTestId('overview-reported-column')).toHaveText(['Agent', 'Description', 'Status']);
   expect((await detail(page, id)).reportedTable).toMatchObject({ format: 'gfm', text: PIPE.join('\n') });
 
-  // A status table that does not parse (a row with an extra cell) shows as printed in the panel, wrapped to its width.
+  // A status table that does not parse (a row with an extra cell): the panel shows a one-line note
+  // (developer ruling 2026-09-28), and "as printed" opens the unwrapped original.
   await turn(page, id, say(['```', ...BOX_MALFORMED, '```'].join('\n')));
   await expect(reported).toHaveAttribute('data-format', 'box');
   await expect(reported).toHaveAttribute('data-parsed', 'false');
   await expect(table).toHaveCount(0);
-  const printed = overview.getByTestId('overview-printed');
-  await expect.poll(async () => printed.locator('pre code').evaluate((el) => el.textContent)).toBe(BOX_MALFORMED.join('\n'));
-  await expect(printed.locator('pre')).toHaveCSS('white-space', 'pre-wrap');
-  expect(await printed.locator('pre').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const unreadable = overview.getByTestId('overview-unreadable');
+  await expect(unreadable).toHaveText("The agent printed a table Switchboard can't read · see “as printed”");
+  await expect(overview.getByTestId('overview-printed')).toHaveCount(0);
   await expectNoSidewaysScroll(panel);
-  // "as printed" still opens the unwrapped original.
   await toggle.click();
   await expectUnwrapped(popover.locator('pre code'), BOX_MALFORMED.length);
   await expectNoSidewaysScroll(panel);
   await page.keyboard.press('Escape');
   await expect(popover).toHaveCount(0);
-  // A pipe table that does not parse shows through the chat's renderer, its table as wide as the panel, its cells wrapped.
+  // A pipe table that does not parse: the same note.
   await turn(page, id, say(PIPE_MALFORMED.join('\n')));
   await expect(reported).toHaveAttribute('data-format', 'gfm');
   await expect(reported).toHaveAttribute('data-parsed', 'false');
-  await expect(printed.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
-  expect(await printed.locator('table').evaluate((el) => el.getBoundingClientRect().right <= (el.parentElement?.getBoundingClientRect().right ?? 0) + 0.5)).toBe(true);
+  await expect(unreadable).toBeVisible();
   await expectNoSidewaysScroll(panel);
 
   // D19: while a tool runs, the main agent's Status cell shows its live action and time (the running blue).

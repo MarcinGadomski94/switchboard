@@ -385,13 +385,18 @@ export interface ReportedStatusCell {
  */
 export const STATUS_GLYPHS: Readonly<Record<string, ReportedStatus>> = {
   '🟢': 'run',
+  '🔵': 'run',
   '✅': 'done',
   '✓': 'done',
+  '✔': 'done',
   '🟡': 'need',
+  '🟠': 'need',
   '⏳': 'need',
   '⏸': 'need',
   '❌': 'fail',
   '✕': 'fail',
+  '✖': 'fail',
+  '✗': 'fail',
   '🔴': 'fail',
 };
 

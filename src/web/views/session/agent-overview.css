@@ -137,26 +137,11 @@
  * width instead of scrolling sideways (the unwrapped original is in the popover):
  * the code block's lines wrap, a pipe table fills the width and wraps its cells.
  */
-.sb-overview-printed-wrapped .sb-md pre {
-  overflow-x: hidden;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.sb-overview-printed-wrapped .sb-md pre code {
-  width: auto;
-  min-width: 0;
-}
-
-.sb-overview-printed-wrapped .sb-md table {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-  overflow: visible;
-}
-
-.sb-overview-printed-wrapped .sb-md :where(th, td) {
-  overflow-wrap: anywhere;
+/* Developer ruling 2026-09-28: a printed table that does not parse is a one-line note in the panel; the original is in the popover. */
+.sb-overview-unreadable {
+  padding: 0 4px;
+  font: 400 11px/1.5 var(--font-mono);
+  color: var(--muted-3);
 }
 
 /*

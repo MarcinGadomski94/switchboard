@@ -94,6 +94,9 @@ export function reportedHeading(at: string, now: number): string {
 /** The text button that shows and hides the reported table as printed (D27). */
 export const PRINTED_TOGGLE = 'as printed';
 
+/** The panel's note for a printed table that does not parse (developer ruling 2026-09-28): the original is behind "as printed". */
+export const UNREADABLE_TABLE = "The agent printed a table Switchboard can't read · see “as printed”";
+
 /** The "as printed" popover's label (shown uppercase like the panel's labels) and its dialog name (D27). */
 export const PRINTED_POPOVER_LABEL = 'As printed by the agent';
 

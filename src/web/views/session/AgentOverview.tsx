@@ -11,6 +11,7 @@ import {
   type OverviewRow,
   PRINTED_POPOVER_LABEL,
   PRINTED_TOGGLE,
+  UNREADABLE_TABLE,
   type ReportedColumn,
   type ReportedRow,
   type ReportedTableView as ReportedView,
@@ -91,9 +92,9 @@ function OverviewRowView({ row, activity }: { readonly row: OverviewRow; readonl
 
 /**
  * The newest status table the agent printed, with its age (D27): drawn as a table
- * when it parses, else as printed and wrapped to the panel's width (D21's text;
- * nothing in the panel scrolls sideways). Either way the "as printed" toggle
- * opens the original, unwrapped, in a popover over the main area.
+ * when it parses, else a one-line note (developer ruling 2026-09-28; nothing in
+ * the panel scrolls sideways). Either way the "as printed" toggle opens the
+ * original, unwrapped, in a popover over the main area.
  */
 function ReportedTableView({ table }: { readonly table: ReportedTable }) {
   const now = useTick(AGE_TICK_MS);
@@ -123,8 +124,8 @@ function ReportedTableView({ table }: { readonly table: ReportedTable }) {
       {view ? (
         <ReportedTableGrid view={view} />
       ) : (
-        <div className="sb-overview-printed sb-overview-printed-wrapped" data-testid="overview-printed">
-          <PrintedText table={table} />
+        <div className="sb-overview-unreadable" data-testid="overview-unreadable">
+          {UNREADABLE_TABLE}
         </div>
       )}
       {printed ? <PrintedPopover id={popoverId} table={table} anchor={section} toggle={toggle} onClose={() => setPrinted(false)} /> : null}
