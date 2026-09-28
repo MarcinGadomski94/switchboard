@@ -31,7 +31,7 @@ The route is behind the same guard as every API call (`docs/security.md`): a for
 
 `buildApp` wires the forwarding (`forwardServiceEvents`) for the supervisor and the worktree manager it is given, and stops it when the app closes.
 
-**`system`.** Sent only when a `SystemProvider` exists; normal runs have none until M5.3, so they send no `system` event (nothing is invented, D13) and the footer reads "—". In demo mode the demo provider feeds it. No `system` event is sent on connect: the page loads `/api/system` itself. A provider call still running when the next tick comes is not doubled; a failing call is reported and that tick is skipped.
+**`system`.** Sent only when a `SystemProvider` exists; normal runs have none until M5.3, so they send no `system` event (nothing is invented, D13) and the footer reads "—". M9.2 wraps the provider with the usage meter (`usagePct`, `usageResetsAt`, the additive `usageWarnings`; `docs/usage.md`), and the meter reads usage only while `clientCount` > 0. In demo mode the demo provider feeds it. No `system` event is sent on connect: the page loads `/api/system` itself. A provider call still running when the next tick comes is not doubled; a failing call is reported and that tick is skipped.
 
 ## Disconnects and shutdown
 - A client that goes away (socket closed) is dropped at once. With no client left, the hub leaves the bus and stops its keepalive and `system` timers, so nothing runs for nobody.

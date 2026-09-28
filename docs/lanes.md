@@ -28,7 +28,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/history` | `api/history.ts` | M7.4 |
 | `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | M8.1 |
-| `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
+| `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11); M9.2's `usagePct` / `usageResetsAt` / `usageWarnings` come from `withUsage` around `providers.system` (`docs/usage.md`; served once M5.3's route is merged) |
 | `GET/PUT /api/service` (additive, not in the contract table) | `api/service.ts` | served since M9.1: "Start at login" through `providers.loginService` (`docs/service.md`); 501 without the provider |
 | `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
 
@@ -41,7 +41,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 | `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item (wired); `remove(id)` → M3.3 "Remove worktree" action (wired); `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
 | `questions` (`QuestionPipeline`, M3.1) | question batches + permission items: the supervisor's `ControlRequestHandler`, answers + Allow once / Deny | `questionBatchItem` / `permissionItem` / `inboxCount` in `src/server/inbox/wire.ts` → M3.2's `GET /api/inbox`; the shared `QuestionCard` (`src/web/components/`) → M3.2 Inbox, M4.2 chat (`docs/questions.md`) |
 | `systemItems` (`SystemItemService`, M3.3) | system Inbox items: "Scheduled run failed", "PR merged" and their actions (`docs/system-items.md`) | **M7.1:** call `scheduleRunFinished(runId)` when a run ends and plug the scheduler in with `useScheduleRunner({ runNow })` ("Retry run" answers 501 until then); `sync()` every 30 s picks up any failed run / removable worktree without an item |
-| `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's poller (`docs/hub.md`) |
+| `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's meter via `buildApp({ usage })` (`docs/hub.md`, `docs/usage.md`) |
 
 ## Server: providers (`src/server/providers.ts`)
 Computed data sits behind interfaces so the demo can swap implementations (D13). Real implementations are created in `src/server/main.ts` and passed to `buildApp({ providers })`; routes read them from `ApiContext.providers`.
@@ -50,7 +50,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 |---|---|---|
 | `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
 | `SolutionsProvider` (workspace scan + live fields) | `LiveSolutions` (M6.2, `src/server/solutions/live.ts`) over the `WorkspaceScanner` (M6.1, `src/server/solutions/scanner.ts`, `docs/solutions.md`), wired in `main.ts`; its optional `isReadOnly` (the scanner's) feeds the NewSession read-only check | same (no `isReadOnly`: matched by row name) |
-| `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
+| `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3; M9.2 wraps it with `withUsage` (`src/server/usage/wire.ts`, `docs/usage.md`) in `main.ts` | same (not wrapped: the demo's usage is prototype data) |
 | `HistoryProvider` (transcripts) | M7.4 | same |
 | `LoginServiceProvider` ("Start at login": the per-user service definition) | `LoginService` (M9.1, `src/server/service/login-service.ts`), wired in `main.ts` | `src/server/demo/login-service.ts` (in-memory, starts on, never touches the OS) |
 

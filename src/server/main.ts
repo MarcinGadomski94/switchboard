@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { USAGE_WINDOW_LABELS } from '../core/usage.ts';
 import { buildApp, createSessionServices, createWorktreeManager } from './app.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
@@ -16,6 +17,7 @@ import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { loadOrCreateToken } from './token.ts';
+import { createUsageMeter, withUsage } from './usage/wire.ts';
 
 /** `<repo>/dist/web`, the Vite build output served as the UI. */
 const WEB_ROOT = path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
@@ -46,7 +48,21 @@ async function main(): Promise<void> {
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, logger: true });
+    // Max usage meter (M9.2, docs/usage.md): usagePct + warnings on providers.system, so on
+    // GET /api/system and the `system` hub event. Normal runs only (the demo's usage is prototype
+    // data), and only with a system provider to report through (M5.3's SystemProbe).
+    const usage =
+      config.demo || !providers.system
+        ? null
+        : createUsageMeter({
+            config,
+            store,
+            sessions: supervisor,
+            onWarning: (warning) => console.warn(`switchboard usage: Max ${USAGE_WINDOW_LABELS[warning.window]} at ${warning.pct}% (warning at ${warning.threshold}%)`),
+            onError: (error) => console.error('switchboard usage:', error),
+          });
+    if (usage) providers = withUsage(providers, usage);
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -57,6 +73,7 @@ async function main(): Promise<void> {
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await worktrees.stopPolling();
       await systemItems.close();
+      await usage?.stop();
       await supervisor.shutdown();
       await store.close();
     });
@@ -72,6 +89,8 @@ async function main(): Promise<void> {
       recovering = recover(app, config, store, supervisor).finally(releaseCommands);
       await recovering;
     }
+    // Usage readings start once the resumed sessions are back (it reads only while a /hub client is connected).
+    usage?.start();
   } catch (error) {
     await store.close();
     throw error;

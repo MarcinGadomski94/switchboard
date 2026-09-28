@@ -8,7 +8,7 @@
 | `argv.ts` | The baseline argv, the child env scrub, the handoff command. |
 | `process.ts` | `ClaudeProcess`: `spawn(cmd, args, { shell: false })`, stdout split into lines, stdin JSON lines, stderr tail, exit. `exited` resolves only after stdout is drained. |
 | `recorder.ts` | `StreamRecorder`: one per process; stores events, agents, artifacts, usage readings and the session's CLI fields, and keeps the bookkeeping the status is derived from. |
-| `supervisor.ts` | `SessionSupervisor`: start, message, pause, resume, detach, attach, respond, shutdown; the status; notifications for `/hub`; the restart-recovery steps (`resumeAfterRestart`, `settleAfterCrash`, `markPausedAfterRestart`, `recordServiceEvent`). |
+| `supervisor.ts` | `SessionSupervisor`: start, message, pause, resume, detach, attach, respond, shutdown; the status; notifications for `/hub`; the restart-recovery steps (`resumeAfterRestart`, `settleAfterCrash`, `markPausedAfterRestart`, `recordServiceEvent`); `idleLiveSessionIds` + `controlRequest` (a stdin control request between turns, M9.2's `get_usage`, `docs/usage.md`). |
 | `recovery.ts` | `recoverSessions` (M2.4, D7): what the service does at start with the sessions it finds; `stopProcess`, `claudeAgentsLister`. |
 | `../sessions/wire.ts`, `../sessions/validate.ts` | API shapes (Session, SessionDetail, SessionEvent) and NewSession validation. |
 

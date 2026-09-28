@@ -11,6 +11,7 @@ import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
 import { claudeAgentsLister } from './supervisor/recovery.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
+import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 
@@ -57,6 +58,12 @@ export interface AppOptions {
   readonly systemItems?: SystemItemService;
   /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
   readonly hub?: HubTimingOptions;
+  /**
+   * The Max usage meter (M9.2, docs/usage.md). The caller owns it (main.ts starts
+   * and stops it); the app tells it how many `/hub` clients are connected, since it
+   * reads usage only while someone sees the meter.
+   */
+  readonly usage?: UsageMeter;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -92,6 +99,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   const providers = options.providers ?? {};
   const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
+  options.usage?.watchViewers(() => hub.clientCount);
   const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });
   // Open streams would keep the server from closing: end them before it stops listening.
   app.addHook('preClose', async () => {

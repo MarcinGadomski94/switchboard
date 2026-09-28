@@ -428,6 +428,27 @@ export interface SystemInfo {
   readonly usagePct?: number;
   /** Additive: when the window behind `usagePct` resets (the footer's "40% · 2h05"). */
   readonly usageResetsAt?: string;
+  /** Additive (M9.2, `docs/usage.md`): the usage warnings in force (fired, window not reset yet); omitted when none. */
+  readonly usageWarnings?: readonly UsageWarning[];
+}
+
+/** A Max usage window (M9.2): `get_usage` `rate_limits.five_hour` / `seven_day`. */
+export type UsageWindowName = 'five_hour' | 'seven_day';
+
+/**
+ * Additive (M9.2): a usage warning. It fires once when a window reaches the
+ * Settings threshold and stays in force until that window resets ("just warn":
+ * nothing is paused). The UI shows it as a toast once per window and reset.
+ */
+export interface UsageWarning {
+  readonly window: UsageWindowName;
+  /** The window's utilization when the warning fired (0–100). */
+  readonly pct: number;
+  /** The threshold it reached (Settings `usage.warnAtPct`, default 90). */
+  readonly threshold: number;
+  /** When the window resets (ISO); the warning is in force until then. */
+  readonly resetsAt: string;
+  readonly firedAt: string;
 }
 
 /** `/hub` event names and payloads (contract, locked). */

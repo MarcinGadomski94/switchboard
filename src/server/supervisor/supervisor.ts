@@ -5,8 +5,8 @@ import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
 import type { SessionStatus } from '../../core/model.ts';
-import { type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, userMessageLine } from '../../core/stdin.ts';
-import { type CanUseToolMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
+import { type ControlRequestLine, type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, userMessageLine } from '../../core/stdin.ts';
+import { type CanUseToolMessage, type ControlResponseMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
@@ -408,6 +408,42 @@ export class SessionSupervisor {
       await live.recorder.markResponded(requestId, decision.behavior);
       await this.#refreshStatus(live);
     });
+  }
+
+  // ── control requests Switchboard asks (M9.2 usage meter, docs/usage.md) ─
+
+  /**
+   * The sessions whose live process is between turns: no turn running, no open
+   * request, not being stopped, stdin open. A control request such as `get_usage`
+   * goes only there (M0.3 probed it between turns only).
+   */
+  idleLiveSessionIds(): string[] {
+    return [...this.#live.values()]
+      .filter((live) => !live.stopping && live.proc.running && !live.proc.inputClosed && !live.recorder.turnBusy())
+      .map((live) => live.sessionId);
+  }
+
+  /**
+   * Writes one stdin `control_request` (e.g. `get_usage`) to the session's live
+   * process and resolves its `control_response`; `null` when the session has no
+   * live process, is being stopped, or no response came within `timeoutMs` (the
+   * process ended first, or it did not answer). The response is not an event.
+   */
+  async controlRequest(sessionId: string, line: ControlRequestLine, timeoutMs: number): Promise<ControlResponseMessage | null> {
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.write(line)) return null;
+    const box: { response?: ControlResponseMessage } = {};
+    // Registered right after the write, before any stdout line can be processed.
+    const answered = await this.#waitFor(
+      live,
+      (message) => {
+        if (message.kind !== 'control-response' || message.requestId !== line.request_id) return false;
+        box.response = message;
+        return true;
+      },
+      timeoutMs,
+    );
+    return answered ? (box.response ?? null) : null;
   }
 
   // ── restart recovery (M2.4, recovery.ts) ──────────────────────────────

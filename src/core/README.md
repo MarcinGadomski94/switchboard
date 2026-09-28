@@ -15,3 +15,5 @@ M6.3: `conflicts.ts` (two or more open sessions writing one repo while one has n
 M6.4: `codebase-memory.ts` (`.claude/.codebase-memory-dirty` lines named after the workspace hook's project ids, the freshness of each Solutions row and the Codebase Memory strip's list), documented in `docs/solutions.md` → *Codebase-memory freshness*.
 
 M9.1: `service-files.ts` (the launchd agent, systemd `--user` unit and Task Scheduler task + env file of the per-user background service, their escaping, and the install / uninstall step plans; pure) and `login-service.ts` (the wire types of `GET/PUT /api/service`), documented in `docs/service.md`; the I/O is `src/server/service/`.
+
+M9.2: `usage.ts` (the Max usage meter's rules: `get_usage` / `rate_limit_event` readings, the max rule, every "unknown" case, the warnings due once per window until its reset, the `/api/system` fields; pure), documented in `docs/usage.md`; the I/O is `src/server/usage/`.

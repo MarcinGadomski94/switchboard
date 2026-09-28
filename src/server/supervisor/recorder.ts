@@ -32,6 +32,7 @@ import {
 } from '../../core/derive/event-kind.ts';
 import type { LiveStatusInput, TurnOutcome } from '../../core/derive/status.ts';
 import type { StreamMessage } from '../../core/stream-json.ts';
+import { readingFromRateLimit } from '../../core/usage.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -445,16 +446,15 @@ export class StreamRecorder {
   }
 
   async #onRateLimit(message: Extract<StreamMessage, { kind: 'rate-limit' }>): Promise<void> {
-    const pct = (value: number | null | undefined): number | null => (typeof value === 'number' ? value * 100 : null);
-    const at = (seconds: number | null | undefined): string | null =>
-      typeof seconds === 'number' ? new Date(seconds * 1000).toISOString() : null;
+    // A free usage reading (M9.2, src/core/usage.ts): utilization × 100, reset epoch seconds → ISO.
+    const reading = readingFromRateLimit(message);
     await this.#store.usage.add({
       source: 'rate_limit_event',
       sessionId: this.#sessionId,
-      fiveHourPct: pct(message.fiveHour?.utilization),
-      fiveHourResetsAt: at(message.fiveHour?.resetsAt),
-      sevenDayPct: pct(message.sevenDay?.utilization),
-      sevenDayResetsAt: at(message.sevenDay?.resetsAt),
+      fiveHourPct: reading.fiveHourPct,
+      fiveHourResetsAt: reading.fiveHourResetsAt,
+      sevenDayPct: reading.sevenDayPct,
+      sevenDayResetsAt: reading.sevenDayResetsAt,
       raw: message.raw,
     });
   }

@@ -1,6 +1,7 @@
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useRouter } from '../router.tsx';
 import { useQuestionNotifications } from './useQuestionNotifications.ts';
+import { useUsageWarnings } from './useUsageWarnings.ts';
 import './toast.css';
 
 /** One toast (SPEC → Modals → Toast): dot, title, sub, branch line, text; Jump to session / Later. */
@@ -45,12 +46,14 @@ export function useToasts(): ToastValue {
 /**
  * Renders the newest toast over the shell (positioned against `.sb-shell`), and
  * raises one, with the chime and the OS notification, for every new question
- * batch (M3.4, `useQuestionNotifications`, `docs/notifications.md`).
+ * batch (M3.4, `useQuestionNotifications`, `docs/notifications.md`), and one for
+ * every Max usage warning in force (M9.2, `useUsageWarnings`, `docs/usage.md`).
  */
 export function ToastHost() {
   const { toasts, show, dismiss } = useToasts();
   const { navigate } = useRouter();
   useQuestionNotifications(show, dismiss);
+  useUsageWarnings(show);
   const toast = toasts[toasts.length - 1];
   if (!toast) return null;
   const jump = (): void => {
