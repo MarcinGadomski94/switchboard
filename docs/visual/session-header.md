@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **3.73%**, session view (256,0 1184×900) **11.26%**.
+Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **4.02%**, session view (256,0 1184×900) **11.29%**.
 The view below the header differs by design in this item: the Chat tab (M4.2) and the right panel's agent cards and terminal tail (M4.3) are later items; M4.1's handoff card sits at the top of the panel until then.
 
 Side by side (prototype left, app right): `session-header-side-by-side.png` (header strip), `session-view-side-by-side.png` (view).
@@ -23,7 +23,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | calendar-func-fix | dot | box | 278,24 8×8 | 278,24 8×8 | ok |  |
 | calendar-func-fix | name | box | 296,18.5 126.4×19 | 296,18.5 126.4×19 | ok | "calendar-func-fix" |
 | calendar-func-fix | root | box | 432.4,20.5 220.8×15 | 432.4,20.5 220.8×15 | ok | "D:\\acme · workspace root" |
-| calendar-func-fix | actions | box | 828.8,13 209.3×30 | 828.8,13 209.3×30 | ok | "Pause⇄ Continue in terminal" |
+| calendar-func-fix | actions | right, y, height (D33) | 828.8,13 209.3×30 | 769.7,13 268.3×30 | ok | "ClosePause⇄ Continue in terminal" |
 | calendar-func-fix | pause | box | 828.8,13 55.7×30 | 828.8,13 55.7×30 | ok | "Pause" |
 | calendar-func-fix | handoff | box | 890.4,13 147.6×30 | 890.4,13 147.6×30 | ok | "⇄ Continue in terminal" |
 | calendar-func-fix | chips | size | 278,52 760×21 | 278,52 760×21 | ok |  |
@@ -36,6 +36,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | calendar-func-fix | tab1 | box | 332.2,84 73.8×35 | 332.2,84 73.8×35 | ok | "Timeline" |
 | calendar-func-fix | tab2 | box | 408,84 58.7×35 | 408,84 58.7×35 | ok | "Diff · 1" |
 | calendar-func-fix | tab3 | box | 468.8,84 88.5×35 | 468.8,84 88.5×35 | ok | "Artifacts · 1" |
+| calendar-func-fix | close (D33) | Pause's y, height, styles; 6 px left of Pause | – | 769.7,13 53.1×30 | ok | "Close" |
 | free-talk-feature | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | free-talk-feature | main | box | 256,0 804×900 | 256,0 804×900 | ok |  |
 | free-talk-feature | panel | box | 1060,0 380×900 | 1060,0 380×900 | ok |  |
@@ -44,7 +45,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | free-talk-feature | dot | box | 278,24 8×8 | 278,24 8×8 | ok |  |
 | free-talk-feature | name | box | 296,18.5 121.6×19 | 296,18.5 121.6×19 | ok | "free-talk-feature" |
 | free-talk-feature | root | box | 427.6,20.5 220.8×15 | 427.6,20.5 220.8×15 | ok | "D:\\acme · workspace root" |
-| free-talk-feature | actions | box | 828.8,13 209.3×30 | 828.8,13 209.3×30 | ok | "Pause⇄ Continue in terminal" |
+| free-talk-feature | actions | right, y, height (D33) | 828.8,13 209.3×30 | 769.7,13 268.3×30 | ok | "ClosePause⇄ Continue in terminal" |
 | free-talk-feature | pause | box | 828.8,13 55.7×30 | 828.8,13 55.7×30 | ok | "Pause" |
 | free-talk-feature | handoff | box | 890.4,13 147.6×30 | 890.4,13 147.6×30 | ok | "⇄ Continue in terminal" |
 | free-talk-feature | chips | none | 278,52 760×48 | 278,52 760×21 | ok |  |
@@ -57,11 +58,14 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | free-talk-feature | tab1 | size | 332.2,111 73.8×35 | 332.2,84 73.8×35 | ok | "Timeline" |
 | free-talk-feature | tab2 | size | 408,111 61.9×35 | 408,84 61.9×35 | ok | "Diff · 5" |
 | free-talk-feature | tab3 | size | 471.9,111 91.5×35 | 471.9,84 91.5×35 | ok | "Artifacts · 4" |
+| free-talk-feature | close (D33) | Pause's y, height, styles; 6 px left of Pause | – | 769.7,13 53.1×30 | ok | "Close" |
 | free-talk-feature | chipsX | relative | 278 | 278 | ok | |
 | free-talk-feature | chipsY | relative | 52 | 52 | ok | |
 | free-talk-feature | chipsWidth | relative | 760 | 760 | ok | |
 | free-talk-feature | tabsGap | relative | 11 | 11 | ok | |
 | free-talk-feature | headerRest | relative | 99 | 99 | ok | |
+
+D33: the app's actions start with **Close** (not in the prototype). Pause and "⇄ Continue in terminal" are compared with the prototype's (they are one place later in the app); the actions group by its right edge, y and height, its copy being "Close" + the prototype's; Close itself with Pause's y, height and computed styles, 6 px left of Pause.
 
 On free-talk-feature the prototype's chip row wraps to two lines (its hand-written chips), so the chip row, the header and the tabs are compared relative to the chip row there (`relative` rows: same position and width, same gap to the tabs, same header height without the chip row); on calendar-func-fix every box is compared absolutely.
 

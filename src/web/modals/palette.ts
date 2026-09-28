@@ -1,4 +1,5 @@
 import type { Session, SolutionGroup, Tool } from '../../core/api.ts';
+import { openSessions } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { modeLine, urlHost } from '../shell/format.ts';
 
@@ -72,7 +73,7 @@ export interface PaletteData {
  * Every palette entry, unfiltered: views · New session · tools (hint = the URL's
  * host, empty when not configured) · sessions (label = the display title, D22: the
  * title, else the name; a titled session's name is searched too; hint = the
- * sidebar's mode line) ·
+ * sidebar's mode line; D33: closed sessions are left out) ·
  * solutions (hint = the folder group, e.g. `microfrontends/`). Lists that are not
  * available yet add nothing.
  */
@@ -88,7 +89,8 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
   for (const tool of data.tools ?? []) {
     entries.push({ key: `tool:${tool.id}`, kind: 'tool', label: tool.name, hint: urlHost(tool.url), target: { type: 'route', route: { view: 'tool', id: tool.id } } });
   }
-  for (const session of data.sessions ?? []) {
+  // D33: closed sessions are not offered (the service leaves them out already; a stale list may still hold one).
+  for (const session of openSessions(data.sessions ?? [])) {
     const label = displayTitle(session);
     entries.push({
       key: `session:${session.id}`,

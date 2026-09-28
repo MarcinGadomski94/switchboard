@@ -204,7 +204,8 @@ export function InboxView() {
   const current = selectedItem(items, selectedId);
   // D14: the selected item's session (for its folder tag), read when the selection names another session.
   const currentSessionId = current?.sessionId ?? null;
-  const sessions = useApi((): Promise<Session[]> => (currentSessionId ? api.listSessions() : Promise.resolve([])), [currentSessionId]);
+  // D33: a system item may belong to a closed session; its folder tag is found all the same.
+  const sessions = useApi((): Promise<Session[]> => (currentSessionId ? api.listSessions({ closed: 'include' }) : Promise.resolve([])), [currentSessionId]);
   const currentSession = currentSessionId ? ((sessions.data ?? []).find((session) => session.id === currentSessionId) ?? null) : null;
 
   const run = async (item: InboxItem, call: () => Promise<unknown>, after?: () => void): Promise<void> => {

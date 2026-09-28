@@ -31,6 +31,12 @@ import {
  * the path-style scope `functions/calendar-func`) are known differences (D13,
  * `docs/derivations.md` → *Session chips*), reported but not gated. The pixel diff
  * is advisory (`docs/visual/session-header.md`).
+ *
+ * D33: the app's header actions start with **Close** (not in the prototype), so
+ * Pause and "Continue in terminal" keep the prototype's boxes one place later in
+ * the app, and the actions group is compared by its right edge, y and height, its
+ * copy being the prototype's after "Close". Close itself is gated on the actions'
+ * own rule: Pause's y, height and computed styles, 6 px left of Pause.
  */
 
 interface PartSpec {
@@ -69,6 +75,19 @@ const PARTS: Readonly<Record<string, PartSpec>> = {
   tab2: { path: [...TABS, 2], geometry: 'box', copy: true },
   tab3: { path: [...TABS, 3], geometry: 'box', copy: true },
 };
+
+/** D33: where the app's actions are (Close first; the prototype has Pause and "Continue in terminal" at 0 and 1). */
+const APP_PATHS: Readonly<Record<string, readonly number[]>> = {
+  pause: [...TOP, 3, 1],
+  handoff: [...TOP, 3, 2],
+  close: [...TOP, 3, 0],
+};
+
+/** D33: the Close action's label (src/core/session-close.ts `CLOSE_LABEL`). */
+const CLOSE_LABEL = 'Close';
+
+/** D33: the gap between two header actions (`.sb-sv-actions`). */
+const ACTION_GAP_PX = 6;
 
 /** Chips reported but not gated (data the prototype hand-writes). */
 const REPORTED_CHIPS = [3, 4, 5];
@@ -137,7 +156,7 @@ async function compareSession(protoPage: Page, appPage: Page, name: string, wrap
   const paths = Object.fromEntries(Object.entries(PARTS).map(([part, spec]) => [part, spec.path]));
   const extraChips = Object.fromEntries(REPORTED_CHIPS.map((i) => [`chip${i}`, [...CHIPS, i]]));
   const proto = await measure(protoPage, { ...paths, ...extraChips });
-  const shot = await measure(appPage, { ...paths, ...extraChips });
+  const shot = await measure(appPage, { ...paths, ...APP_PATHS, ...extraChips });
   const rows: string[] = [];
   const DATA_DEPENDENT: Readonly<Record<string, Geometry>> = wrapped
     ? { header: 'none', chips: 'none', tabs: 'size', tab0: 'size', tab1: 'size', tab2: 'size', tab3: 'size' }
@@ -150,14 +169,38 @@ async function compareSession(protoPage: Page, appPage: Page, name: string, wrap
       continue;
     }
     const geometry = DATA_DEPENDENT[part] ?? spec.geometry;
-    const boxIssues = compareBoxes(`${name} ${part}`, p.box, a.box, geometry);
-    const copyIssues = spec.copy && p.text !== a.text ? [`${name} ${part}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
+    // D33: the actions group grows to the left by Close: its right edge, y and height stay; its copy is Close + the prototype's.
+    const isActions = part === 'actions';
+    const boxIssues = isActions ? actionsBoxIssues(`${name} ${part}`, p.box, a.box) : compareBoxes(`${name} ${part}`, p.box, a.box, geometry);
+    const wantText = isActions ? `${CLOSE_LABEL}${p.text}` : p.text;
+    const copyIssues = spec.copy && wantText !== a.text ? [`${name} ${part}.text: prototype ${JSON.stringify(wantText)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map(
       (prop) => `${name} ${part}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`,
     );
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
-    rows.push(`| ${name} | ${part} | ${geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 80) : ''} |`);
+    rows.push(`| ${name} | ${part} | ${isActions ? 'right, y, height (D33)' : geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 80) : ''} |`);
+  }
+  // D33: Close, the first action (not in the prototype): Pause's row, height and styles, one gap left of Pause.
+  const close = shot['close'];
+  const pause = shot['pause'];
+  if (!close || !pause) {
+    failures.push(`${name} close: missing in the app`);
+  } else {
+    const closeIssues: string[] = [];
+    if (close.text !== CLOSE_LABEL) closeIssues.push(`${name} close.text: ${JSON.stringify(close.text)}, expected ${JSON.stringify(CLOSE_LABEL)}`);
+    for (const [edge, want, got] of [
+      ['y', pause.box.y, close.box.y],
+      ['height', pause.box.height, close.box.height],
+      ['right', pause.box.x - ACTION_GAP_PX, close.box.x + close.box.width],
+    ] as const) {
+      if (Math.abs(want - got) > 2) closeIssues.push(`${name} close.${edge}: expected ${round(want)} (Pause's), app ${round(got)}`);
+    }
+    for (const prop of COMPARED_STYLES) {
+      if (close.style[prop] !== pause.style[prop]) closeIssues.push(`${name} close.${prop}: Pause ${pause.style[prop]} vs Close ${close.style[prop]}`);
+    }
+    failures.push(...closeIssues);
+    rows.push(`| ${name} | close (D33) | Pause's y, height, styles; ${ACTION_GAP_PX} px left of Pause | – | ${fmtBox(close)} | ${closeIssues.length === 0 ? 'ok' : 'FAIL'} | ${JSON.stringify(close.text)} |`);
   }
   if (wrapped) {
     // Relative to the chip row: the same x / y / width, the same gap to the tabs, the same header height without it.
@@ -331,6 +374,16 @@ async function openLoopChip(page: Page, which: 'proto' | 'app'): Promise<Part> {
   return measured['loop'] as Part;
 }
 
+/** D33: the actions group keeps the prototype's right edge, y and height (it grows to the left by Close). */
+function actionsBoxIssues(name: string, proto: Part['box'], app: Part['box']): string[] {
+  const checks: Array<[string, number, number]> = [
+    ['right', proto.x + proto.width, app.x + app.width],
+    ['y', proto.y, app.y],
+    ['height', proto.height, app.height],
+  ];
+  return checks.filter(([, a, b]) => Math.abs(a - b) > 2).map(([edge, a, b]) => `${name}.${edge}: prototype ${round(a)} vs app ${round(b)}`);
+}
+
 function fmtBox(part: Part): string {
   const { x, y, width, height } = part.box;
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
@@ -364,6 +417,8 @@ Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. Styles com
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
 ${input.rows.join('\n')}
+
+D33: the app's actions start with **Close** (not in the prototype). Pause and "⇄ Continue in terminal" are compared with the prototype's (they are one place later in the app); the actions group by its right edge, y and height, its copy being "Close" + the prototype's; Close itself with Pause's y, height and computed styles, 6 px left of Pause.
 
 On free-talk-feature the prototype's chip row wraps to two lines (its hand-written chips), so the chip row, the header and the tabs are compared relative to the chip row there (\`relative\` rows: same position and width, same gap to the tabs, same header height without the chip row); on calendar-func-fix every box is compared absolutely.
 

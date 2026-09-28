@@ -130,6 +130,14 @@ describe('palette model (M8.3)', () => {
     expect(by('mobile')).toEqual({ type: 'solution', path: '/ws/mobile' });
   });
 
+  it('D33: closed sessions are left out (a stale list may still hold one), even when the query names them', () => {
+    const withClosed = [...SESSIONS, session({ id: 'id-3', name: 'put-away', title: 'Put away', closedAt: '2026-09-28T10:00:00.000Z' })];
+    const entries = paletteEntries({ sessions: withClosed, tools: null, solutions: null });
+    expect(entries.filter((e) => e.kind === 'session').map((e) => e.label)).toEqual(['free-talk-feature', 'calendar-func-fix']);
+    expect(filterPalette(entries, 'put')).toEqual([]);
+    expect(filterPalette(entries, 'away')).toEqual([]);
+  });
+
   it('lists nothing it does not have: unavailable lists (null) add no entries', () => {
     const entries = paletteEntries({ sessions: null, tools: null, solutions: null });
     expect(rows(entries)).toEqual([

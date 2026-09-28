@@ -128,9 +128,10 @@ export function stepMark(event: SessionEvent): StepMark | null {
 /**
  * `true` while a batch waits for the developer: some question has no answer yet
  * (open or stale; M3.1). D24: a batch answered on claude.ai (`answeredOn`) waits no more.
+ * D33: nor does a batch closed with its session (`closedReason`).
  */
-export function batchWaiting(questions: readonly Pick<Question, 'answeredAt' | 'answeredOn'>[]): boolean {
-  if (questions.some((question) => question.answeredOn)) return false;
+export function batchWaiting(questions: readonly Pick<Question, 'answeredAt' | 'answeredOn' | 'closedReason'>[]): boolean {
+  if (questions.some((question) => question.answeredOn || question.closedReason)) return false;
   return questions.some((question) => question.answeredAt === null);
 }
 

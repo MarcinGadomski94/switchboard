@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { REMOTE_COPY_NOTE, remoteSessionUrl } from '../../../core/remote-session.ts';
+import { CLOSE_LABEL, REOPEN_LABEL, isClosed } from '../../../core/session-close.ts';
 import { ApiError, api } from '../../api/client.ts';
+import { useCloseSession } from '../../components/CloseSession.tsx';
 import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../../components/PhoneGlyph.tsx';
-import { Link, type SessionTab } from '../../router.tsx';
+import { Link, type SessionTab, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
   ATTACH_ANYWAY,
@@ -63,12 +65,21 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  * Sessions without Remote state (`remote: null`, the demo's) show no toggle.
  * D25: a local copy of a remote session gets a note under the top row (new work
  * stays local) with a link to the remote session on claude.ai.
+ * D33: **Close** first among the actions (so Pause and "Continue in terminal" keep
+ * the prototype's places): it closes the session, asking first while it runs or
+ * waits (`useCloseSession`), then the Inbox opens. A closed session (reached by
+ * its address) shows **Reopen** there instead.
  */
 export function SessionHeader({ sessionId, session, missing, tab, files, artifacts, onChanged }: SessionHeaderProps) {
-  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | null>(null);
+  const { navigate } = useRouter();
+  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | 'reopen' | null>(null);
+  // D33: closed from the session view: the Inbox opens (the sidebar follows `sessionUpdated`).
+  const closer = useCloseSession(() => navigate({ view: 'inbox' }));
+  const closed = session ? isClosed(session) : false;
   const [warning, setWarning] = useState<readonly AttachWarningReason[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [popover, setPopover] = useState(false);
+  const shownError = error ?? closer.error?.text ?? null;
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -131,6 +142,21 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           {missing ? 'no such session' : session ? rootLine(session) : ''}
         </div>
         <div className="sb-sv-actions">
+          <button
+            type="button"
+            className="sb-button sb-sv-action"
+            data-testid="session-close"
+            data-action={closed ? 'reopen' : 'close'}
+            disabled={!session || busy !== null || closer.busyId !== null}
+            aria-busy={busy === 'reopen' || closer.busyId === sessionId || undefined}
+            onClick={() => {
+              if (!session) return;
+              if (closed) void run('reopen', () => api.reopenSession(sessionId));
+              else closer.request(session);
+            }}
+          >
+            {closed ? REOPEN_LABEL : CLOSE_LABEL}
+          </button>
           {remote ? (
             <div className="sb-sv-remote" data-testid="session-remote">
               <button
@@ -226,11 +252,12 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           </div>
         </div>
       ) : null}
-      {error ? (
+      {shownError ? (
         <div className="sb-sv-error" role="alert" data-testid="session-error">
-          {error}
+          {shownError}
         </div>
       ) : null}
+      {closer.dialog}
       <div className="sb-sv-chips" data-testid="session-chips">
         {(session?.chips ?? []).map((chip) => (
           <span key={`${chip.k} ${chip.v}`} className="sb-sv-chip" data-testid="session-chip" data-loop={chip.loop ? 'true' : 'false'}>

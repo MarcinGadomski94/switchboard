@@ -17,6 +17,7 @@ import type {
   Schedule,
   Session,
   SessionTitleInput,
+  SessionCloseInput,
   SessionDetail,
   SessionRemoteInput,
   SessionEvent,
@@ -101,7 +102,8 @@ const enc = encodeURIComponent;
 
 /** The contract's REST calls. */
 export const api = {
-  listSessions: () => request<Session[]>('GET', '/api/sessions'),
+  /** D33: open sessions only (the sidebar, the palette); `{ closed: 'include' }` lists closed ones too. */
+  listSessions: (options: { readonly closed?: 'include' } = {}) => request<Session[]>('GET', `/api/sessions${query({ closed: options.closed })}`),
   /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`. */
   createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
   /** D25, additive: continue a remote session locally (201 Session; 422 / 409, or 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text). */
@@ -113,6 +115,11 @@ export const api = {
   /** D24: Remote Control on / off for the session's live process. */
   setRemote: (id: string, enabled: boolean) => request<Session>('PUT', `/api/sessions/${enc(id)}/remote`, { enabled } satisfies SessionRemoteInput),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
+  /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
+  closeSession: (id: string, confirm = false) =>
+    request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
+  /** D33: reopen a closed session (no process starts). */
+  reopenSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reopen`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),
   /** M4.1: a warning answers 409 `attach-warning` (`AttachWarning` body) until called again with `confirm`. */

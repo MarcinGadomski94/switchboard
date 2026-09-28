@@ -161,6 +161,10 @@ describe('answers bubble and composer', () => {
   it('a batch waits while a question has no answer', () => {
     expect(batchWaiting([question('a', 'x'), question('b', 'x', 0)])).toBe(true);
     expect(batchWaiting([question('a', 'x', 1)])).toBe(false);
+    // D33: a batch closed with its session waits no more, answered or not.
+    const closed = [question('a', 'x'), question('b', 'x')].map((q) => ({ ...q, state: 'stale' as const, closedReason: 'session closed' }));
+    expect(batchWaiting(closed)).toBe(false);
+    expect(chatItems([], closed, null)).toEqual([expect.objectContaining({ kind: 'questions', batchId: 'x', waiting: false })]);
   });
 
   it('answer lines use the source name part (prototype ssAnswered)', () => {
