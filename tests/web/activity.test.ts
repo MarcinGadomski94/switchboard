@@ -10,6 +10,7 @@ import {
   formatClock,
   formatElapsed,
   formatTokens,
+  overviewActivityLabel,
   sessionActivityLabel,
   thinkingVerb,
   toolText,
@@ -144,5 +145,22 @@ describe('sidebar row and agent card labels (D19)', () => {
   it('the session row times thinking and writing from the turn start, like the chat line', () => {
     expect(sessionActivityLabel(activity({ since: iso(40) }), at(45))).toEqual({ state: 'thinking', text: 'Thinking…', time: '45s' });
     expect(sessionActivityLabel(activity({ state: 'tool', tool: 'Bash', summary: 'ls', since: iso(40) }), at(45))).toEqual({ state: 'tool', text: 'Bash: ls', time: '0:05' });
+  });
+});
+
+describe('agent overview Status cell (D21)', () => {
+  const entry = { state: 'thinking' as const, since: iso(50), startedAt: iso(20), tool: null, summary: null };
+
+  it('a running tool and a wait read like the chat line (● / ⏸ in front of the card\'s action), timed from their own start', () => {
+    expect(overviewActivityLabel({ ...entry, state: 'tool', tool: 'Bash', summary: 'npm test' }, START, at(92))).toEqual({ state: 'tool', text: '● Bash: npm test', time: '0:42' });
+    expect(overviewActivityLabel({ ...entry, state: 'waiting' }, null, at(62))).toEqual({ state: 'waiting', text: '⏸ Waiting for you', time: '0:12' });
+  });
+
+  it("the main agent thinks with the chat line's verb and the turn's time; a subagent reads Thinking…; writing as on the card", () => {
+    const main = { ...entry, startedAt: START };
+    expect(overviewActivityLabel(main, START, at(83))).toEqual({ state: 'thinking', text: thinkingVerb(START, at(83)), time: '1m 23s' });
+    expect(overviewActivityLabel(main, START, at(83)).text).toBe(chatActivityLine(activity(), at(83)).text);
+    expect(overviewActivityLabel(entry, null, at(62))).toEqual({ state: 'thinking', text: 'Thinking…', time: '42s' });
+    expect(overviewActivityLabel({ ...entry, state: 'writing' }, START, at(100))).toEqual({ state: 'writing', text: 'Writing…', time: '1m 20s' });
   });
 });

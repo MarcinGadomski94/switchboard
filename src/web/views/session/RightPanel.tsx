@@ -2,6 +2,7 @@ import type { AgentActivity, SessionDetail } from '../../../core/api.ts';
 import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { statusColor } from '../../shell/format.ts';
+import { AgentOverview } from './AgentOverview.tsx';
 import { HandoffCard } from './HandoffCard.tsx';
 import { type AgentCard, agentCards, agentSummary, terminalLines } from './right-panel.ts';
 import { TerminalTail } from './TerminalTail.tsx';
@@ -14,7 +15,9 @@ import { TerminalTail } from './TerminalTail.tsx';
  * `GET /api/sessions/{id}` (agents, recent events, status), which SessionView
  * reloads on the session's `/hub` events. Rules: `right-panel.ts`,
  * `docs/session-panel.md`. D19: an active agent's card shows its current action
- * and time in the status slot (the live activity, `activity` events).
+ * and time in the status slot (the live activity, `activity` events). D21: the
+ * agent overview (`AgentOverview`) is the panel's first section, above the
+ * header; the prototype's parts follow it unchanged.
  */
 export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
   const activity = useLiveActivity(sessionId, session);
@@ -22,6 +25,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
     <aside className="sb-sv-panel" data-testid="session-right-panel" data-session-id={sessionId}>
       {session ? (
         <>
+          <AgentOverview session={session} activity={activity} />
           <div className="sb-sv-panel-head">
             <span className="sb-sv-panel-label">Agents &amp; solutions</span>
             <span className="sb-sv-panel-summary" data-testid="agents-summary">

@@ -95,6 +95,37 @@ export class EventRepository {
     return this.#table.select('session_id = ?', [sessionId], 'ts DESC, id DESC', limit).reverse();
   }
 
+  /**
+   * D21: a page of the session's assistant-text events (`payload.type` =
+   * `assistant`), newest first (ts, then id), for the printed status table
+   * (`src/server/sessions/reported-table.ts`):
+   * - `agentId`: only events of that agent or of none (the chat's main
+   *   conversation); `null` = every agent;
+   * - `words`: only payloads containing every word (SQL `LIKE`, ASCII
+   *   case-insensitive), a cheap pre-filter;
+   * - `before`: only events older than that one (the last of the previous page).
+   */
+  async assistantTextsNewestFirst(
+    sessionId: string,
+    query: { readonly agentId: string | null; readonly words: readonly string[]; readonly before?: Pick<EventRecord, 'ts' | 'id'>; readonly limit: number },
+  ): Promise<EventRecord[]> {
+    const where = ['session_id = ?', "json_extract(payload, '$.type') = 'assistant'"];
+    const params: Array<string | number> = [sessionId];
+    if (query.agentId !== null) {
+      where.push('(agent_id IS NULL OR agent_id = ?)');
+      params.push(query.agentId);
+    }
+    for (const word of query.words) {
+      where.push("payload LIKE ? ESCAPE '\\'");
+      params.push(`%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    }
+    if (query.before) {
+      where.push('(ts < ? OR (ts = ? AND id < ?))');
+      params.push(query.before.ts, query.before.ts, query.before.id);
+    }
+    return this.#table.select(where.join(' AND '), params, 'ts DESC, id DESC', query.limit);
+  }
+
   /** The newest event of the session for a `tool_use` id. */
   async findByToolUseId(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId], 'id DESC');

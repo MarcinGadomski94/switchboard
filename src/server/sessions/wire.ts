@@ -9,6 +9,7 @@ import { toQuestion } from '../inbox/wire.ts';
 import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
+import { reportedTable } from './reported-table.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
 export const DETAIL_EVENT_LIMIT = 200;
@@ -127,7 +128,11 @@ export async function sessionQuestions(store: Store, sessionId: string): Promise
   return out;
 }
 
-/** `GET /api/sessions/{id}`: the session plus its task, recent events, changed files, artifacts and (M4.2) questions. */
+/**
+ * `GET /api/sessions/{id}`: the session plus its task, recent events, changed
+ * files, artifacts, (M4.2) questions and (D21) the newest status table the agent
+ * printed in the chat.
+ */
 export async function toSessionDetail(
   store: Store,
   providers: Providers,
@@ -152,5 +157,6 @@ export async function toSessionDetail(
     files,
     artifacts: artifacts.map(toArtifact),
     questions: await sessionQuestions(store, record.id),
+    reportedTable: await reportedTable(store, record.id, session.agents.find((agent) => agent.kind === 'main')?.id ?? null),
   };
 }

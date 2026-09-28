@@ -5,12 +5,12 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **0.32%**, calendar-func-fix **0.32%**.
+Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **11.76%**, calendar-func-fix **7.27%**.
 
 Side by side (prototype left, app right): `session-panel-free-talk-side-by-side.png`, `session-panel-calendar-side-by-side.png`.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry `box` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); `top` = x, y, width. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-right, padding-bottom, padding-left.
+Geometry `box` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); `top` = x, y, width. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-right, padding-bottom, padding-left. D21: the app column shows each part's box with the agent overview's height taken out of y (the overview is the app panel's first child, above every prototype part; see *D21 additions*).
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
@@ -67,7 +67,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | line4 | box | 1086,415.8 329×18.7 | 1086,415.8 329×18.7 | ok | "⏸ [mobile] question: AcmChip compact size" |
 | free-talk-feature | line5 | box | 1086,434.4 329×18.7 | 1086,434.4 329×18.7 | ok | "⏸ waiting for your answers" |
 | free-talk-feature | handoff (copy without the D14 cwd line) | none | — | — | ok | "Terminal handoffattachedRunning in the background and attached here.  |
-| free-talk-feature | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,653 325×14 | ok | "cwd D:\\acme" |
+| free-talk-feature | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,807.5 325×14 | ok | "cwd D:\\acme" |
 | free-talk-feature | copy (copy) | box | 1374.4,623 27.6×15 | 1374.4,623 27.6×15 | ok | "copy" |
 | free-talk-feature | copy (copied) | box | 1360.6,623 41.4×15 | 1360.6,623 41.4×15 | ok | "copied" |
 | calendar-func-fix | panel | box | 1060,0 380×900 | 1060,0 380×900 | ok |  |
@@ -96,7 +96,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | calendar-func-fix | line2 | box | 1086,213.4 329×18.7 | 1086,213.4 329×18.7 | ok | "$ dotnet build" |
 | calendar-func-fix | line3 | box | 1086,232.1 329×18.7 | 1086,232.1 329×18.7 | ok | "▍" |
 | calendar-func-fix | handoff (copy without the D14 cwd line) | none | — | — | ok | "Terminal handoffattachedRunning in the background and attached here.  |
-| calendar-func-fix | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,488 325×14 | ok | "cwd D:\\acme" |
+| calendar-func-fix | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,572 325×14 | ok | "cwd D:\\acme" |
 | button-rollout | ✕ line color | none | oklch(0.72 0.16 25) | oklch(0.72 0.16 25) | ok | "✕ figma: no variant State=Loading" |
 
 ## SPEC tokens (computed)
@@ -115,6 +115,52 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | toneOk | oklch(0.78 0.12 150) | oklch(0.78 0.12 150) | ok |
 | toneWait | oklch(0.8 0.13 70) | oklch(0.8 0.13 70) | ok |
 | handoff | rgb(12, 13, 15) rgb(38, 39, 44) 10px | rgb(12, 13, 15) rgb(38, 39, 44) 10px | ok |
+
+## D21 additions (not findings)
+- The panel starts with the **agent overview** (`Agents overview` label, the derived Agent · Description · Solution · Status table, and the newest printed status table when the agent printed one). The prototype has no overview, so every prototype part is the app panel's next sibling and sits lower by the overview's height; the parts are compared at the prototype's boxes with that one vertical offset taken out (x, width and height unchanged), the way D18 checked its added Name row. The overview is checked on its own:
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+| free-talk-feature | place: the panel's first child, at its top | agent-overview 0 | agent-overview 0 | ok |
+| free-talk-feature | label copy | Agents overview | Agents overview | ok |
+| free-talk-feature | label x (the prototype label's) | 1077 | 1077 | ok |
+| free-talk-feature | label color (the prototype label's) | rgb(141, 140, 135) | rgb(141, 140, 135) | ok |
+| free-talk-feature | label font-family (the prototype label's) | "Geist Mono", monospace | "Geist Mono", monospace | ok |
+| free-talk-feature | label font-size (the prototype label's) | 10.5px | 10.5px | ok |
+| free-talk-feature | label font-weight (the prototype label's) | 500 | 500 | ok |
+| free-talk-feature | label letter-spacing (the prototype label's) | 0.63px | 0.63px | ok |
+| free-talk-feature | label text-transform (the prototype label's) | uppercase | uppercase | ok |
+| free-talk-feature | columns | Agent,Description,Solution,Status | Agent,Description,Solution,Status | ok |
+| free-talk-feature | rows = the agent cards, in order | orchestrator,web,mobile,figma-extractor | orchestrator,web,mobile,figma-extractor | ok |
+| free-talk-feature | Status colors = the cards' status colors | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.74 0.13 150) | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.74 0.13 150) | ok |
+| free-talk-feature | fits the panel, nothing overflows | true false | true false | ok |
+| free-talk-feature | no printed table (the demo prints none) | 0 | 0 | ok |
+| free-talk-feature | table: Geist Mono 11px, collapsed, fixed | "Geist Mono", monospace 11px collapse fixed | "Geist Mono", monospace 11px collapse fixed | ok |
+| free-talk-feature | header: bg-card, text-2, 1px border-control | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | ok |
+| free-talk-feature | cell lines: 1px border-control | 1px rgb(44, 45, 50) | 1px rgb(44, 45, 50) | ok |
+| free-talk-feature | name cell: text, ellipsis | rgb(232, 231, 227) ellipsis nowrap | rgb(232, 231, 227) ellipsis nowrap | ok |
+| free-talk-feature | description cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
+| free-talk-feature | solution cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
+| calendar-func-fix | place: the panel's first child, at its top | agent-overview 0 | agent-overview 0 | ok |
+| calendar-func-fix | label copy | Agents overview | Agents overview | ok |
+| calendar-func-fix | label x (the prototype label's) | 1077 | 1077 | ok |
+| calendar-func-fix | label color (the prototype label's) | rgb(141, 140, 135) | rgb(141, 140, 135) | ok |
+| calendar-func-fix | label font-family (the prototype label's) | "Geist Mono", monospace | "Geist Mono", monospace | ok |
+| calendar-func-fix | label font-size (the prototype label's) | 10.5px | 10.5px | ok |
+| calendar-func-fix | label font-weight (the prototype label's) | 500 | 500 | ok |
+| calendar-func-fix | label letter-spacing (the prototype label's) | 0.63px | 0.63px | ok |
+| calendar-func-fix | label text-transform (the prototype label's) | uppercase | uppercase | ok |
+| calendar-func-fix | columns | Agent,Description,Solution,Status | Agent,Description,Solution,Status | ok |
+| calendar-func-fix | rows = the agent cards, in order | calendar-func | calendar-func | ok |
+| calendar-func-fix | Status colors = the cards' status colors | oklch(0.72 0.12 250) | oklch(0.72 0.12 250) | ok |
+| calendar-func-fix | fits the panel, nothing overflows | true false | true false | ok |
+| calendar-func-fix | no printed table (the demo prints none) | 0 | 0 | ok |
+| calendar-func-fix | table: Geist Mono 11px, collapsed, fixed | "Geist Mono", monospace 11px collapse fixed | "Geist Mono", monospace 11px collapse fixed | ok |
+| calendar-func-fix | header: bg-card, text-2, 1px border-control | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | rgb(23, 24, 27) rgb(201, 200, 195) 1px rgb(44, 45, 50) | ok |
+| calendar-func-fix | cell lines: 1px border-control | 1px rgb(44, 45, 50) | 1px rgb(44, 45, 50) | ok |
+| calendar-func-fix | name cell: text, ellipsis | rgb(232, 231, 227) ellipsis nowrap | rgb(232, 231, 227) ellipsis nowrap | ok |
+| calendar-func-fix | description cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
+| calendar-func-fix | solution cell: muted, ellipsis | rgb(141, 140, 135) ellipsis nowrap | rgb(141, 140, 135) ellipsis nowrap | ok |
 
 ## D14 additions (not findings)
 - The handoff card ends with `cwd <Session.cwd>`: the folder to run `claude --resume` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry `top`) and by its prototype copy without that line; the line is checked on its own.

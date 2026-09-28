@@ -64,6 +64,28 @@ function firstLine(text: string): string {
 }
 
 /**
+ * An agent's description (the cards, D21's overview): its own (a subagent's
+ * Agent-call description); the main agent, which has none, shows the first line
+ * of the session's task.
+ */
+export function agentDescription(agent: Pick<Agent, 'kind' | 'description'>, task: string): string {
+  return agent.description ?? (agent.kind === 'main' ? firstLine(task) : '');
+}
+
+/**
+ * An agent's shown status and its own status text (the cards, D21's overview):
+ * while the session is paused, an agent the pause cut off (`idle`) reads `paused`
+ * and its text is dropped; `text` is `null` when the agent has none.
+ */
+export function agentStatus(
+  agent: Pick<Agent, 'status' | 'statusText'>,
+  sessionStatus: SessionStatus,
+): { readonly status: SessionStatus; readonly text: string | null } {
+  const cutByPause = sessionStatus === 'paused' && agent.status === 'idle';
+  return { status: cutByPause ? 'paused' : agent.status, text: agent.statusText && !cutByPause ? agent.statusText : null };
+}
+
+/**
  * The cards, one per agent in creation order (the main agent first):
  * - description: the agent's own (a subagent's Agent-call description); the main
  *   agent, which has none, shows the first line of the session's task;
@@ -80,15 +102,12 @@ export function agentCards(
 ): AgentCard[] {
   const root = rootPath(session);
   return agents.map((agent) => {
-    const cutByPause = session.status === 'paused' && agent.status === 'idle';
-    const status: SessionStatus = cutByPause ? 'paused' : agent.status;
-    const description = agent.description ?? (agent.kind === 'main' ? firstLine(session.task) : '');
-    const statusText = agent.statusText && !cutByPause ? agent.statusText : STATUS_WORDS[status];
+    const { status, text } = agentStatus(agent, session.status);
     return {
       id: agent.id,
       name: agent.name,
-      description,
-      statusText,
+      description: agentDescription(agent, session.task),
+      statusText: text ?? STATUS_WORDS[status],
       status,
       path: agent.solutionPath ?? root,
       branch: agent.branch,

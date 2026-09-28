@@ -1,5 +1,6 @@
 import { type Page, expect, test } from '@playwright/test';
 import {
+  BOX_TOLERANCE_PX,
   type Box,
   type DemoApp,
   type Geometry,
@@ -35,6 +36,14 @@ import {
  * command in (`cwd <Session.cwd>`), which the prototype does not have. The card
  * is compared by x, y and width (geometry `top`) with its prototype copy (the
  * text before that line); the line is checked on its own ({@link D14_CWD}).
+ *
+ * D21 addition (not a finding): the agent overview is the app panel's first child
+ * (the prototype has none), so every prototype part is the app's next sibling
+ * ({@link appPath}) and sits lower by the overview's height. The prototype's parts
+ * are compared at their boxes with that one vertical offset taken out
+ * ({@link overviewOffset}: x, width and height as they are, y relative to the
+ * panel's parts under the overview), exactly as before otherwise; the overview is
+ * checked on its own ({@link checkOverview}).
  */
 
 interface PartSpec {
@@ -48,6 +57,31 @@ const HEAD = [...PANEL, 0] as const;
 const CARDS = [...PANEL, 1] as const;
 const TERM = [...PANEL, 3] as const;
 const HANDOFF = [...PANEL, 4] as const;
+
+/** D21: the agent overview, the app panel's first child (the app only). */
+const OVERVIEW = [...PANEL, 0] as const;
+
+/** D21: the app path of a prototype path: under the panel, one sibling further (after the overview). */
+function appPath(path: readonly number[]): number[] {
+  const out = [...path];
+  const at = PANEL.length;
+  if (out.length > at && PANEL.every((index, i) => out[i] === index)) out[at] = (out[at] ?? 0) + 1;
+  return out;
+}
+
+/** D21: how much lower the prototype's parts sit in the app (the overview's height: it starts at the panel's top). */
+async function overviewOffset(appPage: Page): Promise<number> {
+  const parts = await measure(appPage, { panel: [...PANEL], overview: [...OVERVIEW] });
+  const panel = parts['panel'];
+  const overview = parts['overview'];
+  if (!panel || !overview) throw new Error('the app panel or its agent overview is missing');
+  return overview.box.y + overview.box.height - panel.box.y;
+}
+
+/** An app part's box with the overview's offset taken out (the panel itself is not moved). */
+function unshifted(box: Box, dy: number): Box {
+  return { ...box, y: box.y - dy };
+}
 
 function cardParts(index: number, branch: boolean): Record<string, PartSpec> {
   const base = [...CARDS, index];
@@ -95,7 +129,7 @@ const D14_CWD = { path: [...HANDOFF, 3], text: 'cwd D:\\acme' } as const;
  */
 async function compareHandoffCopy(protoPage: Page, appPage: Page, label: string, failures: string[]): Promise<string[]> {
   const p = (await measure(protoPage, { card: [...HANDOFF] }))['card'];
-  const a = await measure(appPage, { card: [...HANDOFF], cwd: [...D14_CWD.path] });
+  const a = await measure(appPage, { card: appPath(HANDOFF), cwd: appPath(D14_CWD.path) });
   const card = a['card'];
   const cwd = a['cwd'];
   const rows: string[] = [];
@@ -115,7 +149,7 @@ async function compareHandoffCopy(protoPage: Page, appPage: Page, label: string,
  * before the copy span; the app has the command text span before the copy button.
  */
 const COPY_PROTO = [...HANDOFF, 2, 1] as const;
-const COPY_APP = [...HANDOFF, 2, 1] as const;
+const COPY_APP = appPath([...HANDOFF, 2, 1]);
 
 const COMPARED_STYLES = [
   'color',
@@ -166,11 +200,18 @@ function styleIssues(label: string, p: Part, a: Part): string[] {
   return COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map((prop) => `${label}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`);
 }
 
-/** Measures `parts` on both pages and gates them (boxes, copy, computed styles). */
+/**
+ * Measures `parts` on both pages and gates them (boxes, copy, computed styles);
+ * D21: the app's parts at their {@link appPath}, their y without the overview's offset.
+ */
 async function compare(protoPage: Page, appPage: Page, label: string, parts: Readonly<Record<string, PartSpec>>, failures: string[]): Promise<string[]> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, spec.path]));
   const proto = await measure(protoPage, paths);
-  const shot = await measure(appPage, paths);
+  const dy = await overviewOffset(appPage);
+  const measured = await measure(appPage, Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, appPath(spec.path)])));
+  const shot = Object.fromEntries(
+    Object.entries(measured).map(([name, part]) => [name, part && name !== 'panel' ? { ...part, box: unshifted(part.box, dy) } : part]),
+  );
   const rows: string[] = [];
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
@@ -202,7 +243,8 @@ async function compareCopy(protoPage: Page, appPage: Page, label: string, failur
       await protoPage.getByText('copied', { exact: true }).waitFor();
     }
     const p = (await measure(protoPage, { copy: [...COPY_PROTO] }))['copy'];
-    const a = (await measure(appPage, { copy: [...COPY_APP] }))['copy'];
+    const measured = (await measure(appPage, { copy: [...COPY_APP] }))['copy'];
+    const a = measured ? { ...measured, box: unshifted(measured.box, await overviewOffset(appPage)) } : measured;
     if (!p || !a) {
       failures.push(`${label} copy (${state}): missing`);
       rows.push(`| ${label} | copy (${state}) | box | missing | missing | FAIL | |`);
@@ -235,8 +277,8 @@ async function clickAt(page: Page, path: readonly number[]): Promise<void> {
   }, [...path]);
 }
 
-/** The computed color of the terminal line with `text` in the right panel. */
-async function lineColor(page: Page, text: string): Promise<string | null> {
+/** The computed color of the terminal line with `text` in the right panel (`term`: the terminal box's path on that page). */
+async function lineColor(page: Page, text: string, term: readonly number[]): Promise<string | null> {
   return page.evaluate(
     ({ p, t }) => {
       const grid = [...document.querySelectorAll<HTMLElement>('body *')].find((el) => {
@@ -248,8 +290,96 @@ async function lineColor(page: Page, text: string): Promise<string | null> {
       const line = [...(el?.children ?? [])].find((child) => (child.textContent ?? '').trim() === t);
       return line ? getComputedStyle(line).color : null;
     },
-    { p: [...TERM], t: text },
+    { p: [...term], t: text },
   );
+}
+
+/** D21: the label styles the overview shares with the prototype's "Agents & solutions" label. */
+const LABEL_STYLES = ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'] as const;
+
+/**
+ * D21: the agent overview on its own (the prototype has none): its place (the
+ * panel's first child, at the panel's top), its label (copy, and the prototype
+ * panel label's type and x), one row per agent card in the same order, the
+ * columns, the table inside the panel's width with nothing overflowing, the SPEC
+ * tokens of the table, each Status cell in its agent's status color, and no printed
+ * table (the demo agents print none).
+ */
+async function checkOverview(protoPage: Page, appPage: Page, label: string, failures: string[]): Promise<string[]> {
+  const proto = (await measure(protoPage, { label: [...HEAD, 0] }))['label'];
+  const app = await appPage.evaluate(
+    ({ panelPath, props }) => {
+      const grid = [...document.querySelectorAll<HTMLElement>('body *')].find((el) => {
+        const style = getComputedStyle(el);
+        return style.display === 'grid' && style.gridTemplateColumns.startsWith('256px');
+      });
+      let panel: Element | undefined = grid;
+      for (const i of panelPath) panel = panel?.children[i];
+      const overview = panel?.children[0];
+      const labelEl = overview?.querySelector<HTMLElement>('.sb-overview-label');
+      const table = overview?.querySelector<HTMLElement>('[data-testid="overview-table"]');
+      if (!(panel instanceof HTMLElement) || !(overview instanceof HTMLElement) || !labelEl || !table) return null;
+      const texts = (selector: string) => [...overview.querySelectorAll(selector)].map((el) => (el.textContent ?? '').trim());
+      const css = (el: Element | null | undefined, prop: string) => (el ? getComputedStyle(el).getPropertyValue(prop) : '');
+      const panelBox = panel.getBoundingClientRect();
+      const tableBox = table.getBoundingClientRect();
+      const labelStyle = getComputedStyle(labelEl);
+      const cards = [...panel.querySelectorAll('[data-testid="agent-card"]')];
+      const rows = [...overview.querySelectorAll('[data-testid="overview-row"]')];
+      const cell = (row: Element | undefined, id: string) => row?.querySelector(`[data-testid="${id}"]`) ?? null;
+      const first = rows[0];
+      return {
+        testId: overview.getAttribute('data-testid'),
+        top: overview.getBoundingClientRect().y - panelBox.y,
+        label: (labelEl.textContent ?? '').trim(),
+        labelTextX: labelEl.getBoundingClientRect().x + Number.parseFloat(labelStyle.paddingLeft),
+        labelStyle: Object.fromEntries(props.map((prop) => [prop, labelStyle.getPropertyValue(prop)])),
+        columns: texts('[data-testid="overview-column"]'),
+        names: texts('[data-testid="overview-agent"]'),
+        cardNames: cards.map((card) => (card.querySelector('[data-testid="agent-name"]')?.textContent ?? '').trim()),
+        statusColors: rows.map((row) => css(cell(row, 'overview-status'), 'color')),
+        cardStatusColors: cards.map((card) => css(card.querySelector('[data-testid="agent-status"]'), 'color')),
+        fits: tableBox.x >= panelBox.x && tableBox.x + tableBox.width <= panelBox.x + panel.clientWidth + 0.5,
+        overflow: table.scrollWidth > table.clientWidth + 0.5 || panel.scrollWidth > panel.clientWidth + 0.5,
+        reported: overview.querySelectorAll('[data-testid="overview-reported"]').length,
+        table: `${css(table, 'font-family')} ${css(table, 'font-size')} ${css(table, 'border-collapse')} ${css(table, 'table-layout')}`,
+        header: `${css(overview.querySelector('th'), 'background-color')} ${css(overview.querySelector('th'), 'color')} ${css(overview.querySelector('th'), 'border-top-width')} ${css(overview.querySelector('th'), 'border-top-color')}`,
+        cellLine: `${css(cell(first, 'overview-agent'), 'border-bottom-width')} ${css(cell(first, 'overview-agent'), 'border-bottom-color')}`,
+        name: `${css(cell(first, 'overview-agent'), 'color')} ${css(cell(first, 'overview-agent'), 'text-overflow')} ${css(cell(first, 'overview-agent'), 'white-space')}`,
+        desc: `${css(cell(first, 'overview-description'), 'color')} ${css(cell(first, 'overview-description'), 'text-overflow')} ${css(cell(first, 'overview-description'), 'white-space')}`,
+        solution: `${css(cell(first, 'overview-solution'), 'color')} ${css(cell(first, 'overview-solution'), 'text-overflow')} ${css(cell(first, 'overview-solution'), 'white-space')}`,
+      };
+    },
+    { panelPath: [...PANEL], props: [...LABEL_STYLES] },
+  );
+  if (!proto || !app) {
+    failures.push(`${label} overview (D21): missing (${proto ? 'app' : 'prototype label'})`);
+    return [`| ${label} | agent overview (D21) | missing | FAIL |`];
+  }
+  const checks: Array<[string, string, string]> = [
+    ['place: the panel\'s first child, at its top', 'agent-overview 0', `${app.testId} ${round(app.top)}`],
+    ['label copy', 'Agents overview', app.label],
+    ['label x (the prototype label\'s)', String(round(proto.box.x)), String(round(app.labelTextX))],
+    ...LABEL_STYLES.map((prop): [string, string, string] => [`label ${prop} (the prototype label\'s)`, proto.style[prop] ?? '', app.labelStyle[prop] ?? '']),
+    ['columns', 'Agent,Description,Solution,Status', app.columns.join(',')],
+    ['rows = the agent cards, in order', app.cardNames.join(','), app.names.join(',')],
+    ['Status colors = the cards\' status colors', app.cardStatusColors.join(' / '), app.statusColors.join(' / ')],
+    ['fits the panel, nothing overflows', 'true false', `${app.fits} ${app.overflow}`],
+    ['no printed table (the demo prints none)', '0', String(app.reported)],
+    ['table: Geist Mono 11px, collapsed, fixed', '"Geist Mono", monospace 11px collapse fixed', app.table],
+    ['header: bg-card, text-2, 1px border-control', `${hexToRgb('#17181b')} ${hexToRgb('#c9c8c3')} 1px ${hexToRgb('#2c2d32')}`, app.header],
+    ['cell lines: 1px border-control', `1px ${hexToRgb('#2c2d32')}`, app.cellLine],
+    ['name cell: text, ellipsis', `${hexToRgb('#e8e7e3')} ellipsis nowrap`, app.name],
+    ['description cell: muted, ellipsis', `${hexToRgb('#8d8c87')} ellipsis nowrap`, app.desc],
+    ['solution cell: muted, ellipsis', `${hexToRgb('#8d8c87')} ellipsis nowrap`, app.solution],
+  ];
+  const rows: string[] = [];
+  for (const [check, want, got] of checks) {
+    const ok = check.startsWith('label x') ? Math.abs(Number(want) - Number(got)) <= BOX_TOLERANCE_PX : want === got;
+    if (!ok) failures.push(`${label} overview (D21) ${check}: expected ${want}, got ${got}`);
+    rows.push(`| ${label} | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
+  }
+  return rows;
 }
 
 test('Right panel matches the prototype (agent cards, summary, terminal tail, handoff card + copy)', async ({ browser }) => {
@@ -257,6 +387,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   const appPage = await newVisualPage(browser);
   const failures: string[] = [];
   const rows: string[] = [];
+  const overviewRows: string[] = [];
   await openPrototype(protoPage, { simulateIncoming: false });
   const panelClip = { x: 1060, y: 0, width: 380, height: 900 };
 
@@ -275,6 +406,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   );
   rows.push(...(await compareHandoffCopy(protoPage, appPage, 'free-talk-feature', failures)));
   rows.push(...(await compareCopy(protoPage, appPage, 'free-talk-feature', failures)));
+  overviewRows.push(...(await checkOverview(protoPage, appPage, 'free-talk-feature', failures)));
   const protoFree = await protoPage.screenshot({ clip: panelClip });
   const appFree = await appPage.screenshot({ clip: panelClip });
   const freeDiff = await pixelDiff(appPage, protoFree, appFree);
@@ -285,6 +417,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   await expect(appPage.getByTestId('terminal-line')).toHaveText(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build', '▍']);
   rows.push(...(await compare(protoPage, appPage, 'calendar-func-fix', { ...FRAME_PARTS, ...cardParts(0, true), ...lineParts(4) }, failures)));
   rows.push(...(await compareHandoffCopy(protoPage, appPage, 'calendar-func-fix', failures)));
+  overviewRows.push(...(await checkOverview(protoPage, appPage, 'calendar-func-fix', failures)));
   const protoCalendar = await protoPage.screenshot({ clip: panelClip });
   const appCalendar = await appPage.screenshot({ clip: panelClip });
   const calendarDiff = await pixelDiff(appPage, protoCalendar, appCalendar);
@@ -293,7 +426,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   await openProtoSession(protoPage, 'button-rollout');
   await openAppSession(appPage, 'button-rollout', 3);
   const failLine = '✕ figma: no variant State=Loading';
-  const [protoFail, appFail] = [await lineColor(protoPage, failLine), await lineColor(appPage, failLine)];
+  const [protoFail, appFail] = [await lineColor(protoPage, failLine, TERM), await lineColor(appPage, failLine, appPath(TERM))];
   const [failRed] = await canonicalColors(appPage, ['oklch(0.72 0.16 25)']);
   if (protoFail !== appFail || appFail !== failRed) failures.push(`button-rollout ✕ tone: prototype ${protoFail}, app ${appFail}, expected ${failRed}`);
   rows.push(`| button-rollout | ✕ line color | none | ${protoFail} | ${appFail} | ${protoFail === appFail && appFail === failRed ? 'ok' : 'FAIL'} | ${JSON.stringify(failLine)} |`);
@@ -313,7 +446,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   const computed = await appPage.evaluate(() => {
     const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
     const panel = style('.sb-sv-panel');
-    const label = style('.sb-sv-panel-label');
+    const label = style('.sb-sv-panel-head .sb-sv-panel-label');
     const summary = style('.sb-sv-panel-summary');
     const card = style('.sb-agent');
     const name = style('.sb-agent-name');
@@ -364,7 +497,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   }
 
   await writeReport({
-    'session-panel.md': report({ rows, computedRows, failures, diffs: { free: freeDiff.percent, calendar: calendarDiff.percent }, rollout: { proto: protoRollout, app: appRollout } }),
+    'session-panel.md': report({ rows, computedRows, overviewRows, failures, diffs: { free: freeDiff.percent, calendar: calendarDiff.percent }, rollout: { proto: protoRollout, app: appRollout } }),
     'session-panel-free-talk-side-by-side.png': await sideBySide(appPage, protoFree, appFree),
     'session-panel-calendar-side-by-side.png': await sideBySide(appPage, protoCalendar, appCalendar),
   });
@@ -375,6 +508,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
 function report(input: {
   rows: string[];
   computedRows: string[];
+  overviewRows: string[];
   failures: string[];
   diffs: { free: number; calendar: number };
   rollout: { proto: string[]; app: string[] };
@@ -391,7 +525,7 @@ Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900)
 Side by side (prototype left, app right): \`session-panel-free-talk-side-by-side.png\`, \`session-panel-calendar-side-by-side.png\`.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry \`box\` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')}.
+Geometry \`box\` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')}. D21: the app column shows each part's box with the agent overview's height taken out of y (the overview is the app panel's first child, above every prototype part; see *D21 additions*).
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
@@ -401,6 +535,13 @@ ${input.rows.join('\n')}
 | Check | Expected | App | Result |
 |---|---|---|---|
 ${input.computedRows.join('\n')}
+
+## D21 additions (not findings)
+- The panel starts with the **agent overview** (\`Agents overview\` label, the derived Agent · Description · Solution · Status table, and the newest printed status table when the agent printed one). The prototype has no overview, so every prototype part is the app panel's next sibling and sits lower by the overview's height; the parts are compared at the prototype's boxes with that one vertical offset taken out (x, width and height unchanged), the way D18 checked its added Name row. The overview is checked on its own:
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+${input.overviewRows.join('\n')}
 
 ## D14 additions (not findings)
 - The handoff card ends with \`cwd <Session.cwd>\`: the folder to run \`claude --resume\` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry \`top\`) and by its prototype copy without that line; the line is checked on its own.

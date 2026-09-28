@@ -175,3 +175,28 @@ export function activityLabel(entry: Pick<AgentActivity, 'state' | 'since' | 'st
 export function sessionActivityLabel(activity: SessionActivity, now: number): ActivityLabel {
   return activityLabel({ ...activity, startedAt: activity.turnStartedAt }, now);
 }
+
+/**
+ * An agent's action for the agent overview's Status cell (D21): the agent card's
+ * label ({@link activityLabel}) with the chat line's glyph in front of a running
+ * tool (`● Bash: npm test  0:42`) or a wait (`⏸ Waiting for you  0:12`); the main
+ * agent (`turnStartedAt` given) thinks with the chat line's rotating verb and the
+ * turn's time (`Pondering…  1m 23s`), a subagent reads `Thinking…`.
+ */
+export function overviewActivityLabel(
+  entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>,
+  turnStartedAt: string | null,
+  now: number,
+): ActivityLabel {
+  const label = activityLabel(entry, now);
+  switch (label.state) {
+    case 'tool':
+      return { ...label, text: `● ${label.text}` };
+    case 'waiting':
+      return { ...label, text: `⏸ ${label.text}` };
+    case 'thinking':
+      return turnStartedAt === null ? label : { ...label, text: thinkingVerb(turnStartedAt, now) };
+    default:
+      return label;
+  }
+}

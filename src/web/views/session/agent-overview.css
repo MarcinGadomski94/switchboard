@@ -1,0 +1,93 @@
+/*
+ * D21 agent overview (docs/session-panel.md → Agent overview): the right panel's
+ * first section. The derived table is compact mono meta type on the SPEC tokens:
+ * 1 px border-control lines, a bg-card header, the name in the text color, the
+ * description and solution muted; fixed columns that cut their text with … so the
+ * table always fits the panel (the full text is each cell's tooltip). The printed
+ * table reuses the chat's code block (box-drawing) or Markdown table (pipe).
+ */
+.sb-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 12px 0;
+}
+
+/* The label sits where the panel's other labels do (16 px from the panel's edge). */
+.sb-overview-label {
+  padding: 0 4px;
+}
+
+.sb-overview-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font: 400 11px/1.5 var(--font-mono);
+}
+
+.sb-overview-col-agent {
+  width: 24%;
+}
+
+.sb-overview-col-desc {
+  width: 27%;
+}
+
+.sb-overview-col-solution {
+  width: 20%;
+}
+
+.sb-overview-col-status {
+  width: 29%;
+}
+
+.sb-overview-table :where(th, td) {
+  padding: 3px 6px;
+  border: 1px solid var(--border-control);
+  text-align: left;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-overview-table th {
+  font-weight: 500;
+  color: var(--text-2);
+  background: var(--bg-card);
+}
+
+.sb-overview-agent {
+  color: var(--text);
+}
+
+.sb-overview-desc,
+.sb-overview-solution {
+  color: var(--muted-2);
+}
+
+/* A live action (D19) fills the cell: its text is cut with …, its time always shows. */
+.sb-overview-status .sb-activity-label {
+  max-width: 100%;
+}
+
+.sb-overview-reported {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sb-overview-reported-head {
+  padding: 0 4px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+/* A pipe table through the chat's renderer: mono meta type, scrolling sideways when wide (D20's table rules). */
+.sb-overview-printed {
+  min-width: 0;
+  font: 400 12px/1.5 var(--font-mono);
+  color: var(--text-2);
+}
