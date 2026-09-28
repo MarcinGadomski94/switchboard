@@ -186,14 +186,25 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Icons:** made once from an SVG of the sidebar's brand mark, rasterised with the test Chromium by a script in the repo, and committed.
   - **Unchanged:** the installed app is the same origin (`http://127.0.0.1:<port>`), so it keeps its token cookie and needs the service running.
 
-## Frame helper from the Chrome Web Store (added 2026-09-28)
-- **D35 The frame helper installs with one click from the Chrome Web Store (unlisted).**
-  - **Why:** browsers don't let a page or a local program install an extension, and Chrome ignores `--load-extension`. The developer chose to publish the helper unlisted on the Chrome Web Store: **Add to Chrome**, no developer mode.
-  - **This repo prepares:**
-    - a package script (`npm run frame-helper:package` → `.frame-helper-dist/switchboard-frame-helper-<version>.zip`, gitignored), with manifest icons (16/32/48/128 from the D34 app icon), a store description and nothing generated (no `_metadata`);
-    - a listing kit (`docs/frame-helper-store.md`): texts, single purpose, a justification per permission, data-use answers (no data collected), a short privacy policy text, and the store's screenshots rendered from the demo.
-  - **The developer publishes:** their developer account, the upload, the listing set to **Unlisted**, the review.
-  - **In Switchboard:** a "Frame helper store link" setting. Once set, Settings (Embedded tools) and a site tool's "needs the Switchboard frame helper" page show **Add to Chrome**, which opens the listing in a new tab. The page turns ready by itself once the helper announces itself. Without the link, both keep today's manual steps.
+## Frame helper: guided setup (added 2026-09-28)
+- **D35 The frame helper is set up with a guided one-click flow** (the developer does **not** want it on the Chrome Web Store; an earlier Web Store plan for D35 was dropped before it was built).
+  - **Why guided:** a browser never lets a page or a local program install an extension, and Chrome ignores `--load-extension`, so the developer still clicks "Load unpacked" once. Switchboard does everything around that click.
+  - **Where:** a **Frame helper** row in Settings (Embedded tools), and a **Set up frame helper** button on a site tool's "needs the Switchboard frame helper" page.
+  - **The steps it runs** (a small panel, each step with a button):
+    1. **Open Chrome's extensions page:** the service runs the OS opener for `chrome://extensions` in Chrome (argv only; a page cannot open `chrome://` URLs). If that fails, it says "type chrome://extensions in the address bar".
+    2. **Turn on Developer mode** (the toggle at the top right): a hint only.
+    3. **Load unpacked:** **Reveal in Finder** (the service opens Finder, or Explorer, on `tools/frame-helper`) and **Copy path** (the folder's absolute path, to paste with ⌘⇧G in the file dialog).
+  - **Status:** it watches for the helper's marker and turns green by itself ("Frame helper 2.0.0 is on") the moment Chrome loads it. An older helper reads "Reload the frame helper in chrome://extensions". Safari reads "Safari can't frame signed-in sites; they open in a new tab".
+  - **Service routes** (behind the token, like every route): `GET /api/frame-helper` (the folder path and the version from its manifest), `POST /api/frame-helper/reveal`, `POST /api/frame-helper/open-extensions`. Their commands are configurable, so tests use fakes and never open a real browser or Finder.
+
+## Subagent chats (added 2026-09-28)
+- **D36 A subagent's own conversation opens from the chat, and one step brings you back.**
+  - **Where to click:** a subagent's `Agent` / `Task` step line in the chat, its agent card in the right panel, or its row in the D21 overview opens **its** chat in the chat tab.
+  - **What it shows:** the brief the main agent gave it (as the first message), its assistant messages and tool steps as the main chat shows them (Markdown, D20), its live activity line (D19), and its final result.
+  - **The way back:** a bar on top reads "← Main chat · <subagent name>: <description>" with its status. Its back link, **Esc** and the browser's Back return to the main chat at the same scroll position.
+  - **Address:** the view has its own URL (`/sessions/{id}/agents/{agentId}`), so it can be linked and reloaded.
+  - **No composer:** subagents take no messages, so a note reads "Subagents take no messages · reply in the main chat". Questions a subagent asked still show as their cards, answered in the main chat as before.
+  - Subagents whose messages Switchboard never saw (e.g. inside a Workflow) have no chat to open.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
