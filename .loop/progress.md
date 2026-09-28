@@ -1,7 +1,7 @@
 ## Current
-item: M3 wave (next; D3 parallel lanes)
+item: Wave 1 merged for lanes w1-inbox (M3.1–M3.4) + w1-solutions (M6.1–M6.4); lane w1-tools (M8.1, M8.2, M7.3, M7.4) NOT merged, see Blocked; next: the developer's review of the lane/w1-tools merge, then the next wave
 attempt: 0/5
-last oracle: M2.4 PASS (attempt 5/5; oracle runs: 1 red = test counted `agents --json` argv as session spawns; 2 green in isolation; 3 red in the full run = a failed second start (EADDRINUSE) had run recovery before `listen` and touched the live instance → recovery moved after `listen` + `holdCommands` gate; 4 green; 5 green after hardening (closing → status kept)) · `npm run typecheck` green · `npm test` 362/362 · oracle tests/server/supervisor/restart.test.ts ×5 green (server child process + fake-claude, SIGKILL while `hang` + open `ask-2q`, restart: leftover stopped by SIGINT via `agents --json`, `--resume` same ids + baseline argv + cwd, live-process files never two live per id (5 ms sampler), run got "Switchboard restarted. Continue." and finished, need idle with nothing on stdin until its next message, which carried "Switchboard restarted.\n\n<answers>", stale AskUserQuestion, a second instance on the same port exits 1 without touching anything, clean stop leaves no process) · tests/server/supervisor/recovery.test.ts 17 · `npx playwright test` 7/7 · no leftover processes · visual: n/a (no UI)
+last oracle: Wave 1 merge verify PASS on main (merges 3dcfbf2 + a292f6f): `npm ci` ok · `npm run typecheck` green · `SWITCHBOARD_TEST_PORTS=4950-4959 npm test` 489/489 (43 files = 362 main + 46 w1-inbox + 81 w1-solutions) · `npm run build` ok · `SWITCHBOARD_TEST_PORTS=4950-4959 npm run e2e` 21/21 (hub, inbox, inbox-system, notifications, security, shell, solutions, solutions-conflict + visual inbox, toast, solutions, solutions-conflict, shell) · nothing listening on 4950–4959 afterwards · fix rounds: 0 (merges were conflict-only: test-port helper, routes table, docs)
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -17,10 +17,22 @@ last oracle: M2.4 PASS (attempt 5/5; oracle runs: 1 red = test counted `agents -
 - M2.2 ✓ 2026-09-28 (commit: see git log "M2.2: Worktree manager") · attempts 3/5 · plan: src/core/worktrees.ts (gap #1 naming, router-layout solution candidates, patch/untracked parsing, gh JSON, gap #2 message); src/server/exec.ts (async spawn, shell:false, timeouts); src/server/worktrees/{manager,wire}.ts (create all-or-nothing + rollback, assign, isolate via supervisor pause + sendMessage, inspect/remove gap #3, checkPullRequests + removable + worktreeRemovable, poller, DiffProvider gap #10); supervisor.start `beforeSpawn`; POST /api/sessions worktrees + POST /api/solutions/{repo}/isolate; ApiContext.worktrees, buildApp/main.ts wiring (diff provider, polling outside demo); tools/fake-gh; tests/helpers/{git,git-spy}.ts; docs/worktrees.md + lanes/configuration/derivations/supervisor rows
 - M2.3 ✓ 2026-09-28 (commit: see git log "M2.3: SSE hub /hub") · attempts 2/5 (1 red: security/routes tests still expected no /hub route) · plan: src/server/hub/{bus,hub,wire}.ts (typed HubBus, SseHub fan-out with keepalive 10 s + system 5 s from providers.system while clients are connected + 8 MiB slow-client cap + clean close, forwardServiceEvents for supervisor/worktrees); api/hub.ts GET /hub (hijack, guard, no HEAD) + routes.ts line; ApiContext bus + hub; buildApp wiring + preClose; main.ts owns the bus; tests/helpers/sse.ts (SSE parser, real-socket client, listenOnFreeTestPort); tests/server/hub/*; tests/e2e/hub.spec.ts; docs/hub.md + lanes/supervisor rows
 - M2.4 ✓ 2026-09-28 (commit: see git log "M2.4: Crash recovery") · attempts 5/5 (1 red: test counted agents calls as spawns; 3 red: recovery before listen touched a running instance → listen first + holdCommands) · plan: src/server/supervisor/recovery.ts `recoverSessions` (leftover via recorded pid + `claude agents --json` same id → SIGINT/SIGTERM/SIGKILL polling; crash clean-up; cut-short pause/detach → paused; unconfirmable / held elsewhere → paused + `not-resumed`; `run` → "Switchboard restarted. Continue.", `need` → idle + `restart-note` outbox); supervisor `resumeAfterRestart` / `settleAfterCrash` / `markPausedAfterRestart` / `recordServiceEvent` / `holdCommands` + outbox flush in `#send`; main.ts recovery after listen (normal runs only); tests restart.test.ts (oracle) + recovery.test.ts; docs/supervisor.md "Restart recovery", derivations/lanes rows
+- M3.1 ✓ 2026-09-28 (commit edf5dbb; lane w1-inbox, merged 3dcfbf2) · attempts 3/5 · plan: src/server/inbox/pipeline.ts QuestionPipeline = supervisor ControlRequestHandler (AskUserQuestion → batch + verbatim Questions, source = main agent; other tools → permission items with agent_id; cancel/orphaned → stale; questionBatch + inboxChanged + sessionUpdated on the bus); answers route (400 unless all answered; open → one control_response allow + input + answers{text: label}; stale → user message now via sendToLive or queued in the outbox, pendingDelivered hook); actions route allow-once / deny (fixed message, never updatedPermissions); src/server/inbox/wire.ts (toQuestion, questionBatchItem, permissionItem, inboxCount); createSessionServices wiring in app.ts/main.ts + ApiContext.questions; openQuestionCount counts unanswered stale batches; shared web QuestionCard (src/web/components) + pure state; docs/questions.md + lanes/supervisor/derivations/hub/configuration rows; SWITCHBOARD_TEST_PORTS for lane test ports
+- M3.2 ✓ 2026-09-28 (commit f78c591; lane w1-inbox, merged 3dcfbf2) · attempts 2/5 · plan: `GET /api/inbox` = `listInbox` (waiting batches + open permissions newest first, then open system items oldest first; branch chips from agents + worktrees; source names before " · "; `systemItem` + kind labels; same items as `inboxCount`); InboxView (`340px | 1fr`, cards, detail with meta/title/chips/text, shared QuestionCard, permission request block + actions, system actions, All clear / Inbox zero, reload on inboxChanged, hide-on-success + refusal line); docs/inbox.md, docs/visual/inbox.md + PNGs; routes/shell tests moved to 200
+- M3.3 ✓ 2026-09-28 (commit a178a2d; lane w1-inbox, merged 3dcfbf2) · attempts 3/5 · plan: src/server/inbox/system-items.ts SystemItemService (raise "Scheduled run failed" from failed schedule_runs via `scheduleRunFinished` hook + `sync()` at start and every 30 s, "PR merged" from `worktreeRemovable` + sync; one item per run / worktree via `createOnce`; `inboxChanged`); actions on the contract route (open-fix-session / dismiss / keep close; retry-run → ScheduleRunner, 501 until M7.1; remove-worktree → WorktreeManager.remove, gap #3 refusals 409); InboxItem.prefill + NewSessionPrefill; ModalProvider `open('new-session', { prefill })`, placeholder `data-prefill`; demo seed real kinds + ns prefill; docs/system-items.md + inbox/lanes/hub/questions/demo/derivations rows
+- M3.4 ✓ 2026-09-28 (commit 54fb10a; lane w1-inbox, merged 3dcfbf2) · attempts 5/5 · plan: src/web/toast/notify.ts (`questionNotice`: session name, `question · now` / `n questions · now`, branch chips, the question verbatim, `<session> needs you`; `playChime`: prototype beep 784 → 1046 Hz on a fresh AudioContext, closed after, dropped when suspended; `notifyOs`: only when granted, never asks, click → focus + jump); src/web/toast/useQuestionNotifications.ts (`/hub` questionBatch → once per batch → Inbox item lookup → toast + chime + OS notification together) mounted in ToastHost (branch line only when present); tests/web/notify.test.ts, tests/e2e/notifications.spec.ts + question-world.ts (real path, mocked Notification + AudioContext), tests/e2e/visual/toast.spec.ts + docs/visual/toast.md; docs/notifications.md + lanes/hub/demo/visual rows
+- M6.1 ✓ 2026-09-28 (commit 67b5f86; lane w1-solutions, merged a292f6f) · attempts 3/5 · plan: src/core/workspace-rules.ts (router AGENTS.md folder-item parser: rule words + depth from `<placeholder>` segments, strictest wins; merge onto the ARCHITECTURE baseline, tighten/deepen/add only; `readOnlyCheck` for NewSession names via `solutionCandidates`; `toSolutionGroups`: one group per writable folder, other/ "on request only" (gap #15), one read-only group); src/server/solutions/scanner.ts `WorkspaceScanner` (async walk, real dirs only, `.git` file skipped at every level (gap #16), repo at an intermediate level = solution, `scan()` with router file + line count, `isReadOnly`, ScanError 409 codes); GET /api/solutions served (route falls back to a scanner over the configured root); main.ts wires the scanner; providers.ts optional `isReadOnly` + sessions.ts uses it; tests (core, scanner, API, routes row, shell.spec); docs/solutions.md + lanes/supervisor/core README rows
+- M6.2 ✓ 2026-09-28 (commit 4fc0751; lane w1-solutions, merged a292f6f) · attempts 3/5 · plan: additive `Solution` fields (relativePath, ledger, artifacts, codebaseMemory); src/core/solutions-live.ts (gap #12 ledger parser, phase/status/changes summaries, .git/HEAD branch, hook project id + freshness); src/server/solutions/live.ts `LiveSolutions` over the scanner (worktree + in-place branches, idle chips, diff changes, ledger, artifacts + mobile-followups, dirty list), main.ts + route fallback; demo provider fills the same fields (prototype root/paths); src/web/views/SolutionsView.tsx + solutions-format.ts + solutions.css; tests (core, web, server live on real git + fake-claude, E2E real path, visual oracle); SWITCHBOARD_TEST_PORTS + Playwright testIgnore anchored for lane runs; docs/solutions.md (Live fields, The view), derivations/lanes/demo rows, docs/visual/solutions.md
+- M6.3 ✓ 2026-09-28 (commit 68fe9a3; lane w1-solutions, merged a292f6f) · attempts 4/5 · plan: src/core/conflicts.ts (writers = open sessions with a worktree or in place; conflict = ≥ 2 writers and ≥ 1 in place; flag "⚠ shared working tree"; `sd.warn` copy; "Move <name> to worktree"); additive `Solution.conflictSessions` (api.ts, scan neutral, LiveSolutions fills conflict/flag/conflictSessions with the session's own solution string as `repo`, demo mobile row from solutions.json); UI SolutionConflictCard.tsx + solutions-conflict.ts + CSS (question-card colors, primary buttons → POST /api/solutions/{repo}/isolate, busy + refusal message, reload); sidebar reloads solutions on sessionUpdated (useThrottled, 1 s) for the badge; tests (core, web, server real git + fake-claude, E2E real path, visual oracle with `mobile` selected); docs/solutions.md (Conflicts), derivations/lanes/demo/core README rows, docs/visual/solutions-conflict.md + README review
+- M6.4 ✓ 2026-09-28 (commit 49f6a74; lane w1-solutions, merged a292f6f) · attempts 1/5 · plan: src/core/codebase-memory.ts (hook categories, project ids moved from solutions-live, `dirtyLines` BOM/CRLF/CR/trim/blank/case-only repeats, `parseDirtyFile`/`dirtyProject` → `<category>/<folder>` under any root form, `concernsSolution`/`solutionFreshness`: own id or overlapping folder, `dirtyTargets` for the Codebase Memory strip); src/server/solutions/codebase-memory.ts `readDirtyList` (ok / missing / unreadable, root as configured + real path); LiveSolutions uses them (depth-0 prefix rule dropped); unit oracle on byte-exact fixtures + reader tests on temp workspaces; docs/solutions.md (Codebase-memory freshness), lanes/core README rows
 ## Blocked
-- (none)
+- M7.3 · lane/w1-tools not merged: the merge step's conflict resolution was refused by the tool permission check ("Merge Without Review"), merge aborted; lane intact at 314aabc, worktree .worktrees/w1-tools kept · needs the developer's merge approval (.loop/questions.md → Wave 1 · merge step)
+- M7.4 · same (lane/w1-tools not merged)
+- M8.1 · same (lane/w1-tools not merged)
+- M8.2 · same (lane/w1-tools not merged)
 ## Breaker
 consecutive_blocked: 0
+note: the four Blocked items are blocked by the Wave 1 merge step (permission), not by failed attempts
 ## Assumptions (see .loop/questions.md)
 - M0.1 · default permission mode acceptEdits (auto unproven: model-gated, Haiku unsupported)
 - M0.1 · no --bg/attach integration (sandbox untrusted; trust would edit ~/.claude.json)
@@ -127,3 +139,83 @@ consecutive_blocked: 0
 - M2.4 · oracle answers via POST /messages until M3.1's answers route exists
 - M2.4 · crash clean-up (stale requests + orphaned, idle subagents); additive lifecycle actions
 - M2.4 · same data folder on another port not guarded (no lock file)
+- M3.4 · toast copy from real data (question verbatim, branch chips) (w1-inbox)
+- M3.4 · OS notification when granted, never asks, click jumps (w1-inbox)
+- M3.4 · questionBatch only, no settings gate until M8.2 (w1-inbox)
+- M3.4 · toast data from GET /api/inbox, payload not extended (w1-inbox)
+- M3.4 · chime on a fresh context, dropped when suspended (w1-inbox)
+- M3.4 · no auto-dismiss, toast stack kept (M1.4) (w1-inbox)
+- M3.4 · no demo arrival; visual on the real path (w1-inbox)
+- M3.4 · inbox.spec puts the toast away before "Open session →" (w1-inbox)
+- M3.4 · lane Playwright config, ports 4910–4919 (w1-inbox)
+- M3.3 · detection: event + scheduler hook + 30 s sync (non-demo) (w1-inbox)
+- M3.3 · one item per run / worktree, Dismiss / Keep final (w1-inbox)
+- M3.3 · failed-run copy from stored data only (summary, green streak) (w1-inbox)
+- M3.3 · fix-session prefill derivation (template + single / ui-first) (w1-inbox)
+- M3.3 · Open fix session closes at once (prototype) (w1-inbox)
+- M3.3 · Retry run via ScheduleRunner, 501 until M7.1 (w1-inbox)
+- M3.3 · Remove worktree refusals 409, already removed = done (w1-inbox)
+- M3.3 · PR merged copy (PR number, relative path) (w1-inbox)
+- M3.3 · refusal codes beyond the contract (w1-inbox)
+- M3.3 · modal prefill as data-prefill until M5.1 (w1-inbox)
+- M3.3 · demo seed kinds + prototype ns prefill (w1-inbox)
+- M3.3 · E2E waits for the first PR check; lane Playwright config (w1-inbox)
+- M3.2 · inbox order: session items newest first, then system items oldest first (prototype order) (w1-inbox)
+- M3.2 · no "Loop paused" label (mock source "circuit breaker"; D13) — known visual difference (w1-inbox)
+- M3.2 · batch title source names = part before " · " (w1-inbox)
+- M3.2 · branch chips = agents with a branch + live worktrees (w1-inbox)
+- M3.2 · system item kind labels (schedule-run-failed / worktree-removable) (w1-inbox)
+- M3.2 · permission item detail design (code block + Allow once / Deny) (w1-inbox)
+- M3.2 · hide on success + "Not sent: …" refusal copy (w1-inbox)
+- M3.2 · selection not in URL; empty states only once loaded (w1-inbox)
+- M3.2 · system actions post the contract route; 404 until M3.3 (w1-inbox)
+- M3.2 · empty-state visual vs a non-demo app (w1-inbox)
+- M3.2 · Playwright via a scratchpad lane config (repo testIgnore ignores .worktrees/*) (w1-inbox)
+- M3.1 · stale answers: sendToLive now, else outbox for the next run; never spawns/resumes (w1-inbox)
+- M3.1 · stale-answers message wording (w1-inbox)
+- M3.1 · stale unanswered batch leaves the status alone; counts in Inbox + openQuestionCount (w1-inbox)
+- M3.1 · duplicate question texts → labels joined ", " (w1-inbox)
+- M3.1 · unreadable AskUserQuestion input → permission item (w1-inbox)
+- M3.1 · HTTP codes beyond the contract (404/409/400 unknown-action) (w1-inbox)
+- M3.1 · question source = main agent name; InboxItem.permission additive block (w1-inbox)
+- M3.1 · Inbox copy for batch / permission items (branches → M3.2) (w1-inbox)
+- M3.1 · QuestionCard copy/tooltip/header/disabled details (w1-inbox)
+- M3.1 · wiring via createSessionServices + bind (w1-inbox)
+- M3.1 · supervisor sendToLive + pendingDelivered hook (w1-inbox)
+- M3.1 · SWITCHBOARD_TEST_PORTS test-port override; Playwright not run (w1-inbox)
+- M3.1 · restart.test.ts answers through the real route (w1-inbox)
+- M3.1 · visual oracle deferred to M3.2 / M4.2 (w1-inbox)
+- M6.1 · folder rules = baseline + router list items starting with a backticked folder; rule words; strictest wins; router never loosens; no AGENTS.md → baseline (w1-solutions)
+- M6.1 · walk: real dirs only; `.git` file skipped at every level; `.git` dir = solution at any level; non-git last-level folders still listed (`git: false`) (w1-solutions)
+- M6.1 · wire shape: groups per writable folder + one read-only group, notes, sort, absolute `path`, neutral live fields until M6.2; 409 codes; route fallback scanner; no cache (M6.2: demo `path` is relative) (w1-solutions)
+- M6.1 · NewSession read-only via optional `SolutionsProvider.isReadOnly` (path in a read-only folder, or an existing router-layout candidate in one); name match kept for providers without it (demo) (w1-solutions)
+- M6.1 · shell.spec expects /api/solutions 409 without a root; E2E left to the merge step (port range) (w1-solutions)
+- M6.1 · router fixture = folder-rule parts of the real router verbatim (w1-solutions)
+- M6.2 · detail data as additive `Solution` fields on GET /api/solutions (no new endpoint) (w1-solutions)
+- M6.2 · sessions on a row: live worktrees (any status) + open in-place sessions (unique resolution); read-only rows: no "read by" (w1-solutions)
+- M6.2 · idle chip = checkout branch from .git/HEAD, owner idle; orphan worktree owner — (w1-solutions)
+- M6.2 · status urgency need>fail>run>paused>done>idle; "active" = not idle (w1-solutions)
+- M6.2 · phase = ledger, else open sessions, else —; ledger in the main checkout (w1-solutions)
+- M6.2 · changes = +added / −removed / — from the sessions' diffs (w1-solutions)
+- M6.2 · artifacts = sessions' artifacts by name + mobile-followups files (no meta); empty "No artifacts" (w1-solutions)
+- M6.2 · ledger fallbacks "no phase-ledger.md" / "phase-ledger.md has no entries" (w1-solutions)
+- M6.2 · freshness from .codebase-memory-dirty with the hook's project id (+ whole-folder prefix); unknown copy; M6.4 refines (w1-solutions)
+- M6.2 · open Codebase Memory → tool named so, else Settings → tools (w1-solutions)
+- M6.2 · conflict/flag neutral (M6.3); no "contract source" derivation (w1-solutions)
+- M6.2 · demo paths = prototype's Windows root verbatim (w1-solutions)
+- M6.2 · view: first row default, selection survives filters, 1 s reload debounce, 409/empty copy (w1-solutions)
+- M6.2 · SWITCHBOARD_TEST_PORTS + Playwright testIgnore anchored (shared test plumbing) (w1-solutions)
+- M6.3 · conflict = ≥ 2 open writers (worktree or in place; paused/detached count, ended do not) and ≥ 1 in place (w1-solutions)
+- M6.3 · card names every writer (both/all), one "Move … to worktree" per in-place writer, detached disabled, refusal message shown (w1-solutions)
+- M6.3 · additive `Solution.conflictSessions` (`repo` = the session's own solution string); flag only for conflicts (w1-solutions)
+- M6.3 · sidebar reloads solutions on sessionUpdated (≤ 1/s) for the conflict badge (w1-solutions)
+- M6.3 · demo mobile names from `sd.warn`; demo click refused (no demo isolate), `conflictFixedBranch` unused (w1-solutions)
+- M6.4 · a line concerns a row = its own id or an overlapping folder (equal / inside / containing); replaces the depth-0 prefix rule (w1-solutions)
+- M6.4 · root matched as configured and as its real path; ids case-insensitive; case-only repeats dropped (w1-solutions)
+- M6.4 · strip gets `dirtyTargets` only (no route here); w1-tools has the strip, `GET /api/codebase-memory`, reindex and its own parser — merge keeps one reader (w1-solutions)
+- M6.4 · synthetic fixtures, `.gitattributes` `* -text` in the fixture folder (w1-solutions)
+- W1-merge · one test-port helper kept (w1-inbox `testPortsFrom`); w1-solutions' copy dropped
+- W1-merge · routes.test.ts: inbox + solutions rows all IMPLEMENTED
+- W1-merge · docs/demo.md + docs/lanes.md lines combined from both lanes
+- W1-merge · per-lane .loop files kept as lane records after folding
+- W1-merge · breaker counter left at 0 (w1-tools blocked by the merge step, not by attempts)
