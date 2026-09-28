@@ -69,6 +69,24 @@ export function locateFile(workspaceRoot: string, file: string, sessionName: str
   return { solution: null, relative: parts.join('/'), worktree: false, outside: false };
 }
 
+/**
+ * The workspace-relative folder of the solution a file belongs to (M4.3, the
+ * agent card's path line; `docs/session-panel.md`), in the prototype's words:
+ * `<group>/<repo>` for the grouping folders (`microfrontends/acme-app-front`),
+ * `deprecated/<type>/<repo>`, and `<repo>/` for a repo at the root (`mobile/`,
+ * `infrastructure/`). A file in the session's worktree (`<repo>-wt-<session>`,
+ * gap #1) maps to its repo's folder. `null` for the workspace root itself and
+ * for paths outside it (same rules as {@link locateFile}).
+ */
+export function solutionFolder(workspaceRoot: string, file: string, sessionName: string | null = null): string | null {
+  const where = locateFile(workspaceRoot, file, sessionName);
+  if (where.outside || where.solution === null) return null;
+  const [first, second] = path.relative(workspaceRoot, path.resolve(workspaceRoot, file)).split(path.sep).filter(Boolean);
+  if (first && GROUP_FOLDERS.includes(first)) return `${first}/${where.solution}`;
+  if (first === 'deprecated' && second) return `deprecated/${second}/${where.solution}`;
+  return `${where.solution}/`;
+}
+
 /** The artifact type of a written file (by its path inside the solution), or `null` for none. */
 export function fileArtifactType(relative: string): ArtifactType | null {
   const parts = relative.split('/').filter(Boolean);

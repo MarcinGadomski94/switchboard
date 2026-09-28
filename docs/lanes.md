@@ -61,7 +61,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/SessionView.tsx` | Session layout (`1fr | 380px`), tab switch; loads `GET /api/sessions/{id}`, reloads on its `/hub` events | done in M4.1 (`session.css`, class prefix `sb-sv-`: the sidebar owns `sb-session-*`) |
 | `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons + the Attach warning, tabs | done in M4.1 (`session-header.ts`: copy and rules) |
 | `views/session/ChatTab.tsx` | Chat | done in M4.2 (`chat.ts`: items, step marks, quick replies; `docs/chat.md`): messages, step lines, the inline `QuestionCard` + answers bubble, quick replies, composer |
-| `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.1 added the column and the handoff card (`HandoffCard.tsx`); M4.3 adds the agent cards and the terminal tail above it |
+| `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.1 added the column and the handoff card (`HandoffCard.tsx`); done in M4.3 (`right-panel.ts`: cards, summary, tail rules; `TerminalTail.tsx`, reusable by M4.4's Timeline terminal; `docs/session-panel.md`) |
 | `views/session/TimelineTab.tsx` | Timeline | M4.4 |
 | `views/session/DiffTab.tsx` | Diff | M4.5 |
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |

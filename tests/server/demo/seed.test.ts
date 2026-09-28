@@ -69,7 +69,16 @@ describe('seedDemo (gap #21)', () => {
     expect(chat[1]?.payload).toEqual({ source: 'demo', type: 'assistant', text: messages[1]?.text, messageId: null });
     expect(chat[2]).toMatchObject({ agentId: null, endTs: chat[2]?.ts, payload: { type: 'tool', result: '', isError: false } });
     expect(byChannel('chat')).toEqual([]);
-    expect(byChannel('terminal').map((e) => e.label)).toEqual(data.sessions[0]?.terminal);
+    // M4.3: each terminal line is a finished turn result with the line as its text (the tail shows it verbatim).
+    expect(byChannel('terminal')).toEqual([]);
+    const results = events.filter((e) => (e.payload as { type?: unknown }).type === 'result');
+    expect(results.map((e) => [e.kind, e.label, (e.payload as { text: string }).text])).toEqual(
+      (data.sessions[0]?.terminal ?? []).map((line) => ['ok', line, line]),
+    );
+    expect(results[0]?.payload).toMatchObject({ source: 'demo', type: 'result', subtype: 'success', isError: false, errors: [], taskNotification: false });
+    // The prototype's cursor line `▍` is not stored: the tail adds it while the session runs.
+    const calendar = (await store.events.list('calendar-func-fix')).filter((e) => (e.payload as { type?: unknown }).type === 'result');
+    expect(calendar.map((e) => e.label)).toEqual(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build']);
     const timeline = byChannel('timeline');
     expect(timeline).toHaveLength(16);
     const first = events.find((e) => e.label === 'task definition');

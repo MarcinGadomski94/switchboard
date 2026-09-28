@@ -173,13 +173,152 @@
   color: var(--status-fail);
 }
 
-/* Right panel column (M4.3 adds the agent cards and the terminal tail above the handoff card). */
+/*
+ * Right panel (M4.3, prototype right column): "Agents & solutions" + summary, the
+ * agent cards, "Terminal" + the terminal tail, then the handoff card (M4.1).
+ */
 .sb-sv-panel {
   border-left: 1px solid var(--border-divider);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+}
+
+.sb-sv-panel-head {
+  padding: 14px 16px 8px;
+  display: flex;
+  align-items: baseline;
+}
+
+/* Section label (SPEC: Geist Mono 10.5px/500, uppercase, .06em, #8d8c87). */
+.sb-sv-panel-label {
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-sv-panel-summary {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-agents {
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-row);
+}
+
+.sb-agent-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-agent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sb-agent-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sb-agent-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-agent-status {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  white-space: nowrap;
+}
+
+.sb-agent-where {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 15px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  min-width: 0;
+}
+
+.sb-agent-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-agent-branch {
+  margin-left: auto;
+  color: var(--branch-fg);
+  background: var(--branch-bg);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.sb-term-label {
+  padding: 6px 16px 8px;
+}
+
+/* Terminal box (bg-code; prototype `ss.term`), shared with the Timeline tab (M4.4). */
+.sb-term {
+  background: var(--bg-code);
+  border: 1px solid var(--border-row);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: 400 11px/1.7 var(--font-mono);
+}
+
+.sb-sv-term {
+  margin: 0 12px;
+  min-height: 150px;
+}
+
+.sb-term-line {
+  color: #bfbeb8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Line tones (prototype `lineColor`). */
+.sb-term-line[data-tone='cmd'] {
+  color: var(--muted-4);
+}
+
+.sb-term-line[data-tone='ok'] {
+  color: oklch(0.78 0.12 150);
+}
+
+.sb-term-line[data-tone='wait'] {
+  color: oklch(0.8 0.13 70);
+}
+
+.sb-term-line[data-tone='fail'] {
+  color: oklch(0.72 0.16 25);
 }
 
 /* Handoff card (prototype `handoff`). */

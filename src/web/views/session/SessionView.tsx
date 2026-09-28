@@ -20,7 +20,8 @@ const RELOAD_MS = 500;
  * session comes from `GET /api/sessions/{id}` and reloads on its `/hub`
  * `sessionUpdated` and `event` (status, attachment, tab counts) and, since M4.2,
  * `questionBatch` (the chat's inline card). M4.2–M4.6 fill the tabs and the panel
- * (docs/lanes.md).
+ * (docs/lanes.md); since M4.3 the panel reads the same detail (agents, recent
+ * events, status: `docs/session-panel.md`).
  */
 export function SessionView({ sessionId, tab }: { readonly sessionId: string; readonly tab: SessionTab }) {
   const detail = useApi(() => api.getSession(sessionId), [sessionId]);

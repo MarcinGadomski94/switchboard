@@ -114,6 +114,30 @@ export function demoStep(line: string, id: string, ts: string): { kind: EventKin
   return { kind: 'tool', label, endTs: ts, payload: { ...tool, result: '', isError: false } };
 }
 
+/** The prototype's terminal cursor line (the app's tail adds its own while a session runs). */
+export const DEMO_CURSOR = '▍';
+
+/**
+ * A prototype terminal line as a finished turn's result (M4.3, `docs/session-panel.md`):
+ * the terminal tail shows a successful result's text verbatim, so the line reads as in
+ * the prototype; the chat does not show successful results.
+ */
+export function demoResult(line: string): Record<string, unknown> {
+  return {
+    source: 'demo',
+    type: 'result',
+    subtype: 'success',
+    isError: false,
+    text: line,
+    terminalReason: null,
+    errors: [],
+    taskNotification: false,
+    numTurns: null,
+    durationMs: null,
+    costUsd: null,
+  };
+}
+
 /** Minutes between runs of the demo schedules (for spacing their run history). */
 function periodMinutes(cron: string): number {
   if (cron.startsWith('0 */4')) return 240;
@@ -200,7 +224,7 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     }
 
     // Chat (M4.2: the real `user` / `assistant` / step payloads the chat renders), then the
-    // terminal tail, then the timeline blocks (payload.channel tells those two apart).
+    // terminal tail (M4.3: turn results), then the timeline blocks (payload.channel `timeline`).
     const start = minutesAfter(base, s.t0);
     const end = minutesAfter(base, s.t0 + s.duration);
     for (const [index, m] of s.messages.entries()) {
@@ -219,8 +243,12 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
         await repos.events.append({ sessionId: session.id, ts, ...demoStep(line, `demo-${s.name}-${index}-${step}`, ts) });
       }
     }
+    // Terminal tail (M4.3, docs/session-panel.md): each prototype line is a finished turn whose
+    // result text is the line, which the tail shows verbatim; the cursor `▍` is not stored (the
+    // tail adds it while the session's status is `run`).
     for (const line of s.terminal) {
-      await repos.events.append({ sessionId: session.id, ts: end, kind: 'tool', label: line, payload: { source: 'demo', channel: 'terminal', line } });
+      if (line === DEMO_CURSOR) continue;
+      await repos.events.append({ sessionId: session.id, ts: end, kind: 'ok', label: line, payload: demoResult(line) });
     }
     for (const lane of s.timeline) {
       for (const block of lane.blocks) {

@@ -1,8 +1,15 @@
 ## Current
-item: (none) · M4.2 green, next: M4.3
+item: (none) · M4.3 green, next: M4.4
 attempt: 0/5
-last oracle: M4.2 PASS · `npm run typecheck` green · `SWITCHBOARD_TEST_PORTS=4910-4919 npm test` 526/526 (49 files) · `SWITCHBOARD_TEST_PORTS=4910-4919 npx playwright test` 25/25 (new: session-chat.spec.ts real path, visual/session-chat.spec.ts gate green, 0 findings) · nothing listening on 4910–4919 afterwards
+last oracle: M4.3 PASS · `npm run typecheck` green · `SWITCHBOARD_TEST_PORTS=4910-4919 npm test` 543/543 (52 files) · `SWITCHBOARD_TEST_PORTS=4910-4919 npx playwright test` 27/27 (new: session-panel.spec.ts real path, visual/session-panel.spec.ts gate green, 0 findings) · nothing listening on 4910–4919 afterwards
 ## Done
+- M4.3 ✓ 2026-09-28 (commit: see git log "M4.3: Right panel") · oracle attempts 4/5 (the real-path E2E was green on its first run; the visual gate: 1st run waited on text the prototype splits ("Terminal handoff" + state), 2nd run clicked the wrong prototype child (its runtime wraps the interpolated resume id in an element), 3rd run found the header wrap: a pluralized summary was shorter than the prototype's plural-only copy, so the header did not wrap and every box sat 14 px higher → switched to the prototype's copy verbatim, 4th run green, 0 findings; the full Playwright suite then re-ran it green with the report write) · plan:
+  - Server: `#placeAgent` in the recorder: an agent's first successful write into a solution sets `solutionPath` (`solutionFolder`, src/core/derive/artifacts.ts) + the worktree `branch`.
+  - Web pure `right-panel.ts`: `agentCards` (status words, `workspace root` fallback, main agent desc = task's first line), `agentSummary` (prototype template verbatim), `terminalLines` (Bash + last 3 output lines, subagent tools prefixed, waits/denials/mismatch, results, lifecycle, `▍` while run, newest 8), `lineTone` (prototype lineColor).
+  - `RightPanel.tsx` (header + cards, `TerminalTail.tsx`, M4.1 `HandoffCard`), CSS from the prototype's inline styles (`sb-sv-panel-*`, `sb-agent-*`, `sb-term-*`).
+  - Demo seed: terminal lines → successful turn results (`demoResult`), `▍` derived.
+  - Tests: tests/web/right-panel.test.ts, tests/core/solution-folder.test.ts, tests/server/supervisor/agent-placement.test.ts, tests/e2e/session-panel.spec.ts (real path), tests/e2e/visual/session-panel.spec.ts (gate green, pixel diff 0.08% / 0.08%).
+  - Docs: docs/session-panel.md (new), derivations.md (agents), lanes.md, demo.md, chat.md, docs/visual/session-panel.md + README review.
 - M4.2 ✓ 2026-09-28 (commit: see git log "M4.2: Chat tab") · oracle attempts 1/5 (the E2E and the visual gate were both green on their first run; the full Playwright suite and the report write re-ran them green) · plan:
   - Server: `SessionDetail.questions` (additive): every question batch of the session, oldest first (`sessionQuestions` in `src/server/sessions/wire.ts`).
   - Web pure state `chat.ts`: `chatItems(events, questions, mainAgentId)` → user bubbles, agent blocks (text + step lines ✓/●/✕/⏸), batches at their AskUserQuestion call (else last); quick replies verbatim; `answeredLines` uses the source name part.
@@ -41,7 +48,17 @@ consecutive_blocked: 0
 - M4.2 · stick-to-bottom scrolling
 - M4.2 · demo chat → real payloads (`•` → `✓`)
 - M4.2 · answeredLines uses the source name part
+- M4.3 · agent placed by its first successful write into a solution (folder + worktree branch)
+- M4.3 · unplaced agents show `workspace root`
+- M4.3 · main agent desc = the task's first line
+- M4.3 · status words (prototype) + `paused` for agents a pause cut off; no `resuming`
+- M4.3 · summary = the prototype's plural-only template verbatim
+- M4.3 · terminal tail rules (Bash + output, subagent tools, waits, results, lifecycle, `▍`, newest 8)
+- M4.3 · demo terminal lines → successful turn results; `▍` derived
 ## Notes for later items / the merge
+- M4.3: `RightPanel` now takes the `SessionDetail` (agents, events, status). `TerminalTail` (src/web/views/session/TerminalTail.tsx) + `terminalLines(events, agents, status)` (right-panel.ts) are ready for M4.4's Timeline terminal (the prototype shows the same `ss.term` there); pass `className` for its box (the panel's `sb-sv-term` adds the 12 px margin and the 150 px min-height).
+- M4.3: the demo seed's terminal rows are now `result` events (kind `ok`, `ts` = the session's end, `endTs` null, `source: 'demo'`), not `payload.channel: 'terminal'`; only the timeline rows still use `payload.channel` (M4.4 decides). If the timeline draws blocks from events by kind, it must decide what to do with these zero-length results.
+- M4.3: the recorder sets `agents.solution_path` / `branch` on an agent's first successful write into a solution (`docs/derivations.md` → *Agents*); no schema change.
 - `POST /attach` without `{ confirm: true }` now answers 409 while the transcript changed < 2 min ago: tests in other lanes that attach right after a detach must confirm.
 - `makeSupervisorWorld` passes `listLive` (`claude agents --json` through the fake), so the Attach check adds `agents --json` lines to `FAKE_CLAUDE_LOG`; tests counting spawns after an attach should filter them (`argv` includes `--name` = a session spawn).
 - The demo seed's chat events still use `payload.channel` shapes; the M4.1 chat list shows only real `user` / `assistant` payloads (M4.2 decides the demo mapping).

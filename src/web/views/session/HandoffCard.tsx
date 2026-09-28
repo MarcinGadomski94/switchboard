@@ -10,7 +10,8 @@ const COPIED_MS = 1_500;
  * state ("attached" / "in terminal"), the explanation, and `claude --resume <id>`
  * with copy. Built with the header's "⇄ Continue in terminal" / "⇄ Attach here"
  * (M4.1): the command is the one `/detach` returns (`Session.resumeCommand`, the
- * same text). M4.3 places it under the agent cards and the terminal tail.
+ * same text). Since M4.3 it sits under the agent cards and the terminal tail
+ * (`RightPanel.tsx`, `docs/session-panel.md`).
  */
 export function HandoffCard({ attached, command }: { readonly attached: boolean; readonly command: string }) {
   const card = handoff(attached);

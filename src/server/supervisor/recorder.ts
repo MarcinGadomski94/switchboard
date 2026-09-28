@@ -18,6 +18,7 @@ import {
   findPullRequests,
   locateFile,
   runsGh,
+  solutionFolder,
 } from '../../core/derive/artifacts.ts';
 import {
   AGENT_TOOLS,
@@ -50,6 +51,8 @@ interface ToolEntry {
   readonly name: string;
   readonly input: Readonly<Record<string, unknown>>;
   readonly command: string | null;
+  /** The agent whose `tool_use` it is (M4.3: a write places that agent). */
+  readonly agentId: string;
 }
 
 interface OpenRequest {
@@ -359,7 +362,7 @@ export class StreamRecorder {
           messageId: message.messageId,
           toolUseId: block.id,
         });
-        this.#tools.set(block.id, { eventId: event.id, name: block.name, input: block.input, command });
+        this.#tools.set(block.id, { eventId: event.id, name: block.name, input: block.input, command, agentId });
         if (AGENT_TOOLS.includes(block.name) && block.id) await this.#createSubagent(block.id, block.input);
       }
     }
@@ -546,7 +549,10 @@ export class StreamRecorder {
         : typeof entry.input['notebook_path'] === 'string'
           ? (entry.input['notebook_path'] as string)
           : null;
-      if (file) await this.#fileArtifacts(path.resolve(this.#root, file));
+      if (file) {
+        await this.#fileArtifacts(path.resolve(this.#root, file));
+        await this.#placeAgent(entry.agentId, path.resolve(this.#root, file));
+      }
       return;
     }
     if (entry.name === 'Bash' && entry.command) {
@@ -588,6 +594,28 @@ export class StreamRecorder {
       const files = Array.isArray(data?.files) ? (data.files as string[]) : [];
       if (!files.includes(where.relative)) files.push(where.relative);
       await this.#upsertArtifact(id, 'DIFF', diffArtifactName(files), { solution: where.solution, branch, data: { files } });
+    }
+  }
+
+  /**
+   * Where an agent works (M4.3, the agent card's path + ⎇ branch;
+   * `docs/derivations.md` → *Agents*): its first successful write into a
+   * solution sets `solutionPath` (the repo folder, `solutionFolder`) and `branch`
+   * (the session's registered worktree that holds the file, else none). Later
+   * writes elsewhere do not move it; a later write into the same solution's
+   * worktree fills a missing branch. Workspace-root files place nobody.
+   */
+  async #placeAgent(agentId: string, file: string): Promise<void> {
+    if (!this.#root) return;
+    const folder = solutionFolder(this.#root, file, this.#sessionName);
+    if (!folder) return;
+    const agent = await this.#store.agents.get(agentId);
+    if (!agent) return;
+    const branch = await this.#branchFor(file);
+    if (agent.solutionPath === null) {
+      await this.#store.agents.update(agent.id, { solutionPath: folder, branch });
+    } else if (agent.solutionPath === folder && agent.branch === null && branch !== null) {
+      await this.#store.agents.update(agent.id, { branch });
     }
   }
 
