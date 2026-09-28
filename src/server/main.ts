@@ -1,13 +1,15 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { buildApp, createSupervisor, createWorktreeManager } from './app.ts';
-import { ConfigError, loadConfig } from './config.ts';
+import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
-import { openStore, storeFile } from './db/store.ts';
+import { type Store, openStore, storeFile } from './db/store.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
 import { HubBus } from './hub/bus.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
+import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
+import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { loadOrCreateToken } from './token.ts';
 
 /** `<repo>/dist/web`, the Vite build output served as the UI. */
@@ -30,7 +32,13 @@ async function main(): Promise<void> {
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
     app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, worktrees, bus, logger: true });
+    // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
+    // cannot bind must never touch the first one's processes); session commands wait for it.
+    const releaseCommands = config.demo ? null : supervisor.holdCommands();
+    let recovering: Promise<void> = Promise.resolve();
     app.addHook('onClose', async () => {
+      // Recovery may still be spawning; let it finish so shutdown sees every process.
+      await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await worktrees.stopPolling();
       await supervisor.shutdown();
@@ -40,9 +48,34 @@ async function main(): Promise<void> {
     // the server immediately) must still close cleanly with exit 0.
     installShutdown(app);
     await listenLoopback(app, { port: config.port });
+    // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
+    if (releaseCommands) {
+      recovering = recover(app, config, store, supervisor).finally(releaseCommands);
+      await recovering;
+    }
   } catch (error) {
     await store.close();
     throw error;
+  }
+}
+
+/** Restart recovery; a failure is logged and the service starts anyway. */
+async function recover(
+  app: FastifyInstance,
+  config: ServerConfig,
+  store: Store,
+  supervisor: SessionSupervisor,
+): Promise<void> {
+  try {
+    const report = await recoverSessions({
+      store,
+      supervisor,
+      listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand, workspaceRoot: config.workspaceRoot }),
+      onError: (error) => app.log.error(error),
+    });
+    if (report.sessions.length > 0) app.log.info({ recovery: report.sessions }, 'restart recovery');
+  } catch (error) {
+    app.log.error(error, 'restart recovery failed');
   }
 }
 

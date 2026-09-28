@@ -3,7 +3,7 @@ import { realpath } from 'node:fs/promises';
 import type { NewSession, ResumeCommand, Session, SessionEvent } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
-import type { LifecycleAction, UserMessageOrigin } from '../../core/event-payload.ts';
+import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, userMessageLine } from '../../core/stdin.ts';
 import { type CanUseToolMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
@@ -144,6 +144,8 @@ export class SessionSupervisor {
   readonly #live = new Map<string, Live>();
   readonly #listeners = { sessionUpdated: new Set<Listener<'sessionUpdated'>>(), event: new Set<Listener<'event'>>() };
   #closing = false;
+  /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
+  #gate: Promise<void> = Promise.resolve();
 
   constructor(options: SupervisorOptions) {
     this.#store = options.store;
@@ -228,6 +230,7 @@ export class SessionSupervisor {
    * `--resume` and gets the message instead of "Continue.". Refused while detached.
    */
   async sendMessage(sessionId: string, text: string, origin: UserMessageOrigin = 'user'): Promise<SessionRecord> {
+    await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
@@ -243,6 +246,7 @@ export class SessionSupervisor {
 
   /** D7 Pause: interrupt, EOF, exit (escalating on timeout). The session ends `paused`. */
   async pause(sessionId: string): Promise<SessionRecord> {
+    await this.#gate;
     const session = await this.#get(sessionId);
     const live = this.#live.get(sessionId);
     if (live) await this.#stop(live, 'pause');
@@ -251,6 +255,7 @@ export class SessionSupervisor {
 
   /** D7 Resume: `--resume <claudeSessionId>` + "Continue.". */
   async resume(sessionId: string): Promise<SessionRecord> {
+    await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
@@ -262,6 +267,7 @@ export class SessionSupervisor {
 
   /** "Continue in terminal": the D7 stop, then the session is no longer attached. */
   async detach(sessionId: string): Promise<ResumeCommand> {
+    await this.#gate;
     const session = await this.#get(sessionId);
     const live = this.#live.get(sessionId);
     if (live) {
@@ -280,6 +286,7 @@ export class SessionSupervisor {
    * import are M4.1's.
    */
   async attach(sessionId: string): Promise<ResumeCommand> {
+    await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
     if (!this.#live.has(sessionId)) {
@@ -300,6 +307,104 @@ export class SessionSupervisor {
       await live.recorder.markResponded(requestId, decision.behavior);
       await this.#refreshStatus(live);
     });
+  }
+
+  // ── restart recovery (M2.4, recovery.ts) ──────────────────────────────
+
+  /**
+   * Holds `sendMessage`, `pause`, `resume`, `detach` and `attach` until the returned
+   * function is called: the service listens while restart recovery runs, and a
+   * command that raced it could spawn a second process on an id whose leftover is
+   * still being stopped (M0.4). The recovery steps below are not held.
+   */
+  holdCommands(): () => void {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#gate = this.#gate.then(() => held);
+    return release;
+  }
+
+  /**
+   * D7 service restart: spawns `--resume <claudeSessionId>` with the baseline flags
+   * (lifecycle `recovered`) and sends `message` as a service message, or nothing
+   * (the process stays idle) when it is `null`. The caller has already made sure no
+   * other process holds the id (recovery.ts).
+   */
+  async resumeAfterRestart(sessionId: string, message: string | null): Promise<SessionRecord> {
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
+    const live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'recovered');
+    if (message !== null) await this.#send(live, message, 'service');
+    else await this.#enqueue(live, () => this.#refreshStatus(live));
+    return this.#get(sessionId);
+  }
+
+  /**
+   * Clears what a service that died without stopping its processes left behind for
+   * a session with no live process here: requests still marked open become stale
+   * (never answered, M0.2) and go to the `orphaned` hook, running subagents become
+   * idle, the recorded pid is cleared. Returns the stale request ids.
+   */
+  async settleAfterCrash(sessionId: string): Promise<string[]> {
+    if (this.#live.has(sessionId)) return [];
+    const stale: string[] = [];
+    for (const event of await this.#store.events.list(sessionId)) {
+      const payload = event.payload as Partial<ToolPayload> & Partial<RequestPayload> & { type?: unknown };
+      let next: unknown = null;
+      if (payload?.type === 'tool' && payload.requestState === 'open' && payload.requestId) {
+        stale.push(payload.requestId);
+        next = { ...payload, requestState: 'stale' };
+      } else if (payload?.type === 'request' && payload.state === 'open' && payload.requestId) {
+        stale.push(payload.requestId);
+        next = { ...payload, state: 'stale' };
+      }
+      if (next === null) continue;
+      const updated = await this.#store.events.update(event.id, { payload: next });
+      if (updated) this.#emitEvent(updated);
+    }
+    if (stale.length > 0 && this.#handler.orphaned) {
+      try {
+        await this.#handler.orphaned(sessionId, stale);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    const endedAt = new Date().toISOString();
+    for (const agent of await this.#store.agents.listBySession(sessionId)) {
+      if (agent.kind !== 'main' && (agent.status === 'run' || agent.status === 'need')) {
+        await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt });
+      }
+    }
+    await this.#store.sessions.update(sessionId, { pid: null });
+    return stale;
+  }
+
+  /** Records a lifecycle event for a session without a live process (restart recovery). */
+  async recordServiceEvent(sessionId: string, kind: 'text' | 'error', label: string, payload: LifecyclePayload): Promise<void> {
+    const event = await this.#store.events.append({ sessionId, kind, label, payload });
+    this.#emitEvent(event);
+  }
+
+  /**
+   * Leaves a session without a live process `paused` after a restart (a pause or
+   * detach the crash cut short, or a session that could not be resumed safely);
+   * `detached` also ends the attachment.
+   */
+  async markPausedAfterRestart(sessionId: string, detached = false): Promise<SessionRecord> {
+    if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
+    const now = new Date().toISOString();
+    await this.#store.sessions.update(sessionId, {
+      status: 'paused',
+      stopReason: null,
+      pid: null,
+      ...(detached ? { attached: false, detachedAt: now } : {}),
+    });
+    await this.#setMainAgentStatus(sessionId, 'paused');
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
   }
 
   /** Stops every live process (service shutdown). Their stored status is kept so a restart can resume them (D7, M2.4). */
@@ -398,10 +503,19 @@ export class SessionSupervisor {
     return next;
   }
 
+  /**
+   * Writes one stdin user message. The session's undelivered `pending_messages`
+   * (the outbox: the M2.4 restart note, M3.1 stale answers) go first, in the same
+   * message, and are marked delivered once written.
+   */
   async #send(live: Live, text: string, origin: UserMessageOrigin): Promise<void> {
     await this.#enqueue(live, async () => {
-      await live.recorder.recordUserMessage(text, origin);
-      live.proc.write(userMessageLine(text));
+      const pending = await this.#store.pendingMessages.pending(live.sessionId);
+      const full = [...pending.map((message) => message.text), text].join('\n\n');
+      await live.recorder.recordUserMessage(full, origin);
+      if (live.proc.write(userMessageLine(full))) {
+        for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
+      }
       await this.#refreshStatus(live);
     });
   }
@@ -605,4 +719,7 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   exited: 'claude exited',
   failed: 'claude failed',
   stopped: 'Stopped with the service',
+  recovered: 'Resumed after a Switchboard restart',
+  'leftover-stopped': 'Stopped the claude process left from before the restart',
+  'not-resumed': 'Not resumed after the restart',
 };

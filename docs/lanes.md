@@ -36,7 +36,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 ## Server: services on `ApiContext`
 | Service | What | Hooks for later lanes |
 |---|---|---|
-| `supervisor` (`SessionSupervisor`, M2.1) | claude processes | `on('sessionUpdated' / 'event')` → M2.3 hub; `ControlRequestHandler` + `respond()` → M3.1 |
+| `supervisor` (`SessionSupervisor`, M2.1) | claude processes | `on('sessionUpdated' / 'event')` → M2.3 hub; `ControlRequestHandler` + `respond()` → M3.1; the outbox (M2.4): undelivered `store.pendingMessages` rows go first in the session's next stdin message, so M3.1 delivers stale answers with `sendMessage(id, text, 'service')` (or enqueues them) and the restart note rides along (`docs/supervisor.md` → *Restart recovery*); pass the same `ControlRequestHandler` so `orphaned` also hears about requests a crash left open |
 | `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item; `remove(id)` → M3.3 "Remove worktree" action; `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
 | `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's poller (`docs/hub.md`) |
 

@@ -113,7 +113,13 @@ export type LifecycleAction =
   | 'detached'
   | 'exited'
   | 'failed'
-  | 'stopped';
+  | 'stopped'
+  /** M2.4: spawned with `--resume` when the service started again (D7). */
+  | 'recovered'
+  /** M2.4: a process left running by a crashed service was stopped before the resume. */
+  | 'leftover-stopped'
+  /** M2.4: the session was not resumed after the restart (`message` says why). */
+  | 'not-resumed';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -127,6 +133,8 @@ export interface LifecyclePayload {
   /** Last stderr lines of a process that failed. */
   readonly stderr?: string;
   readonly message?: string;
+  /** M2.4: the pid of the process left from before the restart. */
+  readonly leftoverPid?: number;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */
