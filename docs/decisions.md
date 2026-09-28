@@ -104,6 +104,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The session's title is what the developer typed, else `Remote <short id>`. The header and History say "local copy of a remote session: new work here stays local".
   - Every CLI refusal is shown verbatim and the worktree Switchboard created is removed: a dirty tree, the wrong repo ("You must run claude --teleport <id> from a checkout of <owner/repo>"), a branch that isn't pushed, not signed in, or an archived session.
 
+## Chat composer and the reported table (added 2026-09-28)
+- **D26 Shift+Enter makes a new line in the chat composer.** The composer becomes a multi-line field. Enter sends; Shift+Enter inserts a line break. While an IME is composing, Enter never sends. The field starts one line high, looking exactly like the prototype's input, and grows with its text up to about 8 lines, then scrolls. It shrinks back after a send. Messages keep their line breaks, and D20 renders them as Markdown.
+- **D27 The reported status table is shown as a readable table, not as printed.** This replaces D21's "shown as printed, never edited".
+  - The newest status table the agent printed is parsed into its header and rows. That covers a box-drawing table (columns split on `│`; rows split on `├…┤` lines; a row spanning several text lines has each cell's lines joined) and a GFM pipe table (inline Markdown reduced to text).
+  - It is drawn like the derived overview table above it: same type, lines, header and cell ellipsis, with the full text as a tooltip. It keeps all the printed columns, in their order.
+  - The Status cell shows a SPEC status color dot plus the text, with any leading status emoji or glyph removed. `🟢`, `running`, `testing` and `in progress` are run (blue); `✅`, `✓`, `done`, `merged` and `green` are done (green); `🟡`, `⏳`, `⏸`, `queued`, `waiting`, `blocked` and `needs` are need (amber); `❌`, `✕`, `🔴` and `failed` are fail (red); anything else is idle (muted).
+  - A small "as printed" toggle shows the original text in monospace, as D21 did.
+  - A table that can't be parsed into consistent rows falls back to the printed text.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
