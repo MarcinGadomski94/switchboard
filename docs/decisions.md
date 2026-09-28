@@ -125,6 +125,9 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - With the marker, a tool whose URL is a non-loopback `https:` site opens in a **direct** iframe of its own URL, with no proxy. Local tools keep the D15 proxy.
     - Without the marker, such a tool shows "{host} needs the Switchboard frame helper to open here" with **Open in new tab** and a link to the install steps (`docs/frame-helper.md`).
   - **Tests:** automated tests load the unpacked extension into Playwright's Chromium against stub sites that refuse framing. The developer verifies Safari and the real Jira live.
+  - **Developer rulings (2026-09-28), after the build:**
+    - **Safari:** Safari's `declarativeNetRequest` never applies response-header rules (WebKit, MDN), so no Safari extension can frame Jira. Safari shows "{host} can't open in a frame in this browser" with Open in new tab, as built; a capability check makes sure a frame is never blank. Use Chrome for sites in a frame.
+    - **Narrowed scope:** the helper removes the two headers only for the hosts of the developer's saved **site tools**, and only in the browser tab that runs Switchboard, not for any loopback page. Switchboard's page gives the extension its site-tool hosts; the extension keeps them as tab-scoped session rules (Chrome `declarativeNetRequest.updateSessionRules` with `tabIds` + `requestDomains`). The static any-loopback rule goes away.
 
 ## Side panels never scroll sideways (added 2026-09-28)
 - **D29 The sidebar and the session's right panel scroll down only, never sideways.**
