@@ -4,6 +4,7 @@ import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
+import { useModals } from '../modals/ModalHost.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, statusColor } from '../shell/format.ts';
 import {
@@ -14,6 +15,7 @@ import {
   detailBody,
   formatToolInput,
   linksSession,
+  newSessionAfter,
   refusalText,
   selectedItem,
   visibleItems,
@@ -177,6 +179,7 @@ function Detail({ item, now, busy, error, onAnswers, onAction }: DetailProps) {
  */
 export function InboxView() {
   const inbox = useApi(api.inbox);
+  const modals = useModals();
   const now = useNow(30_000);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -191,7 +194,7 @@ export function InboxView() {
   const items = visibleItems(inbox.data ?? [], done);
   const current = selectedItem(items, selectedId);
 
-  const run = async (item: InboxItem, call: () => Promise<unknown>): Promise<void> => {
+  const run = async (item: InboxItem, call: () => Promise<unknown>, after?: () => void): Promise<void> => {
     setBusyId(item.id);
     setErrors((prev) => {
       const next = { ...prev };
@@ -201,6 +204,7 @@ export function InboxView() {
     try {
       await call();
       setDone((prev) => new Set([...prev, item.id]));
+      after?.();
     } catch (error) {
       setErrors((prev) => ({ ...prev, [item.id]: refusal(error) }));
     } finally {
@@ -237,7 +241,11 @@ export function InboxView() {
             busy={busyId === current.id}
             error={errors[current.id] ?? null}
             onAnswers={(body) => void run(current, () => api.answerBatch(current.id, body))}
-            onAction={(action) => void run(current, () => api.inboxAction(current.id, action.id))}
+            onAction={(action) => {
+              // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.
+              const prefill = newSessionAfter(current, action.id);
+              void run(current, () => api.inboxAction(current.id, action.id), prefill ? () => modals.open('new-session', { prefill }) : undefined);
+            }}
           />
         ) : null}
         {loaded && items.length === 0 ? (

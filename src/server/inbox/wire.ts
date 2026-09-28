@@ -1,4 +1,4 @@
-import type { BranchRef, InboxAction, InboxItem, Question } from '../../core/api.ts';
+import type { BranchRef, InboxAction, InboxItem, NewSessionPrefill, Question } from '../../core/api.ts';
 import { toolLabel } from '../../core/derive/event-kind.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
 import type { QuestionBatchRecord, QuestionRecord } from '../db/repos/questions.ts';
@@ -153,11 +153,23 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The Inbox item of a system item (M3.3 raises them): its stored source, status,
- * title, detail, branch chips and actions (the first is primary), and the kind
- * label from {@link SYSTEM_ITEM_LABELS}.
+ * The New-session values stored with a system item (`payload.prefill`, M3.3
+ * "Open fix session"), or `null` when it has none.
+ */
+export function systemItemPrefill(record: SystemItemRecord): NewSessionPrefill | null {
+  const payload = record.payload;
+  if (!isRecord(payload) || !isRecord(payload['prefill'])) return null;
+  return payload['prefill'] as NewSessionPrefill;
+}
+
+/**
+ * The Inbox item of a system item (M3.3 raises them, `docs/system-items.md`): its
+ * stored source, status, title, detail, branch chips and actions (the first is
+ * primary), the kind label from {@link SYSTEM_ITEM_LABELS}, and `prefill` when it
+ * stores one.
  */
 export function systemItem(record: SystemItemRecord): InboxItem {
+  const prefill = systemItemPrefill(record);
   return {
     id: record.id,
     kind: 'system',
@@ -170,6 +182,7 @@ export function systemItem(record: SystemItemRecord): InboxItem {
     createdAt: record.createdAt,
     branches: record.branches.map((branch) => ({ solution: branch.solution, branch: branch.branch })),
     actions: record.actions.map((action) => ({ id: action.id, label: action.label })),
+    ...(prefill ? { prefill } : {}),
   };
 }
 

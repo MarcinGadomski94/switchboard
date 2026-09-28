@@ -8,6 +8,7 @@ import {
   detailBody,
   formatToolInput,
   linksSession,
+  newSessionAfter,
   refusalText,
   selectedItem,
   visibleItems,
@@ -72,5 +73,14 @@ describe('Inbox view state (src/web/views/inbox.ts, prototype inboxRaw / ib)', (
     );
     expect(refusalText(404, null)).toBe('Not sent: HTTP 404');
     expect(refusalText(0, null)).toBe('Not sent: Switchboard is not reachable.');
+  });
+
+  it('opens the New-session modal with the item prefill only after "Open fix session" on a system item (M3.3)', () => {
+    const prefill = { name: 'fix-nightly', task: 'nightly: failed.', solutions: ['mobile'] };
+    const fix: InboxItem = { ...item('f', 'system', null), actions: [{ id: 'open-fix-session', label: 'Open fix session' }], prefill };
+    expect(newSessionAfter(fix, 'open-fix-session')).toEqual(prefill);
+    expect(newSessionAfter({ ...fix, prefill: undefined }, 'open-fix-session')).toEqual({});
+    expect(newSessionAfter(fix, 'dismiss')).toBeNull();
+    expect(newSessionAfter(item('p', 'permission'), 'open-fix-session')).toBeNull();
   });
 });

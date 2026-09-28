@@ -83,3 +83,4 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 - `sessions.last_transcript_uuid`: the uuid of the newest **main-chain** stdout line that the CLI also writes to the transcript (replayed prompt, assistant line, tool result, interrupt marker). This is the Attach sync point (M4.1).
 - `sessions.last_activity_at`: the newest event's `ts`.
 - `usage_readings`: every `rate_limit_event` (utilization × 100, `resetsAt` epoch seconds → ISO), source `rate_limit_event`. The meter itself is M9.2.
+- `system_items` (M3.3, `docs/system-items.md`): a `schedule_runs` row with `result = 'fail'` → one "Scheduled run failed" item (title = the run summary, detail = the green streak before it, chips from the run's session, the "Open fix session" prefill from the schedule template); a live worktree with `removable = 1` → one "PR merged" item. One item per run / worktree, open or closed.

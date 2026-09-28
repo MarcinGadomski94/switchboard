@@ -1,8 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { InboxError, type InboxErrorCode } from '../inbox/pipeline.ts';
+import { SystemItemError, type SystemItemErrorCode } from '../inbox/system-items.ts';
 import { listInbox } from '../inbox/wire.ts';
 import type { ApiContext } from '../routes.ts';
+import { WorktreeError } from '../worktrees/manager.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
+import { sendWorktreeError } from './worktree-errors.ts';
 
 /** Inbox and question routes (contract → REST) not implemented yet (none since M3.2). */
 export const INBOX_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -17,19 +20,39 @@ const ERROR_STATUS: Record<InboxErrorCode, number> = {
   busy: 409,
 };
 
-/** Sends a pipeline refusal as `{ error: <code>, message }`, rethrows anything else. */
+/** HTTP status of each system-item refusal (M3.3, `docs/system-items.md`). */
+const SYSTEM_ERROR_STATUS: Record<SystemItemErrorCode, number> = {
+  'not-found': 404,
+  'unknown-action': 400,
+  'not-open': 409,
+  busy: 409,
+  gone: 409,
+  unavailable: 501,
+};
+
+/**
+ * Sends a pipeline or system-item refusal as `{ error: <code>, message }` (a missing
+ * service as 501 `{ error: "not-implemented", item, message }`), a worktree manager
+ * refusal as `worktree-errors.ts` does; rethrows anything else.
+ */
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof InboxError) return reply.code(ERROR_STATUS[error.code]).send({ error: error.code, message: error.message });
+  if (error instanceof SystemItemError) {
+    if (error.code === 'unavailable') return reply.code(501).send({ error: 'not-implemented', item: error.item ?? '', message: error.message });
+    return reply.code(SYSTEM_ERROR_STATUS[error.code]).send({ error: error.code, message: error.message });
+  }
+  if (error instanceof WorktreeError) return sendWorktreeError(reply, error, 'worktreeId');
   throw error;
 }
 
 /**
  * Registers the Inbox and question routes. M3.1: the answers route and the
  * permission-item actions (`docs/questions.md`); M3.2: `GET /api/inbox`
- * (`docs/inbox.md`); M3.3 adds the system-item actions on the same actions route.
+ * (`docs/inbox.md`); M3.3: the system-item actions on the same actions route
+ * (`docs/system-items.md`).
  */
 export async function registerInboxRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { questions, store } = context;
+  const { questions, store, systemItems } = context;
 
   // Contract: InboxItem[] (question batches, permission items, system items).
   app.get('/api/inbox', async () => listInbox(store));
@@ -44,12 +67,16 @@ export async function registerInboxRoutes(app: FastifyInstance, context: ApiCont
     }
   });
 
-  // Contract: 204. Permission items (D6): allow-once / deny.
+  // Contract: 204. Permission items (D6): allow-once / deny. System items (M3.3): their listed actions.
   app.post<{ Params: { id: string; action: string } }>('/api/inbox/:id/actions/:action', async (request, reply) => {
     const { id, action } = request.params;
     try {
       if (await questions.isPermissionItem(id)) {
         await questions.decide(id, action);
+        return reply.code(204).send();
+      }
+      if (await systemItems.isSystemItem(id)) {
+        await systemItems.act(id, action);
         return reply.code(204).send();
       }
       return reply.code(404).send({ error: 'not-found', message: `no Inbox item ${id}` });

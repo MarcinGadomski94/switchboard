@@ -98,6 +98,55 @@ export class SystemItemRepository {
     return this.#table.get(id);
   }
 
+  /**
+   * Creates the item unless an item of the same `kind` (open or closed) already
+   * exists for the same schedule run (`scheduleRunId`) or, without one, the same
+   * worktree (`worktreeId`); check and insert run in one transaction (M3.3: one
+   * item per failed run and per removable worktree). An input with neither is
+   * always created.
+   * @returns the new item, or `null` when one already exists.
+   */
+  async createOnce(input: SystemItemCreate): Promise<SystemItemRecord | null> {
+    return transaction(this.#ctx.db, () => {
+      if (input.scheduleRunId) {
+        if (this.#table.first('kind = ? AND schedule_run_id = ?', [input.kind, input.scheduleRunId])) return null;
+      } else if (input.worktreeId) {
+        if (this.#table.first('kind = ? AND worktree_id = ?', [input.kind, input.worktreeId])) return null;
+      }
+      return this.#table.insert({
+        ...defined(input),
+        id: input.id ?? randomUUID(),
+        createdAt: input.createdAt ?? this.#ctx.now(),
+      });
+    });
+  }
+
+  /** Ids of the failed schedule runs (`result = 'fail'`) that have no item of `kind` yet, oldest first. */
+  async failedRunsWithoutItem(kind: string): Promise<string[]> {
+    const rows = this.#table
+      .statement(
+        `SELECT r.id AS id FROM schedule_runs r
+         WHERE r.result = 'fail'
+           AND NOT EXISTS (SELECT 1 FROM system_items s WHERE s.kind = ? AND s.schedule_run_id = r.id)
+         ORDER BY r.ts, r.rowid`,
+      )
+      .all(kind);
+    return rows.map((row) => String(row['id']));
+  }
+
+  /** Ids of the live worktrees flagged removable that have no item of `kind` yet, oldest first. */
+  async removableWorktreesWithoutItem(kind: string): Promise<string[]> {
+    const rows = this.#table
+      .statement(
+        `SELECT w.id AS id FROM worktrees w
+         WHERE w.removable = 1 AND w.removed_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM system_items s WHERE s.kind = ? AND s.worktree_id = w.id)
+         ORDER BY w.created_at, w.rowid`,
+      )
+      .all(kind);
+    return rows.map((row) => String(row['id']));
+  }
+
   /** Items, newest first. */
   async list(states?: readonly SystemItemState[]): Promise<SystemItemRecord[]> {
     if (states) {

@@ -5,6 +5,7 @@ import { HubBus } from './hub/bus.ts';
 import { type HubTimingOptions, SseHub } from './hub/hub.ts';
 import { forwardServiceEvents } from './hub/wire.ts';
 import { QuestionPipeline } from './inbox/pipeline.ts';
+import { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
@@ -47,6 +48,12 @@ export interface AppOptions {
    * supervisor but only hears about new requests when it is the supervisor's handler.
    */
   readonly questions?: QuestionPipeline;
+  /**
+   * System Inbox items (M3.3). A caller that passes one owns it (main.ts starts its
+   * sync and closes it); without one the app makes its own around the worktree
+   * manager and the bus (no background sync) and closes it with the app.
+   */
+  readonly systemItems?: SystemItemService;
   /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
   readonly hub?: HubTimingOptions;
   /** Fastify logger; off by default (tests). */
@@ -74,6 +81,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
   questions ??= new QuestionPipeline({ store: options.store, bus }).bind(supervisor);
   const worktrees = options.worktrees ?? createWorktreeManager(options.config, options.store, supervisor);
+  let systemItems = options.systemItems;
+  if (!systemItems) {
+    const own = new SystemItemService({ store: options.store, bus, worktrees });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    systemItems = own;
+  }
   const providers = options.providers ?? {};
   const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
   const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });
@@ -84,7 +99,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     stopForwarding();
   });
-  await registerApiRoutes(app, { config: options.config, store: options.store, providers, supervisor, worktrees, bus, hub, questions });
+  await registerApiRoutes(app, { config: options.config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

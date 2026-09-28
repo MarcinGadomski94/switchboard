@@ -5,14 +5,14 @@ SPEC → Inbox, prototype `vInbox` markup + `inboxRaw` / `ib` / `card()` logic. 
 ## `GET /api/inbox`
 `InboxItem[]`, the same items `inboxCount` counts (`inboxChanged.count`):
 1. **Items that wait on a session**, newest first (the sidebar's session order): question batches that wait for the developer (open, or stale and still unanswered, `docs/questions.md`) and open permission requests (D6).
-2. **Open system items** (raised by M3.3), oldest first: the order they were raised, which is the prototype's order (session items, then `SYS` in array order).
+2. **Open system items** (raised by M3.3, `docs/system-items.md`), oldest first: the order they were raised, which is the prototype's order (session items, then `SYS` in array order).
 
 Item shapes (`src/core/api.ts` → `InboxItem`):
 | Kind | source | title | label | detail | extra |
 |---|---|---|---|---|---|
 | `questions` | session name | the question verbatim, or `n questions from <names>` | `Question` / `n questions` | `''` | `questions: Question[]` |
 | `permission` | session name | the tool's one-line label (`Bash · node -e …`) | `Permission` | the model's description, else the decision reason | `actions` Allow once / Deny, `permission` (tool + input verbatim, asking agent) |
-| `system` | stored source (schedule name, `worktrees`) | stored | `SYSTEM_ITEM_LABELS[kind]` (`schedule-run-failed` → `Scheduled run failed`, `worktree-removable` → `PR merged`), else the stored kind | stored | `actions` (the first is primary) |
+| `system` | stored source (schedule name, `worktrees`) | stored | `SYSTEM_ITEM_LABELS[kind]` (`schedule-run-failed` → `Scheduled run failed`, `worktree-removable` → `PR merged`), else the stored kind | stored | `actions` (the first is primary), `prefill` when stored (M3.3 "Open fix session") |
 
 - `<names>` in a batch title: each distinct question source cut at the first `" · "` (prototype: `web · microfrontends/acme-app-front` → `web`). The questions keep their full source; the card shows it in mono blue.
 - **Branch chips** of session items (`sessionBranches`): every agent of the session with a branch, in agent order, as `<last folder of its solutionPath> ⎇ <branch>` (prototype), then the session's live worktrees (M2.2) as `<repo> ⎇ <branch>` when no agent already names that pair. A session working in place with no agent branch has no chips. System items carry their stored chips.
@@ -25,11 +25,11 @@ Item shapes (`src/core/api.ts` → `InboxItem`):
   - question batch → `QuestionCard variant="inbox"`: `k of n answered`, Send disabled at 45% opacity until every question has an answer; Send posts `POST /api/questions/batch/{batchId}/answers`.
   - permission request → a code block with the asking agent (mono blue), the tool name and the input as indented JSON, verbatim; then the actions.
   - system item → the actions.
-  - Actions: the first primary (`#e8e7e3` on `#111214`), the rest outlined (`#2c2d32`); each posts `POST /api/inbox/{id}/actions/{action}` (M3.3 serves the system items' actions; until then the route answers 404 and the refusal line shows).
+  - Actions: the first primary (`#e8e7e3` on `#111214`), the rest outlined (`#2c2d32`); each posts `POST /api/inbox/{id}/actions/{action}` (system items since M3.3, `docs/system-items.md`). After "Open fix session" succeeds the New-session modal opens with the item's `prefill`.
 - After a successful answer or action the item is hidden at once (the prototype's `sent`) and the list reloads; the next item is selected.
 - A refused answer or action shows `Not sent: <server message>` (or `Not sent: HTTP <status>`, `Not sent: Switchboard is not reachable.`) in the card's status line or under the actions; the list reloads.
 - **Empty:** the list shows `All clear. Nothing is waiting on you.`, the detail `Inbox zero` + `New questions, approvals and failed runs show up here with a toast and sound.` Both appear only once the list has loaded; while it loads or when the service cannot be reached, only the header shows.
-- **Live:** the list reloads on `/hub` `inboxChanged` (published on every new batch or permission request, answer, decision and stale transition); the sidebar badge counts the same list.
+- **Live:** the list reloads on `/hub` `inboxChanged` (published on every new batch or permission request, answer, decision and stale transition, and when a system item is raised or closed); the sidebar badge counts the same list.
 
 ## Known difference from the prototype
 The prototype labels a one-question batch `Loop paused` when that question's source is the mock `circuit breaker`. A real batch's source is always the session's main agent (M0.2) and nothing in the stream-json says a loop breaker asked, so the app shows `Question` and never reads prototype mock data (D13). Recorded in `docs/visual/inbox.md` and `.loop/questions-w1-inbox.md` (ASSUMED).

@@ -1,4 +1,4 @@
-import type { InboxItem } from '../../core/api.ts';
+import type { InboxItem, NewSessionPrefill } from '../../core/api.ts';
 
 /**
  * The Inbox view's state and copy (SPEC → Inbox; prototype `inboxRaw` / `ib`),
@@ -70,4 +70,17 @@ export function refusalText(status: number, body: unknown): string {
       : null;
   if (message) return `Not sent: ${message}`;
   return status === 0 ? 'Not sent: Switchboard is not reachable.' : `Not sent: HTTP ${status}`;
+}
+
+/** The system action that opens the New-session modal once it succeeds (M3.3, prototype "Open fix session"). */
+export const OPEN_FIX_SESSION = 'open-fix-session';
+
+/**
+ * What the New-session modal opens with after `actionId` succeeded on `item`: the
+ * item's `prefill` (empty when it has none) for "Open fix session", `null` for any
+ * other action (no modal).
+ */
+export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPrefill | null {
+  if (item.kind !== 'system' || actionId !== OPEN_FIX_SESSION) return null;
+  return item.prefill ?? {};
 }

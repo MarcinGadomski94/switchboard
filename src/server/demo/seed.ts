@@ -291,7 +291,8 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     }
     await repos.systemItems.create({
       id: item.id,
-      kind: item.label,
+      // The kinds M3.3 raises (docs/system-items.md); the label comes back from SYSTEM_ITEM_LABELS.
+      kind: item.schedule ? 'schedule-run-failed' : item.worktree ? 'worktree-removable' : item.label,
       source: item.source,
       status: item.status,
       title: item.title,
@@ -301,6 +302,17 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       scheduleId: item.schedule ? (scheduleIds.get(item.schedule) ?? null) : null,
       scheduleRunId: item.schedule ? (lastRunIds.get(item.schedule) ?? null) : null,
       worktreeId,
+      payload: item.fixSession
+        ? {
+            prefill: {
+              name: item.fixSession.name,
+              task: item.fixSession.task,
+              solutions: [...item.fixSession.sols],
+              mode: item.fixSession.mode === 'orch' ? 'orchestrator' : 'single',
+              phase: item.fixSession.phase === 'ui' ? 'ui-first' : 'integration',
+            },
+          }
+        : null,
       createdAt,
     });
   }

@@ -80,11 +80,22 @@ describe('seedDemo (gap #21)', () => {
 
     const items = await store.systemItems.list(['open']);
     expect(items.map((i) => [i.id, i.kind, i.status, i.createdAt])).toEqual([
-      ['sys-run', 'Scheduled run failed', 'fail', minutesAgo(38)],
-      ['sys-wt', 'PR merged', 'done', minutesAgo(20)],
+      ['sys-run', 'schedule-run-failed', 'fail', minutesAgo(38)],
+      ['sys-wt', 'worktree-removable', 'done', minutesAgo(20)],
     ].sort((a, b) => String(b[3]).localeCompare(String(a[3]))));
     const sysRun = items.find((i) => i.id === 'sys-run');
     expect(sysRun?.actions.map((a) => a.label)).toEqual(['Open fix session', 'Retry run', 'Dismiss']);
+    expect(sysRun?.actions.map((a) => a.id)).toEqual(['open-fix-session', 'retry-run', 'dismiss']);
+    // The prototype's "Open fix session" values (ns), in the contract's terms.
+    expect(sysRun?.payload).toEqual({
+      prefill: {
+        name: 'fix-xamlc-acmchip',
+        task: 'nightly-build-verify: FreeTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/free-talk-360.',
+        solutions: ['mobile'],
+        mode: 'single',
+        phase: 'ui-first',
+      },
+    });
     const nightly = await store.schedules.getByName('nightly-build-verify');
     expect(sysRun?.scheduleId).toBe(nightly?.id);
     const runs = await store.schedules.recentRuns(nightly!.id);

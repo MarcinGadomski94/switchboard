@@ -43,7 +43,7 @@ Body `{ answers: [{ questionId, answerIndex }] }`.
 - `POST /api/inbox/{id}/actions/{action}`:
   - `allow-once` → `{"behavior":"allow","updatedInput":<input unchanged>}`. **Never** `updatedPermissions` (its suggestions would write the project's `.claude/settings.local.json`).
   - `deny` → `{"behavior":"deny","message":"The user denied this tool use in Switchboard."}` (the recorded `perm-deny` text; the model gets it verbatim as an error tool result).
-  - `204`; unknown id `404`; another action `400 {error:"unknown-action"}`; not open (decided or stale) `409 {error:"not-open"}`; a request that ended just before the click closes as stale and answers `409`. M3.3 adds the system items' actions to the same route.
+  - `204`; unknown id `404`; another action `400 {error:"unknown-action"}`; not open (decided or stale) `409 {error:"not-open"}`; a request that ended just before the click closes as stale and answers `409`. M3.3 adds the system items' actions to the same route (`docs/system-items.md`).
 - `inboxChanged` after each change.
 
 ## Stale requests

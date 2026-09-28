@@ -42,7 +42,16 @@
         "Retry run",
         "Dismiss"
       ],
-      "schedule": "nightly-build-verify"
+      "schedule": "nightly-build-verify",
+      "fixSession": {
+        "name": "fix-xamlc-acmchip",
+        "task": "nightly-build-verify: FreeTalkView.xaml(41) unknown property AcmChip.Size. Fix on feature/free-talk-360.",
+        "sols": [
+          "mobile"
+        ],
+        "mode": "single",
+        "phase": "ui"
+      }
     },
     {
       "id": "sys-wt",

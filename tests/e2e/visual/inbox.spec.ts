@@ -24,8 +24,7 @@ import {
  * 1. the default view (first item selected: a 3-question batch),
  * 2. a system item picked (actions: first primary, the rest outlined),
  * 3. the empty state ("Inbox zero"): the prototype after answering and dismissing
- *    every item, the app on the real code path with nothing waiting (no demo seed;
- *    the demo's system items have no actions until M3.3).
+ *    every item, the app on the real code path with nothing waiting (no demo seed).
  * Gate: boxes within ±2 px, copy exact, computed styles equal, plus the advisory
  * pixel diff and side-by-side PNGs (`docs/visual/inbox.md`).
  */

@@ -14,6 +14,7 @@ import type { Store } from './db/store.ts';
 import type { HubBus } from './hub/bus.ts';
 import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
+import type { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
@@ -35,6 +36,8 @@ export interface ApiContext {
   readonly hub: SseHub;
   /** Question batches and permission items: the supervisor's control-request handler (M3.1, docs/questions.md). */
   readonly questions: QuestionPipeline;
+  /** System Inbox items: failed scheduled runs, removable worktrees, and their actions (M3.3, docs/system-items.md). */
+  readonly systemItems: SystemItemService;
 }
 
 /**
