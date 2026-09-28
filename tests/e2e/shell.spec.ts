@@ -48,7 +48,8 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.getByTestId('nav-inbox')).toHaveAttribute('aria-current', 'page');
 
   // Every sidebar source was asked for and reached the real server: /api/sessions (M2.1) answers
-  // with the empty list, /api/tools (M8.1) with the default tools, the others still with the 501 placeholder.
+  // with the empty list, /api/tools (M8.1) with the default tools, /api/artifacts (M7.3) with the empty list,
+  // the others still with the 501 placeholder.
   const expected = ['/api/sessions', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
   await expect.poll(() => expected.filter((url) => !apiCalls.some((call) => call.url === url))).toEqual([]);
   for (const call of apiCalls) {
@@ -60,6 +61,9 @@ test('the shell renders from the real API and shows only what the API returns', 
       expect((call.body as Array<{ id: string }>).map((tool) => tool.id), call.url).toEqual(['cm', 'sw']);
     } else if (call.url.startsWith('/api/tools/')) {
       continue; // the probes (stubbed in the browser)
+    } else if (call.url === '/api/artifacts') {
+      expect(call.status, call.url).toBe(200); // M7.3: nothing produced yet
+      expect(call.body, call.url).toEqual([]);
     } else {
       expect(call.status, call.url).toBe(501);
       expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });

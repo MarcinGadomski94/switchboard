@@ -62,6 +62,18 @@ Labels are one line (first line, at most 120 characters): the text, `Write · fi
 - **BRANCH**: branches a Bash command creates: `git checkout -b|-B`, `git switch -c|-C|--create`, `git worktree add … -b|-B`, `git branch <name>` (no options). The solution comes from a preceding `cd <dir>` or `git -C <dir>` in the same command, else none. Worktrees Switchboard creates itself are registered by M2.2.
 - **TICKET**: not auto-detected in v1.
 
+## Artifacts view (M7.3)
+`src/core/artifacts-view.ts`, used by `GET /api/artifacts?type=&q=` (`src/server/api/artifacts.ts`) and the view (`src/web/views/ArtifactsView.tsx`).
+
+- **Rows**: every stored artifact (above), newest `updatedAt` first (a DIFF moves up with every write), as `ArtifactListItem` = `Artifact` + `sessionName` (`null` when it has no session or its session was deleted) + `updatedAt`. The Age column reads `updatedAt` (`now`, `4m`, `3h`, `2d`, the sidebar's format).
+- **Type filters** (the prototype's `artFilters` + `AMAP`): All · Diffs = DIFF · PRs / branches = PR, BRANCH · Docs & contracts = DOC, CONTRACT, QA, FOLLOWUP · Ticket replies = TICKET. The view sends the pill's types as `type=PR,BRANCH`; the service accepts a comma list or a repeated `type`, case-insensitive, blank = every type, and answers `400 {error:"invalid", message}` for anything that is not an artifact type.
+- **Solution · branch**: `solution ⎇ branch`; the solution alone without a branch; `root` for the workspace root (`solution: null`). A BRANCH artifact whose branch is its name shows the solution only (the prototype's BRANCH row).
+- **Search** (`q`, trimmed, case-insensitive substring) runs on the service over the row as shown, joined by spaces: type, name, Solution · branch, session name, status (`meta`). The prototype's `a.join(' ')` also held the age; the age is left out because it changes by itself.
+- **Count** `n of m`: `n` rows shown, `m` = every artifact (a second, unfiltered request while a filter or search is active).
+- **Click** opens the source session on its Chat tab (the prototype's `openSession`); a row without a session is not a link and shows `—` as its session.
+- **Live**: the recorder derives artifacts from tool results and `/hub` has no artifact event, so the view reloads (trailing, 250 ms) after `event` / `sessionUpdated` hub messages; `aria-busy` is on while the rows on screen belong to an older filter or search.
+- **Empty**: "No artifacts yet." when nothing exists, "No artifacts match." when a filter or search hides everything (History's style; the prototype has no empty state here).
+
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.
 

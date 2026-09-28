@@ -24,7 +24,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/solutions` | `api/solutions.ts` | M6.2 (scanner M6.1) |
 | `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
-| `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
+| `GET /api/artifacts` | `api/artifacts.ts` | served since M7.3 (`docs/derivations.md` → *Artifacts view*): `ArtifactListItem[]` (+ `sessionName`, `updatedAt`), `type=` comma list, `q=` search; session artifacts M4.6 |
 | `GET /api/history` | `api/history.ts` | M7.4 |
 | `GET/PUT /api/settings` | `api/settings.ts` | served since M8.2 (`docs/settings.md`): editable preferences + read-only values the service reports; keys in `src/core/settings.ts` (M5.1 reads the New-session defaults, M9.1 writes `service.startAtLogin`, M9.2 reads `usage.warnAtPct`) |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | served since M8.1 (`docs/tools.md`); additive `GET /api/codebase-memory` + `POST /api/codebase-memory/reindex` (gap #4) in the same module |
@@ -69,7 +69,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
 | `views/SolutionsView.tsx` | Solutions | M6.2 (M6.3 conflict action, M6.4 freshness) |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
-| `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
+| `views/ArtifactsView.tsx` | Global artifacts (+ `views/artifacts.css`; filters, search and the location label in `src/core/artifacts-view.ts`) | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
 | `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
 | `views/SettingsView.tsx` | Settings (+ `views/settings.css`, `views/settings/*`; the sidebar reloads its tools on `tools/events.ts`) | M8.2 |

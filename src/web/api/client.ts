@@ -1,6 +1,6 @@
 import type {
   AnswerBatch,
-  Artifact,
+  ArtifactListItem,
   CodebaseMemoryStatus,
   FileDiff,
   HistoryItem,
@@ -113,7 +113,7 @@ export const api = {
   pauseSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/pause`),
   resumeSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/resume`),
 
-  artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<Artifact[]>('GET', `/api/artifacts${query(params)}`),
+  artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
   history: (q?: string) => request<HistoryItem[]>('GET', `/api/history${query({ q })}`),
 
   settings: () => request<Settings>('GET', '/api/settings'),

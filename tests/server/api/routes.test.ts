@@ -34,7 +34,6 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/schedules/c1/run', 'M7.1'],
   ['POST', '/api/schedules/c1/pause', 'M7.1'],
   ['POST', '/api/schedules/c1/resume', 'M7.1'],
-  ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'],
   ['GET', '/api/history?q=x', 'M7.4'],
   ['GET', '/api/system', 'M5.3'],
 ];
@@ -58,6 +57,7 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no workspace root here → 409, nothing starts
   ['GET', '/api/settings', 'M8.2'],
   ['PUT', '/api/settings', 'M8.2'], // no body here → 422, nothing stored (tests/server/api/settings.test.ts)
+  ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'], // tests/server/api/artifacts.test.ts
 ];
 
 let tmp: string;

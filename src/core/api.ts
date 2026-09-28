@@ -114,6 +114,16 @@ export interface Artifact {
   readonly createdAt: string;
 }
 
+/**
+ * A row of `GET /api/artifacts` (M7.3, global Artifacts view): an {@link Artifact}
+ * plus the source session's name (`null` without a session) and the last update,
+ * which the view's Age column reads (a DIFF grows with every write).
+ */
+export interface ArtifactListItem extends Artifact {
+  readonly sessionName: string | null;
+  readonly updatedAt: string;
+}
+
 /** `GET /api/sessions/{id}`. Provisional: M4.1. */
 export interface SessionDetail extends Session {
   readonly task: string;
