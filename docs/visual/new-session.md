@@ -5,13 +5,16 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **6.15%**, full page **4.18%**.
+Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **6.28%**, full page **4.26%**.
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `new-session-side-by-side.png` (the panel), `new-session-page-side-by-side.png` (page).
 
 ## D14 additions (not findings)
 The Folder row above section 1 (saved-folder dropdown, Browse…, check line) and the summary's `folder` line before `cwd` are not in the prototype. The app's form child k + 1 is compared with the prototype's child k (k ≥ 1), with y relative to section 1 (`y − <offset>` in the table); the app's summary line i + 1 with the prototype's line i (i ≥ 1), with y less the added line's height. The added parts are checked on their own (`D14 …` rows): the row sits between the head and section 1 with the section label's style, the dropdown shows the default folder, the summary names it.
+
+## D16 addition (not a finding)
+**Resume a terminal conversation** (`↻` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (`D16 …` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the warning line, Start at 45%). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
@@ -91,6 +94,11 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · D14 Browse… | addition | — | "Browse…" | ok | |
 | draft · D14 summary folder line | addition | — | "folder    D:\\acme · workspace" | ok | |
 | draft · D14 summary cwd line after it | addition | — | "cwd       D:\\acme" | ok | |
+| draft · D16 Resume toggle copy | addition | — | "↻ Resume a terminal conversation" | ok | |
+| draft · D16 Resume toggle out of the flow | addition | — | absolute | ok | |
+| draft · D16 Resume toggle on the right edge | addition | — | 0 px · 639,191 233×20 | ok | |
+| draft · D16 Resume toggle clear of the label | addition | — | 299.1 px | ok | |
+| draft · D16 Resume toggle above the name / task row | addition | — | 5 px | ok | |
 | single · six | size (y − 76) | 208,745 664×54 | 208,679 664×54 | ok |  |
 | single · sixLabel | size (y − 76) | 208,745 664×14 | 208,679 664×14 | ok | "6 · Mobile coordination" |
 | single · sixPills | size (y − 76) | 208,766 664×33 | 208,700 664×33 | ok |  |
