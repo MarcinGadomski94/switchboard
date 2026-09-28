@@ -245,7 +245,10 @@ test('two items: newest first and selected; picking switches the detail; a permi
   expect(allow?.response.response).toEqual({ behavior: 'allow', updatedInput: { command: 'node -e "console.log(6*7)"', description: 'Run Node.js calculation' } });
   await expect.poll(() => sessionStatus(page, runner.id)).toBe('done');
 
-  // "Open session →" goes to the session view.
+  // "Open session →" goes to the session view. The batch's toast (M3.4) covers the
+  // top-right corner, as in the prototype: put it away first.
+  await page.getByTestId('toast').getByRole('button', { name: 'Later' }).click();
+  await expect(page.getByTestId('toast')).toHaveCount(0);
   await page.getByTestId('inbox-open-session').click();
   await expect(page).toHaveURL(`${server.baseUrl}/sessions/${asker.id}`);
   await expect(page.getByTestId('view-session')).toHaveAttribute('data-session-id', asker.id);

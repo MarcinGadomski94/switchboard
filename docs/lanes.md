@@ -57,7 +57,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 |---|---|---|
 | `shell/Shell.tsx`, `shell/Sidebar.tsx`, `shell/format.ts`, `shell/shell.css` | App shell, sidebar, footer meters (M1.4). Lanes only adjust badge sources if their data needs it. | M1.4 |
 | `views/InboxView.tsx` | Inbox list + detail (+ `inbox.ts`, `inbox.css`; `docs/inbox.md`) | M3.2 |
-| `toast/ToastHost.tsx` | Toast host (rendering is in place); sound, OS notification, `questionBatch` trigger | M3.4 |
+| `toast/ToastHost.tsx` | Toast host; since M3.4 the `questionBatch` toast + chime + OS notification (`toast/notify.ts`, `toast/useQuestionNotifications.ts`, `docs/notifications.md`) | M1.4, M3.4 |
 | `views/session/SessionView.tsx` | Session layout (`1fr | 380px`), tab switch | M4.1 |
 | `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons, tabs | M4.1 |
 | `views/session/ChatTab.tsx` | Chat | M4.2 |
@@ -83,7 +83,7 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `router.tsx`: `RouterProvider`, `useRouter()`, `<Link to={route}>`, `parseRoute` / `routePath`. Paths: `/` and `/inbox`, `/sessions/:id[/:tab]` (tab `chat` · `timeline` · `diff` · `artifacts`), `/solutions`, `/schedules`, `/artifacts`, `/history`, `/tools/:id`, `/settings[/:section]`; unknown paths show the Inbox.
 - `api/client.ts`: `api.<call>()` per contract row, same-origin with the `sb_token` cookie; errors are `ApiError` (`notImplemented` for 501, `unreachable` for a network failure). `api/useApi.ts`: `useApi(fetcher, deps)` → `{ data, error, loading, reachable, reload }`.
 - `api/useHub.ts`: `useHubEvent(name, handler)` and `useHubStatus()` over one shared `EventSource('/hub')`; retries with a 2 s → 60 s backoff while the server refuses the stream (the real stream since M2.3, `docs/hub.md`).
-- `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette', { prefill? })` (M3.3: `prefill` = the New-session values, passed to `NewSessionModal`; M5.1 fills the form from it), Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`.
+- `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette', { prefill? })` (M3.3: `prefill` = the New-session values, passed to `NewSessionModal`; M5.1 fills the form from it), Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`; `toast/notify.ts`: `playChime()` / `notifyOs()` for M8.2's "Send test" (`docs/notifications.md`).
 
 ## Tests
 - `tests/e2e/shell.spec.ts`: the shell on the real code path (no demo): API calls reach the 501 routes, navigation, deep links, modals.
