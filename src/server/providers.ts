@@ -1,6 +1,7 @@
 import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
 import type { FolderRef } from './folders/ref.ts';
+import type { FrameHelperOpener } from './tools/frame-helper.ts';
 import type { FramingHeaders } from './tools/framing.ts';
 
 /**
@@ -105,4 +106,12 @@ export interface Providers {
   /** D15: without it (demo mode, tests that do not pass one) every tool's `frameUrl` is `null`. */
   readonly toolFrames?: ToolFrameProvider;
   readonly codebaseMemory?: CodebaseMemoryProvider;
+  /**
+   * D35 (`docs/frame-helper.md` → *Guided setup*): the OS openers of the frame-helper
+   * setup (`tools/frame-helper.ts` → `createFrameHelperOpener`), wired by main.ts
+   * with `SWITCHBOARD_OPEN_COMMAND`. Without one (tests that build the app bare)
+   * `POST /api/frame-helper/reveal` and `/open-extensions` answer 501, so nothing
+   * can open a real app by accident.
+   */
+  readonly frameHelperOpener?: FrameHelperOpener;
 }

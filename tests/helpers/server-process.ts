@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
+import { fakeOpenerEnv } from '../../tools/fake-opener/command.ts';
 import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
 
 /** The UI build E2E servers serve (`tests/e2e/global-setup.ts` builds it): never `dist/web`, which a running Switchboard may be serving. */
@@ -28,10 +29,18 @@ export interface ServerProcess extends SpawnedServer {
  * Defaults every test server gets unless `env` sets them (M5.3): the fake CLIs, so
  * `GET /api/system` and the `system` hub event never run the real `claude` or `gh`
  * (AGENTS.md), and the setup wizard does not open by itself over the page a spec
- * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on).
+ * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on). D35: the fake
+ * opener in front of the frame-helper setup's OS openers, so no test opens Chrome,
+ * Finder or Explorer.
  */
 export function testServerDefaults(): Record<string, string> {
-  return { SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(), SWITCHBOARD_GH_BIN: fakeGhBinEnv(), SWITCHBOARD_SETUP_WIZARD: 'off', SWITCHBOARD_WEB_ROOT: E2E_WEB_ROOT };
+  return {
+    SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
+    SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
+    SWITCHBOARD_SETUP_WIZARD: 'off',
+    SWITCHBOARD_WEB_ROOT: E2E_WEB_ROOT,
+    SWITCHBOARD_OPEN_COMMAND: fakeOpenerEnv(),
+  };
 }
 
 /** Environment for a test server: the parent env without any SWITCHBOARD_*, the {@link testServerDefaults}, then `env`. */

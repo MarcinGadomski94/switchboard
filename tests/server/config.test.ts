@@ -15,6 +15,7 @@ describe('loadConfig', () => {
       claudeExtraArgs: [],
       ghCommand: ['gh'],
       demo: false,
+      openCommand: null,
     });
     expect(DEFAULT_PORT).toBe(4870);
     expect(LOOPBACK_HOST).toBe('127.0.0.1');
@@ -76,6 +77,26 @@ describe('SWITCHBOARD_CLAUDE_EXTRA_ARGS (M2.1, dev-only)', () => {
     expect(() => loadConfig({ env: { SWITCHBOARD_CLAUDE_EXTRA_ARGS: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(
       ConfigError,
     );
+  });
+});
+
+describe('SWITCHBOARD_OPEN_COMMAND (D35, tests / development)', () => {
+  it('unset or blank: the openers run themselves (null)', () => {
+    expect(loadConfig({ env: {}, platform: 'linux', home: HOME, cwd: CWD }).openCommand).toBeNull();
+    expect(loadConfig({ env: { SWITCHBOARD_OPEN_COMMAND: '  ' }, platform: 'linux', home: HOME, cwd: CWD }).openCommand).toBeNull();
+  });
+
+  it('an argv prefix: one executable, or a JSON array', () => {
+    expect(loadConfig({ env: { SWITCHBOARD_OPEN_COMMAND: ' /opt/my tools/opener ' }, platform: 'linux', home: HOME, cwd: CWD }).openCommand).toEqual([
+      '/opt/my tools/opener',
+    ]);
+    expect(
+      loadConfig({ env: { SWITCHBOARD_OPEN_COMMAND: '["/usr/bin/node","/repo/tools/fake-opener/main.ts"]' }, platform: 'linux', home: HOME, cwd: CWD }).openCommand,
+    ).toEqual(['/usr/bin/node', '/repo/tools/fake-opener/main.ts']);
+  });
+
+  it.each(['[', '[]', '["node", 3]', '[""]'])('rejects %s', (value) => {
+    expect(() => loadConfig({ env: { SWITCHBOARD_OPEN_COMMAND: value }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
   });
 });
 

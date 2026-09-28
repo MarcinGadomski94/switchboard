@@ -23,6 +23,7 @@ import { loadOrCreateToken } from './token.ts';
 import { ToolProxies, settingsProxyPorts } from './tools/proxies.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
+import { createFrameHelperOpener } from './tools/frame-helper.ts';
 import { demoFolderChecks } from './demo/folders.ts';
 
 /**
@@ -95,6 +96,9 @@ async function main(): Promise<void> {
             onError: (error) => console.error('switchboard usage:', error),
           });
     if (usage) providers = withUsage(providers, usage);
+    // D35 (docs/frame-helper.md → Guided setup): the setup's OS openers, in demo mode too (they run only on a click);
+    // SWITCHBOARD_OPEN_COMMAND puts tests' fake opener in front of them.
+    providers = { ...providers, frameHelperOpener: createFrameHelperOpener({ prefix: config.openCommand }) };
     // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
     const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));

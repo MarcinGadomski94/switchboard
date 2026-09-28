@@ -30,6 +30,14 @@ export interface ServerConfig {
   readonly ghCommand: readonly string[];
   /** `SWITCHBOARD_DEMO=1` loads the demo seed (decisions gap #21). Anything else = off. */
   readonly demo: boolean;
+  /**
+   * D35 (`docs/frame-helper.md` → *Guided setup*): `SWITCHBOARD_OPEN_COMMAND`, an
+   * argv prefix put in front of the OS opener the frame-helper setup runs (`open …`,
+   * `explorer …`, `xdg-open …`, Chrome), so that command becomes its arguments.
+   * Tests point it at `tools/fake-opener`, which records them and opens nothing.
+   * Default `null`: the opener runs itself.
+   */
+  readonly openCommand: readonly string[] | null;
 }
 
 /** Thrown when an environment variable has an unusable value. */
@@ -144,5 +152,6 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     claudeExtraArgs: parseArgList('SWITCHBOARD_CLAUDE_EXTRA_ARGS', env['SWITCHBOARD_CLAUDE_EXTRA_ARGS']),
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
     demo: env['SWITCHBOARD_DEMO'] === '1',
+    openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,
   };
 }
