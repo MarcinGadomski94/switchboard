@@ -27,7 +27,7 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
 ];
 
 /** Contract rows implemented so far (their behavior has its own tests, e.g. tests/server/api/sessions.test.ts). */
-const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
+const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, string]> = [
   ['GET', '/api/sessions', 'M2.1'],
   ['POST', '/api/sessions', 'M2.1'],
   ['GET', '/api/sessions/s1', 'M2.1'],
@@ -47,11 +47,11 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['PUT', '/api/tools', 'M8.1'],
   ['POST', '/api/tools/nope/probe', 'M8.1'], // an unknown tool: nothing is fetched (tests/server/api/tools.test.ts)
   ['GET', '/api/codebase-memory', 'M8.1'], // additive (docs/tools.md)
-  ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no workspace root here → 409, nothing starts
+  ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no saved folder here → 409 no-folder, nothing starts
   ['GET', '/api/settings', 'M8.2'],
   ['PUT', '/api/settings', 'M8.2'], // no body here → 422, nothing stored (tests/server/api/settings.test.ts)
   ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'], // tests/server/api/artifacts.test.ts
-  ['GET', '/api/history?q=x', 'M7.4'], // no workspace root here → stored sessions only (tests/server/api/history.test.ts)
+  ['GET', '/api/history?q=x', 'M7.4'], // no folder here → stored sessions only (tests/server/api/history.test.ts)
   // M7.1 (docs/schedules.md): the scheduler.
   ['GET', '/api/schedules', 'M7.1'],
   ['POST', '/api/schedules', 'M7.1'],
@@ -62,10 +62,14 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['GET', '/api/system', 'M5.3'],
   // M5.3, additive to the contract (docs/setup.md): the first-run wizard.
   ['GET', '/api/setup', 'M5.3'],
-  ['GET', '/api/setup/root?path=/tmp', 'M5.3'],
-  ['PUT', '/api/setup/root', 'M5.3'],
   ['GET', '/api/setup/folders?path=/tmp', 'M5.3'],
   ['POST', '/api/setup/complete', 'M5.3'],
+  // D14, additive to the contract (docs/folders.md): the saved folders.
+  ['GET', '/api/folders', 'D14'],
+  ['GET', '/api/folders/check?path=/tmp', 'D14'],
+  ['POST', '/api/folders', 'D14'], // no body here → 422, nothing saved
+  ['DELETE', '/api/folders/nope', 'D14'],
+  ['PUT', '/api/folders/nope/default', 'D14'],
 ];
 
 let tmp: string;
