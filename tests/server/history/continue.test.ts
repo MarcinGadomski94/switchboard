@@ -226,6 +226,47 @@ describe('POST /api/history/{id}/continue (D16)', () => {
     expect(rows).toEqual([expect.objectContaining({ name: 'code-words', displayTitle: 'sb-handoff-conc' })]);
   });
 
+  it('D22 (developer ruling): a given title is the title and the short name is derived from it (-2 when taken); a given name still wins; 422 on a bad title', async () => {
+    const w = await setup();
+    await terminalConversation(w, 'handoff', 'term-a');
+    await terminalConversation(w, 'handoff', 'term-b');
+    await terminalConversation(w, 'handoff-conc', 'term-c');
+    // Refused before anything moves: an 81-character, blank or non-text title.
+    for (const title of ['x'.repeat(81), '   ', 42]) {
+      const refusal = await move('term-c', { title });
+      expect(refusal.statusCode, String(title)).toBe(422);
+      expect(refusal.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'title', message: 'the title must be text of 1–80 characters' }] });
+    }
+    expect(await sessionSpawns(w)).toEqual([]);
+
+    const first = await move('term-a', { title: '  Lantern follow-up ' });
+    expect(first.statusCode, first.body).toBe(201);
+    expect(first.json()).toMatchObject({ name: 'lantern-follow-up', title: 'Lantern follow-up', displayTitle: 'Lantern follow-up', claudeSessionId: 'term-a' });
+    // The same title again: the short name gets -2 (the title is not unique).
+    const second = await move('term-b', { title: 'Lantern follow-up' });
+    expect(second.statusCode, second.body).toBe(201);
+    expect(second.json()).toMatchObject({ name: 'lantern-follow-up-2', title: 'Lantern follow-up' });
+    // A given name is the short name; the title stays the given one. null = the conversation's own title (D16).
+    const named = await move('term-c', { name: 'code-words', title: 'Code words' });
+    expect(named.statusCode, named.body).toBe(201);
+    expect(named.json()).toMatchObject({ name: 'code-words', title: 'Code words' });
+    const spawns = await until(async () => {
+      const logged = await sessionSpawns(w);
+      return logged.length === 3 ? logged : undefined;
+    }, 'three resume spawns');
+    const names = spawns.map((line) => line.argv?.[(line.argv?.indexOf('--name') ?? -2) + 1]);
+    expect(names.sort()).toEqual(['Code words', 'Lantern follow-up', 'Lantern follow-up']);
+  });
+
+  it('D22: title null keeps the conversation\'s own title (D16)', async () => {
+    const w = await setup();
+    await terminalConversation(w, 'handoff', 'term-a');
+    const moved = await move('term-a', { title: null });
+    expect(moved.statusCode, moved.body).toBe(201);
+    expect(moved.json()).toMatchObject({ name: 'sb-handoff', title: 'sb-handoff' });
+    expect(w.errors).toEqual([]);
+  });
+
   it("D22: the title is the custom title, else the AI title, whitespace collapsed, at most 80 characters; none without either", () => {
     expect(conversationTitle({ customTitle: '  Fix   the\nlogin  ', aiTitle: 'AI' })).toBe('Fix the login');
     expect(conversationTitle({ customTitle: '   ', aiTitle: 'Refactor billing' })).toBe('Refactor billing');

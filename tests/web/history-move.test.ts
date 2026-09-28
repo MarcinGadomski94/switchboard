@@ -67,7 +67,8 @@ describe('moves (D16)', () => {
     ]);
     expect(nextWaiting(items)?.claudeSessionId).toBe('a');
     expect(continueBody(items[0] as MoveItem)).toEqual({});
-    expect(continueBody({ addFolder: true, confirm: true }, 'my-name')).toEqual({ name: 'my-name', addFolder: true, confirm: true });
+    // D22: the New-session form's typed text goes as the title (the service derives the short name).
+    expect(continueBody({ addFolder: true, confirm: true }, 'My title')).toEqual({ title: 'My title', addFolder: true, confirm: true });
   });
 
   it('reads the refusals: folder-not-saved, terminal-open, already in Switchboard, validation, anything else', () => {

@@ -1,8 +1,8 @@
 import type { HistoryItem } from '../../core/api.ts';
 import { formatHistoryDate } from '../../core/history.ts';
-import { SESSION_NAME_PATTERN, movedSessionName } from '../../core/terminal-move.ts';
+import { movedSessionName } from '../../core/terminal-move.ts';
 import { FOLDER_KIND_LABEL } from '../folders/folders.ts';
-import type { FormFolder, SummaryLine } from './new-session.ts';
+import { type FormFolder, type StartNames, type SummaryLine, TITLE_TOO_LONG, startNames, titleTooLong } from './new-session.ts';
 
 /**
  * D16 in the New-session form (`docs/new-session.md` → *Resume a terminal
@@ -10,7 +10,10 @@ import type { FormFolder, SummaryLine } from './new-session.ts';
  * chosen folder's terminal conversations that are not in Switchboard yet (title,
  * date, first prompt). Picking one replaces the task, and Start moves it
  * (`POST /api/history/{id}/continue`) instead of starting a new session. Pure
- * rules: the entries, the name, when Start is enabled, the summary.
+ * rules: the entries, the name, when Start is enabled, the summary. D22
+ * (developer ruling 2026-09-28): text typed in the name field is the moved
+ * session's title (sent as `title`; the service derives the short name from it as
+ * for a new session); an empty field keeps D16 (the conversation's own title).
  */
 
 /** The choice next to the task. */
@@ -35,24 +38,32 @@ export function resumeNamePreview(pick: Pick<ResumePick, 'name'>, takenNames: re
   return movedSessionName({ customTitle: pick.name }, new Set(takenNames));
 }
 
-/** Why a typed name cannot be used, `null` when it can (an empty field: the service names it). */
-export function resumeNameProblem(typed: string, takenNames: readonly string[]): string | null {
-  const name = typed.trim();
-  if (name === '') return null;
-  if (!SESSION_NAME_PATTERN.test(name) || name.length > 64) return '⚠ the name must be kebab-case (a-z, 0-9, single dashes)';
-  if (takenNames.includes(name)) return '⚠ a session with this name exists';
-  return null;
+/**
+ * The moved session's names (D22): typed text is its title and the short name is
+ * derived from it (`startNames`: `-2`, `-3`, … when taken, the rule the service
+ * applies to the posted `title`); an empty field has no title of its own and the
+ * {@link resumeNamePreview} name.
+ */
+export function resumeNames(pick: Pick<ResumePick, 'name'>, typed: string, takenNames: readonly string[]): StartNames {
+  if (typed.trim() === '') return { name: resumeNamePreview(pick, takenNames), title: null };
+  return startNames({ name: typed }, takenNames);
 }
 
-/** Start moves the picked conversation: a pick, and a usable name (or none). */
-export function canStartResume(pick: ResumePick | null, typed: string, takenNames: readonly string[]): boolean {
-  return pick !== null && resumeNameProblem(typed, takenNames) === null;
+/** Why the typed text cannot be used, `null` when it can (D22: any text up to 80 characters is a title; an empty field: the service names it). */
+export function resumeNameProblem(typed: string): string | null {
+  return titleTooLong({ name: typed }) ? TITLE_TOO_LONG : null;
+}
+
+/** Start moves the picked conversation: a pick, and a usable title (or none). */
+export function canStartResume(pick: ResumePick | null, typed: string): boolean {
+  return pick !== null && resumeNameProblem(typed) === null;
 }
 
 /**
  * The live summary while a conversation is picked: the folder, the cwd it
- * continues in (where it started), the command it resumes with, the name, and
- * what happens (no first message, the history imported, idle).
+ * continues in (where it started), the command it resumes with, the short name
+ * ({@link resumeNames}), and what happens (no first message, the history
+ * imported, idle).
  */
 export function resumeSummaryLines(pick: ResumePick, folder: FormFolder | null, typed: string, takenNames: readonly string[]): SummaryLine[] {
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
@@ -61,11 +72,11 @@ export function resumeSummaryLines(pick: ResumePick, folder: FormFolder | null, 
   lines.push(
     value(`cwd       ${pick.cwd ?? '—'}`),
     value(`resume    claude --resume ${pick.claudeSessionId}`),
-    value(`name      ${typed.trim() || resumeNamePreview(pick, takenNames)}`),
+    value(`name      ${resumeNames(pick, typed, takenNames).name}`),
     value(' '),
     { text: '# moves the terminal conversation · no first message', tone: 'comment' },
   );
-  const problem = resumeNameProblem(typed, takenNames);
+  const problem = resumeNameProblem(typed);
   if (problem) lines.push({ text: problem, tone: 'warn' });
   lines.push(value(' '), { text: '✓ same conversation · history imported · idle', tone: 'ok' });
   return lines;

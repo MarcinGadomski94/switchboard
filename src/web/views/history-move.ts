@@ -54,10 +54,14 @@ export function startMoves(rows: ReadonlyArray<Pick<HistoryItem, 'claudeSessionI
   return rows.map((row) => ({ claudeSessionId: row.claudeSessionId, title: row.name, addFolder: false, confirm: false, state: { kind: 'waiting' } }));
 }
 
-/** The body of the next call for this conversation: only what the developer chose (and a typed name). */
-export function continueBody(item: Pick<MoveItem, 'addFolder' | 'confirm'>, name?: string): ContinueConversation {
+/**
+ * The body of the next call for this conversation: only what the developer chose
+ * (and, D22, the title typed in the New-session form: the service derives the
+ * short name from it).
+ */
+export function continueBody(item: Pick<MoveItem, 'addFolder' | 'confirm'>, title?: string): ContinueConversation {
   return {
-    ...(name ? { name } : {}),
+    ...(title ? { title } : {}),
     ...(item.addFolder ? { addFolder: true } : {}),
     ...(item.confirm ? { confirm: true } : {}),
   };

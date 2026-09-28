@@ -20,8 +20,8 @@ export interface ConversationMoves {
   readonly items: readonly MoveItem[] | null;
   /** A call to the service is running. */
   readonly busy: boolean;
-  /** Moves these rows, one at a time, in order; `name` (a single row) is the typed session name. */
-  start(rows: ReadonlyArray<Pick<HistoryItem, 'claudeSessionId' | 'name'>>, name?: string): void;
+  /** Moves these rows, one at a time, in order; `title` (a single row) is the title typed in the New-session form (D22). */
+  start(rows: ReadonlyArray<Pick<HistoryItem, 'claudeSessionId' | 'name'>>, title?: string): void;
   /** "Add <folder> and continue": the same call again with `addFolder`. */
   addFolder(claudeSessionId: string): void;
   /** "Continue anyway": the same call again with `confirm`. */
@@ -45,7 +45,7 @@ export function useConversationMoves(onOpen: (sessionId: string) => void): Conve
   const [items, setItems] = useState<MoveItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
-  const name = useRef<string | undefined>(undefined);
+  const title = useRef<string | undefined>(undefined);
   const mounted = useRef(true);
   const open = useRef(onOpen);
   open.current = onOpen;
@@ -75,7 +75,7 @@ export function useConversationMoves(onOpen: (sessionId: string) => void): Conve
     setBusy(true);
     const id = next.claudeSessionId;
     setItems((current) => (current ? updateMove(current, id, { state: { kind: 'moving' } }) : current));
-    api.continueConversation(id, continueBody(next, items.length === 1 ? name.current : undefined)).then(
+    api.continueConversation(id, continueBody(next, items.length === 1 ? title.current : undefined)).then(
       (session) => {
         running.current = false;
         if (!mounted.current) return;
@@ -94,7 +94,7 @@ export function useConversationMoves(onOpen: (sessionId: string) => void): Conve
 
   const start = useCallback((rows: ReadonlyArray<Pick<HistoryItem, 'claudeSessionId' | 'name'>>, typed?: string) => {
     if (running.current || rows.length === 0) return;
-    name.current = typed && typed.trim() !== '' ? typed.trim() : undefined;
+    title.current = typed && typed.trim() !== '' ? typed.trim() : undefined;
     setItems(startMoves(rows));
   }, []);
   const retry = (claudeSessionId: string, patch: Partial<Pick<MoveItem, 'addFolder' | 'confirm'>>): void => {

@@ -211,7 +211,7 @@ export function NewSessionModal({
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
   const startable = resuming
-    ? canStartResume(resume, form.name, takenNames) && !moves.busy && !moveRunning
+    ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
     : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
   const hideRouter = repo || resuming;
   const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
@@ -237,7 +237,7 @@ export function NewSessionModal({
     if (!startable) return;
     if (scheduling) return saveSchedule();
     if (resume) {
-      // D16: the picked conversation moves into Switchboard as the same conversation.
+      // D16: the picked conversation moves into Switchboard as the same conversation; D22: typed text is its title.
       setError(null);
       moves.start([{ claudeSessionId: resume.claudeSessionId, name: resume.name }], form.name);
       return;
@@ -338,8 +338,8 @@ export function NewSessionModal({
                 value={form.name}
                 placeholder={resuming && resume ? resumeNamePreview(resume, takenNames) : 'session-name'}
                 spellCheck={false}
-                // D22: a new session's field takes free text (its title); a schedule's name and a moved conversation's name stay kebab-case.
-                onChange={(event) => update({ name: scheduling || resuming ? sanitizeName(event.target.value) : event.target.value })}
+                // D22: the field takes free text (the title of a new or a moved session); a schedule's name stays kebab-case.
+                onChange={(event) => update({ name: scheduling ? sanitizeName(event.target.value) : event.target.value })}
               />
               {resuming && resume ? (
                 <div className="sb-ns-input sb-ns-resume-picked" data-testid="ns-resume-picked" data-claude-session-id={resume.claudeSessionId} title={resume.firstPrompt ?? undefined}>

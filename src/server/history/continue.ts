@@ -2,7 +2,7 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ContinueRefusal, FolderCheck } from '../../core/api.ts';
 import { isTerminalConversation, relativeToRoot, solutionOfPath } from '../../core/history.ts';
-import { TITLE_MAX } from '../../core/session-title.ts';
+import { TITLE_MAX, checkTitle, shortNameFromTitle } from '../../core/session-title.ts';
 import { movedSessionName } from '../../core/terminal-move.ts';
 import type { TranscriptFacts } from '../../core/transcript.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
@@ -82,7 +82,10 @@ function supervisorStatus(error: SupervisorError): number {
  *    neither a workspace nor a repo above it: 422 `not-in-a-folder`;
  * 3. **name**: `name` when given (kebab-case, unique: else 422), else the title,
  *    else the first prompt, in kebab-case, made unique (`src/core/terminal-move.ts`);
- *    D22: the session's **title** is the conversation's title ({@link conversationTitle});
+ *    D22: the session's **title** is the conversation's title ({@link conversationTitle}).
+ *    D22 (developer ruling 2026-09-28): a given `title` (trimmed, 1–80 characters,
+ *    else 422 on `title`) replaces it, and without a given `name` the short name is
+ *    derived from that title as for a new session (`shortNameFromTitle`: `-2`, `-3`, …);
  * 4. **terminal check** (the Attach-here warning): 409 `terminal-open` with the
  *    reasons unless `confirm: true`. Nothing has changed until here (the folder is
  *    added only after this check);
@@ -116,12 +119,20 @@ export class ConversationMover {
 
   async #continueNow(claudeSessionId: string, body: unknown): Promise<ContinueOutcome> {
     if (body !== undefined && body !== null && !isRecord(body)) {
-      return refused(422, { error: 'invalid', errors: [{ field: '', message: 'the body must be an object: { name?, addFolder?, confirm? }' }] });
+      return refused(422, { error: 'invalid', errors: [{ field: '', message: 'the body must be an object: { name?, title?, addFolder?, confirm? }' }] });
     }
     const input = isRecord(body) ? body : {};
     const rawName = input['name'];
     if (rawName !== undefined && rawName !== null && typeof rawName !== 'string') {
       return refused(422, { error: 'invalid', errors: [{ field: 'name', message: 'the name must be text' }] });
+    }
+    // D22: a typed title (omitted or null: the conversation's own title, D16).
+    const rawTitle = input['title'];
+    let typedTitle: string | null = null;
+    if (rawTitle !== undefined && rawTitle !== null) {
+      const check = checkTitle(rawTitle);
+      if (!check.ok) return refused(422, { error: 'invalid', errors: [{ field: 'title', message: check.message }] });
+      typedTitle = check.title;
     }
     const addFolder = input['addFolder'] === true;
     const confirm = input['confirm'] === true;
@@ -172,7 +183,7 @@ export class ConversationMover {
       }
       if (taken.has(typed)) return refused(422, { error: 'invalid', errors: [{ field: 'name', message: `a session named "${typed}" already exists` }] });
     }
-    const name = typed !== '' ? typed : movedSessionName(facts, taken);
+    const name = typed !== '' ? typed : typedTitle !== null ? shortNameFromTitle(typedTitle, taken) : movedSessionName(facts, taken);
 
     // 4. A terminal may still have it open: two live processes on one id split the transcript (M0.4).
     if (!confirm) {
@@ -195,7 +206,7 @@ export class ConversationMover {
       const record = await this.#supervisor.adopt(
         {
           name,
-          title: conversationTitle(facts),
+          title: typedTitle ?? conversationTitle(facts),
           task: facts.firstPrompt ?? facts.firstCommand ?? '',
           claudeSessionId,
           solutions: this.#solutions(folder, facts),

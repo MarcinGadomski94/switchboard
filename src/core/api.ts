@@ -602,8 +602,17 @@ export interface HistoryItem {
  * Every field is optional; the answer is `201 Session`.
  */
 export interface ContinueConversation {
-  /** The session's name (kebab-case, unique); omitted = from the conversation's title, else its first prompt. */
+  /**
+   * The session's name (kebab-case, unique); omitted = derived from {@link title}
+   * when one is given (D22), else from the conversation's title, else its first prompt.
+   */
   readonly name?: string;
+  /**
+   * Additive (D22, developer ruling 2026-09-28): the moved session's title (trimmed,
+   * 1–80 characters, else 422 on field `title`); omitted or `null` = the
+   * conversation's own title (custom, else AI), none without one.
+   */
+  readonly title?: string | null;
   /** Add the workspace or repo the conversation sits in to the saved folders (after `409 folder-not-saved`). */
   readonly addFolder?: boolean;
   /** Move it although a terminal may still have it open (after `409 terminal-open`). */
