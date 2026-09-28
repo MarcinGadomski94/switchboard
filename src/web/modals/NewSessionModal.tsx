@@ -168,7 +168,8 @@ export function NewSessionModal({
 }) {
   const { navigate } = useRouter();
   const folders = useSavedFolders();
-  const sessions = useApi(api.listSessions);
+  // D33: closed sessions keep their short names, so the name check lists them too.
+  const sessions = useApi(() => api.listSessions({ closed: 'include' }));
   useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
 
   const scheduling = schedule !== null;

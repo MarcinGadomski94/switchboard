@@ -1,5 +1,6 @@
 import { Fragment, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AnswerBatch, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import { closedBatchText } from '../../../core/session-close.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
@@ -176,6 +177,17 @@ function ChatItemView({
         error={mine?.error ?? null}
         onSend={(body) => onAnswer(item.batchId, body)}
       />
+    );
+  }
+  // D33: closed with its session before it was answered: no answers, the label says why.
+  const closedReason = item.questions.find((question) => question.closedReason)?.closedReason ?? null;
+  if (closedReason) {
+    return (
+      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId} data-closed={closedReason}>
+        <div className="sb-chat-answers-bubble">
+          <div data-testid="chat-answer">{closedBatchText(closedReason)}</div>
+        </div>
+      </div>
     );
   }
   // D24: the phone answered it first (Remote Control): the CLI withdrew it, so Switchboard holds no answers.

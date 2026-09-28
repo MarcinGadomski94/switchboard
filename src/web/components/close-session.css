@@ -1,0 +1,68 @@
+/*
+ * D33 · the Close confirmation (not in the prototype): over the page like the
+ * other dialogs (the History move dialog's overlay and panel), with the attach
+ * warning's question colors and pill buttons, through the SPEC tokens.
+ */
+.sb-close-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sb-close-dialog {
+  width: 440px;
+  max-width: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+}
+
+.sb-close-text {
+  font-size: var(--fs-body-lg);
+  line-height: 1.45;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.sb-close-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}
+
+.sb-close-actions {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-close-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-close-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.sb-close-primary:disabled,
+.sb-close-outlined:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

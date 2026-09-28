@@ -332,6 +332,40 @@ describe('recoverSessions · after a crash (recorded pids)', () => {
     expect(await spawnedArgv(world.logFile)).toEqual([]);
   });
 
+  it('D33: a closed session is never resumed: a leftover is still stopped and its pid cleared, a run / need status becomes paused; an open one resumes', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const closedAt = '2026-09-28T10:00:00.000Z';
+    const closedRun = await crashed(w, { name: 'closed-run', status: 'run', pid: 91_010 });
+    const closedNeed = await crashed(w, { name: 'closed-need', status: 'need' });
+    const closedDone = await crashed(w, { name: 'closed-done', status: 'done' });
+    for (const session of [closedRun, closedNeed, closedDone]) await w.store.sessions.update(session.id, { closedAt });
+    const open = await crashed(w, { name: 'open-run', status: 'run' });
+    const processes = stubProcesses(new Set([91_010]));
+    const report = await recoverSessions({
+      store: w.store,
+      supervisor: restarted(w),
+      listLive: lister([{ pid: 91_010, sessionId: closedRun.claudeSessionId }]),
+      processes,
+      pollMs: 5,
+    });
+    expect(Object.fromEntries(report.sessions.map((s) => [s.sessionId, s.action]))).toEqual({
+      [closedRun.id]: 'cleaned',
+      [closedNeed.id]: 'cleaned',
+      [open.id]: 'resumed',
+    });
+    // The closed session's leftover process is stopped all the same (never two processes on one id).
+    expect(processes.kills).toEqual([[91_010, 'SIGINT']]);
+    expect(await w.store.sessions.get(closedRun.id)).toMatchObject({ status: 'paused', pid: null, closedAt });
+    expect(await w.store.sessions.get(closedNeed.id)).toMatchObject({ status: 'paused', pid: null, closedAt });
+    expect(await w.store.sessions.get(closedDone.id)).toMatchObject({ status: 'done', closedAt });
+    const [spawned] = await sessionSpawns(w.logFile, 1);
+    expect(spawned?.argv).toEqual(expect.arrayContaining(['--resume', open.claudeSessionId]));
+    await delay(300); // a spawn for a closed session would have logged its argv by now
+    expect((await spawnedArgv(w.logFile)).filter((line) => line.argv?.includes('-p'))).toHaveLength(1);
+    for (const session of [closedRun, closedNeed, closedDone]) expect(lifecycle(await w.store.events.list(session.id), 'recovered')).toBeUndefined();
+  });
+
   it('requests still open become stale (orphaned hook), running subagents idle', async () => {
     world = await makeSupervisorWorld();
     const need = await crashed(world, { name: 'asking', status: 'need', pid: 91_008 });

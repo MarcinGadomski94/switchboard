@@ -88,9 +88,9 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await expect(toggle).toBeEnabled();
   await expect(page.getByTestId('session-remote-link')).toHaveCount(0);
-  // It sits with the header actions, before Pause (after D31's model picker), in their style.
+  // It sits with the header actions, before Pause (after D31's model picker and D33's Close), in their style.
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
-  expect(actions).toEqual(['session-model', 'session-remote', 'session-pause', 'session-handoff']);
+  expect(actions).toEqual(['session-model', 'session-close', 'session-remote', 'session-pause', 'session-handoff']);
   await expect(toggle).toHaveCSS('font-size', '12px');
   await expect(toggle).toHaveCSS('border-top-left-radius', '6px');
   const pause = page.getByTestId('session-pause');
@@ -126,10 +126,15 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   await expect(page.getByTestId('remote-popover')).toBeVisible();
   await page.getByTestId('remote-close').click();
   await expect(page.getByTestId('remote-popover')).toHaveCount(0);
-  // With Remote on (its widest: Remote + Link & QR) and this long temp path, every header action stays left of the right panel.
+  // With Remote on (its widest: Close + Remote + Link & QR, D33) and this long temp path, every header action stays left of the right panel,
+  // on one line, right of the root path (which wraps instead).
   const lastAction = await page.getByTestId('session-handoff').boundingBox();
   const panel = await page.getByTestId('session-right-panel').boundingBox();
   expect((lastAction?.x ?? 0) + (lastAction?.width ?? 0)).toBeLessThanOrEqual(panel?.x ?? 0);
+  const closeBox = await page.getByTestId('session-close').boundingBox();
+  const rootBox = await page.getByTestId('session-root').boundingBox();
+  expect(closeBox?.x ?? 0).toBeGreaterThanOrEqual((rootBox?.x ?? 0) + (rootBox?.width ?? 0));
+  expect(closeBox?.y).toBe(lastAction?.y);
 
   // The sidebar row: the phone glyph while the session runs with Remote on.
   const glyph = sidebarRow(page, 'remote-e2e').getByTestId('session-remote-glyph');

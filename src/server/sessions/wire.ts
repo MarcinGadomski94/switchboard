@@ -5,7 +5,7 @@ import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
-import { toQuestion } from '../inbox/wire.ts';
+import { isBatchWaiting, toQuestion } from '../inbox/wire.ts';
 import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
@@ -59,12 +59,13 @@ export function toArtifact(record: ArtifactRecord): Artifact {
 /**
  * Questions of the session's batches that still wait for the developer (M3.1,
  * docs/questions.md): open ones, and stale ones not answered yet (they stay
- * answerable; their answers go out as a user message).
+ * answerable; their answers go out as a user message). D33: batches closed with
+ * the session do not wait.
  */
 async function openQuestionCount(store: Store, sessionId: string): Promise<number> {
   const batches = await store.questions.listBatches({ sessionId, states: ['open', 'stale'] });
   let count = 0;
-  for (const batch of batches) if (batch.answeredAt === null) count += (await store.questions.questionsOf(batch.id)).length;
+  for (const batch of batches) if (isBatchWaiting(batch)) count += (await store.questions.questionsOf(batch.id)).length;
   return count;
 }
 
@@ -79,7 +80,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * D22: its `title` (`null` when none) and `displayTitle` (the title, else the name),
  * what the UI shows. D24: its `remote` state ({@link toSessionRemote}). D25:
  * `remoteSource`, the remote session a teleported session is a local copy of
- * (`null` otherwise). D31: its `model` ({@link toSessionModel}).
+ * (`null` otherwise). D31: its `model` ({@link toSessionModel}). D33: `closedAt`,
+ * when the developer closed it (`null` while open).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -117,6 +119,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     remoteSource: record.remoteSource,
     remote: toSessionRemote(record),
     model: toSessionModel(record),
+    closedAt: record.closedAt,
   };
 }
 

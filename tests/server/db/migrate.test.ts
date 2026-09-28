@@ -285,6 +285,37 @@ describe('0009 session model (D31)', () => {
   });
 });
 
+describe('0010 session closed (D33)', () => {
+  it('adds nullable sessions.closed_at and question_batches.closed_reason: existing sessions are open, existing batches not closed', async () => {
+    const file = path.join(tmp, 'existing-closed.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 10)).toMatchObject({ name: 'session_closed' });
+    // A database as the build before D33 left it (0009 belongs to another change: the runner takes the gap).
+    migrate(database, shipped.filter((m) => m.version <= 8));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO question_batches (id, session_id, input, created_at) VALUES (?, ?, ?, ?)').run('b-old', 's-old', '{}', ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 8).map((m) => m.version));
+    expect(columnsOf(database, 'sessions')).toContain('closed_at');
+    expect(columnsOf(database, 'question_batches')).toContain('closed_reason');
+    expect(database.prepare('SELECT id, closed_at FROM sessions').all()).toEqual([{ id: 's-old', closed_at: null }]);
+    expect(database.prepare('SELECT id, closed_reason FROM question_batches').all()).toEqual([{ id: 'b-old', closed_reason: null }]);
+    database.close();
+
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ closedAt: null });
+      expect(await store.questions.getBatch('b-old')).toMatchObject({ closedReason: null });
+      const closed = await store.sessions.update('s-old', { closedAt: ts });
+      expect(closed).toMatchObject({ closedAt: ts });
+      expect(await store.questions.closeUnanswered('b-old', 'session closed')).toMatchObject({ state: 'stale', closedReason: 'session closed' });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

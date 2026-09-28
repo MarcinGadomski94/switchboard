@@ -32,6 +32,7 @@ import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
 import { LiveRemote, RemoteControlError } from './remote.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
+import { closeNeedsConfirm } from '../../core/session-close.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -189,6 +190,18 @@ export interface SupervisorOptions {
   readonly teleportInitTimeoutMs?: number;
 }
 
+/** Options of {@link SessionSupervisor.close} (D33). */
+export interface CloseOptions {
+  /** The developer confirmed stopping a session whose process is live, or that runs or waits. */
+  readonly confirm?: boolean;
+  /**
+   * Runs once the session is stored as closed, before `sessionUpdated` is
+   * published (the route closes its open questions and permission requests there,
+   * so the published session no longer counts them).
+   */
+  readonly beforePublish?: (sessionId: string) => Promise<void>;
+}
+
 /** Options of {@link SessionSupervisor.attach}. */
 export interface AttachOptions {
   /** Attach even when a terminal may still hold the session (the developer confirmed the warning). */
@@ -217,7 +230,11 @@ export type SupervisorErrorCode =
   /** D31: a model or effort that is not on offer (the route's 422; {@link ModelChoiceError} names the field). */
   | 'invalid-model'
   /** D31: the CLI refused the `set_model` / `apply_flag_settings` request; the message is its text, verbatim. */
-  | 'model-failed';
+  | 'model-failed'
+  /** D33: closing a session whose process is live, or that runs or waits, needs `confirm`. */
+  | 'close-needs-confirm'
+  /** D33: the session is closed; reopen it first (a message, Resume or Attach). */
+  | 'closed';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -337,6 +354,8 @@ export class SessionSupervisor {
   readonly #teleportInitTimeoutMs: number;
   /** D25: sessions whose teleport has not reported `init` yet: stored, but not announced (they may be deleted again). */
   readonly #starting = new Set<string>();
+  /** D33: closes in progress, by session (a second close waits for the first; messages are refused meanwhile). */
+  readonly #closingSessions = new Map<string, Promise<SessionRecord>>();
   #closing = false;
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
   #gate: Promise<void> = Promise.resolve();
@@ -455,11 +474,14 @@ export class SessionSupervisor {
     await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     let live = this.#live.get(sessionId);
     if (live?.stopping) {
       await live.finished;
       live = undefined;
+      // D33: the stop may have been a close.
+      this.#assertNotClosed(await this.#get(sessionId));
     }
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
     await this.#send(live, text, origin);
@@ -495,6 +517,7 @@ export class SessionSupervisor {
     await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
     const live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
@@ -515,6 +538,90 @@ export class SessionSupervisor {
       await this.#emitSession(sessionId);
     }
     return { resumeCommand: resumeCommand(session.claudeSessionId) };
+  }
+
+  // ── close and reopen (D33, docs/supervisor.md → Close and reopen) ────────
+
+  /**
+   * D33 Close (`POST /api/sessions/{id}/close`). A session whose process is live,
+   * or whose status says it runs or waits (`run` / `need`), is closed only with
+   * `options.confirm` (else `close-needs-confirm`); its process is then stopped
+   * the way {@link pause} stops it (D7: interrupt, EOF, exit; open requests go
+   * stale), so the conversation stays resumable, and a `run` / `need` status
+   * without a process becomes `paused`. Then `closedAt` is stored, a `closed`
+   * lifecycle event recorded, `options.beforePublish` runs (the route closes the
+   * session's Inbox items there) and `sessionUpdated` is published. Worktrees and
+   * branches are not touched. Idempotent: a closed session is returned as it is,
+   * and a second call while a close runs waits for it. While a close runs and once
+   * it is done, messages, Resume and Attach are refused (`closed`).
+   * @throws {SupervisorError} `not-found`, `close-needs-confirm`, `closing`.
+   */
+  async close(sessionId: string, options: CloseOptions = {}): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const running = this.#closingSessions.get(sessionId);
+    if (running) return running;
+    const session = await this.#get(sessionId);
+    if (session.closedAt !== null) return session;
+    const live = this.#live.get(sessionId);
+    if (closeNeedsConfirm({ live: live !== undefined, status: session.status }) && options.confirm !== true) {
+      const what = session.status === 'need' ? 'waiting for you' : session.status === 'run' ? 'running' : 'running a claude process';
+      throw new SupervisorError(
+        'close-needs-confirm',
+        `${session.title ?? session.name} is ${what}: closing it stops its process (the conversation stays resumable). Confirm to stop and close it.`,
+      );
+    }
+    const run = this.#closeNow(sessionId, options);
+    this.#closingSessions.set(sessionId, run);
+    try {
+      return await run;
+    } finally {
+      this.#closingSessions.delete(sessionId);
+    }
+  }
+
+  async #closeNow(sessionId: string, options: CloseOptions): Promise<SessionRecord> {
+    const live = this.#live.get(sessionId);
+    if (live) await this.#stop(live, 'pause');
+    const stopped = await this.#get(sessionId);
+    if (!this.#live.has(sessionId) && (stopped.status === 'run' || stopped.status === 'need')) {
+      // A status left from a process that is gone: the session no longer runs or waits.
+      await this.#store.sessions.update(sessionId, { status: 'paused' });
+      await this.#setMainAgentStatus(sessionId, 'paused');
+    }
+    await this.#store.sessions.update(sessionId, { closedAt: new Date().toISOString() });
+    await this.#recordStandalone(sessionId, 'closed', LIFECYCLE_LABELS.closed);
+    if (options.beforePublish) {
+      try {
+        await options.beforePublish(sessionId);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
+  }
+
+  /**
+   * D33 Reopen (`POST /api/sessions/{id}/reopen`): clears `closedAt`, records a
+   * `reopened` lifecycle event and publishes `sessionUpdated`. No process is
+   * started: the session stays as it was closed (paused / idle / ended), and the
+   * next message resumes it as usual. Idempotent (an open session is returned as
+   * it is); a close still running is waited for first.
+   * @throws {SupervisorError} `not-found`, `closing`.
+   */
+  async reopen(sessionId: string): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    await this.#get(sessionId);
+    const running = this.#closingSessions.get(sessionId);
+    if (running) await running.catch(() => undefined);
+    const session = await this.#get(sessionId);
+    if (session.closedAt === null) return session;
+    await this.#store.sessions.update(sessionId, { closedAt: null });
+    await this.#recordStandalone(sessionId, 'reopened', LIFECYCLE_LABELS.reopened);
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
   }
 
   /**
@@ -543,6 +650,7 @@ export class SessionSupervisor {
   async #attachNow(sessionId: string, options: AttachOptions): Promise<ResumeCommand> {
     this.#assertOpen();
     const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
     const command = { resumeCommand: resumeCommand(session.claudeSessionId) };
     if (this.#live.has(sessionId)) return command;
     const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
@@ -1014,7 +1122,7 @@ export class SessionSupervisor {
   // ── restart recovery (M2.4, recovery.ts) ──────────────────────────────
 
   /**
-   * Holds `sendMessage`, `pause`, `resume`, `detach` and `attach` until the returned
+   * Holds `sendMessage`, `pause`, `resume`, `detach`, `attach` (and D33's `close` / `reopen`) until the returned
    * function is called: the service listens while restart recovery runs, and a
    * command that raced it could spawn a second process on an id whose leftover is
    * still being stopped (M0.4). The recovery steps below are not held.
@@ -1119,6 +1227,13 @@ export class SessionSupervisor {
 
   #assertOpen(): void {
     if (this.#closing) throw new SupervisorError('closing', 'the service is shutting down');
+  }
+
+  /** D33: refuses work on a closed session (or one being closed): it has to be reopened first. */
+  #assertNotClosed(session: SessionRecord): void {
+    if (session.closedAt !== null || this.#closingSessions.has(session.id)) {
+      throw new SupervisorError('closed', `the session ${session.title ?? session.name} is closed: reopen it from History first`);
+    }
   }
 
   async #get(sessionId: string): Promise<SessionRecord> {
@@ -1518,4 +1633,6 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'not-resumed': 'Not resumed after the restart',
   moved: 'Moved from a terminal',
   teleported: 'Continued from a remote session',
+  closed: 'Closed',
+  reopened: 'Reopened',
 };

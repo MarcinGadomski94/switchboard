@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HistoryItem } from '../../core/api.ts';
 import { REMOTE_CONTROL_BADGE, formatHistoryDate, historyBranchLine } from '../../core/history.ts';
 import { REMOTE_COPY_NOTE, REMOTE_MODE_LINE } from '../../core/remote-session.ts';
-import { api } from '../api/client.ts';
+import { CLOSED_TAG, REOPEN_LABEL } from '../../core/session-close.ts';
+import { ApiError, api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import { statusColor } from '../shell/format.ts';
+import { actionErrorText } from './session/session-header.ts';
 import { CONTINUE_IN_SWITCHBOARD, moveSelectedLabel, pruneSelection, showsDialog } from './history-move.ts';
 import { MoveDialog } from './MoveDialog.tsx';
 import { useConversationMoves } from './useConversationMoves.ts';
@@ -57,7 +59,10 @@ interface Loaded {
  * date column) and **Continue in Switchboard** (under its outcome); selected rows
  * move together with **Move selected (n)** in a bar under the list; the move
  * dialog ({@link MoveDialog}) handles what needs the developer, and the (last)
- * moved session opens once the move is over.
+ * moved session opens once the move is over. D33: a closed session's row carries a
+ * **Closed** tag (after its mode line) and **Reopen** (under its outcome); Reopen
+ * (`POST /api/sessions/{id}/reopen`) puts it back in the sidebar and opens it in
+ * the session view.
  */
 export function HistoryView() {
   const { tagOf } = useFolderTags();
@@ -71,6 +76,23 @@ export function HistoryView() {
     [navigate],
   );
   const moves = useConversationMoves(openSession);
+  // D33: Reopen of a closed session's row: the session opens once it is back.
+  const [reopening, setReopening] = useState<string | null>(null);
+  const [reopenError, setReopenError] = useState<{ readonly sessionId: string; readonly text: string } | null>(null);
+  const reopen = async (sessionId: string): Promise<void> => {
+    if (reopening) return;
+    setReopening(sessionId);
+    setReopenError(null);
+    try {
+      await api.reopenSession(sessionId);
+      openSession(sessionId);
+    } catch (caught) {
+      const error = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+      setReopenError({ sessionId, text: actionErrorText(error.status, error.body) });
+    } finally {
+      setReopening(null);
+    }
+  };
   const [search, setSearch] = useState('');
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [tick, setTick] = useState(0);
@@ -146,6 +168,9 @@ export function HistoryView() {
             moving={moving}
             onToggle={() => toggle(item.claudeSessionId)}
             onContinue={() => moves.start([item])}
+            reopening={item.sessionId !== null && reopening === item.sessionId}
+            reopenError={item.sessionId !== null && reopenError?.sessionId === item.sessionId ? reopenError.text : null}
+            onReopen={() => item.sessionId && void reopen(item.sessionId)}
           />
         ))}
         {settled && rows.length === 0 ? (
@@ -179,11 +204,18 @@ interface HistoryRowProps {
   readonly moving: boolean;
   readonly onToggle: () => void;
   readonly onContinue: () => void;
+  /** D33: Reopen of this closed session runs. */
+  readonly reopening: boolean;
+  /** D33: why Reopen was refused, else `null`. */
+  readonly reopenError: string | null;
+  readonly onReopen: () => void;
 }
 
-function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }: HistoryRowProps) {
+function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, reopening, reopenError, onReopen }: HistoryRowProps) {
   // D16: a terminal conversation not in Switchboard yet can continue there (the demo's prototype rows cannot).
   const movable = item.terminal === true && item.sessionId === null;
+  // D33: a closed Switchboard session can be reopened.
+  const closed = typeof item.closedAt === 'string' && item.sessionId !== null;
   const outcome = (
     <span className="sb-hist-outcome" style={{ color: statusColor(item.status) }}>
       {item.outcome}
@@ -197,6 +229,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
       data-session-id={item.sessionId ?? undefined}
       data-status={item.status}
       data-terminal={movable ? 'true' : undefined}
+      data-closed={closed ? 'true' : undefined}
     >
       <span className="sb-hist-date">
         {movable ? (
@@ -227,6 +260,12 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
               {REMOTE_CONTROL_BADGE}
             </span>
           ) : null}
+          {/* D33: closed out of the sidebar; Reopen puts it back. */}
+          {closed ? (
+            <span className="sb-hist-closed" data-testid="history-closed-tag" title={`Closed ${formatHistoryDate(item.closedAt as string)} · Reopen puts it back in the sidebar`}>
+              {CLOSED_TAG}
+            </span>
+          ) : null}
         </span>
       </div>
       <div className="sb-hist-sumcol">
@@ -239,6 +278,18 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
           <button type="button" className="sb-button sb-hist-continue" data-testid="history-continue" disabled={moving} onClick={onContinue}>
             {CONTINUE_IN_SWITCHBOARD}
           </button>
+        </div>
+      ) : closed ? (
+        <div className="sb-hist-outcol">
+          {outcome}
+          <button type="button" className="sb-button sb-hist-continue" data-testid="history-reopen" disabled={reopening} aria-busy={reopening || undefined} onClick={onReopen}>
+            {REOPEN_LABEL}
+          </button>
+          {reopenError ? (
+            <span className="sb-hist-reopen-error" role="alert" data-testid="history-reopen-error">
+              {reopenError}
+            </span>
+          ) : null}
         </div>
       ) : (
         outcome

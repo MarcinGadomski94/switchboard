@@ -24,6 +24,12 @@ export interface QuestionBatchRecord {
   readonly deliveredAt: string | null;
   /** D24 (0007): `claude.ai` when the phone answered first (Remote Control); the batch is `answered` without answers. */
   readonly answeredOn: AnsweredOn | null;
+  /**
+   * D33 (0010): why the batch was closed while it still waited for the developer
+   * (`session closed`); it is then `stale`, waits no more (Inbox, open question
+   * count) and can no longer be answered. `null` otherwise.
+   */
+  readonly closedReason: string | null;
 }
 
 /** An option of a question, verbatim from `input.questions[i].options[j]`. */
@@ -104,6 +110,7 @@ const BATCH_SPEC: TableSpec<QuestionBatchRecord> = {
     deliveredVia: ['delivered_via', 'text'],
     deliveredAt: ['delivered_at', 'text'],
     answeredOn: ['answered_on', 'text'],
+    closedReason: ['closed_reason', 'text'],
   },
 };
 
@@ -245,6 +252,23 @@ export class QuestionRepository {
       const batch = this.#batches.get(batchId);
       if (!batch || batch.state !== 'open' || batch.answeredAt !== null) return batch;
       return this.#batches.update(batchId, { state: 'answered', answeredAt: this.#ctx.now(), answeredOn: where });
+    });
+  }
+
+  /**
+   * D33: closes a batch that still waits for the developer (open, or stale and
+   * unanswered) without answers, with `reason` as its label (`session closed`): an
+   * `open` batch becomes `stale` (the stale path, `staleAt`), and `closedReason`
+   * marks it as no longer waiting, so it leaves the Inbox and can no longer be
+   * answered. A batch that is answered or already closed is left alone. Returns
+   * the batch, or `null`.
+   */
+  async closeUnanswered(batchId: string, reason: string): Promise<QuestionBatchRecord | null> {
+    return transaction(this.#ctx.db, () => {
+      const batch = this.#batches.get(batchId);
+      if (!batch || batch.answeredAt !== null || batch.closedReason !== null || batch.state === 'answered') return batch;
+      const stale = batch.state === 'open' ? { state: 'stale' as const, staleAt: this.#ctx.now() } : {};
+      return this.#batches.update(batchId, { ...stale, closedReason: reason });
     });
   }
 

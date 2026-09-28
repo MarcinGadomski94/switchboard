@@ -112,6 +112,8 @@ The words are the prototype's for a session started from the New-session form (`
 - **Search** (`q`, trimmed, case-insensitive substring) runs on the service over: name, mode, the whole last text, the solutions/branches line, outcome, the task (stored sessions), every human prompt (up to 8000 chars), the last prompt, titles, the first command, the working folders and the session id. The date is not searched (it is formatted in the browser's time zone).
 - **View.** Rows are not links (the prototype has no click). D14: a row of a folder other than the default one shows that folder's name as a small mono tag before its mode line (`docs/folders.md` → *UI*). The search waits 150 ms after typing; the list reloads (trailing, 250 ms) on `/hub` `sessionUpdated`; `aria-busy` is on while the rows belong to an older search. Empty: "No sessions match." with a search, "No sessions yet." without one (the prototype only has the first).
 
+- **Closed sessions (D33).** A stored session's row carries `closedAt` (`null` while open); a closed one keeps its row (its status is usually `paused`), and the view shows a **Closed** tag after its mode line and **Reopen** under its outcome (`docs/close-sessions.md`). The search matches "Closed" on such rows.
+
 ### Continue in Switchboard (D16)
 A terminal conversation moves into Switchboard **as the same conversation** (`docs/decisions.md` → D16): `POST /api/history/{claudeSessionId}/continue` (`src/server/history/continue.ts`, `ConversationMover`; the supervisor side in `docs/supervisor.md` → *Continue in Switchboard*).
 - **Remote Control badge (D24).** A transcript with a `{type:"bridge-session", …}` line had Remote Control on (`docs/spike-remote.md` → R.8): the facts carry `remoteControl: true` (facts version 2, so older cached facts are parsed again), a terminal row gets `remoteControl: true` and the view shows a **Remote Control** badge after its mode line; the search matches "Remote Control" on such rows. Stored sessions' rows get no badge.
@@ -286,7 +288,7 @@ The palette (`src/web/modals/Palette.tsx`, model `palette.ts`) opens with ⌘K /
 | `view` | Inbox, Solutions, Schedules & loops, Artifacts, History, Settings | — | navigate to the view |
 | `action` | New session | — | open the New-session modal (in place of the palette) |
 | `tool` | the tool's name, every tool of `GET /api/tools` in its order (the sidebar filter `showInSidebar` does not apply) | the URL's host (`localhost:13000`), empty when not configured | `/tools/<id>` (the tool view probes it) |
-| `session` | the session's display title (D22: its title, else its name), `GET /api/sessions` in its order | the sidebar's mode line (`orch · feature · UI-first`), built from the session's fields | `/sessions/<id>` (Chat) |
+| `session` | the session's display title (D22: its title, else its name), `GET /api/sessions` in its order (D33: open sessions only; closed ones are left out) | the sidebar's mode line (`orch · feature · UI-first`), built from the session's fields | `/sessions/<id>` (Chat) |
 | `solution` | the solution's name, `GET /api/solutions` groups and rows in order | the group's folder (`microfrontends/`, `read-only`) | `/solutions` with that solution selected |
 
 - **Filter:** an entry matches when `label kind hint`, lower-cased, contains the query lower-cased (the prototype's rule: no trimming, no fuzzy match), or (D22) when a titled session's short name does; an empty query keeps everything. At most **10** results are shown.

@@ -1,0 +1,23 @@
+# Closing sessions (D33)
+
+The developer's ruling (`docs/decisions.md` → D33): a session can be closed out of the sidebar and reopened from History. The service side (the routes, the stop, the Inbox items, restart recovery) is in `docs/supervisor.md` → *Close and reopen*; the contract rows in `docs/handoff/contracts/local-api.md` → *Closing sessions (D33)*. Rules and copy shared by both sides: `src/core/session-close.ts`.
+
+## What closing does
+- The session's process, if it has one, is stopped the way **Pause** stops it, so its conversation stays resumable (`claude --resume <id>`, a later message).
+- It leaves the sidebar and the palette: `GET /api/sessions` lists open sessions only (`?closed=include` lists all; History and the New-session name check use it, so a closed session's short name stays taken).
+- Its question batches that still wait and its open permission requests close with the label **session closed** and leave the Inbox; the chat shows such a batch as **Closed · session closed**, and it can no longer be answered (`docs/questions.md`).
+- Its worktrees and branches are kept. Scheduled runs are unaffected (each run is a new session). Restart recovery never resumes it.
+- It is stored as `sessions.closed_at` (`null` = open, migration `0010_session_closed.sql`) and published as `sessionUpdated` with `closedAt`.
+
+## In the UI
+- **Sidebar row** (`src/web/shell/Sidebar.tsx`, `shell.css`): a small **×** at the row's right, in `--muted-2` (the text color and the selected-card background under the pointer), tooltip "Close (keeps it in History)", `aria-label` "Close <title>". It is invisible at rest (opacity 0, no pointer events) and shows on hover or keyboard focus (`:focus-visible` on the row or on the ×), over the row's age, which is hidden meanwhile (`visibility`, so nothing moves). It is absolutely placed after the row's own parts, so the row keeps the prototype's geometry and child order (the full visual pass and `shell.spec` are unchanged). A click never follows the row's link. The glyph is an SVG, so the row's text is unchanged.
+- **Session header** (`SessionHeader.tsx`): **Close** is the first header action, styled like the others, so Pause and "⇄ Continue in terminal" keep the prototype's places (`tests/e2e/visual/session-header.spec.ts` gates Close with Pause's row, height and styles, 6 px left of Pause, and the actions group by its right edge). With a long root path the root wraps and every action stays on one line, left of the right panel (`remote-control.spec.ts`). A closed session reached by its address shows **Reopen** there instead.
+- **Confirmation** (`src/web/components/CloseSession.tsx`, `useCloseSession`): closing a session that runs or waits (status `run` / `need`, or a turn runs) asks first: "Stop <title> and close it? Its conversation stays in History and can be reopened." with **Stop & close** and **Cancel** (Cancel has the focus; Esc or a click outside cancels). Any other session closes at once; when its idle process is still live the close is posted with `confirm: true`, since the service needs it for any live process. If the service answers `close-needs-confirm` anyway (it started running meanwhile), the confirmation opens. A refusal is shown in the confirmation, under the header, or under the sidebar list.
+- **After closing:** from the session view the Inbox opens; from the sidebar, the Inbox opens only when the closed session was the one on screen. The sidebar's list follows `sessionUpdated`.
+- **History** (`HistoryView.tsx`): a closed session's row has a **Closed** tag after its mode line (the Remote Control badge's form, muted; its tooltip says when it was closed) and **Reopen** under its outcome (the Continue pill). Reopen (`POST /api/sessions/{id}/reopen`) puts the session back in the sidebar as it was closed (paused / idle / ended, no process) and opens it in the session view; its next message resumes it.
+- **Palette** (`palette.ts`): closed sessions are left out (the service leaves them out already; the model filters a stale list too).
+
+## Tests
+- Unit: `tests/core/session-close.test.ts` (the `?closed=` filter, the list filtering, the confirm rules, the copy), `tests/core/history.test.ts` (closed rows), `tests/server/db/repos.test.ts` (the list filter, `closeUnanswered`), `tests/web/palette.test.ts` (closed sessions left out).
+- Server: `tests/server/api/close-sessions.test.ts`, `tests/server/supervisor/recovery.test.ts`, `tests/server/db/migrate.test.ts`.
+- E2E: `tests/e2e/close-sessions.spec.ts` (an idle session from the sidebar; a running one from the header with the confirmation; a waiting one from the sidebar, its question leaving the Inbox, Reopen from History, a message resuming it).

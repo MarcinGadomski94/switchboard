@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
-import type { SystemInfo, Tool } from '../../core/api.ts';
+import { type MouseEvent, useEffect, useState } from 'react';
+import type { Session, SystemInfo, Tool } from '../../core/api.ts';
+import { CLOSE_TOOLTIP, openSessions } from '../../core/session-close.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { SessionActivityOr } from '../activity/ActivityViews.tsx';
 import { useLiveActivities } from '../activity/useActivity.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { useCloseSession } from '../components/CloseSession.tsx';
 import { InlineTitle } from '../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
@@ -96,6 +99,40 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
 }
 
 /**
+ * D33: the × of a sidebar row: invisible at rest, shown on hover or focus at the
+ * row's right (over the age, which hides meanwhile; shell.css), absolutely placed
+ * so the row keeps the prototype's geometry. A click closes the session and never
+ * follows the row's link. The glyph is drawn, so the row's text is unchanged.
+ */
+function SessionCloseButton({ session, busy, onClose }: { readonly session: Session; readonly busy: boolean; readonly onClose: () => void }) {
+  const click = (event: MouseEvent<HTMLButtonElement>): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!busy) onClose();
+  };
+  return (
+    <button
+      type="button"
+      className="sb-button sb-session-close"
+      data-testid="sidebar-session-close"
+      data-session-id={session.id}
+      aria-label={`Close ${displayTitle(session)}`}
+      aria-busy={busy || undefined}
+      title={CLOSE_TOOLTIP}
+      onClick={click}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" focusable="false">
+        <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+/**
  * The sidebar (SPEC → Shell), top to bottom: logo + ⌘K badge · "+ New session" ·
  * nav with badges · TOOLS · SESSIONS · Settings · machine footer. Everything it
  * lists comes from the API (sessions, tools, inbox, solutions, schedules,
@@ -103,10 +140,13 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
  * (501) or unreachable, its part stays empty and the meters read "—". D14: a
  * session from a folder other than the default one carries its folder's tag at
  * the start of its mode line. D19: a running session's row shows its current action
- * and time in place of the mode line, and its dot pulses.
+ * and time in place of the mode line, and its dot pulses. D33: closed sessions are
+ * not listed (`GET /api/sessions` leaves them out); a row's × (hover / focus)
+ * closes its session, asking first while it runs or waits (`useCloseSession`),
+ * and closing the session on screen goes to the Inbox.
  */
 export function Sidebar() {
-  const { route } = useRouter();
+  const { route, navigate } = useRouter();
   const { open } = useModals();
   const now = useNow(30_000);
 
@@ -120,6 +160,11 @@ export function Sidebar() {
   const [liveSystem, setLiveSystem] = useState<SystemInfo | null>(null);
   const { tagOf } = useFolderTags();
   const activityOf = useLiveActivities(sessions.data);
+  const closer = useCloseSession((closed) => {
+    sessions.reload();
+    // D33: the session on screen was closed: its view goes, the Inbox comes.
+    if (route.view === 'session' && route.id === closed.id) navigate({ view: 'inbox' });
+  });
 
   useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());
@@ -146,7 +191,8 @@ export function Sidebar() {
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);
   useProbeOnLoad(tools.data);
   useFrameHelperSites(tools.data); // D28 ruling: the saved site tools' hosts, for the frame helper's rules in this tab
-  const sessionList = sessions.data ?? [];
+  // D33: the list is already open sessions only; a closed one never shows even from a stale payload.
+  const sessionList = openSessions(sessions.data ?? []);
   const reachable = system.reachable ?? sessions.reachable;
 
   return (
@@ -224,9 +270,17 @@ export function Sidebar() {
                 <SessionActivityOr activity={activityOf(session.id)}>{modeLine(session)}</SessionActivityOr>
               </div>
             </div>
+            {/* D33: after the row's own parts, so the prototype's child paths (dot, body) are unchanged. */}
+            <SessionCloseButton session={session} busy={closer.busyId === session.id} onClose={() => closer.request({ ...session, activity: activityOf(session.id) ?? session.activity })} />
           </Link>
         ))}
       </div>
+      {closer.error ? (
+        <div className="sb-session-close-error" role="alert" data-testid="sidebar-close-error">
+          {closer.error.text}
+        </div>
+      ) : null}
+      {closer.dialog}
 
       <Link
         to={{ view: 'settings', section: null }}

@@ -236,6 +236,30 @@ Developer ruling D32 (`docs/decisions.md` → *Ticket branches and closing sessi
 ```json
 NewSession     { …, "worktrees": true, "branch": "PROJ-0001-test-branch-name" }
 IsolateRequest { "sessionId": "…", "branch": "PROJ-0001-test-branch-name" }
+
+## Closing sessions (D33, 2026-09-28, additive)
+Developer ruling D33 (`docs/decisions.md` → *Ticket branches and closing sessions*): a session can be closed out of the sidebar and the session header and reopened from History. Additive; the rows and payloads above keep their meaning. Details: `docs/supervisor.md` → *Close and reopen*, migration `0010_session_closed.sql`.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | /api/sessions | ?closed=exclude\|include | Session[]: open sessions only by default (`exclude`); `include` = every session, closed ones too · 422 `invalid` `{ errors: [{ field: "closed" }] }` for another value |
+| POST | /api/sessions/{id}/close | { confirm?: boolean } (or no body) | 200 Session with `closedAt` (`sessionUpdated` is published) · 409 `close-needs-confirm` `{ message }` · 422 `invalid` `{ errors: [{ field: "confirm" }] }` · 404 `not-found` · 503 `closing` |
+| POST | /api/sessions/{id}/reopen | – | 200 Session with `closedAt: null` (`sessionUpdated` is published) · 404 `not-found` · 503 `closing` |
+
+- **Close:** a session whose process is live, or whose status is `run` / `need` (running or waiting for the developer), needs `confirm: true`; without it the answer is 409 `close-needs-confirm` with a message, and nothing changes. With it the process is stopped the way Pause stops it (the conversation stays resumable; status `paused`), then `closedAt` is set. The session's question batches that still wait (open, or stale and unanswered) are closed without answers with the label `session closed` (they become `stale` with `closedReason`), and its open permission requests go stale: both leave the Inbox (`inboxChanged`). Worktrees and branches are kept. Idempotent: closing a closed session answers 200 with it unchanged.
+- **While closed:** `POST …/messages`, `/resume` and `/attach` answer 409 `closed` ("the session <title> is closed: reopen it from History first"). `GET /api/sessions/{id}` still answers. Restart recovery never resumes a closed session; scheduled runs are unaffected.
+- **Reopen:** clears `closedAt`; no process starts, the session stays as it was closed (paused / idle / ended), and its next message resumes it with `--resume` as usual. Idempotent. Questions closed with the session stay closed.
+- **Session / SessionDetail** (and `sessionUpdated`) gain `closedAt` (ISO, `null` while open). Optional in `src/core/api.ts` (like D22's `title`) so older fixtures type-check; the server always sends it. No new `/hub` event: close and reopen publish `sessionUpdated`, on which the sidebar reloads its (open) list.
+- **Question** gains `closedReason` (`session closed` for a batch closed with its session, else `null`); answering such a batch is 409 `not-open` ("question batch <id> was closed (session closed)").
+- **HistoryItem** gains `closedAt` on a stored session's row (`null` while open; absent on a terminal conversation's row): History lists closed sessions next to the others, with a "Closed" tag and Reopen; its search matches "closed".
+- **SessionEvent.payload:** the lifecycle actions `closed` and `reopened`.
+
+```json
+SessionCloseInput { "confirm"?: true }
+CloseRefusal      { "error": "close-needs-confirm", "message": "free-talk-640 is running: closing it stops its process (the conversation stays resumable). Confirm to stop and close it." }
+Session           { …, "closedAt": "2026-09-28T18:40:00.000Z" | null }
+Question          { …, "closedReason": "session closed" | null }
+HistoryItem       { …, "closedAt"?: "2026-09-28T18:40:00.000Z" | null }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)

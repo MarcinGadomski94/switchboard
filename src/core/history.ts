@@ -9,6 +9,7 @@
 import type { BranchRef, HistoryItem } from './api.ts';
 import type { FolderKind, Phase, SessionMode, SessionOrigin, SessionStatus, WorkType } from './model.ts';
 import { REMOTE_MODE_LINE } from './remote-session.ts';
+import { CLOSED_TAG } from './session-close.ts';
 import type { TranscriptFacts } from './transcript.ts';
 
 /** D24: the badge of a terminal conversation that had Remote Control on (a `bridge-session` line); the search matches it too. */
@@ -72,6 +73,8 @@ export interface HistorySession {
   readonly origin?: SessionOrigin;
   /** D25: the remote session a teleported session is a local copy of (optional: none when absent). */
   readonly remoteSource?: string | null;
+  /** D33: when the session was closed (optional: open when absent); the row carries it, and the search matches "Closed". */
+  readonly closedAt?: string | null;
 }
 
 /**
@@ -255,12 +258,15 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     status: session.status,
     folder: session.folder,
     folderPath: session.folderPath,
+    // D33: a closed session's row carries its tag and Reopen.
+    closedAt: session.closedAt ?? null,
   };
   return {
     item,
     search: searchText([
       item.name,
       session.title,
+      item.closedAt ? CLOSED_TAG : null,
       item.mode,
       fullSummary,
       historyBranchLine(item),
