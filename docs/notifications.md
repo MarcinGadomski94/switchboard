@@ -39,3 +39,10 @@ Sent only when `Notification.permission === 'granted'` (prototype `notifyOS`): t
 - `tests/web/notify.test.ts`: toast / OS copy, the chime's schedule and envelope, suspended / rejected / pending `resume()`, no Web Audio, the permission states, the click handler.
 - `tests/e2e/notifications.spec.ts` (the M3.4 oracle, real path, no demo seed): `tests/e2e/question-world.ts` starts the server with fake-claude, fake gh and a temp `acme-app-front` git repo; `Notification` and `AudioContext` are replaced with recording doubles before the app loads. Granted → toast (title, sub, branch line from the session's worktree, the question verbatim) + chime + one OS notification, Jump to session; `default` → toast + chime, no notification and no permission prompt, Later and ✕; a click on the OS notification → focus + jump.
 - `tests/e2e/visual/toast.spec.ts`: the visual oracle against the prototype's `arrive()` toast (`docs/visual/toast.md`).
+
+## When a notification goes away (developer request 2026-09-28)
+A question toast and its OS notification go away:
+- when the developer opens their session, however they do it: Jump to session, the sidebar, the Inbox, the palette, a link, or coming back to the page while on it;
+- when their batch leaves the Inbox, i.e. is answered, withdrawn or stale (`/hub` `inboxChanged` → `GET /api/inbox`).
+
+A batch of the session the page already shows raises no toast; the chime still plays, and the OS notification is sent only while the page is hidden. Code: `noticesToClear` (`src/web/toast/notify.ts`) and `useQuestionNotifications`. Oracle: `tests/e2e/notifications.spec.ts` (the last test) and `tests/web/notify.test.ts`.

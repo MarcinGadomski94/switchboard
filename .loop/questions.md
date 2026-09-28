@@ -610,3 +610,4 @@ The BLOCKED lines for M4.4, M4.5, M4.6, M7.2, M8.3 are resolved by this merge. T
 
 ## Known flaky tests
 - FLAKY tests/server/supervisor/supervisor.test.ts › "multiturn: … transcript sync point" · failed once on main after the branch-owner merge (2026-09-28 16:40, `lastTranscriptUuid` not in the transcript yet) while three agents ran their suites on the same machine; passed 5/5 on its own right after · likely a timing race between the transcript write and the sync-point read under load · to do: make the test wait for the sync point instead of reading it once
+- FLAKY tests/e2e/session-handoff.spec.ts › "Continue in terminal → … same id" · failed once on main after the D31 merge (2026-09-28, 4 agents' suites running at the same time), passed on its own right after · load; watch for it

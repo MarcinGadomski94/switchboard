@@ -137,3 +137,45 @@ test('a click on the OS notification focuses the page and jumps to the session',
   expect(mocks.focus).toBe(1);
   expect(mocks.notifications[0]?.closed).toBe(true);
 });
+
+test('a toast goes away when its session is opened any way or its batch is answered; none shows for the session on screen (developer request 2026-09-28)', async ({ page }) => {
+  await installNotificationMocks(page, 'granted');
+  await openWithHub(page, `${world.baseUrl}/history`);
+  const toast = page.getByTestId('toast');
+
+  // 1) Opening the session from the sidebar (not "Jump to session") takes the toast and its OS notification away.
+  const first = await world.startSession(page, 'opened-by-sidebar', '[fake:ask-delay] Ask me where to deploy.');
+  await expect(toast.locator('.sb-toast-title')).toHaveText('opened-by-sidebar');
+  await page.getByTestId('sidebar-sessions').locator('a', { hasText: 'opened-by-sidebar' }).click();
+  await expect(page).toHaveURL(`${world.baseUrl}/sessions/${first.id}`);
+  await expect(toast).toHaveCount(0);
+  await expect.poll(async () => (await readMocks(page)).notifications.at(-1)?.closed).toBe(true);
+
+  // 2) A batch of the session on screen raises no toast (its card is in the chat); the chime still plays.
+  const contextsBefore = (await readMocks(page)).contexts;
+  const onScreen = await world.startSession(page, 'on-screen', '[fake:ask-delay] Ask me where to deploy.');
+  await page.getByTestId('sidebar-sessions').locator('a', { hasText: 'on-screen' }).click();
+  await expect(page).toHaveURL(`${world.baseUrl}/sessions/${onScreen.id}`);
+  await expect(page.getByTestId('session-chat').getByTestId('question-card')).toHaveCount(1);
+  await expect.poll(async () => (await readMocks(page)).contexts).toBe(contextsBefore + 1);
+  await expect(toast).toHaveCount(0);
+
+  // 3) Elsewhere, a batch answered without opening its session (here through the API, as the Inbox does) takes its toast away.
+  await page.getByTestId('nav-history').click();
+  const second = await world.startSession(page, 'answered-elsewhere', '[fake:ask-delay] Ask me where to deploy.');
+  await expect(toast.locator('.sb-toast-title')).toHaveText('answered-elsewhere');
+  const batch = await batchOf(page, second.id);
+  const status = await page.evaluate(
+    async ({ id, questionId }) =>
+      (await fetch(`/api/questions/batch/${encodeURIComponent(id)}/answers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ answers: [{ questionId, answerIndex: 0 }] }),
+      })).status,
+    { id: batch.id, questionId: batch.questions?.[0]?.id ?? '' },
+  );
+  expect(status).toBe(204);
+  await expect(toast).toHaveCount(0);
+  await expect(page).toHaveURL(`${world.baseUrl}/history`);
+  await expect.poll(async () => (await readMocks(page)).notifications.at(-1)?.closed).toBe(true);
+});

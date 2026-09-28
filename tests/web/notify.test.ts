@@ -8,6 +8,7 @@ import {
   type ChimeTimers,
   type OsNotificationFactory,
   type QuestionBatchEvent,
+  noticesToClear,
   notifyOs,
   osTitle,
   playChime,
@@ -270,5 +271,28 @@ describe('notifyOs (Web Notifications API)', () => {
     }
     expect(notifyOs(notice, () => undefined, null)).toBeNull();
     expect(notifyOs(notice, () => undefined, notificationWorld('granted', true).Ctor)).toBeNull();
+  });
+});
+
+describe('noticesToClear (developer request 2026-09-28)', () => {
+  const closed: string[] = [];
+  const notice = (sessionId: string, shownAt: number) => ({ sessionId, shownAt, os: { close: () => closed.push(sessionId) } });
+  const open = new Map([
+    ['b1', notice('s1', 100)],
+    ['b2', notice('s2', 100)],
+    ['b3', notice('s1', 500)],
+  ]);
+
+  it('the toasts of the session on screen', () => {
+    expect(noticesToClear(open, 's1', null)).toEqual(['b1', 'b3']);
+    expect(noticesToClear(open, 's9', null)).toEqual([]);
+    expect(noticesToClear(open, null, null)).toEqual([]);
+  });
+
+  it('the toasts whose batch left the Inbox, known from a read that started after they were shown', () => {
+    expect(noticesToClear(open, null, { ids: new Set(['b2']), readStartedAt: 200 })).toEqual(['b1']);
+    expect(noticesToClear(open, null, { ids: new Set(), readStartedAt: 600 })).toEqual(['b1', 'b2', 'b3']);
+    // A read that started before a toast was shown says nothing about it.
+    expect(noticesToClear(open, null, { ids: new Set(), readStartedAt: 50 })).toEqual([]);
   });
 });

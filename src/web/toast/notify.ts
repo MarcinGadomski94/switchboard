@@ -71,6 +71,33 @@ export function questionNotice(event: QuestionBatchEvent, item: InboxItem | null
   };
 }
 
+/** A question toast still showing: its session, when it was shown (ms) and its OS notification. */
+export interface OpenNotice {
+  readonly sessionId: string;
+  readonly shownAt: number;
+  readonly os: { close(): void } | null;
+}
+
+/**
+ * Which question toasts to take away (developer request 2026-09-28): those of the
+ * session the page now shows (`viewing`, the session route's id, else `null`), and
+ * those whose batch left the Inbox (answered, withdrawn, stale), known from an
+ * Inbox read that started after the toast was shown (`inbox`: the listed item ids
+ * and when the read started; `null` = no read).
+ */
+export function noticesToClear(
+  open: ReadonlyMap<string, OpenNotice>,
+  viewing: string | null,
+  inbox: { readonly ids: ReadonlySet<string>; readonly readStartedAt: number } | null,
+): string[] {
+  const clear: string[] = [];
+  for (const [batchId, notice] of open) {
+    if (viewing !== null && notice.sessionId === viewing) clear.push(batchId);
+    else if (inbox && notice.shownAt < inbox.readStartedAt && !inbox.ids.has(batchId)) clear.push(batchId);
+  }
+  return clear;
+}
+
 // ── Sound ───────────────────────────────────────────────────────────────
 
 /** One tone of the chime: start (s after the chime starts) and frequency. */
