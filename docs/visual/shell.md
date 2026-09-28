@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **5.32%**, sidebar (0,0 256×900) **5.42%**.
+Pixel diff (advisory, channel threshold 24): full page **1.36%**, sidebar (0,0 256×900) **7.56%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.

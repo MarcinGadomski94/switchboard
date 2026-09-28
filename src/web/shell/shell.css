@@ -273,6 +273,11 @@
   white-space: nowrap;
 }
 
+/* M9.3: a session without work type / mode / phase keeps its second line, so every row is as tall as the prototype's (49px). */
+.sb-session-mode:empty::before {
+  content: '\200b';
+}
+
 .sb-settings {
   margin: 6px 10px 0;
   display: flex;
