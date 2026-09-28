@@ -8,6 +8,7 @@ import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
 import { HubBus } from './hub/bus.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
+import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { loadOrCreateToken } from './token.ts';
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
     // `/hub` events (docs/hub.md): services created here that publish take this bus.
     const bus = new HubBus();
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
-    let providers: Providers = { diff: worktrees };
+    let providers: Providers = { diff: worktrees, solutions: new WorkspaceScanner({ workspaceRoot: config.workspaceRoot }) };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();

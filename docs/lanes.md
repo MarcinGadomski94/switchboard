@@ -21,7 +21,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/inbox` | `api/inbox.ts` | M3.2 (items from M3.1 and M3.3) |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | M3.1 |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | M3.1 (permission items), M3.3 (system items) |
-| `GET /api/solutions` | `api/solutions.ts` | M6.2 (scanner M6.1) |
+| `GET /api/solutions` | `api/solutions.ts` | served since M6.1 (the workspace scan, `docs/solutions.md`); M6.2 fills the live fields (branches, status, phase, changes, flag, conflict) |
 | `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
@@ -46,7 +46,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | Provider | Real implementation | Demo implementation |
 |---|---|---|
 | `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
-| `SolutionsProvider` (workspace scan) | M6.1 / M6.2 | same |
+| `SolutionsProvider` (workspace scan) | `WorkspaceScanner` (M6.1, `src/server/solutions/scanner.ts`, `docs/solutions.md`), wired in `main.ts`; its optional `isReadOnly` feeds the NewSession read-only check | same (no `isReadOnly`: matched by row name) |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
 | `HistoryProvider` (transcripts) | M7.4 | same |
 

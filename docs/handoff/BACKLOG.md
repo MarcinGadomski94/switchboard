@@ -40,7 +40,7 @@ Order matters. Each item: **AC** = acceptance criteria, **Oracle** = how it's ve
 - [ ] **M5.3** First-run wizard (5 steps). The CLI check uses `claude auth status`, and gh uses `gh auth status`. **Oracle:** E2E.
 
 ## M6 · Solutions
-- [ ] **M6.1** Workspace scanner: reads the router `AGENTS.md` folder rules; editable / on request / read-only. **Oracle:** unit test on a fixture workspace.
+- [x] **M6.1** Workspace scanner: reads the router `AGENTS.md` folder rules; editable / on request / read-only. **Oracle:** unit test on a fixture workspace.
 - [ ] **M6.2** Solutions view: groups, branch chips with worktree and session, filter, detail panel (branches, phase-ledger, artifacts, follow-ups). **Oracle:** visual + E2E.
 - [ ] **M6.3** Conflict detection: two sessions writing the same repo without worktree isolation → warning plus a "move to worktree" action. **Oracle:** unit + E2E.
 - [ ] **M6.4** codebase-memory freshness from `.claude/.codebase-memory-dirty`. **Oracle:** unit.

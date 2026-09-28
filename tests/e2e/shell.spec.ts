@@ -49,6 +49,10 @@ test('the shell renders from the real API and shows only what the API returns', 
     if (call.url === '/api/sessions') {
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toEqual([]);
+    } else if (call.url === '/api/solutions') {
+      // M6.1: the real scanner; this server has no workspace root configured.
+      expect(call.status, call.url).toBe(409);
+      expect(call.body, call.url).toMatchObject({ error: 'workspace-not-configured' });
     } else {
       expect(call.status, call.url).toBe(501);
       expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
