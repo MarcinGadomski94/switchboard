@@ -109,8 +109,9 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`claude --resume ${started.claudeSessionId}`);
   await expect(panel.getByTestId('handoff-copy')).toHaveText('copy');
 
-  // The panel's order (prototype): header, cards, Terminal label, the tail, the handoff card.
+  // The panel's order (prototype): header, cards, Terminal label, the tail, the handoff card; D21's agent overview comes first.
   expect(await panel.evaluate((el) => [...el.children].map((c) => c.getAttribute('data-testid') ?? c.className))).toEqual([
+    'agent-overview',
     'sb-sv-panel-head',
     'agent-cards',
     'sb-sv-panel-label sb-term-label',

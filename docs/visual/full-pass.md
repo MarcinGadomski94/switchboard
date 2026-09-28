@@ -18,10 +18,10 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.52% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 6.73% | 7.59% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 6.84% | 7.72% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 4.07% | 4.35% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 1.64% | 1.39% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 9.75% | 11.26% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.86% | 11.39% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.09% | 8.02% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.66% | 5.06% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
 | Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.50% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
 | Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.82% | 0.40% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
 | Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.21% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
