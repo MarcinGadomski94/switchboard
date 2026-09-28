@@ -5,6 +5,7 @@ import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
+import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import {
   type Meter,
@@ -100,6 +101,7 @@ export function Sidebar() {
   useHubEvent('worktreeRemovable', () => solutions.reload());
   useHubEvent('scheduleRun', () => schedules.reload());
   useHubEvent('system', (payload) => setLiveSystem(payload));
+  useToolsChanged(() => tools.reload()); // Settings → Embedded tools saved (M8.2)
 
   const info = liveSystem ?? system.data;
   const inboxCount = inbox.data?.length ?? 0;

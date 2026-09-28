@@ -26,7 +26,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
 | `GET /api/history` | `api/history.ts` | M7.4 |
-| `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
+| `GET/PUT /api/settings` | `api/settings.ts` | served since M8.2 (`docs/settings.md`): editable preferences + read-only values the service reports; keys in `src/core/settings.ts` (M5.1 reads the New-session defaults, M9.1 writes `service.startAtLogin`, M9.2 reads `usage.warnAtPct`) |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | served since M8.1 (`docs/tools.md`); additive `GET /api/codebase-memory` + `POST /api/codebase-memory/reindex` (gap #4) in the same module |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
 | `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
@@ -72,7 +72,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
 | `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
-| `views/SettingsView.tsx` | Settings | M8.2 |
+| `views/SettingsView.tsx` | Settings (+ `views/settings.css`, `views/settings/*`; the sidebar reloads its tools on `tools/events.ts`) | M8.2 |
 | `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
 
 Each lane adds its view's CSS next to its component (`views/<view>.css`), using the variables in `styles/tokens.css`.

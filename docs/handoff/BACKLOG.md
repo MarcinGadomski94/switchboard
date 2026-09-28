@@ -53,7 +53,7 @@ Order matters. Each item: **AC** = acceptance criteria, **Oracle** = how it's ve
 
 ## M8 · Tools & settings
 - [x] **M8.1** Embedded tools: configurable URL, reachability probe, iframe, offline/not-configured states, open in new tab. Codebase Memory (`http://localhost:13000`) and Acme Tool (URL set in Settings). **Oracle:** E2E with a local stub server.
-- [ ] **M8.2** Settings: 7 sections per SPEC, persisted in SQLite (tool URLs included; Embedded tools can add/remove tools). **Oracle:** E2E.
+- [x] **M8.2** Settings: 7 sections per SPEC, persisted in SQLite (tool URLs included; Embedded tools can add/remove tools). **Oracle:** E2E.
 - [ ] **M8.3** ⌘K / Ctrl+K palette: views, sessions, solutions, tools, New session; arrow keys + Enter. **Oracle:** E2E.
 
 ## M9 · Packaging

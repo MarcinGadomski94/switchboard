@@ -31,7 +31,7 @@ The data files are the prototype's arrays with positional entries turned into na
 | `artifacts.json` | `ART.slice(1)` (the 13 rows the prototype shows), location split into solution + branch |
 | `history.json` | `HIST` |
 | `tools.json` | `TOOLS` + the default URLs |
-| `setup.json` | wizard checks (`wzChecks`) + scan rows (`scan`) |
+| `setup.json` | wizard checks (`wzChecks`) + scan rows (`scan`) + the stored settings the prototype shows (M8.2) |
 | `system.json` | the sidebar footer (CPU, RAM, Max, process count = sessions + 3) + CLI / gh status |
 
 ## What goes where
@@ -44,6 +44,7 @@ The data files are the prototype's arrays with positional entries turned into na
 - Worktrees: every Solutions branch that has a worktree folder (`../<repo>-wt-<session>`), linked to its session; in-place branches get no row.
 - Schedules with their 14 runs, oldest first, one cron period apart; the failed schedule's last run is the system item's age ago, the others ran an hour ago; the last run's summary is the prototype's "last" text.
 - Loops, artifacts (at now − age), tools (`cm` with `http://localhost:13000`, `sw` without a URL).
+- Settings from `setup.json` → `settings` (M8.2): `service.startAtLogin` = true, the prototype's "Start at login · on".
 
 **Into demo providers** (not in the database): git diffs (`sessions.json` files), the solutions scan (`solutions.json`), system metrics (`system.json`, as contract units: percentages, bytes), History rows (`history.json`), the Codebase Memory strip (`solutions.json` → `codebaseMemoryDirty` with today's times + `codebaseMemoryIndexed`, M8.1) and tool probes (always `down`, no network, as the prototype's screenshots show).
 

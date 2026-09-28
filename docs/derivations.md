@@ -87,3 +87,8 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 ## Embedded tools (M8.1, `docs/tools.md`)
 - **Tool reachability**: `up` = any HTTP response to one server-side `GET` of the saved URL within 3 s (redirects not followed); `down` = anything else. The UI state (`idle` until probed, `checking`, `up`, `down`, `unset` once a URL-less tool was probed) follows the prototype's `tstate`.
 - **`.codebase-memory-dirty` lines → strip chips**: a line is a codebase-memory project id (the workspace hook's rule: runs of `:` `/` `\` → `-`). An id under the workspace root's id (configured path or real path) followed by `-<category>-<repo>` names that repo (`mobile-…` = `mobile`); other ids show verbatim without a path. No times (`markedAt: null`) and no indexed count (`indexed: null`): the file holds neither and the service never calls codebase-memory (gap #4).
+
+## Settings (M8.2, `docs/settings.md`)
+- **Scan table rows** from `GET /api/solutions`: one row per top-level folder under the workspace root (first path segment of each solution; the "read-only" group splits into its folders, ordered as its note names them; without a root the group's folder), count = solutions, examples = first three names + ", …", rule = the strictest of its solutions.
+- **Repositories** = every solution the scan lists (`n repos`). **PR merge detection** = the worktree manager's poll interval. **Workspace router** = the first `# ` heading of `<root>/AGENTS.md`.
+- **Schedule dot**: paused → idle, else the last run's result (ok → done, fail, need, running → run, none/skipped → idle). **Cron label**: `m h * * *` → `HH:MM daily`, `0 */n * * *` → `every nh`, `m h * * 1-5` → `HH:MM weekdays`, `m h * * d` → `Ddd HH:MM`; anything else verbatim.

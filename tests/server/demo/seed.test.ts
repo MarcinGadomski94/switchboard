@@ -124,6 +124,8 @@ describe('seedDemo (gap #21)', () => {
       ['sw', 'Acme Tool', null, 1],
     ]);
     expect(await store.settings.get(DEMO_SEED_KEY)).toEqual({ version: DEMO_SEED_VERSION, seededAt: NOW.toISOString() });
+    // Settings → Claude Code shows "Start at login · on" in the prototype (M8.2).
+    expect(await store.settings.get('service.startAtLogin')).toBe(true);
   });
 
   it('is a no-op on a database that already holds the seed', async () => {

@@ -228,10 +228,11 @@ export interface DemoTool {
   readonly url: string | null;
 }
 
-/** `setup.json`: wizard checks + scan rows. */
+/** `setup.json`: wizard checks + scan rows + stored settings the prototype shows (M8.2: "Start at login · on"). */
 export interface DemoSetup {
   readonly wizardChecks: ReadonlyArray<{ readonly label: string; readonly detail: string }>;
   readonly scan: ReadonlyArray<{ readonly folder: string; readonly count: number; readonly examples: string; readonly rule: string }>;
+  readonly settings: Readonly<Record<string, unknown>>;
 }
 
 /**
