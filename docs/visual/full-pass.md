@@ -18,16 +18,16 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.61% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 9.87% | 11.29% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.98% | 11.42% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.21% | 8.05% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.78% | 5.09% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (4) | 9.79% | 11.19% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.90% | 11.32% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.13% | 7.95% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.69% | 4.99% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
 | Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.60% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.94% | 0.42% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.93% | 0.41% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
 | Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.30% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
 | History | History | M7.4 | gated | green (72) | green (3) | 0.59% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
 | Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.59% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.73% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.73% | 0.17% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
 | New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 5.57% | 7.85% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
 | Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.55% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
 | Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.47% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
@@ -120,6 +120,7 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | inbox | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-chat | landmarks | none | present | present | ok | "Quick replies", "Agents & solutions", "Terminal handoff" |
+| session-chat | D37 ruling (app only) | none | — | "✓ 1 finished" | ok | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
 | session-chat | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-chat | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-timeline | landmarks | none | present | present | ok | "10:02 – 10:48" |

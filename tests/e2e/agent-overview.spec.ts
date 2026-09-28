@@ -6,8 +6,9 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * D21 agent overview on the real path (D13, no demo seed): `node src/server/main.ts`
  * with fake-claude as the CLI. The right panel's first section shows, live over `/hub`:
  * - the derived table: one row for the main agent (a fresh session), then a row
- *   per Agent / Task subagent in start order (`subagent-forward`), Agent ·
- *   Description · Solution · Status, with `—` for an agent without a solution;
+ *   per Agent / Task subagent in start order, Agent · Description · Solution ·
+ *   Status, with `—` for an agent without a solution; D37: a finished subagent
+ *   (`subagent-forward`) has no row (its card is under "✓ 1 finished");
  * - the newest status table the agent printed (`[fake:say]`) under "As reported by
  *   the agent · now", D27: drawn as table rows (every printed column, the Status
  *   with its status dot and color, the leading emoji removed), with an "as printed"
@@ -155,15 +156,21 @@ test('derived table (main agent, a subagent), the printed status table as report
   const needColor = await computedColor(page, 'var(--status-need)');
   await expect(overview.getByTestId('overview-status').first()).toHaveCSS('color', doneColor);
 
-  // An Agent call adds the subagent's row, after the main agent's.
+  // An Agent call adds a subagent. D37: once it finished, its row is gone, as is its card ("✓ 1 finished" under
+  // the cards); the rows follow the cards (same agents, same order). A working subagent's row: subagent-chat.spec.ts.
   await turn(page, id, '[fake:subagent-forward] Ask a subagent for the first line.');
-  await expect(rows).toHaveCount(2);
-  await expect(overview.getByTestId('overview-agent')).toHaveText(['acme-app-front', 'general-purpose']);
-  await expect(overview.getByTestId('overview-description')).toHaveText(['Build the agent overview.', 'Read hello.txt and return first line']);
-  await expect(overview.getByTestId('overview-solution')).toHaveText(['—', '—']);
-  await expect(overview.getByTestId('overview-status')).toHaveText(['✓ done', '✓ done']);
-  // The rows follow the agent cards (same agents, same order).
+  await expect(panel.getByTestId('agents-summary')).toHaveText('2 agents · 0 solutions · 0 branches');
+  await expect(panel.getByTestId('agents-finished')).toHaveText('✓ 1 finished');
+  await expect(rows).toHaveCount(1);
+  await expect(overview.getByTestId('overview-agent')).toHaveText(['acme-app-front']);
+  await expect(overview.getByTestId('overview-description')).toHaveText(['Build the agent overview.']);
+  await expect(overview.getByTestId('overview-solution')).toHaveText(['—']);
+  await expect(overview.getByTestId('overview-status')).toHaveText(['✓ done']);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front']);
+  // Expanding the finished cards shows them in place; the overview has no toggle, its finished rows stay gone.
+  await panel.getByTestId('agents-finished').click();
   await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
+  await expect(rows).toHaveCount(1);
 
   // The agent prints a wide box-drawing status table in a code fence. D27: drawn as table rows, like the derived table.
   await turn(page, id, say(['Status:', '', '```', ...BOX, '```', '', 'Waiting on web.'].join('\n')));
@@ -307,5 +314,5 @@ test('derived table (main agent, a subagent), the printed status table as report
   await page.getByTestId('session-pause').click();
   await expect.poll(async () => (await detail(page, id)).status).toBe('paused');
   await expect(live).toHaveCount(0);
-  await expect(overview.getByTestId('overview-status')).toHaveText(['paused', '✓ done']);
+  await expect(overview.getByTestId('overview-status')).toHaveText(['paused']);
 });

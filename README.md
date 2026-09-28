@@ -131,8 +131,13 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 **Right panel**
 - **Agent overview:** a table of Agent · Description · Solution · Status for every agent. The newest status table the agent printed appears under it as a readable table ("as printed" shows the original).
-- **Agent cards** with each agent's current action.
+- **Agent cards** with each agent's current action. Finished subagents fold into a "✓ N finished" line, which you click to show them again.
 - **The terminal tail** and the **handoff** command.
+
+**Subagent chats**
+- **Open one:** click a subagent's **Agent** step in the chat, its card, or its overview row. You see its own conversation: the brief from the main agent, its messages and tool steps, and its result.
+- **Get back:** **← Main chat**, **Esc** or the browser's Back returns you to the same spot.
+- **No composer:** subagents take no messages; reply in the main chat.
 
 **Tabs:** Timeline, Diff (per worktree), Artifacts.
 
@@ -201,8 +206,6 @@ If the service isn't running, the app window shows "Switchboard isn't running" w
 
 Opening `localhost:4870` takes you to `127.0.0.1:4870`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
-### Coming (being built)
-- Opening a **subagent's own chat** from the main chat, and hiding finished subagents from the right panel.
 
 ---
 

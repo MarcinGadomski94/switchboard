@@ -48,6 +48,9 @@ import { usageRowChecks } from './usage-rows.ts';
  *
  * The per-view detail (every row, card and state) is gated by the view's own spec
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
+ * A developer ruling that changes a surface on purpose (`Surface.rulings`, e.g.
+ * D37: finished subagents leave the session's right panel) is listed there, and
+ * its copy must show on the app.
  * The toast runs on the real path in `toast.spec.ts`.
  */
 
@@ -88,6 +91,12 @@ interface Surface {
   readonly placeholder: Placeholder;
   /** Fixed prototype copy that must appear in the main area (views) or the panel (modals) of both pages. */
   readonly landmarks: readonly string[];
+  /**
+   * Developer rulings that change the surface on purpose: copy the app must show
+   * (the prototype has none) and the note the report carries (e.g. D37's "✓ 1
+   * finished" line in the session's right panel). The detail is gated by the view's own spec.
+   */
+  readonly rulings?: readonly { readonly id: string; readonly appCopy: string; readonly note: string }[];
   /** Modals: the prototype panel's inline width (how the panel is found there). */
   readonly panelWidth?: string;
   /** Modals: the panel height follows its content (the palette), so it is compared only once implemented. */
@@ -178,6 +187,13 @@ const SURFACES: readonly Surface[] = [
     testId: 'view-session',
     placeholder: 'empty',
     landmarks: ['Quick replies', 'Agents & solutions', 'Terminal handoff'],
+    rulings: [
+      {
+        id: 'D37',
+        appCopy: '✓ 1 finished',
+        note: 'D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype\'s boxes and the ruled layout on its own',
+      },
+    ],
     openProto: (page) => clickPath(page, [...SESSIONS, 0]),
     openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/chat'),
   },
@@ -760,6 +776,22 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
         note: surface.landmarks.map((t) => JSON.stringify(t)).join(', '),
       });
       content.checks += 1;
+      // Developer rulings: the app shows the ruled copy (the prototype has none), noted in the report.
+      for (const ruling of surface.rulings ?? []) {
+        await expect.poll(() => landmarkScope(appPage, surface, 'app'), { message: `app ${surface.id}: ${ruling.id} ${ruling.appCopy}` }).toContain(ruling.appCopy);
+        rows.push({
+          surface: surface.id,
+          group: 'content',
+          part: `${ruling.id} ruling (app only)`,
+          geometry: 'none',
+          proto: '—',
+          app: JSON.stringify(ruling.appCopy),
+          result: 'ok',
+          note: ruling.note,
+        });
+        content.checks += 1;
+        notes.push(ruling.note);
+      }
       if (surface.kind === 'view') {
         const main = mainChecks();
         const paths = pathsOf(main);

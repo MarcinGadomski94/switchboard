@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 import type { AgentActivity, BackgroundTask, SessionActivity } from '../../core/api.ts';
-import { type ActivityLabel, cardActivityLabel, chatActivityLine, overviewActivityLabel, sessionActivityLabel } from './activity.ts';
+import {
+  type ActivityLabel,
+  type ChatActivityLine as ChatLine,
+  cardActivityLabel,
+  chatActivityLine,
+  overviewActivityLabel,
+  sessionActivityLabel,
+  subagentActivityLine,
+} from './activity.ts';
 import { useTick } from './useActivity.ts';
 import './activity.css';
 
@@ -21,7 +29,24 @@ export function ChatActivityLine({ activity }: { readonly activity: SessionActiv
 
 function LiveChatLine({ activity }: { readonly activity: SessionActivity }) {
   const now = useTick(TICK_MS);
-  const line = chatActivityLine(activity, now);
+  return <ChatLineView line={chatActivityLine(activity, now)} />;
+}
+
+/**
+ * D36: a subagent's chat line above the note that replaces the composer, from its
+ * entry in `SessionActivity.agents` (`subagentActivityLine`: its card's words with
+ * the chat line's glyphs). Renders nothing while the subagent is not active.
+ */
+export function SubagentActivityLine({ entry }: { readonly entry: AgentActivity | null }) {
+  return entry ? <LiveSubagentLine entry={entry} /> : null;
+}
+
+function LiveSubagentLine({ entry }: { readonly entry: AgentActivity }) {
+  const now = useTick(TICK_MS);
+  return <ChatLineView line={subagentActivityLine(entry, now)} />;
+}
+
+function ChatLineView({ line }: { readonly line: ChatLine }) {
   return (
     <div className="sb-chat-activity" data-testid="chat-activity" data-state={line.state}>
       <span className="sb-activity-glyph" data-glyph={line.glyph} data-testid="chat-activity-glyph" aria-hidden="true">

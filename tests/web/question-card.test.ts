@@ -90,4 +90,17 @@ describe('QuestionCard markup (src/web/components/QuestionCard.tsx)', () => {
     // An answered batch stays read-only.
     expect(chat).toMatch(/data-testid="question-send" disabled="" style="opacity:1">/);
   });
+
+  it('D36: with a note (a subagent\'s own chat) the card is read-only: the note in the footer, no Send, the options not pickable', async () => {
+    const { QuestionCard } = (await import(/* @vite-ignore */ COMPONENT)) as { QuestionCard: (props: object) => unknown };
+    const html = renderToStaticMarkup(createElement(QuestionCard as never, { questions: TWO, variant: 'chat', note: 'Answer in the main chat or the Inbox', onSend: () => undefined }));
+    expect(html).toContain('class="sb-qcard sb-qcard--chat sb-qcard--readonly"');
+    expect(html).toContain('data-read-only="true"');
+    expect(html).toContain('<span class="sb-qcard__status" data-testid="question-note">Answer in the main chat or the Inbox</span>');
+    expect(html).not.toContain('data-testid="question-send"');
+    expect(html).not.toContain('data-testid="question-status"');
+    expect(html.match(/aria-disabled="true"/g)).toHaveLength(5);
+    // The questions still read verbatim.
+    expect(html).toContain('<div class="sb-qcard__quote">“Which size should it be?”</div>');
+  });
 });

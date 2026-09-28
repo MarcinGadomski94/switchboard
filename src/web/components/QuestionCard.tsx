@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { AnswerBatch, Question } from '../../core/api.ts';
 import { type QuestionPicks, answerBody, initialPicks, pick, questionCardView } from './question-card.ts';
 import './question-card.css';
@@ -17,6 +17,11 @@ export interface QuestionCardProps {
   readonly busy?: boolean;
   /** Shown in place of the status line (e.g. the answers route refused them). */
   readonly error?: string | null;
+  /**
+   * D36: shows the card read-only (a subagent's own chat): the options cannot be
+   * picked, there is no Send, and this note stands in the footer (where to answer).
+   */
+  readonly note?: ReactNode;
 }
 
 /**
@@ -26,7 +31,7 @@ export interface QuestionCardProps {
  * footer shows "k of n answered" and Send, which stays disabled (45% opacity) until
  * every question has an answer. Styles are the prototype's inline ones.
  */
-export function QuestionCard({ questions, variant = 'inbox', onSend, busy = false, error = null }: QuestionCardProps) {
+export function QuestionCard({ questions, variant = 'inbox', onSend, busy = false, error = null, note }: QuestionCardProps) {
   const batchId = questions[0]?.batchId ?? '';
   const [state, setState] = useState<{ readonly batchId: string; readonly picks: QuestionPicks }>(() => ({
     batchId,
@@ -36,7 +41,8 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
   const picks = state.batchId === batchId ? state.picks : initialPicks(questions);
   const view = questionCardView(questions, picks);
   const body = answerBody(questions, picks);
-  const locked = busy || questions.every((question) => question.answeredAt !== null);
+  const readOnly = note !== undefined;
+  const locked = busy || readOnly || questions.every((question) => question.answeredAt !== null);
 
   const choose = (questionId: string, index: number): void => {
     if (locked) return;
@@ -48,7 +54,12 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
   };
 
   return (
-    <div className={`sb-qcard sb-qcard--${variant}`} data-testid="question-card" data-batch-id={batchId}>
+    <div
+      className={`sb-qcard sb-qcard--${variant}${readOnly ? ' sb-qcard--readonly' : ''}`}
+      data-testid="question-card"
+      data-batch-id={batchId}
+      data-read-only={readOnly ? 'true' : undefined}
+    >
       <div className="sb-qcard__head">{view.head}</div>
       {questions.map((question) => (
         <div key={question.id} className="sb-qcard__question" data-testid="question" data-question-id={question.id}>
@@ -65,6 +76,7 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
                   data-testid="question-option"
                   data-selected={selected ? 'true' : 'false'}
                   aria-pressed={selected}
+                  aria-disabled={readOnly ? true : undefined}
                   title={option.description}
                   onClick={() => choose(question.id, index)}
                 >
@@ -75,19 +87,27 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
           </div>
         </div>
       ))}
-      <div className="sb-qcard__foot">
-        <span className="sb-qcard__status" data-testid="question-status">{error ?? view.status}</span>
-        <button
-          type="button"
-          className="sb-button sb-qcard__send"
-          data-testid="question-send"
-          disabled={!body || locked}
-          style={{ opacity: view.sendOpacity }}
-          onClick={send}
-        >
-          {view.label}
-        </button>
-      </div>
+      {readOnly ? (
+        <div className="sb-qcard__foot">
+          <span className="sb-qcard__status" data-testid="question-note">
+            {note}
+          </span>
+        </div>
+      ) : (
+        <div className="sb-qcard__foot">
+          <span className="sb-qcard__status" data-testid="question-status">{error ?? view.status}</span>
+          <button
+            type="button"
+            className="sb-button sb-qcard__send"
+            data-testid="question-send"
+            disabled={!body || locked}
+            style={{ opacity: view.sendOpacity }}
+            onClick={send}
+          >
+            {view.label}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

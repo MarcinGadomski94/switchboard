@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **11.76%**, calendar-func-fix **7.27%**.
+Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **11.46%**, calendar-func-fix **7.27%**.
 
 Side by side (prototype left, app right): `session-panel-free-talk-side-by-side.png`, `session-panel-calendar-side-by-side.png`.
 
@@ -18,7 +18,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | head | box | 1061,0 379×50 | 1061,0 379×50 | ok |  |
 | free-talk-feature | label | box | 1077,14 121.7×28 | 1077,14 121.7×28 | ok | "Agents & solutions" |
 | free-talk-feature | summary | box | 1198.7,14 225.3×28 | 1198.7,14 225.3×28 | ok | "4 agents · 2 solutions · 1 branches" |
-| free-talk-feature | cards | box | 1061,50 379×252 | 1061,50 379×252 | ok |  |
+| free-talk-feature | cards | top | 1061,50 379×252 | 1061,50 379×214 | ok |  |
 | free-talk-feature | termLabel | box | 1061,302 379×28 | 1061,302 379×28 | ok | "Terminal" |
 | free-talk-feature | term | box | 1073,330 355×172 | 1073,330 355×172 | ok | "[orch] reconcile · contract-adherence report✓ web 13/14 fields match⚠ |
 | free-talk-feature | handoff | top | 1073,516 355×142 | 1073,516 355×164 | ok |  |
@@ -52,14 +52,6 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | card2Where | box | 1082,203 337×17 | 1082,203 337×17 | ok | "mobile/⎇ feature/free-talk-360" |
 | free-talk-feature | card2Path | box | 1097,204 48.3×15 | 1097,204 48.3×15 | ok | "mobile/" |
 | free-talk-feature | card2Branch | box | 1243.7,203 175.3×17 | 1243.7,203 175.3×17 | ok | "⎇ feature/free-talk-360" |
-| free-talk-feature | card3 | box | 1071,234 359×56 | 1071,234 359×56 | ok | "figma-extractorspec tabledoneread-only" |
-| free-talk-feature | card3Top | box | 1082,244 337×17 | 1082,244 337×17 | ok | "figma-extractorspec tabledone" |
-| free-talk-feature | card3Dot | box | 1082,249 7×7 | 1082,249 7×7 | ok |  |
-| free-talk-feature | card3Name | box | 1097,244 96.1×17 | 1097,244 96.1×17 | ok | "figma-extractor" |
-| free-talk-feature | card3Desc | box | 1201.1,244.5 57.4×16 | 1201.1,244.5 57.4×16 | ok | "spec table" |
-| free-talk-feature | card3Status | box | 1392.6,245.5 26.4×14 | 1392.6,245.5 26.4×14 | ok | "done" |
-| free-talk-feature | card3Where | box | 1082,265 337×15 | 1082,265 337×15 | ok | "read-only" |
-| free-talk-feature | card3Path | box | 1097,265 62.1×15 | 1097,265 62.1×15 | ok | "read-only" |
 | free-talk-feature | line0 | box | 1086,341 329×18.7 | 1086,341 329×18.7 | ok | "[orch] reconcile · contract-adherence report" |
 | free-talk-feature | line1 | box | 1086,359.7 329×18.7 | 1086,359.7 329×18.7 | ok | "✓ web 13/14 fields match" |
 | free-talk-feature | line2 | box | 1086,378.4 329×18.7 | 1086,378.4 329×18.7 | ok | "⚠ mobile TopicId: required ≠ web nullable" |
@@ -67,7 +59,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | line4 | box | 1086,415.8 329×18.7 | 1086,415.8 329×18.7 | ok | "⏸ [mobile] question: AcmChip compact size" |
 | free-talk-feature | line5 | box | 1086,434.4 329×18.7 | 1086,434.4 329×18.7 | ok | "⏸ waiting for your answers" |
 | free-talk-feature | handoff (copy without the D14 cwd line) | none | — | — | ok | "Terminal handoffattachedRunning in the background and attached here.  |
-| free-talk-feature | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,807.5 325×14 | ok | "cwd D:\\acme" |
+| free-talk-feature | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,746 325×14 | ok | "cwd D:\\acme" |
 | free-talk-feature | copy (copy) | box | 1374.4,623 27.6×15 | 1374.4,623 27.6×15 | ok | "copy" |
 | free-talk-feature | copy (copied) | box | 1360.6,623 41.4×15 | 1360.6,623 41.4×15 | ok | "copied" |
 | calendar-func-fix | panel | box | 1060,0 380×900 | 1060,0 380×900 | ok |  |
@@ -131,8 +123,8 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | label letter-spacing (the prototype label's) | 0.63px | 0.63px | ok |
 | free-talk-feature | label text-transform (the prototype label's) | uppercase | uppercase | ok |
 | free-talk-feature | columns | Agent,Description,Solution,Status | Agent,Description,Solution,Status | ok |
-| free-talk-feature | rows = the agent cards, in order | orchestrator,web,mobile,figma-extractor | orchestrator,web,mobile,figma-extractor | ok |
-| free-talk-feature | Status colors = the cards' status colors | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.74 0.13 150) | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.74 0.13 150) | ok |
+| free-talk-feature | rows = the agent cards, in order | orchestrator,web,mobile | orchestrator,web,mobile | ok |
+| free-talk-feature | Status colors = the cards' status colors | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) | oklch(0.8 0.14 70) / oklch(0.8 0.14 70) / oklch(0.8 0.14 70) | ok |
 | free-talk-feature | fits the panel, nothing overflows | true false | true false | ok |
 | free-talk-feature | no printed table (the demo prints none) | 0 | 0 | ok |
 | free-talk-feature | table: Geist Mono 11px, collapsed, fixed | "Geist Mono", monospace 11px collapse fixed | "Geist Mono", monospace 11px collapse fixed | ok |
@@ -187,6 +179,57 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | "as printed": the text as printed | equal | equal | ok |
 | free-talk-feature | "as printed": bg-card, border-card, 10px radius | rgb(23, 24, 27) rgb(38, 39, 44) 10px | rgb(23, 24, 27) rgb(38, 39, 44) 10px | ok |
 | free-talk-feature | "as printed" open: nothing in the panel overflows | true false | true false | ok |
+
+## D37 ruling (developer, 2026-09-28; not findings)
+- A finished (`done`) subagent leaves the right panel: its card and its overview row. One line, `✓ N finished` (Geist Mono 11px, `--muted-3`), under the cards expands them in place; the main agent always stays, and the summary still counts every agent. The prototype's free-talk-feature shows its done `figma-extractor` card, so the app lists three cards there: those three are compared above at the prototype's boxes, the card list by x, y and width, and the parts under it (Terminal label, tail, handoff card, copy control) with the card list's height difference taken out of y. The ruled layout is checked on its own (the expanded cards are the prototype's four, at its boxes):
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+| free-talk-feature | prototype cards (done: figma-extractor) | orchestrator,web,mobile,figma-extractor | orchestrator,web,mobile,figma-extractor | ok |
+| free-talk-feature | collapsed: cards = the prototype's without its done subagents, in order | orchestrator,web,mobile | orchestrator,web,mobile | ok |
+| free-talk-feature | collapsed: overview rows = those cards | orchestrator,web,mobile | orchestrator,web,mobile | ok |
+| free-talk-feature | line copy | ✓ 1 finished | ✓ 1 finished | ok |
+| free-talk-feature | line: collapsed | false | false | ok |
+| free-talk-feature | line: the card list's last child, under the last card | true true | true true | ok |
+| free-talk-feature | line type: Geist Mono 11px 400, muted-3 | "Geist Mono", monospace 11px 400 rgb(118, 117, 111) | "Geist Mono", monospace 11px 400 rgb(118, 117, 111) | ok |
+| free-talk-feature | line text x = the cards' dot x (±2) | 1082 | 1082 | ok |
+| free-talk-feature | expanded: the prototype's cards, in order | orchestrator,web,mobile,figma-extractor | orchestrator,web,mobile,figma-extractor | ok |
+| free-talk-feature | expanded: line under the fourth card | true true true | true true true | ok |
+| free-talk-feature | expanded: the overview keeps its rows (no toggle there) | orchestrator,web,mobile | orchestrator,web,mobile | ok |
+| free-talk-feature | expanded card part card0 at the prototype's box | 1071,50 359×56 | 1071,50 359×56 | ok |
+| free-talk-feature | expanded card part card0Top at the prototype's box | 1082,60 337×17 | 1082,60 337×17 | ok |
+| free-talk-feature | expanded card part card0Dot at the prototype's box | 1082,65 7×7 | 1082,65 7×7 | ok |
+| free-talk-feature | expanded card part card0Name at the prototype's box | 1097,60 75.3×17 | 1097,60 75.3×17 | ok |
+| free-talk-feature | expanded card part card0Desc at the prototype's box | 1180.3,60.5 89.2×16 | 1180.3,60.5 89.2×16 | ok |
+| free-talk-feature | expanded card part card0Status at the prototype's box | 1359.6,61.5 59.4×14 | 1359.6,61.5 59.4×14 | ok |
+| free-talk-feature | expanded card part card0Where at the prototype's box | 1082,81 337×15 | 1082,81 337×15 | ok |
+| free-talk-feature | expanded card part card0Path at the prototype's box | 1097,81 96.6×15 | 1097,81 96.6×15 | ok |
+| free-talk-feature | expanded card part card1 at the prototype's box | 1071,110 359×58 | 1071,110 359×58 | ok |
+| free-talk-feature | expanded card part card1Top at the prototype's box | 1082,120 337×17 | 1082,120 337×17 | ok |
+| free-talk-feature | expanded card part card1Dot at the prototype's box | 1082,125 7×7 | 1082,125 7×7 | ok |
+| free-talk-feature | expanded card part card1Name at the prototype's box | 1097,120 25.7×17 | 1097,120 25.7×17 | ok |
+| free-talk-feature | expanded card part card1Desc at the prototype's box | 1130.7,120.5 109.3×16 | 1130.7,120.5 109.3×16 | ok |
+| free-talk-feature | expanded card part card1Status at the prototype's box | 1372.8,121.5 46.2×14 | 1372.8,121.5 46.2×14 | ok |
+| free-talk-feature | expanded card part card1Where at the prototype's box | 1082,141 337×17 | 1082,141 337×17 | ok |
+| free-talk-feature | expanded card part card1Path at the prototype's box | 1097,142 138.7×15 | 1097,142 138.7×15 | ok |
+| free-talk-feature | expanded card part card1Branch at the prototype's box | 1243.7,141 175.3×17 | 1243.7,141 175.3×17 | ok |
+| free-talk-feature | expanded card part card2 at the prototype's box | 1071,172 359×58 | 1071,172 359×58 | ok |
+| free-talk-feature | expanded card part card2Top at the prototype's box | 1082,182 337×17 | 1082,182 337×17 | ok |
+| free-talk-feature | expanded card part card2Dot at the prototype's box | 1082,187 7×7 | 1082,187 7×7 | ok |
+| free-talk-feature | expanded card part card2Name at the prototype's box | 1097,182 40.9×17 | 1097,182 40.9×17 | ok |
+| free-talk-feature | expanded card part card2Desc at the prototype's box | 1145.9,182.5 108.9×16 | 1145.9,182.5 108.9×16 | ok |
+| free-talk-feature | expanded card part card2Status at the prototype's box | 1372.8,183.5 46.2×14 | 1372.8,183.5 46.2×14 | ok |
+| free-talk-feature | expanded card part card2Where at the prototype's box | 1082,203 337×17 | 1082,203 337×17 | ok |
+| free-talk-feature | expanded card part card2Path at the prototype's box | 1097,204 48.3×15 | 1097,204 48.3×15 | ok |
+| free-talk-feature | expanded card part card2Branch at the prototype's box | 1243.7,203 175.3×17 | 1243.7,203 175.3×17 | ok |
+| free-talk-feature | expanded card part card3 at the prototype's box | 1071,234 359×56 | 1071,234 359×56 | ok |
+| free-talk-feature | expanded card part card3Top at the prototype's box | 1082,244 337×17 | 1082,244 337×17 | ok |
+| free-talk-feature | expanded card part card3Dot at the prototype's box | 1082,249 7×7 | 1082,249 7×7 | ok |
+| free-talk-feature | expanded card part card3Name at the prototype's box | 1097,244 96.1×17 | 1097,244 96.1×17 | ok |
+| free-talk-feature | expanded card part card3Desc at the prototype's box | 1201.1,244.5 57.4×16 | 1201.1,244.5 57.4×16 | ok |
+| free-talk-feature | expanded card part card3Status at the prototype's box | 1392.6,245.5 26.4×14 | 1392.6,245.5 26.4×14 | ok |
+| free-talk-feature | expanded card part card3Where at the prototype's box | 1082,265 337×15 | 1082,265 337×15 | ok |
+| free-talk-feature | expanded card part card3Path at the prototype's box | 1097,265 62.1×15 | 1097,265 62.1×15 | ok |
 
 ## D14 additions (not findings)
 - The handoff card ends with `cwd <Session.cwd>`: the folder to run `claude --resume` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry `top`) and by its prototype copy without that line; the line is checked on its own.

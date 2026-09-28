@@ -25,6 +25,8 @@ export function toAgent(record: AgentRecord): Agent {
     branch: record.branch,
     status: record.status,
     statusText: record.statusText,
+    // D36: links the main agent's Agent / Task call to the subagent's chat.
+    toolUseId: record.toolUseId,
   };
 }
 

@@ -8,7 +8,8 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * as the CLI, a temp workspace with a real git repo (`acme-app-front`) and a
  * session started with worktrees. The right panel shows:
  * - the agent cards: the main agent placed by its write into its worktree (path +
- *   ⎇ branch), a subagent from an Agent call (`subagent-forward`), the summary;
+ *   ⎇ branch), a subagent from an Agent call (`subagent-forward`; D37: once done,
+ *   under "✓ 1 finished", expanded here), the summary;
  * - the terminal tail from the real events: the Bash command + its output, the
  *   subagent's Read (prefixed), the turn results, the lifecycle, the cursor while a
  *   turn runs (`hang`), and `Paused` after Pause (the main agent reads `paused`);
@@ -77,6 +78,10 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   await expect.poll(async () => (await detail(page, id)).status).toBe('done');
   await expect(panel.getByTestId('agents-summary')).toHaveText('2 agents · 1 solutions · 1 branches');
   const cards = panel.getByTestId('agent-card');
+  // D37: the finished subagent left the cards for "✓ 1 finished" (the summary still counts it); expanding shows it again.
+  await expect(cards).toHaveCount(1);
+  await expect(panel.getByTestId('agents-finished')).toHaveText('✓ 1 finished');
+  await panel.getByTestId('agents-finished').click();
   await expect(cards).toHaveCount(2);
   await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
   await expect(panel.getByTestId('agent-desc')).toHaveText([TASK, 'Read hello.txt and return first line']);

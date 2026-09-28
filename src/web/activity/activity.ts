@@ -300,3 +300,16 @@ export function overviewActivityLabel(
       return label;
   }
 }
+
+/**
+ * D36: the live line of a subagent's own chat, from its entry in
+ * `SessionActivity.agents`: its card's words ({@link activityLabel}: a subagent
+ * thinks as `Thinking…`, D21 ruling, timed since it started; `Writing…`;
+ * `<Tool>: <summary>` and `Waiting for you` timed since they began) with the chat
+ * line's glyphs. No token count: the thinking-token ticks are the main agent's.
+ */
+export function subagentActivityLine(entry: Pick<AgentActivity, 'state' | 'since' | 'startedAt' | 'tool' | 'summary'>, now: number): ChatActivityLine {
+  const label = activityLabel(entry, now);
+  const glyph: ActivityGlyph = label.state === 'tool' ? '●' : label.state === 'waiting' ? '⏸' : label.state === 'background' ? '⏳' : 'spinner';
+  return { state: label.state, glyph, text: label.text, time: label.time, tokens: null, ...(label.more ? { more: label.more } : {}) };
+}

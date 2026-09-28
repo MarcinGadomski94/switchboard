@@ -519,6 +519,35 @@
   border: 1px solid var(--border-row);
 }
 
+/* D36: a subagent's card opens its chat: the same card, as a link. */
+a.sb-agent--link,
+a.sb-agent--link:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.sb-agent--link:hover {
+  border-color: var(--border-control);
+}
+
+a.sb-agent--link:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+}
+
+/* D37: finished subagents leave the cards for one collapsed line under them, which expands them in place. */
+.sb-agents .sb-agents-finished {
+  align-self: flex-start;
+  padding: 2px 11px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-agents .sb-agents-finished:hover,
+.sb-agents .sb-agents-finished[aria-expanded='true'] {
+  color: var(--muted-2);
+}
+
 .sb-agent-top {
   display: flex;
   align-items: center;
@@ -741,6 +770,24 @@
   overflow-wrap: anywhere;
 }
 
+/* D36: an Agent / Task step line opens the subagent's chat: the same line (box, color, type), as a link. */
+.sb-chat-steps .sb-chat-step--link,
+.sb-chat-steps .sb-chat-step--link:hover {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sb-chat-steps .sb-chat-step--link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sb-chat-steps .sb-chat-step--link:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+}
+
 /* An answered batch: the answers bubble (right) and the blue note under it. */
 .sb-chat-answers {
   display: flex;
@@ -842,4 +889,94 @@
   font-size: 12px;
   line-height: 1.45;
   color: var(--status-fail);
+}
+
+/*
+ * D36: a subagent's own chat (docs/chat.md → Subagent chats): the top bar with the
+ * way back, the brief and result labels, and the note in the composer's place.
+ */
+.sb-subchat-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 26px;
+  border-bottom: 1px solid var(--border-divider);
+  font-size: 12.5px;
+  color: var(--muted-1);
+  white-space: nowrap;
+}
+
+.sb-subchat-bar .sb-subchat-back {
+  flex: none;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.sb-subchat-bar .sb-subchat-back:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sb-subchat-sep {
+  flex: none;
+  color: var(--muted-4);
+}
+
+.sb-subchat-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-subchat-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.sb-subchat-status {
+  flex: none;
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+}
+
+.sb-subchat-label {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-subchat-brief .sb-subchat-label {
+  align-self: flex-end;
+}
+
+.sb-subchat-result .sb-subchat-result-body {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  padding: 10px 14px;
+}
+
+.sb-subchat-result[data-error='true'] .sb-subchat-result-body {
+  border-color: var(--status-fail);
+}
+
+.sb-subchat-missing {
+  color: var(--muted-2);
+}
+
+.sb-subchat-note {
+  flex: none;
+  padding: 14px 26px 18px;
+  border-top: 1px solid var(--border-divider);
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-subchat-note .sb-subchat-note-link {
+  color: var(--text-2);
+}
+
+.sb-subchat-note .sb-subchat-note-link:hover {
+  color: var(--text);
 }

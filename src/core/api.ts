@@ -118,6 +118,15 @@ export interface Agent {
   readonly status: SessionStatus;
   /** Short status copy ("asked 1", "Tier A green"). */
   readonly statusText: string | null;
+  /**
+   * Additive (D36): the id of the Agent / Task `tool_use` that started this
+   * subagent (the main agent's call event has it as `payload.toolUseId`; the
+   * subagent's own lines carry it as `parent_tool_use_id`), so the chat can open
+   * the subagent's own conversation from that call. `null` for the main agent and
+   * for agents no call was seen for (the demo's). Optional so older fixtures
+   * type-check; the server always sends it.
+   */
+  readonly toolUseId?: string | null;
 }
 
 /**

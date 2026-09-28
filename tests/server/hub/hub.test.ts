@@ -91,7 +91,18 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D33 (closed sessions)
   'closedAt',
 ]);
-const AGENT_KEYS = keys<Agent>()(['id', 'kind', 'name', 'description', 'solutionPath', 'branch', 'status', 'statusText']);
+const AGENT_KEYS = keys<Agent>()([
+  'id',
+  'kind',
+  'name',
+  'description',
+  'solutionPath',
+  'branch',
+  'status',
+  'statusText',
+  // additive, D36 (the call that started a subagent: its chat)
+  'toolUseId',
+]);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);
 const SESSION_EVENT_KEYS = keys<SessionEvent>()(['id', 'sessionId', 'agentId', 'ts', 'endTs', 'kind', 'label', 'payload']);
 const QUESTION_BATCH_KEYS = keys<HubEvents['questionBatch']>()(['sessionId', 'batchId', 'questions']);

@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LifecyclePayload, RequestPayload, ToolPayload, UserPayload } from '../../../src/core/event-payload.ts';
+import { toAgent, toEvent } from '../../../src/server/sessions/wire.ts';
 import type { CanUseToolContext } from '../../../src/server/supervisor/supervisor.ts';
+import { subagentChat } from '../../../src/web/views/session/chat.ts';
 import { BASELINE, delay, listTranscripts, readTranscript } from '../../helpers/fake-claude.ts';
 import {
   type SupervisorWorld,
@@ -186,6 +188,19 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(agentCall?.label).toBe('Agent · general-purpose · Read hello.txt and return first line');
     expect(agentCall?.endTs).not.toBeNull();
     expect(events.at(-1)?.kind).toBe('ok');
+
+    // D36: the wire agent carries its call's id, and its chat builds from the session's stored events
+    // (the brief = the call's prompt, its own text and Read step, the call's result).
+    expect(toAgent(sub).toolUseId).toBe((agentCall?.payload as ToolPayload).toolUseId);
+    expect(toAgent(main).toolUseId).toBeNull();
+    const chat = subagentChat(events.map(toEvent), [], toAgent(sub), agents.map(toAgent));
+    expect(chat.brief).toBe('Read the file hello.txt in the current directory and reply with its first line only.');
+    expect(chat.items.map((item) => (item.kind === 'agent' ? [item.text, item.steps.map((step) => `${step.mark} ${step.label}`)] : item.kind))).toEqual([
+      ["I'll read the hello.txt file from the current directory.", ['✓ Read · hello.txt']],
+      ['alpha line one', []],
+    ]);
+    expect(chat.result?.text).toContain('alpha line one');
+    expect(chat.result?.isError).toBe(false);
   });
 
   it('perm-auto: auto silently reported as default → switched to acceptEdits (D6 fallback); the automatic denial is an ask event', async () => {
