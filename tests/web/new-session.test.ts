@@ -289,7 +289,7 @@ describe('folders (D14)', () => {
   const check: FolderCheck = { path: '/ws', canonicalPath: '/ws', exists: true, kind: 'workspace', router: null, solutionCount: 2, repoName: null, problem: null, message: '' };
   function saved(id: string, folderPath: string, kind: Folder['kind'], isDefault = false): Folder {
     const name = folderPath.split('/').pop() ?? folderPath;
-    return { id, path: folderPath, canonicalPath: folderPath, name, kind, isDefault, addedAt: '2026-09-28T00:00:00.000Z', lastUsedAt: null, check };
+    return { id, path: folderPath, canonicalPath: folderPath, name, label: null, displayName: name, kind, isDefault, addedAt: '2026-09-28T00:00:00.000Z', lastUsedAt: null, check };
   }
   const ws = saved('f-ws', '/src/workspace', 'workspace', true);
   const repo = saved('f-repo', '/src/switchboard', 'repo');

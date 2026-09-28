@@ -759,8 +759,19 @@ export interface Folder {
   readonly path: string;
   /** The folder resolved on disk when it was added or last used (realpath); unique among saved folders. */
   readonly canonicalPath: string;
-  /** Its last path segment (for a repo: the repo's name, its one solution). */
+  /**
+   * Its last path segment (for a repo: the repo's name, its one solution). D18: the
+   * folder's own name, unchanged by a custom name; worktrees are named after it
+   * (`<repo>-wt-<session>`).
+   */
   readonly name: string;
+  /**
+   * Additive (D18): the folder's custom name (trimmed, at most 40 characters,
+   * unique among saved folders ignoring case); `null` when it has none.
+   */
+  readonly label: string | null;
+  /** Additive (D18): what the UI shows for the folder: {@link label}, else {@link name}. */
+  readonly displayName: string;
   /** What it was when added (sessions use this); {@link check} says what it is now. */
   readonly kind: FolderKind;
   /** Sessions, scans and schedules use it when no folder is named. Exactly one saved folder is the default. */
@@ -775,6 +786,19 @@ export interface Folder {
 /** Additive (D14): `POST /api/folders` body. `path` is absolute, or `~/…`. */
 export interface AddFolderRequest {
   readonly path: string;
+  /**
+   * Additive (D18): an optional custom name (trimmed; empty or omitted = none).
+   * For a folder saved already, a non-empty name renames it.
+   */
+  readonly label?: string | null;
+}
+
+/**
+ * Additive (D18): `PUT /api/folders/{id}/label` body (Rename in Settings →
+ * Folders). `null` or an empty string removes the custom name.
+ */
+export interface RenameFolderRequest {
+  readonly label: string | null;
 }
 
 /** Additive (D14): the `409` body of `DELETE /api/folders/{id}` while schedules still start their runs in the folder. */

@@ -22,7 +22,8 @@ function check(fields: Partial<FolderCheck> = {}): FolderCheck {
 }
 
 function saved(id: string, folderPath: string, kind: Folder['kind'], isDefault = false, canonicalPath = folderPath): Folder {
-  return { id, path: folderPath, canonicalPath, name: folderName(folderPath), kind, isDefault, addedAt: '2026-09-28T00:00:00.000Z', lastUsedAt: null, check: check() };
+  const name = folderName(folderPath);
+  return { id, path: folderPath, canonicalPath, name, label: null, displayName: name, kind, isDefault, addedAt: '2026-09-28T00:00:00.000Z', lastUsedAt: null, check: check() };
 }
 
 function session(fields: Partial<Session>): Session {

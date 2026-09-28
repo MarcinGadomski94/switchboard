@@ -69,7 +69,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   worktrees: ['repo', 'branch', 'path', 'session_id', 'pr_number', 'pr_state', 'removable'],
   artifacts: ['type', 'name', 'solution', 'branch', 'session_id', 'meta', 'created_at'],
   schedules: ['name', 'cron', 'template', 'paused', 'folder_id'],
-  folders: ['id', 'path', 'canonical_path', 'kind', 'is_default', 'added_at', 'last_used_at'],
+  folders: ['id', 'path', 'canonical_path', 'kind', 'is_default', 'added_at', 'last_used_at', 'label'],
   schedule_runs: ['schedule_id', 'ts', 'result'],
   loops: ['session_id', 'kind', 'iteration', 'cap', 'breaker_count', 'expires_at'],
   tools: ['id', 'name', 'url', 'show_in_sidebar'],
@@ -104,6 +104,54 @@ describe('shipped migrations', () => {
     expect(strict).toEqual([]);
     expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(database.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
+  });
+});
+
+describe('0005 folder label (D18)', () => {
+  const insertFolder = 'INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at, label) VALUES (?, ?, ?, ?, ?, ?, ?)';
+
+  it('a fresh database: folders.label is a nullable TEXT with a unique case-insensitive index on the labels that are set', async () => {
+    const database = await db();
+    migrate(database, await loadMigrations());
+    const label = database.prepare(`SELECT type, "notnull", dflt_value FROM pragma_table_info('folders') WHERE name = 'label'`).get();
+    expect(label).toEqual({ type: 'TEXT', notnull: 0, dflt_value: null });
+    const index = database.prepare(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'folders_label'`).get();
+    expect(String(index?.['sql'])).toMatch(/UNIQUE INDEX folders_label ON folders \(label COLLATE NOCASE\) WHERE label IS NOT NULL/);
+    const insert = database.prepare(insertFolder);
+    insert.run('a', '/a', '/a', 'workspace', 1, 'now', 'Tools');
+    // Folders without a label are not counted.
+    insert.run('b', '/b', '/b', 'repo', 0, 'now', null);
+    insert.run('c', '/c', '/c', 'repo', 0, 'now', null);
+    expect(() => insert.run('d', '/d', '/d', 'repo', 0, 'now', 'tools')).toThrow(/UNIQUE/);
+    expect(() => insert.run('e', '/e', '/e', 'repo', 0, 'now', 'TOOLS')).toThrow(/UNIQUE/);
+    insert.run('f', '/f', '/f', 'repo', 0, 'now', 'Tools 2');
+    expect(database.prepare('SELECT id, label FROM folders ORDER BY id').all()).toEqual([
+      { id: 'a', label: 'Tools' },
+      { id: 'b', label: null },
+      { id: 'c', label: null },
+      { id: 'f', label: 'Tools 2' },
+    ]);
+  });
+
+  it('on top of 0004: saved folders keep every field and get no label; sessions and schedules keep their folder', async () => {
+    const database = await db();
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version <= 4));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('f-ws', '/Users/dev/ws', '/Users/dev/ws', 'workspace', 1, ts, ts);
+    database.prepare('INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('f-repo', '/Users/dev/tool', '/real/tool', 'repo', 0, ts, null);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, root, root_kind, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('s', 'fix', 'c', '/real/tool', '/real/tool', 'repo', 'f-repo', ts, ts);
+    database.prepare('INSERT INTO schedules (id, name, cron, template, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sch', 'nightly', '0 2 * * *', '{}', 'f-ws', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 4).map((m) => m.version));
+    expect(database.prepare('SELECT id, path, canonical_path, kind, is_default, added_at, last_used_at, label FROM folders ORDER BY id').all()).toEqual([
+      { id: 'f-repo', path: '/Users/dev/tool', canonical_path: '/real/tool', kind: 'repo', is_default: 0, added_at: ts, last_used_at: null, label: null },
+      { id: 'f-ws', path: '/Users/dev/ws', canonical_path: '/Users/dev/ws', kind: 'workspace', is_default: 1, added_at: ts, last_used_at: ts, label: null },
+    ]);
+    expect(database.prepare('SELECT folder_id FROM sessions').get()).toEqual({ folder_id: 'f-repo' });
+    expect(database.prepare('SELECT folder_id FROM schedules').get()).toEqual({ folder_id: 'f-ws' });
+    database.prepare("UPDATE folders SET label = 'Tools' WHERE id = 'f-repo'").run();
+    expect(() => database.prepare("UPDATE folders SET label = 'tools' WHERE id = 'f-ws'").run()).toThrow(/UNIQUE/);
+    expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
   });
 });
 

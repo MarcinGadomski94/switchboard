@@ -7,6 +7,9 @@ interface IdParams {
   readonly id: string;
 }
 
+/** The 422 of a `label` that is neither a string nor `null` (D18). */
+const LABEL_TYPE_MESSAGE = 'label must be a folder name (a string) or null';
+
 /**
  * Sends a folder refusal as `{ error: <code>, message }` (+ `check` for `invalid`,
  * + `schedules` for `folder-in-use`); rethrows anything else.
@@ -29,6 +32,12 @@ export function sendFolderError(reply: FastifyReply, error: unknown): FastifyRep
  *   `422 { error: "invalid", message, check }` when it is not a workspace or a git repo;
  * - `DELETE /api/folders/{id}` → `200 Folder[]` (the list left); 404; `409 folder-in-use` (`FolderInUse`) while schedules run there;
  * - `PUT /api/folders/{id}/default` → `200 Folder[]`; 404.
+ *
+ * D18 (additive): `POST /api/folders` takes an optional `label` (the folder's custom
+ * name), and `PUT /api/folders/{id}/label` `{ label: string | null }` renames a
+ * folder (`null` or empty = its own name again) → `200 Folder[]`; 404; `409
+ * label-taken` (another saved folder has that name, ignoring case); `422
+ * invalid-label` (over 40 characters, or not a string / `null`).
  */
 export async function registerFolderRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { folders } = context;
@@ -42,12 +51,16 @@ export async function registerFolderRoutes(app: FastifyInstance, context: ApiCon
   });
 
   app.post('/api/folders', async (request, reply): Promise<Folder | FastifyReply> => {
-    const body = request.body as { path?: unknown } | null | undefined;
+    const body = request.body as { path?: unknown; label?: unknown } | null | undefined;
     if (typeof body?.path !== 'string' || body.path.trim() === '') {
       return reply.code(422).send({ error: 'invalid', message: 'path must be a folder path' });
     }
+    const label = body.label;
+    if (label !== undefined && label !== null && typeof label !== 'string') {
+      return reply.code(422).send({ error: 'invalid-label', message: LABEL_TYPE_MESSAGE });
+    }
     try {
-      const { folder, created } = await folders.add(body.path);
+      const { folder, created } = await folders.add(body.path, label);
       return reply.code(created ? 201 : 200).send(folder);
     } catch (error) {
       return sendFolderError(reply, error);
@@ -57,6 +70,17 @@ export async function registerFolderRoutes(app: FastifyInstance, context: ApiCon
   app.delete<{ Params: IdParams }>('/api/folders/:id', async (request, reply): Promise<Folder[] | FastifyReply> => {
     try {
       return await folders.remove(request.params.id);
+    } catch (error) {
+      return sendFolderError(reply, error);
+    }
+  });
+
+  app.put<{ Params: IdParams }>('/api/folders/:id/label', async (request, reply): Promise<Folder[] | FastifyReply> => {
+    const body = request.body as { label?: unknown } | null | undefined;
+    const label = body?.label;
+    if (label !== null && typeof label !== 'string') return reply.code(422).send({ error: 'invalid-label', message: LABEL_TYPE_MESSAGE });
+    try {
+      return await folders.rename(request.params.id, label);
     } catch (error) {
       return sendFolderError(reply, error);
     }

@@ -7,8 +7,12 @@ import type { Store } from '../db/store.ts';
 import { expandHome, inspectFolder } from './inspect.ts';
 import { type FolderRef, folderRefOf } from './ref.ts';
 
-/** Why a folder call was refused (`docs/folders.md` → *API*). */
-export type FolderErrorCode = 'invalid' | 'not-found' | 'no-folder' | 'folder-in-use' | 'folder-missing';
+/**
+ * Why a folder call was refused (`docs/folders.md` → *API*). D18 adds
+ * `invalid-label` (a custom name over {@link FOLDER_LABEL_MAX} characters, or not
+ * a string) and `label-taken` (another saved folder has that name, ignoring case).
+ */
+export type FolderErrorCode = 'invalid' | 'not-found' | 'no-folder' | 'folder-in-use' | 'folder-missing' | 'invalid-label' | 'label-taken';
 
 const STATUS: Readonly<Record<FolderErrorCode, number>> = {
   invalid: 422,
@@ -16,7 +20,36 @@ const STATUS: Readonly<Record<FolderErrorCode, number>> = {
   'no-folder': 409,
   'folder-in-use': 409,
   'folder-missing': 409,
+  'invalid-label': 422,
+  'label-taken': 409,
 };
+
+/** D18: the longest custom name a saved folder may have, in characters (Unicode code points). */
+export const FOLDER_LABEL_MAX = 40;
+
+/**
+ * A custom folder name as it is stored (D18): trimmed; empty (or `null` /
+ * `undefined`) means none, so the folder shows its own name again.
+ * @throws {FolderError} `invalid-label` when it is longer than {@link FOLDER_LABEL_MAX} characters.
+ */
+export function normalizeFolderLabel(input: string | null | undefined): string | null {
+  const label = (input ?? '').trim();
+  if (label === '') return null;
+  const length = [...label].length;
+  if (length > FOLDER_LABEL_MAX) {
+    throw new FolderError('invalid-label', `a folder name has at most ${FOLDER_LABEL_MAX} characters; this one has ${length}`);
+  }
+  return label;
+}
+
+/** `true` for the database's refusal of a second folder with the same label (the `folders_label` index, 0005). */
+function isLabelConflict(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed: (?:folders\.label|index 'folders_label')/.test(error.message);
+}
+
+function labelTaken(label: string, other: Pick<FolderRecord, 'path'> | null): FolderError {
+  return new FolderError('label-taken', other ? `"${label}" is already the name of another folder (${other.path}); pick another name` : `"${label}" is already the name of another folder; pick another name`);
+}
 
 /** A refused folder call, with its HTTP status. */
 export class FolderError extends Error {
@@ -130,18 +163,37 @@ export class FolderService {
   // ── changes ─────────────────────────────────────────────────────────────
 
   /**
-   * `POST /api/folders`: saves a workspace or a git repo. A path whose folder is
-   * saved already (same canonical path) returns that folder (`created: false`).
-   * The first saved folder becomes the default. Sessions that ran in the folder
-   * before (it was removed and is added again) are linked to it.
-   * @throws {FolderError} `invalid` (with the check) for anything else.
+   * `POST /api/folders`: saves a workspace or a git repo, with an optional custom
+   * name (D18, `label`: trimmed, empty = none). A path whose folder is saved
+   * already (same canonical path) returns that folder (`created: false`); a
+   * non-empty `label` is then given to it by the {@link rename} rules, an empty
+   * one leaves its name as it is. The first saved folder becomes the default.
+   * Sessions that ran in the folder before (it was removed and is added again)
+   * are linked to it. A refused name saves nothing.
+   * @throws {FolderError} `invalid` (with the check) for anything but a workspace
+   * or a repo; `invalid-label` (over 40 characters); `label-taken` (another saved
+   * folder has that name, ignoring case).
    */
-  async add(input: string): Promise<{ readonly folder: Folder; readonly created: boolean }> {
+  async add(input: string, label?: string | null): Promise<{ readonly folder: Folder; readonly created: boolean }> {
     const check = await this.check(input);
     if (check.kind === null || check.canonicalPath === null) throw new FolderError('invalid', check.message || 'not a workspace or a git repository', { check });
+    const wanted = normalizeFolderLabel(label);
     const existing = await this.#store.folders.getByCanonicalPath(check.canonicalPath);
-    if (existing) return { folder: await this.#toFolder(existing, check), created: false };
-    const record = await this.#store.folders.create({ path: check.path, canonicalPath: check.canonicalPath, kind: check.kind });
+    if (existing) {
+      const named = wanted !== null && wanted !== existing.label ? await this.#setLabel(existing, wanted) : existing;
+      return { folder: await this.#toFolder(named, check), created: false };
+    }
+    if (wanted !== null) {
+      const other = await this.#store.folders.getByLabel(wanted);
+      if (other) throw labelTaken(wanted, other);
+    }
+    let record: FolderRecord;
+    try {
+      record = await this.#store.folders.create({ path: check.path, canonicalPath: check.canonicalPath, kind: check.kind, label: wanted });
+    } catch (error) {
+      if (wanted !== null && isLabelConflict(error)) throw labelTaken(wanted, await this.#store.folders.getByLabel(wanted));
+      throw error;
+    }
     await this.#store.folders.linkSessions(record);
     await this.#ensureDefault();
     return { folder: await this.#toFolder((await this.#store.folders.get(record.id)) ?? record, check), created: true };
@@ -161,6 +213,20 @@ export class FolderService {
     }
     await this.#store.folders.delete(record.id);
     await this.#ensureDefault();
+    return this.list();
+  }
+
+  /**
+   * `PUT /api/folders/{id}/label` (D18, Rename in Settings → Folders): gives the
+   * folder a custom name, trimmed; an empty name (or `null`) removes it, so the
+   * folder shows its own name again. The folder's own name, which its worktrees
+   * are named after, does not change. Returns the whole list, as the other changes do.
+   * @throws {FolderError} `not-found`; `invalid-label` (over 40 characters);
+   * `label-taken` (another saved folder has that name, ignoring case).
+   */
+  async rename(id: string, label: string | null): Promise<Folder[]> {
+    const record = await this.#record(id);
+    await this.#setLabel(record, normalizeFolderLabel(label));
     return this.list();
   }
 
@@ -254,6 +320,20 @@ export class FolderService {
     return record;
   }
 
+  /** Stores `label` (already normalized) on `record`, refused when another saved folder has it (ignoring case). */
+  async #setLabel(record: FolderRecord, label: string | null): Promise<FolderRecord> {
+    if (label !== null) {
+      const other = await this.#store.folders.getByLabel(label);
+      if (other && other.id !== record.id) throw labelTaken(label, other);
+    }
+    try {
+      return (await this.#store.folders.update(record.id, { label })) ?? record;
+    } catch (error) {
+      if (label !== null && isLabelConflict(error)) throw labelTaken(label, await this.#store.folders.getByLabel(label));
+      throw error;
+    }
+  }
+
   /** Keeps exactly one default while folders are saved: the most recently used (else the first added). */
   async #ensureDefault(): Promise<void> {
     if (await this.#store.folders.getDefault()) return;
@@ -262,11 +342,14 @@ export class FolderService {
   }
 
   async #toFolder(record: FolderRecord, known?: FolderCheck): Promise<Folder> {
+    const name = path.basename(record.path) || record.path;
     return {
       id: record.id,
       path: record.path,
       canonicalPath: record.canonicalPath,
-      name: path.basename(record.path) || record.path,
+      name,
+      label: record.label,
+      displayName: record.label ?? name,
       kind: record.kind,
       isDefault: record.isDefault,
       addedAt: record.addedAt,

@@ -18,6 +18,12 @@ export interface FolderRecord {
   readonly addedAt: string;
   /** When a session last started in it; `null` before the first. */
   readonly lastUsedAt: string | null;
+  /**
+   * D18: the folder's custom name (trimmed, at most 40 characters, unique among
+   * saved folders ignoring case: `FolderService` keeps these rules); `null` = none,
+   * the folder shows its own name (its last path segment).
+   */
+  readonly label: string | null;
 }
 
 /** Input of {@link FolderRepository.create}; `id` defaults to a random UUID, `isDefault` to `false`. */
@@ -37,8 +43,14 @@ const SPEC: TableSpec<FolderRecord> = {
     isDefault: ['is_default', 'bool'],
     addedAt: ['added_at', 'text'],
     lastUsedAt: ['last_used_at', 'text'],
+    label: ['label', 'text'],
   },
 };
+
+/** How two folder labels are compared (D18: case-insensitive): NFC, lower case. */
+export function labelKey(label: string): string {
+  return label.normalize('NFC').toLowerCase();
+}
 
 /**
  * The display order of the saved list (D14: "the default preselected, then most
@@ -74,6 +86,15 @@ export class FolderRepository {
   /** The folder with this canonical path, or `null`. */
   async getByCanonicalPath(canonicalPath: string): Promise<FolderRecord | null> {
     return this.#table.first('canonical_path = ?', [canonicalPath]);
+  }
+
+  /**
+   * The saved folder whose label is `label` ignoring case (D18), or `null`. SQLite's
+   * NOCASE folds ASCII only, so the labels are compared here in full Unicode lower case.
+   */
+  async getByLabel(label: string): Promise<FolderRecord | null> {
+    const wanted = labelKey(label);
+    return this.#table.select('label IS NOT NULL').find((record) => record.label !== null && labelKey(record.label) === wanted) ?? null;
   }
 
   /** The default folder, or `null` (no folder saved). */

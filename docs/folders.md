@@ -1,6 +1,6 @@
-# Folders (D14)
+# Folders (D14, D18)
 
-There is no single workspace root and no workspace environment variable. The developer saves **folders**, and every session, scan, schedule and Codebase Memory view names the folder it works in (`docs/decisions.md` → D14). The server side comes first; the UI (Settings → Folders, the wizard's "Add your first folder", the New-session form's Folder row, the folder switchers, the folder tags) is under *UI* below.
+There is no single workspace root and no workspace environment variable. The developer saves **folders**, and every session, scan, schedule and Codebase Memory view names the folder it works in (`docs/decisions.md` → D14). A saved folder can also have a **custom name** (D18, *Names* below). The server side comes first; the UI (Settings → Folders, the wizard's "Add your first folder", the New-session form's Folder row, the folder switchers, the folder tags) is under *UI* below.
 
 Code: `src/server/folders/` (`inspect.ts` the kinds, `service.ts` the `FolderService`, `ref.ts` the `FolderRef` every service takes), `src/server/db/repos/folders.ts` (the `folders` table), `src/server/api/folders.ts` (routes), `src/server/db/migrations/0003_folders.sql`; the UI in `src/web/folders/` (below).
 
@@ -16,10 +16,11 @@ Code: `src/server/folders/` (`inspect.ts` the kinds, `service.ts` the `FolderSer
 The result is a `FolderCheck` (`src/core/api.ts`): `path`, `canonicalPath`, `exists`, `kind` (`null` when refused), `router`, `solutionCount`, `repoName`, `problem`, `message`. The UI builds the check line from it: `✓ AGENTS.md (Workspace Router) · 38 solutions`, `✓ git repo · single solution`, or `✕ <message>`.
 
 ## The saved list (`folders` table)
-`id`, `path` (as given, `~` expanded), `canonical_path` (unique), `kind` (what it was when added), `is_default` (at most one: a partial unique index), `added_at`, `last_used_at` (a session started there). Order everywhere: the default, then most recently used, then the order they were added.
+`id`, `path` (as given, `~` expanded), `canonical_path` (unique), `kind` (what it was when added), `is_default` (at most one: a partial unique index), `added_at`, `last_used_at` (a session started there), `label` (D18: the custom name, `NULL` = none; `0005_folder_label.sql`). Order everywhere: the default, then most recently used, then the order they were added.
 
 `FolderService`:
-- **add** (`POST /api/folders`): refused (422 `invalid` + the check) unless the folder is a workspace or a repo; the same canonical path again returns the saved folder (200); the first saved folder becomes the default. Sessions without a saved folder whose root is this folder are linked to it (a folder removed and added back).
+- **add** (`POST /api/folders`, optional `label`, D18): refused (422 `invalid` + the check) unless the folder is a workspace or a repo; the same canonical path again returns the saved folder (200), and a non-empty `label` then renames it (an empty one leaves its name); the first saved folder becomes the default. Sessions without a saved folder whose root is this folder are linked to it (a folder removed and added back). A refused name (409 `label-taken`, 422 `invalid-label`) saves nothing.
+- **rename** (`PUT /api/folders/{id}/label`, D18): sets the custom name by the rules under *Names*; empty or `null` removes it; returns the whole list.
 - **remove** (`DELETE /api/folders/{id}`): refused (409 `folder-in-use`, with the schedules' names) while a schedule starts its runs there; otherwise the folder leaves the list, its sessions keep their `root` / `root_kind` (their folder id becomes `null`), and the default moves to the most recently used folder left.
 - **setDefault** (`PUT /api/folders/{id}/default`).
 - **open / reconcile** (main.ts at start): refreshes a canonical path that no longer matches the disk (the 0003 migration copies the wizard's root as it was typed), links sessions to saved folders by root, and gives a list without a default one (the most recently used).
@@ -27,6 +28,13 @@ The result is a `FolderCheck` (`src/core/api.ts`): `path`, `canonicalPath`, `exi
 - **resolveForSession(id)** (NewSession `folder`, schedule templates): a saved folder's id, or the default when omitted. The folder must still be a folder on disk (409 `folder-missing`); its realpath is taken then. The kind is the one it was saved with.
 
 A saved `setup.workspaceRoot` (the M5.3 wizard) is migrated into the list as the default workspace by `0003_folders.sql`; the setting stays in the table, unread. Sessions started before D14 get `root` = their `cwd` and `root_kind` = `workspace` (they all ran at the one root), and the default folder's id when that root is the migrated one. Schedules get the default folder.
+
+## Names (D18)
+A saved folder can have a custom name (`docs/decisions.md` → D18), set when it is added (the add panel's **Name** field: Settings → Folders → Add…, the New-session form's Browse…, the setup wizard's "Add your first folder") and changed with **Rename** in Settings → Folders.
+
+- **A label, not a new name.** `Folder.name` stays the folder's own name (its last path segment): worktrees are named after it (`../<repo>-wt-<session>`, `sessionCwd` in the UI, the `WorktreeManager` on the server), a repo folder's one solution is it, and nothing path-related reads the label. The custom name is `Folder.label` (`null` = none) and `Folder.displayName` = the label, else the name: what the UI shows.
+- **Rules** (`normalizeFolderLabel`, `FolderService.add` / `rename`): trimmed; empty (or `null`) = none, so the folder shows its own name again; at most 40 characters (`FOLDER_LABEL_MAX`, counted in Unicode code points); unique among the saved folders' labels, ignoring case (compared NFC + lower case; the database's `folders_label` index, `label COLLATE NOCASE`, backs it for ASCII case and a write it refuses is reported the same way). A taken name is `409 label-taken` with the message `"<name>" is already the name of another folder (<its path>); pick another name`; a long one `422 invalid-label` (`a folder name has at most 40 characters; this one has <n>`). Its own name in another case is not taken. Only other folders' **labels** count: a label may equal another folder's own name (the UI then shows the paths, below).
+- **Where it shows**: see *UI* → *Names*.
 
 ## Sessions
 A session stores its folder: `folder_id` (the saved folder), `root` (its canonical path) and `root_kind`, next to `cwd`, the process's working folder. On the wire: `Session.folder`, `folderPath`, `folderKind`, `cwd`.
@@ -57,6 +65,8 @@ Everything else follows the session's own folder, never a global root:
 | POST | `/api/folders` `{ path }` | `201 Folder` (added) / `200 Folder` (already saved); `422 { error: "invalid", message, check }` |
 | DELETE | `/api/folders/{id}` | `200 Folder[]` (the list left); 404; `409 FolderInUse` |
 | PUT | `/api/folders/{id}/default` | `200 Folder[]`; 404 |
+| POST | `/api/folders` `{ path, label? }` (D18) | as above; `409 { error: "label-taken", message }`, `422 { error: "invalid-label", message }` |
+| PUT | `/api/folders/{id}/label` `{ label: string \| null }` (D18) | `200 Folder[]`; 404; `409 label-taken`; `422 invalid-label` |
 
 `GET /api/solutions?folder=`, `GET /api/codebase-memory?folder=`, `POST /api/codebase-memory/reindex?folder=` take a folder as above. NewSession, Session / SessionDetail, Schedule (+ its template) and HistoryItem carry the folder. `GET /api/setup` lists the saved folders (the wizard's "Add your first folder", skippable); `GET /api/setup/folders` (Browse…) starts in the default folder, else the home folder. The M5.3 routes `GET/PUT /api/setup/root` are gone.
 

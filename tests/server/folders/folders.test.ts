@@ -1,14 +1,14 @@
 import { mkdir, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CodebaseMemoryStatus, Folder, FolderCheck, NewRepoSession, NewSession, Session, SessionDetail, SolutionGroup } from '../../../src/core/api.ts';
 import { REPO_WORKTREE_NOTE_HEADER, SESSION_START_HEADER } from '../../../src/core/first-turn.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { expandHome, inspectFolder } from '../../../src/server/folders/inspect.ts';
-import { FolderError, FolderService } from '../../../src/server/folders/service.ts';
+import { FOLDER_LABEL_MAX, FolderError, FolderService, normalizeFolderLabel } from '../../../src/server/folders/service.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
@@ -210,6 +210,103 @@ describe('FolderService (D14)', () => {
   });
 });
 
+describe('folder names (D18): FolderService', () => {
+  it('add with a name: trimmed, shown as displayName; the folder keeps its own name; without one displayName is the own name', async () => {
+    const { root, store: s } = await tempStore();
+    const ws = await workspaceAt(path.join(root, 'ws'));
+    const repo = path.join(root, 'repo');
+    await mkdir(path.join(repo, '.git'), { recursive: true });
+    const folders = new FolderService({ store: s, home: root });
+
+    const named = await folders.add(ws, '  Main workspace  ');
+    expect(named.folder).toMatchObject({ path: ws, name: 'ws', label: 'Main workspace', displayName: 'Main workspace', isDefault: true });
+    const plain = await folders.add(repo, '   ');
+    expect(plain.folder).toMatchObject({ name: 'repo', label: null, displayName: 'repo' });
+    expect((await folders.list()).map((f) => [f.name, f.label, f.displayName])).toEqual([
+      ['ws', 'Main workspace', 'Main workspace'],
+      ['repo', null, 'repo'],
+    ]);
+    expect(await s.folders.get(named.folder.id)).toMatchObject({ label: 'Main workspace' });
+  });
+
+  it('add: a taken name (any case) or one over 40 characters is refused and nothing is saved; a folder saved already takes a non-empty name', async () => {
+    const { root, store: s } = await tempStore();
+    const a = await workspaceAt(path.join(root, 'a'));
+    const b = await workspaceAt(path.join(root, 'b'));
+    const folders = new FolderService({ store: s });
+    const first = (await folders.add(a, 'Tools')).folder;
+
+    const taken = await folders.add(b, 'TOOLS').catch((error: unknown) => error);
+    expect(taken).toBeInstanceOf(FolderError);
+    expect(taken).toMatchObject({ code: 'label-taken', status: 409, message: `"TOOLS" is already the name of another folder (${a}); pick another name` });
+    const long = await folders.add(b, 'x'.repeat(FOLDER_LABEL_MAX + 1)).catch((error: unknown) => error);
+    expect(long).toMatchObject({ code: 'invalid-label', status: 422, message: 'a folder name has at most 40 characters; this one has 41' });
+    expect(await s.folders.list()).toHaveLength(1);
+    // A refused path is still `invalid` (the path is checked first).
+    await expect(folders.add(path.join(root, 'nope'), 'x'.repeat(50))).rejects.toMatchObject({ code: 'invalid' });
+
+    // Exactly 40 characters (code points, not UTF-16 units) is fine.
+    const forty = '🙂'.repeat(FOLDER_LABEL_MAX);
+    expect((await folders.add(b, forty)).folder).toMatchObject({ label: forty, displayName: forty });
+    // The same folder again: an empty name keeps its name, a new one renames it (200, not created).
+    expect(await folders.add(b, '')).toMatchObject({ created: false, folder: { label: forty } });
+    expect(await folders.add(b, ' Build ')).toMatchObject({ created: false, folder: { label: 'Build' } });
+    await expect(folders.add(b, 'tools')).rejects.toMatchObject({ code: 'label-taken' });
+    expect((await folders.get(first.id)).label).toBe('Tools');
+  });
+
+  it('rename: sets, changes case, refuses a taken name (Unicode case too) and a long one, resets on empty / null, 404 for an unknown folder', async () => {
+    const { root, store: s } = await tempStore();
+    const a = await workspaceAt(path.join(root, 'a'));
+    const b = await workspaceAt(path.join(root, 'b'));
+    const folders = new FolderService({ store: s });
+    const fa = (await folders.add(a)).folder;
+    const fb = (await folders.add(b)).folder;
+
+    expect((await folders.rename(fa.id, '  Łódź  ')).map((f) => [f.name, f.label, f.displayName])).toEqual([
+      ['a', 'Łódź', 'Łódź'],
+      ['b', null, 'b'],
+    ]);
+    // Its own name in another case is not "taken".
+    expect((await folders.rename(fa.id, 'ŁÓDŹ'))[0]).toMatchObject({ label: 'ŁÓDŹ' });
+    await expect(folders.rename(fb.id, 'łódź')).rejects.toMatchObject({ code: 'label-taken', status: 409, message: `"łódź" is already the name of another folder (${a}); pick another name` });
+    await expect(folders.rename(fb.id, 'y'.repeat(41))).rejects.toMatchObject({ code: 'invalid-label', status: 422 });
+    expect((await folders.get(fb.id)).label).toBeNull();
+    // Empty or null: back to the folder's own name.
+    expect((await folders.rename(fa.id, '   ')).find((f) => f.id === fa.id)).toMatchObject({ label: null, displayName: 'a' });
+    await folders.rename(fa.id, 'Front');
+    expect((await folders.rename(fa.id, null)).find((f) => f.id === fa.id)).toMatchObject({ label: null, displayName: 'a' });
+    // A freed name can be taken by another folder.
+    expect((await folders.rename(fb.id, 'łódź')).find((f) => f.id === fb.id)).toMatchObject({ label: 'łódź' });
+    await expect(folders.rename('nope', 'x')).rejects.toMatchObject({ code: 'not-found', status: 404 });
+    // The folders' paths and own names never change.
+    expect((await folders.list()).map((f) => [f.path, f.name])).toEqual([[a, 'a'], [b, 'b']]);
+  });
+
+  it('the database refuses a second folder with the same name even past the service (ASCII case), reported as label-taken', async () => {
+    const { root, store: s } = await tempStore();
+    const a = await workspaceAt(path.join(root, 'a'));
+    const b = await workspaceAt(path.join(root, 'b'));
+    const folders = new FolderService({ store: s });
+    await folders.add(a, 'Main');
+    const fb = (await folders.add(b)).folder;
+    await expect(s.folders.update(fb.id, { label: 'MAIN' })).rejects.toThrow(/UNIQUE constraint failed: folders\.label/);
+    // A name taken between the service's check and its write (the check misses it once).
+    const miss = vi.spyOn(s.folders, 'getByLabel').mockResolvedValueOnce(null);
+    await expect(folders.rename(fb.id, 'MAIN')).rejects.toMatchObject({ code: 'label-taken', status: 409, message: `"MAIN" is already the name of another folder (${a}); pick another name` });
+    miss.mockResolvedValueOnce(null);
+    await expect(folders.add(path.join(root, 'b'), 'main')).rejects.toMatchObject({ code: 'label-taken' });
+    const c = await workspaceAt(path.join(root, 'c'));
+    miss.mockResolvedValueOnce(null);
+    await expect(folders.add(c, 'mAiN')).rejects.toMatchObject({ code: 'label-taken' });
+    expect((await s.folders.list()).map((f) => f.label)).toEqual(['Main', null]);
+    miss.mockRestore();
+    expect(normalizeFolderLabel('  x ')).toBe('x');
+    expect(normalizeFolderLabel(undefined)).toBeNull();
+    expect(normalizeFolderLabel(null)).toBeNull();
+  });
+});
+
 describe('/api/folders, and sessions / solutions / codebase memory per folder (D14, fake-claude + real git)', () => {
   interface Rig {
     readonly s: SupervisorWorld;
@@ -391,6 +488,72 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
     const rows = (await call('GET', `/api/solutions?folder=${repo.id}`)).json() as SolutionGroup[];
     expect(rows[0]?.solutions[0]?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: (started.json() as Session).id, owner: 'solo-live', status: 'idle' }]);
     expect(g.workspace).not.toBe(repoPath);
+  });
+
+  it('D18: POST takes a label; PUT /api/folders/{id}/label renames (200 Folder[]), 409 taken, 422 long or not a string, empty resets, 404; JSON has label and displayName', async () => {
+    const { g, workspace, repo, repoPath } = await setup();
+    expect(workspace).toMatchObject({ label: null, displayName: path.basename(g.workspace) });
+    expect(repo).toMatchObject({ name: 'solo', label: null, displayName: 'solo' });
+
+    const other = await g.makeRepo(path.join(sw?.root ?? '', 'other repo'));
+    const added = await call('POST', '/api/folders', { path: other, label: '  Side project ' });
+    expect(added.statusCode).toBe(201);
+    expect(added.json()).toMatchObject({ path: other, name: 'other repo', label: 'Side project', displayName: 'Side project' });
+    const takenOnAdd = await call('POST', '/api/folders', { path: path.join(g.workspace, 'mobile'), label: 'side PROJECT' });
+    expect(takenOnAdd.statusCode).toBe(409);
+    expect(takenOnAdd.json()).toEqual({ error: 'label-taken', message: `"side PROJECT" is already the name of another folder (${other}); pick another name` });
+    expect((await call('POST', '/api/folders', { path: path.join(g.workspace, 'mobile'), label: 7 })).json()).toMatchObject({ error: 'invalid-label' });
+    expect(((await call('GET', '/api/folders')).json() as Folder[]).map((f) => f.path)).toEqual([g.workspace, repoPath, other]);
+
+    const renamed = await call('PUT', `/api/folders/${repo.id}/label`, { label: ' Solo tool ' });
+    expect(renamed.statusCode).toBe(200);
+    expect((renamed.json() as Folder[]).map((f) => [f.name, f.label, f.displayName])).toEqual([
+      [path.basename(g.workspace), null, path.basename(g.workspace)],
+      ['solo', 'Solo tool', 'Solo tool'],
+      ['other repo', 'Side project', 'Side project'],
+    ]);
+    const list = (await call('GET', '/api/folders')).json() as Array<Record<string, unknown>>;
+    for (const folder of list) expect(Object.keys(folder)).toEqual(expect.arrayContaining(['name', 'label', 'displayName']));
+
+    const taken = await call('PUT', `/api/folders/${workspace.id}/label`, { label: 'SOLO TOOL' });
+    expect(taken.statusCode).toBe(409);
+    expect(taken.json()).toEqual({ error: 'label-taken', message: `"SOLO TOOL" is already the name of another folder (${repoPath}); pick another name` });
+    const long = await call('PUT', `/api/folders/${workspace.id}/label`, { label: 'z'.repeat(41) });
+    expect(long.statusCode).toBe(422);
+    expect(long.json()).toEqual({ error: 'invalid-label', message: 'a folder name has at most 40 characters; this one has 41' });
+    for (const body of [{ label: 12 }, {}, { label: ['x'] }]) {
+      const bad = await call('PUT', `/api/folders/${workspace.id}/label`, body);
+      expect(bad.statusCode, JSON.stringify(body)).toBe(422);
+      expect(bad.json()).toMatchObject({ error: 'invalid-label' });
+    }
+    expect((await call('PUT', '/api/folders/nope/label', { label: 'x' })).statusCode).toBe(404);
+    expect((await call('PUT', '/api/folders/nope/label', { label: 'x' })).json()).toMatchObject({ error: 'not-found' });
+
+    const reset = await call('PUT', `/api/folders/${repo.id}/label`, { label: '' });
+    expect(reset.statusCode).toBe(200);
+    expect((reset.json() as Folder[]).find((f) => f.id === repo.id)).toMatchObject({ label: null, displayName: 'solo' });
+    const cleared = await call('PUT', `/api/folders/${(added.json() as Folder).id}/label`, { label: null });
+    expect((cleared.json() as Folder[]).find((f) => f.path === other)).toMatchObject({ label: null, displayName: 'other repo' });
+    expect((await call('PUT', `/api/folders/${repo.id}/label`, { label: 'x' }, false)).statusCode).toBe(401);
+  });
+
+  it('D18: a renamed repo folder still names its worktree and its one solution after the folder itself', async () => {
+    const { s, g, repo, repoPath } = await setup();
+    expect((await call('PUT', `/api/folders/${repo.id}/label`, { label: 'Pretty Name' })).statusCode).toBe(200);
+    const response = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'named-wt', worktrees: true }));
+    expect(response.statusCode, response.body).toBe(201);
+    const session = response.json() as Session;
+    const worktree = path.join(path.dirname(repoPath), 'solo-wt-named-wt');
+    expect(session).toMatchObject({ cwd: worktree, folder: repo.id, folderPath: repoPath, folderKind: 'repo', solutions: ['solo'] });
+    expect((await stat(worktree)).isDirectory()).toBe(true);
+    expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('session/named-wt');
+    const { cwd } = await spawnOf(s, session);
+    expect(cwd).toBe(worktree);
+    // A repo folder's one solution is still its own name (an old name or the custom one is refused).
+    const wrong = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'by-label', solutions: ['Pretty Name'] }));
+    expect(wrong.statusCode).toBe(422);
+    expect((await call('GET', `/api/solutions?folder=${repo.id}`)).json()).toMatchObject([{ folder: 'solo/', solutions: [{ name: 'solo' }] }]);
+    await waitForStatus(s.store, session.id, ['done']);
   });
 
   it('GET /api/codebase-memory?folder=: a workspace has its dirty list, a repo folder none', async () => {
