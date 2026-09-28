@@ -1,12 +1,14 @@
 /**
  * Pure rules behind the live fields of the Solutions view (M6.2,
  * `docs/solutions.md` → *Live fields*): the gap #12 phase-ledger parser, the
- * row's phase / status / changes summaries and the current branch from
- * `.git/HEAD`. The codebase-memory freshness rules are in `codebase-memory.ts`
- * (M6.4). No file system: `src/server/solutions/live.ts` reads the files.
+ * row's phase / status / changes summaries, the current branch from
+ * `.git/HEAD` and a branch owner's title (D22). The codebase-memory freshness
+ * rules are in `codebase-memory.ts` (M6.4). No file system:
+ * `src/server/solutions/live.ts` reads the files.
  */
 import type { PhaseLedgerEntry } from './api.ts';
 import type { Phase, SessionStatus } from './model.ts';
+import { type TitledSession, displayTitle } from './session-title.ts';
 
 /** The phase labels a ledger or a session can have (the prototype's copy). */
 export type PhaseLabel = 'UI-first' | 'integration';
@@ -155,4 +157,14 @@ export function branchFromHead(head: string): string | null {
   if (ref) return (ref[1] as string).trim() || null;
   if (/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i.test(text)) return text.slice(0, 7);
   return null;
+}
+
+/**
+ * A branch's `ownerTitle` (D22, developer ruling 2026-09-28): the display title of
+ * the session that owns the branch (its title, else its short name), `null` when
+ * no session owns it (the owner is then a note such as `idle`). The branch and
+ * worktree names stay the short name's.
+ */
+export function branchOwnerTitle(session: TitledSession | null | undefined): string | null {
+  return session ? displayTitle(session) : null;
 }

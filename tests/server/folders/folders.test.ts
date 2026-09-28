@@ -475,7 +475,7 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
         type: 'Repo',
         rule: 'editable',
         status: 'idle',
-        branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', status: 'idle' }],
+        branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }],
         codebaseMemory: 'unknown',
       }),
     ]);
@@ -486,7 +486,7 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
     const started = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-live', task: '' }));
     expect(started.statusCode, started.body).toBe(201);
     const rows = (await call('GET', `/api/solutions?folder=${repo.id}`)).json() as SolutionGroup[];
-    expect(rows[0]?.solutions[0]?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: (started.json() as Session).id, owner: 'solo-live', status: 'idle' }]);
+    expect(rows[0]?.solutions[0]?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: (started.json() as Session).id, owner: 'solo-live', ownerTitle: 'solo-live', status: 'idle' }]);
     expect(g.workspace).not.toBe(repoPath);
   });
 

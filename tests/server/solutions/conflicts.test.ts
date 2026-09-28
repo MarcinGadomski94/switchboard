@@ -125,9 +125,10 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
       ['first-writer', false],
       ['second-writer', true],
     ]);
-    expect(byName.get('mobile')?.branches.map((b) => [b.branch, b.owner, b.worktree === null])).toEqual([
-      ['session/second-writer', 'second-writer', false],
-      ['main', 'first-writer', true],
+    // D22 (ruling 4): each branch names its owner by the session's display title; the titled writer's in-place branch too.
+    expect(byName.get('mobile')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.worktree === null])).toEqual([
+      ['session/second-writer', 'second-writer', 'second-writer', false],
+      ['main', 'first-writer', 'First writer', true],
     ]);
 
     // Move the other one: every writer has its own worktree → no conflict.
@@ -139,6 +140,12 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     await waitForStatus(s.store, first.id, ['done']);
     byName = await rows();
     expect(byName.get('mobile')).toMatchObject({ conflict: false, flag: '', conflictSessions: [] });
+    // D22 (ruling 4): the titled writer's worktree branch is owned by its title; branch and worktree keep the short name.
+    expect(byName.get('mobile')?.branches.find((b) => b.sessionId === first.id)).toMatchObject({
+      branch: 'session/first-writer',
+      owner: 'first-writer',
+      ownerTitle: 'First writer',
+    });
 
     // The developer's checkout: same branch, same changes, nothing stashed; no forbidden git call anywhere.
     expect(await g.git(g.mobile, 'symbolic-ref', '--short', 'HEAD')).toBe('main');

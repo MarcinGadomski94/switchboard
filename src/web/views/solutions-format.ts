@@ -1,10 +1,11 @@
-import type { CodebaseMemoryFreshness, PhaseLedgerEntry, Solution, SolutionArtifact, SolutionGroup } from '../../core/api.ts';
+import type { CodebaseMemoryFreshness, PhaseLedgerEntry, Solution, SolutionArtifact, SolutionBranch, SolutionGroup } from '../../core/api.ts';
 
 /**
  * Pure view logic of the Solutions view (M6.2, SPEC → Solutions): filter pills,
- * header meta, worktree labels, ledger / artifact fallbacks and the freshness
- * line. Copy is the prototype's (`docs/handoff/prototype/Switchboard App.dc.html`,
- * `SG` / `sd`), with gap #12 for the missing phase ledger.
+ * header meta, worktree labels, branch owners (D22), ledger / artifact fallbacks
+ * and the freshness line. Copy is the prototype's
+ * (`docs/handoff/prototype/Switchboard App.dc.html`, `SG` / `sd`), with gap #12
+ * for the missing phase ledger.
  */
 
 /** The filter pills, in the prototype's order (`other/` rows show under All only, gap #15). */
@@ -78,6 +79,26 @@ export function worktreeLine(worktree: string | null, solutionPath: string): str
   const trimmed = worktree.replace(/[\\/]+$/, '');
   if (parentPath(trimmed) === parentPath(solutionPath.replace(/[\\/]+$/, ''))) return `../${baseName(trimmed)}`;
   return worktree;
+}
+
+/** How a branch chip or card names its owner (D22, developer ruling 2026-09-28). */
+export interface BranchOwnerLabel {
+  /** The owner session's display title (`ownerTitle`), else `owner` (a session's short name or a note such as `idle`). */
+  readonly text: string;
+  /** The owner's short name (`owner`) when the text is a title that differs from it; `undefined` otherwise (no tooltip). */
+  readonly tooltip: string | undefined;
+}
+
+/**
+ * A branch owner as the chips and cards show it (D22, developer ruling
+ * 2026-09-28): by its display title, else by `owner`, with the short name as the
+ * tooltip when they differ (as History's rows). The branch and worktree beside
+ * it keep the short name's.
+ */
+export function branchOwnerLabel(branch: Pick<SolutionBranch, 'owner' | 'ownerTitle'>): BranchOwnerLabel {
+  const title = branch.ownerTitle;
+  if (!title || title === branch.owner) return { text: branch.owner, tooltip: undefined };
+  return { text: title, tooltip: branch.owner };
 }
 
 /** A phase-ledger row as the detail panel shows it. */

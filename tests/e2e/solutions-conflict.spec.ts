@@ -16,7 +16,8 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * card appear through `/hub`; each "Move … to worktree" click creates the
  * session's worktree (gap #2) until every writer has its own and the warning is
  * gone. The developer's checkout is never touched. D22: a titled writer is named
- * by its title in the card and its button; its worktree and branch keep the short name.
+ * by its title in the card and its button (and, ruling 4, its branch chip); its
+ * worktree and branch keep the short name.
  */
 let world: GitWorld;
 let server: ServerProcess;
@@ -119,7 +120,8 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   await expect(row(page, 'mobile').locator('.sb-sol-flag')).toHaveCount(0);
   await expect(badge).toHaveText('', { timeout: 15_000 });
   await expect(row(page, 'mobile').getByTestId('branch-chip')).toHaveText(
-    ['⎇ session/second-writermobile-wt-second-writersecond-writer', '⎇ session/first-writermobile-wt-first-writerfirst-writer'],
+    // D22 (ruling 4): the titled writer's chip names it by its title; branch and worktree keep the short name.
+    ['⎇ session/second-writermobile-wt-second-writersecond-writer', '⎇ session/first-writermobile-wt-first-writerFirst writer'],
     { timeout: 15_000 },
   );
   expect(await exists(mobileWt('first-writer'))).toBe(true);

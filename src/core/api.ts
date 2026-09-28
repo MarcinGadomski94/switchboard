@@ -459,6 +459,15 @@ export interface SolutionBranch {
   readonly sessionId: string | null;
   /** Session name, or a note such as "idle". */
   readonly owner: string;
+  /**
+   * Additive (D22, developer ruling 2026-09-28): the owner session's display title
+   * (its title, else its name), `null` when no session owns the branch ({@link owner}
+   * is then a note such as `idle`). The branch chips and cards name the owner by
+   * this, else by {@link owner}, with the short name ({@link owner}) as the tooltip;
+   * the branch and worktree names are still the short name's. Always sent by the
+   * server; optional here like `ConflictSession.title`.
+   */
+  readonly ownerTitle?: string | null;
   readonly status: SessionStatus;
 }
 
