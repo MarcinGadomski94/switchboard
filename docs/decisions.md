@@ -186,6 +186,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Icons:** made once from an SVG of the sidebar's brand mark, rasterised with the test Chromium by a script in the repo, and committed.
   - **Unchanged:** the installed app is the same origin (`http://127.0.0.1:<port>`), so it keeps its token cookie and needs the service running.
 
+## Frame helper from the Chrome Web Store (added 2026-09-28)
+- **D35 The frame helper installs with one click from the Chrome Web Store (unlisted).**
+  - **Why:** browsers don't let a page or a local program install an extension, and Chrome ignores `--load-extension`. The developer chose to publish the helper unlisted on the Chrome Web Store: **Add to Chrome**, no developer mode.
+  - **This repo prepares:**
+    - a package script (`npm run frame-helper:package` → `.frame-helper-dist/switchboard-frame-helper-<version>.zip`, gitignored), with manifest icons (16/32/48/128 from the D34 app icon), a store description and nothing generated (no `_metadata`);
+    - a listing kit (`docs/frame-helper-store.md`): texts, single purpose, a justification per permission, data-use answers (no data collected), a short privacy policy text, and the store's screenshots rendered from the demo.
+  - **The developer publishes:** their developer account, the upload, the listing set to **Unlisted**, the review.
+  - **In Switchboard:** a "Frame helper store link" setting. Once set, Settings (Embedded tools) and a site tool's "needs the Switchboard frame helper" page show **Add to Chrome**, which opens the listing in a new tab. The page turns ready by itself once the helper announces itself. Without the link, both keep today's manual steps.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
