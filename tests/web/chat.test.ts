@@ -139,6 +139,9 @@ describe('step marks', () => {
     expect(stepMark(event(1, tool('Write')))).toBe('●');
     expect(stepMark(event(1, tool('Write', { result: 'no', isError: true })))).toBe('✕');
     expect(stepMark(event(1, tool('AskUserQuestion', { requestState: 'open' })))).toBe('⏸');
+    // D6: Switchboard's own switch to acceptEdits is a notice; a real mismatch is a failure.
+    expect(stepMark(event(1, { type: 'mode-mismatch', requested: 'auto', observed: 'default', fallback: 'acceptEdits' }))).toBe('⚠');
+    expect(stepMark(event(1, { type: 'mode-mismatch', requested: 'acceptEdits', observed: 'default' }))).toBe('✕');
     expect(stepMark(event(1, { type: 'request', state: 'open' }))).toBe('⏸');
     expect(stepMark(event(1, { type: 'request', state: 'responded', behavior: 'allow' }))).toBe('✓');
     expect(stepMark(event(1, { type: 'request', state: 'responded', behavior: 'deny' }))).toBe('✕');

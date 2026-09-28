@@ -63,7 +63,7 @@ export function upsertEvent(events: readonly SessionEvent[], event: SessionEvent
  * The mark in front of a step line (the prototype's tool lines): `✓` finished,
  * `●` still running, `✕` failed / denied, `⏸` waiting on the developer.
  */
-export type StepMark = '✓' | '●' | '✕' | '⏸';
+export type StepMark = '✓' | '●' | '✕' | '⏸' | '⚠';
 
 /** One mono step line under an agent message. */
 export interface ChatStep {
@@ -108,8 +108,10 @@ export function stepMark(event: SessionEvent): StepMark | null {
       return request.state === 'responded' && request.behavior === 'allow' ? '✓' : '✕';
     }
     case 'denied':
-    case 'mode-mismatch':
       return '✕';
+    case 'mode-mismatch':
+      // D6: Switchboard's own switch to the fallback mode is a notice (⚠, like the terminal tail); a real mismatch is ✕.
+      return (payload as { fallback?: string }).fallback ? '⚠' : '✕';
     case 'result':
       return (payload as ResultPayload).isError ? '✕' : null;
     default:
