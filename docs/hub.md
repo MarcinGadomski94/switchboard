@@ -26,7 +26,7 @@ The route is behind the same guard as every API call (`docs/security.md`): a for
 | `worktreeRemovable` | `Worktree` | `WorktreeManager.on('worktreeRemovable')` (once, when a worktree's PR is merged and removal is allowed) | M2.2 → wired in M2.3 |
 | `questionBatch` | `{ sessionId, batchId, questions }` | the question pipeline (`QuestionPipeline.canUseTool`, once per new batch; `docs/questions.md`); the UI raises the toast, chime and OS notification (M3.4, `docs/notifications.md`) | M3.1 |
 | `inboxChanged` | `{ count }` | whatever changes the Inbox, `bus.publish`: the question pipeline on every batch / permission item change, the `SystemItemService` when a system item is raised or closed (count = `inboxCount`) | M3.1 / M3.2 / M3.3 |
-| `scheduleRun` | `{ scheduleId, result }` | the scheduler, `bus.publish` | M7.1 |
+| `scheduleRun` | `{ scheduleId, result }` | the scheduler (`schedules/scheduler.ts`), `bus.publish`: a run starts (`running`), is skipped, or its result changes (`docs/schedules.md`) | M7.1 |
 | `system` | `GET /api/system` shape | the hub itself: `providers.system.system()` every **5 s** while a client is connected | real provider M5.3 / M9.2; demo provider when `SWITCHBOARD_DEMO=1` |
 
 `buildApp` wires the forwarding (`forwardServiceEvents`) for the supervisor and the worktree manager it is given, and stops it when the app closes.

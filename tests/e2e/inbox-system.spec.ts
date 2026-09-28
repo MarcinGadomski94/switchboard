@@ -13,10 +13,11 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
  * M3.3 oracle (E2E): system Inbox items on the real code path (no demo seed, D13):
  * `node src/server/main.ts` with fake-claude as the CLI, fake gh, a temp workspace
  * with a real git repo and a temp data folder.
- * 1. Failed scheduled runs recorded in the schedule tables (inserted before start;
- *    the scheduler is M7.1) become "Scheduled run failed" items: Retry run is
- *    refused until the scheduler exists, Dismiss closes one, Open fix session
- *    closes the other and opens the New-session modal with the prefill.
+ * 1. Failed scheduled runs recorded in the schedule tables (inserted before start)
+ *    become "Scheduled run failed" items: Retry run starts a new run through the
+ *    M7.1 scheduler (here it fails again at once and raises a new item), Dismiss
+ *    closes one, Open fix session closes the other and opens the New-session modal
+ *    with the prefill.
  * 2. A session started with a worktree; gh reports its PR merged → a "PR merged"
  *    item arrives live; Remove worktree is refused while the worktree holds an
  *    uncommitted file (gap #3), then removes the folder and keeps the branch.
@@ -92,7 +93,7 @@ test.describe('failed scheduled runs', () => {
     await removeTempDir(tmp);
   });
 
-  test('the items, Retry run refused until the scheduler exists, Dismiss, Open fix session → the New-session modal with the prefill', async ({ page }) => {
+  test('the items, Retry run (M7.1: a new run, which fails again here), Dismiss, Open fix session → the New-session modal with the prefill', async ({ page }) => {
     await page.goto(`${server.baseUrl}/inbox`);
     const cards = page.getByTestId('inbox-item');
     await expect(cards).toHaveCount(2);
@@ -117,15 +118,20 @@ test.describe('failed scheduled runs', () => {
     await expect(actions.nth(0)).toHaveCSS('background-color', 'rgb(232, 231, 227)');
     await expect(actions.nth(1)).toHaveCSS('border-top-color', 'rgb(44, 45, 50)');
 
-    // Retry run needs the scheduler (M7.1): refused, the item stays.
-    await actions.filter({ hasText: 'Retry run' }).click();
-    await expect(page.getByTestId('inbox-error')).toHaveText('Not sent: the scheduler is not available yet');
-    await expect(cards).toHaveCount(2);
-
-    // Dismiss the other one.
+    // Retry run goes through the scheduler (M7.1): dependency-audit's stored template cannot start a session
+    // (it has only a task), so the retried run fails at once and raises a new item for the new run.
     await cards.nth(1).click();
     await expect(page.getByTestId('inbox-title')).toHaveText('dependency-audit failed');
     await expect(page.getByTestId('inbox-text')).toHaveText('The previous run was green.');
+    await page.getByTestId('inbox-action').filter({ hasText: 'Retry run' }).click();
+    await expect(cards.locator('.sb-inbox__card-title')).toHaveText(['Android build failed at XamlC', /^Not started: /]);
+    await expect(cards.locator('.sb-inbox__card-age')).toHaveText(['10m', 'now']);
+    await expect(page.getByTestId('inbox-error')).toHaveCount(0);
+
+    // Dismiss the new one (no green streak: the run before it failed).
+    await cards.nth(1).click();
+    await expect(page.getByTestId('inbox-title')).toHaveText(/^Not started: .*choose at least one solution/);
+    await expect(page.getByTestId('inbox-text')).toHaveCount(0);
     await page.getByTestId('inbox-action').filter({ hasText: 'Dismiss' }).click();
     await expect(cards).toHaveCount(1);
     await expect(page.getByTestId('inbox-count')).toHaveText('1 waiting on you');

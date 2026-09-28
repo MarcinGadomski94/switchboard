@@ -9,6 +9,7 @@ import { HubBus } from './hub/bus.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
+import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
 import { WorkspaceScanner } from './solutions/scanner.ts';
@@ -49,7 +50,10 @@ async function main(): Promise<void> {
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
-    app = await buildApp({ config: live, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, setup, logger: true });
+    // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
+    const scheduler = new Scheduler({ store, sessions: { config: live, store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
+    app = await buildApp({ config: live, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, setup, scheduler, logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -59,6 +63,7 @@ async function main(): Promise<void> {
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await worktrees.stopPolling();
+      await scheduler.close();
       await systemItems.close();
       await supervisor.shutdown();
       await store.close();
@@ -70,6 +75,8 @@ async function main(): Promise<void> {
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.
     if (!config.demo) systemItems.startWatching();
+    // The cron timer (M7.1), only once the port is ours; the demo's schedules never fire.
+    if (!config.demo) scheduler.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
     if (releaseCommands) {
       recovering = recover(app, live, store, supervisor).finally(releaseCommands);

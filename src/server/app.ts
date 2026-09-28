@@ -8,6 +8,7 @@ import { QuestionPipeline } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
+import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
 import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
@@ -62,6 +63,13 @@ export interface AppOptions {
    * worktree manager at once.
    */
   readonly setup?: SetupService;
+  /**
+   * The scheduler (M7.1, docs/schedules.md). A caller that passes one owns it
+   * (main.ts starts its timer, plugs it into its system items and closes it);
+   * without one the app makes its own (no timer: Run now / Pause / Resume / Save
+   * only) and closes it with the app.
+   */
+  readonly scheduler?: Scheduler;
   /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
   readonly hub?: HubTimingOptions;
   /** Fastify logger; off by default (tests). */
@@ -119,7 +127,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     stopRootUpdates();
   });
   const config = setup.liveConfig(options.config);
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup });
+  let scheduler = options.scheduler;
+  if (!scheduler) {
+    const own = new Scheduler({ store: options.store, sessions: { config, store: options.store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    // "Retry run" of the system items the app made itself (a caller's service gets its runner from the caller).
+    if (!options.systemItems) systemItems.useScheduleRunner(scheduleRunnerFor(own));
+    scheduler = own;
+  }
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, scheduler });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

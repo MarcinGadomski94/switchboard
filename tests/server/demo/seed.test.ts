@@ -101,7 +101,8 @@ describe('seedDemo (gap #21)', () => {
     const runs = await store.schedules.recentRuns(nightly!.id);
     expect(runs).toHaveLength(14);
     expect(runs.map((r) => r.result)).toEqual(data.schedules[0]?.runs);
-    expect(runs[13]).toMatchObject({ ts: minutesAgo(38), result: 'fail', summary: 'Failed 38m ago · Android XamlC' });
+    // M7.1: the run ended when its item was raised; the summary without the view's "Failed 38m ago · " prefix.
+    expect(runs[13]).toMatchObject({ ts: minutesAgo(43), finishedAt: minutesAgo(38), result: 'fail', summary: 'Android XamlC' });
     expect(sysRun?.scheduleRunId).toBe(runs[13]?.id);
     expect((await store.schedules.list()).map((s) => s.name)).toEqual(data.schedules.map((s) => s.name));
 

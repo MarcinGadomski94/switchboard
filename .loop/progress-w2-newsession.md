@@ -1,26 +1,29 @@
 ## Current
-item: (none; M5.3 done)
-attempt: 2/5 (M5.3)
-last oracle: tests/e2e/setup-wizard.spec.ts PASS (2/2) · visual tests/e2e/visual/setup-wizard.spec.ts PASS (5 steps, gate green, panel diff 0.29%) · full suite: typecheck, vitest 541/541, playwright 30/30; ports 4920–4929 free afterwards
-plan (M5.3):
-- Server `src/server/system/probe.ts` = the real `SystemProvider` behind `GET /api/system` (contract): CLI via `<claude bin> --version`, `claude auth status` / `gh auth status` exit codes through the configurable bins (cached 30 s, `?fresh=1` re-checks), machine CPU/RAM (gap #11), `processes` = the supervisor's live count; wired in main.ts, 503 without a provider.
-- Server `src/server/setup/*` + `/api/setup` routes: setup state (completed, auto-open unless `SWITCHBOARD_SETUP_WIZARD=off`), workspace-root check (AGENTS.md title + line count), save (settings table `setup.workspaceRoot`; `SWITCHBOARD_WORKSPACE_ROOT` wins; applied live to supervisor / worktree manager / scanner through small setters + a live `config.workspaceRoot`), folder listing for Browse…, complete; usage threshold read from `usage.warnAtPct` (M8.2 key, default 90).
-- UI: fill `SetupWizard.tsx` (5 steps, rail, Back / Skip / Continue → Finish, prototype copy + inline styles) with a pure model `setup-wizard.ts` + CSS; `FirstRunGate` in the shell opens it once per page load while setup is not finished (Skip = not again in this tab).
-- Test servers default to fake claude / fake gh / wizard off (`tests/helpers/server-process.ts`); shell.spec + routes.test follow `/api/system` going live.
-- Oracle `tests/e2e/setup-wizard.spec.ts` (real path: fake-claude, fake gh, fixture workspace, no demo): first run walks all 5 steps, root chosen with Browse… and applied live (a session starts there), mocked Notification, Finish persists across restart; signed-out / env-root / Skip / Back / rail. Plus vitest for service, probe, routes, model; visual spec vs the prototype (D10).
-- Docs: `docs/setup.md`, configuration / lanes rows; ASSUMED lines.
-attempts (M5.3):
-1. setup-wizard.spec.ts: FAIL (scan rows: infrastructure/ before deprecated/: the read-only group is sorted by name) → rows of a group ordered by its note (router order)
-2. setup-wizard.spec.ts: PASS; then shell.spec (the gate's /api/setup call) and the visual spec (inert Browse… cursor, table height = data) adjusted outside the oracle count
+item: (none; M7.1 done)
+attempt: 4/5 (M7.1)
+last oracle: unit with a fake clock tests/server/schedules/scheduler.test.ts PASS (9/9) · E2E tests/e2e/schedules.spec.ts PASS (3/3, incl. the real timer firing `* * * * *`) · visual tests/e2e/visual/schedules.spec.ts PASS (gate green, header + table diff 0.27%) · full suite: typecheck, vitest 574/574, playwright 34/34 (then the M7.1 specs + inbox-system / shell / new-session again after the restart-reconcile move: 14/14); ports 4920–4929 free afterwards
+plan (M7.1):
+- core `src/core/cron.ts`: 5-field cron parse (lists, ranges, steps, names, Vixie DOM/DOW rule), next N local run times, readable preview ("02:00 daily", "every 4h", "08:30 weekdays", "Mon 07:00", else the expression); `src/core/schedules.ts` run session names.
+- server `src/server/schedules/{scheduler,wire,validate}.ts`: Scheduler with an injectable clock (one timer capped at 60 s, per-schedule "armed from", no catch-up after downtime, one firing per clock jump, overlap → `skipped`), runs = `startNewSession` (the POST /api/sessions flow moved to `sessions/start.ts`) with name `<schedule>-<MMDD>-<HHMM>`, result from the session's status, summary from its questions / events; `scheduleRun` on the bus; failed runs → `systemItems.scheduleRunFinished` (M3.3) and `scheduleRunnerFor` for Retry run; restart reconcile at the first start.
+- API `api/schedules.ts`: GET list, POST create / Edit (`id`), /run, /pause, /resume; ApiContext.scheduler; app.ts / main.ts wiring (timer only outside demo, after listen).
+- UI: SchedulesView header + ScheduleTable (prototype markup), "+ New scheduled run" → New-session modal with section 7 · Schedule (ScheduleSection + schedule-form.ts) and "Save schedule"; the name cell = Edit (prefilled).
+- Oracle: vitest cron + scheduler (fake clock, real supervisor / fake-claude / pipeline / worktrees / system items) + routes + web models; E2E real path; visual vs the prototype; inbox-system.spec now retries through the scheduler; demo seed run summaries.
+attempts (M7.1):
+1. scheduler.test.ts: FAIL (the test's `at(h, m, s)` helper took the seconds as the day) → `atSecond`
+2. scheduler.test.ts: FAIL (the test rig had no question pipeline, so a `need` run had no stored question; the fake's log was read before it was written) → pipeline wired as createSessionServices does, wait for the log
+3. scheduler.test.ts PASS; schedules.test.ts / web / E2E schedules.spec PASS; visual FAIL (the spec looked the prototype grid up by its style attribute) → by computed columns
+4. full run: typecheck, vitest 574/574, playwright 34/34 PASS; then the restart reconcile moved from the constructor to the first `start()` (a second instance that cannot bind never touches runs) and the affected specs re-run green
 ## Done
 - M5.1 ✓ 2026-09-28 (commit 103bc05, "M5.1: New-session modal")
 - M5.2 ✓ 2026-09-28 (commit 5972877, "M5.2: First-turn payload")
-- M5.3 ✓ 2026-09-28 (commit: see `git log --oneline -1` on lane/w2-newsession, "M5.3: First-run wizard")
+- M5.3 ✓ 2026-09-28 (commit babdb02, "M5.3: First-run wizard")
+- M7.1 ✓ 2026-09-28 (commit: see `git log --oneline -1` on lane/w2-newsession, "M7.1: Scheduler + New scheduled run")
 ## Blocked
 - (none)
 ## Breaker
 consecutive_blocked: 0
 ## Assumptions (see .loop/questions-w2-newsession.md)
+- M7.1: run session `<schedule>-<MMDD>-<HHMM>`; Save/Edit via POST /api/schedules (`id`), no delete; task required, empty cron field; results follow the session, `need` = in progress, overlap → skipped / 409; local time, no catch-up, timer outside demo only; run sessions left live; summary + table copy rules; Edit = name cell; modal title / `7 · Schedule` / summary lines; preview falls back to the expression; additive wire fields; demo run summaries; POST /api/sessions flow in sessions/start.ts.
 - M5.1: recommended answers as defaults; QA stack + sources required; read-only chips per top folder; extra ⚠ / refusal / `not found` lines; coordination only when shown; static "Max" copy.
 - M5.2: empty task → idle + answers in the outbox (kind `session-start`); payload wording/labels; folders `/`-relative with name fallback, coordination only when applicable and given, `—` for empty QA sources.
 - M5.3: root saved in settings + applied live (env wins, refused while processes run / without AGENTS.md); server-side Browse…; login row names no plan; first run per install, Skip per tab; SWITCHBOARD_SETUP_WIZARD=off + test-server defaults (fake bins); /api/system derivations + 30 s cache; step 5 threshold read-only; additive /api/setup routes.

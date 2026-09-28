@@ -322,3 +322,39 @@
 .sb-ns-start:disabled {
   opacity: 0.45;
 }
+
+/* Section 7 · Schedule (M7.1, D8): cron field (220px, mono, as the name) + readable preview, then the next 3 runs. */
+.sb-ns-schedule {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.sb-ns-cron-preview {
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-cron-preview[data-state='empty'] {
+  color: var(--muted-3);
+}
+
+.sb-ns-cron-preview[data-state='invalid'] {
+  color: var(--status-need);
+}
+
+.sb-ns-cron-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-14);
+  font: 400 11.5px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-ns-cron-runs-label {
+  color: var(--muted-3);
+}

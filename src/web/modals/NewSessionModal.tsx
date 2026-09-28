@@ -1,5 +1,5 @@
 import { type MouseEvent, useState } from 'react';
-import type { NewSessionPrefill } from '../../core/api.ts';
+import type { NewSessionPrefill, Schedule } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -26,6 +26,8 @@ import {
   toggleSolution,
   workspaceRoot,
 } from './new-session.ts';
+import { ScheduleSection } from './ScheduleSection.tsx';
+import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
 
 /** `sessionUpdated` comes in bursts; the name check's session list reloads at most this often. */
@@ -97,14 +99,28 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * mono summary with the worktree folders (gap #1), Cancel and "Start session",
  * which posts `POST /api/sessions` and opens the new session. `prefill` (M3.3, the
  * Inbox's "Open fix session") replaces the defaults; the dialog also carries it as
- * `data-prefill` (JSON). M7.1 adds the Schedule section (D8). Details:
+ * `data-prefill` (JSON). With `schedule` (M7.1, D8: "+ New scheduled run", or a
+ * schedule's Edit with its id + cron) it adds section 7 · Schedule and "Save
+ * schedule" posts `POST /api/schedules` instead (`docs/schedules.md`). Details:
  * `docs/new-session.md`.
  */
-export function NewSessionModal({ onClose, prefill = null }: { readonly onClose: () => void; readonly prefill?: NewSessionPrefill | null }) {
+export function NewSessionModal({
+  onClose,
+  prefill = null,
+  schedule = null,
+}: {
+  readonly onClose: () => void;
+  readonly prefill?: NewSessionPrefill | null;
+  readonly schedule?: ScheduleDraft | null;
+}) {
   const { navigate } = useRouter();
   const solutions = useApi(api.solutions);
   const sessions = useApi(api.listSessions);
   useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
+
+  const scheduling = schedule !== null;
+  const schedules = useApi((): Promise<Schedule[]> => (scheduling ? api.schedules() : Promise.resolve([])), [scheduling]);
+  const [cron, setCron] = useState(() => schedule?.cron ?? '');
 
   const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
   const [busy, setBusy] = useState(false);
@@ -117,11 +133,31 @@ export function NewSessionModal({ onClose, prefill = null }: { readonly onClose:
   const takenNames = (sessions.data ?? []).map((session) => session.name);
   const scanned = solutions.data ?? (solutions.error ? [] : null);
   const groups = chipGroups(scanned, form.solutions);
-  const lines = summaryLines(form, workspaceRoot(solutions.data), takenNames);
-  const startable = canStart(form, takenNames) && !busy;
+  const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id).map((s) => s.name);
+  const preview = cronPreview(cron, new Date());
+  const lines = scheduling
+    ? scheduleSummaryLines(form, workspaceRoot(solutions.data), preview, takenScheduleNames)
+    : summaryLines(form, workspaceRoot(solutions.data), takenNames);
+  const startable = (scheduling ? canSaveSchedule(form, preview, takenScheduleNames) : canStart(form, takenNames)) && !busy;
+  const title = scheduling ? (schedule.id ? 'Edit scheduled run' : 'New scheduled run') : 'New session';
+
+  const saveSchedule = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createSchedule(toScheduleInput(form, cron, schedule?.id));
+      onClose();
+    } catch (caught) {
+      const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+      setError(saveErrorText(apiError.status, apiError.body));
+      schedules.reload();
+      setBusy(false);
+    }
+  };
 
   const start = async (): Promise<void> => {
     if (!startable) return;
+    if (scheduling) return saveSchedule();
     setBusy(true);
     setError(null);
     try {
@@ -142,14 +178,17 @@ export function NewSessionModal({ onClose, prefill = null }: { readonly onClose:
         className="sb-modal-new"
         role="dialog"
         aria-modal="true"
-        aria-label="New session"
+        aria-label={title}
         data-testid="modal-new-session"
+        data-schedule={scheduling ? (schedule.id ?? 'new') : undefined}
         data-prefill={prefill ? JSON.stringify(prefill) : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       >
         <div className="sb-ns-form">
           <div className="sb-ns-head">
-            <div className="sb-ns-title">New session</div>
+            <div className="sb-ns-title" data-testid="ns-title">
+              {title}
+            </div>
             <div className="sb-ns-sub">Claude Code · background · Max</div>
             <button type="button" className="sb-button sb-ns-recommended" data-testid="ns-recommended" onClick={() => update(RECOMMENDED)}>
               Accept recommended
@@ -270,6 +309,17 @@ export function NewSessionModal({ onClose, prefill = null }: { readonly onClose:
               </div>
             </div>
           ) : null}
+
+          {scheduling ? (
+            <ScheduleSection
+              cron={cron}
+              preview={preview}
+              onCron={(value) => {
+                setCron(value);
+                setError(null);
+              }}
+            />
+          ) : null}
         </div>
 
         <div className="sb-ns-side">
@@ -295,8 +345,14 @@ export function NewSessionModal({ onClose, prefill = null }: { readonly onClose:
             <button type="button" className="sb-button sb-ns-cancel" data-testid="ns-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="button" className="sb-button sb-ns-start" data-testid="ns-start" disabled={!startable} onClick={() => void start()}>
-              Start session
+            <button
+              type="button"
+              className="sb-button sb-ns-start"
+              data-testid={scheduling ? 'ns-save-schedule' : 'ns-start'}
+              disabled={!startable}
+              onClick={() => void start()}
+            >
+              {scheduling ? 'Save schedule' : 'Start session'}
             </button>
           </div>
         </div>

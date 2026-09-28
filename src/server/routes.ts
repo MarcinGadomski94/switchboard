@@ -17,6 +17,7 @@ import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
+import type { Scheduler } from './schedules/scheduler.ts';
 import type { SetupService } from './setup/service.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
@@ -42,6 +43,8 @@ export interface ApiContext {
   readonly systemItems: SystemItemService;
   /** First-run setup: wizard state, the workspace root chosen there (M5.3, docs/setup.md). */
   readonly setup: SetupService;
+  /** Schedules: cron runs from templates, Run now, Pause/Resume (M7.1, docs/schedules.md). */
+  readonly scheduler: Scheduler;
 }
 
 /**

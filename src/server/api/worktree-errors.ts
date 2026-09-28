@@ -28,7 +28,20 @@ export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
  */
 export function sendWorktreeError(reply: FastifyReply, error: unknown, field: string): FastifyReply {
   if (!(error instanceof WorktreeError)) throw error;
+  const refusal = worktreeRefusal(error, field);
+  return reply.code(refusal.status).send(refusal.body);
+}
+
+/** A worktree refusal as an HTTP status + body (the shapes of {@link sendWorktreeError}; M7.1 also records it on a failed scheduled run). */
+export function worktreeRefusal(error: WorktreeError, field: string): { readonly status: number; readonly body: RefusalBody } {
   const status = WORKTREE_ERROR_STATUS[error.code];
-  if (status === 422) return reply.code(422).send({ error: 'invalid', errors: [{ field, message: error.message }] });
-  return reply.code(status).send({ error: error.code, message: error.message });
+  if (status === 422) return { status, body: { error: 'invalid', errors: [{ field, message: error.message }] } };
+  return { status, body: { error: error.code, message: error.message } };
+}
+
+/** A refusal body: `{ error: "invalid", errors }` for a 422, else `{ error: <code>, message }`. */
+export interface RefusalBody {
+  readonly error: string;
+  readonly message?: string;
+  readonly errors?: ReadonlyArray<{ readonly field: string; readonly message: string }>;
 }

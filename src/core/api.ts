@@ -20,6 +20,7 @@ import type {
   QaStack,
   QuestionState,
   ScheduleRunResult,
+  ScheduleRunTrigger,
   SessionMode,
   SessionStatus,
   WorkType,
@@ -317,6 +318,12 @@ export interface ScheduleRun {
   readonly ts: string;
   readonly result: ScheduleRunResult;
   readonly summary: string | null;
+  /** Additive (M7.1): when it got its final result (`ok` / `fail` / `skipped`); `null` while `running` or `need`. */
+  readonly finishedAt?: string | null;
+  /** Additive (M7.1): the session the run started; `null` when none started (refused, skipped) or it was deleted. */
+  readonly sessionId?: string | null;
+  /** Additive (M7.1): `cron` (the schedule fired) or `manual` (Run now, Retry run). */
+  readonly triggeredBy?: ScheduleRunTrigger;
 }
 
 /** `GET /api/schedules` item (data model; D8). Provisional: M7.1. */
@@ -326,11 +333,26 @@ export interface Schedule {
   readonly description: string;
   readonly cron: string;
   readonly paused: boolean;
-  /** Session config (NewSession) + prompt (D8). */
+  /** Session config (NewSession) + prompt (D8): the `task` is the prompt each run starts with. */
   readonly template: unknown;
   /** Oldest first, at most 14. */
   readonly runs: readonly ScheduleRun[];
+  /** The next time the cron fires; `null` while paused or when the expression never fires again. */
   readonly nextRunAt: string | null;
+  /** Additive (M7.1): a run is in progress (its session runs or waits for the developer); Run now is refused (409) and a cron firing is `skipped`. */
+  readonly running?: boolean;
+}
+
+/**
+ * Additive (M7.1, D8): the `POST /api/schedules` body the New-session modal's
+ * "Save schedule" sends. Without `id` it creates a schedule; with the `id` of an
+ * existing one it replaces its cron and template (Edit). The schedule's name is
+ * `template.name`, its description the first line of `template.task` (the prompt).
+ */
+export interface ScheduleInput {
+  readonly id?: string;
+  readonly cron: string;
+  readonly template: NewSession;
 }
 
 /** `GET /api/history` item (M7.4, docs/spike-m0.md → What History needs). Provisional: M7.4. */

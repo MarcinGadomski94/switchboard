@@ -129,4 +129,14 @@ export class ScheduleRepository {
   async recentRuns(scheduleId: string, limit = 14): Promise<ScheduleRunRecord[]> {
     return this.#runs.select('schedule_id = ?', [scheduleId], 'ts DESC, rowid DESC', limit).reverse();
   }
+
+  /** M7.1: the run that started `sessionId` (the newest one, should there be several). */
+  async runBySession(sessionId: string): Promise<ScheduleRunRecord | null> {
+    return this.#runs.first('session_id = ?', [sessionId], 'ts DESC, rowid DESC');
+  }
+
+  /** M7.1: runs without a final result yet (`running` or `need`), oldest first. */
+  async unfinishedRuns(): Promise<ScheduleRunRecord[]> {
+    return this.#runs.select("result IN ('running', 'need')", [], 'ts, rowid');
+  }
 }
