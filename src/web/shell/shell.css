@@ -306,7 +306,7 @@
   color: var(--text-strong);
 }
 
-/* Machine footer: service dot + address, CPU/RAM/Max bars at 4px, process count. */
+/* Machine footer: service dot + address, CPU/RAM bars at 4px (D17: then the Session / Week usage rows), process count. */
 .sb-footer {
   padding: 10px 16px 14px;
   border-top: 1px solid var(--border-divider);
@@ -363,7 +363,26 @@
   background: var(--text-2);
 }
 
-.sb-meter[data-meter='max'] .sb-meter-fill {
+/*
+ * D17: the usage rows (Session, Week, a model while in use) under CPU / RAM, each
+ * styled like the prototype's Max row (bright fill). "Session" is wider than the
+ * prototype's 34 px label column, so these rows share their own columns (a
+ * subgrid): the widest label and the widest value, at least 34 / 76 px. Their bars
+ * line up with each other and end where the CPU / RAM bars end.
+ */
+.sb-usage {
+  display: grid;
+  grid-template-columns: minmax(34px, max-content) minmax(0, 1fr) minmax(76px, max-content);
+  column-gap: 8px;
+  row-gap: 7px;
+}
+
+.sb-usage .sb-meter {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.sb-usage .sb-meter-fill {
   background: var(--text);
 }
 

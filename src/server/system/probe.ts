@@ -6,12 +6,20 @@ import type { SystemInfo } from '../../core/api.ts';
 import { type RunResult, runCommand, succeeded } from '../exec.ts';
 import type { SystemProvider } from '../providers.ts';
 import { childEnv } from '../supervisor/argv.ts';
+import { type MemoryInUseReader, createMemoryInUseReader } from './memory.ts';
 
 /** How long a CLI / gh check is reused (ms): `/hub` asks every 5 s while a client is connected. */
 export const CLI_CHECK_CACHE_MS = 30_000;
 
 /** How long one `--version` / `auth status` may take (ms). */
 export const CLI_CHECK_TIMEOUT_MS = 15_000;
+
+/**
+ * D17: a `system()` call starts a new memory read (`vm_stat` / `/proc/meminfo`) when
+ * the last one started at least this long ago (ms). `/hub` asks every 5 s, so the
+ * answer is the read after the previous tick; the route and the hub share reads.
+ */
+export const MEMORY_READ_INTERVAL_MS = 2_000;
 
 /** The CLI and GitHub CLI part of `GET /api/system`. */
 export interface CliStatus {
@@ -46,6 +54,12 @@ export interface SystemProbeOptions {
   readonly cpus?: () => readonly os.CpuInfo[];
   /** Memory in bytes (default `os.totalmem()` / `os.freemem()`). */
   readonly memory?: () => { readonly total: number; readonly free: number };
+  /**
+   * D17: memory actually in use, bytes (default: this OS's reader, `./memory.ts`:
+   * `vm_stat` on macOS, `/proc/meminfo` on Linux, `null` elsewhere). `null` or a
+   * failed read → `total − free`.
+   */
+  readonly memoryInUse?: MemoryInUseReader;
 }
 
 function cpuSample(cpus: readonly os.CpuInfo[]): CpuSample {
@@ -105,9 +119,14 @@ export async function resolveExecutable(command: string, env: NodeJS.ProcessEnv 
  * - `signedIn`: `<claude bin> auth status` exits 0 (only the exit code is read,
  *   M1.2); `ghSignedIn`: `<gh bin> auth status` exits 0.
  * - `cpu`: machine-wide CPU % since the previous reading (`os.cpus()` times);
- *   `ramUsed` / `ramTotal`: `os.totalmem() − os.freemem()` / `os.totalmem()`,
- *   bytes; `processes`: live supervised `claude` processes.
- * - `usagePct` is left out (unknown) until M9.2.
+ *   `ramTotal`: `os.totalmem()`; `ramUsed` (D17): the memory actually in use
+ *   ({@link MemoryInUseReader}: Activity Monitor's *Memory Used* on macOS,
+ *   `MemTotal − MemAvailable` on Linux), `totalmem − freemem` on Windows or when
+ *   that read fails; bytes. The read runs in the background: `system()` answers
+ *   from the last one (started at construction, then at most every
+ *   {@link MEMORY_READ_INTERVAL_MS}) and never waits for it.
+ * - `processes`: live supervised `claude` processes.
+ * - Usage fields are added by the meter (`withUsage`, M9.2 / D17).
  * The three commands run with `shell: false`, never make a model call, and are
  * reused for {@link CLI_CHECK_CACHE_MS}; `fresh` checks again.
  */
@@ -116,6 +135,11 @@ export class SystemProbe implements SystemProvider {
   readonly #now: () => number;
   readonly #cpus: () => readonly os.CpuInfo[];
   readonly #memory: () => { readonly total: number; readonly free: number };
+  readonly #memoryInUse: MemoryInUseReader;
+  /** The last memory read (bytes); `null` = none yet, or it failed → `total − free`. */
+  #ramInUse: number | null = null;
+  #ramReadAt = Number.NEGATIVE_INFINITY;
+  #ramReading: Promise<void> | null = null;
   #cached: { readonly at: number; readonly value: CliStatus } | null = null;
   #inflight: Promise<CliStatus> | null = null;
   #lastCpu: CpuSample;
@@ -126,19 +150,44 @@ export class SystemProbe implements SystemProvider {
     this.#now = options.now ?? Date.now;
     this.#cpus = options.cpus ?? os.cpus;
     this.#memory = options.memory ?? (() => ({ total: os.totalmem(), free: os.freemem() }));
+    this.#memoryInUse = options.memoryInUse ?? createMemoryInUseReader({ cwd: options.cwd });
     this.#lastCpu = cpuSample(this.#cpus());
+    void this.refreshMemory();
   }
 
   async system(options: { readonly fresh?: boolean } = {}): Promise<SystemInfo> {
     const status = await this.cliStatus(options.fresh ?? false);
     const memory = this.#memory();
+    if (this.#now() - this.#ramReadAt >= MEMORY_READ_INTERVAL_MS) void this.refreshMemory();
+    const used = this.#ramInUse ?? memory.total - memory.free;
     return {
       ...status,
       cpu: this.#cpu(),
-      ramUsed: Math.max(0, memory.total - memory.free),
+      ramUsed: Math.min(memory.total, Math.max(0, used)),
       ramTotal: memory.total,
       processes: this.#options.processCount(),
     };
+  }
+
+  /**
+   * Reads the memory in use now (D17) and keeps it for the next `system()` answers;
+   * a failed read (or `null`) makes them use `total − free`. Concurrent callers
+   * share one read; never rejects.
+   */
+  refreshMemory(): Promise<void> {
+    if (this.#ramReading) return this.#ramReading;
+    this.#ramReadAt = this.#now();
+    const run = Promise.resolve()
+      .then(() => this.#memoryInUse())
+      .catch(() => null)
+      .then((value) => {
+        this.#ramInUse = value !== null && Number.isFinite(value) && value >= 0 ? value : null;
+      })
+      .finally(() => {
+        this.#ramReading = null;
+      });
+    this.#ramReading = run;
+    return run;
   }
 
   /** The CLI / gh checks, from the cache unless `fresh` or older than {@link CLI_CHECK_CACHE_MS}; concurrent callers share one run. */

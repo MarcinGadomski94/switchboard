@@ -49,6 +49,9 @@ Rulings made by the developer at kickoff, on top of `docs/handoff/`. **Where thi
   - **Folder:** the session's folder is the saved folder that holds the conversation's start folder. If none does, the move offers to **add** the workspace or repo it sits in (D14 rules) and continues; otherwise it is refused with the reason.
   - **Name:** from the conversation's title (else first prompt), kebab-case, made unique. Moved sessions have no session-start answers (work type / mode / phase stay empty) and get no first message.
 
+## Footer meters (added 2026-09-28)
+- **D17 RAM as Activity Monitor counts it; Session + Week usage bars.** `ramUsed` = memory actually in use, not `total − free`. On macOS: app memory + wired + compressed from `vm_stat` (anonymous − purgeable pages, wired, pages occupied by the compressor, × the page size), the way Activity Monitor's *Memory Used* counts it; on Linux `MemTotal − MemAvailable` from `/proc/meminfo`; on Windows `totalmem − freemem`. Read asynchronously and cached between `system` ticks; if the read fails, fall back to `total − free` and say so in the docs. The footer's single "Max" bar becomes **two rows**: **Session** (the 5-hour window) and **Week** (all models), each with its bar, % and the time until it resets. A model-specific weekly limit (e.g. Fable) gets a third row only while it is in use (above 0% or active). The 90% warning applies to each window. `/api/system` keeps `usagePct` (the higher window, M9.2) and gains additive per-window fields. Unknown stays unknown (never guessed).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

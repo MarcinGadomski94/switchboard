@@ -80,7 +80,22 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
       processes: 9,
       usagePct: 62,
       usageResetsAt: '2026-09-28T13:48:00.000Z',
+      // D17: the prototype's one Max figure is the Session window; it has no Week figure, so no Week window.
+      usageWindows: [{ key: 'session', label: 'Session', pct: 62, resetsAt: '2026-09-28T13:48:00.000Z' }],
     });
+  });
+
+  it('system (D17): a Week figure in the demo data becomes the Week window; none, or another shape, stays unknown', async () => {
+    const data = await loadDemoData();
+    const withWeek = { ...data, system: { ...data.system, footer: { ...data.system.footer, week: '18% · 74h12' } } };
+    expect((await createDemoProviders(withWeek, () => NOW).system.system()).usageWindows).toEqual([
+      { key: 'session', label: 'Session', pct: 62, resetsAt: '2026-09-28T13:48:00.000Z' },
+      { key: 'week', label: 'Week', pct: 18, resetsAt: '2026-10-01T14:12:00.000Z' },
+    ]);
+    const odd = { ...data, system: { ...data.system, footer: { ...data.system.footer, max: 'n/a', week: '18%' } } };
+    const info = await createDemoProviders(odd, () => NOW).system.system();
+    expect(info).not.toHaveProperty('usagePct');
+    expect(info).not.toHaveProperty('usageWindows');
   });
 
   it('history: the prototype rows, searchable', async () => {

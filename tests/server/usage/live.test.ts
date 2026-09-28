@@ -61,7 +61,15 @@ describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
     expect(stdin).toHaveLength(1);
     expect(stdin[0]).toMatchObject({ type: 'control_request', request: { subtype: 'get_usage', skip_behaviors: true } });
     expect(await w.store.usage.latest()).toMatchObject({ source: 'get_usage', sessionId: session.id, fiveHourPct: 10, sevenDayPct: 18 });
-    expect(await meter.systemFields()).toEqual({ usagePct: 18, usageResetsAt: '2026-10-01T13:00:00.290Z' });
+    // D17: Session and Week; the recorded Fable limit is 0 % and not active, so no model window.
+    expect(await meter.systemFields()).toEqual({
+      usagePct: 18,
+      usageResetsAt: '2026-10-01T13:00:00.290Z',
+      usageWindows: [
+        { key: 'session', label: 'Session', pct: 10, resetsAt: '2026-09-27T23:40:00.290Z' },
+        { key: 'week', label: 'Week', pct: 18, resetsAt: '2026-10-01T13:00:00.290Z' },
+      ],
+    });
 
     // The answer is not a chat event, and the session stays idle and live.
     const events = await w.store.events.list(session.id);
@@ -99,7 +107,14 @@ describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
     await waitForStatus(w.store, turn.id, ['done']);
     const reading = await until(async () => (await w?.store.usage.list())?.find((r) => r.sessionId === turn.id), 'the rate_limit_event reading');
     expect(reading).toMatchObject({ source: 'rate_limit_event', fiveHourPct: 10, sevenDayPct: 18, fiveHourResetsAt: '2026-09-27T23:40:00.000Z' });
-    expect(await meter.systemFields()).toEqual({ usagePct: 18, usageResetsAt: '2026-10-01T13:00:00.000Z' });
+    expect(await meter.systemFields()).toEqual({
+      usagePct: 18,
+      usageResetsAt: '2026-10-01T13:00:00.000Z',
+      usageWindows: [
+        { key: 'session', label: 'Session', pct: 10, resetsAt: '2026-09-27T23:40:00.000Z' },
+        { key: 'week', label: 'Week', pct: 18, resetsAt: '2026-10-01T13:00:00.000Z' },
+      ],
+    });
   });
 
   it('a session that ends before answering: no reading is invented (unknown)', async () => {

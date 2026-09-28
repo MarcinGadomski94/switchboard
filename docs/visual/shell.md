@@ -5,13 +5,13 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.18%**, sidebar (0,0 256×900) **0.91%**.
+Pixel diff (advisory, channel threshold 24): full page **0.52%**, sidebar (0,0 256×900) **2.79%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.
 
 ## Boxes (±2 px) and copy
-Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row).
+Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row) · `(y rel. footer)` = y measured from the footer's top on both pages (D17: the footer is taller by the Week row, its bottom edge stays).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -35,15 +35,25 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on
 | toolsLabel | box | 0,254 255×36 | 0,254 255×36 | ok | "Tools+ Add" |
 | toolsAdd | box | 202.3,270 34.7×14 | 202.3,270 34.7×14 | ok | "+ Add" |
 | sessionsLabel | size | 0,371 255×36 | 0,371 255×36 | ok |  |
-| settings | size | 10,747 235×31 | 10,747 235×31 | ok | "Settings" |
-| footer | bottom | 0,784 255×116 | 0,784 255×116 | ok |  |
-| footerLabel | none | 27.4,795 45.8×28 | 27.4,795 45.8×28 | ok | "claude code" |
-| cpuLabel | box | 16,830 34×14 | 16,830 34×14 | ok | "CPU" |
-| cpuTrack | box | 58,835 97×4 | 58,835 97×4 | ok |  |
-| ramLabel | box | 16,851 34×14 | 16,851 34×14 | ok | "RAM" |
-| ramTrack | box | 58,856 97×4 | 58,856 97×4 | ok |  |
-| maxLabel | box | 16,872 34×14 | 16,872 34×14 | ok | "Max" |
-| maxTrack | box | 58,877 97×4 | 58,877 97×4 | ok |  |
+| settings | size | 10,747 235×31 | 10,726 235×31 | ok | "Settings" |
+| footer | bottom | 0,784 255×116 | 0,763 255×137 | ok |  |
+| footerLabel | none | 27.4,795 45.8×28 | 27.4,774 45.8×28 | ok | "claude code" |
+| cpuLabel | box (y rel. footer) | 16,830 34×14 | 16,809 34×14 | ok | "CPU" |
+| cpuTrack | box (y rel. footer) | 58,835 97×4 | 58,814 97×4 | ok |  |
+| ramLabel | box (y rel. footer) | 16,851 34×14 | 16,830 34×14 | ok | "RAM" |
+| ramTrack | box (y rel. footer) | 58,856 97×4 | 58,835 97×4 | ok |  |
+
+## D17 usage rows (listed, not compared with the prototype)
+The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. `listed` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
+
+| Part | Prototype | App | Result | Notes |
+|---|---|---|---|---|
+| usage:Session | Max row 16,872 223×14 "Max62% · 1h48" | 16,851 223×14 "Session 62% · 1h48" | listed | D17 addition: label 16,851 46.2×14, bar 70.2,856 84.8×4, value 163,851 76×14 |
+| usage:Week | — (none) | 16,872 223×14 "Week unknown" | listed | D17 addition: label 16,872 46.2×14, bar 70.2,877 84.8×4, value 163,872 76×14 |
+| usage:labels | "Max" | ["Session","Week"] | ok | Session, Week first (D17) |
+| usage:Session:style | Max bar 4 px rgb(232, 231, 227) | 16,851 223×14, bar 70.2,856 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
+| usage:Week:style | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14, bar 70.2,877 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
+| usage:footer | 0,784 255×116 | 0,763 255×137 | ok | bottom edge kept; 21 px taller = the 1 added row(s) + 7 px gaps |
 
 ## SPEC color tokens defined as CSS variables
 | Token | SPEC values | Result |

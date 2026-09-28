@@ -1,21 +1,26 @@
 import { randomUUID } from 'node:crypto';
-import type { SystemInfo, UsageWarning } from '../../core/api.ts';
+import type { UsageWarning } from '../../core/api.ts';
 import type { ControlRequestLine } from '../../core/stdin.ts';
 import type { ControlResponseMessage } from '../../core/stream-json.ts';
 import {
   LIVE_USAGE_INTERVAL_MS,
+  MODEL_WINDOW_MAX_AGE_MS,
+  type ModelWindowReading,
   POLLER_USAGE_INTERVAL_MS,
   type ParsedUsage,
+  type SystemUsageFields,
   type UsageState,
   WARN_AT_PCT_SETTING,
   type WarnedState,
   activeWarnings,
   dueWarnings,
   getUsageLine,
+  modelWindowsFromGetUsage,
   readWarnedState,
   readingFromGetUsage,
   systemUsageFields,
   usageState,
+  usageWindows,
   warnThreshold,
 } from '../../core/usage.ts';
 import type { Store } from '../db/store.ts';
@@ -81,9 +86,12 @@ export type UsageTick = 'live' | 'poller' | null;
  * - while no session is live, a short-lived poller at most once per 5 min, and
  *   not while a reading younger than that exists.
  * Requests are only made while a `/hub` client is connected (someone sees the
- * meter). The newest reading drives `usagePct` (src/core/usage.ts); every
- * evaluation also fires the due warnings (once per window until its reset),
- * remembered in the settings table so a restart does not repeat them.
+ * meter). The newest reading drives `usagePct` and the Session / Week windows
+ * (src/core/usage.ts); D17: the model-scoped windows come from the newest
+ * `get_usage` reading while it is at most {@link MODEL_WINDOW_MAX_AGE_MS} old (a
+ * `rate_limit_event` carries none). Every evaluation also fires the due warnings
+ * (once per window until its reset), remembered in the settings table so a
+ * restart does not repeat them.
  */
 export class UsageMeter {
   readonly #store: Store;
@@ -161,10 +169,24 @@ export class UsageMeter {
   }
 
   /** The usage fields of `GET /api/system` / the `system` event (fires due warnings first). */
-  async systemFields(): Promise<Pick<SystemInfo, 'usagePct' | 'usageResetsAt' | 'usageWarnings'>> {
+  async systemFields(): Promise<SystemUsageFields> {
     const now = this.#now();
     const warned = await this.#evaluate(now);
-    return systemUsageFields(usageState(await this.#store.usage.latest(), now), activeWarnings(warned, now));
+    const latest = await this.#store.usage.latest();
+    return systemUsageFields(usageState(latest, now), activeWarnings(warned, now), usageWindows(latest, await this.#modelWindows(now), now));
+  }
+
+  /**
+   * D17: the model-scoped weekly limits of the newest `get_usage` reading, when it
+   * is at most {@link MODEL_WINDOW_MAX_AGE_MS} old (a `rate_limit_event` has none,
+   * so a newer one does not hide them); empty otherwise (unknown).
+   */
+  async #modelWindows(now: Date): Promise<ModelWindowReading[]> {
+    const reading = await this.#store.usage.latest('get_usage');
+    if (!reading) return [];
+    const age = now.getTime() - Date.parse(reading.receivedAt);
+    if (!(age <= MODEL_WINDOW_MAX_AGE_MS)) return [];
+    return modelWindowsFromGetUsage(reading.raw);
   }
 
   /** Stores a reading taken now (`get_usage` from a live session or the poller). */
@@ -220,7 +242,7 @@ export class UsageMeter {
       const stored = await this.#store.settings.get(WARNED_SETTING);
       const warned = readWarnedState(stored);
       const threshold = warnThreshold(await this.#store.settings.get(WARN_AT_PCT_SETTING));
-      const result = dueWarnings(await this.#store.usage.latest(), warned, threshold, now);
+      const result = dueWarnings(await this.#store.usage.latest(), warned, threshold, now, await this.#modelWindows(now));
       if (JSON.stringify(result.warned) !== JSON.stringify(stored ?? {})) await this.#store.settings.set(WARNED_SETTING, result.warned);
       for (const warning of result.fire) {
         try {

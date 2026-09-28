@@ -53,9 +53,11 @@ export class UsageRepository {
     return this.#table.insert({ ...defined(input), receivedAt: input.receivedAt ?? this.#ctx.now() });
   }
 
-  /** The newest reading, or `null`. */
-  async latest(): Promise<UsageReadingRecord | null> {
-    return this.#table.first('', [], 'received_at DESC, id DESC');
+  /** The newest reading (D17: of that `source` when given), or `null`. */
+  async latest(source?: UsageSource): Promise<UsageReadingRecord | null> {
+    return source === undefined
+      ? this.#table.first('', [], 'received_at DESC, id DESC')
+      : this.#table.first('source = ?', [source], 'received_at DESC, id DESC');
   }
 
   /** Readings received after `sinceTs` (all when omitted), oldest first. */

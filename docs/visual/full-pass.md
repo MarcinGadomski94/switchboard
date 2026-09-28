@@ -17,24 +17,24 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (71) | green (3) | 0.18% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (71) | green (3) | 6.40% | 7.59% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (71) | green (3) | 6.51% | 7.72% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (71) | green (3) | 3.74% | 4.35% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (71) | green (3) | 1.30% | 1.39% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
-| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (71) | green (3) | 0.17% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (71) | green (3) | 0.49% | 0.40% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (71) | green (3) | 1.87% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
-| History | History | M7.4 | gated | green (71) | green (3) | 0.16% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (71) | green (3) | 0.16% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (71) | green (3) | 0.30% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (71) | green (3) | 4.49% | 6.63% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (71) | green (3) | 0.27% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
-| Palette | Modals → Palette | M8.3 | gated | green (71) | green (3) | 0.12% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.52% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (3) | 6.73% | 7.59% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 6.84% | 7.72% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 4.07% | 4.35% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 1.64% | 1.39% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.50% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.82% | 0.39% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.21% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
+| History | History | M7.4 | gated | green (72) | green (3) | 0.50% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.50% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.64% | 0.17% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 4.70% | 6.63% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.50% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.39% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on `inbox`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
-Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` = x, width, bottom edge · `relative` = box with y relative to the SESSIONS label (the tool rows above it are pending) · `none` = copy and styles only · `listed` = recorded, not gated.
+Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` = x, width, bottom edge · `relative` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · `none` = copy and styles only · `listed` = recorded, not gated · `D17 rules` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|
@@ -95,20 +95,23 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | session5:name | box | 36,670 98.8×17 | 36,670 98.8×17 | ok | copy "prod-monitoring" |
 | inbox | session5:age | box | 217.2,670 19.8×17 | 217.2,670 19.8×17 | ok | copy "41m" |
 | inbox | session5:mode | box | 36,689 201×14 | 36,689 201×14 | ok | copy listed: prototype "/loop 1h · expires in 6d" · app "" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | settings | box | 10,747 235×31 | 10,747 235×31 | ok | copy "Settings" |
-| inbox | footer | box | 0,784 255×116 | 0,784 255×116 | ok |  |
-| inbox | footer:service | box | 16,795 223×28 | 16,795 223×28 | ok |  |
-| inbox | footer:label | box | 27.4,795 45.8×28 | 27.4,795 45.8×28 | ok | copy "claude code" |
-| inbox | footer:processes | box | 80.2,795 59.4×28 | 80.2,795 59.4×28 | ok | copy "9 bg processes" |
-| inbox | footer:CPU | box | 16,830 34×14 | 16,830 34×14 | ok | copy "CPU" |
-| inbox | footer:CPU:track | box | 58,835 97×4 | 58,835 97×4 | ok |  |
-| inbox | footer:CPU:value | box | 163,830 76×14 | 163,830 76×14 | ok | copy "38%" |
-| inbox | footer:RAM | box | 16,851 34×14 | 16,851 34×14 | ok | copy "RAM" |
-| inbox | footer:RAM:track | box | 58,856 97×4 | 58,856 97×4 | ok |  |
-| inbox | footer:RAM:value | box | 163,851 76×14 | 163,851 76×14 | ok | copy "11.2/32 GB" |
-| inbox | footer:Max | box | 16,872 34×14 | 16,872 34×14 | ok | copy "Max" |
-| inbox | footer:Max:track | box | 58,877 97×4 | 58,877 97×4 | ok |  |
-| inbox | footer:Max:value | box | 163,872 76×14 | 163,872 76×14 | ok | copy "62% · 1h48" |
+| inbox | settings | relative | 10,747 235×31 | 10,726 235×31 | ok | copy "Settings" |
+| inbox | footer | bottom | 0,784 255×116 | 0,763 255×137 | ok |  |
+| inbox | footer:service | relative | 16,795 223×28 | 16,774 223×28 | ok |  |
+| inbox | footer:label | relative | 27.4,795 45.8×28 | 27.4,774 45.8×28 | ok | copy "claude code" |
+| inbox | footer:processes | relative | 80.2,795 59.4×28 | 80.2,774 59.4×28 | ok | copy "9 bg processes" |
+| inbox | footer:CPU | relative | 16,830 34×14 | 16,809 34×14 | ok | copy "CPU" |
+| inbox | footer:CPU:track | relative | 58,835 97×4 | 58,814 97×4 | ok |  |
+| inbox | footer:CPU:value | relative | 163,830 76×14 | 163,809 76×14 | ok | copy "38%" |
+| inbox | footer:RAM | relative | 16,851 34×14 | 16,830 34×14 | ok | copy "RAM" |
+| inbox | footer:RAM:track | relative | 58,856 97×4 | 58,835 97×4 | ok |  |
+| inbox | footer:RAM:value | relative | 163,851 76×14 | 163,830 76×14 | ok | copy "11.2/32 GB" |
+| inbox | usage:Session | listed | Max row 16,872 223×14 "Max62% · 1h48" | 16,851 223×14 "Session 62% · 1h48" | listed | D17 addition: label 16,851 46.2×14, bar 70.2,856 84.8×4, value 163,851 76×14 |
+| inbox | usage:Week | listed | — (none) | 16,872 223×14 "Week unknown" | listed | D17 addition: label 16,872 46.2×14, bar 70.2,877 84.8×4, value 163,872 76×14 |
+| inbox | usage:labels | D17 rules | "Max" | ["Session","Week"] | ok | Session, Week first (D17) |
+| inbox | usage:Session:style | D17 rules | Max bar 4 px rgb(232, 231, 227) | 16,851 223×14, bar 70.2,856 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
+| inbox | usage:Week:style | D17 rules | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14, bar 70.2,877 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
+| inbox | usage:footer | D17 rules | 0,784 255×116 | 0,763 255×137 | ok | bottom edge kept; 21 px taller = the 1 added row(s) + 7 px gaps |
 
 ## Content and chrome
 | Surface | Part | Geometry | Prototype | App | Result | Notes |

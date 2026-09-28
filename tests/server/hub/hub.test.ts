@@ -85,9 +85,9 @@ const QUESTION_KEYS = keys<Question>()([
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
-/** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force. */
+/** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
 const SYSTEM_REQUIRED_KEYS = ['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes'].sort();
-keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings']);
+keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings', 'usageWindows']);
 
 function keysOf(value: unknown): string[] {
   return Object.keys(value as object).sort();

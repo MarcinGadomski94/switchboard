@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { USAGE_WINDOW_LABELS } from '../core/usage.ts';
+import { usageWindowLabel } from '../core/usage.ts';
 import { buildApp, createSessionServices, createWorktreeManager } from './app.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
             config,
             store,
             sessions: supervisor,
-            onWarning: (warning) => console.warn(`switchboard usage: Max ${USAGE_WINDOW_LABELS[warning.window]} at ${warning.pct}% (warning at ${warning.threshold}%)`),
+            onWarning: (warning) => console.warn(`switchboard usage: Max ${usageWindowLabel(warning)} at ${warning.pct}% (warning at ${warning.threshold}%)`),
             onError: (error) => console.error('switchboard usage:', error),
           });
     if (usage) providers = withUsage(providers, usage);

@@ -1,5 +1,6 @@
 import path from 'node:path';
-import type { BranchRef, CodebaseMemoryStatus, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import type { BranchRef, CodebaseMemoryStatus, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
+import { USAGE_ROW_LABELS } from '../../core/usage.ts';
 import type {
   CodebaseMemoryProvider,
   DiffProvider,
@@ -67,6 +68,12 @@ export function parseBranchRefs(text: string): BranchRef[] {
     .map(([solution, branch]) => ({ solution, branch }));
 }
 
+/** A footer usage figure `62% · 1h48` → its % and minutes until the reset; `null` when it has another shape. */
+function parseUsageFigure(text: string | undefined): { readonly pct: number; readonly minutes: number } | null {
+  const match = /^(\d+)% · (\d+)h(\d+)$/.exec(text ?? '');
+  return match ? { pct: Number(match[1]), minutes: Number(match[2]) * 60 + Number(match[3]) } : null;
+}
+
 /**
  * Demo providers over `data`; `now` anchors the relative values (usage reset, History dates).
  * Every provider except D15's framing proxies (`toolFrames`): the demo runs none.
@@ -132,8 +139,15 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
     async system(): Promise<SystemInfo> {
       const footer = data.system.footer;
       const [ramUsed = 0, ramTotal = 0] = footer.ram.replace(' GB', '').split('/').map(Number);
-      const usage = /^(\d+)% · (\d+)h(\d+)$/.exec(footer.max);
-      const resetsInMinutes = usage ? Number(usage[2]) * 60 + Number(usage[3]) : null;
+      const resetsAt = (minutes: number): string => new Date(now().getTime() + minutes * 60_000).toISOString();
+      // The prototype's one "Max" figure (62% · 1h48) stays usagePct; D17: it is the Session window,
+      // and the Week window exists only when the demo data has one (the prototype has none).
+      const usage = parseUsageFigure(footer.max);
+      const week = parseUsageFigure(footer.week);
+      const windows: UsageWindow[] = [
+        ...(usage ? [{ key: 'session' as const, label: USAGE_ROW_LABELS.session, pct: usage.pct, resetsAt: resetsAt(usage.minutes) }] : []),
+        ...(week ? [{ key: 'week' as const, label: USAGE_ROW_LABELS.week, pct: week.pct, resetsAt: resetsAt(week.minutes) }] : []),
+      ];
       return {
         cli: data.system.cli,
         cliVersion: null,
@@ -143,8 +157,8 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
         ramUsed: ramUsed * GIB,
         ramTotal: ramTotal * GIB,
         processes: footer.processes,
-        ...(usage ? { usagePct: Number(usage[1]) } : {}),
-        ...(resetsInMinutes === null ? {} : { usageResetsAt: new Date(now().getTime() + resetsInMinutes * 60_000).toISOString() }),
+        ...(usage ? { usagePct: usage.pct, usageResetsAt: resetsAt(usage.minutes) } : {}),
+        ...(windows.length > 0 ? { usageWindows: windows } : {}),
       };
     },
   };

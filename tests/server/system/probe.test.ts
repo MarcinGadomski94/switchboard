@@ -61,7 +61,9 @@ describe('SystemProbe (M5.3)', () => {
       env: baseEnv(),
       processCount: () => live,
       memory: () => ({ total: 32 * 1024 ** 3, free: 20 * 1024 ** 3 }),
+      memoryInUse: async () => 7 * 1024 ** 3,
     });
+    await probe.refreshMemory();
     const info = await probe.system();
     expect(info).toEqual({
       cli: fakeClaudeCommand().join(' '),
@@ -69,7 +71,7 @@ describe('SystemProbe (M5.3)', () => {
       signedIn: true,
       ghSignedIn: true,
       cpu: expect.any(Number) as number,
-      ramUsed: 12 * 1024 ** 3,
+      ramUsed: 7 * 1024 ** 3,
       ramTotal: 32 * 1024 ** 3,
       processes: 2,
     });
@@ -153,6 +155,106 @@ describe('SystemProbe (M5.3)', () => {
     index = 2;
     // No time passed: the last value is kept.
     expect((await probe.system()).cpu).toBe(27);
+  });
+});
+
+describe('SystemProbe · RAM in use (D17)', () => {
+  const GIB = 1024 ** 3;
+  const memory = () => ({ total: 32 * GIB, free: 20 * GIB });
+
+  function probeWith(options: Partial<ConstructorParameters<typeof SystemProbe>[0]>): SystemProbe {
+    return new SystemProbe({
+      claudeCommand: fakeClaudeCommand(),
+      ghCommand: fakeGhCommand(),
+      cwd: tmp,
+      env: baseEnv(),
+      processCount: () => 0,
+      memory,
+      ...options,
+    });
+  }
+
+  it('ramUsed is the platform reader’s value (vm_stat / meminfo), capped at the total', async () => {
+    let value = 9.5 * GIB;
+    const probe = probeWith({ memoryInUse: async () => value, now: () => 0 });
+    await probe.refreshMemory();
+    expect((await probe.system()).ramUsed).toBe(9.5 * GIB);
+    value = 40 * GIB;
+    await probe.refreshMemory();
+    expect((await probe.system()).ramUsed).toBe(32 * GIB);
+  });
+
+  it('a failed read falls back to total − free: null, a rejection, a throw, a negative or non-number value', async () => {
+    const readers = [
+      async () => null,
+      async (): Promise<number> => {
+        throw new Error('vm_stat: ENOENT');
+      },
+      (): Promise<number> => {
+        throw new Error('sync throw');
+      },
+      async () => -1,
+      async () => Number.NaN,
+    ];
+    for (const memoryInUse of readers) {
+      const probe = probeWith({ memoryInUse });
+      await probe.refreshMemory();
+      expect((await probe.system()).ramUsed).toBe(12 * GIB);
+    }
+  });
+
+  it('a good read after a failed one is used; a failed one after a good one falls back again', async () => {
+    const answers: Array<number | null> = [null, 6 * GIB, null];
+    const probe = probeWith({ memoryInUse: async () => answers.shift() ?? null });
+    await probe.refreshMemory();
+    expect((await probe.system()).ramUsed).toBe(12 * GIB);
+    await probe.refreshMemory();
+    expect((await probe.system()).ramUsed).toBe(6 * GIB);
+    await probe.refreshMemory();
+    expect((await probe.system()).ramUsed).toBe(12 * GIB);
+  });
+
+  it('never blocks a request: a read still running answers total − free (or the last read) at once', async () => {
+    let release: (value: number) => void = () => undefined;
+    const reads: number[] = [];
+    const probe = probeWith({
+      memoryInUse: () => {
+        reads.push(reads.length);
+        return new Promise<number>((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+    // The constructor's read is still running.
+    expect((await probe.system()).ramUsed).toBe(12 * GIB);
+    release(5 * GIB);
+    await probe.refreshMemory();
+    expect(reads).toHaveLength(1);
+  });
+
+  it('cached between system ticks: one read per interval, shared by concurrent callers', async () => {
+    let clock = 1_000_000;
+    let reads = 0;
+    const probe = probeWith({
+      now: () => clock,
+      memoryInUse: async () => {
+        reads += 1;
+        return reads * GIB;
+      },
+    });
+    // The constructor started the first read; this waits for it.
+    await probe.refreshMemory();
+    expect(reads).toBe(1);
+    await Promise.all([probe.system(), probe.system(), probe.system()]);
+    expect(reads).toBe(1);
+    expect((await probe.system()).ramUsed).toBe(1 * GIB);
+    // The next /hub tick (5 s later) answers from the last read and starts one new read.
+    clock += 5_000;
+    expect((await probe.system()).ramUsed).toBe(1 * GIB);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reads).toBe(2);
+    expect((await probe.system()).ramUsed).toBe(2 * GIB);
+    expect(reads).toBe(2);
   });
 });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { UsageWarning } from '../../../src/core/api.ts';
+import type { UsageWarning, UsageWindow } from '../../../src/core/api.ts';
 import type { ControlRequestLine } from '../../../src/core/stdin.ts';
 import type { ControlResponseMessage } from '../../../src/core/stream-json.ts';
 import type { GetUsageOutcome } from '../../../src/core/usage.ts';
@@ -22,6 +22,14 @@ const FIVE_RESET = '2026-09-27T23:40:00.290Z';
 const SEVEN_RESET = '2026-10-01T13:00:00.290Z';
 const SEC = 1_000;
 const MIN = 60 * SEC;
+
+/** D17: the Session and Week windows of a reading with the two recorded resets. */
+function windows(five: number, seven: number): UsageWindow[] {
+  return [
+    { key: 'session', label: 'Session', pct: five, resetsAt: FIVE_RESET },
+    { key: 'week', label: 'Week', pct: seven, resetsAt: SEVEN_RESET },
+  ];
+}
 
 function usageResponse(fiveHour: number, sevenDay: number, fiveReset = '2026-09-27T23:40:00.290507+00:00'): Record<string, unknown> {
   return {
@@ -249,16 +257,17 @@ describe('UsageMeter · usagePct on /api/system', () => {
     const m = meter();
     expect(await m.systemFields()).toEqual({});
     await m.tick();
-    expect(await m.systemFields()).toEqual({ usagePct: 18, usageResetsAt: SEVEN_RESET });
+    expect(await m.systemFields()).toEqual({ usagePct: 18, usageResetsAt: SEVEN_RESET, usageWindows: windows(10, 18) });
     now = Date.parse(FIVE_RESET);
     viewers = 0;
-    expect(await m.systemFields()).toEqual({});
+    // usagePct needs both windows; D17: the Week window alone is still known (Session is left out).
+    expect(await m.systemFields()).toEqual({ usageWindows: [{ key: 'week', label: 'Week', pct: 18, resetsAt: SEVEN_RESET }] });
     expect(await m.state()).toEqual({ known: false, reason: 'expired' });
   });
 
   it('a rate_limit_event the recorder stored counts like any reading', async () => {
     await store.usage.add({ source: 'rate_limit_event', sessionId, fiveHourPct: 62, fiveHourResetsAt: FIVE_RESET, sevenDayPct: 18, sevenDayResetsAt: SEVEN_RESET });
-    expect(await meter().systemFields()).toEqual({ usagePct: 62, usageResetsAt: FIVE_RESET });
+    expect(await meter().systemFields()).toEqual({ usagePct: 62, usageResetsAt: FIVE_RESET, usageWindows: windows(62, 18) });
   });
 });
 
@@ -269,7 +278,7 @@ describe('UsageMeter · the warning fires once', () => {
     await m.tick();
     expect(warnings).toEqual([{ window: 'five_hour', pct: 91, threshold: 90, resetsAt: FIVE_RESET, firedAt: new Date(START).toISOString() }]);
     const fields = await m.systemFields();
-    expect(fields).toEqual({ usagePct: 91, usageResetsAt: FIVE_RESET, usageWarnings: warnings });
+    expect(fields).toEqual({ usagePct: 91, usageResetsAt: FIVE_RESET, usageWarnings: warnings, usageWindows: windows(91, 40) });
 
     // Higher readings of the same window, more ticks, more system calls: still one warning.
     poller.outcome = { kind: 'response', message: controlResponse('p', usageResponse(96, 40)) };
@@ -320,5 +329,76 @@ describe('UsageMeter · the warning fires once', () => {
     expect(warnings.map((w) => w.window)).toEqual(['five_hour']);
     // The only thing written to a session is get_usage.
     expect(sessions.requests.map((r) => r.line.request.subtype)).toEqual(['get_usage', 'get_usage']);
+  });
+});
+
+describe('UsageMeter · D17 model-scoped windows', () => {
+  const FABLE_RESET = '2026-10-01T13:00:00.000Z';
+  const FABLE_ROW: UsageWindow = { key: 'model', label: 'Fable', pct: 35, resetsAt: FABLE_RESET, model: 'Fable' };
+
+  /** A get_usage answer with a Fable weekly limit (as recorded in usage-ctl, with this utilization). */
+  function withFable(fable: number, fiveHour = 10, sevenDay = 18): Record<string, unknown> {
+    const base = usageResponse(fiveHour, sevenDay);
+    return {
+      ...base,
+      rate_limits: {
+        ...(base['rate_limits'] as Record<string, unknown>),
+        limits: [{ kind: 'weekly_scoped', percent: fable, resets_at: '2026-10-01T13:00:00+00:00', is_active: false, scope: { model: { id: null, display_name: 'Fable' } } }],
+        model_scoped: [{ display_name: 'Fable', utilization: fable, resets_at: '2026-10-01T13:00:00+00:00' }],
+      },
+    };
+  }
+
+  it('a Fable limit in use gets a window; a newer rate_limit_event keeps it; it is unknown once the get_usage reading is over 10 min old', async () => {
+    poller.outcome = { kind: 'response', message: controlResponse('p', withFable(35)) };
+    const m = meter();
+    await m.tick();
+    expect((await m.systemFields()).usageWindows).toEqual([...windows(10, 18), FABLE_ROW]);
+
+    // A turn's rate_limit_event (no model data) is the newest reading: Session / Week follow it, Fable stays.
+    now += 2 * MIN;
+    await store.usage.add({ source: 'rate_limit_event', sessionId, fiveHourPct: 12, fiveHourResetsAt: FIVE_RESET, sevenDayPct: 19, sevenDayResetsAt: SEVEN_RESET });
+    expect((await m.systemFields()).usageWindows).toEqual([...windows(12, 19), FABLE_ROW]);
+
+    // More than 10 min after the get_usage reading: unknown, left out (never an old number shown as current).
+    now = START + 10 * MIN + 1;
+    expect((await m.systemFields()).usageWindows).toEqual(windows(12, 19));
+  });
+
+  it('0 % and not active: no model window; a failed get_usage after a good one makes it unknown', async () => {
+    poller.outcome = { kind: 'response', message: controlResponse('p', withFable(0)) };
+    const m = meter();
+    await m.tick();
+    expect((await m.systemFields()).usageWindows).toEqual(windows(10, 18));
+    poller.outcome = { kind: 'response', message: controlResponse('p', withFable(35)) };
+    now += 6 * MIN;
+    await m.tick();
+    expect((await m.systemFields()).usageWindows).toContainEqual(FABLE_ROW);
+    poller.outcome = { kind: 'failed', error: 'no answer' };
+    now += 6 * MIN;
+    await m.tick();
+    expect(await m.systemFields()).toEqual({});
+  });
+
+  it('a model window at the threshold warns once until its reset, across ticks and a restart; listed while in force', async () => {
+    poller.outcome = { kind: 'response', message: controlResponse('p', withFable(92)) };
+    const m = meter();
+    await m.tick();
+    const fable: UsageWarning = { window: 'model', model: 'Fable', pct: 92, threshold: 90, resetsAt: FABLE_RESET, firedAt: new Date(START).toISOString() };
+    expect(warnings).toEqual([fable]);
+    expect(await store.settings.get(WARNED_SETTING)).toEqual({ model: { Fable: fable } });
+    expect((await m.systemFields()).usageWarnings).toEqual([fable]);
+
+    poller.outcome = { kind: 'response', message: controlResponse('p', withFable(97)) };
+    now += 6 * MIN;
+    await m.tick();
+    const restarted = meter();
+    await restarted.systemFields();
+    expect(warnings).toEqual([fable]);
+    // Still in force after the model window is no longer read (the reading aged out); gone after its reset.
+    now = START + 30 * MIN;
+    expect((await restarted.systemFields()).usageWarnings).toEqual([fable]);
+    now = Date.parse(FABLE_RESET);
+    expect((await restarted.systemFields()).usageWarnings).toBeUndefined();
   });
 });

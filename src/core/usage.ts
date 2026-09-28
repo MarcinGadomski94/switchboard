@@ -11,13 +11,18 @@
  *   passed without a newer reading.
  * - A **warning** fires when a window reaches the threshold, once per window until
  *   that window's `resets_at` ("just warn": nothing is paused).
+ * - D17: `usageWindows` lists each window known now for the footer's rows:
+ *   Session (5-hour) and Week (all models) from the newest reading, and each
+ *   model-scoped weekly limit (`rate_limits.model_scoped[]` / `limits[]` of a
+ *   `get_usage` answer) while it is in use (above 0 % or active). A model window at
+ *   the threshold warns like the other two.
  */
-import type { SystemInfo, UsageWarning, UsageWindowName } from './api.ts';
+import type { SystemInfo, UsageWarning, UsageWindow, UsageWindowName } from './api.ts';
 import type { UsageSource } from './model.ts';
 import type { ControlRequestLine } from './stdin.ts';
 import type { ControlResponseMessage, RateLimitMessage } from './stream-json.ts';
 
-export type { UsageWarning, UsageWindowName } from './api.ts';
+export type { UsageWarning, UsageWarningWindow, UsageWindow, UsageWindowName } from './api.ts';
 
 /** The two Max windows, in the order the meter checks them. */
 export const USAGE_WINDOWS: readonly UsageWindowName[] = ['five_hour', 'seven_day'];
@@ -30,6 +35,16 @@ export const WARN_AT_PCT_SETTING = 'usage.warnAtPct';
 export const LIVE_USAGE_INTERVAL_MS = 60_000;
 /** The short-lived poller runs at most this often (only with a `/hub` viewer and no live session). */
 export const POLLER_USAGE_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * D17: model-scoped windows come only from `get_usage` (a `rate_limit_event` has
+ * none), so they are read from the newest `get_usage` reading while it is at most
+ * this old (twice the poller's interval); older, they are unknown.
+ */
+export const MODEL_WINDOW_MAX_AGE_MS = 2 * POLLER_USAGE_INTERVAL_MS;
+
+/** D17: the footer rows' labels of the two Max windows. */
+export const USAGE_ROW_LABELS = { session: 'Session', week: 'Week' } as const;
 
 /** One window of a reading. `null` = unknown (missing or malformed), never a guess. */
 export interface UsageWindowReading {
@@ -90,14 +105,37 @@ export type UsageState =
     }
   | { readonly known: false; readonly reason: UsageUnknownReason };
 
-/** The warnings already fired: per window, the warning (kept until its `resetsAt`). */
-export type WarnedState = Readonly<Partial<Record<UsageWindowName, UsageWarning>>>;
+/** D17: one model-scoped weekly limit of a `get_usage` answer. `null` = unknown (missing or malformed), never a guess. */
+export interface ModelWindowReading {
+  /** The model's display name (`Fable`). */
+  readonly model: string;
+  /** Utilization 0–100. */
+  readonly pct: number | null;
+  /** When the window resets, ISO 8601 UTC. */
+  readonly resetsAt: string | null;
+  /** `limits[].is_active` of its `weekly_scoped` entry (`false` when absent). */
+  readonly isActive: boolean;
+}
+
+/** The warnings already fired: per window, the warning (kept until its `resetsAt`); D17: per model under `model`. */
+export interface WarnedState {
+  readonly five_hour?: UsageWarning;
+  readonly seven_day?: UsageWarning;
+  /** D17: model-scoped weekly limits, by display name. */
+  readonly model?: Readonly<Record<string, UsageWarning>>;
+}
 
 /** Readable names of the windows (Settings copy: "5-hour window and weekly limit"). */
 export const USAGE_WINDOW_LABELS: Readonly<Record<UsageWindowName, string>> = {
   five_hour: '5-hour window',
   seven_day: 'weekly limit',
 };
+
+/** The readable name of a warning's window: {@link USAGE_WINDOW_LABELS}, or `Fable weekly limit` for a model-scoped one (D17). */
+export function usageWindowLabel(warning: Pick<UsageWarning, 'window' | 'model'>): string {
+  if (warning.window === 'model') return `${warning.model ?? 'model'} ${USAGE_WINDOW_LABELS.seven_day}`;
+  return USAGE_WINDOW_LABELS[warning.window];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -220,6 +258,84 @@ export function validWindows(latest: UsageReadingFields | null, now: Date): Part
   return out;
 }
 
+/** A utilization or percent 0–100 from a CLI field, `null` when it is not one. */
+function pctOf(value: unknown): number | null {
+  return typeof value === 'number' ? normalizePct(value) : null;
+}
+
+/** A reset time from a CLI field, `null` when it is not a parseable date string. */
+function resetOf(value: unknown): string | null {
+  return typeof value === 'string' ? isoTime(value) : null;
+}
+
+/**
+ * D17: the model-scoped weekly limits of a stored `get_usage` answer (its `raw`,
+ * the `response` object): `rate_limits.model_scoped[] = { display_name,
+ * utilization 0–100, resets_at }`, joined by display name with
+ * `rate_limits.limits[]` entries of `kind: "weekly_scoped"` (`scope.model.display_name`,
+ * `percent`, `resets_at`, `is_active`). `model_scoped` wins where both carry a value;
+ * a model only in `limits` is kept. Order: as the CLI lists them. Empty when the
+ * answer is an error, has no rate limits, or lists no model.
+ */
+export function modelWindowsFromGetUsage(raw: unknown): ModelWindowReading[] {
+  if (!isRecord(raw) || raw['rate_limits_available'] !== true) return [];
+  const limits = raw['rate_limits'];
+  if (!isRecord(limits)) return [];
+  const byModel = new Map<string, { pct: number | null; resetsAt: string | null; isActive: boolean }>();
+  const entry = (model: string) => {
+    let found = byModel.get(model);
+    if (!found) {
+      found = { pct: null, resetsAt: null, isActive: false };
+      byModel.set(model, found);
+    }
+    return found;
+  };
+  const scoped = limits['model_scoped'];
+  for (const item of Array.isArray(scoped) ? scoped : []) {
+    if (!isRecord(item) || typeof item['display_name'] !== 'string' || item['display_name'] === '') continue;
+    const found = entry(item['display_name']);
+    found.pct = pctOf(item['utilization']);
+    found.resetsAt = resetOf(item['resets_at']);
+  }
+  const list = limits['limits'];
+  for (const item of Array.isArray(list) ? list : []) {
+    if (!isRecord(item) || item['kind'] !== 'weekly_scoped') continue;
+    const scope = item['scope'];
+    const model = isRecord(scope) && isRecord(scope['model']) ? scope['model']['display_name'] : undefined;
+    if (typeof model !== 'string' || model === '') continue;
+    const found = entry(model);
+    found.pct ??= pctOf(item['percent']);
+    found.resetsAt ??= resetOf(item['resets_at']);
+    found.isActive = item['is_active'] === true;
+  }
+  return [...byModel].map(([model, value]) => ({ model, ...value }));
+}
+
+/** D17: the model windows valid at `now` (a number and a reset still ahead). */
+function validModelWindows(models: readonly ModelWindowReading[], now: Date): Array<ModelWindowReading & { readonly pct: number; readonly resetsAt: string }> {
+  return models.flatMap((m) => {
+    const window = windowAt(m.pct, m.resetsAt, now.getTime());
+    return window.ok ? [{ ...m, pct: window.pct, resetsAt: window.resetsAt }] : [];
+  });
+}
+
+/**
+ * D17: the usage windows known at `now`, for `SystemInfo.usageWindows`: `session`
+ * (the newest reading's 5-hour window) and `week` (its weekly window) when valid,
+ * then a `model` window per model-scoped limit that is valid and **in use** (above
+ * 0 % or active). Unknown windows are left out, never guessed.
+ */
+export function usageWindows(latest: UsageReadingFields | null, models: readonly ModelWindowReading[], now: Date): UsageWindow[] {
+  const windows = validWindows(latest, now);
+  const out: UsageWindow[] = [];
+  if (windows.five_hour) out.push({ key: 'session', label: USAGE_ROW_LABELS.session, ...windows.five_hour });
+  if (windows.seven_day) out.push({ key: 'week', label: USAGE_ROW_LABELS.week, ...windows.seven_day });
+  for (const m of validModelWindows(models, now)) {
+    if (m.pct > 0 || m.isActive) out.push({ key: 'model', label: m.model, pct: m.pct, resetsAt: m.resetsAt, model: m.model });
+  }
+  return out;
+}
+
 /**
  * The meter at `now` from the newest reading: known only when both windows are
  * known and neither has reset since; then `pct` = the higher one (the binding
@@ -250,64 +366,91 @@ export function warnThreshold(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 100 ? value : DEFAULT_WARN_AT_PCT;
 }
 
-/** The fired warnings still in force at `now` (their window has not reset yet), five-hour first. */
+/** The fired warnings still in force at `now` (their window has not reset yet): five-hour, weekly, then the model ones (D17). */
 export function activeWarnings(warned: WarnedState, now: Date): UsageWarning[] {
-  return USAGE_WINDOWS.flatMap((name) => {
-    const warning = warned[name];
-    return warning && Date.parse(warning.resetsAt) > now.getTime() ? [warning] : [];
-  });
+  const inForce = (warning: UsageWarning | undefined): warning is UsageWarning => !!warning && Date.parse(warning.resetsAt) > now.getTime();
+  return [...USAGE_WINDOWS.map((name) => warned[name]), ...Object.values(warned.model ?? {})].filter(inForce);
 }
 
 /**
  * The warnings to fire now: every window of the newest reading that is valid at
- * `now` and at or above `threshold`, unless a warning for that window is still in
- * force (fired before and its `resetsAt` has not passed). Returns them with the
- * new warned state (warnings whose window has reset are dropped).
+ * `now` and at or above `threshold`, and (D17) every model window of `models` that
+ * is, unless a warning for that window (that model) is still in force (fired
+ * before and its `resetsAt` has not passed). Returns them with the new warned
+ * state (warnings whose window has reset are dropped).
  */
 export function dueWarnings(
   latest: UsageReadingFields | null,
   warned: WarnedState,
   threshold: number,
   now: Date,
+  models: readonly ModelWindowReading[] = [],
 ): { readonly fire: UsageWarning[]; readonly warned: WarnedState } {
   const windows = validWindows(latest, now);
   const next: Partial<Record<UsageWindowName, UsageWarning>> = {};
-  for (const warning of activeWarnings(warned, now)) next[warning.window] = warning;
+  const nextModels: Record<string, UsageWarning> = {};
+  for (const warning of activeWarnings(warned, now)) {
+    if (warning.window === 'model') nextModels[warning.model ?? ''] = warning;
+    else next[warning.window] = warning;
+  }
   const fire: UsageWarning[] = [];
+  const firedAt = now.toISOString();
   for (const name of USAGE_WINDOWS) {
     const window = windows[name];
     if (!window || window.pct < threshold || next[name]) continue;
-    const warning: UsageWarning = { window: name, pct: window.pct, threshold, resetsAt: window.resetsAt, firedAt: now.toISOString() };
+    const warning: UsageWarning = { window: name, pct: window.pct, threshold, resetsAt: window.resetsAt, firedAt };
     next[name] = warning;
     fire.push(warning);
   }
-  return { fire, warned: next };
+  for (const m of validModelWindows(models, now)) {
+    if (m.pct < threshold || nextModels[m.model]) continue;
+    const warning: UsageWarning = { window: 'model', model: m.model, pct: m.pct, threshold, resetsAt: m.resetsAt, firedAt };
+    nextModels[m.model] = warning;
+    fire.push(warning);
+  }
+  return { fire, warned: Object.keys(nextModels).length > 0 ? { ...next, model: nextModels } : next };
 }
 
-/** A stored warned state (settings `usage.warned`), keeping only well-formed entries. */
+/** The common fields of a stored warning, `null` when one is missing or malformed. */
+function storedWarning(entry: unknown): Pick<UsageWarning, 'pct' | 'threshold' | 'resetsAt' | 'firedAt'> | null {
+  if (!isRecord(entry)) return null;
+  const { pct, threshold, resetsAt, firedAt } = entry;
+  if (typeof pct !== 'number' || typeof threshold !== 'number' || typeof resetsAt !== 'string' || typeof firedAt !== 'string') return null;
+  if (!Number.isFinite(Date.parse(resetsAt))) return null;
+  return { pct, threshold, resetsAt, firedAt };
+}
+
+/** A stored warned state (settings `usage.warned`), keeping only well-formed entries (D17: model ones under `model`). */
 export function readWarnedState(value: unknown): WarnedState {
   if (!isRecord(value)) return {};
   const out: Partial<Record<UsageWindowName, UsageWarning>> = {};
   for (const name of USAGE_WINDOWS) {
-    const entry = value[name];
-    if (!isRecord(entry)) continue;
-    const { pct, threshold, resetsAt, firedAt } = entry;
-    if (typeof pct !== 'number' || typeof threshold !== 'number' || typeof resetsAt !== 'string' || typeof firedAt !== 'string') continue;
-    if (!Number.isFinite(Date.parse(resetsAt))) continue;
-    out[name] = { window: name, pct, threshold, resetsAt, firedAt };
+    const fields = storedWarning(value[name]);
+    if (fields) out[name] = { window: name, ...fields };
   }
-  return out;
+  const models: Record<string, UsageWarning> = {};
+  const stored = value['model'];
+  for (const [model, entry] of Object.entries(isRecord(stored) ? stored : {})) {
+    const fields = storedWarning(entry);
+    if (fields && model !== '') models[model] = { window: 'model', model, ...fields };
+  }
+  return Object.keys(models).length > 0 ? { ...out, model: models } : out;
 }
+
+/** The usage fields of `GET /api/system` and the `system` hub event. */
+export type SystemUsageFields = Pick<SystemInfo, 'usagePct' | 'usageResetsAt' | 'usageWarnings' | 'usageWindows'>;
 
 /**
  * The usage fields of `GET /api/system` and the `system` hub event: `usagePct` +
- * `usageResetsAt` only when known (omitted otherwise, never invented), and the
- * warnings in force (additive `usageWarnings`, omitted when there are none).
+ * `usageResetsAt` only when known (omitted otherwise, never invented), the
+ * warnings in force (additive `usageWarnings`, omitted when there are none) and
+ * (D17) the windows known now (additive `usageWindows`, omitted when none).
  */
-export function systemUsageFields(state: UsageState, warnings: readonly UsageWarning[]): Pick<SystemInfo, 'usagePct' | 'usageResetsAt' | 'usageWarnings'> {
+export function systemUsageFields(state: UsageState, warnings: readonly UsageWarning[], windows: readonly UsageWindow[] = []): SystemUsageFields {
   return {
     ...(state.known ? { usagePct: state.pct, usageResetsAt: state.resetsAt } : {}),
     ...(warnings.length > 0 ? { usageWarnings: [...warnings] } : {}),
+    ...(windows.length > 0 ? { usageWindows: [...windows] } : {}),
   };
 }
 

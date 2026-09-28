@@ -6,16 +6,20 @@ import { type ControlResponseMessage, type RateLimitMessage, parseStreamLine } f
 import {
   DEFAULT_WARN_AT_PCT,
   type GetUsageOutcome,
+  type ModelWindowReading,
   type UsageReadingFields,
   activeWarnings,
   dueWarnings,
   getUsageLine,
+  modelWindowsFromGetUsage,
   normalizePct,
   readWarnedState,
   readingFromGetUsage,
   readingFromRateLimit,
   systemUsageFields,
   usageState,
+  usageWindowLabel,
+  usageWindows,
   validWindows,
   warnThreshold,
 } from '../../src/core/usage.ts';
@@ -272,5 +276,127 @@ describe('usage warnings: once per window until its resets_at (just warn)', () =
     expect(readWarnedState(null)).toEqual({});
     expect(readWarnedState([five])).toEqual({});
     expect(readWarnedState({ five_hour: { ...five, resetsAt: 'never' }, seven_day: { pct: '90' }, other: five })).toEqual({});
+  });
+});
+
+describe('D17: usage windows (Session, Week, a model row while in use)', () => {
+  const T = PROBE_TIME;
+  const FABLE_RESET = '2026-10-01T13:00:00.000Z';
+  const SESSION = { key: 'session', label: 'Session', pct: 10, resetsAt: FIVE_RESET } as const;
+  const WEEK = { key: 'week', label: 'Week', pct: 18, resetsAt: SEVEN_RESET } as const;
+
+  /** A get_usage answer with the recorded windows and these model-scoped entries / limits. */
+  function withModels(modelScoped: unknown, limitList: unknown): Record<string, unknown> {
+    const base = limits({ utilization: 10, resets_at: '2026-09-27T23:40:00.290507+00:00' }, { utilization: 18, resets_at: '2026-10-01T13:00:00.290537+00:00' });
+    return { ...base, rate_limits: { ...(base['rate_limits'] as Record<string, unknown>), model_scoped: modelScoped, limits: limitList } };
+  }
+
+  function fableLimit(percent: number, isActive: boolean): Record<string, unknown> {
+    return { kind: 'weekly_scoped', group: 'weekly', percent, resets_at: '2026-10-01T13:00:00+00:00', is_active: isActive, scope: { model: { id: null, display_name: 'Fable' }, surface: null } };
+  }
+
+  it('the recorded usage-ctl answer: Session 10 % and Week 18 %; Fable is listed at 0 % and not active, so it has no row', async () => {
+    const [response] = await getUsageResponses('usage-ctl');
+    const parsed = readingFromGetUsage({ kind: 'response', message: response as ControlResponseMessage });
+    const models = modelWindowsFromGetUsage(parsed.raw);
+    expect(models).toEqual([{ model: 'Fable', pct: 0, resetsAt: FABLE_RESET, isActive: false }]);
+    expect(usageWindows(parsed, models, T)).toEqual([SESSION, WEEK]);
+  });
+
+  it('a model window gets a row while it is in use: above 0 %, or active at 0 %', () => {
+    const inUse = modelWindowsFromGetUsage(withModels([{ display_name: 'Fable', utilization: 35, resets_at: '2026-10-01T13:00:00+00:00' }], [fableLimit(35, false)]));
+    expect(usageWindows(reading(10, FIVE_RESET, 18, SEVEN_RESET), inUse, T)).toEqual([
+      SESSION,
+      WEEK,
+      { key: 'model', label: 'Fable', pct: 35, resetsAt: FABLE_RESET, model: 'Fable' },
+    ]);
+    const active = modelWindowsFromGetUsage(withModels([{ display_name: 'Fable', utilization: 0, resets_at: '2026-10-01T13:00:00+00:00' }], [fableLimit(0, true)]));
+    expect(usageWindows(reading(10, FIVE_RESET, 18, SEVEN_RESET), active, T).map((w) => [w.key, w.label, w.pct])).toEqual([
+      ['session', 'Session', 10],
+      ['week', 'Week', 18],
+      ['model', 'Fable', 0],
+    ]);
+  });
+
+  it('model_scoped and limits are joined by name; a model only in limits is kept; the CLI order is kept', () => {
+    const models = modelWindowsFromGetUsage(
+      withModels(
+        [
+          { display_name: 'Fable', utilization: 12.5, resets_at: '2026-10-01T13:00:00+00:00' },
+          { display_name: 'Opus', utilization: null, resets_at: null },
+        ],
+        [fableLimit(99, true), { ...fableLimit(40, false), scope: { model: { display_name: 'Opus' } } }, { ...fableLimit(7, true), scope: { model: { display_name: 'Haiku' } } }],
+      ),
+    );
+    expect(models).toEqual([
+      { model: 'Fable', pct: 12.5, resetsAt: FABLE_RESET, isActive: true },
+      { model: 'Opus', pct: 40, resetsAt: FABLE_RESET, isActive: false },
+      { model: 'Haiku', pct: 7, resetsAt: FABLE_RESET, isActive: true },
+    ]);
+  });
+
+  it('unknown stays unknown: a malformed, expired or missing model window has no row, and none is guessed', () => {
+    const models: ModelWindowReading[] = [
+      { model: 'NoPct', pct: null, resetsAt: FABLE_RESET, isActive: true },
+      { model: 'NoReset', pct: 50, resetsAt: null, isActive: true },
+      { model: 'Expired', pct: 50, resetsAt: '2026-09-27T00:00:00.000Z', isActive: true },
+    ];
+    expect(usageWindows(reading(10, FIVE_RESET, 18, SEVEN_RESET), models, T)).toEqual([SESSION, WEEK]);
+    for (const raw of [
+      null,
+      { error: 'no answer' },
+      { rate_limits_available: false, rate_limits: { model_scoped: [{ display_name: 'Fable', utilization: 50, resets_at: FABLE_RESET }] } },
+      { rate_limits_available: true, rate_limits: null },
+      withModels('Fable', { kind: 'weekly_scoped' }),
+      withModels([{ display_name: '', utilization: 50 }, { utilization: 50 }, 'Fable'], [{ kind: 'weekly_all', percent: 50 }, { kind: 'weekly_scoped', percent: 50, scope: null }]),
+    ]) {
+      expect(modelWindowsFromGetUsage(raw)).toEqual([]);
+    }
+    // A string utilization is not a number: that model is unknown.
+    expect(modelWindowsFromGetUsage(withModels([{ display_name: 'Fable', utilization: '35', resets_at: FABLE_RESET }], []))).toEqual([
+      { model: 'Fable', pct: null, resetsAt: FABLE_RESET, isActive: false },
+    ]);
+  });
+
+  it('Session and Week are independent: an expired or missing one is left out, the other stays; nothing at all → no field', () => {
+    expect(usageWindows(reading(10, FIVE_RESET, 18, SEVEN_RESET), [], new Date(FIVE_RESET))).toEqual([WEEK]);
+    expect(usageWindows(reading(null, null, 18, SEVEN_RESET), [], T)).toEqual([WEEK]);
+    expect(usageWindows(reading(10, FIVE_RESET, null, null), [], T)).toEqual([SESSION]);
+    expect(usageWindows(null, [], T)).toEqual([]);
+    expect(systemUsageFields(usageState(null, T), [], [])).toEqual({});
+    expect(systemUsageFields(usageState(reading(10, FIVE_RESET, null, null), T), [], [SESSION])).toEqual({ usageWindows: [SESSION] });
+  });
+
+  it('usagePct keeps the max rule next to the windows (compatibility)', () => {
+    const latest = reading(62, FIVE_RESET, 18, SEVEN_RESET);
+    expect(systemUsageFields(usageState(latest, T), [], usageWindows(latest, [], T))).toEqual({
+      usagePct: 62,
+      usageResetsAt: FIVE_RESET,
+      usageWindows: [{ ...SESSION, pct: 62 }, WEEK],
+    });
+  });
+
+  it('a model window warns at the threshold once until its reset, next to the other two; the state survives storage', () => {
+    const fable: ModelWindowReading = { model: 'Fable', pct: 91, resetsAt: FABLE_RESET, isActive: true };
+    const first = dueWarnings(reading(10, FIVE_RESET, 18, SEVEN_RESET), {}, 90, T, [fable]);
+    const warning: UsageWarning = { window: 'model', model: 'Fable', pct: 91, threshold: 90, resetsAt: FABLE_RESET, firedAt: T.toISOString() };
+    expect(first.fire).toEqual([warning]);
+    expect(first.warned).toEqual({ model: { Fable: warning } });
+    // Again, higher, other windows too: Fable does not repeat, the 5-hour window warns on its own.
+    const again = dueWarnings(reading(95, FIVE_RESET, 18, SEVEN_RESET), first.warned, 90, T, [{ ...fable, pct: 97 }]);
+    expect(again.fire.map((w) => [w.window, w.model])).toEqual([['five_hour', undefined]]);
+    expect(activeWarnings(again.warned, T).map((w) => w.window)).toEqual(['five_hour', 'model']);
+    expect(readWarnedState(JSON.parse(JSON.stringify(again.warned)))).toEqual(again.warned);
+    // Below the threshold, or unknown: no model warning. After the reset the warning is dropped.
+    expect(dueWarnings(null, {}, 90, T, [{ ...fable, pct: 89 }]).fire).toEqual([]);
+    expect(dueWarnings(null, {}, 90, T, [{ ...fable, pct: null }]).fire).toEqual([]);
+    expect(dueWarnings(null, first.warned, 90, new Date('2026-10-01T13:00:00.000Z'), [])).toEqual({ fire: [], warned: {} });
+    expect(readWarnedState({ model: { Fable: { ...warning, resetsAt: 'never' }, '': warning, Opus: 'x' } })).toEqual({});
+  });
+
+  it('warning labels: the two Max windows as before, a model one as “<model> weekly limit”', () => {
+    expect(usageWindowLabel({ window: 'five_hour' })).toBe('5-hour window');
+    expect(usageWindowLabel({ window: 'seven_day' })).toBe('weekly limit');
+    expect(usageWindowLabel({ window: 'model', model: 'Fable' })).toBe('Fable weekly limit');
   });
 });

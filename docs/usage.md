@@ -1,6 +1,8 @@
-# Max usage meter (M9.2)
+# Max usage meter (M9.2, D17)
 
-The footer's **Max** bar and the usage warning. Sources and the verdict come from the M0.3 spike (`docs/spike-m0.md` → *Usage %*); the item is BACKLOG M9.2 (adapted after M0). **Never a guessed percentage:** anything missing, erroring or shaped differently is "unknown", and `usagePct` is left out.
+The footer's usage rows and the usage warning. Sources and the verdict come from the M0.3 spike (`docs/spike-m0.md` → *Usage %*); the item is BACKLOG M9.2 (adapted after M0). **Never a guessed percentage:** anything missing, erroring or shaped differently is "unknown", and `usagePct` is left out.
+
+**D17 (2026-09-28):** the single "Max" bar became one row per window: **Session** (the 5-hour window) and **Week** (the weekly limit, all models), plus a row per model-specific weekly limit (e.g. Fable) only while it is in use. `/api/system` keeps `usagePct` (the max rule below) and gains the additive `usageWindows` (*`usageWindows`* below). The 90 % warning applies to each window, model windows included.
 
 ## Files
 | File | Role |
@@ -12,7 +14,7 @@ The footer's **Max** bar and the usage warning. Sources and the verdict come fro
 | `src/server/supervisor/supervisor.ts` | `idleLiveSessionIds()` and `controlRequest()`: a stdin control request to a live session between turns. |
 | `src/server/supervisor/recorder.ts` | Stores every `rate_limit_event` as a reading (M2.1; now through `readingFromRateLimit`). |
 | `src/web/toast/usage-warning.ts`, `useUsageWarnings.ts` | The warning toast. |
-| `src/web/shell/format.ts` → `maxMeter` | The footer bar (M1.4): `usagePct` + `usageResetsAt`, "unknown" without them. |
+| `src/web/shell/format.ts` → `usageRows` | The footer rows (D17, replacing M1.4's single `maxMeter`): Session and Week from `usageWindows` (each "unknown" without its window), then one row per model window. |
 
 ## Readings
 Each reading is one `usage_readings` row: 5-hour and weekly utilization (0–100) with their reset times (ISO), the source, the session it came from (or none), when Switchboard received it, and the CLI's payload verbatim (`raw`). Only the newest reading drives the meter.
@@ -27,6 +29,23 @@ The meter checks every 15 s and makes requests (live `get_usage` or the poller) 
 
 A request that fails (an error `control_response`, no answer within 15 s, the process ended, the CLI missing, the poller timing out) is stored as a reading with both windows unknown, so the meter says "unknown" until the next good reading rather than showing an older number.
 
+## `usageWindows` (D17)
+`usageWindows` on `GET /api/system` and the `system` event (additive; `UsageWindow` in `src/core/api.ts`, `usageWindows()` in `src/core/usage.ts`) lists each window **known now**, in this order:
+
+| `key` | `label` | From | Listed when |
+|---|---|---|---|
+| `session` | `Session` | the newest reading's 5-hour window (`five_hour`, `unifiedWindows.five_hour`) | it is valid now: a number and a reset still ahead |
+| `week` | `Week` | the newest reading's weekly window (`seven_day`, all models) | the same, independently of Session |
+| `model` | the model's name (`Fable`), also in `model` | the newest **`get_usage`** reading: `rate_limits.model_scoped[]` (`display_name`, `utilization` 0–100, `resets_at`) joined by name with `rate_limits.limits[]` entries of `kind: "weekly_scoped"` (`scope.model.display_name`, `percent`, `resets_at`, `is_active`); `model_scoped` wins where both have a value, a model only in `limits` is kept, the CLI's order is kept | it is valid now **and in use**: above 0 % **or** `is_active` |
+
+- **Unknown stays unknown:** a window that is missing, malformed, expired, or from a failed reading is left out, and the field is omitted when nothing is known. Session and Week are independent: `usagePct` needs both (the max rule), but a known Week is still listed when Session is unknown.
+- **Model windows only come from `get_usage`** (a `rate_limit_event` has no model data), so a newer `rate_limit_event` does not hide them; they are read from the newest `get_usage` reading **while it is at most 10 minutes old** (`MODEL_WINDOW_MAX_AGE_MS`, twice the poller's interval). A failed newer `get_usage`, or no `get_usage` for 10 minutes (e.g. every live session busy in long turns), makes them unknown until the next good answer. The recorded M0.3 answer lists Fable at 0 % and not active, so it has no row.
+- Nothing is stored for them: they are parsed from the reading's `raw` (the CLI's answer verbatim), so no migration.
+- **Demo mode** (`src/server/demo/providers.ts`): the prototype's one Max figure (`62% · 1h48`) stays `usagePct` / `usageResetsAt` and is the Session window; the Week window comes from an optional `footer.week` in `system.json` (same `18% · 74h12` form), which the prototype data does not have, so demo mode lists Session only and the footer's Week row reads "unknown". No number is invented.
+
+### Footer (D17)
+`Sidebar.tsx` shows, under CPU and RAM, a **Session** row and a **Week** row, then one row per model window (its label is the model's name). Each row: the label, a 4 px bar (the prototype's Max bar: `--border-card` track, 2 px radius, `--text` fill = the %), and the value `62% · 1h48` (the % rounded, then the time until the reset in the existing `formatResetsIn` form: `1h48`, `45m`, `74h12`); a window that is not listed reads `unknown`, and before `/api/system` answers every value reads `—`. The rows use the footer's tokens (Geist Mono 11 px, `--muted-2`, 7 px row gap). "Session" is wider than the prototype's 34 px label column, so the usage rows share their own columns (`.sb-usage`, a CSS subgrid): the label column as wide as the widest label and the value column as wide as the widest value, at least 34 / 76 px, so their bars line up with each other and end where the CPU / RAM bars end; CPU and RAM keep the prototype's columns.
+
 ## `usagePct` (the max rule)
 `GET /api/system` and the `system` hub event get, from `providers.system` wrapped by `withUsage`:
 - `usagePct` = the higher of the 5-hour and weekly utilization (the binding limit), rounded to 2 decimals, capped at 100.
@@ -35,12 +54,12 @@ A request that fails (an error `control_response`, no answer within 15 s, the pr
 - Whatever the base system provider said about usage is dropped, never mixed in.
 
 ## Warnings ("just warn")
-- A window (5-hour or weekly) that is valid now and at or above the threshold fires **one** warning. It is not repeated for that window until the window's `resets_at` passes; after the reset a new reading at or above the threshold warns again. Each window warns on its own. Nothing is paused, ever.
+- A window (5-hour, weekly, or D17: a model window from the rules above) that is valid now and at or above the threshold fires **one** warning. It is not repeated for that window until the window's `resets_at` passes; after the reset a new reading at or above the threshold warns again. Each window warns on its own. Nothing is paused, ever.
 - Threshold: Settings `usage.warnAtPct` (the key M8.2 stores; a whole number 1–100), default **90**.
-- Fired warnings are kept in the settings table under `usage.warned` (`{five_hour?, seven_day?}` → the warning), so a service restart does not repeat them. This is internal state, not a preference: `GET /api/settings` (M8.2) lists known keys only.
+- Fired warnings are kept in the settings table under `usage.warned` (`{five_hour?, seven_day?, model?: {<name>: warning}}`), so a service restart does not repeat them. A model warning stays in force until its window's reset even when the model window is no longer read (the 10-minute limit above). This is internal state, not a preference: `GET /api/settings` (M8.2) lists known keys only.
 - Warnings are evaluated on every meter tick and every `/api/system` / `system` call, serialized so two callers never fire the same one.
-- The warnings in force (fired, window not reset yet) are on `/api/system` and the `system` event as the additive `usageWarnings: [{ window, pct, threshold, resetsAt, firedAt }]` (omitted when none).
-- **UI:** the toast host (`useUsageWarnings`) reads `usageWarnings` from `/api/system` when the page loads and from every `system` event, and shows each warning once per window and reset in this browser: title `Max usage 91%`, sub `5-hour window` / `weekly limit`, text `Your Max 5-hour window reached 91% (warning at 90%). It resets in 1h48. Nothing is paused automatically.`, only a "Later" button. Shown keys are remembered in `localStorage` (`switchboard.usageWarningsShown`, newest 20) as a per-viewer convenience; without storage a reload may show a warning again. No sound and no OS notification (those are for questions, M3.4). There is no prototype frame for this toast; it reuses the M3.4 toast styles, and the copy is derived from the prototype's "Usage-limit warnings … Nothing is paused automatically." and Settings' "5-hour window and weekly limit".
+- The warnings in force (fired, window not reset yet) are on `/api/system` and the `system` event as the additive `usageWarnings: [{ window, pct, threshold, resetsAt, firedAt }]` (omitted when none); D17: `window: "model"` entries carry `model: "<name>"`. Order: 5-hour, weekly, then the model ones.
+- **UI:** the toast host (`useUsageWarnings`) reads `usageWarnings` from `/api/system` when the page loads and from every `system` event, and shows each warning once per window and reset in this browser: title `Max usage 91%`, sub `5-hour window` / `weekly limit` / `Fable weekly limit` (D17), text `Your Max 5-hour window reached 91% (warning at 90%). It resets in 1h48. Nothing is paused automatically.`, only a "Later" button. Shown keys (`<window>@<resetsAt>`, D17: `model:<name>@<resetsAt>`) are remembered in `localStorage` (`switchboard.usageWarningsShown`, newest 20) as a per-viewer convenience; without storage a reload may show a warning again. No sound and no OS notification (those are for questions, M3.4). There is no prototype frame for this toast; it reuses the M3.4 toast styles, and the copy is derived from the prototype's "Usage-limit warnings … Nothing is paused automatically." and Settings' "5-hour window and weekly limit".
 
 ## Wiring
 - `main.ts` creates the meter in normal runs (never in demo mode: the demo's usage is prototype data) **when there is a system provider to report through**, wraps `providers.system` with `withUsage`, passes it to `buildApp({ usage })`, starts it after restart recovery and stops it before the supervisor on shutdown. Warnings are also logged (`switchboard usage: Max 5-hour window at 91% (warning at 90%)`).
@@ -52,4 +71,5 @@ A request that fails (an error `control_response`, no answer within 15 s, the pr
 - `tests/server/usage/poller.test.ts` — the poller against fake-claude: exact argv and cwd, the env scrub, one `get_usage` line and no user message, no transcript; missing CLI, exit without an answer, timeout.
 - `tests/server/usage/live.test.ts` — the real `SessionSupervisor` with fake-claude: `get_usage` over a live idle session's stdin (not a chat event, ≤ 1/60 s), never mid-turn, a turn's `rate_limit_event` as a reading.
 - `tests/server/usage/wire.test.ts` — `withUsage`, and the `system` hub event carrying `usagePct` once a client connects and the real poller (fake-claude) has read; the `it.fails` for `GET /api/system` until the M5.3 merge.
-- `tests/web/usage-warning.test.ts` — the toast copy, once per window and reset, the storage helpers.
+- `tests/web/usage-warning.test.ts` — the toast copy, once per window and reset, the storage helpers; D17: the model toast and key.
+- **D17:** `tests/core/usage.test.ts` → *D17: usage windows* (the recorded answer: Session + Week, Fable at 0 % not listed; in use above 0 % or active; the `model_scoped` / `limits` join; every unknown case; Session and Week independent; the model warning once until its reset and its stored state; labels). `tests/server/usage/meter.test.ts` → *D17 model-scoped windows* (a newer `rate_limit_event` keeps them, gone after 10 min or a failed `get_usage`, the warning once across a restart). `tests/server/usage/wire.test.ts` (`usageWindows` on `GET /api/system` and the `system` event from the real poller with fake-claude, and a Fable window with its warning), `tests/server/demo/providers.test.ts` (the demo's Session window, a Week figure when present), `tests/web/format.test.ts` (`usageRows`), `tests/e2e/usage-footer.spec.ts` (the footer on the real path) and the shell / full-pass visual specs (the rows as D17 additions).
