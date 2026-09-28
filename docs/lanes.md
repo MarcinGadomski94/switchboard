@@ -14,7 +14,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | Route (contract) | Module | Item |
 |---|---|---|
 | `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 refines the shapes additively |
-| `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2 adds the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
+| `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2: the first-message payload (`firstMessage` of `SessionSupervisor.start`, built by `sessions/first-turn.ts`; `docs/new-session.md`) |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); M4.1 adds the Attach warning + transcript import |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
 | `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |

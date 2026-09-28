@@ -1,0 +1,12 @@
+Build the free talk screen at 640 on web.
+
+Session-start answers, confirmed by the developer in Switchboard's new-session form before this session started.
+Take them as the answers to the session-start questions: confirm them back in one line instead of asking them again.
+- Work type: feature-building
+- Mode: single-solution
+- Solutions in scope: microfrontends/web-front
+- Phase: UI-first
+- Mobile coordination: sequential
+- Ultracode: off
+- Worktrees (one per solution; make every change there, not in the main checkout):
+  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-feature-single (branch session/feature-single)

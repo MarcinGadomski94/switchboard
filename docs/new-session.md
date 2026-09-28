@@ -1,6 +1,6 @@
 # New-session modal (M5.1)
 
-The form behind "+ New session" (SPEC → Modals → New session; prototype `mNew` with its `ns` state, `pills`, `nsGroups`, `nsSummary`, `canLaunch`, `nsLaunch`). Code: `src/web/modals/NewSessionModal.tsx` (the component), `src/web/modals/new-session.ts` (pure logic: defaults, prefill, chips, summary, Start rules, request body, refusal text), `src/web/modals/new-session.css` (the prototype's inline styles as classes over the SPEC tokens). The server side (`POST /api/sessions`: validation, worktrees, start) is M2.1 / M2.2 / M6.1 (`docs/supervisor.md`, `docs/worktrees.md`, `docs/solutions.md` → *Read-only sessions*); M5.1 adds no route. The first stdin message built from the answers is M5.2; the Schedule section (D8) is M7.1.
+The form behind "+ New session" (SPEC → Modals → New session; prototype `mNew` with its `ns` state, `pills`, `nsGroups`, `nsSummary`, `canLaunch`, `nsLaunch`). Code: `src/web/modals/NewSessionModal.tsx` (the component), `src/web/modals/new-session.ts` (pure logic: defaults, prefill, chips, summary, Start rules, request body, refusal text), `src/web/modals/new-session.css` (the prototype's inline styles as classes over the SPEC tokens). The server side (`POST /api/sessions`: validation, worktrees, start) is M2.1 / M2.2 / M6.1 (`docs/supervisor.md`, `docs/worktrees.md`, `docs/solutions.md` → *Read-only sessions*); M5.1 adds no route. The first stdin message built from the answers (M5.2) is below under *First-turn payload*; the Schedule section (D8) is M7.1.
 
 ## Layout
 1080px, `1fr | 360px` (`.sb-modal-new` in `modals.css`). Left, in order:
@@ -60,7 +60,44 @@ Disabled (45% opacity) when no solution is picked, when the name is taken by a s
 
 The server remains the authority: it validates the name (unique, kebab-case), the solutions (not empty, never read-only: 422) and `qa` for QA sessions (`src/server/sessions/validate.ts`); the form's checks only keep the button honest.
 
+## First-turn payload (M5.2)
+The CLI takes no prompt argument (M0.1), so the task and the answers the developer confirmed in this form go into the session's **first stdin user message**: `{"type":"user","message":{"role":"user","content":<payload>}}`. The agent is told they are confirmed, so it confirms them back instead of asking the router's session-start questions again. If it asks anyway, the question batch reaches the Inbox like any other; Switchboard never answers it for the developer. `--append-system-prompt` is not used (not probed in M0).
+
+Code: `src/core/first-turn.ts` (the text), `src/server/sessions/first-turn.ts` (folders + worktrees), `POST /api/sessions` in `src/server/api/sessions.ts` (passes it as `firstMessage` of `SessionSupervisor.start`).
+
+```
+<task text, trimmed>
+
+Session-start answers, confirmed by the developer in Switchboard's new-session form before this session started.
+Take them as the answers to the session-start questions: confirm them back in one line instead of asking them again.
+- Work type: feature-building | test-authoring (QA)
+- Mode: single-solution | workspace orchestrator
+- Solutions in scope: <folder>, <folder>
+- Phase: UI-first | integration
+- Mobile coordination: sequential | parallel-twin | no counterpart      (feature + single-solution + a *-front, when given)
+- Stack under test: web | mobile | both                                 (QA only, then:)
+- Confluence page: <url> | —
+- Figma frames: —
+  or
+- Figma frames:
+  - <url>
+  - <url>
+- Ultracode: on | off
+- Worktrees (one per solution; make every change there, not in the main checkout):
+  - <folder>: <absolute worktree path> (branch session/<name>)
+  or
+- Worktrees: no worktrees · edits in place
+```
+- The values are the modal summary's terms (`summaryLines`); the labels are the router's session-start questions, so the agent can match each answer to its question. Order per BACKLOG M5.2: work type, mode, solutions, phase, then coordination or the QA contract, ultracode, worktrees.
+- **Folders** are workspace-relative and `/`-separated like the Solutions view's `relativePath` (`microfrontends/web-front`, `mobile`): taken from the session's worktree record (its `repoPath`), else from `WorktreeManager.resolveRepo`, else the name as posted (a folder that is not a git repository, or no usable workspace root). Worktree paths are absolute, in the OS's form (gap #17), exactly the folders M2.2 created (`../{repo}-wt-{name}`, gap #1).
+- **Mobile coordination** appears only where the router asks it (feature-building, single-solution, a `*-front` in scope) and only when the body carries a value; the form sends `null` elsewhere. It never appears for QA or orchestrator sessions.
+- **QA**: an empty Confluence URL or Figma list shows `—` (the API accepts empty strings; the form does not let them through).
+- **Empty task**: the process starts idle (M2.1, no model turn before the developer has defined the task, router *Task definition precedes questions*), and the answers block alone waits in the session's outbox (`pending_messages`, kind `session-start`). It goes out ahead of the developer's first message (or Resume's `Continue.`), separated by a blank line, like the restart note (`docs/supervisor.md` → *Outbox*), and only once.
+- The chat's first user event (origin `task`) is the whole payload; `SessionDetail.task` stays the task as typed.
+- Scheduled runs (M7.1) and other callers of `SessionSupervisor.start` should build their first message with `buildFirstTurn` too.
+
 ## Tests
+- `tests/server/api/first-turn.test.ts` (M5.2 oracle, real path): `POST /api/sessions` with fake-claude (`FAKE_CLAUDE_LOG`), temp git repos and the real worktree manager; a feature/single session with worktrees, an orchestrator session and a QA session: the exact argv (no prompt argument), exactly one stdin line equal to `{"type":"user","message":{"role":"user","content":<payload>}}` with the payload equal to `tests/fixtures/first-turn/<case>.txt` (`<workspace>` = the temp root); the empty-task outbox case. `tests/core/first-turn.test.ts`: the block's rules and the folder resolution.
 - `tests/web/new-session.test.ts`: defaults, prefill, name rules, section visibility, chip groups (read-only folders, shared names, `not found`), summary lines, Start rules, the request body, refusal text.
-- `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, a taken name), Start → the posted body, the session view, the stored session and the worktrees on disk, a 422 shown in the modal, the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
+- `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, a taken name), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a 422 shown in the modal, the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
 - `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`).

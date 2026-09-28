@@ -3,6 +3,8 @@ import type { ResumeCommand, Session, SessionDetail, SessionEvent } from '../../
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { validateNewSession } from '../sessions/validate.ts';
+import { buildFirstTurn } from '../sessions/first-turn.ts';
+import { SESSION_START_KIND } from '../../core/first-turn.ts';
 import { SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
@@ -76,8 +78,18 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       }
     }
     try {
-      const record = await supervisor.start(input, input.task, {
-        beforeSpawn: (session) => worktrees.assign(created, session.id),
+      // M5.2: the task + the confirmed session-start answers are the first stdin message; with no task the
+      // process starts idle and the answers wait in the outbox for the developer's first message.
+      const firstTurn = await buildFirstTurn(input, {
+        workspaceRoot: context.config.workspaceRoot,
+        worktrees: created,
+        resolveRepo: (solution) => worktrees.resolveRepo(solution),
+      });
+      const record = await supervisor.start(input, firstTurn.message, {
+        beforeSpawn: async (session) => {
+          await worktrees.assign(created, session.id);
+          if (firstTurn.message === '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
+        },
       });
       return reply.code(201).send(await toSession(store, record));
     } catch (error) {

@@ -190,8 +190,9 @@ export class SessionSupervisor {
 
   /**
    * Stores a new session and starts its process in the workspace root with a new
-   * `--session-id`. The first stdin message is `firstMessage` (the task text until
-   * M5.2 adds the confirmed session-start answers); an empty one leaves the process idle.
+   * `--session-id`. The first stdin message is `firstMessage` (default: the task text;
+   * `POST /api/sessions` passes the M5.2 first-turn payload, `sessions/first-turn.ts`);
+   * an empty one leaves the process idle.
    * The input must already be validated (sessions/validate.ts). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).

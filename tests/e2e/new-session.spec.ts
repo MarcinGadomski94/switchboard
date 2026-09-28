@@ -367,6 +367,18 @@ test('Start session posts the form, opens the session, and creates the worktrees
   expect(await git(path.join(workspace, 'microfrontends', 'web-front'), 'branch', '--list', 'session/free-talk-640')).not.toBe('');
   expect(await git(path.join(workspace, 'mobile'), 'branch', '--list', 'session/free-talk-640')).not.toBe('');
 
+  // M5.2: the first message the agent got = the task, then the confirmed answers with the worktree paths.
+  const events = (await page.evaluate(async (id) => (await fetch(`/api/sessions/${id}/events`)).json(), created?.id ?? '')) as Array<{ payload: { type?: string; origin?: string; text?: string } }>;
+  const first = events.find((event) => event.payload.type === 'user');
+  expect(first?.payload.origin).toBe('task');
+  const lines = (first?.payload.text ?? '').split('\n');
+  expect(lines.slice(0, 3)).toEqual(['Free talk screen at 640, web and mobile.', '', "Session-start answers, confirmed by the developer in Switchboard's new-session form before this session started."]);
+  expect(lines).toContain('- Solutions in scope: microfrontends/web-front, mobile');
+  expect(lines).toContain('- Mobile coordination: parallel-twin');
+  expect(lines).toContain('- Ultracode: on');
+  expect(lines).toContain(`  - microfrontends/web-front: ${path.join(workspace, 'microfrontends', 'web-front-wt-free-talk-640')} (branch session/free-talk-640)`);
+  expect(lines).toContain(`  - mobile: ${path.join(workspace, 'mobile-wt-free-talk-640')} (branch session/free-talk-640)`);
+
   // The name is now taken.
   const again = await openModal(page);
   await chip(again, 'billing-front').click();

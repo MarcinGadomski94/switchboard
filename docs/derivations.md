@@ -68,6 +68,9 @@ The live fields of `GET /api/solutions` (which sessions work on a solution, its 
 ## New-session form (M5.1)
 The modal derives, from `GET /api/solutions`: the summary's `cwd` (the first solution's `path` minus its `relativePath`), one locked chip per read-only top folder (`deprecated/*`, `infrastructure`) and each worktree folder `../<last segment of the solution>-wt-<name>` (gap #1). The router's recommended answers are the form's defaults, and coordination is sent only when its section is shown (`null` otherwise). Details: `docs/new-session.md`.
 
+## First-turn payload (M5.2)
+The first stdin message of a new session = the trimmed task, a blank line, then the confirmed session-start answers in the modal summary's terms, with each solution's workspace folder (from its worktree record, else `WorktreeManager.resolveRepo`, else the name as posted) and the absolute worktree paths + branches. Mobile coordination only for feature + single-solution + a `*-front` and a non-null value. An empty task: no first message; the block waits in the outbox (`pending_messages.kind = 'session-start'`). Details: `docs/new-session.md` → *First-turn payload*.
+
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.
 

@@ -1,22 +1,22 @@
 ## Current
-item: (none; M5.1 done)
-attempt: 3/5 (M5.1)
-last oracle: e2e new-session.spec PASS (5/5) · visual/new-session.spec PASS (96 parts ±2 px, 22 SPEC tokens) · full suite: typecheck, vitest 507/507, playwright 27/27
-plan (M5.1):
-- Pure form logic in `src/web/modals/new-session.ts` (defaults = router's recommended answers, prefill overlay, name sanitising, chip groups from `GET /api/solutions` with read-only folders collapsed + locked, coordination/QA visibility, live summary lines with `../{repo}-wt-{name}` (gap #1), canStart, NewSession body, error text) + Vitest unit tests.
-- `NewSessionModal.tsx` + `new-session.css`: the prototype's markup/inline styles as classes (sections 1–6, pills, chips, toggles 32×18, mono summary, Cancel / Start session at 45% when disabled); reads `/api/solutions` + `/api/sessions` through `api`, POSTs `api.createSession`, shows the server's refusal, navigates to the new session; keeps `data-prefill` for M3.3's spec.
-- E2E `tests/e2e/new-session.spec.ts` on the real path (no demo, D13): fake-claude, fake gh, temp workspace with git repos + read-only folders; every section, visibility rules, summary, duplicate name, Start → session + worktree on disk; 422 for read-only / duplicate / missing qa via the API; "Open fix session" prefill fills the form and starts.
-- Visual spec `tests/e2e/visual/new-session.spec.ts` (demo seed vs prototype modal, form filled to the prototype's draft): boxes ±2 px, copy, computed styles; record in `docs/visual/`.
-- Docs: `docs/new-session.md`, derivations, lanes row; ASSUMED lines in `.loop/questions-w2-newsession.md`.
-attempts (M5.1):
-1. e2e new-session.spec: PASS 5/5
-2. visual/new-session.spec: FAIL (QA fields container font 16px sans vs 12px mono; input text cursor vs static box) → font on `.sb-ns-qa-fields`, input cursor accepted as a known difference
-3. visual/new-session.spec: PASS; then the whole suite green
+item: (none; M5.2 done)
+attempt: 1/5 (M5.2)
+last oracle: tests/server/api/first-turn.test.ts PASS (2/2: three golden cases + empty-task outbox) · tests/core/first-turn.test.ts PASS (7/7) · full suite: typecheck, vitest 516/516, playwright 27/27 (new-session.spec re-run 5/5 with the M5.2 first-message check)
+plan (M5.2):
+- Pure builder `src/core/first-turn.ts`: the session-start answers block in the modal summary's terms (work type, mode, solutions in scope as `/`-separated workspace folders, phase, then mobile coordination (feature + single + a `*-front`, when given) or QA stack + Confluence/Figma, ultracode on/off, absolute worktree paths + branch or "no worktrees · edits in place"), and the payload = task text, blank line, block.
+- Server glue `src/server/sessions/first-turn.ts`: folders from the created worktree records / `WorktreeManager.resolveRepo` (fallback: the name as given), relative to the canonical workspace root.
+- `POST /api/sessions` passes the payload as the first stdin message; an empty task keeps the process idle (M2.1) and queues the block in the outbox (`pending_messages`, kind `session-start`) so it rides with the developer's first message.
+- Oracle `tests/server/api/first-turn.test.ts`: real route + supervisor + worktree manager, fake-claude with `FAKE_CLAUDE_LOG`, temp git repos; feature/single with worktrees, orchestrator, QA; exact argv (no prompt), first stdin line exact, payload = golden file `tests/fixtures/first-turn/*.txt` (`<workspace>` placeholder). Plus the empty-task outbox case and unit tests of the builder.
+- Docs: `docs/new-session.md` → *First-turn payload*, supervisor.md note, derivations pointer; ASSUMED lines.
+attempts (M5.2):
+1. first-turn.test.ts (API oracle) + core unit tests: PASS; then the whole suite green; visual: not applicable (no UI change)
 ## Done
-- M5.1 ✓ 2026-09-28 (commit: see `git log --oneline -1` on lane/w2-newsession, "M5.1: New-session modal")
+- M5.1 ✓ 2026-09-28 (commit 103bc05, "M5.1: New-session modal")
+- M5.2 ✓ 2026-09-28 (commit: see `git log --oneline -1` on lane/w2-newsession, "M5.2: First-turn payload")
 ## Blocked
 - (none)
 ## Breaker
 consecutive_blocked: 0
 ## Assumptions (see .loop/questions-w2-newsession.md)
 - M5.1: recommended answers as defaults; QA stack + sources required; read-only chips per top folder; extra ⚠ / refusal / `not found` lines; coordination only when shown; static "Max" copy.
+- M5.2: empty task → idle + answers in the outbox (kind `session-start`); payload wording/labels; folders `/`-relative with name fallback, coordination only when applicable and given, `—` for empty QA sources.
