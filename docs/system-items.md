@@ -44,7 +44,7 @@ The route asks the question pipeline first (permission items), then this service
 
 | Action | Server | UI |
 |---|---|---|
-| `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype). Until M5.1 renders the form, the placeholder carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
+| `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype): since M5.1 the form starts from it (`docs/new-session.md`); the dialog still carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
 | `retry-run` | `ScheduleRunner.runNow(scheduleId)`, then closes (a new failure raises a new item) | — |
 | `remove-worktree` | `WorktreeManager.remove(worktreeId)` (gap #3: refused with uncommitted or unpushed work, never `--force`, the branch is kept); a folder already removed counts as done | — |
 | `dismiss`, `keep` | close the item | — |

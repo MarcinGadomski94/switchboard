@@ -65,7 +65,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/TimelineTab.tsx` | Timeline | M4.4 |
 | `views/session/DiffTab.tsx` | Diff | M4.5 |
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
-| `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
+| `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | done in M5.1 (+ `new-session.ts`, `new-session.css`, `docs/new-session.md`); M7.1 adds the Schedule section |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
 | `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
@@ -83,7 +83,7 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `router.tsx`: `RouterProvider`, `useRouter()`, `<Link to={route}>`, `parseRoute` / `routePath`. Paths: `/` and `/inbox`, `/sessions/:id[/:tab]` (tab `chat` · `timeline` · `diff` · `artifacts`), `/solutions`, `/schedules`, `/artifacts`, `/history`, `/tools/:id`, `/settings[/:section]`; unknown paths show the Inbox.
 - `api/client.ts`: `api.<call>()` per contract row, same-origin with the `sb_token` cookie; errors are `ApiError` (`notImplemented` for 501, `unreachable` for a network failure). `api/useApi.ts`: `useApi(fetcher, deps)` → `{ data, error, loading, reachable, reload }`.
 - `api/useHub.ts`: `useHubEvent(name, handler)` and `useHubStatus()` over one shared `EventSource('/hub')`; retries with a 2 s → 60 s backoff while the server refuses the stream (the real stream since M2.3, `docs/hub.md`).
-- `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette', { prefill? })` (M3.3: `prefill` = the New-session values, passed to `NewSessionModal`; M5.1 fills the form from it), Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`; `toast/notify.ts`: `playChime()` / `notifyOs()` for M8.2's "Send test" (`docs/notifications.md`).
+- `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette', { prefill? })` (M3.3: `prefill` = the New-session values, passed to `NewSessionModal`, which starts its form from them since M5.1), Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`; `toast/notify.ts`: `playChime()` / `notifyOs()` for M8.2's "Send test" (`docs/notifications.md`).
 
 ## Tests
 - **Lane runs:** a lane worktree runs its servers on its own ports with `SWITCHBOARD_TEST_PORTS=<first>-<last>` or a comma list (e.g. `4920-4929`; `tests/helpers/net.ts`, default 4871–4879, never 4870; anything unreadable is an error), e.g. `SWITCHBOARD_TEST_PORTS=4920-4929 npm test` / `npx playwright test`. `playwright.config.ts` anchors its ignore patterns at the repo, because a lane's own path contains `.worktrees/`.
