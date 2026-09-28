@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { FileDiff, ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { validateNewSession } from '../sessions/validate.ts';
@@ -9,7 +9,7 @@ import { type PendingRoute, registerPending } from './not-implemented.ts';
 import { sendWorktreeError } from './worktree-errors.ts';
 
 /** Session routes (contract → REST, `/api/sessions*`) not implemented yet. */
-export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [{ method: 'GET', url: '/api/sessions/:id/diff', item: 'M4.5' }];
+export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [];
 
 /** HTTP status of each supervisor refusal. */
 const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
@@ -152,5 +152,30 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     },
   );
 
+  // M4.5 · gap #10: the session's changed files (`providers.diff`: the WorktreeManager, or the demo's), `?file=` narrows to one path.
+  app.get<{ Params: IdParams; Querystring: { file?: unknown } }>(
+    '/api/sessions/:id/diff',
+    async (request, reply): Promise<FileDiff[] | FastifyReply> => {
+      const record = await store.sessions.get(request.params.id);
+      if (!record) return notFound(reply, request.params.id);
+      const file = request.query.file;
+      if (file !== undefined && !isDiffFilePath(file)) {
+        return reply.code(422).send({ error: 'invalid', errors: [{ field: 'file', message: 'file must be one relative path inside a solution' }] });
+      }
+      if (!providers.diff) return [];
+      return providers.diff.diff(record.id, file);
+    },
+  );
+
   registerPending(app, SESSION_ROUTES_PENDING);
+}
+
+/**
+ * `?file=` of the diff route: one non-empty, solution-relative path (no absolute
+ * path, drive letter, `..` segment or NUL), as `FileDiff.path` names it.
+ */
+export function isDiffFilePath(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '' || value.includes('\0')) return false;
+  if (value.startsWith('/') || value.startsWith('\\') || /^[A-Za-z]:/.test(value)) return false;
+  return !value.split(/[\\/]/).includes('..');
 }

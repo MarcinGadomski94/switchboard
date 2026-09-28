@@ -17,7 +17,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2 adds the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); M4.1 adds the Attach warning + transcript import |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
-| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |
+| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | served since M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`, `FileDiff.uncommitted` since M4.5; `docs/worktrees.md` → *Diff*) |
 | `GET /api/inbox` | `api/inbox.ts` | served since M3.2 (`listInbox` in `inbox/wire.ts`, `docs/inbox.md`); items from M3.1 and M3.3 |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | served since M3.1 (`docs/questions.md`) |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | permission items served since M3.1 (`docs/questions.md`); system items since M3.3 (`docs/system-items.md`) |
@@ -63,7 +63,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/ChatTab.tsx` | Chat | M4.2 |
 | `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.3 |
 | `views/session/TimelineTab.tsx` | Timeline: done in M4.4 (+ `timeline.ts` model, `terminal-tail.ts` terminal tail for M4.3's right panel too, `timeline.css`; `docs/derivations.md` → *Timeline tab*, *Terminal tail*) | M4.4 |
-| `views/session/DiffTab.tsx` | Diff | M4.5 |
+| `views/session/DiffTab.tsx` | Diff: done in M4.5 (+ `diff.ts` model, `diff.css`; `docs/derivations.md` → *Diff tab*) | M4.5 |
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |

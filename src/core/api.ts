@@ -95,7 +95,7 @@ export interface SessionEvent {
   readonly payload: unknown;
 }
 
-/** One changed file (gap #10). Provisional: M4.5. */
+/** One changed file (gap #10; M4.5, `docs/worktrees.md` → *Diff*). */
 export interface FileDiff {
   /** Solution name (e.g. `billing-front`), or `root` for workspace-root files. */
   readonly solution: string;
@@ -106,6 +106,13 @@ export interface FileDiff {
   readonly removed: number;
   /** Unified diff body lines, each starting with `+`, `-` or a space. */
   readonly lines: readonly string[];
+  /**
+   * `true` while the working tree holds changes to this file that are not
+   * committed (staged, unstaged or untracked); `false` once all of the file's
+   * changes are in commits of the session's branch. The Diff tab shows "Not
+   * committed. Commit only when you approve." while it is `true`.
+   */
+  readonly uncommitted: boolean;
 }
 
 /** A stored artifact (data model; gap #9). Provisional: M4.6 / M7.3. */

@@ -186,9 +186,9 @@ export function splitNulList(text: string): string[] {
   return text.split('\0').filter((entry) => entry !== '' && !entry.endsWith('/'));
 }
 
-/** A parsed file as the API's `FileDiff`. */
-export function toFileDiff(solution: string, branch: string | null, file: PatchFile): FileDiff {
-  return { solution, path: file.path, branch, added: file.added, removed: file.removed, lines: file.lines };
+/** A parsed file as the API's `FileDiff`; `uncommitted` = the working tree still changes it (see `FileDiff.uncommitted`). */
+export function toFileDiff(solution: string, branch: string | null, file: PatchFile, uncommitted: boolean): FileDiff {
+  return { solution, path: file.path, branch, added: file.added, removed: file.removed, lines: file.lines, uncommitted };
 }
 
 // ── gh ───────────────────────────────────────────────────────────────────
