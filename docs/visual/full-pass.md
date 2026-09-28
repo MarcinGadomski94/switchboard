@@ -18,18 +18,18 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Inbox | Inbox | M3.2, M3.3 | gated | green (71) | green (3) | 0.18% | 0.03% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (71) | green (3) | 6.34% | 7.51% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (71) | green (3) | 6.44% | 7.64% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (71) | green (3) | 3.67% | 4.27% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (71) | green (3) | 1.24% | 1.31% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (71) | green (3) | 6.40% | 7.59% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | — |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (71) | green (3) | 6.51% | 7.72% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (71) | green (3) | 3.74% | 4.35% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (71) | green (3) | 1.30% | 1.39% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
 | Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (71) | green (3) | 0.17% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (71) | green (3) | 0.50% | 0.41% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (71) | green (3) | 0.49% | 0.40% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
 | Artifacts | Artifacts | M7.3 | gated | green (71) | green (3) | 1.87% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
 | History | History | M7.4 | gated | green (71) | green (3) | 0.16% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
 | Tool · Codebase Memory | Tools | M8.1 | gated | green (71) | green (3) | 0.16% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (71) | green (3) | 0.24% | 0.10% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (71) | green (3) | 2.83% | 4.15% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (71) | green (3) | 0.20% | 0.29% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (71) | green (3) | 0.30% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (71) | green (3) | 4.47% | 6.59% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (71) | green (3) | 0.27% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
 | Palette | Modals → Palette | M8.3 | gated | green (71) | green (3) | 0.12% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar

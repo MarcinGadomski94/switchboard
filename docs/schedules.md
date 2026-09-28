@@ -82,6 +82,7 @@ The sidebar's "Schedules & loops" badge (`<n> failed`) counts schedules whose la
 - Sections 1–6 as for a session, then **7 · Schedule**: the cron field (220px, mono, placeholder `0 2 * * *`, empty at first), its readable preview next to it (or why the expression is invalid, amber; a hint while empty), and `Next runs` with the next 3 run times (`Tue 29 Sep · 02:00`, local time).
 - The summary adds `schedule  <preview>` after `ultracode`, shows the worktree folders the **first run** gets (`../<repo>-wt-<name>-<MMDD>-<HHMM>`), and the schedule's warnings: `⚠ a schedule with this name exists`, `⚠ add the task: it is the prompt of every run`, `⚠ enter a valid cron expression`.
 - **Save schedule** replaces "Start session": disabled (45%) until "Start session" would be enabled (solutions, a free name — among schedules, the QA sources) and there is a task and a valid cron. It posts `ScheduleInput` (`template` = exactly the body "Start session" would post, `id` for Edit) and closes the modal; a refusal stays as one line `Not saved: …`.
+- D14: the form's **Folder** row applies here too: the template carries the folder's id (a repo folder's template is a `NewRepoSession`, and its sections are 1 · Task definition, 2 · Solution in scope, 3 · Schedule), Edit reopens the form with the template's folder, and a schedule whose runs start in a folder other than the default one carries that folder's tag after its name in the table (`docs/folders.md` → *UI*).
 
 ## Tests
 - `tests/core/cron.test.ts`: parsing (lists, ranges, steps, names, 7 = Sunday, macros, every refusal), next runs in local time (the Vixie day rule, leap day, never), the readable previews (the prototype's four and the other shapes, the expression otherwise), run session names.
@@ -90,4 +91,5 @@ The sidebar's "Schedules & loops" badge (`<n> failed`) counts schedules whose la
 - `tests/web/schedule-table.test.ts`: the row model (strip, dot, last line, next line, buttons) and the Schedule section (preview, Save rules, summary lines, body, refusal text).
 - `tests/e2e/schedules.spec.ts` (**oracle: E2E**, real path, no demo): New scheduled run → section 7 → Save → the row; Run now → a real session → `OK · OK`; Pause / Resume; Edit prefilled; server refusals; a failing run live (dot, strip, `1 failed` badge, the Inbox item); the real timer firing a `* * * * *` schedule.
 - `tests/e2e/visual/schedules.spec.ts`: the visual oracle for the header and table (`docs/visual/schedules.md`).
+- D14: `tests/e2e/folders.spec.ts` → a schedule saved for another folder (the stored folder, the row's tag, Edit reopening with it).
 - `tests/e2e/inbox-system.spec.ts` (M3.3) now retries a run through the scheduler instead of expecting the 501.

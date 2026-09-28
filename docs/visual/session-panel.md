@@ -5,12 +5,12 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **0.08%**, calendar-func-fix **0.08%**.
+Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **0.32%**, calendar-func-fix **0.32%**.
 
 Side by side (prototype left, app right): `session-panel-free-talk-side-by-side.png`, `session-panel-calendar-side-by-side.png`.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry `box` = x, y, width, height (every part is absolute: the panel does not depend on the header's height). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-right, padding-bottom, padding-left.
+Geometry `box` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); `top` = x, y, width. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-right, padding-bottom, padding-left.
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
@@ -21,7 +21,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | cards | box | 1061,50 379×252 | 1061,50 379×252 | ok |  |
 | free-talk-feature | termLabel | box | 1061,302 379×28 | 1061,302 379×28 | ok | "Terminal" |
 | free-talk-feature | term | box | 1073,330 355×172 | 1073,330 355×172 | ok | "[orch] reconcile · contract-adherence report✓ web 13/14 fields match⚠ |
-| free-talk-feature | handoff | box | 1073,516 355×142 | 1073,516 355×142 | ok | "Terminal handoffattachedRunning in the background and attached here.  |
+| free-talk-feature | handoff | top | 1073,516 355×142 | 1073,516 355×164 | ok |  |
 | free-talk-feature | handoffHead | box | 1088,529 325×17 | 1088,529 325×17 | ok | "Terminal handoffattached" |
 | free-talk-feature | handoffState | box | 1360.2,530.5 52.8×14 | 1360.2,530.5 52.8×14 | ok | "attached" |
 | free-talk-feature | handoffText | box | 1088,554 325×54 | 1088,554 325×54 | ok | "Running in the background and attached here. Detach to continue in a  |
@@ -66,6 +66,8 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | free-talk-feature | line3 | box | 1086,397.1 329×18.7 | 1086,397.1 329×18.7 | ok | "⏸ [web] question: chip overflow at 360" |
 | free-talk-feature | line4 | box | 1086,415.8 329×18.7 | 1086,415.8 329×18.7 | ok | "⏸ [mobile] question: AcmChip compact size" |
 | free-talk-feature | line5 | box | 1086,434.4 329×18.7 | 1086,434.4 329×18.7 | ok | "⏸ waiting for your answers" |
+| free-talk-feature | handoff (copy without the D14 cwd line) | none | — | — | ok | "Terminal handoffattachedRunning in the background and attached here.  |
+| free-talk-feature | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,653 325×14 | ok | "cwd D:\\acme" |
 | free-talk-feature | copy (copy) | box | 1374.4,623 27.6×15 | 1374.4,623 27.6×15 | ok | "copy" |
 | free-talk-feature | copy (copied) | box | 1360.6,623 41.4×15 | 1360.6,623 41.4×15 | ok | "copied" |
 | calendar-func-fix | panel | box | 1060,0 380×900 | 1060,0 380×900 | ok |  |
@@ -75,7 +77,7 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | calendar-func-fix | cards | box | 1061,50 379×87 | 1061,50 379×87 | ok |  |
 | calendar-func-fix | termLabel | box | 1061,137 379×28 | 1061,137 379×28 | ok | "Terminal" |
 | calendar-func-fix | term | box | 1073,165 355×172 | 1073,165 355×172 | ok | "$ dotnet buildCS0103 TimeZoneInfo not found → add using System$ dotne |
-| calendar-func-fix | handoff | box | 1073,351 355×142 | 1073,351 355×142 | ok | "Terminal handoffattachedRunning in the background and attached here.  |
+| calendar-func-fix | handoff | top | 1073,351 355×142 | 1073,351 355×164 | ok |  |
 | calendar-func-fix | handoffHead | box | 1088,364 325×17 | 1088,364 325×17 | ok | "Terminal handoffattached" |
 | calendar-func-fix | handoffState | box | 1360.2,365.5 52.8×14 | 1360.2,365.5 52.8×14 | ok | "attached" |
 | calendar-func-fix | handoffText | box | 1088,389 325×54 | 1088,389 325×54 | ok | "Running in the background and attached here. Detach to continue in a  |
@@ -93,6 +95,8 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | calendar-func-fix | line1 | box | 1086,194.7 329×18.7 | 1086,194.7 329×18.7 | ok | "CS0103 TimeZoneInfo not found → add using System" |
 | calendar-func-fix | line2 | box | 1086,213.4 329×18.7 | 1086,213.4 329×18.7 | ok | "$ dotnet build" |
 | calendar-func-fix | line3 | box | 1086,232.1 329×18.7 | 1086,232.1 329×18.7 | ok | "▍" |
+| calendar-func-fix | handoff (copy without the D14 cwd line) | none | — | — | ok | "Terminal handoffattachedRunning in the background and attached here.  |
+| calendar-func-fix | handoff cwd line (D14 addition, not in the prototype) | — | — | 1088,488 325×14 | ok | "cwd D:\\acme" |
 | button-rollout | ✕ line color | none | oklch(0.72 0.16 25) | oklch(0.72 0.16 25) | ok | "✕ figma: no variant State=Loading" |
 
 ## SPEC tokens (computed)
@@ -111,6 +115,9 @@ Geometry `box` = x, y, width, height (every part is absolute: the panel does not
 | toneOk | oklch(0.78 0.12 150) | oklch(0.78 0.12 150) | ok |
 | toneWait | oklch(0.8 0.13 70) | oklch(0.8 0.13 70) | ok |
 | handoff | rgb(12, 13, 15) rgb(38, 39, 44) 10px | rgb(12, 13, 15) rgb(38, 39, 44) 10px | ok |
+
+## D14 additions (not findings)
+- The handoff card ends with `cwd <Session.cwd>`: the folder to run `claude --resume` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry `top`) and by its prototype copy without that line; the line is checked on its own.
 
 ## Known differences (not findings)
 - button-rollout's tail starts with the chat's open request step (the demo seed makes the prototype's `⏸ breaker: …` chat line an open permission request, M4.2, which the tail shows like every open request): prototype ["[loop] item 8/12 AcmIconButton","✕ figma: no variant State=Loading","[loop] item 9/12 AcmLinkButton","✕ figma: no variant State=Loading","⏸ circuit breaker tripped"], app ["⏸ breaker: 2 consecutive ambiguous items","[loop] item 8/12 AcmIconButton","✕ figma: no variant State=Loading","[loop] item 9/12 AcmLinkButton","✕ figma: no variant State=Loading","⏸ circuit breaker tripped"].

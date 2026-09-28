@@ -7,21 +7,29 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 **Gate:** green
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
-- Claude Code: **0.10%** / 0.26%
-- Workspace & solutions: **2.33%** / 2.10%
-- Sessions & worktrees: **0.00%** / 0.18%
-- Notifications & usage: **0.00%** / 0.18%
-- Schedules: **0.00%** / 0.18%
-- Embedded tools: **0.43%** / 0.53%
-- GitHub: **0.03%** / 0.20%
+- Claude Code: **0.16%** / 1.15%
+- Workspace & solutions: **3.65%** / 4.01%
+- Sessions & worktrees: **0.38%** / 1.32%
+- Notifications & usage: **0.06%** / 1.06%
+- Schedules: **0.06%** / 1.06%
+- Embedded tools: **0.49%** / 1.42%
+- GitHub: **0.09%** / 1.09%
 
 Side by side (main area, prototype left, app right): `settings-claude-side-by-side.png`, `settings-workspace-side-by-side.png`, `settings-sessions-side-by-side.png`, `settings-notify-side-by-side.png`, `settings-schedules-side-by-side.png`, `settings-tools-side-by-side.png`, `settings-github-side-by-side.png`.
 
+## D14 (folders per session)
+*Workspace & solutions* is **Folders**: the saved workspaces and git repos (kind, path, check line, default marker, Make default, Remove), Add…, then the scan of the default folder (or the one clicked). The prototype's root row and scan table are compared with that scan block by size (the list above moves it down); the list, the lede and Add… are D14 additions (`D14 …` rows). The Sessions section's "Working folder" row says sessions start in their own folder.
+
 ## Copy that differs on purpose
+- `*.nav2`: D14: the section is "Folders" (the saved workspaces and git repos) instead of "Workspace & solutions"
+- `workspace.title`: D14: "Folders" instead of "Workspace & solutions"
+- `workspace.rootLabel`: D14: "Solutions in <folder>" (the default folder, or the one clicked in the list) instead of "Workspace root"
+- `sessions.folderDesc`: D14: "A workspace session starts at its root, so the router applies; a repo session in the repo" (sessions pick their folder)
+- `sessions.folderValue`: D14: "the session's folder" instead of "workspace root"
 - `claude.accountValue`: "Max · signed in": the plan is not in `/api/system`, so the app shows "signed in" (never invented)
 - `claude.serviceValue`: the address carries the test port (127.0.0.1:49xx) instead of 4870
 - `claude.permissionsDesc`: D6: permission requests also surface in the Inbox ("Only agent questions and permission requests surface here.")
-- `workspace.rootDesc`: the temp workspace path instead of D:\acme (gap #17: OS paths); the router title matches
+- `workspace.rootDesc`: the temp workspace path instead of D:\acme (gap #17: OS paths); D14: the router title moved to the folder's check line in the list above
 - `workspace.scan*Examples`: examples are solution names from the scan; the prototype writes prose ("MAUI app + Mobile Gateway BFF")
 - `notify.warnValue`: a <select>; its shown value is checked apart ("90%")
 - `tools.lede`: gap #13: "URLs are saved in Switchboard." instead of "in this browser"
@@ -35,7 +43,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
@@ -77,59 +85,64 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
 | nav6 | box | 268,234 205×33 | 268,234 205×33 | ok | "Embedded tools" |
 | nav7 | box | 268,269 205×33 | 268,269 205×33 | ok | "GitHub" |
 | content | box | 486,0 928×900 | 486,0 928×900 | ok |  |
-| title | box | 520,26 860×26 | 520,26 860×26 | ok | "Workspace & solutions" |
-| root | none | 520,64 860×63 | 520,64 860×79 | ok |  |
-| rootLabel | size | 520,78 781.2×18 | 520,78 781.2×18 | ok | "Workspace root" |
-| rootDesc | none | 520,96 781.2×16 | 520,96 781.2×32 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-AQiTEX/ws · AGENTS.md (Workspace Router)" |
-| rootValue | size | 1317.2,81 62.8×28 | 1317.2,89 62.8×28 | ok | "Rescan" |
-| scan | size | 520,141 860×290 | 520,157 860×290 | ok |  |
-| scan0 | size | 521,142 858×36 | 521,158 858×36 | ok |  |
-| scan0Folder | size | 535,151 170×17 | 535,167 170×17 | ok | "microfrontends/" |
-| scan0Count | size | 717,151.5 40×16 | 717,167.5 40×16 | ok | "4" |
-| scan0Examples | size | 769,151.5 464×16 | 769,167.5 464×16 | ok | exempt: "acme-app-front, workspace-front, auth-front, …" → "microfrontends-1, microfrontends-2, microfrontends-3, …" |
-| scan0Rule | size | 1245,152.5 120×14 | 1245,168.5 120×14 | ok | "editable" |
-| scan1 | size | 521,178 858×36 | 521,194 858×36 | ok |  |
-| scan1Folder | size | 535,187 170×17 | 535,203 170×17 | ok | "mobile/" |
-| scan1Count | size | 717,187.5 40×16 | 717,203.5 40×16 | ok | "1" |
-| scan1Examples | size | 769,187.5 464×16 | 769,203.5 464×16 | ok | exempt: "MAUI app + Mobile Gateway BFF" → "mobile" |
-| scan1Rule | size | 1245,188.5 120×14 | 1245,204.5 120×14 | ok | "editable" |
-| scan2 | size | 521,214 858×36 | 521,230 858×36 | ok |  |
-| scan2Folder | size | 535,223 170×17 | 535,239 170×17 | ok | "nugets/" |
-| scan2Count | size | 717,223.5 40×16 | 717,239.5 40×16 | ok | "4" |
-| scan2Examples | size | 769,223.5 464×16 | 769,239.5 464×16 | ok | exempt: "components-library-nuget, typography-nuget, …" → "nugets-1, nugets-2, nugets-3, …" |
-| scan2Rule | size | 1245,224.5 120×14 | 1245,240.5 120×14 | ok | "editable" |
-| scan3 | size | 521,250 858×36 | 521,266 858×36 | ok |  |
-| scan3Folder | size | 535,259 170×17 | 535,275 170×17 | ok | "microservices/" |
-| scan3Count | size | 717,259.5 40×16 | 717,275.5 40×16 | ok | "2" |
-| scan3Examples | size | 769,259.5 464×16 | 769,275.5 464×16 | ok | exempt: "auth-microservice, notifications-microservice" → "microservices-1, microservices-2" |
-| scan3Rule | size | 1245,260.5 120×14 | 1245,276.5 120×14 | ok | "editable" |
-| scan4 | size | 521,286 858×36 | 521,302 858×36 | ok |  |
-| scan4Folder | size | 535,295 170×17 | 535,311 170×17 | ok | "functions/" |
-| scan4Count | size | 717,295.5 40×16 | 717,311.5 40×16 | ok | "2" |
-| scan4Examples | size | 769,295.5 464×16 | 769,311.5 464×16 | ok | exempt: "calendar-func, hubspot-func" → "functions-1, functions-2" |
-| scan4Rule | size | 1245,296.5 120×14 | 1245,312.5 120×14 | ok | "editable" |
-| scan5 | size | 521,322 858×36 | 521,338 858×36 | ok |  |
-| scan5Folder | size | 535,331 170×17 | 535,347 170×17 | ok | "other/" |
-| scan5Count | size | 717,331.5 40×16 | 717,347.5 40×16 | ok | "1" |
-| scan5Examples | size | 769,331.5 464×16 | 769,347.5 464×16 | ok | exempt: "it-dashboard" → "other-1" |
-| scan5Rule | size | 1245,332.5 120×14 | 1245,348.5 120×14 | ok | "on request only" |
-| scan6 | size | 521,358 858×36 | 521,374 858×36 | ok |  |
-| scan6Folder | size | 535,367 170×17 | 535,383 170×17 | ok | "deprecated/" |
-| scan6Count | size | 717,367.5 40×16 | 717,383.5 40×16 | ok | "3" |
-| scan6Examples | size | 769,367.5 464×16 | 769,383.5 464×16 | ok | exempt: "old-chat-front, legacy-auth-microservice, …" → "deprecated-1, deprecated-2, deprecated-3" |
-| scan6Rule | size | 1245,368.5 120×14 | 1245,384.5 120×14 | ok | "read-only" |
-| scan7 | size | 521,394 858×36 | 521,410 858×36 | ok |  |
-| scan7Folder | size | 535,403 170×17 | 535,419 170×17 | ok | "infrastructure/" |
-| scan7Count | size | 717,403.5 40×16 | 717,419.5 40×16 | ok | "1" |
-| scan7Examples | size | 769,403.5 464×16 | 769,419.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
-| scan7Rule | size | 1245,404.5 120×14 | 1245,420.5 120×14 | ok | "read-only" |
+| title | box | 520,26 860×26 | 520,26 860×26 | ok | exempt: "Workspace & solutions" → "Folders" |
+| root | none | 520,64 860×63 | 520,320 860×63 | ok |  |
+| rootLabel | none | 520,78 781.2×18 | 520,334 781.2×18 | ok | exempt: "Workspace root" → "Solutions in ws" |
+| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-hoXf5v/ws" |
+| rootValue | size | 1317.2,81 62.8×28 | 1317.2,337 62.8×28 | ok | "Rescan" |
+| scan | size | 520,141 860×290 | 520,397 860×290 | ok |  |
+| scan0 | size | 521,142 858×36 | 521,398 858×36 | ok |  |
+| scan0Folder | size | 535,151 170×17 | 535,407 170×17 | ok | "microfrontends/" |
+| scan0Count | size | 717,151.5 40×16 | 717,407.5 40×16 | ok | "4" |
+| scan0Examples | size | 769,151.5 464×16 | 769,407.5 464×16 | ok | exempt: "acme-app-front, workspace-front, auth-front, …" → "microfrontends-1, microfrontends-2, microfrontends-3, …" |
+| scan0Rule | size | 1245,152.5 120×14 | 1245,408.5 120×14 | ok | "editable" |
+| scan1 | size | 521,178 858×36 | 521,434 858×36 | ok |  |
+| scan1Folder | size | 535,187 170×17 | 535,443 170×17 | ok | "mobile/" |
+| scan1Count | size | 717,187.5 40×16 | 717,443.5 40×16 | ok | "1" |
+| scan1Examples | size | 769,187.5 464×16 | 769,443.5 464×16 | ok | exempt: "MAUI app + Mobile Gateway BFF" → "mobile" |
+| scan1Rule | size | 1245,188.5 120×14 | 1245,444.5 120×14 | ok | "editable" |
+| scan2 | size | 521,214 858×36 | 521,470 858×36 | ok |  |
+| scan2Folder | size | 535,223 170×17 | 535,479 170×17 | ok | "nugets/" |
+| scan2Count | size | 717,223.5 40×16 | 717,479.5 40×16 | ok | "4" |
+| scan2Examples | size | 769,223.5 464×16 | 769,479.5 464×16 | ok | exempt: "components-library-nuget, typography-nuget, …" → "nugets-1, nugets-2, nugets-3, …" |
+| scan2Rule | size | 1245,224.5 120×14 | 1245,480.5 120×14 | ok | "editable" |
+| scan3 | size | 521,250 858×36 | 521,506 858×36 | ok |  |
+| scan3Folder | size | 535,259 170×17 | 535,515 170×17 | ok | "microservices/" |
+| scan3Count | size | 717,259.5 40×16 | 717,515.5 40×16 | ok | "2" |
+| scan3Examples | size | 769,259.5 464×16 | 769,515.5 464×16 | ok | exempt: "auth-microservice, notifications-microservice" → "microservices-1, microservices-2" |
+| scan3Rule | size | 1245,260.5 120×14 | 1245,516.5 120×14 | ok | "editable" |
+| scan4 | size | 521,286 858×36 | 521,542 858×36 | ok |  |
+| scan4Folder | size | 535,295 170×17 | 535,551 170×17 | ok | "functions/" |
+| scan4Count | size | 717,295.5 40×16 | 717,551.5 40×16 | ok | "2" |
+| scan4Examples | size | 769,295.5 464×16 | 769,551.5 464×16 | ok | exempt: "calendar-func, hubspot-func" → "functions-1, functions-2" |
+| scan4Rule | size | 1245,296.5 120×14 | 1245,552.5 120×14 | ok | "editable" |
+| scan5 | size | 521,322 858×36 | 521,578 858×36 | ok |  |
+| scan5Folder | size | 535,331 170×17 | 535,587 170×17 | ok | "other/" |
+| scan5Count | size | 717,331.5 40×16 | 717,587.5 40×16 | ok | "1" |
+| scan5Examples | size | 769,331.5 464×16 | 769,587.5 464×16 | ok | exempt: "it-dashboard" → "other-1" |
+| scan5Rule | size | 1245,332.5 120×14 | 1245,588.5 120×14 | ok | "on request only" |
+| scan6 | size | 521,358 858×36 | 521,614 858×36 | ok |  |
+| scan6Folder | size | 535,367 170×17 | 535,623 170×17 | ok | "deprecated/" |
+| scan6Count | size | 717,367.5 40×16 | 717,623.5 40×16 | ok | "3" |
+| scan6Examples | size | 769,367.5 464×16 | 769,623.5 464×16 | ok | exempt: "old-chat-front, legacy-auth-microservice, …" → "deprecated-1, deprecated-2, deprecated-3" |
+| scan6Rule | size | 1245,368.5 120×14 | 1245,624.5 120×14 | ok | "read-only" |
+| scan7 | size | 521,394 858×36 | 521,650 858×36 | ok |  |
+| scan7Folder | size | 535,403 170×17 | 535,659 170×17 | ok | "infrastructure/" |
+| scan7Count | size | 717,403.5 40×16 | 717,659.5 40×16 | ok | "1" |
+| scan7Examples | size | 769,403.5 464×16 | 769,659.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
+| scan7Rule | size | 1245,404.5 120×14 | 1245,660.5 120×14 | ok | "read-only" |
+| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-h |
+| D14 the temp root: a workspace with its router | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 0 solutions" |
+| D14 the demo folder: not the default, its check line | addition | — | — | ok | "✕ enter an absolute path" |
+| D14 Add… | addition | — | — | ok | Add… |
+| D14 the scan block names the default folder | addition | — | — | ok | Solutions in ws |
 
 ## Sessions & worktrees
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
@@ -138,7 +151,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
@@ -147,9 +160,9 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | content | box | 486,0 928×900 | 486,0 928×900 | ok |  |
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | "Sessions & worktrees" |
 | folder | box | 520,64 860×64 | 520,64 860×64 | ok |  |
-| folderLabel | box | 520,78 743.2×18 | 520,78 743.2×18 | ok | "Working folder" |
-| folderDesc | box | 520,96 743.2×17 | 520,96 743.2×17 | ok | "Sessions always start at the workspace root, so the router applies" |
-| folderValue | box | 1279.2,87.5 100.8×16 | 1279.2,87.5 100.8×16 | ok | "workspace root" |
+| folderLabel | none | 520,78 743.2×18 | 520,78 700×18 | ok | "Working folder" |
+| folderDesc | none | 520,96 743.2×17 | 520,96 700×17 | ok | exempt: "Sessions always start at the workspace root, so the router applies" → "A workspace session starts at the folder root, so the router applies; a repo session in the repo or its worktree" |
+| folderValue | none | 1279.2,87.5 100.8×16 | 1236,87.5 144×16 | ok | exempt: "workspace root" → "the session's folder" |
 | worktrees | box | 520,130 860×64 | 520,130 860×64 | ok |  |
 | worktreesLabel | box | 520,144 829.6×18 | 520,144 829.6×18 | ok | "Worktree per session" |
 | worktreesDesc | box | 520,162 829.6×17 | 520,162 829.6×17 | ok | "One worktree per solution the session writes to" |
@@ -178,7 +191,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
@@ -212,7 +225,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
@@ -248,7 +261,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |
@@ -282,7 +295,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | nav | box | 256,0 230×900 | 256,0 230×900 | ok |  |
 | navTitle | box | 268,20 205×37 | 268,20 205×37 | ok | "Settings" |
 | nav1 | box | 268,59 205×33 | 268,59 205×33 | ok | "Claude Code" |
-| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | "Workspace & solutions" |
+| nav2 | box | 268,94 205×33 | 268,94 205×33 | ok | exempt: "Workspace & solutions" → "Folders" |
 | nav3 | box | 268,129 205×33 | 268,129 205×33 | ok | "Sessions & worktrees" |
 | nav4 | box | 268,164 205×33 | 268,164 205×33 | ok | "Notifications & usage" |
 | nav5 | box | 268,199 205×33 | 268,199 205×33 | ok | "Schedules" |

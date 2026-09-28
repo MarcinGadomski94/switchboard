@@ -4,6 +4,7 @@ The form behind "+ New session" (SPEC → Modals → New session; prototype `mNe
 
 ## Layout
 1080px, `1fr | 360px` (`.sb-modal-new` in `modals.css`). Left, in order:
+0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row) and the folder's check line (`docs/folders.md` → *UI*). A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip.
 1. **Task definition**: the name (220px, Geist Mono, placeholder `session-name`) and the task (`What should be implemented?`). The task comes first, as the router wants the developer to define the task before any questions.
 2. **Work type**: Feature-building · Test-authoring (QA).
 3. **Mode**: Single-solution · Workspace orchestrator.
@@ -24,6 +25,7 @@ Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solut
 | solutions | none | in the order picked: each chip's solution name (its `relativePath` when two writable rows share a name, so the server can resolve it) |
 | QA stack, Confluence URL, Figma URLs | none, empty, empty | `qa: {stack, confluenceUrl, figmaUrls}` for test-authoring (Figma URLs split on spaces, commas and new lines), else `null` |
 | worktrees, ultracode | on, off (the prototype's Settings → Sessions & worktrees: "Worktree per session: on", "Ultracode by default: off"; M8.2 may read them from Settings) | booleans |
+| folder (D14) | the prefill's folder while it is saved, else the default folder (once `GET /api/folders` has answered) | `folder` = the saved folder's id; for a **repo** folder the body is a `NewRepoSession`: `{name, task, folder, solutions: [<repo>], worktrees, ultracode}` (no router fields) |
 
 **Prefill** (M3.3 "Open fix session", `useModals().open('new-session', { prefill })`): the defaults with every valid prefill field on top (invalid values and `coordination: null` are ignored; the name is sanitised like typed input). The dialog also carries the prefill as `data-prefill` (JSON), which `tests/e2e/inbox-system.spec.ts` reads. A prefilled solution the scan does not list shows in an extra row `not found`, selected, so it can be removed; the server decides whether it can start.
 
@@ -31,12 +33,13 @@ Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solut
 - One row per writable group of `GET /api/solutions`, in the API's order (the scanner sorts by name), folder label = the group's `folder` (`microfrontends/`, `mobile/`, …, `other/`). `other/` is on request only (gap #15); picking it in the form is that explicit request.
 - **Read-only row:** one locked chip per read-only top folder, taken from each read-only solution's `relativePath`: `<folder>/*` when the solution sits below it, `<folder>` when the folder is the solution; sorted. So a workspace with `deprecated/microfrontends/old-front` and `infrastructure` shows `deprecated/*` and `infrastructure` (the prototype's chips). Archived repos are never listed by name, so an archived `deprecated/mobile` cannot look like the live `mobile`.
 - While the scan is loading no rows are shown; a failed scan shows the Solutions view's message (`No folder is saved yet. Add a workspace or a git repository in Settings.` for `409 no-folder`, D14, or the server's), an empty one `No solutions found in the workspace.`
-- D14: the form still scans the default folder and sends no `folder` (the server uses the default); the Folder row (a saved-folder dropdown + Browse…, the repo-folder variant that hides the router sections) is the UI stage's. The server side is in place: `folder` on NewSession, and for a repo folder only Task, Worktree and Ultracode matter (`docs/folders.md` → *Sessions*).
+- D14: the chips are the chosen folder's scan (`GET /api/solutions?folder=<id>`); switching folders clears the picked solutions and reads the new folder's scan (the previous folder's chips never show while it loads). A repo folder shows one row `<repo>/` with the chip `✓ <repo>`, selected, disabled and fixed (`data-fixed`; not the read-only lock). A failed `409 no-folder` scan reads `No folder is saved yet. Add a workspace or a git repository with Browse… above.`
 
 ## Summary
-The prototype's lines, in the router's terms:
+The prototype's lines, in the router's terms (D14: the `folder` line is added once the folder is known):
 ```
 # claude code · background · Max
+folder    <folder name> · workspace             (D14)
 cwd       <workspace root>
 work      feature-building | test-authoring (QA)
 mode      single-solution | workspace orchestrator
@@ -51,13 +54,26 @@ ultracode on | off
 
 ✓ answers pre-filled → agent confirms, no re-ask
 ```
-- `cwd` is the workspace root derived from the first scanned solution (`path` minus its `relativePath`, as the Solutions view does), in the OS's form (gap #17); `—` before the scan.
+- `cwd` is the folder's path (D14); before the saved folders are known, the workspace root derived from the first scanned solution (`path` minus its `relativePath`, as the Solutions view does), in the OS's form (gap #17); `—` before the scan.
+- **Repo folder (D14)** (`repoSummaryLines`):
+  ```
+  # claude code · background · Max
+  folder    <repo> · git repo
+  cwd       <repo path> | <parent>/<repo>-wt-<name>   (Worktree on)
+  ultracode on | off
+
+  # worktree | # no worktree · edits in place
+  ../<repo>-wt-<name>                                  (Worktree on)
+  ⚠ a session with this name exists                    (when taken)
+
+  ✓ task + worktree note · no router answers | ✓ task only · no router answers
+  ```
 - `<repo>` is the solution's last path segment, `<name>` the name that will be sent, so the folders are exactly the ones the worktree manager creates (`../{repo}-wt-{name}` next to the repo).
 - Lines the prototype does not have, shown only when they apply (they say why Start is disabled): `⚠ a session with this name exists`, and for QA `⚠ pick the stack under test`, `⚠ add the Confluence page URL`, `⚠ add the Figma frame URLs`.
 - Lines do not wrap (`nowrap`, runs of spaces collapse as in the prototype) and end in an ellipsis.
 
 ## Start session
-Disabled (45% opacity) when no solution is picked, when the name is taken by a session in `GET /api/sessions` (reloaded on `sessionUpdated`, at most once a second), for QA while the stack, the Confluence URL or the Figma URLs are missing, and while a start is running. A click posts `POST /api/sessions`; on `201` the modal closes and the app opens `/sessions/<id>`. A refusal stays in the modal as one line under the summary: `Not started: ` + the validation messages (`422 {errors:[{field, message}]}`, e.g. a name that is not kebab-case, a read-only solution), the server's `message` (`409` worktree / workspace refusals, `docs/worktrees.md`), or the HTTP status. Editing the form clears it. Cancel, Esc and a click on the overlay close the modal without starting anything.
+For a repo folder (D14) only a free name is needed (the repo is the one solution, no QA contract). Otherwise disabled (45% opacity) when no solution is picked, when the name is taken by a session in `GET /api/sessions` (reloaded on `sessionUpdated`, at most once a second), for QA while the stack, the Confluence URL or the Figma URLs are missing, and while a start is running. A click posts `POST /api/sessions`; on `201` the modal closes and the app opens `/sessions/<id>`. A refusal stays in the modal as one line under the summary: `Not started: ` + the validation messages (`422 {errors:[{field, message}]}`, e.g. a name that is not kebab-case, a read-only solution), the server's `message` (`409` worktree / workspace refusals, `docs/worktrees.md`), or the HTTP status. Editing the form clears it. Cancel, Esc and a click on the overlay close the modal without starting anything.
 
 The server remains the authority: it validates the name (unique, kebab-case), the solutions (not empty, never read-only: 422) and `qa` for QA sessions (`src/server/sessions/validate.ts`); the form's checks only keep the button honest.
 
@@ -106,6 +122,7 @@ Take them as the answers to the session-start questions: confirm them back in on
 
 ## Tests
 - `tests/server/api/first-turn.test.ts` (M5.2 oracle, real path): `POST /api/sessions` with fake-claude (`FAKE_CLAUDE_LOG`), temp git repos and the real worktree manager; a feature/single session with worktrees, an orchestrator session and a QA session: the exact argv (no prompt argument), exactly one stdin line equal to `{"type":"user","message":{"role":"user","content":<payload>}}` with the payload equal to `tests/fixtures/first-turn/<case>.txt` (`<workspace>` = the temp root); the empty-task outbox case. `tests/core/first-turn.test.ts`: the block's rules, the folder resolution and the repo-folder note (D14). `tests/server/folders/folders.test.ts`: a repo folder's first message on the real path, with and without a worktree.
-- `tests/web/new-session.test.ts`: defaults, prefill, name rules, section visibility, chip groups (read-only folders, shared names, `not found`), summary lines, Start rules, the request body, refusal text.
+- `tests/web/new-session.test.ts`: defaults, prefill, name rules, section visibility, chip groups (read-only folders, shared names, `not found`), summary lines, Start rules, the request body, refusal text; D14: the form's folder, the dropdown's labels, the NewRepoSession body, the repo Start rule and summary.
 - `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, a taken name), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a 422 shown in the modal, the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
-- `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`).
+- `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`); D14: the sections are compared relative to section 1 and the Folder row and the summary's `folder` line are recorded as additions.
+- D14: `tests/e2e/folders.spec.ts` (the Folder row switching chips, a repo folder's form and session in its worktree), `tests/e2e/walkthrough-repo.spec.ts`.

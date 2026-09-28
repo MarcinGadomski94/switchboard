@@ -5,13 +5,16 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of step 1 (advisory, channel threshold 24): wizard panel (239,139 962×622) **0.29%**, full page **0.19%**.
+Pixel diff of step 1 (advisory, channel threshold 24): wizard panel (239,139 962×622) **0.39%**, full page **0.23%**.
 Known data differences: step 1's login row ("Signed in · claude auth status · the login stays with Claude Code" vs the prototype's "Signed in · Max plan · subscription auth · no API key": only the exit code of `claude auth status` is read, so no plan is named; compared by size); step 2's path (a temp folder vs `D:\acme`); step 3's rows (the demo's workspace scan, 7 rows, vs the prototype's hard-coded `scan`, 8 rows; the first row is compared, the table's height is not). Behind the overlay the page differs (the app's Inbox under the demo seed, the prototype's Inbox).
 
 Side by side (prototype left, app right): `setup-wizard-side-by-side.png` (step 1), `setup-wizard-root-side-by-side.png` (step 2), `setup-wizard-scan-side-by-side.png` (step 3), `setup-wizard-usage-side-by-side.png` (step 5), `setup-wizard-page-side-by-side.png` (page, step 1).
 
+## D14 (not findings)
+Step 2 is "Add your first folder" (a workspace or a git repo; skippable): its rail label, title and text differ from the prototype's "Workspace root" (`step2`: D14: the rail item reads "2Add your first folder"; `step2Label`: D14: "Add your first folder" instead of "Workspace root"; `title`: D14: step 2 is "Add your first folder"; `text`: D14: "A workspace (the folder that holds your router AGENTS.md) or a git repository. …" (sessions pick their folder; the step is skippable); `rootLine`: D14: the folder check line "✓ AGENTS.md (Workspace Router) · <n> solutions" (the prototype: "… found · 640 lines")). Its text runs to two lines, so the field row, Browse… and the check line are compared with y less the text's extra height (`y − <px>`), the check line's copy checked against the app's own rule instead of the prototype's.
+
 ## Boxes (±2 px), copy and computed styles
-Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space (the app's root field is an `<input>`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).
+Geometry: `box` = x, y, width, height; `size` = x, width, height; `top` = x, y, width. Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space (the app's root field is an `<input>`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -32,9 +35,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 1 · step1 | box | 258,212 213×42 | 258,212 213×42 | ok | "1Claude Code CLI + login" |
 | step 1 · step1Dot | box | 268,221 24×24 | 268,221 24×24 | ok | "1" |
 | step 1 · step1Label | box | 302,224.5 141.7×17 | 302,224.5 141.7×17 | ok | "Claude Code CLI + login" |
-| step 1 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | "2Workspace root" |
+| step 1 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | D14: "2Workspace root" → "2Add your first folder" |
 | step 1 · step2Dot | box | 268,267 24×24 | 268,267 24×24 | ok | "2" |
-| step 1 · step2Label | box | 302,270.5 93.5×17 | 302,270.5 93.5×17 | ok | "Workspace root" |
+| step 1 · step2Label | none | 302,270.5 93.5×17 | 302,270.5 118.7×17 | ok | D14: "Workspace root" → "Add your first folder" |
 | step 1 · step3 | box | 258,304 213×42 | 258,304 213×42 | ok | "3Scan solutions" |
 | step 1 · step3Dot | box | 268,313 24×24 | 268,313 24×24 | ok | "3" |
 | step 1 · step3Label | box | 302,316.5 87.5×17 | 302,316.5 87.5×17 | ok | "Scan solutions" |
@@ -65,8 +68,8 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 2 · note | box | 258,684.3 213×51.8 | 258,684.3 213×51.8 | ok | "Everything stays on this PC. Switchboard never stores your Claude log |
 | step 2 · main | box | 490,140 710×620 | 490,140 710×620 | ok |  |
 | step 2 · pos | box | 526,170 638×15 | 526,170 638×15 | ok | "Step 2 of 5" |
-| step 2 · title | box | 526,201 638×28 | 526,201 638×28 | ok | "Workspace root" |
-| step 2 · text | box | 526,245 540×20.9 | 526,245 540×20.9 | ok | "The folder that holds your router AGENTS.md. Every session starts her |
+| step 2 · title | box | 526,201 638×28 | 526,201 638×28 | ok | D14: "Workspace root" → "Add your first folder" |
+| step 2 · text | top | 526,245 540×20.9 | 526,245 540×62.8 | ok | D14: "The folder that holds your router AGENT → "A workspace (the folder that holds your router AG |
 | step 2 · actions | box | 526,693 638×37 | 526,693 638×37 | ok |  |
 | step 2 · back | box | 526,693 64.5×37 | 526,693 64.5×37 | ok | "Back" |
 | step 2 · skip | box | 598.5,693 38.5×37 | 598.5,693 38.5×37 | ok | "Skip" |
@@ -74,9 +77,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 2 · step1 | box | 258,212 213×42 | 258,212 213×42 | ok | "✓Claude Code CLI + login" |
 | step 2 · step1Dot | box | 268,221 24×24 | 268,221 24×24 | ok | "✓" |
 | step 2 · step1Label | box | 302,224.5 141.7×17 | 302,224.5 141.7×17 | ok | "Claude Code CLI + login" |
-| step 2 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | "2Workspace root" |
+| step 2 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | D14: "2Workspace root" → "2Add your first folder" |
 | step 2 · step2Dot | box | 268,267 24×24 | 268,267 24×24 | ok | "2" |
-| step 2 · step2Label | box | 302,270.5 93.5×17 | 302,270.5 93.5×17 | ok | "Workspace root" |
+| step 2 · step2Label | none | 302,270.5 93.5×17 | 302,270.5 118.7×17 | ok | D14: "Workspace root" → "Add your first folder" |
 | step 2 · step3 | box | 258,304 213×42 | 258,304 213×42 | ok | "3Scan solutions" |
 | step 2 · step3Dot | box | 268,313 24×24 | 268,313 24×24 | ok | "3" |
 | step 2 · step3Label | box | 302,316.5 87.5×17 | 302,316.5 87.5×17 | ok | "Scan solutions" |
@@ -86,10 +89,10 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 2 · step5 | box | 258,396 213×42 | 258,396 213×42 | ok | "5Usage warnings" |
 | step 2 · step5Dot | box | 268,405 24×24 | 268,405 24×24 | ok | "5" |
 | step 2 · step5Label | box | 302,408.5 95.3×17 | 302,408.5 95.3×17 | ok | "Usage warnings" |
-| step 2 · rootRow | box | 526,281.9 560×37 | 526,281.9 560×37 | ok |  |
-| step 2 · rootField | box | 526,281.9 470.1×37 | 526,281.9 470.1×37 | ok |  |
-| step 2 · browse | box | 1004.1,281.9 81.9×37 | 1004.1,281.9 81.9×37 | ok | "Browse…" |
-| step 2 · rootLine | box | 526,334.9 638×16 | 526,334.9 638×16 | ok | "✓ AGENTS.md (Workspace Router) found · 640 lines" |
+| step 2 · rootRow | box (y − 41.8) | 526,281.9 560×37 | 526,281.9 560×37 | ok |  |
+| step 2 · rootField | box (y − 41.8) | 526,281.9 470.1×37 | 526,281.9 470.1×37 | ok |  |
+| step 2 · browse | box (y − 41.8) | 1004.1,281.9 81.9×37 | 1004.1,281.9 81.9×37 | ok | "Browse…" |
+| step 2 · rootLine | box (y − 41.8) | 526,334.9 638×16 | 526,334.9 638×16 | ok | D14: "✓ AGENTS.md (Workspace Router) found ·  → "✓ AGENTS.md (Workspace Router) · 0 solutions" |
 | step 3 · panel | box | 239,139 962×622 | 239,139 962×622 | ok |  |
 | step 3 · rail | box | 240,140 250×620 | 240,140 250×620 | ok |  |
 | step 3 · brand | box | 258,164 213×22 | 258,164 213×22 | ok |  |
@@ -107,9 +110,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 3 · step1 | box | 258,212 213×42 | 258,212 213×42 | ok | "✓Claude Code CLI + login" |
 | step 3 · step1Dot | box | 268,221 24×24 | 268,221 24×24 | ok | "✓" |
 | step 3 · step1Label | box | 302,224.5 141.7×17 | 302,224.5 141.7×17 | ok | "Claude Code CLI + login" |
-| step 3 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | "✓Workspace root" |
+| step 3 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | D14: "✓Workspace root" → "✓Add your first folder" |
 | step 3 · step2Dot | box | 268,267 24×24 | 268,267 24×24 | ok | "✓" |
-| step 3 · step2Label | box | 302,270.5 93.5×17 | 302,270.5 93.5×17 | ok | "Workspace root" |
+| step 3 · step2Label | none | 302,270.5 93.5×17 | 302,270.5 118.7×17 | ok | D14: "Workspace root" → "Add your first folder" |
 | step 3 · step3 | box | 258,304 213×42 | 258,304 213×42 | ok | "3Scan solutions" |
 | step 3 · step3Dot | box | 268,313 24×24 | 268,313 24×24 | ok | "3" |
 | step 3 · step3Label | box | 302,316.5 87.5×17 | 302,316.5 87.5×17 | ok | "Scan solutions" |
@@ -142,9 +145,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 4 · step1 | box | 258,212 213×42 | 258,212 213×42 | ok | "✓Claude Code CLI + login" |
 | step 4 · step1Dot | box | 268,221 24×24 | 268,221 24×24 | ok | "✓" |
 | step 4 · step1Label | box | 302,224.5 141.7×17 | 302,224.5 141.7×17 | ok | "Claude Code CLI + login" |
-| step 4 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | "✓Workspace root" |
+| step 4 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | D14: "✓Workspace root" → "✓Add your first folder" |
 | step 4 · step2Dot | box | 268,267 24×24 | 268,267 24×24 | ok | "✓" |
-| step 4 · step2Label | box | 302,270.5 93.5×17 | 302,270.5 93.5×17 | ok | "Workspace root" |
+| step 4 · step2Label | none | 302,270.5 93.5×17 | 302,270.5 118.7×17 | ok | D14: "Workspace root" → "Add your first folder" |
 | step 4 · step3 | box | 258,304 213×42 | 258,304 213×42 | ok | "✓Scan solutions" |
 | step 4 · step3Dot | box | 268,313 24×24 | 268,313 24×24 | ok | "✓" |
 | step 4 · step3Label | box | 302,316.5 87.5×17 | 302,316.5 87.5×17 | ok | "Scan solutions" |
@@ -174,9 +177,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | step 5 · step1 | box | 258,212 213×42 | 258,212 213×42 | ok | "✓Claude Code CLI + login" |
 | step 5 · step1Dot | box | 268,221 24×24 | 268,221 24×24 | ok | "✓" |
 | step 5 · step1Label | box | 302,224.5 141.7×17 | 302,224.5 141.7×17 | ok | "Claude Code CLI + login" |
-| step 5 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | "✓Workspace root" |
+| step 5 · step2 | box | 258,258 213×42 | 258,258 213×42 | ok | D14: "✓Workspace root" → "✓Add your first folder" |
 | step 5 · step2Dot | box | 268,267 24×24 | 268,267 24×24 | ok | "✓" |
-| step 5 · step2Label | box | 302,270.5 93.5×17 | 302,270.5 93.5×17 | ok | "Workspace root" |
+| step 5 · step2Label | none | 302,270.5 93.5×17 | 302,270.5 118.7×17 | ok | D14: "Workspace root" → "Add your first folder" |
 | step 5 · step3 | box | 258,304 213×42 | 258,304 213×42 | ok | "✓Scan solutions" |
 | step 5 · step3Dot | box | 268,313 24×24 | 268,313 24×24 | ok | "✓" |
 | step 5 · step3Label | box | 302,316.5 87.5×17 | 302,316.5 87.5×17 | ok | "Scan solutions" |
