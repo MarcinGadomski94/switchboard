@@ -22,6 +22,5 @@ Everything is local to `other/switchboard`. Nothing is pushed.
 - Remote sessions on the other PC (Windows).
 - Safari can't frame signed-in sites; they open in a new tab.
 
-## Clean-up (ask first)
-- Merged worktrees: reported-table, frame-helper, frame-scope, background-work, model-effort, ticket-branch, close-sessions, pwa, helper-setup, subagent-chat.
-- Older fully merged branches: feature/tool-proxy, feature/usage-ram, lane/w1-*, lane/w2-*.
+## Clean-up
+- Done 2026-09-28: every merged worktree and branch removed; only `main` remains.
