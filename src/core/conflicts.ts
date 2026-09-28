@@ -1,4 +1,5 @@
 import type { ConflictSession } from './api.ts';
+import { displayTitle } from './session-title.ts';
 
 /**
  * Conflict detection (M6.3, `docs/solutions.md` → *Conflicts*). ARCHITECTURE →
@@ -16,6 +17,8 @@ export const CONFLICT_FLAG = '⚠ shared working tree';
 export interface RepoWriter {
   readonly sessionId: string;
   readonly name: string;
+  /** D22: the session's title (`null` / absent: none); the card names the session by it. */
+  readonly title?: string | null;
   /** ISO time the session was created (orders the names in the card). */
   readonly createdAt: string;
   /** `true` when it writes in a worktree of its own, `false` in the main checkout. */
@@ -56,6 +59,7 @@ export function repoConflict(writers: readonly RepoWriter[]): RepoConflict {
     sessions: distinct.map((writer) => ({
       sessionId: writer.sessionId,
       name: writer.name,
+      title: writer.title ?? null,
       isolated: writer.isolated,
       repo: writer.repo,
       attached: writer.attached,
@@ -75,16 +79,16 @@ export function joinNames(names: readonly string[]): string {
  * requires isolation: 'worktree' for parallel writers in the same repo." Three
  * or more sessions read "… all write to …". `folder` is the solution's path from
  * the workspace root (`mobile`, `microfrontends/web-front`); a trailing `/` is
- * added.
+ * added. D22: each session is named by its display title (its title, else its name).
  */
-export function conflictText(sessions: readonly Pick<ConflictSession, 'name'>[], folder: string): string {
-  const names = sessions.map((session) => session.name);
+export function conflictText(sessions: readonly Pick<ConflictSession, 'name' | 'title'>[], folder: string): string {
+  const names = sessions.map((session) => displayTitle(session));
   const quantifier = names.length === 2 ? 'both' : 'all';
   const where = `${folder.replace(/\/+$/, '')}/`;
   return `${joinNames(names)} ${quantifier} write to ${where} in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.`;
 }
 
-/** The card's action for a session without a worktree (prototype: "Move button-rollout to worktree"). */
+/** The card's action for a session without a worktree (prototype: "Move button-rollout to worktree"); `name` is what the session is shown as (D22: its display title). */
 export function moveLabel(name: string): string {
   return `Move ${name} to worktree`;
 }

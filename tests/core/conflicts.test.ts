@@ -20,8 +20,20 @@ describe('repoConflict (M6.3)', () => {
     expect(result.flag).toBe(CONFLICT_FLAG);
     expect(CONFLICT_FLAG).toBe('⚠ shared working tree');
     expect(result.sessions).toEqual([
-      { sessionId: 'id-a', name: 'a', isolated: false, repo: 'mobile', attached: true },
-      { sessionId: 'id-b', name: 'b', isolated: false, repo: 'mobile', attached: true },
+      { sessionId: 'id-a', name: 'a', title: null, isolated: false, repo: 'mobile', attached: true },
+      { sessionId: 'id-b', name: 'b', title: null, isolated: false, repo: 'mobile', attached: true },
+    ]);
+  });
+
+  it("D22: a writer's title is passed on (null without one); the order still follows the short name", () => {
+    const same = '2026-09-28T10:00:00.000Z';
+    const result = repoConflict([
+      writer('zeta', false, { createdAt: same, title: 'Alpha title' }),
+      writer('alpha', false, { createdAt: same, title: null }),
+    ]);
+    expect(result.sessions.map((s) => [s.name, s.title])).toEqual([
+      ['alpha', null],
+      ['zeta', 'Alpha title'],
     ]);
   });
 
@@ -59,6 +71,12 @@ describe('conflict copy (prototype sd.warn)', () => {
   it('three or more: "… all write to …"; nested folders keep their path; a trailing slash is not doubled', () => {
     expect(conflictText([{ name: 'a' }, { name: 'b' }, { name: 'c' }], 'microfrontends/web-front/')).toBe(
       "a, b and c all write to microfrontends/web-front/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+    );
+  });
+
+  it('D22: a titled session is named by its title; one without a title by its name', () => {
+    expect(conflictText([{ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' }, { name: 'button-rollout', title: null }], 'mobile')).toBe(
+      "JIRA Ticket handling and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
     );
   });
 

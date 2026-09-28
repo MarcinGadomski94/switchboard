@@ -115,6 +115,7 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
             conflictSessions: (sol.conflictSessions ?? []).map((name) => ({
               sessionId: name,
               name,
+              title: null,
               isolated: sol.branches.some((b) => b.owner === name && b.worktree !== null),
               repo: sol.name,
               attached: true,

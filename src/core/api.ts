@@ -447,6 +447,14 @@ export interface SolutionArtifact {
 export interface ConflictSession {
   readonly sessionId: string;
   readonly name: string;
+  /**
+   * Additive (D22, developer ruling 2026-09-28): the session's title, `null` when it
+   * has none. The card and its "Move … to worktree" button name the session by its
+   * display title (this, else {@link name}); the worktree and branch it gets are
+   * still built from {@link name}. Always sent by the server; optional here like
+   * `Session.title`.
+   */
+  readonly title?: string | null;
   /** `true` when it writes in its own worktree; `false` = in the main checkout (the card offers "Move … to worktree"). */
   readonly isolated: boolean;
   /** The `{repo}` of `POST /api/solutions/{repo}/isolate`: the solution as the session lists it (or its worktree's repo). */

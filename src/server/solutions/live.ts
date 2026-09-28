@@ -367,7 +367,7 @@ export class LiveSolutions implements SolutionsProvider {
 
 /** An open session writing a row, for the conflict rule (M6.3). */
 function writer(session: SessionRecord, isolated: boolean, repo: string): RepoWriter {
-  return { sessionId: session.id, name: session.name, createdAt: session.createdAt, isolated, repo, attached: session.attached };
+  return { sessionId: session.id, name: session.name, title: session.title, createdAt: session.createdAt, isolated, repo, attached: session.attached };
 }
 
 /**

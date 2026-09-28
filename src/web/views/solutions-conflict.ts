@@ -1,5 +1,6 @@
 import type { Solution } from '../../core/api.ts';
 import { conflictText, moveLabel } from '../../core/conflicts.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { ApiError } from '../api/client.ts';
 
 /**
@@ -37,9 +38,10 @@ export function conflictCard(solution: Pick<Solution, 'conflict' | 'conflictSess
       .map((session) => ({
         sessionId: session.sessionId,
         repo: session.repo,
-        label: moveLabel(session.name),
+        // D22: named by the display title; the worktree and branch still come from the short name.
+        label: moveLabel(displayTitle(session)),
         disabled: !session.attached,
-        title: session.attached ? '' : `${session.name} continues in a terminal; attach it here first`,
+        title: session.attached ? '' : `${displayTitle(session)} continues in a terminal; attach it here first`,
       })),
   };
 }

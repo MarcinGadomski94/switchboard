@@ -15,7 +15,8 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * API write `mobile/` in place: the sidebar badge, the row flag and the conflict
  * card appear through `/hub`; each "Move … to worktree" click creates the
  * session's worktree (gap #2) until every writer has its own and the warning is
- * gone. The developer's checkout is never touched.
+ * gone. The developer's checkout is never touched. D22: a titled writer is named
+ * by its title in the card and its button; its worktree and branch keep the short name.
  */
 let world: GitWorld;
 let server: ServerProcess;
@@ -80,8 +81,8 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   await expect(row(page, 'mobile')).toBeVisible();
   await expect(row(page, 'mobile').locator('.sb-sol-flag')).toHaveCount(0);
 
-  // Two sessions write mobile/ in place (no worktrees).
-  expect(await startSession(page, { name: 'first-writer', task: 'Reply with OK.', solutions: ['mobile'], worktrees: false })).toBe(201);
+  // Two sessions write mobile/ in place (no worktrees). D22: the first has a title, which the card names it by.
+  expect(await startSession(page, { name: 'first-writer', title: 'First writer', task: 'Reply with OK.', solutions: ['mobile'], worktrees: false })).toBe(201);
   expect(await startSession(page, { name: 'second-writer', task: 'Reply with OK.', solutions: ['mobile'], worktrees: false })).toBe(201);
   const statusBefore = await world.git(world.mobile, 'status', '--porcelain');
 
@@ -98,13 +99,13 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   await expect(page.getByTestId('conflict-card')).toHaveCount(0);
   await row(page, 'mobile').click();
   const card = page.getByTestId('conflict-card');
-  await expect(page.getByTestId('conflict-text')).toHaveText(`first-writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
-  await expect(card.getByTestId('conflict-move')).toHaveText(['Move first-writer to worktree', 'Move second-writer to worktree']);
+  await expect(page.getByTestId('conflict-text')).toHaveText(`First writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
+  await expect(card.getByTestId('conflict-move')).toHaveText(['Move First writer to worktree', 'Move second-writer to worktree']);
 
   // Move second-writer: its worktree appears; first-writer is still in the main checkout, so the warning stays.
   await card.getByRole('button', { name: 'Move second-writer to worktree' }).click();
-  await expect(card.getByTestId('conflict-move')).toHaveText(['Move first-writer to worktree'], { timeout: 15_000 });
-  await expect(page.getByTestId('conflict-text')).toHaveText(`first-writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
+  await expect(card.getByTestId('conflict-move')).toHaveText(['Move First writer to worktree'], { timeout: 15_000 });
+  await expect(page.getByTestId('conflict-text')).toHaveText(`First writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
   await expect(page.getByTestId('solution-detail').getByTestId('branch-card').filter({ hasText: 'second-writer' })).toHaveText(
     '⎇ session/second-writer../mobile-wt-second-writersecond-writer',
     { timeout: 15_000 },
@@ -112,8 +113,8 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   expect(await exists(mobileWt('second-writer'))).toBe(true);
   await expect(badge).toHaveText('1 conflict');
 
-  // Move first-writer: every writer has its own worktree → no card, no flag, no badge.
-  await card.getByRole('button', { name: 'Move first-writer to worktree' }).click();
+  // Move first-writer (by its title): every writer has its own worktree → no card, no flag, no badge; its worktree and branch keep the short name.
+  await card.getByRole('button', { name: 'Move First writer to worktree' }).click();
   await expect(page.getByTestId('conflict-card')).toHaveCount(0, { timeout: 15_000 });
   await expect(row(page, 'mobile').locator('.sb-sol-flag')).toHaveCount(0);
   await expect(badge).toHaveText('', { timeout: 15_000 });
