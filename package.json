@@ -15,7 +15,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "service:install": "node tools/service/install.ts",
-    "service:uninstall": "node tools/service/uninstall.ts"
+    "service:uninstall": "node tools/service/uninstall.ts",
+    "frame-helper:safari": "node tools/frame-helper/build-safari.ts"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

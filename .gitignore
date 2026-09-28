@@ -13,3 +13,4 @@ coverage/
 .env
 .worktrees/
 .e2e-dist/
+.frame-helper-safari/
