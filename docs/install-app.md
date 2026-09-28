@@ -16,7 +16,7 @@ The app window shares the Chrome profile: the same `sb_token` cookie, notificati
 
 A Safari Dock app keeps its own website data, apart from Safari: it gets the token cookie from its own page load, like any tab, and its notification permission is its own. Safari extensions such as the frame helper may not run in it; open Switchboard in Safari itself for embedded sites that need the helper.
 
-**Which address.** An installed app belongs to one origin. `127.0.0.1:4870` and `localhost:4870` are two different origins, and another port (`SWITCHBOARD_PORT`) is another app: install from the address you normally open, and install again if you move the port.
+**Which address.** An installed app belongs to one origin. Switchboard sends every page load on `localhost:<port>` to `127.0.0.1:<port>` (developer ruling 2026-09-28), so there is one app and one cookie whichever address you type. Another port (`SWITCHBOARD_PORT`) is another origin: install again if you move the port.
 
 Neither the button nor the hint shows inside the installed app itself (`display-mode: standalone`), nor in a browser that offers no installation (for example Chrome once the app is installed, or Firefox).
 

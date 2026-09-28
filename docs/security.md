@@ -21,6 +21,7 @@ Installed as the first `onRequest` hook, so it also covers 404s and every route 
   only when the request passed the Host/Origin guard **and** has `Sec-Fetch-Site: none` (typed URL, bookmark, reload) or `same-origin`. `cross-site`, `same-site`, a missing header or any other value gets the page without the cookie. So a browser that sends no Fetch Metadata cannot use the UI (every current browser sends it).
 - It is a session cookie with no `Max-Age`, `Expires`, `Domain` or `Secure` (plain http on loopback). Each qualifying page load sets it again.
 - The page response is `Cache-Control: no-store`. Static files (`/assets/*`) never set the cookie. `@fastify/static` serves them from `dist/web` and refuses paths outside it.
+- **One origin (D34 ruling, 2026-09-28):** a page load whose Host is `localhost:<port>` (accepted by the guard) is answered `302` to `http://127.0.0.1:<port><same path and query>` with no cookie, so the installed app and the cookie live on one origin. API and `/hub` requests are never redirected.
 - When `dist/web/index.html` does not exist (`npm run build` not run yet), the same route serves a short placeholder page, with the same cookie rules.
 
 ## Installable-app files (D34)

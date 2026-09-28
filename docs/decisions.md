@@ -185,6 +185,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Settings:** an **Install as app** button appears when the browser offers installation (Chrome's `beforeinstallprompt`). In Safari, a one-line hint says "File → Add to Dock". Neither shows when Switchboard already runs as an installed app (`display-mode: standalone`).
   - **Icons:** made once from an SVG of the sidebar's brand mark, rasterised with the test Chromium by a script in the repo, and committed.
   - **Unchanged:** the installed app is the same origin (`http://127.0.0.1:<port>`), so it keeps its token cookie and needs the service running.
+  - **Developer ruling (2026-09-28):** page loads on `localhost:<port>` redirect to `127.0.0.1:<port>`, so there is one origin, one installed app and one cookie. API and `/hub` requests are never redirected. The Install row sits in Settings → Claude Code after Start at login, and the title bar uses `--bg-sidebar`, both as built.
 
 ## Frame helper: guided setup (added 2026-09-28)
 - **D35 The frame helper is set up with a guided one-click flow** (the developer does **not** want it on the Chrome Web Store; an earlier Web Store plan for D35 was dropped before it was built).

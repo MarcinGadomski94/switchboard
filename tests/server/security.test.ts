@@ -100,9 +100,22 @@ describe('Host guard (DNS rebinding)', () => {
     }
   });
 
-  it.each([HOST, `localhost:${PORT}`, `LOCALHOST:${PORT}`])('accepts Host %j', async (host) => {
-    const response = await request({ url: '/', headers: { host } });
+  it('accepts Host 127.0.0.1:<port>', async () => {
+    const response = await request({ url: '/', headers: { host: HOST } });
     expect(response.statusCode).toBe(200);
+  });
+
+  // D34 ruling: a page load on localhost goes to 127.0.0.1 (one origin: one installed app, one cookie).
+  it.each([`localhost:${PORT}`, `LOCALHOST:${PORT}`])('accepts Host %j and sends page loads to 127.0.0.1', async (host) => {
+    const response = await request({ url: '/sessions/abc?tab=chat', headers: { host } });
+    expect(response.statusCode).toBe(302);
+    expect(response.headers['location']).toBe(`http://127.0.0.1:${PORT}/sessions/abc?tab=chat`);
+    expect(setCookieOf(response)).toBeUndefined();
+  });
+
+  it('never redirects an API request on localhost (the guard answers it as before)', async () => {
+    const response = await request({ url: '/api/sessions', headers: { host: `localhost:${PORT}` } });
+    expect(response.statusCode).toBe(401);
   });
 });
 

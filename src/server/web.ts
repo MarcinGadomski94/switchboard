@@ -79,6 +79,13 @@ export async function registerWeb(app: FastifyInstance, options: WebOptions): Pr
   await app.register(fastifyStatic, { root: webRoot, serve: false });
 
   const sendPage = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    // Developer ruling 2026-09-28 (D34): one origin, so one installed app and one cookie. A page load on
+    // `localhost:<port>` (the guard has already accepted that Host) goes to `127.0.0.1:<port>`; API and
+    // `/hub` requests are never redirected.
+    const onLocalhost = /^localhost:(\d+)$/i.exec(request.headers.host ?? '');
+    if (onLocalhost) {
+      return reply.code(302).header('location', `http://127.0.0.1:${onLocalhost[1]}${request.url}`).header('cache-control', 'no-store').send();
+    }
     const html = (await readIndexHtml(webRoot)) ?? UNBUILT_PAGE;
     if (mayIssueCookie(request)) reply.header('set-cookie', serializeTokenCookie(token));
     return reply.header('cache-control', 'no-store').type('text/html; charset=utf-8').send(html);

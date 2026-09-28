@@ -198,7 +198,7 @@ Switchboard can run in its own app window with a Dock icon (a PWA):
 
 If the service isn't running, the app window shows "Switchboard isn't running" with **Retry**. Nothing else is cached, so after an update just reload the app.
 
-Install it from the address you normally use: `127.0.0.1:4870` and `localhost:4870` count as two different apps. [`docs/install-app.md`](docs/install-app.md)
+Opening `localhost:4870` takes you to `127.0.0.1:4870`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
 ### Coming (being built)
 - A guided one-click frame helper setup.
