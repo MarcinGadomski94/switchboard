@@ -14,15 +14,15 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | Route (contract) | Module | Item |
 |---|---|---|
 | `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 refines the shapes additively |
-| `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); M2.2 adds worktrees, M5.2 the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
+| `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2 adds the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); M4.1 adds the Attach warning + transcript import |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
-| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 |
+| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |
 | `GET /api/inbox` | `api/inbox.ts` | M3.2 (items from M3.1 and M3.3) |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | M3.1 |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | M3.1 (permission items), M3.3 (system items) |
 | `GET /api/solutions` | `api/solutions.ts` | M6.2 (scanner M6.1) |
-| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | M6.3 |
+| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
 | `GET /api/history` | `api/history.ts` | M7.4 |
@@ -33,12 +33,18 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 
 Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` behind the usual Host/Origin guard and cookie.
 
+## Server: services on `ApiContext`
+| Service | What | Hooks for later lanes |
+|---|---|---|
+| `supervisor` (`SessionSupervisor`, M2.1) | claude processes | `on('sessionUpdated' / 'event')` → M2.3 hub; `ControlRequestHandler` + `respond()` → M3.1 |
+| `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item; `remove(id)` → M3.3 "Remove worktree" action; `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
+
 ## Server: providers (`src/server/providers.ts`)
 Computed data sits behind interfaces so the demo can swap implementations (D13). Real implementations are created in `src/server/main.ts` and passed to `buildApp({ providers })`; routes read them from `ApiContext.providers`.
 
 | Provider | Real implementation | Demo implementation |
 |---|---|---|
-| `DiffProvider` (git diff per session, gap #10) | M4.5 | `src/server/demo/providers.ts` |
+| `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
 | `SolutionsProvider` (workspace scan) | M6.1 / M6.2 | same |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
 | `HistoryProvider` (transcripts) | M7.4 | same |

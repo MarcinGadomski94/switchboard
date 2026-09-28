@@ -1,7 +1,7 @@
 ## Current
-item: M2.2 (next)
+item: M2.3 (next)
 attempt: 0/5
-last oracle: M2.1 PASS (attempt 3/5; attempt 1 red: the attach test read the fake's argv log before the fake had written it → wait for the log line; attempt 2 oracle green ×3; attempt 3 full suite red only on M1.4 tests that pinned `/api/sessions` at 501 → now assert the real 200) · `npm run typecheck` green · `npm test` 292/292 ×3 (new: tests/server/supervisor/supervisor.test.ts 18 fake-claude integration tests — exact argv/env/cwd + first stdin line, extra args, missing CLI → fail, multiturn/tool-use/subagent-forward typed events + agents + usage + transcript sync uuid, perm-auto mismatch + automatic denial, [fake:write] artifacts, ask-2q need → respond → done, perm-allow request event, ask-interrupt cancel → paused exit 1, pause idle (handoff-start, exit 0) and mid-tool (handoff-midturn, exit 1) → paused, resume `--resume` same id + "Continue.", crash → fail, message to paused resumes, SIGINT→SIGTERM escalation, unhandled control subtype → error reply, shutdown keeps status; tests/server/api/sessions.test.ts 5 REST tests over the real supervisor; tests/core/{stream-json,derive}.test.ts 47 unit tests over every M0 fixture + the derivations) · `npx playwright test` 6/6 · no leftover fake processes · visual: n/a (no UI in M2.1)
+last oracle: M2.2 PASS (attempt 3/5; attempt 1 red: isolate/REST tests read the fake's argv log before the fake wrote it → wait for the log lines; attempt 2 worktree oracle green; attempt 3 red only on my own miscount in the new fake-gh test (6 calls, not 7) → fixed) · `npm run typecheck` green · `npm test` 329/329 · worktree oracle ×3 green (tests/server/worktrees/{manager,isolate}.test.ts 23 tests on temp git repos with an isolated git config, a logging git wrapper and tools/fake-gh: gap #1 create per solution + all-or-nothing + rollback, gap #16, refusals, gap #3 remove/uncommitted/unpushed/squash-merged PR head/branch kept/no --force, gh PR states + removable + worktreeRemovable once + PR artifact meta + poller + SWITCHBOARD_GH_BIN, gap #10 diff merge-base/uncommitted/untracked/binary/in place, gap #2 isolate with fake-claude pause → resume + move message + developer tree untouched, REST POST /api/sessions worktrees + isolate route; tests/core/worktrees.test.ts 12; tests/tools/fake-gh.test.ts 2) · `npx playwright test` 6/6 · no leftover processes · visual: n/a (no UI in M2.2)
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -14,6 +14,7 @@ last oracle: M2.1 PASS (attempt 3/5; attempt 1 red: the attach test read the fak
 - M1.4 ✓ 2026-09-28 (commit: see git log "M1.4: App shell, lane scaffolding, demo seed, visual harness") · attempts 3/5 · plan: fonts + prototype runtime deps; tokens.css/global.css, router, Shell + Sidebar fed only by the typed API client (501 → empty, "—"); placeholders per view/tab/modal + ToastHost, api/client.ts + useApi + useHub (SSE), src/server/api/* 501 modules from routes.ts, providers.ts; demo data files + seed + demo providers (SWITCHBOARD_DEMO=1, throwaway data dir only); visual harness (offline prototype, boxes ±2 px, copy, tokens, canvas pixel diff, side-by-side); docs/lanes.md, docs/demo.md, docs/visual/README.md
 
 - M2.1 ✓ 2026-09-28 (commit: see git log "M2.1: SessionSupervisor + stream-json events") · attempts 3/5 · plan: src/core stream-json parser + stdin builders + event payloads + derive/{event-kind,agents,artifacts,status}; src/server/supervisor/{argv,process,recorder,supervisor}.ts (baseline argv + SWITCHBOARD_CLAUDE_EXTRA_ARGS, env scrub, D7 stop with SIGINT→SIGTERM→SIGKILL, resume/detach/attach, ControlRequestHandler + respond() for M3.1, hub notifications for M2.3); sessions/{wire,validate}.ts + REST in api/sessions.ts (diff stays 501); docs/derivations.md + docs/supervisor.md + config/lanes rows
+- M2.2 ✓ 2026-09-28 (commit: see git log "M2.2: Worktree manager") · attempts 3/5 · plan: src/core/worktrees.ts (gap #1 naming, router-layout solution candidates, patch/untracked parsing, gh JSON, gap #2 message); src/server/exec.ts (async spawn, shell:false, timeouts); src/server/worktrees/{manager,wire}.ts (create all-or-nothing + rollback, assign, isolate via supervisor pause + sendMessage, inspect/remove gap #3, checkPullRequests + removable + worktreeRemovable, poller, DiffProvider gap #10); supervisor.start `beforeSpawn`; POST /api/sessions worktrees + POST /api/solutions/{repo}/isolate; ApiContext.worktrees, buildApp/main.ts wiring (diff provider, polling outside demo); tools/fake-gh; tests/helpers/{git,git-spy}.ts; docs/worktrees.md + lanes/configuration/derivations/supervisor rows
 ## Blocked
 - (none)
 ## Breaker
@@ -97,3 +98,14 @@ consecutive_blocked: 0
 - M2.1 · SWITCHBOARD_CLAUDE_EXTRA_ARGS JSON array
 - M2.1 · detail = newest 200 events; since normalized, invalid → 422
 - M2.1 · buildApp owns a supervisor when none is passed
+- M2.2 · solution → repo by router layout (`.git` dir, ambiguous refused) until M6.1
+- M2.2 · gap #1: HEAD commit, base_ref = HEAD's branch, existing branch/folder refused, all-or-nothing + rollback (`branch -d` of the fresh branch)
+- M2.2 · POST /api/sessions creates worktrees first, links via `beforeSpawn`; 422 / 409 refusals
+- M2.2 · isolate route served now (201/200 idempotent, detached 409), pause + resume with the move message, no file moving
+- M2.2 · gap #3: uncommitted incl. untracked; unpushed vs remotes/upstream/base/PR head; hand-deleted folder unregistered
+- M2.2 · removable = MERGED + removal allowed now; event on turn-on only; CLOSED never; PR artifact meta
+- M2.2 · PR polling 15 s then 5 min, normal runs only
+- M2.2 · gap #10 diff details (untracked, binary/1 MiB, no renames, hunk headers dropped, base gone → HEAD)
+- M2.2 · git from PATH, env hardening, timeouts
+- M2.2 · fake gh surface; isolated git config in tests
+- M2.2 · "PR merged" Inbox item → M3.3, hub forward → M2.3

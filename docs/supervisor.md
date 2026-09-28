@@ -44,7 +44,7 @@
 | Route | Behavior |
 |---|---|
 | `GET /api/sessions` | `Session[]` newest first, with agents and the open question count. |
-| `POST /api/sessions` | Validates NewSession (every failure `422 {error:"invalid", errors:[{field,message}]}`, a duplicate name included), stores it, creates the main agent, starts the process; `201` + Session. `409` without a (usable) workspace root. |
+| `POST /api/sessions` | Validates NewSession (every failure `422 {error:"invalid", errors:[{field,message}]}`, a duplicate name included), creates the worktrees when `worktrees` is true (M2.2, `docs/worktrees.md`; linked through `start(…, { beforeSpawn })`), stores the session, creates the main agent, starts the process; `201` + Session. `409` without a (usable) workspace root. |
 | `GET /api/sessions/{id}` | SessionDetail: the Session + `task`, the newest 200 events, `files` from the diff provider (M4.5; empty until then), artifacts. |
 | `POST /api/sessions/{id}/messages` | `{ text }` (non-empty) → `202`. |
 | `POST /api/sessions/{id}/pause`, `/resume` | The Session after the stop / after the new process got its message. |

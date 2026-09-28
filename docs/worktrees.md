@@ -1,0 +1,58 @@
+# Worktree manager (M2.2)
+
+`src/server/worktrees/manager.ts` (`WorktreeManager`) owns every git worktree Switchboard creates: creation per session and solution, the registry in the `worktrees` table, pull request state through `gh`, the removable flag, removal, the "Move … to worktree" operation and the session diff. The pure rules (naming, diff parsing, gh output, the move message) are in `src/core/worktrees.ts`. Gaps #1, #2, #3 and #10 in `docs/decisions.md` are the spec.
+
+**What it never does.** No `git stash`, `reset`, `checkout`, `switch`, `restore`, `clean`, `commit`, `push`, `pull`, `merge`, `rebase`, `branch -D`, `--force` or `--hard`, in any repository. The developer's main checkout is only read (`rev-parse`, `symbolic-ref`, `show-ref`) and gets a sibling folder from `git worktree add`, which does not touch its working tree or index. Every git and gh call is `spawn(cmd, args, { shell: false })` (`src/server/exec.ts`) with `GIT_TERMINAL_PROMPT=0` and `GIT_OPTIONAL_LOCKS=0` (so `git status` never takes the index lock of a tree someone is working in), and `GH_PROMPT_DISABLED=1`. The tests run git through a logging wrapper and assert that none of the calls above ever happen.
+
+## Which folder a solution is
+A solution name from NewSession is resolved with the router layout (`resolveRepo`): a relative path (`other/switchboard`) is taken as is; a bare name is `<root>/<name>` (e.g. `mobile`) or `<root>/<group>/<name>` for `microfrontends`, `nugets`, `microservices`, `functions`, `other`. The folder must be a main checkout: `.git` is a directory. A `.git` file (a worktree or submodule, gap #16) is not a solution, so `web-front-wt-x` never resolves. `deprecated/…` and `infrastructure` are refused as read-only. No match is `solution-not-found`; two matches (e.g. `mobile` and `nugets/mobile`) is `solution-ambiguous`. When the workspace scanner lands (M6.1) it can take over this resolution; the names it uses must stay the same strings the session lists.
+
+## Create (gap #1)
+`createForSession(name, solutions, sessionId?)`, one worktree per solution:
+- branch `session/{name}` from the repo's **current HEAD commit**, folder `../{repo}-wt-{name}` (a sibling of the repo folder: `microfrontends/web-front-wt-free-talk`, `mobile-wt-free-talk`): `git worktree add -b session/{name} <path> <HEAD sha>`, run in the repo;
+- `base_ref` = the branch HEAD was on (`main`, `dev`, …), or the commit itself when HEAD was detached. The diff and the unpushed check use it;
+- the row stores `repo` = the solution name as given, `repo_path`, `branch`, `base_ref`, the canonical `path`, `session_id`.
+
+It is all or nothing. Every precondition is checked for every solution before anything is created: the solution resolves, the folder does not exist and is not registered, the repo has a commit, and the branch does not exist yet (an existing `session/{name}` is never reused, since it may hold someone's work). A git failure part-way (e.g. a stale ref lock) undoes what the call made: `git worktree remove` (no `--force`) and `git branch -d` of the branch it had just created (safe delete; it points at the HEAD it came from). The rows are marked removed.
+
+**New sessions.** `POST /api/sessions` with `worktrees: true` creates the worktrees **before** the process starts, then `SessionSupervisor.start(…, { beforeSpawn })` links them to the new session id between storing the session and spawning `claude`, so the first tool result can already be attributed to a worktree branch (`docs/derivations.md` → *Artifacts*). The process still runs in the workspace root (ARCHITECTURE); the worktree paths reach the agent in its first message (M5.2). A refusal answers before any session exists: `422 {error:"invalid", errors:[{field:"solutions", …}]}` for a solution that is not a repo or is read-only, `409 {error:<code>, message}` otherwise (`branch-exists`, `path-exists`, `no-commits`, `git-failed`, `workspace-not-configured`, `workspace-missing`). If the session cannot start after the worktrees were made, they are discarded the same way.
+
+## Isolate (gap #2)
+`isolate(repo, sessionId)`, served as `POST /api/solutions/{repo}/isolate` `{ sessionId }` → `Worktree` (201 when created). It:
+1. refuses an unknown session (404 `session-not-found`) and a detached one (409 `detached`, the terminal owns it) before anything is created;
+2. returns the session's existing live worktree for that repo unchanged (200, nothing else happens), so a double click cannot pause the session twice;
+3. creates the worktree exactly as above (`session/{session name}` from the repo's current HEAD), linked to the session;
+4. pauses the session when it has a live process (the D7 stop), then sends the move message through `SessionSupervisor.sendMessage`, which resumes it with `--resume <id>` and that message instead of "Continue.". A session with no live process (paused, failed) is resumed the same way.
+
+The move message (`moveToWorktreeMessage`) names the worktree path, the branch and its base, tells the agent to make every further change there, and says that what it already changed in the main checkout was left in place: it should re-apply what it still needs inside the worktree (e.g. by copying the files it edited) and never stash, reset or check out anything in the developer's tree. Switchboard itself moves no files. If the message cannot be sent (the service is closing), the worktree stays registered and the route answers the supervisor's error.
+
+## Remove (gap #3)
+`remove(worktreeId)` (the Inbox "Remove worktree" action, M3.3):
+- **uncommitted** = any line of `git status --porcelain --untracked-files=all` in the worktree (modified, staged or untracked) → refused, `409 uncommitted`;
+- **unpushed** = commits reachable from the worktree's HEAD or its branch that are on no remote-tracking ref, not on its upstream, not on the base branch (`base_ref`) and not on the PR's head commit: `git rev-list --count HEAD refs/heads/<branch> --not --remotes <base> <upstream> <PR head>` > 0 → refused, `409 unpushed`. The PR head (`headRefOid` from `gh pr view <number>`) is only asked for when the rest says "unpushed" and the row has a PR number: after a squash merge GitHub may delete the remote branch and a `fetch --prune` drops `origin/<branch>`, but the commits are on GitHub as the PR head. Commits that were already on the base branch when the worktree was made are the developer's, not the session's, so they never count;
+- otherwise `git worktree remove <path>` (never `--force`; git itself also refuses a dirty or locked worktree) in the repo, and the row gets `removed_at`. **The branch is kept.** A worktree folder that was deleted by hand just leaves the registry (no git call).
+
+`inspect(worktreeId)` returns the same numbers without removing anything.
+
+## Pull requests and "removable"
+`checkPullRequests()` runs `gh pr view <branch> --json number,state,url,headRefOid` (`SWITCHBOARD_GH_BIN`) in each live worktree (in the repo when the folder is gone):
+- a PR: `pr_number`, `pr_url`, `pr_state` **verbatim** (`OPEN`, `CLOSED`, `MERGED`) and `pr_checked_at` are stored; PR artifacts with the same URL get the lower-cased state as their meta (`open`, `merged`: the prototype's Artifacts column);
+- gh's `no pull requests found`: only `pr_checked_at` changes (earlier PR data is never erased);
+- any other gh failure (not signed in, offline, unexpected output): the row is left as it was and the result carries the error.
+
+`removable` = the PR is `MERGED` **and** removal would be allowed right now (no uncommitted changes, nothing unpushed, the PR head counted as pushed), or the folder is already gone. It is re-evaluated on every check, so a leftover file keeps it off until it is gone. When it turns on, the manager emits `worktreeRemovable` with the contract's `Worktree` payload, once per transition: M2.3 forwards it on `/hub`, M3.3 turns it into the "PR merged" Inbox item whose "Remove worktree" action calls `remove`. `CLOSED` is never removable (whether abandoned work can go is the developer's call).
+
+The real service (`src/server/main.ts`, not in demo mode) polls: first check 15 s after start, then every 5 minutes (`startPolling`), one run at a time (a manual `checkPullRequests()` during a run shares it), stopped before the database closes. Only registered worktrees are checked, so an install without worktrees never runs gh.
+
+## Diff (gap #10)
+`WorktreeManager` is the real `DiffProvider` (`providers.diff`, wired in `main.ts`; `SessionDetail.files` uses it, M4.5 serves `GET /api/sessions/{id}/diff`). For a session:
+- each live worktree: against the **merge-base of `base_ref` and the worktree's HEAD**, so commits the base branch gets later are not in it, while the session's commits, staged and unstaged changes are. If `base_ref` no longer resolves, only the uncommitted changes (against HEAD) are shown;
+- each solution in scope without a worktree (in place): against **HEAD** of its main checkout (uncommitted changes only; in place they may include the developer's own edits, which is what gap #10 asks for). A solution that does not resolve to a repo is skipped;
+- **untracked** files (`git ls-files --others --exclude-standard`) are listed as new files with every line added; binary content (a NUL byte in the first 8000 bytes, git's rule) and files over 1 MiB get no lines; a symlink shows its target.
+
+`git diff` runs with `--no-color --no-ext-diff --no-textconv --no-renames --src-prefix=a/ --dst-prefix=b/` and `core.quotePath=false`, so user config (external diff tools, `diff.noprefix`, colors) cannot change the output. A rename shows as a deletion plus an addition. `FileDiff.lines` keeps only hunk body lines (`+`, `-`, space); the `@@` headers and `\ No newline at end of file` markers are dropped (the provisional wire type); a trailing CR is cut. `file` narrows to one solution-relative path (a literal pathspec). Files are sorted by path per solution; `branch` = the worktree branch, or the current branch of an in-place checkout (`null` when detached).
+
+## Fake gh (tests)
+`tools/fake-gh/main.ts`, started through `fakeGhCommand()` / `fakeGhBinEnv()` (`tools/fake-gh/command.ts`) like fake-claude. It answers `--version`, `auth status` (exit 1 with gh's signed-out text when `FAKE_GH_SIGNED_OUT=1`, for M5.3) and `pr view [<branch>|<number>] --json <fields>` from the JSON file in `FAKE_GH_PRS` (`{"<branch or number>": {number, state, url, headRefOid}}`, re-read per call; no entry → `no pull requests found for branch "<b>"`, exit 1). `FAKE_GH_FAIL=<text>` fails every `pr` call with that text; `FAKE_GH_LOG=<file>` logs `{argv, cwd}` per call. Anything else exits 1.
+
+`tests/helpers/git.ts` builds a temp workspace with real repos (`microfrontends/web-front` with a bare `origin`, `mobile` without a remote) and an isolated git environment (`GIT_CONFIG_GLOBAL` = an empty temp file, `GIT_CONFIG_NOSYSTEM=1`, a fixed author), so the developer's git config and hooks never apply. `tests/helpers/git-spy.ts` wraps git to log every call.

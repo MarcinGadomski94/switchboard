@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, createSupervisor } from './app.ts';
+import { buildApp, createSupervisor, createWorktreeManager } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { openStore, storeFile } from './db/store.ts';
@@ -19,13 +19,17 @@ async function main(): Promise<void> {
   const store = await openStore(storeFile(config.dataDir));
   let app: FastifyInstance;
   try {
-    // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
-    let providers: Providers = {};
-    if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     const supervisor = createSupervisor(config, store);
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, logger: true });
+    const worktrees = createWorktreeManager(config, store, supervisor);
+    // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
+    let providers: Providers = { diff: worktrees };
+    if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
+    // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
+    else worktrees.startPolling();
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, worktrees, logger: true });
     app.addHook('onClose', async () => {
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
+      await worktrees.stopPolling();
       await supervisor.shutdown();
       await store.close();
     });

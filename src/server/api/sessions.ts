@@ -4,7 +4,9 @@ import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { validateNewSession } from '../sessions/validate.ts';
 import { SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
+import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
+import { sendWorktreeError } from './worktree-errors.ts';
 
 /** Session routes (contract → REST, `/api/sessions*`) not implemented yet. */
 export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [{ method: 'GET', url: '/api/sessions/:id/diff', item: 'M4.5' }];
@@ -41,7 +43,7 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
  * the UI side, M4.5 the diff). Every route sits behind the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { store, supervisor, providers } = context;
+  const { store, supervisor, providers, worktrees } = context;
 
   app.get('/api/sessions', async (): Promise<Session[]> => {
     const records = await store.sessions.list();
@@ -60,10 +62,23 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       ...(readOnly ? { readOnly } : {}),
     });
     if (!result.ok) return reply.code(422).send({ error: 'invalid', errors: result.errors });
+    const input = result.value;
+    // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
+    let created: WorktreeRecord[] = [];
+    if (input.worktrees) {
+      try {
+        created = await worktrees.createForSession(input.name, input.solutions);
+      } catch (error) {
+        return sendWorktreeError(reply, error, 'solutions');
+      }
+    }
     try {
-      const record = await supervisor.start(result.value);
+      const record = await supervisor.start(input, input.task, {
+        beforeSpawn: (session) => worktrees.assign(created, session.id),
+      });
       return reply.code(201).send(await toSession(store, record));
     } catch (error) {
+      if (created.length > 0 && (await store.sessions.getByName(input.name)) === null) await worktrees.discard(created);
       return sendError(reply, error);
     }
   });

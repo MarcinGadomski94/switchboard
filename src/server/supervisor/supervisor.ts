@@ -53,6 +53,12 @@ export interface ControlRequestHandler {
   orphaned?(sessionId: string, requestIds: readonly string[]): void | Promise<void>;
 }
 
+/** Options of {@link SessionSupervisor.start}. */
+export interface StartOptions {
+  /** Runs after the session is stored, before its process is spawned (M2.2: link its worktrees). */
+  readonly beforeSpawn?: (session: SessionRecord) => Promise<void>;
+}
+
 /** Notifications for the `/hub` (M2.3), same names and payloads as the contract. */
 export interface SupervisorEvents {
   readonly sessionUpdated: Session;
@@ -178,9 +184,11 @@ export class SessionSupervisor {
    * Stores a new session and starts its process in the workspace root with a new
    * `--session-id`. The first stdin message is `firstMessage` (the task text until
    * M5.2 adds the confirmed session-start answers); an empty one leaves the process idle.
-   * The input must already be validated (sessions/validate.ts).
+   * The input must already be validated (sessions/validate.ts). `options.beforeSpawn`
+   * runs once the session is stored and before its process starts (M2.2 links the
+   * session's worktrees there).
    */
-  async start(input: NewSession, firstMessage: string = input.task): Promise<SessionRecord> {
+  async start(input: NewSession, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
     this.#assertOpen();
     const cwd = await this.#workspaceCwd();
     const session = await this.#store.sessions.create({
@@ -208,6 +216,7 @@ export class SessionSupervisor {
       name: mainAgentName(session.mode, session.solutions),
       status: 'idle',
     });
+    if (options.beforeSpawn) await options.beforeSpawn(session);
     const live = await this.#spawn(session, { kind: 'new', claudeSessionId: session.claudeSessionId }, 'started');
     if (firstMessage.trim() !== '') await this.#send(live, firstMessage, 'task');
     else await this.#enqueue(live, () => this.#refreshStatus(live));

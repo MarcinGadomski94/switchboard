@@ -12,6 +12,7 @@ import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
 import type { Providers } from './providers.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
+import type { WorktreeManager } from './worktrees/manager.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -22,6 +23,8 @@ export interface ApiContext {
   readonly providers: Providers;
   /** The claude process supervisor (M2.1). */
   readonly supervisor: SessionSupervisor;
+  /** Git worktrees, their PR state and the session diff (M2.2). */
+  readonly worktrees: WorktreeManager;
 }
 
 /**

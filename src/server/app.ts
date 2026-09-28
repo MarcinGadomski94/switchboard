@@ -6,6 +6,7 @@ import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
 import { SessionSupervisor } from './supervisor/supervisor.ts';
 import { registerWeb } from './web.ts';
+import { WorktreeManager } from './worktrees/manager.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -24,6 +25,11 @@ export interface AppOptions {
    * `config` and shuts it down when it closes.
    */
   readonly supervisor?: SessionSupervisor;
+  /**
+   * The worktree manager (M2.2). Without one the app makes its own from `config`
+   * (git from PATH, `SWITCHBOARD_GH_BIN`) around the supervisor; it does not poll.
+   */
+  readonly worktrees?: WorktreeManager;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -44,7 +50,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     supervisor = own;
   }
-  await registerApiRoutes(app, { config: options.config, store: options.store, providers: options.providers ?? {}, supervisor });
+  const worktrees = options.worktrees ?? createWorktreeManager(options.config, options.store, supervisor);
+  await registerApiRoutes(app, { config: options.config, store: options.store, providers: options.providers ?? {}, supervisor, worktrees });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
@@ -56,5 +63,15 @@ export function createSupervisor(config: ServerConfig, store: Store): SessionSup
     claudeCommand: config.claudeCommand,
     claudeExtraArgs: config.claudeExtraArgs,
     workspaceRoot: config.workspaceRoot,
+  });
+}
+
+/** A worktree manager for the configured workspace root and gh command, isolating through `supervisor`. */
+export function createWorktreeManager(config: ServerConfig, store: Store, supervisor: SessionSupervisor): WorktreeManager {
+  return new WorktreeManager({
+    store,
+    workspaceRoot: config.workspaceRoot,
+    ghCommand: config.ghCommand,
+    sessions: supervisor,
   });
 }
