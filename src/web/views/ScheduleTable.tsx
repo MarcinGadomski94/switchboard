@@ -4,6 +4,8 @@ import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { FolderTag } from '../folders/FolderTag.tsx';
+import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { actionErrorText, scheduleRows, toneColor } from './schedule-table.ts';
 import './schedule-table.css';
@@ -40,9 +42,14 @@ export function ScheduleHeader() {
   );
 }
 
-/** The schedule table (see {@link ScheduleHeader}). */
+/**
+ * The schedule table (see {@link ScheduleHeader}). D14: a schedule that starts its
+ * runs in a folder other than the default one carries its tag after the name; Edit
+ * reopens the form with the template's folder.
+ */
 export function ScheduleTable() {
   const schedules = useApi(api.schedules);
+  const tagOf = useFolderTags();
   const { modal, open } = useModals();
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<string | null>(null);
@@ -111,6 +118,7 @@ export function ScheduleTable() {
           >
             <span className="sb-sch-name" data-testid="schedule-name">
               {row.name}
+              <FolderTag name={tagOf({ folder: byId.get(row.id)?.folder ?? null })} />
             </span>
             <span className="sb-sch-desc" data-testid="schedule-desc">
               {row.description}

@@ -53,8 +53,14 @@ export function headerMeta(groups: readonly SolutionGroup[]): string {
   const solutions = allSolutions(groups);
   const first = solutions[0];
   if (!first) return '';
+  return `${workspaceRootOf(first)} · ${headerCounts(groups)}`;
+}
+
+/** The counts of the header meta (`18 solutions · 7 active`), shown after the folder switcher (D14). */
+export function headerCounts(groups: readonly SolutionGroup[]): string {
+  const solutions = allSolutions(groups);
   const active = solutions.filter((s) => s.status !== 'idle').length;
-  return `${workspaceRootOf(first)} · ${solutions.length} solution${solutions.length === 1 ? '' : 's'} · ${active} active`;
+  return `${solutions.length} solution${solutions.length === 1 ? '' : 's'} · ${active} active`;
 }
 
 /** A branch chip's worktree label: the worktree folder name, empty when the session works in place. */

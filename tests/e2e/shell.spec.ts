@@ -74,6 +74,10 @@ test('the shell renders from the real API and shows only what the API returns', 
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toMatchObject({ cliVersion: '2.1.283', signedIn: true, ghSignedIn: true, processes: 0 });
       expect(call.body, call.url).not.toHaveProperty('usagePct');
+    } else if (call.url === '/api/folders') {
+      // D14: the saved folders (the sidebar's folder tags); this server has none.
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toEqual([]);
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);

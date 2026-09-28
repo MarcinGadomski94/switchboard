@@ -1,4 +1,5 @@
 import type { AttachWarningReason, Session } from '../../../core/api.ts';
+import { folderName, samePath } from '../../folders/folders.ts';
 
 /** A session tab (the router's `SessionTab`, restated so this module has no JSX import). */
 export type HeaderTab = 'chat' | 'timeline' | 'diff' | 'artifacts';
@@ -13,9 +14,29 @@ export type HeaderTab = 'chat' | 'timeline' | 'diff' | 'artifacts';
 export const CONTINUE_IN_TERMINAL = '⇄ Continue in terminal';
 export const ATTACH_HERE = '⇄ Attach here';
 
-/** The root path line: `<cwd> · workspace root` (prototype `D:\acme · workspace root`; sessions always start there). */
-export function rootLine(cwd: string | null): string {
-  return cwd ? `${cwd} · workspace root` : 'workspace root';
+/** The session's folder facts the root line reads (D14). */
+export type SessionPlace = Pick<Session, 'cwd' | 'folderPath' | 'folderKind'>;
+
+/**
+ * What the session's working folder is (D14): `workspace root` for a workspace
+ * folder (the prototype's words: the router applies there), `git repo` for a repo
+ * session in the repo, `worktree of <repo>` for one in its worktree.
+ */
+export function placeLabel(session: SessionPlace): string {
+  if (session.folderKind !== 'repo') return 'workspace root';
+  const repo = session.folderPath ? folderName(session.folderPath) : null;
+  if (session.cwd && session.folderPath && !samePath(session.cwd, session.folderPath)) return repo ? `worktree of ${repo}` : 'worktree';
+  return 'git repo';
+}
+
+/**
+ * The root path line: `<cwd> · workspace root` (prototype `D:\acme ·
+ * workspace root`), and for a repo folder (D14) `<cwd> · git repo` or `<cwd> ·
+ * worktree of <repo>`.
+ */
+export function rootLine(session: SessionPlace): string {
+  const label = placeLabel(session);
+  return session.cwd ? `${session.cwd} · ${label}` : label;
 }
 
 /** What the Pause / Resume button does for the session. */

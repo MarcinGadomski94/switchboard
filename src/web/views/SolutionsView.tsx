@@ -3,6 +3,8 @@ import type { Solution, SolutionGroup } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
+import { FolderSwitcher, hasSwitcher } from '../folders/FolderSwitcher.tsx';
+import { useFolderSwitch } from '../folders/useFolders.ts';
 import { Link } from '../router.tsx';
 import { statusColor } from '../shell/format.ts';
 import { SolutionConflictCard } from './SolutionConflictCard.tsx';
@@ -15,6 +17,7 @@ import {
   codebaseMemoryToolId,
   filterGroups,
   freshnessLine,
+  headerCounts,
   headerMeta,
   ledgerRows,
   worktreeLabel,
@@ -28,7 +31,8 @@ const RELOAD_DEBOUNCE_MS = 1_000;
 /** The message of a failed `GET /api/solutions` (409 `no-folder` while no folder is saved, D14). */
 function errorText(error: ApiError): string {
   const body = error.body as { error?: unknown; message?: unknown } | null;
-  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository in Settings.';
+  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository in Settings → Folders.';
+  if (body?.error === 'folder-missing') return 'This folder is not there any more. Pick another one above, or remove it in Settings → Folders.';
   if (typeof body?.message === 'string') return body.message;
   return error.unreachable ? 'Switchboard is not reachable.' : `The solutions could not be loaded (HTTP ${error.status}).`;
 }
@@ -147,10 +151,14 @@ function SolutionDetail({ solution, toolId, onMoved }: { readonly solution: Solu
  * follow-ups, codebase-memory freshness) with the conflict warning card and its
  * "Move … to worktree" actions (M6.3, `SolutionConflictCard`). Everything comes
  * from `GET /api/solutions` (`LiveSolutions` on the server); session updates,
- * removable worktrees and a finished move reload it.
+ * removable worktrees and a finished move reload it. D14: one folder at a time,
+ * the folder switcher in the header (`?folder=` keeps it on reload); a repo
+ * folder is one solution.
  */
 export function SolutionsView() {
-  const solutions = useApi(api.solutions);
+  const folderSwitch = useFolderSwitch();
+  const folderParam = folderSwitch.param;
+  const solutions = useApi(() => api.solutions(folderParam).then((groups) => ({ folder: folderParam, groups })), [folderParam]);
   const tools = useApi(api.tools);
   const [filter, setFilter] = useState<SolutionFilter>('All');
   // The ⌘K palette's solution results pick the selected row (M8.3).
@@ -174,20 +182,22 @@ export function SolutionsView() {
   useHubEvent('sessionUpdated', reloadSoon);
   useHubEvent('worktreeRemovable', () => solutions.reload());
 
-  const groups: readonly SolutionGroup[] = solutions.data ?? [];
+  // A switch never shows the last folder's rows while the new ones load.
+  const current = solutions.data && solutions.data.folder === folderParam ? solutions.data.groups : null;
+  const groups: readonly SolutionGroup[] = current ?? [];
   const visible = useMemo(() => filterGroups(groups, filter), [groups, filter]);
   const every = useMemo(() => allSolutions(groups), [groups]);
   const selected = every.find((s) => s.path === selectedPath) ?? every[0] ?? null;
   const toolId = codebaseMemoryToolId(tools.data);
 
   let body: ReactNode = null;
-  if (solutions.error && !solutions.data) {
+  if (solutions.error && !current && !solutions.loading) {
     body = (
       <div className="sb-sol-empty" data-testid="solutions-error">
         {errorText(solutions.error)}
       </div>
     );
-  } else if (solutions.data && every.length === 0) {
+  } else if (current && every.length === 0) {
     body = (
       <div className="sb-sol-empty" data-testid="solutions-empty">
         No solutions found in the workspace.
@@ -217,7 +227,14 @@ export function SolutionsView() {
           <div className="sb-sol-titlebar">
             <div className="sb-sol-title">Solutions</div>
             <div className="sb-sol-meta" data-testid="solutions-meta">
-              {headerMeta(groups)}
+              {hasSwitcher(folderSwitch) ? (
+                <>
+                  <FolderSwitcher state={folderSwitch} testId="solutions-folder" />
+                  {groups.length > 0 ? ` · ${headerCounts(groups)}` : ''}
+                </>
+              ) : (
+                headerMeta(groups)
+              )}
             </div>
           </div>
           <div className="sb-sol-pills" role="group" aria-label="Filter solutions">

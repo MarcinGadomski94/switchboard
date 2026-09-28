@@ -5,7 +5,8 @@ import type {
   ResultPayload,
   ToolPayload,
 } from '../../../core/event-payload.ts';
-import type { SessionStatus } from '../../../core/model.ts';
+import type { FolderKind, SessionStatus } from '../../../core/model.ts';
+import { folderName } from '../../folders/folders.ts';
 
 /**
  * The session view's right panel (M4.3, SPEC → Session → Right panel; prototype
@@ -18,6 +19,16 @@ import type { SessionStatus } from '../../../core/model.ts';
 
 /** Path line of an agent that has not written into a solution yet: it runs at the session's cwd, the workspace root. */
 export const WORKSPACE_ROOT = 'workspace root';
+
+/**
+ * The path line of an agent without a solution path (D14): `workspace root` for a
+ * workspace session; a repo session's agents run in its one solution, so its
+ * name (the repo folder's name).
+ */
+export function rootPath(session: { readonly folderKind?: FolderKind | null; readonly folderPath?: string | null }): string {
+  if (session.folderKind === 'repo' && session.folderPath) return folderName(session.folderPath);
+  return WORKSPACE_ROOT;
+}
 
 /** Path values that are not a solution (the prototype's `agentSummary` leaves them out). */
 const NOT_A_SOLUTION: ReadonlySet<string> = new Set([WORKSPACE_ROOT, 'read-only']);
@@ -60,9 +71,14 @@ function firstLine(text: string): string {
  *   status word; while the session is paused, agents the pause cut off (`idle`)
  *   read `paused`;
  * - path: the solution folder the agent wrote into (`docs/derivations.md` →
- *   *Agents*), else `workspace root` (every agent runs at the session's cwd).
+ *   *Agents*), else `workspace root` (every agent runs at the session's cwd; D14:
+ *   a repo session's repo name, {@link rootPath}).
  */
-export function agentCards(agents: readonly Agent[], session: { readonly status: SessionStatus; readonly task: string }): AgentCard[] {
+export function agentCards(
+  agents: readonly Agent[],
+  session: { readonly status: SessionStatus; readonly task: string; readonly folderKind?: FolderKind | null; readonly folderPath?: string | null },
+): AgentCard[] {
+  const root = rootPath(session);
   return agents.map((agent) => {
     const cutByPause = session.status === 'paused' && agent.status === 'idle';
     const status: SessionStatus = cutByPause ? 'paused' : agent.status;
@@ -74,7 +90,7 @@ export function agentCards(agents: readonly Agent[], session: { readonly status:
       description,
       statusText,
       status,
-      path: agent.solutionPath ?? WORKSPACE_ROOT,
+      path: agent.solutionPath ?? root,
       branch: agent.branch,
     };
   });

@@ -30,6 +30,11 @@ import {
  * the terminal box and each line, and the handoff card (state, text, command,
  * copy → "copied"); SPEC tokens as computed styles; the ✕ tone on
  * `button-rollout`. The pixel diff is advisory (`docs/visual/session-panel.md`).
+ *
+ * D14 addition (not a finding): the handoff card ends with the folder to run the
+ * command in (`cwd <Session.cwd>`), which the prototype does not have. The card
+ * is compared by x, y and width (geometry `top`) with its prototype copy (the
+ * text before that line); the line is checked on its own ({@link D14_CWD}).
  */
 
 interface PartSpec {
@@ -74,12 +79,35 @@ const FRAME_PARTS: Readonly<Record<string, PartSpec>> = {
   cards: { path: CARDS, geometry: 'box', copy: false },
   termLabel: { path: [...PANEL, 2], geometry: 'box', copy: true },
   term: { path: TERM, geometry: 'box', copy: true },
-  handoff: { path: HANDOFF, geometry: 'box', copy: true },
+  handoff: { path: HANDOFF, geometry: 'top', copy: false },
   handoffHead: { path: [...HANDOFF, 0], geometry: 'box', copy: true },
   handoffState: { path: [...HANDOFF, 0, 0], geometry: 'box', copy: true },
   handoffText: { path: [...HANDOFF, 1], geometry: 'box', copy: true },
   handoffCommand: { path: [...HANDOFF, 2], geometry: 'box', copy: true },
 };
+
+/** D14: the handoff card's cwd line (the app only): its path and its copy (`cwd <the demo's folder>`). */
+const D14_CWD = { path: [...HANDOFF, 3], text: 'cwd D:\\acme' } as const;
+
+/**
+ * The handoff card's own copy (D14): the prototype's card text against the app's
+ * without the cwd line, and the cwd line itself, recorded as a D14 addition.
+ */
+async function compareHandoffCopy(protoPage: Page, appPage: Page, label: string, failures: string[]): Promise<string[]> {
+  const p = (await measure(protoPage, { card: [...HANDOFF] }))['card'];
+  const a = await measure(appPage, { card: [...HANDOFF], cwd: [...D14_CWD.path] });
+  const card = a['card'];
+  const cwd = a['cwd'];
+  const rows: string[] = [];
+  const appCard = card && cwd ? card.text.slice(0, card.text.length - cwd.text.length).trim() : (card?.text ?? '');
+  const copyOk = p !== null && p !== undefined && p.text === appCard;
+  if (!copyOk) failures.push(`${label} handoff.text (without the D14 cwd line): prototype ${JSON.stringify(p?.text)} vs app ${JSON.stringify(appCard)}`);
+  rows.push(`| ${label} | handoff (copy without the D14 cwd line) | none | — | — | ${copyOk ? 'ok' : 'FAIL'} | ${JSON.stringify(appCard).slice(0, 70)} |`);
+  const cwdOk = cwd?.text === D14_CWD.text && cwd.box.height > 0 && card !== null && card !== undefined && cwd.box.y + cwd.box.height <= card.box.y + card.box.height;
+  if (!cwdOk) failures.push(`${label} handoff cwd line (D14): expected ${JSON.stringify(D14_CWD.text)} inside the card, got ${JSON.stringify(cwd?.text ?? null)}`);
+  rows.push(`| ${label} | handoff cwd line (D14 addition, not in the prototype) | — | — | ${cwd ? fmtBox(cwd.box) : 'missing'} | ${cwdOk ? 'ok' : 'FAIL'} | ${JSON.stringify(cwd?.text ?? '')} |`);
+  return rows;
+}
 
 /**
  * The copy control, second child of the command row on both pages: the prototype's
@@ -245,6 +273,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
       failures,
     )),
   );
+  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'free-talk-feature', failures)));
   rows.push(...(await compareCopy(protoPage, appPage, 'free-talk-feature', failures)));
   const protoFree = await protoPage.screenshot({ clip: panelClip });
   const appFree = await appPage.screenshot({ clip: panelClip });
@@ -255,6 +284,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   await openAppSession(appPage, 'calendar-func-fix', 1);
   await expect(appPage.getByTestId('terminal-line')).toHaveText(['$ dotnet build', 'CS0103 TimeZoneInfo not found → add using System', '$ dotnet build', '▍']);
   rows.push(...(await compare(protoPage, appPage, 'calendar-func-fix', { ...FRAME_PARTS, ...cardParts(0, true), ...lineParts(4) }, failures)));
+  rows.push(...(await compareHandoffCopy(protoPage, appPage, 'calendar-func-fix', failures)));
   const protoCalendar = await protoPage.screenshot({ clip: panelClip });
   const appCalendar = await appPage.screenshot({ clip: panelClip });
   const calendarDiff = await pixelDiff(appPage, protoCalendar, appCalendar);
@@ -361,7 +391,7 @@ Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900)
 Side by side (prototype left, app right): \`session-panel-free-talk-side-by-side.png\`, \`session-panel-calendar-side-by-side.png\`.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry \`box\` = x, y, width, height (every part is absolute: the panel does not depend on the header's height). Styles compared: ${COMPARED_STYLES.join(', ')}.
+Geometry \`box\` = x, y, width, height (every part is absolute: the panel does not depend on the header's height); \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')}.
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
@@ -371,6 +401,9 @@ ${input.rows.join('\n')}
 | Check | Expected | App | Result |
 |---|---|---|---|
 ${input.computedRows.join('\n')}
+
+## D14 additions (not findings)
+- The handoff card ends with \`cwd <Session.cwd>\`: the folder to run \`claude --resume\` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry \`top\`) and by its prototype copy without that line; the line is checked on its own.
 
 ## Known differences (not findings)
 - button-rollout's tail starts with the chat's open request step (the demo seed makes the prototype's \`⏸ breaker: …\` chat line an open permission request, M4.2, which the tail shows like every open request): prototype ${JSON.stringify(input.rollout.proto)}, app ${JSON.stringify(input.rollout.app)}.

@@ -367,6 +367,17 @@
   overflow-wrap: anywhere;
 }
 
+/* D14: the folder to run the command in (Session.cwd), a mono "k v" line. */
+.sb-handoff-cwd {
+  font: 400 11px var(--font-mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-handoff-cwd-k {
+  color: var(--muted-3);
+}
+
 .sb-handoff-copy {
   margin-left: auto;
   color: var(--muted-2);

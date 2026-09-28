@@ -5,8 +5,12 @@ import { actionErrorText, attachWarningText, handoff, pauseButton, rootLine, tab
 
 describe('session header copy and rules (M4.1)', () => {
   it('root line, tabs with counts (prototype TABS)', () => {
-    expect(rootLine('D:\\acme')).toBe('D:\\acme · workspace root');
-    expect(rootLine(null)).toBe('workspace root');
+    expect(rootLine({ cwd: 'D:\\acme', folderPath: 'D:\\acme', folderKind: 'workspace' })).toBe('D:\\acme · workspace root');
+    expect(rootLine({ cwd: null, folderPath: null, folderKind: null })).toBe('workspace root');
+    // D14: a repo folder's session runs in the repo, or in its worktree next to it.
+    expect(rootLine({ cwd: '/src/switchboard', folderPath: '/src/switchboard', folderKind: 'repo' })).toBe('/src/switchboard · git repo');
+    expect(rootLine({ cwd: '/src/switchboard-wt-fix', folderPath: '/src/switchboard', folderKind: 'repo' })).toBe('/src/switchboard-wt-fix · worktree of switchboard');
+    expect(rootLine({ cwd: 'D:\\ws\\other\\app-wt-x', folderPath: 'D:\\ws\\other\\app\\', folderKind: 'repo' })).toBe('D:\\ws\\other\\app-wt-x · worktree of app');
     expect(tabLabels(5, 4).map((t) => t.label)).toEqual(['Chat', 'Timeline', 'Diff · 5', 'Artifacts · 4']);
     expect(tabLabels(0, 0).map((t) => t.tab)).toEqual(['chat', 'timeline', 'diff', 'artifacts']);
   });

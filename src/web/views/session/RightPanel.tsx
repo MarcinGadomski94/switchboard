@@ -31,7 +31,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
-          <HandoffCard attached={session.attached} command={session.resumeCommand} />
+          <HandoffCard attached={session.attached} command={session.resumeCommand} cwd={session.cwd} />
         </>
       ) : null}
     </aside>

@@ -5,6 +5,7 @@ import {
   codebaseMemoryToolId,
   filterGroups,
   freshnessLine,
+  headerCounts,
   headerMeta,
   ledgerRows,
   parentPath,
@@ -67,6 +68,8 @@ describe('Solutions view logic (M6.2)', () => {
   it('header meta: root · n solutions · n active', () => {
     expect(headerMeta(GROUPS)).toBe('/ws · 4 solutions · 2 active');
     expect(headerMeta([])).toBe('');
+    // D14: the counts after the folder switcher.
+    expect(headerCounts(GROUPS)).toBe('4 solutions · 2 active');
     expect(headerMeta([{ ...GROUPS[1]!, solutions: [solution({ path: 'D:\\acme\\mobile', relativePath: 'mobile' })] }])).toBe(
       'D:\\acme · 1 solution · 0 active',
     );

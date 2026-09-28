@@ -1,9 +1,11 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
-import type { AnswerBatch, InboxAction, InboxItem } from '../../core/api.ts';
+import type { AnswerBatch, InboxAction, InboxItem, Session } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
+import { FolderTag } from '../folders/FolderTag.tsx';
+import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, statusColor } from '../shell/format.ts';
@@ -103,6 +105,9 @@ function Actions({
 
 interface DetailProps {
   readonly item: InboxItem;
+  /** D14: the item's session's folder tag (`null` for the default folder or no session). */
+  readonly folderTag: string | null;
+  readonly folderPath: string | null;
   readonly now: number;
   readonly busy: boolean;
   readonly error: string | null;
@@ -110,7 +115,7 @@ interface DetailProps {
   readonly onAction: (action: InboxAction) => void;
 }
 
-function Detail({ item, now, busy, error, onAnswers, onAction }: DetailProps) {
+function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAction }: DetailProps) {
   const body = detailBody(item);
   return (
     <>
@@ -121,6 +126,7 @@ function Detail({ item, now, busy, error, onAnswers, onAction }: DetailProps) {
         <span>{item.label}</span>
         <span>·</span>
         <span>{formatAge(item.createdAt, now)}</span>
+        {folderTag ? <FolderTag name={folderTag} title={folderPath} /> : null}
         {linksSession(item) ? (
           <Link to={{ view: 'session', id: item.sessionId, tab: 'chat' }} className="sb-inbox__open" data-testid="inbox-open-session">
             {OPEN_SESSION}
@@ -175,10 +181,13 @@ function Detail({ item, now, busy, error, onAnswers, onAction }: DetailProps) {
  * detail text, then the shared question card (Send stays disabled at 45% opacity
  * until every question is answered), a permission request with Allow once / Deny,
  * or the system actions (first primary, the rest outlined). Nothing waiting →
- * "Inbox zero". The list reloads on `/hub` `inboxChanged`. `docs/inbox.md`.
+ * "Inbox zero". The list reloads on `/hub` `inboxChanged`. `docs/inbox.md`. D14:
+ * the meta line tags an item whose session belongs to a folder other than the
+ * default one with that folder's name.
  */
 export function InboxView() {
   const inbox = useApi(api.inbox);
+  const tagOf = useFolderTags();
   const modals = useModals();
   const now = useNow(30_000);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -193,6 +202,10 @@ export function InboxView() {
   const loaded = inbox.data !== null;
   const items = visibleItems(inbox.data ?? [], done);
   const current = selectedItem(items, selectedId);
+  // D14: the selected item's session (for its folder tag), read when the selection names another session.
+  const currentSessionId = current?.sessionId ?? null;
+  const sessions = useApi((): Promise<Session[]> => (currentSessionId ? api.listSessions() : Promise.resolve([])), [currentSessionId]);
+  const currentSession = currentSessionId ? ((sessions.data ?? []).find((session) => session.id === currentSessionId) ?? null) : null;
 
   const run = async (item: InboxItem, call: () => Promise<unknown>, after?: () => void): Promise<void> => {
     setBusyId(item.id);
@@ -237,6 +250,8 @@ export function InboxView() {
         {current ? (
           <Detail
             item={current}
+            folderTag={currentSession ? tagOf(currentSession) : null}
+            folderPath={currentSession?.folderPath ?? null}
             now={now}
             busy={busyId === current.id}
             error={errors[current.id] ?? null}

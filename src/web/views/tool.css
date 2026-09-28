@@ -208,3 +208,8 @@
 .sb-cm-reindex[aria-disabled='true'] {
   cursor: progress;
 }
+
+/* D14: the strip's folder switcher (first, before `.codebase-memory-dirty`). */
+.sb-cm-folder {
+  color: var(--text);
+}

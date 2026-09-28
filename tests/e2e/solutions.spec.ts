@@ -169,7 +169,7 @@ test('Solutions without a saved folder says so (D14)', async ({ page }) => {
   const bare = await startServer({ SWITCHBOARD_DATA_DIR: path.join(world.root, 'data-bare') });
   try {
     await page.goto(`${bare.baseUrl}/solutions`);
-    await expect(page.getByTestId('solutions-error')).toHaveText('No folder is saved yet. Add a workspace or a git repository in Settings.');
+    await expect(page.getByTestId('solutions-error')).toHaveText('No folder is saved yet. Add a workspace or a git repository in Settings → Folders.');
     await expect(page.getByTestId('solutions-meta')).toHaveText('');
   } finally {
     expect(await bare.stop()).toBe(0);

@@ -138,6 +138,8 @@ describe('timelineModel on real events', () => {
       ['acme-app-front', MAIN_LANE_SUB],
       ['general-purpose', ''],
     ]);
+    // D14: a repo session's main lane names its repo instead of the workspace root.
+    expect(timelineModel({ events, agents, status: 'done', now: t(999), play: PLAY_MAX, root: 'switchboard' }).lanes[0]?.sub).toBe('switchboard');
     expect(model.lanes[0]!.blocks.map((b) => [b.kind, b.label])).toEqual([
       ['impl', 'Write · a.md'],
       ['ok', 'Done'],

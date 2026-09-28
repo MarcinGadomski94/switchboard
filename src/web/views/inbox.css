@@ -273,3 +273,8 @@
 .sb-inbox__zero-hint {
   font-size: 13px;
 }
+
+/* D14: the folder tag in the meta line (the row's gap spaces it). */
+.sb-inbox__meta .sb-folder-tag {
+  margin-right: 0;
+}

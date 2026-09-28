@@ -4,6 +4,8 @@ import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { FolderTag } from '../folders/FolderTag.tsx';
+import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
 import { useToolsChanged } from '../tools/events.ts';
@@ -84,7 +86,9 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
  * nav with badges · TOOLS · SESSIONS · Settings · machine footer. Everything it
  * lists comes from the API (sessions, tools, inbox, solutions, schedules,
  * artifacts, system) and the `/hub` stream; while a route is not implemented yet
- * (501) or unreachable, its part stays empty and the meters read "—".
+ * (501) or unreachable, its part stays empty and the meters read "—". D14: a
+ * session from a folder other than the default one carries its folder's tag at
+ * the start of its mode line.
  */
 export function Sidebar() {
   const { route } = useRouter();
@@ -99,6 +103,7 @@ export function Sidebar() {
   const artifacts = useApi(() => api.artifacts());
   const system = useApi(api.system);
   const [liveSystem, setLiveSystem] = useState<SystemInfo | null>(null);
+  const tagOf = useFolderTags();
 
   useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());
@@ -190,7 +195,10 @@ export function Sidebar() {
                 <span className="sb-session-name">{session.name}</span>
                 <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
               </div>
-              <div className="sb-session-mode">{modeLine(session)}</div>
+              <div className="sb-session-mode">
+                <FolderTag name={tagOf(session)} title={session.folderPath} />
+                {modeLine(session)}
+              </div>
             </div>
           </Link>
         ))}

@@ -3,6 +3,8 @@ import type { HistoryItem } from '../../core/api.ts';
 import { formatHistoryDate, historyBranchLine } from '../../core/history.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
+import { FolderTag } from '../folders/FolderTag.tsx';
+import { useFolderTags } from '../folders/useFolders.ts';
 import { statusColor } from '../shell/format.ts';
 import './history.css';
 
@@ -45,9 +47,11 @@ interface Loaded {
  * its status color. Rows come from `GET /api/history?q=` (stored sessions plus
  * terminal-started ones from the local transcripts; the search runs on the
  * service, over the transcripts too). The list reloads when `/hub` reports a
- * session change.
+ * session change. D14: rows of a folder other than the default one carry its tag
+ * before the mode line.
  */
 export function HistoryView() {
+  const tagOf = useFolderTags();
   const [search, setSearch] = useState('');
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [tick, setTick] = useState(0);
@@ -98,7 +102,7 @@ export function HistoryView() {
       </div>
       <div className="sb-hist-rows" data-testid="history-rows">
         {rows.map((item) => (
-          <HistoryRow key={item.claudeSessionId} item={item} />
+          <HistoryRow key={item.claudeSessionId} item={item} folderTag={tagOf(item)} />
         ))}
         {settled && rows.length === 0 ? (
           <div className="sb-hist-empty" data-testid="history-empty">
@@ -110,7 +114,7 @@ export function HistoryView() {
   );
 }
 
-function HistoryRow({ item }: { readonly item: HistoryItem }) {
+function HistoryRow({ item, folderTag }: { readonly item: HistoryItem; readonly folderTag: string | null }) {
   return (
     <div
       className="sb-hist-row"
@@ -122,7 +126,10 @@ function HistoryRow({ item }: { readonly item: HistoryItem }) {
       <span className="sb-hist-date">{formatHistoryDate(item.startedAt)}</span>
       <div className="sb-hist-namecol">
         <span className="sb-hist-name">{item.name}</span>
-        <span className="sb-hist-mode">{item.mode}</span>
+        <span className="sb-hist-mode">
+          <FolderTag name={folderTag} title={item.folderPath} />
+          {item.mode}
+        </span>
       </div>
       <div className="sb-hist-sumcol">
         <span className="sb-hist-summary">{item.summary}</span>

@@ -80,7 +80,7 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           {session?.name ?? sessionId}
         </div>
         <div className="sb-sv-root" data-testid="session-root">
-          {missing ? 'no such session' : session ? rootLine(session.cwd) : ''}
+          {missing ? 'no such session' : session ? rootLine(session) : ''}
         </div>
         <div className="sb-sv-actions">
           <button

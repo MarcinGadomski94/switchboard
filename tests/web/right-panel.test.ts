@@ -8,6 +8,7 @@ import {
   TERMINAL_TAIL_LINES,
   WORKSPACE_ROOT,
   agentCards,
+  rootPath,
   agentSummary,
   lineTone,
   terminalLines,
@@ -113,6 +114,11 @@ describe('agent cards', () => {
       ['Read hello.txt', 'microfrontends/app-front', 'session/x'],
       ['', WORKSPACE_ROOT, null],
     ]);
+    // D14: a repo session's agents run in its one solution, the repo.
+    const repo = agentCards([agent()], { status: 'run', task: 'x', folderKind: 'repo', folderPath: '/src/switchboard' });
+    expect(repo.map((c) => c.path)).toEqual(['switchboard']);
+    expect(rootPath({ folderKind: 'workspace', folderPath: '/ws' })).toBe(WORKSPACE_ROOT);
+    expect(rootPath({})).toBe(WORKSPACE_ROOT);
   });
 
   it('summary: agents · distinct solution folders (not workspace root / read-only) · distinct branches, in the prototype\'s words (never singular)', () => {

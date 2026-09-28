@@ -4,6 +4,7 @@ import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent, useHubStatus } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
+import { rootPath } from './right-panel.ts';
 import { terminalTail } from './terminal-tail.ts';
 import {
   LOG_HEADING,
@@ -138,7 +139,8 @@ export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
   const status = session?.status ?? null;
   const [clockMs, setClockMs] = useState<number | null>(null);
   const now = useClock(clockMs);
-  const model = useMemo(() => timelineModel({ events, agents, status, now, play }), [events, agents, status, now, play]);
+  const root = session ? rootPath(session) : undefined;
+  const model = useMemo(() => timelineModel({ events, agents, status, now, play, root }), [events, agents, status, now, play, root]);
   useEffect(() => setClockMs(model.ticking ? 1_000 : null), [model.ticking]);
   const lines = useMemo(() => terminalTail(events, agents), [events, agents]);
 

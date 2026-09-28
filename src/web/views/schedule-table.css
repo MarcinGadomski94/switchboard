@@ -164,3 +164,9 @@
   line-height: 1.45;
   color: var(--status-fail);
 }
+
+/* D14: the folder tag after the schedule's name. */
+.sb-sch-name .sb-folder-tag {
+  margin: 0 0 0 8px;
+  font-weight: 500;
+}

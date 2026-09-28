@@ -3,6 +3,8 @@ import type { ArtifactListItem } from '../../core/api.ts';
 import { ARTIFACT_FILTERS, artifactLocation, typeParam } from '../../core/artifacts-view.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
+import { FolderTag } from '../folders/FolderTag.tsx';
+import { useFolderTags } from '../folders/useFolders.ts';
 import { Link } from '../router.tsx';
 import { UNKNOWN, formatAge } from '../shell/format.ts';
 import './artifacts.css';
@@ -55,9 +57,11 @@ interface Loaded {
  * filters and searches on the server; the total is the unfiltered count. A row
  * opens its source session (the prototype's `openSession`: the Chat tab). The
  * list reloads when `/hub` reports session activity, because the recorder derives
- * artifacts from tool results (gap #9).
+ * artifacts from tool results (gap #9). D14: rows whose session belongs to a
+ * folder other than the default one carry its tag in the Session column.
  */
 export function ArtifactsView() {
+  const tagOf = useFolderTags();
   const [filterIndex, setFilterIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -141,7 +145,7 @@ export function ArtifactsView() {
       </div>
       <div className="sb-art-rows" data-testid="artifacts-rows">
         {rows.map((artifact) => (
-          <ArtifactRow key={artifact.id} artifact={artifact} now={now} />
+          <ArtifactRow key={artifact.id} artifact={artifact} now={now} folderTag={tagOf(artifact)} />
         ))}
         {empty ? (
           <div className="sb-art-empty" data-testid="artifacts-empty">
@@ -153,13 +157,16 @@ export function ArtifactsView() {
   );
 }
 
-function ArtifactRow({ artifact, now }: { readonly artifact: ArtifactListItem; readonly now: number }) {
+function ArtifactRow({ artifact, now, folderTag }: { readonly artifact: ArtifactListItem; readonly now: number; readonly folderTag: string | null }) {
   const cells = (
     <>
       <span className="sb-art-type">{artifact.type}</span>
       <span className="sb-art-name">{artifact.name}</span>
       <span className="sb-art-location">{artifactLocation(artifact)}</span>
-      <span className="sb-art-session">{artifact.sessionName ?? UNKNOWN}</span>
+      <span className="sb-art-session">
+        <FolderTag name={folderTag} title={artifact.folderPath} />
+        {artifact.sessionName ?? UNKNOWN}
+      </span>
       <span className="sb-art-meta">{artifact.meta ?? ''}</span>
       <span className="sb-art-age">{formatAge(artifact.updatedAt, now)}</span>
     </>

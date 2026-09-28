@@ -101,6 +101,8 @@ export interface TimelineInput {
   readonly now: number;
   /** Scrubber value, 0 … {@link PLAY_MAX}. */
   readonly play: number;
+  /** D14: the main lane's second line without a solution path (default `workspace root`; a repo session's repo name). */
+  readonly root?: string;
 }
 
 /** `true` for the kinds drawn as blocks. */
@@ -150,10 +152,14 @@ function clampPlay(play: number): number {
   return Math.min(PLAY_MAX, Math.max(0, play));
 }
 
-/** Second line of a lane (prototype `ln.sol`): the solution path, else the main agent's workspace root. */
-export function laneSub(agent: Agent): string {
+/**
+ * Second line of a lane (prototype `ln.sol`): the solution path, else the main
+ * agent's workspace root; D14: a repo session's main agent runs in its repo
+ * (`root` = the repo's name).
+ */
+export function laneSub(agent: Agent, root: string = MAIN_LANE_SUB): string {
   if (agent.solutionPath) return agent.solutionPath;
-  return agent.kind === 'main' ? MAIN_LANE_SUB : '';
+  return agent.kind === 'main' ? root : '';
 }
 
 interface Draft {
@@ -244,7 +250,7 @@ export function timelineModel(input: TimelineInput): TimelineModel {
   });
   const lanes: TimelineLane[] = order.map((index) => {
     const agent = agents[index] as Agent;
-    return { id: agent.id, name: agent.name, sub: laneSub(agent), blocks: blocksByLane.get(index) ?? [] };
+    return { id: agent.id, name: agent.name, sub: laneSub(agent, input.root), blocks: blocksByLane.get(index) ?? [] };
   });
   if (lanes.length === 0 && drafts.length > 0) {
     lanes.push({ id: null, name: 'session', sub: '', blocks: blocksByLane.get(mainIndex) ?? [] });

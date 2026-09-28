@@ -11,9 +11,11 @@ const COPIED_MS = 1_500;
  * with copy. Built with the header's "⇄ Continue in terminal" / "⇄ Attach here"
  * (M4.1): the command is the one `/detach` returns (`Session.resumeCommand`, the
  * same text). Since M4.3 it sits under the agent cards and the terminal tail
- * (`RightPanel.tsx`, `docs/session-panel.md`).
+ * (`RightPanel.tsx`, `docs/session-panel.md`). D14: under the command, the
+ * folder to run it in (`Session.cwd`: the workspace root, the repo, or a repo
+ * session's worktree), because `claude --resume` finds the session by its folder.
  */
-export function HandoffCard({ attached, command }: { readonly attached: boolean; readonly command: string }) {
+export function HandoffCard({ attached, command, cwd = null }: { readonly attached: boolean; readonly command: string; readonly cwd?: string | null }) {
   const card = handoff(attached);
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,6 +54,12 @@ export function HandoffCard({ attached, command }: { readonly attached: boolean;
           {copied ? 'copied' : 'copy'}
         </button>
       </div>
+      {cwd ? (
+        <div className="sb-handoff-cwd" data-testid="handoff-cwd" title="Run the command in this folder">
+          <span className="sb-handoff-cwd-k">cwd </span>
+          {cwd}
+        </div>
+      ) : null}
     </div>
   );
 }
