@@ -120,6 +120,20 @@ AgentActivity   { "state": "thinking|tool|writing|waiting", "since": "ISO", "sta
 ```
 `state` is `waiting` while any question or permission request is open, else the main agent's; `since` is when that state (for `tool`, that tool call) began; `thinkingTokens` is the turn's estimated thinking tokens (`null` before the first tick); `agents` holds the main agent and each subagent working now, keyed by `Agent.id` (`startedAt` = when that agent became active in the turn).
 
+## Background work (D30, 2026-09-28, additive)
+Developer ruling D30 (`docs/decisions.md`): a session waiting on background work it started (a `Bash` run in the background, an async `Agent`, a `Monitor`, a `ScheduleWakeup`) shows that it is still working after its turn ended. Additive to *Live activity* above; nothing above or below changes meaning. Details: `docs/derivations.md` → *Background work*.
+
+- **SessionActivity** gains `background: BackgroundTask[]`: the main agent's pending background tasks, oldest first; empty when none. It is there while a turn runs too (the state then reads as before).
+- **ActivityState** gains `background`: no turn runs, but a task is pending. `Session.activity` is then non-`null` (it used to be `null` whenever no turn ran): `since` = `turnStartedAt` = the oldest task's start, `tool` / `summary` = the tool that started it (`Bash`, `Agent`, `Monitor`, `ScheduleWakeup`) and its summary, `thinkingTokens: null`, `agents` = the main agent alone, in state `background` with the same fields. `null` again once no task is pending and no turn runs.
+- The `/hub` event **`activity`** carries it unchanged (at most one per second per session). No new route, no new event; the session's `status` is not affected (a finished turn stays `done`).
+
+```json
+SessionActivity { …D19 fields, "state": "thinking|tool|writing|waiting|background", "background": [BackgroundTask] }
+BackgroundTask  { "id": "<CLI task id | tool_use id>", "toolUseId": "toolu_…", "kind": "bash|agent|monitor|wakeup",
+                  "summary": "<short text>", "startedAt": "ISO", "wakeAt"?: "ISO", "github": true|false }
+```
+`id` = the CLI's task id (the background command's, the async agent's, the monitor's), the `tool_use` id when there is none (a wake-up); `summary` = D19's short text (a GitHub wait: its `gh …` command; a wake-up: its reason); `startedAt` = its tool call; `wakeAt` only on a wake-up (the call's time + `delaySeconds`); `github` = the command uses `gh run`, `gh pr checks` or `gh workflow`. A task ends with the CLI's `system/task_notification` for it, a wake-up when the next turn starts, all of them when the process ends (exit, pause, detach).
+
 ## Session titles (D22, 2026-09-28, additive)
 Developer ruling D22 (`docs/decisions.md`): a session keeps its technical short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` and branch `session/{name}` are built from it, so it never changes) and may have a free-text **title**, which the UI shows wherever the session is named. Additive; the rows and payloads above keep their meaning. Details: `docs/derivations.md` → *Session titles*.
 
@@ -215,4 +229,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | worktreeRemovable | Worktree |
 | scheduleRun | { scheduleId, result } |
 | system | same shape as GET /api/system, every 5 s |
-| activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session) |
+| activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |

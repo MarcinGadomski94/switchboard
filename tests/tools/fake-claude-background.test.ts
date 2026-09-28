@@ -73,7 +73,7 @@ describe('fake-claude · background tokens (parser)', () => {
 describe('fake-claude · background tokens (process)', () => {
   it('[fake:background]: the turn ends with the task running; seconds later its task_notification and the CLI\'s own turn', async () => {
     const run = start();
-    run.send(userLine('Run the e2e suite in the background [fake:background 0.4 npm run e2e]'));
+    run.send(userLine('Run the e2e suite in the background [fake:background 1 npm run e2e]'));
     const first = await run.waitFor(isResult, 1);
     const firstAt = Date.now();
     expect(origin(first)).toBeNull();
@@ -89,7 +89,8 @@ describe('fake-claude · background tokens (process)', () => {
     expect(run.lines.some(isNotification)).toBe(false);
 
     const notification = await run.waitFor(isNotification, 1, 5_000);
-    expect(Date.now() - firstAt).toBeGreaterThanOrEqual(300);
+    // One second after the turn (a margin for a loaded machine seeing the result late).
+    expect(Date.now() - firstAt).toBeGreaterThanOrEqual(500);
     expect(notification).toMatchObject({ task_id: id, tool_use_id: call?.['id'], status: 'completed', summary: 'Background command "npm run e2e" completed (exit code 0)' });
     const second = await run.waitFor(isResult, 2, 5_000);
     expect(origin(second)).toBe('task-notification');
