@@ -1,5 +1,6 @@
 import type { NewSession } from '../../core/api.ts';
 import { checkTitle } from '../../core/session-title.ts';
+import { checkTicketBranch } from '../../core/ticket-branch.ts';
 import { COORDINATIONS, type FolderKind, PHASES, type Phase, QA_STACKS, SESSION_MODES, type SessionMode, WORK_TYPES, type WorkType, isOneOf } from '../../core/model.ts';
 
 /** One validation failure of a request body. */
@@ -11,7 +12,8 @@ export interface FieldError {
 /**
  * A validated NewSession (D14: without `folder`, which the caller resolved; the
  * router-only fields `workType`, `mode`, `phase` are `null` for a repo folder).
- * D22: `title` is present (trimmed) only when the body had one.
+ * D22: `title` is present (trimmed) only when the body had one. D32: `branch` is
+ * present only when the session creates worktrees under the ticket rule.
  */
 export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder'> & {
   readonly workType: WorkType | null;
@@ -29,6 +31,14 @@ export interface ValidationFolder {
   readonly repoName: string;
 }
 
+/**
+ * How a new session's worktree branch is named (D32): `ticket` = the developer
+ * names it (`NewSession.branch`, required with `worktrees: true`, a ticket
+ * branch); `session` = `session/{name}` as before, `branch` is not read
+ * (scheduled runs and their templates, D32 *Unchanged*).
+ */
+export type WorktreeBranchRule = 'ticket' | 'session';
+
 /** What the validation needs to know beyond the body. */
 export interface NewSessionChecks {
   /** `true` if a session with this name exists. */
@@ -41,6 +51,8 @@ export interface NewSessionChecks {
   readonly readOnly?: (solution: string) => Promise<boolean>;
   /** The session's folder (D14). Default: a workspace. */
   readonly folder?: ValidationFolder;
+  /** D32: how the worktree branch is named. Default: `ticket`. */
+  readonly worktreeBranch?: WorktreeBranchRule;
 }
 
 /** Session names: kebab-case (contract), at most 64 characters. */
@@ -74,11 +86,25 @@ function titleOf(body: Record<string, unknown>, fail: (field: string, message: s
 }
 
 /**
+ * D32: the worktree branch. Under the `ticket` rule with `worktrees: true`, the
+ * body's `branch` must pass `checkTicketBranch` (else a failure on field
+ * `branch`); without a worktree, or under the `session` rule, it is not read.
+ */
+function branchOf(body: Record<string, unknown>, worktrees: unknown, checks: NewSessionChecks, fail: (field: string, message: string) => void): string | null {
+  if ((checks.worktreeBranch ?? 'ticket') !== 'ticket' || worktrees !== true) return null;
+  const check = checkTicketBranch(body['branch']);
+  if (check.ok) return check.name;
+  fail('branch', check.message);
+  return null;
+}
+
+/**
  * Validates a `POST /api/sessions` body (contract → NewSession): name unique and
  * kebab-case; solutions not empty; read-only solutions rejected; `qa` required
  * when `workType` is `qa`; every enum from the contract; D22: an optional `title`
- * of 1–80 characters (trimmed). Unknown fields (and `folder`, which the caller
- * resolves) are ignored.
+ * of 1–80 characters (trimmed); D32: with `worktrees: true` a ticket `branch`
+ * ({@link branchOf}). Unknown fields (and `folder`, which the caller resolves)
+ * are ignored.
  *
  * D14, a **repo** folder ({@link NewSessionChecks.folder}): the router-only
  * fields (`workType`, `mode`, `phase`, `coordination`, `qa`) are not read and come
@@ -152,6 +178,7 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
 
   const worktrees = body['worktrees'];
   if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
+  const branch = branchOf(body, worktrees, checks, fail);
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
 
@@ -170,11 +197,12 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
       worktrees: worktrees as boolean,
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
+      ...(branch !== null ? { branch } : {}),
     },
   };
 }
 
-/** The fields every folder kind validates the same way: name, task, worktrees, ultracode (D22: and the title). */
+/** The fields every folder kind validates the same way: name, task, worktrees, ultracode (D22: and the title; D32: the branch). */
 async function commonFields(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void) {
   const name = body['name'];
   if (typeof name !== 'string' || !SESSION_NAME.test(name) || name.length > 64) {
@@ -186,10 +214,11 @@ async function commonFields(body: Record<string, unknown>, checks: NewSessionChe
   if (typeof task !== 'string') fail('task', 'the task must be text');
   const worktrees = body['worktrees'];
   if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
+  const branch = branchOf(body, worktrees, checks, fail);
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
   const title = titleOf(body, fail);
-  return { name, task, worktrees, ultracode, title };
+  return { name, task, worktrees, ultracode, title, branch };
 }
 
 /** {@link validateNewSession} for a repo folder (D14): one solution, no router fields. */
@@ -199,7 +228,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
     errors.push({ field, message });
   };
   if (!isRecord(body)) return { ok: false, errors: [{ field: '', message: 'the body must be a NewSession object' }] };
-  const { name, task, worktrees, ultracode, title } = await commonFields(body, checks, fail);
+  const { name, task, worktrees, ultracode, title, branch } = await commonFields(body, checks, fail);
   const solutions = body['solutions'] ?? [];
   if (!Array.isArray(solutions) || !solutions.every((s) => typeof s === 'string')) {
     fail('solutions', 'solutions must be a list of names');
@@ -221,6 +250,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
       worktrees: worktrees as boolean,
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
+      ...(branch !== null ? { branch } : {}),
     },
   };
 }

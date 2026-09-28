@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { SolutionGroup, Worktree } from '../../core/api.ts';
+import { checkTicketBranch } from '../../core/ticket-branch.ts';
 import type { ApiContext } from '../routes.ts';
 import { LiveSolutions } from '../solutions/live.ts';
 import { ScanError } from '../solutions/scanner.ts';
@@ -27,6 +28,9 @@ interface IsolateParams {
  * unknown folder, `409 folder-missing` when the folder is gone from disk.
  * `POST /api/solutions/{repo}/isolate` is the gap #2 "Move … to worktree"
  * operation of the worktree manager (M2.2); M6.3 decides when the UI offers it.
+ * D32: its body `{ sessionId, branch }` (`IsolateRequest`) names the worktree's
+ * branch after the ticket: required, a ticket branch (422 on field `branch`);
+ * a branch the repo has already is 409 `branch-exists`.
  */
 export async function registerSolutionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { worktrees, folders } = context;
@@ -54,13 +58,16 @@ export async function registerSolutionRoutes(app: FastifyInstance, context: ApiC
   });
 
   app.post<{ Params: IsolateParams }>('/api/solutions/:repo/isolate', async (request, reply): Promise<Worktree | FastifyReply> => {
-    const body = request.body as { sessionId?: unknown } | undefined;
+    const body = request.body as { sessionId?: unknown; branch?: unknown } | undefined;
     const sessionId = body?.sessionId;
-    if (typeof sessionId !== 'string' || sessionId.trim() === '') {
-      return reply.code(422).send({ error: 'invalid', errors: [{ field: 'sessionId', message: 'sessionId must be a session id' }] });
-    }
+    const errors: Array<{ field: string; message: string }> = [];
+    if (typeof sessionId !== 'string' || sessionId.trim() === '') errors.push({ field: 'sessionId', message: 'sessionId must be a session id' });
+    // D32: the new worktree's branch is named after the ticket, like a new session's.
+    const branch = checkTicketBranch(body?.branch);
+    if (!branch.ok) errors.push({ field: 'branch', message: branch.message });
+    if (errors.length > 0 || typeof sessionId !== 'string' || !branch.ok) return reply.code(422).send({ error: 'invalid', errors });
     try {
-      const result = await worktrees.isolate(request.params.repo, sessionId);
+      const result = await worktrees.isolate(request.params.repo, sessionId, { branch: branch.name });
       return reply.code(result.created ? 201 : 200).send(toWorktree(result.worktree));
     } catch (error) {
       if (error instanceof SupervisorError) {

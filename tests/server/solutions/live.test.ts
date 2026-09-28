@@ -158,6 +158,7 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
         title: 'Free talk contract',
         solutions: ['web-front'],
         worktrees: true,
+        branch: 'PROJ-77-free-talk-contract',
         phase: 'integration',
         task: '[fake:write microfrontends/web-front-wt-wt-session/contracts/free-talk.md]',
       }),
@@ -179,9 +180,9 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     const rows = await solutionsByName();
     const web = rows.get('web-front');
     expect(web?.branches).toEqual([
-      // The branch and worktree keep the short name; the owner's title is the session's.
+      // The worktree keeps the short name (D32: the branch is the developer's ticket branch); the owner's title is the session's.
       {
-        branch: 'session/wt-session',
+        branch: 'PROJ-77-free-talk-contract',
         worktree: path.join(g.workspace, 'microfrontends', 'web-front-wt-wt-session'),
         sessionId: wt.id,
         owner: 'wt-session',
@@ -219,7 +220,7 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(after.get('mobile')?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }]);
     expect(after.get('mobile')?.status).toBe('idle');
     expect(after.get('mobile')?.changes).toBe('—');
-    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.status])).toEqual([['session/wt-session', 'wt-session', 'Free talk contract', 'done']]);
+    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.status])).toEqual([['PROJ-77-free-talk-contract', 'wt-session', 'Free talk contract', 'done']]);
     expect(after.get('web-front')?.changes).toBe('+1');
 
     // Reading the solutions never changes a tree.

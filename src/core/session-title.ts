@@ -1,7 +1,9 @@
 /**
  * D22 (`docs/decisions.md` → *Session titles*): every session keeps its technical
- * short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` and
- * branch `session/{name}` are built from it) and may carry a free-text **title**
+ * short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` is
+ * built from it, and so was its branch `session/{name}` until D32 named
+ * developer-created worktree branches after their ticket, `src/core/ticket-branch.ts`)
+ * and may carry a free-text **title**
  * (trimmed, 1–80 characters, not unique), which the UI shows wherever a session
  * is named. The pure rules shared by the server (validation, the scheduler, D16
  * moves) and the UI (the New-session form's live summary, every place that names

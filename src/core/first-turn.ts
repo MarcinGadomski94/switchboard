@@ -24,7 +24,7 @@ export interface FirstTurnWorktree {
   readonly folder: string;
   /** Absolute worktree path, in the OS's form (gap #17). */
   readonly path: string;
-  /** `session/{name}`. */
+  /** The worktree record's branch: the developer's ticket branch (D32), `session/{name}` for a scheduled run. */
   readonly branch: string;
 }
 
@@ -125,7 +125,7 @@ export const REPO_WORKTREE_NOTE_HEADER = 'Worktree note from Switchboard: this s
 export interface RepoWorktree {
   /** Absolute worktree path (the session's cwd), in the OS's form. */
   readonly path: string;
-  /** `session/{name}`. */
+  /** The worktree record's branch: the developer's ticket branch (D32), `session/{name}` for a scheduled run. */
   readonly branch: string;
   /** The branch (or commit) it was made from. */
   readonly base: string;

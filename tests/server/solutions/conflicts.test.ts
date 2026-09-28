@@ -93,7 +93,7 @@ async function exists(file: string): Promise<boolean> {
 describe('GET /api/solutions · conflicts (M6.3)', () => {
   it('two sessions in one checkout → conflict; moving each to a worktree clears it; the developer tree is untouched', async () => {
     const { s, g } = await setup();
-    // D22: a titled writer; its worktree and branch still come from its short name.
+    // D22: a titled writer; its worktree still comes from its short name (D32: its branch is the one the developer names).
     const first = await start(s, { name: 'first-writer', title: 'First writer', solutions: ['mobile'] });
     const second = await start(s, { name: 'second-writer', solutions: ['mobile'] });
     await start(s, { name: 'web-alone', solutions: ['web-front'] });
@@ -113,9 +113,10 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     expect(byName.get('old-front')).toMatchObject({ conflict: false, flag: '', conflictSessions: [] });
 
     // "Move second-writer to worktree": its own worktree; first-writer is still in the main checkout → still a conflict.
-    const moved = await call('POST', '/api/solutions/mobile/isolate', { sessionId: second.id });
+    // D32: on the ticket branch the developer named in the confirm step.
+    const moved = await call('POST', '/api/solutions/mobile/isolate', { sessionId: second.id, branch: 'PROJ-2-second-writer' });
     expect(moved.statusCode).toBe(201);
-    expect(moved.json()).toMatchObject({ repo: 'mobile', branch: 'session/second-writer', path: path.join(g.workspace, 'mobile-wt-second-writer'), sessionId: second.id });
+    expect(moved.json()).toMatchObject({ repo: 'mobile', branch: 'PROJ-2-second-writer', path: path.join(g.workspace, 'mobile-wt-second-writer'), sessionId: second.id });
     expect(await exists(path.join(g.workspace, 'mobile-wt-second-writer'))).toBe(true);
     await until(async () => (await spawnedArgv(s.logFile)).length >= 4, 'second-writer resumed with the move message');
     await waitForStatus(s.store, second.id, ['done']);
@@ -127,22 +128,22 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     ]);
     // D22 (ruling 4): each branch names its owner by the session's display title; the titled writer's in-place branch too.
     expect(byName.get('mobile')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.worktree === null])).toEqual([
-      ['session/second-writer', 'second-writer', 'second-writer', false],
+      ['PROJ-2-second-writer', 'second-writer', 'second-writer', false],
       ['main', 'first-writer', 'First writer', true],
     ]);
 
     // Move the other one: every writer has its own worktree → no conflict.
-    const movedFirst = await call('POST', '/api/solutions/mobile/isolate', { sessionId: first.id });
+    const movedFirst = await call('POST', '/api/solutions/mobile/isolate', { sessionId: first.id, branch: 'PROJ-1-first-writer' });
     expect(movedFirst.statusCode).toBe(201);
-    // D22: the titled session's worktree and branch are named after its short name, never its title.
-    expect(movedFirst.json()).toMatchObject({ branch: 'session/first-writer', path: path.join(g.workspace, 'mobile-wt-first-writer') });
+    // D22: the titled session's worktree is named after its short name, never its title; D32: its branch is the ticket branch.
+    expect(movedFirst.json()).toMatchObject({ branch: 'PROJ-1-first-writer', path: path.join(g.workspace, 'mobile-wt-first-writer') });
     await until(async () => (await spawnedArgv(s.logFile)).length >= 5, 'first-writer resumed with the move message');
     await waitForStatus(s.store, first.id, ['done']);
     byName = await rows();
     expect(byName.get('mobile')).toMatchObject({ conflict: false, flag: '', conflictSessions: [] });
-    // D22 (ruling 4): the titled writer's worktree branch is owned by its title; branch and worktree keep the short name.
+    // D22 (ruling 4): the titled writer's worktree branch is owned by its title.
     expect(byName.get('mobile')?.branches.find((b) => b.sessionId === first.id)).toMatchObject({
-      branch: 'session/first-writer',
+      branch: 'PROJ-1-first-writer',
       owner: 'first-writer',
       ownerTitle: 'First writer',
     });
@@ -156,7 +157,7 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
 
   it('a worktree session plus one in place is a conflict; ended sessions do not count; a detached one counts but cannot be moved', async () => {
     const { s, g } = await setup();
-    const isolated = await start(s, { name: 'has-worktree', solutions: ['web-front'], worktrees: true });
+    const isolated = await start(s, { name: 'has-worktree', solutions: ['web-front'], worktrees: true, branch: 'PROJ-5-has-worktree' });
     const inPlace = await start(s, { name: 'in-place', solutions: ['web-front'] });
     let web = (await rows()).get('web-front');
     expect(web).toMatchObject({ conflict: true, flag: '⚠ shared working tree' });
@@ -180,7 +181,7 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
       ['has-worktree', true, true],
       ['in-place', false, false],
     ]);
-    const refused = await call('POST', '/api/solutions/web-front/isolate', { sessionId: inPlace.id });
+    const refused = await call('POST', '/api/solutions/web-front/isolate', { sessionId: inPlace.id, branch: 'PROJ-6-in-place' });
     expect(refused.statusCode).toBe(409);
     expect(refused.json()).toMatchObject({ error: 'detached' });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-in-place'))).toBe(false);

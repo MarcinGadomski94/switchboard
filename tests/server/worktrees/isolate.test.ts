@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
+import { BRANCH_REQUIRED, BRANCH_RULE } from '../../../src/core/ticket-branch.ts';
 import type { LifecyclePayload, UserPayload } from '../../../src/core/event-payload.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -88,12 +89,14 @@ describe('WorktreeManager · isolate (gap #2)', () => {
     await writeFile(path.join(g.web, 'README.md'), 'hello\nthe session wrote here in place\n');
     const statusBefore = await g.git(g.web, 'status', '--porcelain');
 
-    const result = await m.isolate('web-front', session.id);
+    // D32: the developer names the branch after the ticket (the route requires it).
+    const result = await m.isolate('web-front', session.id, { branch: 'PROJ-4-mover' });
 
     const target = path.join(path.dirname(g.web), 'web-front-wt-mover');
     expect(result.created).toBe(true);
-    expect(result.worktree).toMatchObject({ repo: 'web-front', branch: 'session/mover', path: target, sessionId: session.id, baseRef: 'main' });
+    expect(result.worktree).toMatchObject({ repo: 'web-front', branch: 'PROJ-4-mover', path: target, sessionId: session.id, baseRef: 'main' });
     expect(await exists(target)).toBe(true);
+    expect(await g.git(target, 'branch', '--show-current')).toBe('PROJ-4-mover');
     // Paused (D7 stop), then resumed with --resume and the move message instead of "Continue.".
     const spawns = await spawnsWhenLogged(s, 2);
     expect(spawns).toHaveLength(2);
@@ -105,7 +108,8 @@ describe('WorktreeManager · isolate (gap #2)', () => {
     }, 'the resumed process stdin');
     const content = (stdin[0]?.['message'] as { content?: string } | undefined)?.content ?? '';
     expect(content).toContain(target);
-    expect(content).toContain('session/mover');
+    expect(content).toContain('branch PROJ-4-mover');
+    expect(content).not.toContain('session/mover');
     expect(content).toContain(`Do not stash, reset or check out anything in ${g.web}`);
     const events = await s.store.events.list(session.id);
     expect(events.filter((e) => payloadType(e) === 'lifecycle').map((e) => (e.payload as LifecyclePayload).action)).toEqual(['started', 'paused', 'resumed']);
@@ -119,7 +123,7 @@ describe('WorktreeManager · isolate (gap #2)', () => {
     expect(forbiddenGitCalls(await g.gitCalls())).toEqual([]);
 
     // Asking again does nothing new.
-    const again = await m.isolate('web-front', session.id);
+    const again = await m.isolate('web-front', session.id, { branch: 'PROJ-5-other' });
     expect(again).toEqual({ worktree: result.worktree, created: false });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(await spawnedArgv(s.logFile)).toHaveLength(2);
@@ -147,15 +151,22 @@ describe('REST · worktrees (M2.2)', () => {
   it('POST /api/sessions with worktrees: one per solution, linked to the session before its process starts', async () => {
     const { s, g, m } = await setup();
     await withApp(s, m);
-    const response = await call('POST', '/api/sessions', newSession({ name: 'wt-session', solutions: ['web-front', 'mobile'], worktrees: true }));
+    // D32: one ticket branch, used in every solution's repo (the folders still follow the short name).
+    const response = await call('POST', '/api/sessions', newSession({ name: 'wt-session', solutions: ['web-front', 'mobile'], worktrees: true, branch: 'PROJ-0001-test-branch-name' }));
     expect(response.statusCode).toBe(201);
     const session = response.json() as Session;
     const rows = await s.store.worktrees.list({ sessionId: session.id });
     expect(rows.map((r) => [r.repo, r.branch, r.path])).toEqual([
-      ['web-front', 'session/wt-session', path.join(path.dirname(g.web), 'web-front-wt-wt-session')],
-      ['mobile', 'session/wt-session', path.join(g.workspace, 'mobile-wt-wt-session')],
+      ['web-front', 'PROJ-0001-test-branch-name', path.join(path.dirname(g.web), 'web-front-wt-wt-session')],
+      ['mobile', 'PROJ-0001-test-branch-name', path.join(g.workspace, 'mobile-wt-wt-session')],
     ]);
-    for (const row of rows) expect(await exists(row.path)).toBe(true);
+    for (const row of rows) {
+      expect(await exists(row.path)).toBe(true);
+      expect(await g.git(row.path, 'branch', '--show-current')).toBe('PROJ-0001-test-branch-name');
+    }
+    // No session/ branch was made anywhere.
+    expect(await g.git(g.web, 'branch', '--list', 'session/*')).toBe('');
+    expect(await g.git(g.mobile, 'branch', '--list', 'session/*')).toBe('');
     const events = await s.store.events.list(session.id);
     const started = events.find((e) => payloadType(e) === 'lifecycle');
     for (const row of rows) expect(row.updatedAt <= (started?.ts ?? '')).toBe(true);
@@ -168,20 +179,46 @@ describe('REST · worktrees (M2.2)', () => {
   it('POST /api/sessions: a solution without a repo → 422 and nothing is created or spawned; an existing branch → 409', async () => {
     const { s, g, m } = await setup();
     await withApp(s, m);
-    const missing = await call('POST', '/api/sessions', newSession({ name: 'half', solutions: ['web-front', 'nope-front'], worktrees: true }));
+    const missing = await call('POST', '/api/sessions', newSession({ name: 'half', solutions: ['web-front', 'nope-front'], worktrees: true, branch: 'PROJ-1-half' }));
     expect(missing.statusCode).toBe(422);
     expect(missing.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'solutions' }] });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-half'))).toBe(false);
 
-    await g.git(g.mobile, 'branch', 'session/clash');
-    const clash = await call('POST', '/api/sessions', newSession({ name: 'clash', solutions: ['web-front', 'mobile'], worktrees: true }));
+    // D32: the ticket branch exists in one repo already → 409 naming that repo; nothing is made in the other.
+    await g.git(g.mobile, 'branch', 'PROJ-9-clash');
+    const clash = await call('POST', '/api/sessions', newSession({ name: 'clash', solutions: ['web-front', 'mobile'], worktrees: true, branch: 'PROJ-9-clash' }));
     expect(clash.statusCode).toBe(409);
-    expect(clash.json()).toMatchObject({ error: 'branch-exists' });
+    expect(clash.json()).toEqual({ error: 'branch-exists', message: 'mobile already has a branch PROJ-9-clash' });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-clash'))).toBe(false);
+    expect(await g.git(g.web, 'branch', '--list', 'PROJ-9-clash')).toBe('');
 
     expect(await s.store.sessions.list()).toEqual([]);
     expect(await spawnedArgv(s.logFile)).toEqual([]);
     expect(await s.store.worktrees.list()).toEqual([]);
+  });
+
+  it('D32: POST /api/sessions with worktrees needs a ticket branch (422 on branch, nothing made); without a worktree none is needed', async () => {
+    const { s, g, m } = await setup();
+    await withApp(s, m);
+    const none = await call('POST', '/api/sessions', newSession({ name: 'no-branch', solutions: ['web-front'], worktrees: true }));
+    expect(none.statusCode).toBe(422);
+    expect(none.json()).toEqual({ error: 'invalid', errors: [{ field: 'branch', message: BRANCH_REQUIRED }] });
+    for (const branch of ['proj-1-lower', 'PROJ-1', 'session/x', 'PROJ-1-Upper']) {
+      const bad = await call('POST', '/api/sessions', newSession({ name: 'bad-branch', solutions: ['web-front'], worktrees: true, branch }));
+      expect(bad.statusCode, branch).toBe(422);
+      expect(bad.json()).toEqual({ error: 'invalid', errors: [{ field: 'branch', message: BRANCH_RULE }] });
+    }
+    expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-no-branch'))).toBe(false);
+    expect(await s.store.sessions.list()).toEqual([]);
+    expect(await spawnedArgv(s.logFile)).toEqual([]);
+    expect(await s.store.worktrees.list()).toEqual([]);
+
+    // In place: no branch needed, and a branch sent anyway is not used.
+    const inPlace = await call('POST', '/api/sessions', newSession({ name: 'in-place', solutions: ['web-front'], worktrees: false, branch: 'whatever' }));
+    expect(inPlace.statusCode).toBe(201);
+    await waitForStatus(s.store, (inPlace.json() as Session).id, ['done']);
+    expect(await s.store.worktrees.list()).toEqual([]);
+    expect(await g.git(g.web, 'branch', '--list', 'whatever')).toBe('');
   });
 
   it('POST /api/sessions with worktrees and no saved folder → 409 no-folder (D14)', async () => {
@@ -199,28 +236,45 @@ describe('REST · worktrees (M2.2)', () => {
     const session = created.json() as Session;
     await waitForStatus(s.store, session.id, ['done']);
 
-    const first = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id });
+    // D32: the branch is required and must be a ticket branch; nothing is made (or paused) before it is.
+    const noBranch = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id });
+    expect(noBranch.statusCode).toBe(422);
+    expect(noBranch.json()).toEqual({ error: 'invalid', errors: [{ field: 'branch', message: BRANCH_REQUIRED }] });
+    const badBranch = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id, branch: 'iso' });
+    expect(badBranch.json()).toEqual({ error: 'invalid', errors: [{ field: 'branch', message: BRANCH_RULE }] });
+    // A branch the repo has already → 409 naming the repo; the session is not paused.
+    await g.git(g.web, 'branch', 'PROJ-8-taken');
+    const taken = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id, branch: 'PROJ-8-taken' });
+    expect(taken.statusCode).toBe(409);
+    expect(taken.json()).toEqual({ error: 'branch-exists', message: 'web-front already has a branch PROJ-8-taken' });
+    expect(await s.store.worktrees.list()).toEqual([]);
+    expect(await spawnedArgv(s.logFile)).toHaveLength(1);
+
+    const first = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id, branch: 'PROJ-3-iso' });
     expect(first.statusCode).toBe(201);
     const worktree = first.json() as Record<string, unknown>;
     expect(worktree).toEqual({
       id: expect.any(String),
       repo: 'web-front',
-      branch: 'session/iso',
+      branch: 'PROJ-3-iso',
       path: path.join(path.dirname(g.web), 'web-front-wt-iso'),
       sessionId: session.id,
       prNumber: null,
       prState: null,
       removable: false,
     });
+    expect(await g.git(path.join(path.dirname(g.web), 'web-front-wt-iso'), 'branch', '--show-current')).toBe('PROJ-3-iso');
     await until(async () => (await spawnedArgv(s.logFile)).length === 2, 'the resumed process');
     await waitForStatus(s.store, session.id, ['done']);
-    const second = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id });
+    const second = await call('POST', '/api/solutions/web-front/isolate', { sessionId: session.id, branch: 'PROJ-3-iso' });
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual(worktree);
 
-    expect((await call('POST', '/api/solutions/web-front/isolate', {})).statusCode).toBe(422);
-    expect((await call('POST', '/api/solutions/web-front/isolate', { sessionId: 'nope' })).statusCode).toBe(404);
-    const unknownRepo = await call('POST', '/api/solutions/nope-front/isolate', { sessionId: session.id });
+    const empty = await call('POST', '/api/solutions/web-front/isolate', {});
+    expect(empty.statusCode).toBe(422);
+    expect(empty.json().errors.map((e: { field: string }) => e.field)).toEqual(['sessionId', 'branch']);
+    expect((await call('POST', '/api/solutions/web-front/isolate', { sessionId: 'nope', branch: 'PROJ-3-iso' })).statusCode).toBe(404);
+    const unknownRepo = await call('POST', '/api/solutions/nope-front/isolate', { sessionId: session.id, branch: 'PROJ-3-iso' });
     expect(unknownRepo.statusCode).toBe(422);
     expect(unknownRepo.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'repo' }] });
     expect(await readFile(path.join(g.web, 'README.md'), 'utf8')).toBe('hello\n');

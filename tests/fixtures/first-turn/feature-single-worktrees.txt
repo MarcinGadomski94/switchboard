@@ -9,4 +9,4 @@ Take them as the answers to the session-start questions: confirm them back in on
 - Mobile coordination: sequential
 - Ultracode: off
 - Worktrees (one per solution; make every change there, not in the main checkout):
-  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-feature-single (branch session/feature-single)
+  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-feature-single (branch PROJ-0640-free-talk-web)

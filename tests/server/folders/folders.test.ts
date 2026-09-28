@@ -413,20 +413,24 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
 
   it('a repo folder with a worktree: the process runs in ../<repo>-wt-<name>, the first message carries only the worktree note', async () => {
     const { s, g, repo, repoPath } = await setup();
-    const response = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-wt', worktrees: true, solutions: ['solo'] }));
+    // D32: a repo folder's worktree needs a ticket branch too (422 without), and is made on it.
+    const noBranch = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-wt', worktrees: true, solutions: ['solo'] }));
+    expect(noBranch.statusCode).toBe(422);
+    expect(noBranch.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'branch' }] });
+    const response = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'solo-wt', worktrees: true, solutions: ['solo'], branch: 'SOLO-12-tidy-readme' }));
     expect(response.statusCode, response.body).toBe(201);
     const session = response.json() as Session;
     const worktree = path.join(path.dirname(repoPath), 'solo-wt-solo-wt');
     expect(session).toMatchObject({ cwd: worktree, folderPath: repoPath, folderKind: 'repo', solutions: ['solo'] });
     expect((await stat(worktree)).isDirectory()).toBe(true);
-    expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('session/solo-wt');
+    expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('SOLO-12-tidy-readme');
     const { cwd, first } = await spawnOf(s, session);
     expect(cwd).toBe(worktree);
     expect(first.split('\n')).toEqual([
       'Tidy the README.',
       '',
       REPO_WORKTREE_NOTE_HEADER,
-      `- Worktree: ${worktree} (branch session/solo-wt, from main); it is your working folder: make every change here.`,
+      `- Worktree: ${worktree} (branch SOLO-12-tidy-readme, from main); it is your working folder: make every change here.`,
       `- Main checkout: ${repoPath} (leave it as it is).`,
     ]);
     // The session diff resolves in its own folder: the worktree against its base.
@@ -540,13 +544,13 @@ describe('/api/folders, and sessions / solutions / codebase memory per folder (D
   it('D18: a renamed repo folder still names its worktree and its one solution after the folder itself', async () => {
     const { s, g, repo, repoPath } = await setup();
     expect((await call('PUT', `/api/folders/${repo.id}/label`, { label: 'Pretty Name' })).statusCode).toBe(200);
-    const response = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'named-wt', worktrees: true }));
+    const response = await call('POST', '/api/sessions', repoSession(repo.id, { name: 'named-wt', worktrees: true, branch: 'SOLO-7-named' }));
     expect(response.statusCode, response.body).toBe(201);
     const session = response.json() as Session;
     const worktree = path.join(path.dirname(repoPath), 'solo-wt-named-wt');
     expect(session).toMatchObject({ cwd: worktree, folder: repo.id, folderPath: repoPath, folderKind: 'repo', solutions: ['solo'] });
     expect((await stat(worktree)).isDirectory()).toBe(true);
-    expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('session/named-wt');
+    expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('SOLO-7-named');
     const { cwd } = await spawnOf(s, session);
     expect(cwd).toBe(worktree);
     // A repo folder's one solution is still its own name (an old name or the custom one is refused).

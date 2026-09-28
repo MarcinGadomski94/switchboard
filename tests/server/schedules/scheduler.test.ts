@@ -336,9 +336,11 @@ describe('Scheduler · runs in progress, questions and failures', () => {
     expect(await r.w.store.sessions.list()).toEqual([]);
   });
 
-  it('with worktrees on, every run gets its own worktree named after its session (gap #1)', async () => {
+  it('with worktrees on, every run gets its own worktree named after its session (gap #1; D32: no ticket branch, session/{name} kept)', async () => {
     const r = await setup(at(2, 0));
-    const schedule = await save(r, { cron: '0 2 * * *', template: template({ name: 'web-nightly', solutions: ['web-front'], worktrees: true }) });
+    // D32 *Unchanged*: a template needs no branch, and one sent anyway is not kept (it would clash from the second run on).
+    const schedule = await save(r, { cron: '0 2 * * *', template: template({ name: 'web-nightly', solutions: ['web-front'], worktrees: true, branch: 'PROJ-9-nightly' }) });
+    expect(schedule.template).not.toHaveProperty('branch');
     const run = await r.scheduler.runNow(schedule.id);
     const worktree = path.join(path.dirname(r.g.web), 'web-front-wt-web-nightly-0928-0200');
     expect((await stat(worktree)).isDirectory()).toBe(true);
