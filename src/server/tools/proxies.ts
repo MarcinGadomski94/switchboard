@@ -1,3 +1,4 @@
+import { isSiteToolUrl } from '../../core/site-tools.ts';
 import type { ToolFrameProvider } from '../providers.ts';
 import { switchboardOrigins } from './framing.ts';
 import { type ToolProxy, type ToolProxyOptions, startToolProxy } from './proxy.ts';
@@ -5,7 +6,7 @@ import { type ToolProxy, type ToolProxyOptions, startToolProxy } from './proxy.t
 /** A tool as {@link ToolProxies.sync} needs it. */
 export interface ToolTarget {
   readonly id: string;
-  /** `null` = not configured: no proxy. */
+  /** `null` = not configured: no proxy. D28: a signed-in site (`isSiteToolUrl`) gets none either. */
   readonly url: string | null;
 }
 
@@ -54,7 +55,10 @@ export interface ToolProxiesOptions {
  * proxy*): one {@link ToolProxy} per tool with a URL, each on its own OS-assigned
  * 127.0.0.1 port. main.ts creates it in normal runs (never in demo mode), syncs
  * it with the saved tools before the service listens, and closes it on shutdown;
- * `PUT /api/tools` syncs it with the new list. Syncs run one at a time.
+ * `PUT /api/tools` syncs it with the new list. Syncs run one at a time. D28: a
+ * signed-in site (a non-loopback `https:` URL, `docs/frame-helper.md`) gets no
+ * proxy: the proxy's origin can never carry the site's login cookies, so the Tool
+ * view frames the site directly through the frame helper instead.
  */
 export class ToolProxies implements ToolFrameProvider {
   readonly #frameOrigins: readonly string[];
@@ -75,7 +79,8 @@ export class ToolProxies implements ToolFrameProvider {
   /**
    * Makes the running proxies match `tools`: a tool whose URL is unchanged keeps
    * its proxy (and port); a changed URL restarts it (new port); a tool without a
-   * URL, or no longer listed, loses it; a new tool with a URL gets one. A proxy that
+   * URL, with a site URL (D28), or no longer listed, loses it; a new tool with a
+   * local URL gets one. A proxy that
    * fails to start is reported to `onError` and left out. After {@link close} it
    * does nothing.
    */
@@ -88,7 +93,7 @@ export class ToolProxies implements ToolFrameProvider {
   async #apply(tools: readonly ToolTarget[]): Promise<void> {
     if (this.#closed) return;
     const wanted = new Map<string, string>();
-    for (const tool of tools) if (tool.url) wanted.set(tool.id, tool.url);
+    for (const tool of tools) if (tool.url && !isSiteToolUrl(tool.url)) wanted.set(tool.id, tool.url);
     const stopping: Array<Promise<void>> = [];
     for (const [id, proxy] of this.#proxies) {
       if (wanted.get(id) !== proxy.target) {

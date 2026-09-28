@@ -48,6 +48,7 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['GET', '/api/tools', 'M8.1'],
   ['PUT', '/api/tools', 'M8.1'],
   ['POST', '/api/tools/nope/probe', 'M8.1'], // an unknown tool: nothing is fetched (tests/server/api/tools.test.ts)
+  ['GET', '/api/frame-helper/check', 'D28'], // additive: the frame helper's capability check page (tests/server/api/tool-frames.test.ts)
   ['GET', '/api/codebase-memory', 'M8.1'], // additive (docs/tools.md)
   ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no saved folder here → 409 no-folder, nothing starts
   ['GET', '/api/settings', 'M8.2'],
