@@ -183,7 +183,7 @@ describe('seedDemo (gap #21)', () => {
     expect(() => assertDemoDataDir(path.join(tmp, 'data'), '/home/u/.local/share/switchboard')).not.toThrow();
     const started = await startDemo(store, path.join(tmp, 'data'));
     expect(started.seed).toEqual({ seeded: true, sessions: 6 });
-    expect(Object.keys(started.providers).sort()).toEqual(['diff', 'history', 'solutions', 'system']);
+    expect(Object.keys(started.providers).sort()).toEqual(['diff', 'history', 'loginService', 'solutions', 'system']);
   });
 
   it('maps the prototype chat tool lines to step events with the same mark (M4.2)', () => {

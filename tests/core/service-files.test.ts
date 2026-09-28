@@ -1,0 +1,477 @@
+import { spawn } from 'node:child_process';
+import { access, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  LAUNCHD_LABEL,
+  type ServiceTarget,
+  ServiceFileError,
+  describePlan,
+  envFileLine,
+  installPlan,
+  launchdPlist,
+  parseNodeMajor,
+  serviceEnvFile,
+  serviceFileBytes,
+  serviceFiles,
+  servicePaths,
+  systemdEnvironment,
+  systemdExecWord,
+  systemdUnit,
+  taskArguments,
+  taskSchedulerXml,
+  uninstallPlan,
+  windowsArg,
+  xmlText,
+} from '../../src/core/service-files.ts';
+import { makeTempDir, removeTempDir } from '../helpers/net.ts';
+
+/**
+ * M9.1 oracle, part 1: the generated launchd / systemd / Task Scheduler files and
+ * the install / uninstall plans (`docs/service.md`). Where this machine has the
+ * platform's own parser (plutil, xmllint, node --env-file) the generated file is
+ * also read back by it; nothing is ever registered.
+ */
+
+/** Runs a tool with this process's environment minus every `SWITCHBOARD_*` variable. */
+function run(command: string, args: readonly string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('SWITCHBOARD_')) env[key] = value;
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    child.on('error', () => resolve({ code: null, stdout, stderr }));
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+async function hasTool(file: string): Promise<boolean> {
+  try {
+    await access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const DARWIN: ServiceTarget = {
+  platform: 'darwin',
+  home: '/Users/dev',
+  dataDir: '/Users/dev/Library/Application Support/Switchboard',
+  xdgConfigHome: null,
+  nodePath: '/opt/homebrew/bin/node',
+  appDir: '/Users/dev/Acme Corp/switchboard',
+  entry: '/Users/dev/Acme Corp/switchboard/src/server/main.ts',
+  env: { SWITCHBOARD_WORKSPACE_ROOT: '/Users/dev/R&D <ws>', SWITCHBOARD_PORT: '4880' },
+  searchPath: '/opt/homebrew/bin:/usr/bin:/bin',
+  uid: 501,
+  user: null,
+  address: '127.0.0.1:4880',
+};
+
+const LINUX: ServiceTarget = {
+  platform: 'linux',
+  home: '/home/dev',
+  dataDir: '/home/dev/.local/share/switchboard',
+  xdgConfigHome: null,
+  nodePath: '/usr/bin/node',
+  appDir: '/home/dev/Acme Corp/switch%board',
+  entry: '/home/dev/Acme Corp/switch%board/src/server/main.ts',
+  env: { SWITCHBOARD_WORKSPACE_ROOT: '/home/dev/work "space" $HOME 100%' },
+  searchPath: '/usr/local/bin:/usr/bin',
+  uid: null,
+  user: null,
+  address: '127.0.0.1:4870',
+};
+
+const WIN32: ServiceTarget = {
+  platform: 'win32',
+  home: 'C:\\Users\\dev',
+  dataDir: 'C:\\Users\\dev\\AppData\\Local\\Switchboard',
+  xdgConfigHome: null,
+  nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+  appDir: 'D:\\Acme Corp\\switchboard',
+  entry: 'D:\\Acme Corp\\switchboard\\src\\server\\main.ts',
+  env: { SWITCHBOARD_WORKSPACE_ROOT: 'D:\\acme', SWITCHBOARD_CLAUDE_BIN: 'C:\\Users\\dev\\.local\\bin\\claude.exe' },
+  searchPath: null,
+  uid: null,
+  user: 'DEVBOX\\dev',
+  address: '127.0.0.1:4870',
+};
+
+describe('service paths', () => {
+  it('puts each definition where its service manager looks for it', () => {
+    expect(servicePaths(DARWIN)).toEqual({
+      definition: `/Users/dev/Library/LaunchAgents/${LAUNCHD_LABEL}.plist`,
+      envFile: null,
+      logFile: '/Users/dev/Library/Application Support/Switchboard/logs/service.log',
+      folders: ['/Users/dev/Library/LaunchAgents', '/Users/dev/Library/Application Support/Switchboard/logs'],
+    });
+    expect(servicePaths(LINUX).definition).toBe('/home/dev/.config/systemd/user/switchboard.service');
+    expect(servicePaths({ ...LINUX, xdgConfigHome: '/xdg/config' }).definition).toBe('/xdg/config/systemd/user/switchboard.service');
+    expect(servicePaths(WIN32)).toEqual({
+      definition: 'C:\\Users\\dev\\AppData\\Local\\Switchboard\\service\\switchboard-task.xml',
+      envFile: 'C:\\Users\\dev\\AppData\\Local\\Switchboard\\service\\switchboard.env',
+      logFile: null,
+      folders: ['C:\\Users\\dev\\AppData\\Local\\Switchboard\\service'],
+    });
+  });
+});
+
+describe('launchd agent (macOS)', () => {
+  it('is the exact plist: node + main.ts, the repo as working folder, PATH first, run at load, not kept alive, logged', () => {
+    expect(launchdPlist(DARWIN)).toBe(
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+        '<!-- Generated by Switchboard ("Start at login", docs/service.md). Turning it on again rewrites this file. -->',
+        '<plist version="1.0">',
+        '<dict>',
+        '\t<key>Label</key>',
+        '\t<string>local.switchboard</string>',
+        '\t<key>ProgramArguments</key>',
+        '\t<array>',
+        '\t\t<string>/opt/homebrew/bin/node</string>',
+        '\t\t<string>/Users/dev/Acme Corp/switchboard/src/server/main.ts</string>',
+        '\t</array>',
+        '\t<key>WorkingDirectory</key>',
+        '\t<string>/Users/dev/Acme Corp/switchboard</string>',
+        '\t<key>EnvironmentVariables</key>',
+        '\t<dict>',
+        '\t\t<key>PATH</key>',
+        '\t\t<string>/opt/homebrew/bin:/usr/bin:/bin</string>',
+        '\t\t<key>SWITCHBOARD_PORT</key>',
+        '\t\t<string>4880</string>',
+        '\t\t<key>SWITCHBOARD_WORKSPACE_ROOT</key>',
+        '\t\t<string>/Users/dev/R&amp;D &lt;ws&gt;</string>',
+        '\t</dict>',
+        '\t<key>RunAtLoad</key>',
+        '\t<true/>',
+        '\t<key>KeepAlive</key>',
+        '\t<false/>',
+        '\t<key>StandardOutPath</key>',
+        '\t<string>/Users/dev/Library/Application Support/Switchboard/logs/service.log</string>',
+        '\t<key>StandardErrorPath</key>',
+        '\t<string>/Users/dev/Library/Application Support/Switchboard/logs/service.log</string>',
+        '</dict>',
+        '</plist>',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('leaves out EnvironmentVariables when there is nothing to set', () => {
+    expect(launchdPlist({ ...DARWIN, env: {}, searchPath: null })).not.toContain('EnvironmentVariables');
+  });
+
+  it('refuses a control character rather than write a broken plist', () => {
+    expect(() => launchdPlist({ ...DARWIN, env: { SWITCHBOARD_WORKSPACE_ROOT: 'a\u0001b' } })).toThrow(ServiceFileError);
+  });
+
+  describe.runIf(process.platform === 'darwin')('read back by plutil (macOS only)', () => {
+    let tmp: string;
+    beforeAll(async () => {
+      tmp = await makeTempDir('plist');
+    });
+    afterAll(async () => {
+      await removeTempDir(tmp);
+    });
+
+    it('passes plutil -lint and parses to the same values', async () => {
+      const file = path.join(tmp, `${LAUNCHD_LABEL}.plist`);
+      await writeFile(file, launchdPlist(DARWIN));
+      const lint = await run('/usr/bin/plutil', ['-lint', file]);
+      expect(lint.code, lint.stdout + lint.stderr).toBe(0);
+      const json = await run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', file]);
+      expect(json.code, json.stderr).toBe(0);
+      expect(JSON.parse(json.stdout)).toEqual({
+        Label: 'local.switchboard',
+        ProgramArguments: [DARWIN.nodePath, DARWIN.entry],
+        WorkingDirectory: DARWIN.appDir,
+        EnvironmentVariables: { PATH: DARWIN.searchPath, SWITCHBOARD_PORT: '4880', SWITCHBOARD_WORKSPACE_ROOT: '/Users/dev/R&D <ws>' },
+        RunAtLoad: true,
+        KeepAlive: false,
+        StandardOutPath: '/Users/dev/Library/Application Support/Switchboard/logs/service.log',
+        StandardErrorPath: '/Users/dev/Library/Application Support/Switchboard/logs/service.log',
+      });
+    });
+  });
+});
+
+/** systemd's unquoting of one ExecStart / Environment word (for the round trip). */
+function systemdUnquote(word: string): string {
+  const inner = word.startsWith('"') && word.endsWith('"') ? word.slice(1, -1).replace(/\\(["\\])/g, '$1') : word;
+  return inner.replace(/%%/g, '%').replace(/\$\$/g, '$');
+}
+
+describe('systemd user unit (Linux)', () => {
+  it('is the exact unit: started with the session, not restarted, SIGTERM to the service only', () => {
+    expect(systemdUnit(LINUX)).toBe(
+      [
+        '# Generated by Switchboard ("Start at login", docs/service.md). Turning it on again rewrites this file.',
+        '[Unit]',
+        'Description=Switchboard: supervises Claude Code sessions (127.0.0.1:4870)',
+        '',
+        '[Service]',
+        'Type=simple',
+        'WorkingDirectory=/home/dev/Acme Corp/switch%%board',
+        'Environment="PATH=/usr/local/bin:/usr/bin"',
+        'Environment="SWITCHBOARD_WORKSPACE_ROOT=/home/dev/work \\"space\\" $HOME 100%%"',
+        'ExecStart=/usr/bin/node "/home/dev/Acme Corp/switch%%board/src/server/main.ts"',
+        'KillMode=mixed',
+        'Restart=no',
+        '',
+        '[Install]',
+        'WantedBy=default.target',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('escapes ExecStart words so systemd reads back the exact values', () => {
+    for (const value of ['/usr/bin/node', '/a b/c', 'a"b', 'back\\slash', '100%', '$HOME', 'semi;colon', "it's"]) {
+      expect(systemdUnquote(systemdExecWord(value)), value).toBe(value);
+    }
+    expect(systemdExecWord('$HOME')).toBe('$$HOME');
+    expect(systemdExecWord('a b')).toBe('"a b"');
+    expect(() => systemdExecWord('a\nb')).toThrow(ServiceFileError);
+  });
+
+  it('writes Environment= assignments quoted, with % escaped and $ left alone', () => {
+    expect(systemdEnvironment('SWITCHBOARD_PORT', '4880')).toBe('"SWITCHBOARD_PORT=4880"');
+    expect(systemdEnvironment('X', 'C:\\a "b" 5%')).toBe('"X=C:\\\\a \\"b\\" 5%%"');
+    expect(() => systemdEnvironment('BAD KEY', 'x')).toThrow(ServiceFileError);
+  });
+});
+
+/** Windows argv splitting (CommandLineToArgvW rules) for the round trip. */
+function windowsSplit(line: string): string[] {
+  const args: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (line[i] === ' ' || line[i] === '\t') i++;
+    if (i >= line.length) break;
+    let arg = '';
+    let quoted = false;
+    for (; i < line.length; i++) {
+      const ch = line[i];
+      if (!quoted && (ch === ' ' || ch === '\t')) break;
+      if (ch === '\\') {
+        let n = 0;
+        while (line[i] === '\\') {
+          n++;
+          i++;
+        }
+        if (line[i] === '"') {
+          arg += '\\'.repeat(Math.floor(n / 2));
+          if (n % 2 === 1) arg += '"';
+          else quoted = !quoted;
+        } else {
+          arg += '\\'.repeat(n);
+          i--;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        quoted = !quoted;
+        continue;
+      }
+      arg += ch;
+    }
+    args.push(arg);
+  }
+  return args;
+}
+
+describe('Task Scheduler task (Windows)', () => {
+  it('quotes node arguments the way node.exe splits them', () => {
+    expect(windowsArg('plain')).toBe('plain');
+    expect(windowsArg('C:\\Program Files\\x')).toBe('"C:\\Program Files\\x"');
+    expect(windowsArg('C:\\a b\\')).toBe('"C:\\a b\\\\"');
+    expect(windowsArg('a"b')).toBe('"a\\"b"');
+    expect(windowsArg('')).toBe('""');
+    const values = ['C:\\Program Files\\nodejs\\node.exe', 'D:\\Acme Corp\\x\\', 'a "quoted" b', 'tail\\\\', 'x\\"y', ''];
+    expect(windowsSplit(values.map(windowsArg).join(' '))).toEqual(values);
+  });
+
+  it('runs node --env-file=<data>\\service\\switchboard.env <main.ts>', () => {
+    expect(taskArguments(WIN32)).toBe(
+      '--env-file=C:\\Users\\dev\\AppData\\Local\\Switchboard\\service\\switchboard.env "D:\\Acme Corp\\switchboard\\src\\server\\main.ts"',
+    );
+    expect(windowsSplit(taskArguments(WIN32))).toEqual([`--env-file=${servicePaths(WIN32).envFile}`, WIN32.entry]);
+  });
+
+  it('is a logon task for this user at least privilege, no time limit, one instance', () => {
+    const xml = taskSchedulerXml(WIN32);
+    expect(xml.split('\r\n')[0]).toBe('<?xml version="1.0" encoding="UTF-16"?>');
+    expect(xml).not.toMatch(/[^\r]\n/);
+    const tag = (name: string): string[] => [...xml.matchAll(new RegExp(`<${name}>([^<]*)</${name}>`, 'g'))].map((m) => m[1] ?? '');
+    expect(xml).toContain('<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">');
+    expect(xml).toContain('<LogonTrigger>');
+    expect(tag('UserId')).toEqual(['DEVBOX\\dev', 'DEVBOX\\dev']);
+    expect(tag('LogonType')).toEqual(['InteractiveToken']);
+    expect(tag('RunLevel')).toEqual(['LeastPrivilege']);
+    expect(tag('MultipleInstancesPolicy')).toEqual(['IgnoreNew']);
+    expect(tag('ExecutionTimeLimit')).toEqual(['PT0S']);
+    expect(tag('DisallowStartIfOnBatteries')).toEqual(['false']);
+    expect(tag('StopIfGoingOnBatteries')).toEqual(['false']);
+    expect(xml).not.toContain('RestartOnFailure');
+    expect(tag('Command')).toEqual(['&quot;C:\\Program Files\\nodejs\\node.exe&quot;']);
+    expect(tag('Arguments')).toEqual([xmlText(taskArguments(WIN32))]);
+    expect(tag('WorkingDirectory')).toEqual(['D:\\Acme Corp\\switchboard']);
+  });
+
+  it('needs the user for the logon trigger', () => {
+    expect(() => taskSchedulerXml({ ...WIN32, user: null })).toThrow(ServiceFileError);
+  });
+
+  it('is written as UTF-16 LE with a BOM, next to the env file', () => {
+    const files = serviceFiles(WIN32);
+    expect(files.map((f) => [f.path, f.encoding])).toEqual([
+      ['C:\\Users\\dev\\AppData\\Local\\Switchboard\\service\\switchboard.env', 'utf8'],
+      ['C:\\Users\\dev\\AppData\\Local\\Switchboard\\service\\switchboard-task.xml', 'utf16le'],
+    ]);
+    const xml = files[1];
+    if (!xml) throw new Error('no xml');
+    const bytes = serviceFileBytes(xml);
+    expect([...bytes.subarray(0, 4)]).toEqual([0xff, 0xfe, 0x3c, 0x00]);
+    expect(bytes.subarray(2).toString('utf16le')).toBe(xml.content);
+  });
+
+  describe.runIf(process.platform !== 'win32')('read back by xmllint when present', () => {
+    let tmp: string;
+    beforeAll(async () => {
+      tmp = await makeTempDir('task-xml');
+    });
+    afterAll(async () => {
+      await removeTempDir(tmp);
+    });
+
+    it('is well-formed UTF-16 XML', async () => {
+      if (!(await hasTool('/usr/bin/xmllint'))) return;
+      const xml = serviceFiles(WIN32)[1];
+      if (!xml) throw new Error('no xml');
+      const file = path.join(tmp, 'switchboard-task.xml');
+      await writeFile(file, serviceFileBytes(xml));
+      const lint = await run('/usr/bin/xmllint', ['--noout', file]);
+      expect(lint.code, lint.stderr).toBe(0);
+      const command = await run('/usr/bin/xmllint', ['--xpath', 'string(//*[local-name()="Command"])', file]);
+      expect(command.stdout.trim()).toBe('"C:\\Program Files\\nodejs\\node.exe"');
+      const args = await run('/usr/bin/xmllint', ['--xpath', 'string(//*[local-name()="Arguments"])', file]);
+      expect(args.stdout.trim()).toBe(taskArguments(WIN32));
+    });
+  });
+});
+
+describe('env file (Windows, node --env-file)', () => {
+  it('picks a quote Node takes literally', () => {
+    expect(envFileLine('A', 'C:\\new folder\\x#y')).toBe("A='C:\\new folder\\x#y'");
+    expect(envFileLine('B', "it's")).toBe('B=`it\'s`');
+    expect(envFileLine('C', "it's `x`")).toBe('C="it\'s `x`"');
+    expect(() => envFileLine('D', 'it\'s `x` "y"')).toThrow(ServiceFileError);
+    expect(() => envFileLine('E', 'a\nb')).toThrow(ServiceFileError);
+    expect(() => envFileLine('1X', 'a')).toThrow(ServiceFileError);
+  });
+
+  describe('read back by this node', () => {
+    let tmp: string;
+    beforeAll(async () => {
+      tmp = await makeTempDir('env-file');
+    });
+    afterAll(async () => {
+      await removeTempDir(tmp);
+    });
+
+    it('gives the service exactly the carried values', async () => {
+      const env = {
+        SWITCHBOARD_WORKSPACE_ROOT: 'C:\\Users\\dev\\new folder\\ws #1',
+        SWITCHBOARD_CLAUDE_BIN: '["C:\\\\node.exe","C:\\\\fake\\\\main.ts"]',
+        SWITCHBOARD_PORT: "it's 4880",
+      };
+      const file = path.join(tmp, 'switchboard.env');
+      await writeFile(file, serviceEnvFile(env));
+      const result = await run(process.execPath, [
+        `--env-file=${file}`,
+        '-e',
+        'const k=Object.keys(process.env).filter(n=>n.startsWith("SWITCHBOARD_")).sort();console.log(JSON.stringify(Object.fromEntries(k.map(n=>[n,process.env[n]]))))',
+      ]);
+      expect(result.code, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(env);
+    });
+  });
+});
+
+describe('plans', () => {
+  it('macOS: install writes the plist (launchd loads it at login); --start also loads it now', () => {
+    const plist = servicePaths(DARWIN).definition;
+    const install = installPlan(DARWIN);
+    expect(install.steps.map((s) => (s.kind === 'write' ? `write ${s.file.path}` : s.kind === 'run' ? `run ${s.args.join(' ')}` : `${s.kind} ${s.path}`))).toEqual([
+      'mkdir /Users/dev/Library/LaunchAgents',
+      'mkdir /Users/dev/Library/Application Support/Switchboard/logs',
+      `write ${plist}`,
+    ]);
+    expect(installPlan(DARWIN, { start: true }).steps.slice(3)).toEqual([
+      { kind: 'run', args: ['bootout', 'gui/501/local.switchboard'], onlyIf: ['print', 'gui/501/local.switchboard'] },
+      { kind: 'run', args: ['bootstrap', 'gui/501', plist] },
+    ]);
+    expect(uninstallPlan(DARWIN).steps).toEqual([{ kind: 'remove', path: plist }]);
+    expect(uninstallPlan(DARWIN, { stop: true }).steps).toEqual([
+      { kind: 'run', args: ['bootout', 'gui/501/local.switchboard'], onlyIf: ['print', 'gui/501/local.switchboard'] },
+      { kind: 'remove', path: plist },
+    ]);
+  });
+
+  it('Linux: daemon-reload + enable; uninstall disables before the unit goes', () => {
+    const unit = servicePaths(LINUX).definition;
+    expect(installPlan(LINUX).steps.filter((s) => s.kind === 'run')).toEqual([
+      { kind: 'run', args: ['--user', 'daemon-reload'] },
+      { kind: 'run', args: ['--user', 'enable', 'switchboard.service'] },
+    ]);
+    expect(installPlan(LINUX, { start: true }).steps.at(-1)).toEqual({ kind: 'run', args: ['--user', 'restart', 'switchboard.service'] });
+    expect(uninstallPlan(LINUX).steps).toEqual([
+      { kind: 'run', args: ['--user', 'disable', 'switchboard.service'] },
+      { kind: 'remove', path: unit },
+      { kind: 'run', args: ['--user', 'daemon-reload'] },
+    ]);
+    expect(uninstallPlan(LINUX, { stop: true }).steps[0]).toEqual({ kind: 'run', args: ['--user', 'disable', '--now', 'switchboard.service'] });
+  });
+
+  it('Windows: schtasks /Create from the XML; uninstall deletes the task only when it exists', () => {
+    const { definition, envFile } = servicePaths(WIN32);
+    expect(installPlan(WIN32).steps.filter((s) => s.kind === 'run')).toEqual([
+      { kind: 'run', args: ['/Create', '/TN', 'Switchboard', '/XML', definition, '/F'] },
+    ]);
+    expect(installPlan(WIN32, { start: true }).steps.at(-1)).toEqual({ kind: 'run', args: ['/Run', '/TN', 'Switchboard'] });
+    expect(uninstallPlan(WIN32, { stop: true }).steps).toEqual([
+      { kind: 'run', args: ['/End', '/TN', 'Switchboard'], onlyIf: ['/Query', '/TN', 'Switchboard'] },
+      { kind: 'run', args: ['/Delete', '/TN', 'Switchboard', '/F'], onlyIf: ['/Query', '/TN', 'Switchboard'] },
+      { kind: 'remove', path: definition },
+      { kind: 'remove', path: envFile },
+    ]);
+  });
+
+  it('describes a plan for --dry-run with every file in full', () => {
+    const text = describePlan(installPlan(DARWIN, { start: true }));
+    expect(text).toContain('mkdir   /Users/dev/Library/LaunchAgents');
+    expect(text).toContain(`write   ${servicePaths(DARWIN).definition}`);
+    expect(text).toContain('        | \t<key>RunAtLoad</key>');
+    expect(text).toContain(
+      'run     launchctl bootout gui/501/local.switchboard   (only if `launchctl print gui/501/local.switchboard` succeeds)',
+    );
+    expect(describePlan(installPlan(WIN32), ['schtasks'])).toContain(
+      `run     schtasks /Create /TN Switchboard /XML ${JSON.stringify(servicePaths(WIN32).definition)} /F`,
+    );
+    expect(describePlan(installPlan(WIN32))).toContain('switchboard-task.xml (UTF-16 LE with BOM)');
+  });
+});
+
+describe('parseNodeMajor', () => {
+  it('reads node --version', () => {
+    expect(parseNodeMajor('v24.21.0\n')).toBe(24);
+    expect(parseNodeMajor('v22.9.1')).toBe(22);
+    expect(parseNodeMajor('node')).toBeNull();
+  });
+});

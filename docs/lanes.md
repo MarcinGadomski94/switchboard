@@ -29,6 +29,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | M8.1 |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
+| `GET/PUT /api/service` (additive, not in the contract table) | `api/service.ts` | served since M9.1: "Start at login" through `providers.loginService` (`docs/service.md`); 501 without the provider |
 | `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
 
 Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` behind the usual Host/Origin guard and cookie.
@@ -51,6 +52,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `SolutionsProvider` (workspace scan + live fields) | `LiveSolutions` (M6.2, `src/server/solutions/live.ts`) over the `WorkspaceScanner` (M6.1, `src/server/solutions/scanner.ts`, `docs/solutions.md`), wired in `main.ts`; its optional `isReadOnly` (the scanner's) feeds the NewSession read-only check | same (no `isReadOnly`: matched by row name) |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
 | `HistoryProvider` (transcripts) | M7.4 | same |
+| `LoginServiceProvider` ("Start at login": the per-user service definition) | `LoginService` (M9.1, `src/server/service/login-service.ts`), wired in `main.ts` | `src/server/demo/login-service.ts` (in-memory, starts on, never touches the OS) |
 
 ## UI: views and parts (`src/web/…`)
 | File | What | Item |
@@ -72,7 +74,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
 | `views/ToolView.tsx` | Embedded tool | M8.1 |
-| `views/SettingsView.tsx` | Settings | M8.2 |
+| `views/SettingsView.tsx` | Settings | M8.2; M9.1's "Start at login" is `views/settings/StartAtLogin.tsx` (`StartAtLoginToggle` for M8.2's Claude Code row; the placeholder shows `StartAtLoginRow` until then, `docs/service.md`) |
 | `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
 
 Each lane adds its view's CSS next to its component (`views/<view>.css`), using the variables in `styles/tokens.css`.

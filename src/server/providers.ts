@@ -1,4 +1,5 @@
 import type { FileDiff, HistoryItem, SolutionGroup, SystemInfo } from '../core/api.ts';
+import type { LoginServiceStatus } from '../core/login-service.ts';
 
 /**
  * Live data that is computed rather than stored (docs/database.md → "Not stored"),
@@ -37,10 +38,22 @@ export interface HistoryProvider {
   history(q?: string): Promise<HistoryItem[]>;
 }
 
+/**
+ * "Start at login": the per-user OS service definition (M9.1, `docs/service.md`).
+ * Real implementation: `LoginService` (`service/login-service.ts`); the demo's
+ * never touches the OS.
+ */
+export interface LoginServiceProvider {
+  status(): Promise<LoginServiceStatus>;
+  /** Registers / removes the service definition. Rejects with a `ServiceError` (`service/errors.ts`). */
+  setStartAtLogin(enabled: boolean): Promise<LoginServiceStatus>;
+}
+
 /** The providers a running service has. A missing one means its item has not landed yet. */
 export interface Providers {
   readonly diff?: DiffProvider;
   readonly solutions?: SolutionsProvider;
   readonly system?: SystemProvider;
   readonly history?: HistoryProvider;
+  readonly loginService?: LoginServiceProvider;
 }

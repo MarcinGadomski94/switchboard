@@ -13,7 +13,9 @@
     "start": "node src/server/main.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "service:install": "node tools/service/install.ts",
+    "service:uninstall": "node tools/service/uninstall.ts"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

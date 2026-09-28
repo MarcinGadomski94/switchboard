@@ -1,0 +1,92 @@
+# M9.1 · per-user background service on every OS (docs/service.md → CI).
+# Written but never run from here: the repo has no remote (D12). On the runners it
+# checks the generated launchd / systemd / Task Scheduler files with each OS's own
+# tools. Everything that registers a service uses a temp home and the fake service
+# manager, except the Windows job's round trip, which registers and deletes a task
+# under a CI-only name on the throwaway runner.
+name: service
+
+on:
+  push:
+    paths:
+      - 'src/core/service-files.ts'
+      - 'src/core/login-service.ts'
+      - 'src/server/service/**'
+      - 'src/server/api/service.ts'
+      - 'src/web/views/settings/**'
+      - 'tools/service/**'
+      - 'tools/fake-servicectl/**'
+      - 'tests/**/service*'
+      - '.github/workflows/service.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  service:
+    name: service (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      SWITCHBOARD_WORKSPACE_ROOT: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (generated files, plans, LoginService, API, scripts, toggle)
+        run: >-
+          npx vitest run
+          tests/core/service-files.test.ts
+          tests/server/service
+          tests/server/api/service.test.ts
+          tests/tools/service-cli.test.ts
+          tests/web/start-at-login.test.ts
+
+      - name: Dry runs (this runner's real home; nothing is written or run)
+        shell: bash
+        run: |
+          npm run service:install -- --dry-run --start
+          npm run service:uninstall -- --dry-run
+
+      - name: Generate the definition into a temp home (fake service manager)
+        shell: bash
+        env:
+          SWITCHBOARD_SERVICE_HOME: ${{ runner.temp }}/home
+          SWITCHBOARD_DATA_DIR: ${{ runner.temp }}/data
+          SWITCHBOARD_SERVICE_CTL: '["node","tools/fake-servicectl/main.ts"]'
+        run: npm run service:install
+
+      - name: plutil -lint the launchd agent
+        if: runner.os == 'macOS'
+        run: plutil -lint "$RUNNER_TEMP/home/Library/LaunchAgents/local.switchboard.plist"
+
+      - name: systemd-analyze verify the user unit
+        if: runner.os == 'Linux'
+        run: systemd-analyze verify "$RUNNER_TEMP/home/.config/systemd/user/switchboard.service"
+
+      - name: Register, read back and delete the logon task (throwaway runner)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $xml = Join-Path $env:RUNNER_TEMP 'data\service\switchboard-task.xml'
+          schtasks /Create /TN SwitchboardCI /XML $xml /F
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          schtasks /Query /TN SwitchboardCI /XML
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          schtasks /Delete /TN SwitchboardCI /F
+          exit $LASTEXITCODE

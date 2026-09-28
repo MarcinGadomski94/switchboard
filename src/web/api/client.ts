@@ -18,6 +18,7 @@ import type {
   ToolProbe,
   Worktree,
 } from '../../core/api.ts';
+import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 
 /**
  * Typed client for the local API (`docs/handoff/contracts/local-api.md`). Every
@@ -126,6 +127,10 @@ export const api = {
   probeTool: (id: string) => request<ToolProbe>('POST', `/api/tools/${enc(id)}/probe`),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
+
+  /** "Start at login" (M9.1, additive to the contract, `docs/service.md`). */
+  loginService: () => request<LoginServiceStatus>('GET', '/api/service'),
+  setStartAtLogin: (startAtLogin: boolean) => request<LoginServiceStatus>('PUT', '/api/service', { startAtLogin } satisfies LoginServiceRequest),
 } as const;
 
 /** The client's type (for test doubles). */

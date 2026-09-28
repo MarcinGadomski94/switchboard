@@ -12,6 +12,7 @@ Read once at startup by `src/server/config.ts`. An invalid value makes `npm star
 | `SWITCHBOARD_CLAUDE_EXTRA_ARGS` | none | **Dev-only.** A JSON array of flags appended to every supervised `claude` spawn, after the baseline (`docs/supervisor.md`), e.g. `["--model","haiku","--max-turns","3"]` for the D13 real-CLI smoke. Never shell-parsed; anything but an array of non-empty strings makes `npm start` exit 1. Leave unset in normal runs. |
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI, same format as `SWITCHBOARD_CLAUDE_BIN`. The worktree manager runs `gh pr view <branch> --json number,state,url,headRefOid` for each registered worktree 15 s after start and then every 5 minutes (`docs/worktrees.md`); tests point it at `tools/fake-gh` (`fakeGhBinEnv()`). git itself is taken from `PATH`. |
 | `SWITCHBOARD_DEMO` | off | Exactly `1` loads the demo seed (gap #21, visual oracle only; `docs/demo.md`). Any other value means off. Needs `SWITCHBOARD_DATA_DIR` set to a throwaway folder: demo mode refuses the per-user app-data folder. |
+| `SWITCHBOARD_SERVICE_HOME` + `SWITCHBOARD_SERVICE_CTL` | none | **Tests / development only**, set together or not at all: the "Start at login" service files go under that home and the argv prefix replaces launchctl / systemctl / schtasks (`tools/fake-servicectl`). One without the other makes `npm start` exit 1. `docs/service.md` → *Test redirects*. |
 
 Test-only variables (read by the test helpers, never by the server):
 
@@ -30,6 +31,8 @@ Test-only variables (read by the test helpers, never by the server):
 | `npm run typecheck` | `tsc` over three configs: `tsconfig.json` (server, core, tools, tests, tool configs; Node types, no DOM), `tsconfig.web.json` (React UI, DOM, bundler resolution), `tsconfig.e2e.json` (Playwright specs: adds DOM for `page.evaluate`). |
 | `npm test` | Vitest: `tests/**/*.test.ts` (unit + integration). |
 | `npm run e2e` | Playwright: `tests/e2e/**/*.spec.ts`, Chromium at 1440×900. It first builds `dist/web` (`tests/e2e/global-setup.ts`). Specs start their own server on a 4871–4879 port with a temp data dir. |
+| `npm run service:install` | `tools/service/install.ts [--dry-run] [--start] [--platform …]`: registers the per-user background service (launchd agent / systemd `--user` unit / Task Scheduler logon task) with the `SWITCHBOARD_*` settings of the shell; `--dry-run` prints every file and command and changes nothing (`docs/service.md`). |
+| `npm run service:uninstall` | `tools/service/uninstall.ts [--dry-run] [--platform …]`: stops it if its manager runs it and removes the registration. |
 
 ## Ignored folders
 Every tool config excludes `.worktrees/` (parallel lane worktrees), `.spike/`, `dist/` and `node_modules/`: the tsconfigs (`exclude`), `vite.config.ts` (`server.watch.ignored`, `build.watch.exclude` in dev), `vitest.config.ts` (`test.exclude`, `server.watch.ignored`) and `playwright.config.ts` (`testIgnore`).

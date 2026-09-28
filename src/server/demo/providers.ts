@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { BranchRef, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo } from '../../core/api.ts';
 import type { DiffProvider, HistoryProvider, Providers, SolutionsProvider, SystemProvider } from '../providers.ts';
 import type { DemoData, DemoFile } from './data.ts';
+import { createDemoLoginService } from './login-service.ts';
 
 /**
  * Demo implementations of the provider interfaces (providers.ts) for the data the
@@ -159,5 +160,5 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
     },
   };
 
-  return { diff, solutions, system, history };
+  return { diff, solutions, system, history, loginService: createDemoLoginService() };
 }

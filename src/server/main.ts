@@ -9,6 +9,8 @@ import { HubBus } from './hub/bus.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
+import { createLoginService } from './service/login-service.ts';
+import { loadServiceRedirect } from './service/target.ts';
 import { LiveSolutions } from './solutions/live.ts';
 import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
@@ -20,6 +22,8 @@ const WEB_ROOT = path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  // M9.1 test redirects of the per-user service (docs/service.md); refused unless set together.
+  const serviceRedirect = loadServiceRedirect();
   if (config.demo) assertDemoDataDir(config.dataDir);
   const token = await loadOrCreateToken(config.dataDir);
   const store = await openStore(storeFile(config.dataDir));
@@ -36,7 +40,9 @@ async function main(): Promise<void> {
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
     const scanner = new WorkspaceScanner({ workspaceRoot: config.workspaceRoot });
     const solutions = new LiveSolutions({ scanner, store, diff: worktrees, onError: (error) => console.error('switchboard solutions:', error) });
-    let providers: Providers = { diff: worktrees, solutions };
+    // "Start at login" (M9.1): the per-user service definition of this OS (docs/service.md).
+    const loginService = createLoginService({ config, settings: store.settings, redirect: serviceRedirect });
+    let providers: Providers = { diff: worktrees, solutions, loginService };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();

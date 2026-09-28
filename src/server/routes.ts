@@ -4,6 +4,7 @@ import { registerHistoryRoutes } from './api/history.ts';
 import { registerHubRoutes } from './api/hub.ts';
 import { registerInboxRoutes } from './api/inbox.ts';
 import { registerScheduleRoutes } from './api/schedules.ts';
+import { registerServiceRoutes } from './api/service.ts';
 import { registerSessionRoutes } from './api/sessions.ts';
 import { registerSettingsRoutes } from './api/settings.ts';
 import { registerSolutionRoutes } from './api/solutions.ts';
@@ -58,5 +59,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerSettingsRoutes(app, context);
   await registerToolRoutes(app, context);
   await registerSystemRoutes(app, context);
+  await registerServiceRoutes(app, context);
   await registerHubRoutes(app, context);
 }
