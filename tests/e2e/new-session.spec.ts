@@ -354,6 +354,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
   await modal.getByTestId('ns-start').click();
   expect((await posted).postDataJSON()).toEqual({
     name: 'free-talk-640',
+    // D22, developer ruling: kebab-case text is posted as the title too.
+    title: 'free-talk-640',
     task: 'Free talk screen at 640, web and mobile.',
     workType: 'feature',
     mode: 'single',
@@ -371,6 +373,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
 
   const created = (await listSessions(page)).find((s) => s.name === 'free-talk-640');
   expect(created).toMatchObject({
+    title: 'free-talk-640',
+    displayTitle: 'free-talk-640',
     workType: 'feature',
     mode: 'single',
     phase: 'ui-first',

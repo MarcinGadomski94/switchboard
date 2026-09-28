@@ -280,7 +280,8 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   const posted = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions');
   await modal.getByTestId('ns-start').click();
   const repoId = await folderId(page, 'tool-repo');
-  expect((await posted).postDataJSON()).toEqual({ name: 'repo-fix', task: '[fake:ask-2q] Fix the tool.', folder: repoId, solutions: ['tool-repo'], worktrees: true, ultracode: false });
+  // D22, developer ruling: kebab-case text is posted as the title too.
+  expect((await posted).postDataJSON()).toEqual({ name: 'repo-fix', title: 'repo-fix', task: '[fake:ask-2q] Fix the tool.', folder: repoId, solutions: ['tool-repo'], worktrees: true, ultracode: false });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();
 

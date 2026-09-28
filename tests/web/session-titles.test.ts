@@ -61,16 +61,16 @@ function session(overrides: Partial<Session> = {}): Session {
 const repoFolder = { id: 'f-repo', path: '/src/switchboard', name: 'switchboard', kind: 'repo' as const };
 
 describe('New-session form: the name field is the title (D22)', () => {
-  it('derives the short name from the title; a taken one gets -2; kebab-case text is no title', () => {
+  it('derives the short name from the title; a taken one gets -2; kebab-case text is a title too (developer ruling)', () => {
     expect(startNames(form({ name: ' JIRA Ticket handling ' }), [])).toEqual({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' });
     expect(startNames(form({ name: 'JIRA Ticket handling' }), ['jira-ticket-handling'])).toEqual({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling' });
-    expect(startNames(form({ name: 'free-talk-640' }), [])).toEqual({ name: 'free-talk-640', title: null });
-    expect(startNames(form({ name: 'free-talk-640' }), ['free-talk-640'])).toEqual({ name: 'free-talk-640-2', title: null });
+    expect(startNames(form({ name: 'free-talk-640' }), [])).toEqual({ name: 'free-talk-640', title: 'free-talk-640' });
+    expect(startNames(form({ name: 'free-talk-640' }), ['free-talk-640'])).toEqual({ name: 'free-talk-640-2', title: 'free-talk-640' });
     expect(startNames(form({ name: '' }), [])).toEqual({ name: 'session', title: null });
     expect(startNames(form({ name: '!!!' }), [])).toEqual({ name: 'session', title: '!!!' });
   });
 
-  it('Start posts the derived name and the title (workspace and repo folder); a kebab-case name alone as before', () => {
+  it('Start posts the derived name and the title (workspace and repo folder); kebab-case text as both; an empty field no title', () => {
     const body = toStartBody(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'] }), null, ['jira-ticket-handling']);
     expect(body).toMatchObject({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling', solutions: ['acme-app-front'] });
     expect(toStartBody(form({ name: 'Fix the build', worktrees: true }), repoFolder, [])).toEqual({
@@ -82,7 +82,9 @@ describe('New-session form: the name field is the title (D22)', () => {
       worktrees: true,
       ultracode: false,
     });
-    expect('title' in toStartBody(form({ name: 'free-talk-640', solutions: ['mobile'] }), null, [])).toBe(false);
+    expect(toStartBody(form({ name: 'free-talk-640', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'free-talk-640', title: 'free-talk-640' });
+    expect('title' in toStartBody(form({ name: '  ', solutions: ['mobile'] }), null, [])).toBe(false);
+    expect(toStartBody(form({ name: '', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'session' });
   });
 
   it('the summary shows the short name in the branch and worktree lines; nothing changes for a kebab-case name', () => {
@@ -100,7 +102,7 @@ describe('New-session form: the name field is the title (D22)', () => {
     expect(repo).toContain('branch    session/fix-the-build');
     expect(repo).toContain('../switchboard-wt-fix-the-build');
 
-    // A kebab-case name: exactly the pre-D22 summary (no extra line).
+    // A kebab-case name (a title equal to its short name): exactly the pre-D22 summary (no branch line).
     const kebab = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'] }), 'D:\\acme', []).map((l) => l.text);
     expect(kebab).toEqual([
       '# claude code · background · Max',

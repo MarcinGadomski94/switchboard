@@ -13,7 +13,7 @@ import {
   type WorkType,
   isOneOf,
 } from '../../core/model.ts';
-import { TITLE_MAX, shortNameBase, shortNameFromTitle } from '../../core/session-title.ts';
+import { TITLE_MAX, shortNameFromTitle } from '../../core/session-title.ts';
 import { FOLDER_KIND_LABEL, sessionCwd } from '../folders/folders.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
@@ -138,7 +138,7 @@ export function sessionName(form: Pick<NewSessionForm, 'name'>): string {
 export interface StartNames {
   /** The short name: kebab-case, unique among `takenNames`; its worktree and branch are built from it. */
   readonly name: string;
-  /** The title, `null` when the field already is a short name (or is empty). */
+  /** The title: the field trimmed; `null` only for an empty field. */
   readonly title: string | null;
 }
 
@@ -146,13 +146,13 @@ export interface StartNames {
  * D22 (`docs/derivations.md` → *Session titles*): the field's free text is the
  * title and the short name is derived from it (`shortNameFromTitle`: `JIRA
  * Ticket handling` → `jira-ticket-handling`, `-2`, `-3`, … when taken; `session`
- * for an empty field). Text that already is its own short name (`free-talk-640`)
- * is no title: the session shows its name, as before titles.
+ * for an empty field). Developer ruling 2026-09-28: text that already is its own
+ * short name (`free-talk-640`) is a title too, so every session started from the
+ * form has one; only an empty field has none.
  */
 export function startNames(form: Pick<NewSessionForm, 'name'>, takenNames: readonly string[]): StartNames {
   const text = form.name.trim();
-  const name = shortNameFromTitle(text, takenNames);
-  return { name, title: text !== '' && text !== shortNameBase(text) ? text : null };
+  return { name: shortNameFromTitle(text, takenNames), title: text !== '' ? text : null };
 }
 
 /** D22: the field's title is longer than a title may be (80 characters once trimmed). */
@@ -260,7 +260,7 @@ export function toSessionBody(form: NewSessionForm, folder: FormFolder | null): 
 
 /**
  * What "Start session" posts (D22): {@link toSessionBody} with the short name
- * derived from the field and, when the field is a title, `title`.
+ * derived from the field and the field as `title` (none for an empty field).
  */
 export function toStartBody(form: NewSessionForm, folder: FormFolder | null, takenNames: readonly string[]): NewSession | NewRepoSession {
   const { name, title } = startNames(form, takenNames);
