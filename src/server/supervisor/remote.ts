@@ -49,6 +49,12 @@ export interface RemoteHost {
   publish(): Promise<void>;
   /** `true` while this process is still the session's live process and Switchboard is not stopping it. */
   current(): boolean;
+  /**
+   * D31: the `initialize` reply's inner `response` (`null` when it failed or never
+   * came), for what else the supervisor keeps from it (the models list). Called
+   * once, while the process is current, before a reattach and the publish.
+   */
+  initialized?(response: Record<string, unknown> | null): Promise<void>;
 }
 
 /** The bridge on the live process: none, being started (enable / reattach sent), or up. */
@@ -93,10 +99,10 @@ export class LiveRemote {
 
   /**
    * At spawn: writes `initialize` at once (before any user message), stores
-   * `remote_control_available` from its reply, and when Remote is on for the
-   * session re-enables it with `reattach_session_id` (D7: pause/resume, restart
-   * recovery, attach). A failed reattach turns Remote off and says why in the chat.
-   * Never throws.
+   * `remote_control_available` from its reply, hands the reply to the host (D31:
+   * the models list), and when Remote is on for the session re-enables it with
+   * `reattach_session_id` (D7: pause/resume, restart recovery, attach). A failed
+   * reattach turns Remote off and says why in the chat. Never throws.
    */
   handshake(): Promise<void> {
     const reply = this.#host.request(initializeLine(`sb-init-${randomUUID()}`), INITIALIZE_TIMEOUT_MS);
@@ -105,6 +111,7 @@ export class LiveRemote {
       this.#available = response !== null && response.subtype === 'success' && remoteControlAvailable(response.response);
       if (!this.#host.current()) return;
       await this.#host.update({ remoteAvailable: this.#available });
+      await this.#host.initialized?.(response !== null && response.subtype === 'success' ? response.response : null);
       const session = await this.#host.session();
       if (session?.remoteEnabled) await this.#reattach(session);
       await this.#host.publish();

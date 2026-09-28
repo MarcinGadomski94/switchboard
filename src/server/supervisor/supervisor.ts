@@ -1,11 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
-import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent } from '../../core/api.ts';
+import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
-import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
+import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
+import { DEFAULT_MODEL_VALUE, type ModelChoice, checkModelChoice, modelStepLabel, normalizeEffort, normalizeModel, parseInitializeModels } from '../../core/model-choice.ts';
 import type { SessionStatus } from '../../core/model.ts';
-import { type ControlRequestLine, type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, setPermissionModeLine, userMessageLine } from '../../core/stdin.ts';
+import {
+  type ControlRequestLine,
+  type ToolDecision,
+  controlErrorLine,
+  controlSuccessLine,
+  effortLine,
+  interruptLine,
+  setModelLine,
+  setPermissionModeLine,
+  userMessageLine,
+} from '../../core/stdin.ts';
 import { type CanUseToolMessage, type ControlResponseMessage, type InitMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
@@ -202,7 +213,11 @@ export type SupervisorErrorCode =
   /** D25: the CLI refused the teleport; the message is its text, verbatim. */
   | 'teleport-failed'
   /** D25: the teleport never reported `system/init`. */
-  | 'teleport-timeout';
+  | 'teleport-timeout'
+  /** D31: a model or effort that is not on offer (the route's 422; {@link ModelChoiceError} names the field). */
+  | 'invalid-model'
+  /** D31: the CLI refused the `set_model` / `apply_flag_settings` request; the message is its text, verbatim. */
+  | 'model-failed';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -213,6 +228,19 @@ export class SupervisorError extends Error {
     this.code = code;
   }
 }
+
+/** D31: a model or effort choice refused before anything was sent or stored (`checkModelChoice`); `field` is `model` or `effort`. */
+export class ModelChoiceError extends SupervisorError {
+  override name = 'ModelChoiceError';
+  readonly field: 'model' | 'effort';
+  constructor(field: 'model' | 'effort', message: string) {
+    super('invalid-model', message);
+    this.field = field;
+  }
+}
+
+/** D31: how long a `set_model` or `apply_flag_settings` reply may take (the CLI may check the model with its server first; the probe saw it at once). */
+export const MODEL_CONTROL_TIMEOUT_MS = 30_000;
 
 /** "Attach here" without `confirm` while a terminal may still hold the session (M4.1, gap #5): nothing was spawned. */
 export class AttachWarningError extends SupervisorError {
@@ -298,6 +326,8 @@ export class SessionSupervisor {
   readonly #live = new Map<string, Live>();
   /** Attach calls run one at a time per session (the check and the spawn must not interleave). */
   readonly #attaching = new Map<string, Promise<unknown>>();
+  /** D31: model / effort changes run one at a time per session (each compares against what the one before stored). */
+  readonly #modelChanges = new Map<string, Promise<unknown>>();
   readonly #listeners = {
     sessionUpdated: new Set<Listener<'sessionUpdated'>>(),
     event: new Set<Listener<'event'>>(),
@@ -860,6 +890,127 @@ export class SessionSupervisor {
     return this.#get(sessionId);
   }
 
+  // ── model and effort (D31, docs/model-effort.md) ──────────────────────
+
+  /**
+   * Changes the session's model and / or effort (`PUT /api/sessions/{id}/model`);
+   * the session as stored afterwards. A field left out of `input` keeps its stored
+   * value; `null` (or `default` for the model) goes back to the CLI's default.
+   * The choice is checked against the models the session's last process reported
+   * (`checkModelChoice`), then, when the session has a live process that is not
+   * being stopped, sent to it: `set_model` when the model changes,
+   * `apply_flag_settings {effortLevel}` when the effort does (each reply awaited,
+   * {@link MODEL_CONTROL_TIMEOUT_MS}); without one it is only stored. Either way
+   * the stored choice is what every later spawn passes as `--model` / `--effort`,
+   * a chat step line records it (`Model: Opus 5.5 · effort: high`, a `model`
+   * event) and the session is published. A choice equal to the stored one does nothing.
+   * @throws {ModelChoiceError} a model or effort not on offer (nothing sent or stored).
+   * @throws {SupervisorError} `not-found`; `closing`; `model-failed` with the CLI's
+   * text verbatim when it refused (or did not answer) a request: the stored choice
+   * is unchanged, except that a model the CLI already took before it refused the
+   * effort is stored (the process runs on it).
+   */
+  async setModel(sessionId: string, input: SessionModelInput): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    await this.#get(sessionId);
+    const previous = this.#modelChanges.get(sessionId) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.#setModelNow(sessionId, input));
+    this.#modelChanges.set(sessionId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#modelChanges.get(sessionId) === run) this.#modelChanges.delete(sessionId);
+    }
+  }
+
+  async #setModelNow(sessionId: string, input: SessionModelInput): Promise<SessionRecord> {
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    const available = session.modelOptions;
+    const next: ModelChoice = {
+      model: input.model !== undefined ? normalizeModel(input.model) : session.model,
+      effort: input.effort !== undefined ? normalizeEffort(input.effort) : session.effort,
+    };
+    const problem = checkModelChoice(next, available);
+    if (problem) throw new ModelChoiceError(problem.field, problem.message);
+    const modelChanged = next.model !== session.model;
+    const effortChanged = next.effort !== session.effort;
+    if (!modelChanged && !effortChanged) return session;
+
+    let live = this.#applying(sessionId);
+    if (live && modelChanged) {
+      const failure = await this.#modelRequest(live, setModelLine(`sb-model-${randomUUID()}`, next.model ?? DEFAULT_MODEL_VALUE), 'set_model');
+      if (failure === 'gone') live = null;
+      else if (failure !== null) {
+        await this.#recordModel(sessionId, 'error', `Could not change the model: ${failure}`, { type: 'model', action: 'failed', ...next, request: 'set_model', error: failure });
+        await this.#emitSession(sessionId);
+        throw new SupervisorError('model-failed', failure);
+      }
+    }
+    if (live && effortChanged) {
+      const failure = await this.#modelRequest(live, effortLine(`sb-effort-${randomUUID()}`, next.effort), 'apply_flag_settings');
+      if (failure === 'gone') live = null;
+      else if (failure !== null) {
+        if (modelChanged) {
+          // The process took the model before it refused the effort: store what it runs on.
+          const taken: ModelChoice = { model: next.model, effort: session.effort };
+          await this.#store.sessions.update(sessionId, { model: taken.model });
+          await this.#recordModel(sessionId, 'text', modelStepLabel(taken, available), { type: 'model', action: 'changed', ...taken, live: true });
+        }
+        await this.#recordModel(sessionId, 'error', `Could not change the effort: ${failure}`, {
+          type: 'model',
+          action: 'failed',
+          ...next,
+          request: 'apply_flag_settings',
+          error: failure,
+        });
+        await this.#emitSession(sessionId);
+        throw new SupervisorError('model-failed', failure);
+      }
+    }
+    await this.#store.sessions.update(sessionId, { model: next.model, effort: next.effort });
+    await this.#recordModel(sessionId, 'text', modelStepLabel(next, available), { type: 'model', action: 'changed', ...next, live: live !== null });
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
+  }
+
+  /** D31: the session's live process when a control request can go to it now (not being stopped, stdin open); else `null`. */
+  #applying(sessionId: string): Live | null {
+    const live = this.#live.get(sessionId);
+    return live && !live.stopping && live.proc.running && !live.proc.inputClosed ? live : null;
+  }
+
+  /**
+   * D31: one `set_model` / `apply_flag_settings` request on a live process. `null`
+   * = accepted; `gone` = the process ended (or is being stopped) before it answered,
+   * so the change is only stored for the next spawn; else the CLI's error text,
+   * verbatim, or why there was no answer.
+   */
+  async #modelRequest(live: Live, line: ControlRequestLine, subtype: 'set_model' | 'apply_flag_settings'): Promise<string | 'gone' | null> {
+    const reply = await this.#controlOn(live, line, MODEL_CONTROL_TIMEOUT_MS);
+    if (reply === null) {
+      if (this.#applying(live.sessionId) !== live) return 'gone';
+      return `claude did not answer the ${subtype} request within ${MODEL_CONTROL_TIMEOUT_MS / 1000} s`;
+    }
+    if (reply.subtype === 'success') return null;
+    if (reply.subtype === 'error') return reply.error?.trim() ? reply.error : `claude answered the ${subtype} request with an error and no text`;
+    return `claude answered the ${subtype} request with "${reply.subtype}" (expected success or error)`;
+  }
+
+  /** D31: a `model` event: through the live process's recorder (in its line order) when there is one, else stored directly. */
+  async #recordModel(sessionId: string, kind: 'text' | 'error', label: string, payload: ModelPayload): Promise<void> {
+    const live = this.#live.get(sessionId);
+    if (live) {
+      await this.#enqueue(live, async () => {
+        await live.recorder.recordLifecycle(kind, label, payload);
+      });
+      return;
+    }
+    const event = await this.#store.events.append({ sessionId, kind, label, payload });
+    this.#emitEvent(event);
+  }
+
   // ── restart recovery (M2.4, recovery.ts) ──────────────────────────────
 
   /**
@@ -1031,7 +1182,8 @@ export class SessionSupervisor {
       teleport = { init, resolveInit, initSeen: false, initError: null, output: [], importPending: true };
     }
     // D22: the CLI's display name is the session's title (as it is now: a rename applies from the next spawn), else its name.
-    const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, extraArgs: this.#extraArgs });
+    // D31: the stored model and effort (neither is inherited on `--resume`); `null` = the CLI's default, no flag.
+    const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, model: prepared.model, effort: prepared.effort, extraArgs: this.#extraArgs });
     const proc = new ClaudeProcess({
       command: this.#command,
       args,
@@ -1064,6 +1216,11 @@ export class SessionSupervisor {
         }),
         publish: () => this.#emitSession(session.id),
         current: () => this.#live.get(session.id) === live && !live.stopping && live.proc.running,
+        // D31: the models this process offers (kept on the session; a reply without a list keeps the last one).
+        initialized: async (response) => {
+          const options = parseInitializeModels(response);
+          if (options !== null) await this.#store.sessions.update(session.id, { modelOptions: options });
+        },
       }),
       teleport,
     };

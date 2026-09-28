@@ -14,6 +14,8 @@ export interface RunArgs {
   outputFormat: 'text' | 'stream-json';
   verbose: boolean;
   model: string | null;
+  /** D31: `--effort <level>` as given (the run warns about a value that is not a level and ignores it, like the CLI); `null` without it. */
+  effort: string | null;
   maxTurns: number | null;
   permissionMode: string | null;
   permissionPromptTool: string | null;
@@ -50,6 +52,7 @@ function defaults(): RunArgs {
     outputFormat: 'text',
     verbose: false,
     model: null,
+    effort: null,
     maxTurns: null,
     permissionMode: null,
     permissionPromptTool: null,
@@ -147,6 +150,9 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
         break;
       case '--model':
         args.model = value();
+        break;
+      case '--effort':
+        args.effort = value();
         break;
       case '--max-turns': {
         const raw = value();

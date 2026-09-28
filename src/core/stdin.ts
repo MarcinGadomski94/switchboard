@@ -87,6 +87,27 @@ export function remoteControlLine(requestId: string, request: RemoteControlReque
   return { type: 'control_request', request_id: requestId, request: body as ControlRequestLine['request'] };
 }
 
+/**
+ * D31: the `set_model` control request (the Agent SDK's `setModel`; probed on CLI
+ * 2.1.283, `docs/model-effort.md`): `{"subtype":"set_model","model":<value>}`.
+ * `default` goes back to the CLI's default model. A success reply has no body;
+ * an unknown model is `{"subtype":"error","error":"Model '<x>' not found","error_code":"catalog_unknown"}`.
+ */
+export function setModelLine(requestId: string, model: string): ControlRequestLine {
+  return { type: 'control_request', request_id: requestId, request: { subtype: 'set_model', model } };
+}
+
+/**
+ * D31: the effort change, `apply_flag_settings` with `effortLevel` (the Agent SDK's
+ * `applyFlagSettings({ effortLevel })`; CLI 2.1.283 has no `set_effort`, probed):
+ * `{"subtype":"apply_flag_settings","settings":{"effortLevel":<level | null>}}`.
+ * `null` goes back to the CLI's default effort. The CLI does not check the level
+ * (an unknown one is a silent success), so Switchboard checks it first.
+ */
+export function effortLine(requestId: string, effort: string | null): ControlRequestLine {
+  return { type: 'control_request', request_id: requestId, request: { subtype: 'apply_flag_settings', settings: { effortLevel: effort } } };
+}
+
 /** A success reply to a CLI control request. */
 export function controlSuccessLine(requestId: string, response: unknown): ControlResponseLine {
   return { type: 'control_response', response: { subtype: 'success', request_id: requestId, response } };

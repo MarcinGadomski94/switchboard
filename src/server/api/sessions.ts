@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
-import { AttachWarningError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
+import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 
 /** Session routes (contract → REST, `/api/sessions*`) not implemented yet. */
@@ -27,6 +28,9 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   // D25 (POST /api/sessions/teleport): the CLI refused the teleport, or never reported the local copy.
   'teleport-failed': 502,
   'teleport-timeout': 504,
+  // D31 (PUT /api/sessions/{id}/model): a model / effort not on offer (sent as 422 `invalid` with its field); the CLI refused the change.
+  'invalid-model': 422,
+  'model-failed': 502,
 };
 
 interface IdParams {
@@ -35,6 +39,9 @@ interface IdParams {
 
 /** Sends a supervisor refusal as `{ error: <code>, message }` (+ `reasons` for an attach warning), rethrows anything else. */
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
+  if (error instanceof ModelChoiceError) {
+    return reply.code(422).send({ error: 'invalid', errors: [{ field: error.field, message: error.message }] });
+  }
   if (error instanceof AttachWarningError) {
     const body: AttachWarning = { error: 'attach-warning', message: error.message, reasons: error.reasons };
     return reply.code(ERROR_STATUS[error.code]).send(body);
@@ -54,8 +61,9 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
  * the UI side, M4.5 the diff; D22 the additive rename, `PUT /api/sessions/{id}/title`,
  * which publishes `sessionUpdated`; D24 the additive Remote toggle, `PUT
  * /api/sessions/{id}/remote`; D25 the additive `POST /api/sessions/teleport`,
- * a local copy of a remote session, {@link SessionTeleporter}). Every route sits
- * behind the security guard.
+ * a local copy of a remote session, {@link SessionTeleporter}; D31 the additive
+ * `PUT /api/sessions/{id}/model`, the model and effort). Every route sits behind
+ * the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
@@ -112,6 +120,21 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (enabled === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'enabled', message: 'the body must be { enabled: true | false }' }] });
     try {
       const updated = await supervisor.setRemote(record.id, enabled);
+      return await toSession(store, updated, supervisor.activity(updated.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D31 (additive): the model and / or effort. Live: sent to the process (`set_model`, `apply_flag_settings`); else only stored.
+  // Every later spawn passes `--model` / `--effort`. The supervisor publishes `sessionUpdated`.
+  app.put<{ Params: IdParams }>('/api/sessions/:id/model', async (request, reply): Promise<Session | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    const parsed = parseModelInput(request.body);
+    if (!parsed.ok) return reply.code(422).send({ error: 'invalid', errors: parsed.errors });
+    try {
+      const updated = await supervisor.setModel(record.id, parsed.input);
       return await toSession(store, updated, supervisor.activity(updated.id));
     } catch (error) {
       return sendError(reply, error);
@@ -222,6 +245,34 @@ export function parseRemoteInput(body: unknown): boolean | null {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
   const enabled = (body as { enabled?: unknown }).enabled;
   return typeof enabled === 'boolean' ? enabled : null;
+}
+
+/** A field of a refused body (`422 { error: "invalid", errors }`). */
+export interface FieldError {
+  readonly field: string;
+  readonly message: string;
+}
+
+/**
+ * The body of `PUT /api/sessions/{id}/model` (D31, `SessionModelInput`): an object
+ * with `model` and / or `effort`, each text (at most {@link MODEL_VALUE_MAX}
+ * characters) or `null`. A field left out keeps its stored value; a body with
+ * neither is refused. Whether the values are on offer is the supervisor's check
+ * (`checkModelChoice`).
+ */
+export function parseModelInput(body: unknown): { readonly ok: true; readonly input: SessionModelInput } | { readonly ok: false; readonly errors: FieldError[] } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body) || (!('model' in body) && !('effort' in body))) {
+    return { ok: false, errors: [{ field: 'model', message: 'the body must be { model?, effort? }: text, or null for the CLI default' }] };
+  }
+  const errors: FieldError[] = [];
+  const input: { model?: string | null; effort?: string | null } = {};
+  for (const field of ['model', 'effort'] as const) {
+    if (!(field in body)) continue;
+    const value = (body as Record<string, unknown>)[field];
+    if (value === null || (typeof value === 'string' && value.length <= MODEL_VALUE_MAX)) input[field] = value;
+    else errors.push({ field, message: `${field} must be text of at most ${MODEL_VALUE_MAX} characters, or null for the CLI default` });
+  }
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, input };
 }
 
 /**
