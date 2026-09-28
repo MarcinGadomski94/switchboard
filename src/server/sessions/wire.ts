@@ -6,6 +6,7 @@ import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { toQuestion } from '../inbox/wire.ts';
+import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 
@@ -70,7 +71,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * `GET /api/sessions` item: the session with its agents and open question count,
  * plus the header's fields (M4.1): `cwd`, `live` (a supervised process is
  * running: its pid is recorded), the handoff command and the chips (session-start
- * answers + the session's observed loops, `src/core/derive/chips.ts`).
+ * answers + the session's observed loops, `src/core/derive/chips.ts`), and its loops
+ * (M7.2, the Schedules & loops cards).
  */
 export async function toSession(store: Store, record: SessionRecord): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -97,6 +99,7 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     live: record.pid !== null,
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),
+    loops: loops.map(toLoop),
   };
 }
 

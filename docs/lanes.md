@@ -17,7 +17,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2: the first-message payload (`firstMessage` of `SessionSupervisor.start`, built by `sessions/first-turn.ts`; `docs/new-session.md`); M7.1: the flow lives in `sessions/start.ts` (`startNewSession`), shared with the scheduler |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); the Attach warning (`409 attach-warning` unless `{ confirm: true }`) + transcript import since M4.1 (`docs/supervisor.md` → *Attach here*) |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
-| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |
+| `GET /api/sessions/{id}/diff` | `api/sessions.ts` | served since M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`, `FileDiff.uncommitted` since M4.5; `docs/worktrees.md` → *Diff*) |
 | `GET /api/inbox` | `api/inbox.ts` | served since M3.2 (`listInbox` in `inbox/wire.ts`, `docs/inbox.md`); items from M3.1 and M3.3 |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | served since M3.1 (`docs/questions.md`) |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | permission items served since M3.1 (`docs/questions.md`); system items since M3.3 (`docs/system-items.md`) |
@@ -44,6 +44,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 | `systemItems` (`SystemItemService`, M3.3) | system Inbox items: "Scheduled run failed", "PR merged" and their actions (`docs/system-items.md`) | wired to the M7.1 scheduler: it calls `scheduleRunFinished(runId)` for a failed run, and "Retry run" runs through `useScheduleRunner(scheduleRunnerFor(scheduler))` (main.ts; buildApp for the service it makes itself); `sync()` every 30 s picks up any failed run / removable worktree without an item |
 | `scheduler` (`Scheduler`, M7.1) | schedules: the cron timer (machine-local time), Run now, Pause / Resume, Save (`docs/schedules.md`) | runs start through `sessions/start.ts`; results follow the supervisor's `sessionUpdated`; `scheduleRun` on the bus; main.ts `start()`s the timer outside demo mode and closes it before the supervisor; buildApp makes its own (no timer) when none is passed |
 | `setup` (`SetupService`, M5.3) | first-run wizard state; the workspace root = `SWITCHBOARD_WORKSPACE_ROOT`, else the wizard's (settings `setup.workspaceRoot`) | `liveConfig()` → `ApiContext.config.workspaceRoot` follows a saved root; `onRootChange` → `setWorkspaceRoot` on the supervisor, worktree manager (buildApp) and scanner (main.ts). **M8.2 merge:** `workspace.root` read from `context.config.workspaceRoot` then reports the root in effect; Settings' scan table and the wizard's (`scanRows` in `setup-wizard.ts`) follow the same rule and may share code; "Run setup again" = `open('setup-wizard')` (`docs/setup.md`) |
+| `LoopTracker` (M7.2, `src/server/loops/tracker.ts`, made by `buildApp`, not on `ApiContext`) | the `loops` rows from the sessions' events + `.loop/progress.md` (D9, `docs/derivations.md` → *Loop cards*); served as the additive `Session.loops` | publishes `sessionUpdated` when a session's loops change; M4.1's header chips read the same rows |
 | `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's meter via `buildApp({ usage })` (`docs/hub.md`, `docs/usage.md`) |
 
 ## Server: providers (`src/server/providers.ts`)
@@ -69,18 +70,18 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons + the Attach warning, tabs | done in M4.1 (`session-header.ts`: copy and rules) |
 | `views/session/ChatTab.tsx` | Chat | done in M4.2 (`chat.ts`: items, step marks, quick replies; `docs/chat.md`): messages, step lines, the inline `QuestionCard` + answers bubble, quick replies, composer |
 | `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.1 added the column and the handoff card (`HandoffCard.tsx`); done in M4.3 (`right-panel.ts`: cards, summary, tail rules; `TerminalTail.tsx`, reusable by M4.4's Timeline terminal; `docs/session-panel.md`) |
-| `views/session/TimelineTab.tsx` | Timeline | M4.4 |
-| `views/session/DiffTab.tsx` | Diff | M4.5 |
-| `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
+| `views/session/TimelineTab.tsx` | Timeline: done in M4.4 (+ `timeline.ts` model, `terminal-tail.ts` terminal tail for M4.3's right panel too, `timeline.css`; `docs/derivations.md` → *Timeline tab*, *Terminal tail*) | M4.4 |
+| `views/session/DiffTab.tsx` | Diff: done in M4.5 (+ `diff.ts` model, `diff.css`; `docs/derivations.md` → *Diff tab*) | M4.5 |
+| `views/session/ArtifactsTab.tsx` | Session artifacts: done in M4.6 (+ `artifacts.ts` model, `artifacts.css`, `useSessionRefresh.ts` shared with the Diff tab; `docs/derivations.md` → *Artifacts tab*) | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | done in M5.1 (+ `new-session.ts`, `new-session.css`, `docs/new-session.md`); the Schedule section since M7.1 (`ScheduleSection.tsx`, `schedule-form.ts`, `open('new-session', { schedule })`; `docs/schedules.md`) |
 | `modals/SetupWizard.tsx` | First-run wizard | done in M5.3 (+ `setup-wizard.ts`, `setup-wizard.css`, `FirstRunGate.tsx` mounted in `Shell.tsx`; `docs/setup.md`) |
 | `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |
-| `views/SchedulesView.tsx` | Schedules & loops | header + schedule table since M7.1 (`ScheduleTable.tsx`, `schedule-table.ts`, `schedule-table.css`; `docs/schedules.md`); loop cards M7.2 |
+| `views/SchedulesView.tsx` | Schedules & loops | header + schedule table since M7.1 (`ScheduleTable.tsx`, `schedule-table.ts`, `schedule-table.css`; `docs/schedules.md`); the view container (`schedules.css`) and the loop cards since M7.2 (`LoopCards.tsx` + `loops.ts` model + `loops.css`; `docs/derivations.md` → *Loop cards*) |
 | `views/ArtifactsView.tsx` | Global artifacts (+ `views/artifacts.css`; filters, search and the location label in `src/core/artifacts-view.ts`) | M7.3 |
 | `views/HistoryView.tsx` | History (+ `views/history.css`; rows, dates and the solutions/branches line in `src/core/history.ts`) | M7.4 |
 | `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
 | `views/SettingsView.tsx` | Settings (+ `views/settings.css`, `views/settings/*`; the sidebar reloads its tools on `tools/events.ts`) | M8.2; its Claude Code row holds M9.1's `StartAtLoginToggle` (`views/settings/StartAtLogin.tsx`, `docs/service.md`) |
-| `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
+| `modals/Palette.tsx` | ⌘K palette: done in M8.3 (+ `palette.ts` model, `palette.css`; solution results select through `views/solution-focus.ts`, read by `SolutionsView`; `docs/derivations.md` → *⌘K palette*) | M8.3 |
 
 Each lane adds its view's CSS next to its component (`views/<view>.css`), using the variables in `styles/tokens.css`.
 

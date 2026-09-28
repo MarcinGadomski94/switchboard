@@ -73,7 +73,7 @@ describe('seedDemo (gap #21)', () => {
     expect(byChannel('terminal')).toEqual([]);
     const results = events.filter((e) => (e.payload as { type?: unknown }).type === 'result');
     expect(results.map((e) => [e.kind, e.label, (e.payload as { text: string }).text])).toEqual(
-      (data.sessions[0]?.terminal ?? []).map((line) => ['ok', line, line]),
+      (data.sessions[0]?.terminal ?? []).map((line) => ['text', line, line]),
     );
     expect(results[0]?.payload).toMatchObject({ source: 'demo', type: 'result', subtype: 'success', isError: false, errors: [], taskNotification: false });
     // The prototype's cursor line `▍` is not stored: the tail adds it while the session runs.
@@ -149,6 +149,13 @@ describe('seedDemo (gap #21)', () => {
       meta: '+284 −12',
       createdAt: minutesAgo(4),
     });
+    // Same-age rows keep the prototype's order (M4.6: the session tab lists them newest first).
+    expect((await store.artifacts.list({ sessionId: 'free-talk-feature' })).map((a) => a.name)).toEqual([
+      'contracts/free-talk.md',
+      'Pages/FreeTalk · 6 files',
+      'Views/FreeTalkView · 5 files',
+      'mobile-followups/from-acme-app-front.md',
+    ]);
 
     expect((await store.tools.list()).map((t) => [t.id, t.name, t.url, t.position])).toEqual([
       ['cm', 'Codebase Memory', 'http://localhost:13000', 0],

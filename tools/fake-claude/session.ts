@@ -10,15 +10,19 @@ import { IdMap, type RewriteContext, rewriteLine, sortReplacements } from './rew
 import {
   BUILT_IN_SCENARIOS,
   DEFAULT_FIXTURE,
+  FIRE_PROMPT,
   KEEP_RECORDED_PERMISSION_MODE,
   SIBLINGS,
   WRITE_CONTENT,
   applyMaxTurns,
+  fireToken,
   formatAnswers,
   messageText,
   reportedPermissionMode,
   resolveInside,
   scenarioToken,
+  toolResultText,
+  toolToken,
   writeToken,
 } from './scenarios.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
@@ -47,11 +51,18 @@ interface OpenRequest {
   input: Json;
 }
 
-/** A queued stdin user message. */
+/** A queued stdin user message (or, with `fired`, a turn the fake runs on its own: `[fake:fire]`). */
 interface UserMessage {
   content: Json;
   text: string;
   uuid: string;
+  fired?: boolean;
+}
+
+/** A `[fake:tool]` call in progress. */
+interface ToolSpec {
+  name: string;
+  input: JsonObject;
 }
 
 /** A `[fake:write]` in progress. */
@@ -71,6 +82,7 @@ interface TurnState {
   readonly ids: IdMap;
   readonly extra: Array<readonly [string, string]>;
   readonly write: WriteSpec | null;
+  readonly tool: ToolSpec | null;
   open: OpenRequest | null;
 }
 
@@ -157,6 +169,8 @@ export class Runner {
   private inbox: Promise<void> = Promise.resolve();
   private ctxCache: { count: number; pairs: Array<readonly [string, string]> } = { count: -1, pairs: [] };
   private readonly keepAlive: NodeJS.Timeout;
+  /** The next `[fake:fire]` turn. */
+  private fireTimer: NodeJS.Timeout | null = null;
 
   constructor(options: RunnerOptions) {
     this.o = options;
@@ -402,11 +416,27 @@ export class Runner {
     const extra: Array<readonly [string, string]> = [];
     let steps: readonly Step[];
     let write: WriteSpec | null = null;
+    let tool: ToolSpec | null = null;
     let scenario: string;
     let turnIndex: number;
 
-    const writePath = writeToken(msg.text);
-    if (writePath !== null) {
+    const writePath = msg.fired ? null : writeToken(msg.text);
+    const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
+    const fire = msg.fired ? null : fireToken(msg.text);
+    if (msg.fired) {
+      // A turn of its own (a cron firing): no stdin message, so no replay echo.
+      steps = (this.core.base.turns[0] ?? []).filter((s) => s.t !== 'replay');
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
+    } else if (toolCall !== null && 'error' in toolCall) {
+      await this.crash(`fake-claude: [fake:tool]: ${toolCall.error}`);
+      return 'crash';
+    } else if (toolCall !== null) {
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: toolCall.name, input: toolCall.input };
+      scenario = 'tx-main';
+      turnIndex = 0;
+    } else if (writePath !== null) {
       const target = resolveInside(this.o.cwd, writePath);
       if (target === null) {
         await this.crash(`fake-claude: refusing [fake:write ${writePath}]: the path leaves the cwd`);
@@ -447,12 +477,33 @@ export class Runner {
       if (template) steps = applyMaxTurns(steps, this.args.maxTurns, template);
     }
 
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, open: null };
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(steps, turn);
     this.live?.setStatus('idle');
+    if (fire && outcome === 'done') this.scheduleFires(fire.count, fire.everyMs);
     return outcome;
+  }
+
+  /** `[fake:fire n ms]`: `count` turns of the fake's own, one every `everyMs` (stops at EOF / exit). */
+  private scheduleFires(count: number, everyMs: number): void {
+    if (this.fireTimer) clearTimeout(this.fireTimer);
+    let left = count;
+    const tick = (): void => {
+      this.fireTimer = null;
+      if (this.finished || this.eof || left <= 0) return;
+      left -= 1;
+      this.queue.push({ content: FIRE_PROMPT, text: FIRE_PROMPT, uuid: randomUUID(), fired: true });
+      void this.pump();
+      if (left > 0) this.fireTimer = setTimeout(tick, everyMs);
+    };
+    if (left > 0) this.fireTimer = setTimeout(tick, everyMs);
+  }
+
+  private stopFires(): void {
+    if (this.fireTimer) clearTimeout(this.fireTimer);
+    this.fireTimer = null;
   }
 
   private async play(steps: readonly PlayStep[], turn: TurnState): Promise<Outcome> {
@@ -727,7 +778,7 @@ export class Runner {
   }
 
   private bareTurn(ids: IdMap): TurnState {
-    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, open: null };
+    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, open: null };
   }
 
   private passes(line: JsonObject): boolean {
@@ -746,6 +797,7 @@ export class Runner {
     const line = rewriteLine(recorded, this.ctx(turn.extra), turn.ids);
     if (line['type'] === 'system' && line['subtype'] === 'init') this.patchInit(line, turn);
     if (turn.write) this.patchWrite(line, turn.write);
+    if (turn.tool) this.patchTool(line, turn.tool);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
     this.writeJson(line);
@@ -781,6 +833,25 @@ export class Runner {
     }
   }
 
+  /** `[fake:tool]`: the recorded Write call becomes `<Name>(input)` with an invented result text. */
+  private patchTool(line: JsonObject, tool: ToolSpec): void {
+    if (line['type'] === 'assistant') {
+      for (const block of asArray(asObject(line['message'])?.['content'])) {
+        if (isObject(block) && block['type'] === 'tool_use' && block['name'] === 'Write') {
+          block['name'] = tool.name;
+          block['input'] = clone(tool.input);
+        }
+      }
+      return;
+    }
+    if (line['type'] !== 'user') return;
+    const text = toolResultText(tool.name);
+    for (const block of asArray(asObject(line['message'])?.['content'])) {
+      if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;
+    }
+    if ('tool_use_result' in line) line['tool_use_result'] = text;
+  }
+
   private onResult(line: JsonObject): void {
     this.lastResultIsError = line['is_error'] === true;
     this.lastResultText = asString(line['result']) ?? null;
@@ -814,6 +885,7 @@ export class Runner {
 
   private async finish(code: number): Promise<void> {
     if (this.finished) return;
+    this.stopFires();
     if (this.args.outputFormat === 'text') {
       if (this.lastResultText !== null) this.o.writeStdout(`${this.lastResultText}\n`);
       else if (this.lastResultErrors.length > 0) this.o.writeStderr(`${this.lastResultErrors.join('\n')}\n`);
@@ -831,6 +903,7 @@ export class Runner {
   private async crash(message: string): Promise<void> {
     if (this.finished) return;
     this.finished = true;
+    this.stopFires();
     this.o.writeStderr(`${message}\n`);
     clearInterval(this.keepAlive);
     await this.transcript?.flush();
@@ -844,6 +917,7 @@ export class Runner {
 
   private async fail(message: string): Promise<void> {
     this.finished = true;
+    this.stopFires();
     clearInterval(this.keepAlive);
     this.o.writeStderr(message.endsWith('\n') ? message : `${message}\n`);
     await this.o.exit(1);

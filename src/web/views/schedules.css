@@ -1,0 +1,12 @@
+/*
+ * Schedules & loops view container (SPEC → Schedules & loops): the prototype's
+ * scrolling column with 22px 28px padding and 22px gaps (M7.2 for the loop cards;
+ * M7.1 adds the header and the schedule table).
+ */
+.sb-schedules {
+  overflow: auto;
+  padding: 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}

@@ -545,7 +545,9 @@ export class WorktreeManager implements DiffProvider {
    * merge-base with its base branch, committed and uncommitted changes and new
    * untracked files included; each solution in scope without a worktree (in
    * place) against its HEAD. `file` limits the result to that solution-relative
-   * path. A solution that cannot be read is skipped (reported through `onError`).
+   * path. Each file says whether it still has uncommitted changes
+   * (`FileDiff.uncommitted`). A solution that cannot be read is skipped
+   * (reported through `onError`).
    */
   async diff(sessionId: string, file?: string): Promise<FileDiff[]> {
     const session = await this.#store.sessions.get(sessionId);
@@ -578,7 +580,8 @@ export class WorktreeManager implements DiffProvider {
     if (!(await isDirectory(target.dir))) return [];
     const head = await this.#runGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (!succeeded(head) || head.stdout.trim() === '') return [];
-    let base = head.stdout.trim();
+    const headSha = head.stdout.trim();
+    let base = headSha;
     if (target.mergeBaseWith !== null) {
       const mergeBase = await this.#runGit(target.dir, ['merge-base', target.mergeBaseWith, 'HEAD']);
       if (succeeded(mergeBase) && mergeBase.stdout.trim() !== '') base = mergeBase.stdout.trim();
@@ -608,7 +611,17 @@ export class WorktreeManager implements DiffProvider {
     if (!succeeded(untracked)) throw new WorktreeError('git-failed', `git ls-files failed in ${target.dir}: ${failureText(untracked)}`);
     for (const relative of splitNulList(untracked.stdout)) parsed.push(await this.#untracked(target.dir, relative));
     parsed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    return parsed.map((entry) => toFileDiff(target.solution, branch, entry));
+    // Against HEAD every listed change is uncommitted; against a merge-base, only the files that still differ from HEAD (or are untracked).
+    const dirty = base === headSha ? null : await this.#changedSinceHead(target.dir, pathspec);
+    const untrackedPaths = new Set(splitNulList(untracked.stdout));
+    return parsed.map((entry) => toFileDiff(target.solution, branch, entry, dirty === null || dirty.has(entry.path) || untrackedPaths.has(entry.path)));
+  }
+
+  /** Tracked files whose working tree or index differs from HEAD (`FileDiff.uncommitted`). */
+  async #changedSinceHead(dir: string, pathspec: readonly string[]): Promise<Set<string>> {
+    const changed = await this.#runGit(dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', 'HEAD', ...pathspec]);
+    if (!succeeded(changed)) throw new WorktreeError('git-failed', `git diff --name-only failed in ${dir}: ${failureText(changed)}`);
+    return new Set(splitNulList(changed.stdout));
   }
 
   async #untracked(dir: string, relative: string): Promise<PatchFile> {

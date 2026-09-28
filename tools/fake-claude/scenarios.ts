@@ -46,6 +46,43 @@ export function writeToken(text: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
+/**
+ * `[fake:tool <Name> {json}]` in a stdin user message: the `tx-main` tool turn with
+ * `<Name>` called with the JSON object as its input (M7.2 loop cards: CronCreate,
+ * ScheduleWakeup, CronDelete, Workflow). The JSON must not contain `}]`.
+ * @returns the tool name and input, `{ error }` for a token whose JSON is not an object, `null` without a token.
+ */
+export function toolToken(text: string): { name: string; input: JsonObject } | { error: string } | null {
+  const match = /\[fake:tool\s+([A-Za-z][A-Za-z0-9_]*)\s+(\{[\s\S]*?\})\]/.exec(text);
+  // `[fake:tool-use]` is a scenario token, not this one: only `[fake:tool` + space or `]` counts.
+  if (!match) return /\[fake:tool(?:\s|\])/.test(text) ? { error: 'expected [fake:tool <Name> {json}]' } : null;
+  try {
+    const input: unknown = JSON.parse(match[2] ?? '');
+    return isObject(input) ? { name: match[1] ?? '', input } : { error: 'the input is not a JSON object' };
+  } catch (error) {
+    return { error: `the input is not JSON (${error instanceof Error ? error.message : String(error)})` };
+  }
+}
+
+/** The tool_result text of a `[fake:tool]` call (invented: the real tools' results were never recorded). */
+export function toolResultText(name: string): string {
+  return `fake-claude: ${name} done`;
+}
+
+/**
+ * `[fake:fire <n> <ms>]` in a stdin user message: after that message's turn, the
+ * fake runs `n` turns of its own (no stdin message behind them), one every `ms`
+ * milliseconds, like the CLI firing a `/loop` cron job or wake-up (M7.2).
+ */
+export function fireToken(text: string): { count: number; everyMs: number } | null {
+  const match = /\[fake:fire\s+(\d+)\s+(\d+)\]/.exec(text);
+  if (!match) return null;
+  return { count: Math.min(Number(match[1]), 100), everyMs: Math.max(Number(match[2]), 10) };
+}
+
+/** The prompt text a `[fake:fire]` turn writes to the transcript. */
+export const FIRE_PROMPT = 'fake-claude: scheduled firing';
+
 /** Content the `[fake:write <path>]` Write puts in the file. */
 export const WRITE_CONTENT = 'written by fake-claude\n';
 

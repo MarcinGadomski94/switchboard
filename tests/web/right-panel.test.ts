@@ -283,7 +283,7 @@ describe('terminal tail', () => {
     for (const s of data.sessions) {
       const events = s.terminal
         .filter((line) => line !== DEMO_CURSOR)
-        .map((line, i) => event(i + 1, demoResult(line), { kind: 'ok', label: line, agentId: null }));
+        .map((line, i) => event(i + 1, demoResult(line), { kind: 'text', label: line, agentId: null }));
       const lines = terminalLines(events, [agent()], s.status);
       expect(lines.map((l) => l.text), s.name).toEqual(s.terminal);
     }

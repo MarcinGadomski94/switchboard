@@ -27,3 +27,5 @@ M8.2: `settings.ts` (the keys of `GET/PUT /api/settings`, defaults, which are ed
 M7.3: `artifacts-view.ts` (the global Artifacts view: type filters, `type=` parsing, the "Solution · branch" label and the search match, shared by `GET /api/artifacts` and the UI; `docs/derivations.md` → *Artifacts view*).
 
 M7.4: `transcript.ts` (streaming parser of a Claude Code transcript into the facts History needs: prompts, commands, titles, the newest leaf's last text, slugs) and `history.ts` (which sessions History lists and what each row shows, the search match, the date format; shared by `GET /api/history` and the UI; `docs/derivations.md` → *History*).
+
+M7.2: `derive/loops.ts` (loops observed in a session's events: `/loop`, CronCreate, ScheduleWakeup, CronDelete, Workflow, self-started turns = firings), `derive/cron-next.ts` (5-field cron → next match; M7.1's scheduler may reuse it) and `loop-progress.ts` (cap + breaker from a LOOP.md `.loop/progress.md`), documented in `docs/derivations.md` → *Loop cards*.

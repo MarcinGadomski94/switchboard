@@ -34,6 +34,8 @@ function toFileDiff(file: DemoFile): FileDiff {
     branch: file.branch === '—' ? null : file.branch,
     ...parseDelta(file.delta),
     lines: [...file.lines],
+    // The prototype shows "Not committed. Commit only when you approve." for every demo file.
+    uncommitted: true,
   };
 }
 

@@ -257,7 +257,9 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     // tail adds it while the session's status is `run`).
     for (const line of s.terminal) {
       if (line === DEMO_CURSOR) continue;
-      await repos.events.append({ sessionId: session.id, ts: end, kind: 'ok', label: line, payload: demoResult(line) });
+      // Kind `text`, not `ok`: these stand in for the prototype's terminal lines only (the tail reads the
+      // payload); as `ok` they would also be Timeline blocks and log rows, which the prototype does not show.
+      await repos.events.append({ sessionId: session.id, ts: end, kind: 'text', label: line, payload: demoResult(line) });
     }
     for (const lane of s.timeline) {
       for (const block of lane.blocks) {
@@ -390,7 +392,9 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     });
   }
 
-  for (const a of data.artifacts) {
+  // Inserted last-to-first: rows of the same age tie on `updated_at`, and the list's
+  // `rowid DESC` tie-break then keeps the prototype's order (M4.6, docs/demo.md).
+  for (const a of [...data.artifacts].reverse()) {
     const repos = at(store, minutesBefore(now, ageMinutes(a.age)));
     await repos.artifacts.create({
       type: a.type,

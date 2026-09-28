@@ -1,0 +1,112 @@
+/*
+ * Loop cards (LoopCards.tsx, SPEC → Schedules & loops, M7.2). Values are the
+ * prototype's inline styles (docs/handoff/prototype/Switchboard App.dc.html, the
+ * `loops` markup of the Schedules view); colors from SPEC → Design tokens
+ * (styles/tokens.css). Border and dot colors are set per card from the session status.
+ */
+.sb-loops {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sb-loops__empty {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-loop {
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sb-loop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-loop__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sb-loop__name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sb-loop__kind {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-loop__open {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  line-height: normal;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-loop__strip {
+  display: flex;
+  gap: 3px;
+}
+
+.sb-loop__cell {
+  flex: 1;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.sb-loop__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  font-size: 12px;
+}
+
+.sb-loop__fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sb-loop__fact-k {
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-4);
+}
+
+.sb-loop__fact-v {
+  color: var(--text-2b);
+  overflow-wrap: anywhere;
+}
+
+.sb-loop__note {
+  font-size: 12.5px;
+  color: var(--muted-1);
+  line-height: 1.5;
+}

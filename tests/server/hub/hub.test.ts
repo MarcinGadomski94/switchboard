@@ -57,6 +57,8 @@ const SESSION_KEYS = keys<Session>()([
   'live',
   'resumeCommand',
   'chips',
+  // additive, M7.2 (loop cards)
+  'loops',
 ]);
 const AGENT_KEYS = keys<Agent>()(['id', 'kind', 'name', 'description', 'solutionPath', 'branch', 'status', 'statusText']);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);

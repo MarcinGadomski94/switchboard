@@ -91,6 +91,47 @@ export interface Session {
   readonly resumeCommand: string;
   /** Additive (M4.1): the header chips (`src/core/derive/chips.ts`). */
   readonly chips: readonly SessionChip[];
+  /** Additive (M7.2, D9): the loops observed in the session, oldest first (the Schedules & loops cards). */
+  readonly loops: readonly Loop[];
+}
+
+/** Result of one loop iteration (a strip cell): `none` = not finished / not run. M7.2. */
+export type LoopIterationResult = 'ok' | 'fail' | 'run' | 'need' | 'none';
+
+/** One iteration of a loop, oldest first. M7.2. */
+export interface LoopIteration {
+  readonly result: LoopIterationResult;
+  readonly ts: string | null;
+  /** The label of the result that ended it, `null` while open or unknown. */
+  readonly label: string | null;
+}
+
+/**
+ * A loop of a session (data model *Loop*; D9, M7.2, `docs/derivations.md` →
+ * *Loop cards*). Iteration, next firing and expiry come from observed `/loop`,
+ * ScheduleWakeup, CronCreate and Workflow events; cap and breaker from a
+ * `.loop/progress.md` in the session's working folders. Unknown values are `null`.
+ */
+export interface Loop {
+  readonly id: string;
+  readonly sessionId: string;
+  /** Observed source: `/loop`, `CronCreate`, `ScheduleWakeup` or `Workflow`. */
+  readonly kind: string;
+  /** Card subtitle (`/loop 1h`); `null` = show the kind. */
+  readonly label: string | null;
+  readonly iteration: number | null;
+  readonly cap: number | null;
+  readonly breakerCount: number | null;
+  /** `tripped` / `reset` when known; `null` otherwise. */
+  readonly breakerState: string | null;
+  readonly nextFireAt: string | null;
+  readonly expiresAt: string | null;
+  readonly iterations: readonly LoopIteration[];
+  /** The `.loop/progress.md` cap and breaker were read from (as shown: relative to the workspace root when inside it). */
+  readonly progressPath: string | null;
+  readonly note: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 /** A session event (data model). Drives the chat, the timeline and the terminal tail. Provisional: M2.1. */
@@ -107,7 +148,7 @@ export interface SessionEvent {
   readonly payload: unknown;
 }
 
-/** One changed file (gap #10). Provisional: M4.5. */
+/** One changed file (gap #10; M4.5, `docs/worktrees.md` → *Diff*). */
 export interface FileDiff {
   /** Solution name (e.g. `billing-front`), or `root` for workspace-root files. */
   readonly solution: string;
@@ -118,6 +159,13 @@ export interface FileDiff {
   readonly removed: number;
   /** Unified diff body lines, each starting with `+`, `-` or a space. */
   readonly lines: readonly string[];
+  /**
+   * `true` while the working tree holds changes to this file that are not
+   * committed (staged, unstaged or untracked); `false` once all of the file's
+   * changes are in commits of the session's branch. The Diff tab shows "Not
+   * committed. Commit only when you approve." while it is `true`.
+   */
+  readonly uncommitted: boolean;
 }
 
 /** A stored artifact (data model; gap #9). Provisional: M4.6 / M7.3. */

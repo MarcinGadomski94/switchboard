@@ -1,0 +1,50 @@
+/* ⌘K palette (SPEC → Modals → Palette, M8.3): the prototype's inline styles. The overlay and the 620px panel are in modals.css. */
+.sb-palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid var(--border-control);
+  padding: 16px 18px;
+  font-size: 15px;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+}
+
+.sb-palette-results {
+  max-height: 380px;
+  overflow: auto;
+  padding: 6px;
+}
+
+.sb-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.sb-palette-row[data-selected] {
+  background: #2a2b30;
+}
+
+.sb-palette-kind {
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+  width: 70px;
+}
+
+.sb-palette-label {
+  font-size: 13.5px;
+}
+
+.sb-palette-hint {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-4);
+}

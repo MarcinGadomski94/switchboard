@@ -1,0 +1,117 @@
+/*
+ * Diff tab (DiffTab.tsx, SPEC → Session → Diff). Values are the prototype's inline
+ * styles (docs/handoff/prototype/Switchboard App.dc.html, the `tDiff` markup and
+ * `df.lines`); colors from SPEC → Design tokens (styles/tokens.css).
+ */
+.sb-diff {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.sb-diff__files {
+  border-right: 1px solid var(--border-divider);
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: auto;
+}
+
+.sb-diff__file {
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-diff__file[data-selected='true'] {
+  background: var(--bg-selected-row);
+}
+
+.sb-diff__file-top {
+  display: flex;
+  font: 400 12px var(--font-mono);
+}
+
+.sb-diff__file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The prototype colors the whole delta green, removals included. */
+.sb-diff__file-delta {
+  margin-left: auto;
+  color: oklch(0.76 0.13 150);
+  white-space: nowrap;
+}
+
+.sb-diff__file-sub {
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-diff__empty {
+  padding: 20px 10px;
+  font-size: 12.5px;
+  color: var(--muted-3);
+}
+
+.sb-diff__pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sb-diff__head {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 12px var(--font-mono);
+}
+
+.sb-diff__branch {
+  color: var(--branch-fg);
+}
+
+/* The prototype's own stack here (`Geist,sans-serif`), not the page's. */
+.sb-diff__note {
+  margin-left: auto;
+  font-family: Geist, sans-serif;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-diff__body {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-code);
+  padding: 10px 0;
+  font: 400 12px/1.75 var(--font-mono);
+}
+
+.sb-diff__line {
+  padding: 0 16px;
+  white-space: pre;
+  background: transparent;
+  color: var(--muted-2);
+}
+
+.sb-diff__line[data-tone='add'] {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
+}
+
+.sb-diff__line[data-tone='del'] {
+  background: var(--diff-del-bg);
+  color: var(--diff-del-fg);
+}
