@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json && tsc -p tsconfig.e2e.json",
     "test": "vitest run",
     "e2e": "playwright test",
+    "icons": "node tools/icons/render.ts",
     "service:install": "node tools/service/install.ts",
     "service:uninstall": "node tools/service/uninstall.ts",
     "frame-helper:safari": "node tools/frame-helper/build-safari.ts"
