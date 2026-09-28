@@ -117,10 +117,14 @@ describe('API route registry (M1.4)', () => {
     expect(new Set(pending.map((route) => `${String(route.method)} ${route.url}`)).size).toBe(pending.length);
   });
 
-  it('leaves unknown /api paths at 404 and /hub to M2.3', async () => {
+  it('leaves unknown /api paths at 404; /hub is the SSE stream (M2.3, tests/server/hub/hub.test.ts)', async () => {
     const headers = { host: HOST, cookie: `sb_token=${token}` };
     expect((await app.inject({ method: 'GET', url: '/api/nope', headers })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: '/api/sessions', headers })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/hub', headers })).statusCode).toBe(404);
+    const hub = await app.inject({ method: 'GET', url: '/hub', headers, payloadAsStream: true });
+    expect(hub.statusCode).toBe(200);
+    expect(hub.headers['content-type']).toBe('text/event-stream');
+    hub.stream().destroy();
+    expect((await app.inject({ method: 'GET', url: '/hub', headers: { host: HOST } })).statusCode).toBe(401);
   });
 });

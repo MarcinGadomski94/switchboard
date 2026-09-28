@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
 import { registerHistoryRoutes } from './api/history.ts';
+import { registerHubRoutes } from './api/hub.ts';
 import { registerInboxRoutes } from './api/inbox.ts';
 import { registerScheduleRoutes } from './api/schedules.ts';
 import { registerSessionRoutes } from './api/sessions.ts';
@@ -10,6 +11,8 @@ import { registerSystemRoutes } from './api/system.ts';
 import { registerToolRoutes } from './api/tools.ts';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
+import type { HubBus } from './hub/bus.ts';
+import type { SseHub } from './hub/hub.ts';
 import type { Providers } from './providers.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
@@ -25,6 +28,10 @@ export interface ApiContext {
   readonly supervisor: SessionSupervisor;
   /** Git worktrees, their PR state and the session diff (M2.2). */
   readonly worktrees: WorktreeManager;
+  /** The in-process event bus: services publish the contract's `/hub` events here (M2.3, docs/hub.md). */
+  readonly bus: HubBus;
+  /** The `/hub` SSE fan-out over {@link bus} (M2.3). */
+  readonly hub: SseHub;
 }
 
 /**
@@ -45,5 +52,5 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerSettingsRoutes(app, context);
   await registerToolRoutes(app, context);
   await registerSystemRoutes(app, context);
-  // M2.3 adds `/hub` here (api/hub.ts).
+  await registerHubRoutes(app, context);
 }

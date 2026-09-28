@@ -65,7 +65,7 @@ beforeAll(async () => {
   // Probe routes standing in for the API routes later items add.
   app.get('/api/_probe', async () => ({ ok: true }));
   app.post('/api/_probe', async () => ({ ok: true }));
-  app.get('/hub', async () => 'hub');
+  // `/hub` is the real SSE route (M2.3); the guard answers before it for every refusal below.
   // A route under /api wrongly marked public must still need the cookie.
   app.get('/api/_public-attempt', { config: { public: true } }, async () => ({ ok: true }));
   await app.ready();
@@ -181,7 +181,11 @@ describe('sb_token cookie on /api and /hub', () => {
       expect(response.statusCode, url).toBe(200);
       expect(response.json()).toEqual({ ok: true });
     }
-    expect((await request({ url: '/hub', headers: authed() })).statusCode).toBe(200);
+    // The real SSE stream (M2.3) never ends by itself: read only its head.
+    const hub = await request({ url: '/hub', headers: authed(), payloadAsStream: true });
+    expect(hub.statusCode).toBe(200);
+    expect(hub.headers['content-type']).toBe('text/event-stream');
+    hub.stream().destroy();
   });
 
   it('accepts the token next to a stray cookie of the same name', async () => {

@@ -5,6 +5,7 @@ import { ConfigError, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { openStore, storeFile } from './db/store.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
+import { HubBus } from './hub/bus.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
 import { loadOrCreateToken } from './token.ts';
@@ -21,12 +22,14 @@ async function main(): Promise<void> {
   try {
     const supervisor = createSupervisor(config, store);
     const worktrees = createWorktreeManager(config, store, supervisor);
+    // `/hub` events (docs/hub.md): services created here that publish take this bus.
+    const bus = new HubBus();
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
     let providers: Providers = { diff: worktrees };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, worktrees, logger: true });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, worktrees, bus, logger: true });
     app.addHook('onClose', async () => {
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await worktrees.stopPolling();

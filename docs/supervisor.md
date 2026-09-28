@@ -56,7 +56,7 @@ Unknown ids answer `404 {error:"not-found"}`; supervisor refusals `409 {error:<c
 Read-only solutions are refused with `422` when a name is a `deprecated/…` or `infrastructure` path, and, once the workspace scan exists (M6.1, `providers.solutions`), when the scan marks it read-only.
 
 ## Notifications
-`supervisor.on('sessionUpdated' | 'event', listener)` delivers the contract's `/hub` payloads (`Session`, `{ sessionId, event }`) on every status/attachment change and every event insert or update (a merged assistant text or a closed tool call re-sends the event with the same `id`). M2.3 forwards them over SSE.
+`supervisor.on('sessionUpdated' | 'event', listener)` delivers the contract's `/hub` payloads (`Session`, `{ sessionId, event }`) on every status/attachment change and every event insert or update (a merged assistant text or a closed tool call re-sends the event with the same `id`). M2.3 forwards them over SSE (`forwardServiceEvents`, `docs/hub.md`).
 
 ## Tests
 `tests/server/supervisor/supervisor.test.ts` drives the supervisor against `tools/fake-claude` (temp workspace root and `CLAUDE_CONFIG_DIR`, `FAKE_CLAUDE_LOG` for argv/env/cwd/stdin), `tests/server/api/sessions.test.ts` the routes through `app.inject`, `tests/core/*.test.ts` the parser over every M0 fixture and the derivations. Stubs made with `node -e` cover the SIGINT → SIGTERM escalation and an unhandled control request.

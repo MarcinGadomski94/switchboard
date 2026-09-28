@@ -29,7 +29,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
 | `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | M8.1 |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11), M9.2 (`usagePct`) |
-| `GET /hub` (SSE) | `api/hub.ts` (new) + one line in `routes.ts` | M2.3 |
+| `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
 
 Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` behind the usual Host/Origin guard and cookie.
 
@@ -38,6 +38,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 |---|---|---|
 | `supervisor` (`SessionSupervisor`, M2.1) | claude processes | `on('sessionUpdated' / 'event')` → M2.3 hub; `ControlRequestHandler` + `respond()` → M3.1 |
 | `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item; `remove(id)` → M3.3 "Remove worktree" action; `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
+| `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's poller (`docs/hub.md`) |
 
 ## Server: providers (`src/server/providers.ts`)
 Computed data sits behind interfaces so the demo can swap implementations (D13). Real implementations are created in `src/server/main.ts` and passed to `buildApp({ providers })`; routes read them from `ApiContext.providers`.
@@ -79,7 +80,7 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `fonts.ts`: Geist 400/500/600 and Geist Mono 400/500 from `@fontsource` (gap #19), bundled by Vite.
 - `router.tsx`: `RouterProvider`, `useRouter()`, `<Link to={route}>`, `parseRoute` / `routePath`. Paths: `/` and `/inbox`, `/sessions/:id[/:tab]` (tab `chat` · `timeline` · `diff` · `artifacts`), `/solutions`, `/schedules`, `/artifacts`, `/history`, `/tools/:id`, `/settings[/:section]`; unknown paths show the Inbox.
 - `api/client.ts`: `api.<call>()` per contract row, same-origin with the `sb_token` cookie; errors are `ApiError` (`notImplemented` for 501, `unreachable` for a network failure). `api/useApi.ts`: `useApi(fetcher, deps)` → `{ data, error, loading, reachable, reload }`.
-- `api/useHub.ts`: `useHubEvent(name, handler)` and `useHubStatus()` over one shared `EventSource('/hub')`; retries with a 2 s → 60 s backoff while the server refuses the stream (until M2.3).
+- `api/useHub.ts`: `useHubEvent(name, handler)` and `useHubStatus()` over one shared `EventSource('/hub')`; retries with a 2 s → 60 s backoff while the server refuses the stream (the real stream since M2.3, `docs/hub.md`).
 - `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette')`, Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`.
 
 ## Tests

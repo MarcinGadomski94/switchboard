@@ -1,6 +1,9 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
+import { HubBus } from './hub/bus.ts';
+import { type HubTimingOptions, SseHub } from './hub/hub.ts';
+import { forwardServiceEvents } from './hub/wire.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { registerSecurity } from './security.ts';
@@ -30,6 +33,14 @@ export interface AppOptions {
    * (git from PATH, `SWITCHBOARD_GH_BIN`) around the supervisor; it does not poll.
    */
   readonly worktrees?: WorktreeManager;
+  /**
+   * The `/hub` event bus (M2.3). The caller passes one when services it creates
+   * publish to it; without one the app makes its own. Either way the app forwards
+   * the supervisor's and the worktree manager's notifications to it.
+   */
+  readonly bus?: HubBus;
+  /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
+  readonly hub?: HubTimingOptions;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -51,7 +62,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     supervisor = own;
   }
   const worktrees = options.worktrees ?? createWorktreeManager(options.config, options.store, supervisor);
-  await registerApiRoutes(app, { config: options.config, store: options.store, providers: options.providers ?? {}, supervisor, worktrees });
+  const providers = options.providers ?? {};
+  const bus = options.bus ?? new HubBus();
+  const hub = new SseHub({ bus, ...(providers.system ? { system: providers.system } : {}), ...options.hub });
+  const stopForwarding = forwardServiceEvents(bus, { supervisor, worktrees });
+  // Open streams would keep the server from closing: end them before it stops listening.
+  app.addHook('preClose', async () => {
+    hub.close();
+  });
+  app.addHook('onClose', async () => {
+    stopForwarding();
+  });
+  await registerApiRoutes(app, { config: options.config, store: options.store, providers, supervisor, worktrees, bus, hub });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
