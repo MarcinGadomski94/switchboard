@@ -234,7 +234,11 @@
   cursor: pointer;
 }
 
-/* Chat (M4.1 lays out the messages so the terminal's turns show; M4.2 owns the tab). */
+/*
+ * Chat (M4.2, SPEC → Session → Chat; prototype chat markup): the message list,
+ * the step lines, the answers bubble and the composer. The inline question card is
+ * the shared QuestionCard (`variant="chat"`, components/question-card.css).
+ */
 .sb-chat {
   flex: 1;
   min-height: 0;
@@ -270,4 +274,110 @@
 .sb-chat-message[data-role='user'] .sb-chat-bubble {
   background: var(--bg-selected-nav);
   padding: 10px 14px;
+}
+
+/* Mono step lines under an agent message (✓ / ● / ✕ / ⏸ + the event label). */
+.sb-chat-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-chat-step {
+  overflow-wrap: anywhere;
+}
+
+/* An answered batch: the answers bubble (right) and the blue note under it. */
+.sb-chat-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: flex-end;
+  max-width: 80%;
+}
+
+.sb-chat-answers-bubble {
+  background: var(--bg-selected-nav);
+  border-radius: 12px 12px 4px 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sb-chat-answers-note {
+  font: 400 12px var(--font-mono);
+  color: oklch(0.74 0.12 250);
+}
+
+/* Composer: quick replies, then the message field and Send. */
+.sb-chat-composer {
+  padding: 10px 22px 16px;
+  border-top: 1px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-chat-quick {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sb-chat-quick-label {
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+  margin-right: 4px;
+}
+
+.sb-chat-quick .sb-chat-quick-reply {
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 4px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-chat-compose {
+  display: flex;
+  gap: 8px;
+}
+
+.sb-chat-input {
+  flex: 1;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 13px;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-chat-compose .sb-chat-send {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-chat-compose .sb-chat-send:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+.sb-chat-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
 }

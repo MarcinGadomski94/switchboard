@@ -90,6 +90,30 @@ export function solutionOf(solutionPath: string): string | null {
   return solutionPath.split('/').filter(Boolean).pop() ?? null;
 }
 
+/**
+ * A prototype chat tool line (`✓ recon · codebase-memory · …`) as the step event the
+ * chat renders with the same mark (M4.2, `docs/chat.md`): `✓` a finished tool call,
+ * `●` a running one, `✕` a failed one, `⏸` an open permission request. The label is
+ * the line without its mark. `•` (a note) has no event of its own and becomes a
+ * finished tool call (`✓`; `docs/visual/chat.md`).
+ */
+export function demoStep(line: string, id: string, ts: string): { kind: EventKind; label: string; endTs: string | null; payload: Record<string, unknown> } {
+  const mark = line.slice(0, 1);
+  const label = line.slice(1).trimStart();
+  if (mark === '⏸') {
+    return {
+      kind: 'ask',
+      label,
+      endTs: null,
+      payload: { source: 'demo', type: 'request', requestId: id, toolName: '', toolUseId: null, input: {}, agentId: null, description: null, decisionReason: null, state: 'open' },
+    };
+  }
+  const tool = { source: 'demo', type: 'tool', name: '', toolUseId: id, input: {} };
+  if (mark === '●') return { kind: 'tool', label, endTs: null, payload: tool };
+  if (mark === '✕') return { kind: 'tool', label, endTs: ts, payload: { ...tool, result: '', isError: true } };
+  return { kind: 'tool', label, endTs: ts, payload: { ...tool, result: '', isError: false } };
+}
+
 /** Minutes between runs of the demo schedules (for spacing their run history). */
 function periodMinutes(cron: string): number {
   if (cron.startsWith('0 */4')) return 240;
@@ -175,17 +199,25 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       agentIds.set(a.name, agent.id);
     }
 
-    // Chat, then the terminal tail, then the timeline blocks (payload.channel tells them apart).
+    // Chat (M4.2: the real `user` / `assistant` / step payloads the chat renders), then the
+    // terminal tail, then the timeline blocks (payload.channel tells those two apart).
     const start = minutesAfter(base, s.t0);
     const end = minutesAfter(base, s.t0 + s.duration);
     for (const [index, m] of s.messages.entries()) {
+      const ts = index === 0 ? start : end;
       await repos.events.append({
         sessionId: session.id,
-        ts: index === 0 ? start : end,
+        ts,
         kind: 'text',
         label: m.text,
-        payload: { source: 'demo', channel: 'chat', role: m.from === 'user' ? 'user' : 'assistant', text: m.text, tools: m.tools ?? [] },
+        payload:
+          m.from === 'user'
+            ? { source: 'demo', type: 'user', text: m.text, origin: index === 0 ? 'task' : 'user', delivered: true }
+            : { source: 'demo', type: 'assistant', text: m.text, messageId: null },
       });
+      for (const [step, line] of (m.tools ?? []).entries()) {
+        await repos.events.append({ sessionId: session.id, ts, ...demoStep(line, `demo-${s.name}-${index}-${step}`, ts) });
+      }
     }
     for (const line of s.terminal) {
       await repos.events.append({ sessionId: session.id, ts: end, kind: 'tool', label: line, payload: { source: 'demo', channel: 'terminal', line } });

@@ -13,7 +13,7 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 ## Server: API areas (`src/server/api/*.ts`, registered from `src/server/routes.ts`)
 | Route (contract) | Module | Item |
 |---|---|---|
-| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 added `cwd`, `live`, `resumeCommand`, `chips` to Session |
+| `GET /api/sessions`, `GET /api/sessions/{id}` | `api/sessions.ts` | served since M2.1 (`docs/supervisor.md`); M4.1 added `cwd`, `live`, `resumeCommand`, `chips` to Session; M4.2 added `questions` to SessionDetail (`docs/chat.md`) |
 | `POST /api/sessions` | `api/sessions.ts` | served since M2.1 (validation + start); worktrees since M2.2 (`docs/worktrees.md`); M5.2 adds the first-message payload (`firstMessage` of `SessionSupervisor.start`) |
 | `POST /api/sessions/{id}/pause · /resume · /detach · /attach` | `api/sessions.ts` | served since M2.1 (D7); the Attach warning (`409 attach-warning` unless `{ confirm: true }`) + transcript import since M4.1 (`docs/supervisor.md` → *Attach here*) |
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
@@ -60,7 +60,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `toast/ToastHost.tsx` | Toast host; since M3.4 the `questionBatch` toast + chime + OS notification (`toast/notify.ts`, `toast/useQuestionNotifications.ts`, `docs/notifications.md`) | M1.4, M3.4 |
 | `views/session/SessionView.tsx` | Session layout (`1fr | 380px`), tab switch; loads `GET /api/sessions/{id}`, reloads on its `/hub` events | done in M4.1 (`session.css`, class prefix `sb-sv-`: the sidebar owns `sb-session-*`) |
 | `views/session/SessionHeader.tsx` | Header, chips, Pause/Resume, terminal handoff buttons + the Attach warning, tabs | done in M4.1 (`session-header.ts`: copy and rules) |
-| `views/session/ChatTab.tsx` | Chat | M4.1 lists the user / assistant messages (`chat.ts`) so the terminal's turns show after Attach; M4.2 adds the rest |
+| `views/session/ChatTab.tsx` | Chat | done in M4.2 (`chat.ts`: items, step marks, quick replies; `docs/chat.md`): messages, step lines, the inline `QuestionCard` + answers bubble, quick replies, composer |
 | `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.1 added the column and the handoff card (`HandoffCard.tsx`); M4.3 adds the agent cards and the terminal tail above it |
 | `views/session/TimelineTab.tsx` | Timeline | M4.4 |
 | `views/session/DiffTab.tsx` | Diff | M4.5 |

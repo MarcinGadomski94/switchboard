@@ -1,10 +1,11 @@
-import type { Agent, Artifact, FileDiff, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, Question, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { toQuestion } from '../inbox/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 
@@ -99,7 +100,20 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
   };
 }
 
-/** `GET /api/sessions/{id}`: the session plus its task, recent events, changed files and artifacts. */
+/**
+ * Every question the session asked (M4.2, the chat's inline card and answers
+ * bubble): its batches oldest first, each batch's questions in order, in the
+ * contract's `Question` shape (state = the batch's state).
+ */
+export async function sessionQuestions(store: Store, sessionId: string): Promise<Question[]> {
+  const out: Question[] = [];
+  for (const batch of await store.questions.listBatches({ sessionId })) {
+    for (const question of await store.questions.questionsOf(batch.id)) out.push(toQuestion(question, batch));
+  }
+  return out;
+}
+
+/** `GET /api/sessions/{id}`: the session plus its task, recent events, changed files, artifacts and (M4.2) questions. */
 export async function toSessionDetail(store: Store, providers: Providers, record: SessionRecord): Promise<SessionDetail> {
   const session = await toSession(store, record);
   const events = await store.events.latest(record.id, DETAIL_EVENT_LIMIT);
@@ -112,5 +126,12 @@ export async function toSessionDetail(store: Store, providers: Providers, record
       files = [];
     }
   }
-  return { ...session, task: record.task, events: events.map(toEvent), files, artifacts: artifacts.map(toArtifact) };
+  return {
+    ...session,
+    task: record.task,
+    events: events.map(toEvent),
+    files,
+    artifacts: artifacts.map(toArtifact),
+    questions: await sessionQuestions(store, record.id),
+  };
 }

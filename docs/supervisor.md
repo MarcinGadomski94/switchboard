@@ -81,7 +81,7 @@ Oracle: `tests/server/supervisor/restart.test.ts` runs `src/server/main.ts` as a
 |---|---|
 | `GET /api/sessions` | `Session[]` newest first, with agents and the open question count; since M4.1 also `cwd`, `live` (a pid is recorded), `resumeCommand` and the header `chips` (`docs/derivations.md` → *Session chips*). |
 | `POST /api/sessions` | Validates NewSession (every failure `422 {error:"invalid", errors:[{field,message}]}`, a duplicate name included), creates the worktrees when `worktrees` is true (M2.2, `docs/worktrees.md`; linked through `start(…, { beforeSpawn })`), stores the session, creates the main agent, starts the process; `201` + Session. `409` without a (usable) workspace root. |
-| `GET /api/sessions/{id}` | SessionDetail: the Session + `task`, the newest 200 events, `files` from the diff provider (M4.5; empty until then), artifacts. |
+| `GET /api/sessions/{id}` | SessionDetail: the Session + `task`, the newest 200 events, `files` from the diff provider (M4.5; empty until then), artifacts, and (M4.2) `questions`: every question batch of the session (`docs/chat.md`). |
 | `POST /api/sessions/{id}/messages` | `{ text }` (non-empty) → `202`. |
 | `POST /api/sessions/{id}/pause`, `/resume` | The Session after the stop / after the new process got its message. |
 | `POST /api/sessions/{id}/detach`, `/attach` | `{ resumeCommand }`. `/attach` takes an optional `{ confirm: true }`; without it a terminal warning answers `409 { error: "attach-warning", message, reasons }` (M4.1, *Attach here*). |

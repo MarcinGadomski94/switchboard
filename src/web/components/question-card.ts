@@ -69,7 +69,15 @@ export function answerBody(questions: readonly Pick<Question, 'id' | 'options'>[
   return { answers: questions.map((question) => ({ questionId: question.id, answerIndex: picks[question.id] as number })) };
 }
 
-/** The lines of the "answers" bubble once a batch is answered: `<source>: <label>` (prototype `ssAnswered`). */
+/**
+ * The lines of the "answers" bubble once a batch is answered: `<source name>: <label>`
+ * (prototype `ssAnswered`: the source's part before the first `" · "`, so
+ * `web · microfrontends/acme-app-front` → `web`; M4.2).
+ */
 export function answeredLines(questions: readonly Pick<Question, 'source' | 'options' | 'answerIndex'>[]): string[] {
-  return questions.map((question) => `${question.source}: ${question.answerIndex === null ? '—' : (question.options[question.answerIndex]?.label ?? '—')}`);
+  return questions.map((question) => {
+    const at = question.source.indexOf(' · ');
+    const name = at < 0 ? question.source : question.source.slice(0, at);
+    return `${name}: ${question.answerIndex === null ? '—' : (question.options[question.answerIndex]?.label ?? '—')}`;
+  });
 }

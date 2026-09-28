@@ -18,8 +18,9 @@ const RELOAD_MS = 500;
  * Session view (SPEC → Session): grid `1fr | 380px`, the header and the current
  * tab on the left, the right panel. M4.1 owns the layout and the header: the
  * session comes from `GET /api/sessions/{id}` and reloads on its `/hub`
- * `sessionUpdated` and `event` (status, attachment, tab counts). M4.2–M4.6 fill the
- * tabs and the panel (docs/lanes.md).
+ * `sessionUpdated` and `event` (status, attachment, tab counts) and, since M4.2,
+ * `questionBatch` (the chat's inline card). M4.2–M4.6 fill the tabs and the panel
+ * (docs/lanes.md).
  */
 export function SessionView({ sessionId, tab }: { readonly sessionId: string; readonly tab: SessionTab }) {
   const detail = useApi(() => api.getSession(sessionId), [sessionId]);
@@ -28,6 +29,10 @@ export function SessionView({ sessionId, tab }: { readonly sessionId: string; re
     if (session.id === sessionId) reload();
   });
   useHubEvent('event', (payload) => {
+    if (payload.sessionId === sessionId) reload();
+  });
+  // M4.2: a new batch reaches the chat's inline card (the detail carries the questions).
+  useHubEvent('questionBatch', (payload) => {
     if (payload.sessionId === sessionId) reload();
   });
 
@@ -44,7 +49,7 @@ export function SessionView({ sessionId, tab }: { readonly sessionId: string; re
           artifacts={session?.artifacts.length ?? 0}
           onChanged={detail.reload}
         />
-        {tab === 'chat' ? <ChatTab sessionId={sessionId} /> : null}
+        {tab === 'chat' ? <ChatTab sessionId={sessionId} session={session} onChanged={detail.reload} /> : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}

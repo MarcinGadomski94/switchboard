@@ -137,6 +137,13 @@ export interface SessionDetail extends Session {
   readonly events: readonly SessionEvent[];
   readonly files: readonly FileDiff[];
   readonly artifacts: readonly Artifact[];
+  /**
+   * Additive (M4.2): the questions of every batch the session asked, batches oldest
+   * first and each batch's questions in order. The chat shows a batch that still
+   * waits (open, or stale and unanswered) as the inline question card and an
+   * answered one as the answers bubble (`docs/chat.md`).
+   */
+  readonly questions: readonly Question[];
 }
 
 /** `{ resumeCommand }` of `/detach` and `/attach` (contract). */
