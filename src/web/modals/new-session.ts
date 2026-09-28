@@ -14,6 +14,7 @@ import {
   isOneOf,
 } from '../../core/model.ts';
 import { TITLE_MAX, shortNameFromTitle } from '../../core/session-title.ts';
+import { type TicketBranchCheck, branchFromTitle, checkTicketBranch } from '../../core/ticket-branch.ts';
 import { FOLDER_KIND_LABEL, distinctFolderNames, sessionCwd } from '../folders/folders.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
@@ -27,6 +28,8 @@ import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
  * saved folder, and a **repo** folder keeps only Task, Worktree and Ultracode
  * (`docs/folders.md` → *UI*). D22: the name field takes free text as the
  * session's title; Start posts the short name derived from it ({@link startNames}).
+ * D32: with a worktree, the **Branch** field names its branch after the ticket
+ * ({@link formBranch}); Start waits for a valid one.
  */
 
 /** The form's state. `figmaUrls` is the raw text of its field (URLs separated by spaces, commas or new lines). */
@@ -50,6 +53,11 @@ export interface NewSessionForm {
    * (the saved folders have not loaded yet, or none is saved).
    */
   readonly folder: string | null;
+  /**
+   * D32: the Branch field as typed; `null` while the developer has not typed in
+   * it, so it follows the title ({@link formBranch}: `branchFromTitle`).
+   */
+  readonly branch: string | null;
 }
 
 /**
@@ -89,6 +97,7 @@ export const DEFAULT_FORM: NewSessionForm = {
   worktrees: true,
   ultracode: false,
   folder: null,
+  branch: null,
 };
 
 /** A pill option: value + the prototype's label. */
@@ -163,6 +172,35 @@ export function titleTooLong(form: Pick<NewSessionForm, 'name'>): boolean {
   return title !== null && title.length > TITLE_MAX;
 }
 
+/**
+ * D32: the Branch field shows (and is required) whenever Start creates a worktree:
+ * Worktree on, for a workspace (one branch in every solution's repo) or a repo
+ * folder. The modal hides it where no worktree is made by the developer's name
+ * (a schedule, a moved conversation, a teleport).
+ */
+export function showsBranch(form: Pick<NewSessionForm, 'worktrees'>): boolean {
+  return form.worktrees;
+}
+
+/**
+ * D32: the branch Start posts: the field as typed, else what the title suggests
+ * while the developer has not typed in it (`branchFromTitle`: "PROJ-1984 Purchase
+ * complete" → `PROJ-1984-purchase-complete`), else empty.
+ */
+export function formBranch(form: Pick<NewSessionForm, 'branch' | 'name'>): string {
+  return form.branch ?? branchFromTitle(form.name) ?? '';
+}
+
+/** D32: the Branch field's check (`checkTicketBranch` of {@link formBranch}): its message is shown under the field. */
+export function branchCheck(form: Pick<NewSessionForm, 'branch' | 'name'>): TicketBranchCheck {
+  return checkTicketBranch(formBranch(form));
+}
+
+/** D32: the Branch field keeps Start disabled (it shows and is not a ticket branch). */
+export function branchBlocks(form: Pick<NewSessionForm, 'branch' | 'name' | 'worktrees'>): boolean {
+  return showsBranch(form) && !branchCheck(form).ok;
+}
+
 /** `true` for a `*-front` solution (a microfrontend: the web half with a mobile counterpart). */
 export function isFront(solution: string): boolean {
   return baseName(solution).endsWith('-front');
@@ -212,12 +250,13 @@ export function formComplete(form: NewSessionForm, folder: Pick<FormFolder, 'kin
 }
 
 /**
- * "Start session" is enabled: {@link formComplete} and a title of at most 80
- * characters. D22: a taken name no longer blocks it, the short name gets `-2`,
- * `-3`, … instead ({@link startNames}).
+ * "Start session" is enabled: {@link formComplete}, a title of at most 80
+ * characters and, D32, a ticket branch when a worktree is made
+ * ({@link branchBlocks}). D22: a taken name no longer blocks it, the short name
+ * gets `-2`, `-3`, … instead ({@link startNames}).
  */
 export function canStart(form: NewSessionForm, _takenNames: readonly string[] = [], folder: Pick<FormFolder, 'kind'> | null = null): boolean {
-  return formComplete(form, folder) && !titleTooLong(form);
+  return formComplete(form, folder) && !titleTooLong(form) && !branchBlocks(form);
 }
 
 /** Toggles `solution` in the selection (order of picking kept). */
@@ -262,11 +301,14 @@ export function toSessionBody(form: NewSessionForm, folder: FormFolder | null): 
 
 /**
  * What "Start session" posts (D22): {@link toSessionBody} with the short name
- * derived from the field and the field as `title` (none for an empty field).
+ * derived from the field and the field as `title` (none for an empty field);
+ * D32: with a worktree, the `branch` ({@link formBranch}, trimmed). A schedule's
+ * template never carries one (its runs keep `session/{name}`).
  */
 export function toStartBody(form: NewSessionForm, folder: FormFolder | null, takenNames: readonly string[]): NewSession | NewRepoSession {
   const { name, title } = startNames(form, takenNames);
-  return { ...toSessionBody(form, folder), name, ...(title !== null ? { title } : {}) };
+  const branch = showsBranch(form) ? { branch: formBranch(form).trim() } : {};
+  return { ...toSessionBody(form, folder), name, ...(title !== null ? { title } : {}), ...branch };
 }
 
 /**
@@ -295,6 +337,8 @@ export function formFromPrefill(prefill: NewSessionPrefill | null | undefined): 
   if (typeof prefill.worktrees === 'boolean') form.worktrees = prefill.worktrees;
   if (typeof prefill.ultracode === 'boolean') form.ultracode = prefill.ultracode;
   if (typeof prefill.folder === 'string' && prefill.folder.trim() !== '') form.folder = prefill.folder.trim();
+  // D32: a prefilled branch counts as typed (the title no longer replaces it).
+  if (typeof prefill.branch === 'string' && prefill.branch.trim() !== '') form.branch = prefill.branch.trim();
   return form;
 }
 
@@ -435,19 +479,39 @@ export type SummaryNaming = 'start' | 'as-typed';
 /** The warning when the field's title is too long (D22). */
 export const TITLE_TOO_LONG = `⚠ the title must be at most ${TITLE_MAX} characters`;
 
-/** The session name the summary shows, and the line naming it when it differs from the field (D22). */
+/** The warning while the Branch field is not a ticket branch (D32; the field itself shows the full message). */
+export const BRANCH_MISSING = '⚠ name the branch after its ticket';
+
+/**
+ * The session name the summary shows, and the line under the worktree comment
+ * (D22 / D32): with a worktree made by the developer's name, `branch    <branch>`
+ * (`—` while the field is not a ticket branch); else, when the short name is not
+ * the field as typed, `name      <name>`. A schedule's run (`as-typed`) keeps its
+ * `session/{name}` and shows no such line.
+ */
 function summaryName(form: NewSessionForm, takenNames: readonly string[], naming: SummaryNaming): { readonly name: string; readonly line: SummaryLine | null } {
   if (naming === 'as-typed') return { name: sessionName(form), line: null };
   const { name } = startNames(form, takenNames);
+  if (showsBranch(form)) {
+    const check = branchCheck(form);
+    return { name, line: { text: `branch    ${check.ok ? check.name : '—'}`, tone: 'value' } };
+  }
   if (name === (form.name.trim() || 'session')) return { name, line: null };
-  // The field is a title (or its name is taken): say which short name the worktree and branch get.
-  return { name, line: { text: form.worktrees ? `branch    session/${name}` : `name      ${name}`, tone: 'value' } };
+  // The field is a title (or its name is taken): say which short name the session gets.
+  return { name, line: { text: `name      ${name}`, tone: 'value' } };
 }
 
-/** The name warnings: a taken name as typed (a schedule's) or a title that is too long (a new session's, D22). */
+/**
+ * The name warnings: a taken name as typed (a schedule's) or a title that is too
+ * long (a new session's, D22); D32: a new session's branch that is not a ticket
+ * branch yet.
+ */
 function nameWarnings(form: NewSessionForm, takenNames: readonly string[], naming: SummaryNaming): SummaryLine[] {
   if (naming === 'as-typed') return nameTaken(form, takenNames) ? [{ text: '⚠ a session with this name exists', tone: 'warn' }] : [];
-  return titleTooLong(form) ? [{ text: TITLE_TOO_LONG, tone: 'warn' }] : [];
+  const lines: SummaryLine[] = [];
+  if (branchBlocks(form)) lines.push({ text: BRANCH_MISSING, tone: 'warn' });
+  if (titleTooLong(form)) lines.push({ text: TITLE_TOO_LONG, tone: 'warn' });
+  return lines;
 }
 
 /**
@@ -457,8 +521,9 @@ function nameWarnings(form: NewSessionForm, takenNames: readonly string[], namin
  * and `cwd` is the folder's; a repo folder has only the folder, the cwd (the repo,
  * or its worktree with Worktree on) and ultracode ({@link repoSummaryLines}). D22:
  * the worktree folders use the short name derived from the field; when it is not
- * the field as typed, a `branch    session/<name>` line (Worktree on) or a
- * `name      <name>` line (off) says so under the worktree comment.
+ * the field as typed and Worktree is off, a `name      <name>` line says so under
+ * the worktree comment. D32: with Worktree on, a `branch    <branch>` line there
+ * names the ticket branch (`—` until the field is valid, with a `⚠` line).
  */
 export function summaryLines(
   form: NewSessionForm,

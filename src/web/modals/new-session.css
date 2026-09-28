@@ -155,6 +155,25 @@
   font: 400 13px var(--font-mono);
 }
 
+/* D32: the Branch row under the name (only while Start creates a worktree): the name field's style, its check beside it. */
+.sb-ns-branch {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.sb-ns-branch-note {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  line-height: 1.4;
+  color: var(--muted-3);
+  min-width: 0;
+}
+
+.sb-ns-branch-note[data-ok='false'] {
+  color: var(--status-need);
+}
+
 .sb-ns-input::placeholder {
   color: var(--muted-3);
 }

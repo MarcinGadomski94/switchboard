@@ -74,7 +74,8 @@ describe('New-session form: the name field is the title (D22)', () => {
   it('Start posts the derived name and the title (workspace and repo folder); kebab-case text as both; an empty field no title', () => {
     const body = toStartBody(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'] }), null, ['jira-ticket-handling']);
     expect(body).toMatchObject({ name: 'jira-ticket-handling-2', title: 'JIRA Ticket handling', solutions: ['acme-app-front'] });
-    expect(toStartBody(form({ name: 'Fix the build', worktrees: true }), repoFolder, [])).toEqual({
+    // D32: with its worktree the repo body carries the ticket branch.
+    expect(toStartBody(form({ name: 'Fix the build', worktrees: true, branch: 'PROJ-7-fix-the-build' }), repoFolder, [])).toEqual({
       name: 'fix-the-build',
       title: 'Fix the build',
       task: '',
@@ -82,29 +83,30 @@ describe('New-session form: the name field is the title (D22)', () => {
       solutions: ['switchboard'],
       worktrees: true,
       ultracode: false,
+      branch: 'PROJ-7-fix-the-build',
     });
     expect(toStartBody(form({ name: 'free-talk-640', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'free-talk-640', title: 'free-talk-640' });
     expect('title' in toStartBody(form({ name: '  ', solutions: ['mobile'] }), null, [])).toBe(false);
     expect(toStartBody(form({ name: '', solutions: ['mobile'] }), null, [])).toMatchObject({ name: 'session' });
   });
 
-  it('the summary shows the short name in the branch and worktree lines; nothing changes for a kebab-case name', () => {
-    const titled = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'] }), '/ws', []).map((l) => [l.text, l.tone]);
+  it('the summary shows the short name in the worktree lines (D32: the branch line names the ticket branch); nothing changes for a kebab-case name', () => {
+    const titled = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['acme-app-front'], branch: 'PROJ-3-jira-handling' }), '/ws', []).map((l) => [l.text, l.tone]);
     const at = titled.findIndex(([text]) => text === '# worktrees');
     expect(titled.slice(at, at + 3)).toEqual([
       ['# worktrees', 'comment'],
-      ['branch    session/jira-ticket-handling', 'value'],
+      ['branch    PROJ-3-jira-handling', 'value'],
       ['../acme-app-front-wt-jira-ticket-handling', 'path'],
     ]);
     const inPlace = summaryLines(form({ name: 'JIRA Ticket handling', solutions: ['mobile'], worktrees: false }), '/ws', []).map((l) => l.text);
     expect(inPlace).toContain('name      jira-ticket-handling');
-    const repo = summaryLines(form({ name: 'Fix the build' }), null, [], repoFolder).map((l) => l.text);
-    expect(repo).toContain('cwd       /src/switchboard-wt-fix-the-build');
-    expect(repo).toContain('branch    session/fix-the-build');
-    expect(repo).toContain('../switchboard-wt-fix-the-build');
+    const repo = summaryLines(form({ name: 'PROJ-12 Fix the build' }), null, [], repoFolder).map((l) => l.text);
+    expect(repo).toContain('cwd       /src/switchboard-wt-proj-12-fix-the-build');
+    expect(repo).toContain('branch    PROJ-12-fix-the-build');
+    expect(repo).toContain('../switchboard-wt-proj-12-fix-the-build');
 
-    // A kebab-case name (a title equal to its short name): exactly the pre-D22 summary (no branch line).
-    const kebab = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'] }), 'D:\\acme', []).map((l) => l.text);
+    // A kebab-case name (a title equal to its short name): the pre-D22 summary, plus D32's branch line under `# worktrees`.
+    const kebab = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'], branch: 'PROJ-640-free-talk' }), 'D:\\acme', []).map((l) => l.text);
     expect(kebab).toEqual([
       '# claude code · background · Max',
       'cwd       D:\\acme',
@@ -114,6 +116,7 @@ describe('New-session form: the name field is the title (D22)', () => {
       'ultracode off',
       ' ',
       '# worktrees',
+      'branch    PROJ-640-free-talk',
       '../acme-app-front-wt-free-talk-640',
       '../mobile-wt-free-talk-640',
       ' ',
@@ -122,7 +125,7 @@ describe('New-session form: the name field is the title (D22)', () => {
   });
 
   it('refuses a title over 80 characters (warning, Start disabled)', () => {
-    const long = form({ name: 'A'.repeat(81), solutions: ['mobile'] });
+    const long = form({ name: 'A'.repeat(81), solutions: ['mobile'], branch: 'PROJ-1-long' });
     expect(titleTooLong(long)).toBe(true);
     expect(canStart(long, [])).toBe(false);
     expect(summaryLines(long, '/ws', []).map((l) => l.text)).toContain(TITLE_TOO_LONG);
