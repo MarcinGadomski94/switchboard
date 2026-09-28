@@ -123,6 +123,8 @@ test('a repo-folder session on the real path: add the repo → start in its work
   await expect(modal.getByTestId('ns-chip')).toHaveText(['✓ app-repo']);
   await modal.getByTestId('ns-name').fill(NAME);
   await modal.getByTestId('ns-task').fill('Write the notes. [fake:write notes.md]');
+  // D32: the repo's worktree is on a ticket branch.
+  await modal.getByTestId('ns-branch').fill('APP-5-repo-walk');
   const worktree = path.join(tmp, `app-repo-wt-${NAME}`);
   await expect(modal.getByTestId('ns-summary-line').nth(2)).toHaveText(`cwd       ${worktree}`);
   await modal.getByTestId('ns-start').click();
@@ -148,7 +150,7 @@ test('a repo-folder session on the real path: add the repo → start in its work
   await expect(notes).toHaveCount(1);
   await notes.click();
   await expect(page.getByTestId('diff-note')).toHaveText('Not committed. Commit only when you approve.');
-  await expect(page.getByTestId('diff-branch')).toContainText(`session/${NAME}`);
+  await expect(page.getByTestId('diff-branch')).toContainText('APP-5-repo-walk');
   await expect(page.getByTestId('diff-line').filter({ hasText: 'written by fake-claude' })).toHaveCount(1);
 
   // 5. Pause / Resume: the process comes back in the worktree (the session's stored cwd).

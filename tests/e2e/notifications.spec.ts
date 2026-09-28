@@ -45,7 +45,7 @@ test('a question batch: toast + chime + OS notification (granted) together; Jump
   await expect(toast).toBeVisible();
   await expect(toast.locator('.sb-toast-title')).toHaveText('qa-free-talk');
   await expect(toast.locator('.sb-toast-sub')).toHaveText('question · now');
-  await expect(toast.locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ session/qa-free-talk');
+  await expect(toast.locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ PROJ-1-qa-free-talk');
   await expect(toast.locator('.sb-toast-text')).toHaveText('Which environment should I target?');
   await expect(toast.getByRole('button')).toHaveText(['✕', 'Jump to session', 'Later']);
   // Top-right, 16 px in (prototype); `width: 360px` + padding + border like the prototype's inline style.

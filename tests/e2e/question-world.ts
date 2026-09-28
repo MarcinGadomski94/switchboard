@@ -12,7 +12,7 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * A real-path world for the notification specs (M3.4, D13): `node src/server/main.ts`
  * with fake-claude as the CLI, fake gh, and a temp workspace holding one real git
  * repo (`microfrontends/acme-app-front`), so a session started with worktrees gets
- * a branch chip (`acme-app-front ⎇ session/<name>`, gap #1). No demo seed.
+ * a branch chip (`acme-app-front ⎇ PROJ-1-<name>`: D32, its ticket branch). No demo seed.
  */
 export interface QuestionWorld {
   readonly server: ServerProcess;
@@ -21,7 +21,10 @@ export interface QuestionWorld {
   readonly workspace: string;
   /** The server's `CLAUDE_CONFIG_DIR` (transcripts, live-process files). Additive (M4.1). */
   readonly configDir: string;
-  /** Starts a session in `acme-app-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie). */
+  /**
+   * Starts a session in `acme-app-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie).
+   * With worktrees its branch is the ticket branch `PROJ-1-<name>` (D32).
+   */
   startSession(page: Page, name: string, task: string, worktrees?: boolean): Promise<{ id: string }>;
   stop(): Promise<void>;
 }
@@ -96,6 +99,7 @@ export async function startQuestionWorld(label: string, options: { readonly env?
             qa: null,
             worktrees,
             ultracode: false,
+            ...(worktrees ? { branch: `PROJ-1-${name}` } : {}),
           },
         );
         expect(result.status).toBe(201);

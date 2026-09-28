@@ -41,6 +41,15 @@ import {
  * y relative to the first section (1 · Task definition), and the app's summary
  * line i + 1 with the prototype's line i (i ≥ 1) with its y less the added
  * line's height. The added parts are checked on their own ({@link d14Additions}).
+ *
+ * D32 additions (not findings): with Worktree on (the prototype's draft) the form
+ * has a **Branch row** inside section 1, under the name / task row, and the
+ * summary a **`branch` line** under `# worktrees`. Section 1 is compared with its
+ * height less the row's, the sections below it with their y less that too, and
+ * the summary lines after `# worktrees` at the app's index + 2 with their y less
+ * both added lines. The branch is filled through the form like the draft's other
+ * values (Start needs it); the added parts are checked on their own
+ * ({@link d32Additions}).
  */
 
 interface PartSpec {
@@ -61,20 +70,45 @@ const FOLDER_ROW = [...FORM, 1];
 /** D14: the app's summary line 1 is the added `folder` line, so the prototype's summary line i ≥ 1 is the app's i + 1. */
 const FOLDER_LINE = [...SUMMARY, 1];
 
-/** The app's path of a prototype path (D14, see the module comment). */
-function appPathOf(path: readonly number[]): readonly number[] {
+/**
+ * The app's path of a prototype path (D14, see the module comment). D32:
+ * `worktreesLine` is the prototype's index of the `# worktrees` summary line
+ * (`null` when the state compares no line after it): the lines after it sit one
+ * more line lower in the app (the added `branch` line).
+ */
+function appPathOf(path: readonly number[], worktreesLine: number | null = null): readonly number[] {
   const [a, b, c] = path;
   if (a !== undefined && a === FORM[0] && b !== undefined && b >= 1) return [a, b + 1, ...path.slice(2)];
-  if (a !== undefined && a === SIDE[0] && b !== undefined && b === SUMMARY[1] && c !== undefined && c >= 1) return [a, b, c + 1, ...path.slice(3)];
+  if (a !== undefined && a === SIDE[0] && b !== undefined && b === SUMMARY[1] && c !== undefined && c >= 1) {
+    return [a, b, c + (worktreesLine !== null && c > worktreesLine ? 2 : 1), ...path.slice(3)];
+  }
   return path;
 }
 
-/** What {@link appPathOf} shifted: the form below the Folder row, or the summary below the `folder` line. */
-function shiftOf(path: readonly number[]): 'form' | 'summary' | null {
+/**
+ * What {@link appPathOf} shifted: section 1 below the Folder row (`form`; D32: its
+ * own box, `task`, grows by the Branch row), the sections below it (`belowTask`),
+ * the summary below the `folder` line (`summary`), and (D32) the summary lines
+ * below the `branch` line (`belowBranch`).
+ */
+type Shift = 'form' | 'task' | 'belowTask' | 'summary' | 'belowBranch';
+
+function shiftOf(path: readonly number[], worktreesLine: number | null = null): Shift | null {
   const [a, b, c] = path;
-  if (a === FORM[0] && b !== undefined && b >= 1) return 'form';
-  if (a === SIDE[0] && b === SUMMARY[1] && c !== undefined && c >= 1) return 'summary';
+  if (a === FORM[0] && b === 1) return path.length === 2 ? 'task' : 'form';
+  if (a === FORM[0] && b !== undefined && b >= 2) return 'belowTask';
+  if (a === SIDE[0] && b === SUMMARY[1] && c !== undefined && c >= 1) return worktreesLine !== null && c > worktreesLine ? 'belowBranch' : 'summary';
   return null;
+}
+
+/** D32: the prototype's index of its `# worktrees` summary line in the current state (`null` without one). */
+async function worktreesLineOf(protoPage: Page): Promise<number | null> {
+  return protoPage.evaluate((path) => {
+    let el: Element | undefined | null = findPanelIn(document);
+    for (const index of path) el = el?.children[index];
+    const index = [...(el?.children ?? [])].findIndex((line) => (line.textContent ?? '').trim() === '# worktrees');
+    return index === -1 ? null : index;
+  }, [...SUMMARY]);
 }
 
 /** Parts of the draft state. */
@@ -217,30 +251,56 @@ function fmtBox(part: Part): string {
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
 }
 
-/** How far the D14 additions move the app's parts down (px): the form below the Folder row, the summary below the `folder` line. */
+/**
+ * How far the D14 / D32 additions move the app's parts down (px): section 1 and
+ * the form below the Folder row (`form`, `task`), the sections below section 1's
+ * Branch row too (`belowTask`), the summary below the `folder` line, the summary
+ * lines below the `branch` line too (`belowBranch`). `taskGrow` = the Branch row's
+ * share of section 1's height (taken off its height).
+ */
 interface Offsets {
   readonly form: number;
+  readonly task: number;
+  readonly belowTask: number;
+  readonly taskGrow: number;
   readonly summary: number;
+  readonly belowBranch: number;
 }
 
-/** Measures the D14 offsets of a state: the first section's y on both pages, the added summary line's height. */
-async function measureOffsets(protoPage: Page, appPage: Page): Promise<Offsets> {
+const NO_OFFSETS: Offsets = { form: 0, task: 0, belowTask: 0, taskGrow: 0, summary: 0, belowBranch: 0 };
+
+/**
+ * Measures the offsets of a state: the first section's y and height on both
+ * pages (D14 / D32), the added summary lines' heights (D14 `folder`, D32
+ * `branch` right after `# worktrees`).
+ */
+async function measureOffsets(protoPage: Page, appPage: Page, worktreesLine: number | null): Promise<Offsets> {
   const firstSection = [...FORM, 1];
   const proto = await measurePanel(protoPage, { first: firstSection });
-  const app = await measurePanel(appPage, { first: appPathOf(firstSection), folderLine: FOLDER_LINE });
+  const app = await measurePanel(appPage, {
+    first: appPathOf(firstSection),
+    folderLine: FOLDER_LINE,
+    ...(worktreesLine !== null ? { branchLine: [...SUMMARY, worktreesLine + 2] } : {}),
+  });
   const form = (app['first']?.box.y ?? 0) - (proto['first']?.box.y ?? 0);
-  return { form, summary: app['folderLine']?.box.height ?? 0 };
+  const taskGrow = (app['first']?.box.height ?? 0) - (proto['first']?.box.height ?? 0);
+  const summary = app['folderLine']?.box.height ?? 0;
+  return { form, task: form, belowTask: form + taskGrow, taskGrow, summary, belowBranch: summary + (app['branchLine']?.box.height ?? 0) };
 }
 
-/** Compares measured parts; appends report rows and findings. `offsets` (D14) are taken off the app's y of shifted parts. */
+/**
+ * Compares measured parts; appends report rows and findings. `offsets` (D14 /
+ * D32) are taken off the app's y of shifted parts, and section 1's added Branch
+ * row off its height (`task`).
+ */
 function compareParts(
   state: string,
-  specs: Record<string, { readonly geometry: Geometry; readonly copy: boolean; readonly shift?: 'form' | 'summary' | null }>,
+  specs: Record<string, { readonly geometry: Geometry; readonly copy: boolean; readonly shift?: Shift | null }>,
   proto: Record<string, Part | null>,
   app: Record<string, Part | null>,
   rows: string[],
   failures: string[],
-  offsets: Offsets = { form: 0, summary: 0 },
+  offsets: Offsets = NO_OFFSETS,
 ): void {
   for (const [name, spec] of Object.entries(specs)) {
     const label = `${state} · ${name}`;
@@ -251,13 +311,14 @@ function compareParts(
       continue;
     }
     const dy = spec.shift ? offsets[spec.shift] : 0;
-    const a: Part = dy ? { ...measured, box: { ...measured.box, y: measured.box.y - dy } } : measured;
+    const dh = spec.shift === 'task' ? offsets.taskGrow : 0;
+    const a: Part = dy || dh ? { ...measured, box: { ...measured.box, y: measured.box.y - dy, height: measured.box.height - dh } } : measured;
     const boxIssues = compareBoxes(label, p.box, a.box, spec.geometry);
     const copyIssues = spec.copy && p.text !== a.text ? [`${label}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map((prop) => `${label}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`);
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
-    const geometry = spec.shift ? `${spec.geometry} (y − ${round(dy)})` : spec.geometry;
+    const geometry = spec.shift ? `${spec.geometry} (y − ${round(dy)}${dh ? `, height − ${round(dh)}` : ''})` : spec.geometry;
     rows.push(`| ${label} | ${geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`);
   }
 }
@@ -270,10 +331,11 @@ async function measureAndCompare(
   rows: string[],
   failures: string[],
 ): Promise<void> {
+  const worktreesLine = await worktreesLineOf(protoPage);
   const protoPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
-  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, appPathOf(part.path)]));
-  const shifted = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path) }]));
-  const offsets = await measureOffsets(protoPage, appPage);
+  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, appPathOf(part.path, worktreesLine)]));
+  const shifted = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, worktreesLine) }]));
+  const offsets = await measureOffsets(protoPage, appPage, worktreesLine);
   compareParts(state, shifted, await measurePanel(protoPage, protoPaths), await measurePanel(appPage, appPaths), rows, failures, offsets);
 }
 
@@ -397,12 +459,79 @@ async function d25Addition(state: string, appPage: Page, rows: string[], failure
   }
 }
 
+/**
+ * The D32 additions of a state, checked on their own (the prototype has none):
+ * the **Branch row** sits in section 1 under the name / task row, its field has
+ * the name field's box (x, width, height) and computed styles, the
+ * `PROJ-0001-short-description` placeholder and the branch entered, its note
+ * beside it; the summary's **`branch` line** follows `# worktrees` in the value
+ * lines' style.
+ */
+async function d32Additions(state: string, appPage: Page, branch: string, rows: string[], failures: string[]): Promise<void> {
+  const facts = await appPage.evaluate(() => {
+    const row = document.querySelector<HTMLElement>('[data-testid="ns-branch-row"]');
+    const field = document.querySelector<HTMLInputElement>('[data-testid="ns-branch"]');
+    const name = document.querySelector<HTMLInputElement>('[data-testid="ns-name"]');
+    const note = document.querySelector<HTMLElement>('[data-testid="ns-branch-note"]');
+    const inputs = name?.parentElement;
+    if (!row || !field || !name || !note || !inputs) return null;
+    const box = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    const props = ['font-family', 'font-size', 'font-weight', 'color', 'background-color', 'border-top-color', 'border-top-width', 'border-radius', 'padding-top', 'padding-left'];
+    const styleOf = (el: Element) => props.map((prop) => getComputedStyle(el).getPropertyValue(prop)).join(' | ');
+    const lines = [...document.querySelectorAll('[data-testid="ns-summary-line"]')];
+    const at = lines.findIndex((line) => (line.textContent ?? '').trim() === '# worktrees');
+    const branchLine = at === -1 ? null : lines[at + 1];
+    const valueLine = lines[2];
+    return {
+      inSection: row.parentElement === inputs.parentElement,
+      below: box(row).y - (box(inputs).y + box(inputs).height),
+      field: box(field),
+      name: box(name),
+      sameStyle: styleOf(field) === styleOf(name),
+      styleDiff: props.filter((prop) => getComputedStyle(field).getPropertyValue(prop) !== getComputedStyle(name).getPropertyValue(prop)).join(', '),
+      placeholder: field.placeholder,
+      value: field.value,
+      note: (note.textContent ?? '').trim(),
+      noteFont: `${getComputedStyle(note).fontSize} ${getComputedStyle(note).fontFamily}`,
+      branchLine: (branchLine?.textContent ?? '').trim(),
+      branchTone: branchLine?.getAttribute('data-tone') ?? null,
+      branchStyle: branchLine && valueLine ? getComputedStyle(branchLine).color === getComputedStyle(valueLine).color : false,
+    };
+  });
+  const checks: Array<[string, boolean, string]> = [
+    ['Branch row in section 1', facts?.inSection === true, facts ? String(facts.inSection) : 'missing'],
+    ['Branch row under the name / task row', facts !== null && facts.below >= 0, facts ? `${round(facts.below)} px` : 'missing'],
+    [
+      'Branch field = the name field\'s x, width, height',
+      facts !== null && Math.abs(facts.field.x - facts.name.x) <= 2 && Math.abs(facts.field.width - facts.name.width) <= 2 && Math.abs(facts.field.height - facts.name.height) <= 2,
+      facts ? `${round(facts.field.x)} ${round(facts.field.width)}×${round(facts.field.height)} vs ${round(facts.name.x)} ${round(facts.name.width)}×${round(facts.name.height)}` : 'missing',
+    ],
+    ['Branch field style = the name field\'s', facts?.sameStyle === true, facts?.styleDiff || 'same'],
+    ['Branch placeholder', facts?.placeholder === 'PROJ-0001-short-description', JSON.stringify(facts?.placeholder ?? null)],
+    ['Branch value', facts?.value === branch, JSON.stringify(facts?.value ?? null)],
+    ['Branch note', facts?.note === '⎇ the branch of every worktree', JSON.stringify(facts?.note ?? null)],
+    ['Branch note font (mono meta)', facts?.noteFont === '11px "Geist Mono", monospace', facts?.noteFont ?? 'missing'],
+    ['summary branch line after # worktrees', facts?.branchLine === `branch    ${branch}`, JSON.stringify(facts?.branchLine ?? null)],
+    ['summary branch line = a value line', facts?.branchTone === 'value' && facts.branchStyle === true, `${facts?.branchTone ?? 'missing'}`],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D32 ${what}: ${note}`);
+    rows.push(`| ${state} · D32 ${what} | addition | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
+}
+
 /** Clicks the prototype's pill or chip with exactly this text (its onClick sits on the text's parent span). */
 async function protoClick(page: Page, text: string): Promise<void> {
   await page.getByText(text, { exact: true }).first().click();
 }
 
 let app: DemoApp;
+
+/** D32: the branch entered for the draft (the prototype's draft has Worktree on). */
+const DRAFT_BRANCH = 'PROJ-640-free-talk';
 
 test.beforeAll(async () => {
   app = await startDemoApp();
@@ -432,15 +561,18 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   await modal.locator('[data-group="mode"][data-value="orchestrator"]').click();
   await modal.locator('[data-testid="ns-chip"][data-solution="acme-app-front"]').click();
   await modal.locator('[data-testid="ns-chip"][data-solution="mobile"]').click();
+  // D32: with Worktree on, Start needs the ticket branch (the prototype has no such field; checked on its own).
+  await modal.getByTestId('ns-branch').fill(DRAFT_BRANCH);
 
   const rows: string[] = [];
   const failures: string[] = [];
 
   // State 1: the draft.
   await measureAndCompare('draft', protoPage, appPage, draftParts(), rows, failures);
+  // D32: the Branch field is an addition, checked on its own (d32Additions).
   const inputs = async (page: Page) =>
     page.evaluate(() =>
-      [...(findPanelIn(document)?.querySelectorAll('input') ?? [])].map((input) => ({ value: input.value, placeholder: input.placeholder })),
+      [...(findPanelIn(document)?.querySelectorAll('input:not([data-testid="ns-branch"])') ?? [])].map((input) => ({ value: (input as HTMLInputElement).value, placeholder: (input as HTMLInputElement).placeholder })),
     );
   const protoInputs = await inputs(protoPage);
   const appInputs = await inputs(appPage);
@@ -462,6 +594,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   await d14Additions('draft', appPage, rows, failures);
   await d16Addition('draft', appPage, rows, failures);
   await d25Addition('draft', appPage, rows, failures);
+  await d32Additions('draft', appPage, DRAFT_BRANCH, rows, failures);
 
   // SPEC tokens as computed styles of the app (New session: 1080px, `1fr | 360px`, pills, chips, toggles, summary).
   const computed = await appPage.evaluate(() => {
@@ -562,9 +695,10 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
     summaryLine5: { path: [...SIDE, 3, 5], geometry: 'box', copy: true },
   };
   const qaPaths = Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, part.path]));
+  const qaWorktreesLine = await worktreesLineOf(protoPage);
   const protoQa = await measurePanel(protoPage, qaPaths);
-  const appQa = await measurePanel(appPage, Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, appPathOf(part.path)])));
-  const qaOffsets = await measureOffsets(protoPage, appPage);
+  const appQa = await measurePanel(appPage, Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, appPathOf(part.path, qaWorktreesLine)])));
+  const qaOffsets = await measureOffsets(protoPage, appPage, qaWorktreesLine);
   // The prototype draws the two sources as static boxes; the app's are inputs whose placeholder is that copy (muted, #76756f).
   const placeholderCopy = await appPage.evaluate(() => [
     (document.querySelector('[data-testid="ns-confluence"]') as HTMLInputElement).placeholder,
@@ -581,7 +715,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
     const a = appQa[name];
     if (a) appQa[name] = { ...a, style: { ...a.style, color: placeholderCopy[2] ?? '', cursor: a.style['cursor'] === 'text' ? 'auto' : (a.style['cursor'] ?? '') } };
   }
-  compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path) }])), protoQa, appQa, rows, failures, qaOffsets);
+  compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, qaWorktreesLine) }])), protoQa, appQa, rows, failures, qaOffsets);
 
   // State 4: back to the draft's work type, no solutions → "⚠ pick at least one solution", Start at 45%.
   await protoClick(protoPage, 'Feature-building');
@@ -597,6 +731,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   for (let i = 0; i < 10; i++) empty[`summaryLine${i}`] = { path: [...SIDE, 3, i], geometry: 'box', copy: true };
   await measureAndCompare('empty', protoPage, appPage, empty, rows, failures);
   await d14Additions('empty', appPage, rows, failures);
+  await d32Additions('empty', appPage, DRAFT_BRANCH, rows, failures);
 
   await writeReport({
     'new-session.md': report({ rows, computedRows, failures, panel: panelDiff.percent, full: fullDiff.percent }),
@@ -625,6 +760,9 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 
 ## D16 addition (not a finding)
 **Resume a terminal conversation** (\`↻\` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (\`D16 …\` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
+
+## D32 additions (not findings)
+With Worktree on (the prototype's draft) the app's form has a **Branch row** inside section 1 under the name / task row (the name field's box and style, placeholder \`PROJ-0001-short-description\`, the ticket branch entered through the form like the draft's other values, since Start needs it), and the summary a **\`branch\` line** right after \`# worktrees\`. The prototype has neither: section 1 is compared with its height less the row's (\`height − <n>\` in the table), the sections below it with their y less that too, and the summary lines after \`# worktrees\` at the app's index + 2 with their y less both added lines. The added parts are checked on their own (\`D32 …\` rows).
 
 ## D25 addition (not a finding)
 **From a remote session** (\`⇣\` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (\`D25 …\` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.

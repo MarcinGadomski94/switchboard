@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
+import { BRANCH_REQUIRED, BRANCH_RULE } from '../../src/core/ticket-branch.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { REPO_ROOT } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
@@ -17,7 +18,9 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * session's worktree (gap #2) until every writer has its own and the warning is
  * gone. The developer's checkout is never touched. D22: a titled writer is named
  * by its title in the card and its button (and, ruling 4, its branch chip); its
- * worktree and branch keep the short name.
+ * worktree keeps the short name. D32: each click opens a confirm step that asks
+ * for the new worktree's branch (a ticket branch, tidied on blur, its check under
+ * the field); the worktree is made on it.
  */
 let world: GitWorld;
 let server: ServerProcess;
@@ -103,29 +106,63 @@ test('two sessions in one checkout: badge, flag and card; "Move … to worktree"
   await expect(page.getByTestId('conflict-text')).toHaveText(`First writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
   await expect(card.getByTestId('conflict-move')).toHaveText(['Move First writer to worktree', 'Move second-writer to worktree']);
 
-  // Move second-writer: its worktree appears; first-writer is still in the main checkout, so the warning stays.
+  // D32: "Move second-writer to worktree" opens the confirm step: the Branch field (no ticket title, so empty) and its check.
   await card.getByRole('button', { name: 'Move second-writer to worktree' }).click();
+  const confirm = card.getByTestId('conflict-confirm');
+  await expect(confirm).toHaveAttribute('data-session', await card.getByRole('button', { name: 'Move second-writer to worktree' }).getAttribute('data-session') ?? '');
+  await expect(card.getByTestId('conflict-confirm-text')).toHaveText('second-writer gets a new worktree of mobile. Name its branch after the ticket:');
+  const branch = card.getByTestId('conflict-branch');
+  await expect(branch).toHaveValue('');
+  await expect(branch).toHaveAttribute('placeholder', 'PROJ-0001-short-description');
+  await expect(card.getByTestId('conflict-branch-note')).toHaveText(BRANCH_REQUIRED);
+  await expect(card.getByTestId('conflict-confirm-move')).toBeDisabled();
+  // Cancel closes it without moving anything.
+  await card.getByTestId('conflict-confirm-cancel').click();
+  await expect(confirm).toHaveCount(0);
+  expect(await exists(mobileWt('second-writer'))).toBe(false);
+  // Typed text is tidied on blur; "Move to worktree" makes the worktree on it.
+  await card.getByRole('button', { name: 'Move second-writer to worktree' }).click();
+  await branch.fill('proj-2 Second writer');
+  await expect(card.getByTestId('conflict-branch-note')).toHaveText(BRANCH_RULE);
+  await branch.blur();
+  await expect(branch).toHaveValue('PROJ-2-second-writer');
+  await expect(card.getByTestId('conflict-branch-note')).toHaveText('⎇ the branch of the new worktree');
+  await card.getByTestId('conflict-confirm-move').click();
+  // Its worktree appears; first-writer is still in the main checkout, so the warning stays.
   await expect(card.getByTestId('conflict-move')).toHaveText(['Move First writer to worktree'], { timeout: 15_000 });
+  await expect(confirm).toHaveCount(0);
   await expect(page.getByTestId('conflict-text')).toHaveText(`First writer and second-writer both write to mobile/ ${WARNING_TAIL}`);
   await expect(page.getByTestId('solution-detail').getByTestId('branch-card').filter({ hasText: 'second-writer' })).toHaveText(
-    '⎇ session/second-writer../mobile-wt-second-writersecond-writer',
+    '⎇ PROJ-2-second-writer../mobile-wt-second-writersecond-writer',
     { timeout: 15_000 },
   );
   expect(await exists(mobileWt('second-writer'))).toBe(true);
+  expect(await world.git(mobileWt('second-writer'), 'branch', '--show-current')).toBe('PROJ-2-second-writer');
   await expect(badge).toHaveText('1 conflict');
 
-  // Move first-writer (by its title): every writer has its own worktree → no card, no flag, no badge; its worktree and branch keep the short name.
+  // A branch the repo has already is refused with the server's message; the confirm step stays open.
+  await world.git(world.mobile, 'branch', 'PROJ-9-taken');
   await card.getByRole('button', { name: 'Move First writer to worktree' }).click();
+  await branch.fill('PROJ-9-taken');
+  await branch.press('Enter');
+  await expect(card.getByTestId('conflict-error')).toHaveText('mobile already has a branch PROJ-9-taken');
+  await expect(confirm).toBeVisible();
+  expect(await exists(mobileWt('first-writer'))).toBe(false);
+
+  // Move first-writer (by its title): every writer has its own worktree → no card, no flag, no badge; its worktree keeps the short name.
+  await branch.fill('PROJ-1-first-writer');
+  await expect(card.getByTestId('conflict-error')).toHaveCount(0);
+  await card.getByTestId('conflict-confirm-move').click();
   await expect(page.getByTestId('conflict-card')).toHaveCount(0, { timeout: 15_000 });
   await expect(row(page, 'mobile').locator('.sb-sol-flag')).toHaveCount(0);
   await expect(badge).toHaveText('', { timeout: 15_000 });
   await expect(row(page, 'mobile').getByTestId('branch-chip')).toHaveText(
-    // D22 (ruling 4): the titled writer's chip names it by its title; branch and worktree keep the short name.
-    ['⎇ session/second-writermobile-wt-second-writersecond-writer', '⎇ session/first-writermobile-wt-first-writerFirst writer'],
+    // D22 (ruling 4): the titled writer's chip names it by its title; the worktree keeps the short name (D32: the branch is the ticket's).
+    ['⎇ PROJ-2-second-writermobile-wt-second-writersecond-writer', '⎇ PROJ-1-first-writermobile-wt-first-writerFirst writer'],
     { timeout: 15_000 },
   );
   expect(await exists(mobileWt('first-writer'))).toBe(true);
-  expect(await world.git(mobileWt('first-writer'), 'symbolic-ref', '--short', 'HEAD')).toBe('session/first-writer');
+  expect(await world.git(mobileWt('first-writer'), 'symbolic-ref', '--short', 'HEAD')).toBe('PROJ-1-first-writer');
 
   // The developer's checkout was only read: same branch, same changes, nothing stashed.
   expect(await world.git(world.mobile, 'symbolic-ref', '--short', 'HEAD')).toBe('main');

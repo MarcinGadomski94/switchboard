@@ -118,6 +118,8 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
     task: '[fake:write contracts/arts-e2e.md]',
     solutions: ['web-front'],
     worktrees: true,
+    // D32: the worktree's branch is named after its ticket.
+    branch: 'PROJ-21-arts-e2e',
   });
   await expect.poll(() => sessionStatus(page, id), { timeout: 20_000 }).toBe('done');
 
@@ -135,14 +137,14 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
   await expect(rows).toHaveCount(2, { timeout: 20_000 });
   await expect.poll(() => rowTexts(page), { timeout: 20_000 }).toEqual(['DIFF | web-front · 1 file | +1', 'CONTRACT | contracts/arts-e2e.md | ']);
   await expect(rows.nth(0)).toHaveAttribute('data-type', 'DIFF');
-  await expect(rows.nth(0)).toHaveAttribute('title', 'web-front ⎇ session/arts-e2e');
+  await expect(rows.nth(0)).toHaveAttribute('title', 'web-front ⎇ PROJ-21-arts-e2e');
 
   // A doc in the worktree: DOC + the DIFF grows to two files.
   await sendMessage(page, id, 'Write notes [fake:write microfrontends/web-front-wt-arts-e2e/docs/notes.md]');
   await expect
     .poll(() => sortedRows(page), { timeout: 20_000 })
     .toEqual(['CONTRACT | contracts/arts-e2e.md | ', 'DIFF | web-front · 2 files | +2', 'DOC | docs/notes.md | ']);
-  await expect(rows.filter({ hasText: 'docs/notes.md' })).toHaveAttribute('title', 'web-front ⎇ session/arts-e2e');
+  await expect(rows.filter({ hasText: 'docs/notes.md' })).toHaveAttribute('title', 'web-front ⎇ PROJ-21-arts-e2e');
 
   // A QA matrix at the root, then a follow-up in the mobile main checkout (outside the session's scope).
   await sendMessage(page, id, 'Coverage [fake:write coverage-matrix.md]');
@@ -182,8 +184,8 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
     [
       ['CONTRACT', 'contracts/arts-e2e.md', null, null, null],
       ['DIFF', 'mobile-followups · 1 file', 'mobile', null, null],
-      ['DIFF', '2 files', 'web-front', 'session/arts-e2e', null],
-      ['DOC', 'docs/notes.md', 'web-front', 'session/arts-e2e', null],
+      ['DIFF', '2 files', 'web-front', 'PROJ-21-arts-e2e', null],
+      ['DOC', 'docs/notes.md', 'web-front', 'PROJ-21-arts-e2e', null],
       ['FOLLOWUP', 'mobile-followups/from-web-front.md', 'mobile', null, null],
       ['QA', 'coverage-matrix.md', null, null, null],
     ]
@@ -226,7 +228,7 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
   expect(rowBox.width).toBeGreaterThan(600);
 
   // A session without artifacts: the INFO row.
-  const clean = await startSession(page, { name: 'arts-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true });
+  const clean = await startSession(page, { name: 'arts-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true, branch: 'PROJ-22-arts-clean' });
   await expect.poll(() => sessionStatus(page, clean), { timeout: 20_000 }).toBe('done');
   await openWithHub(page, `${server.baseUrl}/sessions/${clean}/artifacts`);
   await expect(page.getByTestId('session-artifacts')).toHaveAttribute('data-session-id', clean);
