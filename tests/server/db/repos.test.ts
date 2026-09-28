@@ -54,6 +54,7 @@ describe('sessions', () => {
       folderId: null,
       root: null,
       rootKind: null,
+      origin: 'switchboard',
       pid: null,
       requestedPermissionMode: null,
       observedPermissionMode: null,

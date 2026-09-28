@@ -60,6 +60,14 @@ function summary(entries: readonly TranscriptEntry[]) {
 const env = (fields: Record<string, unknown>): TranscriptEntry => ({ isSidechain: false, timestamp: '2026-09-28T10:00:00.000Z', ...fields });
 
 describe('transcript sync (M4.1 Attach, M0.4)', () => {
+  it('a parentUuid the file does not have falls back to the previous chain entry (like History), so a gap keeps the whole conversation', () => {
+    const line = (uuid: string, parentUuid: string | null, type = 'user') => ({ type, uuid, parentUuid, isSidechain: false, message: { role: type, content: uuid } });
+    const entries = [line('a', null), line('b', 'a', 'assistant'), line('c', 'missing'), line('d', 'c', 'assistant')];
+    expect(newestChain(entries).map((e) => e['uuid'])).toEqual(['a', 'b', 'c', 'd']);
+    // A root (no parent) still ends the chain.
+    expect(newestChain([line('x', null), line('y', null)]).map((e) => e['uuid'])).toEqual(['y']);
+  });
+
   it('handoff: after the service turn, the three terminal / re-attach turns are new (one chain, one leaf)', async () => {
     const entries = await fixture('handoff');
     const sync = uuid(entries, 'b8d35b6c'); // step 1's reply "OK": the last main-chain uuid the service saw

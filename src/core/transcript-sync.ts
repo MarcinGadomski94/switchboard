@@ -11,7 +11,10 @@
  *   entries linked by `parentUuid` (sidechain entries excluded). A file can hold
  *   more than one leaf when two processes wrote to one id (M0.4 `handoff-conc`); the
  *   CLI continues from the newest leaf, so that leaf's chain is the conversation.
- *   "Newest" = the leaf written last (the file is append-only).
+ *   "Newest" = the leaf written last (the file is append-only). A `parentUuid`
+ *   that points at a line the file does not have falls back to the previous chain
+ *   entry in file order, as History's parser does (`transcript.ts`; developer
+ *   ruling 2026-09-28), so a gap never cuts the conversation short.
  * - New = the chain entries after the sync point (`sessions.last_transcript_uuid`,
  *   the newest main-chain uuid Switchboard saw on stdout). When the sync point is on
  *   another branch, the entries after the fork point are new (without a common
@@ -71,9 +74,11 @@ export function parseTranscript(text: string): TranscriptEntry[] {
 export function newestChain(entries: readonly TranscriptEntry[]): TranscriptEntry[] {
   const chain = entries.filter(isChainEntry);
   const byUuid = new Map<string, TranscriptEntry>();
+  const position = new Map<string, number>();
   const parents = new Set<string>();
-  for (const entry of chain) {
+  for (const [i, entry] of chain.entries()) {
     byUuid.set(uuidOf(entry) as string, entry);
+    position.set(uuidOf(entry) as string, i);
     const parent = parentOf(entry);
     if (parent) parents.add(parent);
   }
@@ -93,7 +98,9 @@ export function newestChain(entries: readonly TranscriptEntry[]): TranscriptEntr
     seen.add(uuid);
     out.push(entry);
     const parent = parentOf(entry);
-    entry = parent ? byUuid.get(parent) : undefined;
+    if (!parent) break;
+    // A parent the file does not have (a gap): the previous chain entry in file order, like History.
+    entry = byUuid.get(parent) ?? chain[(position.get(uuid) as number) - 1];
   }
   return out.reverse();
 }

@@ -32,6 +32,7 @@ function loop(overrides: Partial<Loop> = {}): Loop {
 
 function session(overrides: Partial<Session> = {}): Session {
   return {
+    origin: 'switchboard',
     id: 's1',
     name: 'prod-monitoring',
     claudeSessionId: 'c1',

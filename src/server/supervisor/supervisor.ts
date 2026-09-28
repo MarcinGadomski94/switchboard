@@ -469,6 +469,8 @@ export class SessionSupervisor {
       folderId: place.folder.id,
       root: place.folder.root,
       rootKind: place.folder.kind,
+      // D16: moved in from a terminal (its mode line reads "terminal · moved").
+      origin: 'terminal',
       requestedPermissionMode: DEFAULT_PERMISSION_MODE,
     });
     await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });

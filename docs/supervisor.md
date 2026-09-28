@@ -106,3 +106,7 @@ Read-only solutions are refused with `422` when a name is a `deprecated/…` or 
 
 ## Tests
 `tests/server/supervisor/supervisor.test.ts` drives the supervisor against `tools/fake-claude` (a temp workspace folder passed as each session's place, `CLAUDE_CONFIG_DIR`, `FAKE_CLAUDE_LOG` for argv/env/cwd/stdin), `tests/server/api/sessions.test.ts` the routes through `app.inject`, `tests/core/*.test.ts` the parser over every M0 fixture and the derivations. Stubs made with `node -e` cover the SIGINT → SIGTERM escalation and an unhandled control request.
+
+### Moved sessions and transcript gaps (developer rulings 2026-09-28)
+- A session moved in from a terminal (D16) is stored with `origin = terminal` (migration 0004; earlier moves are found by their `moved` lifecycle event). It has no session-start answers, so its mode line reads **terminal · moved** in the sidebar and History (`MOVED_MODE_LINE`).
+- The Attach / move import (`newestChain` in `src/core/transcript-sync.ts`) follows a `parentUuid` that points at a line the file does not have to the previous chain entry in file order, as History's parser does, so a gap never cuts the imported conversation short.

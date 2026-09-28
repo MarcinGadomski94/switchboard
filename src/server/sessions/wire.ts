@@ -100,6 +100,7 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     folder: record.folderId,
     folderPath: record.root,
     folderKind: record.rootKind,
+    origin: record.origin,
     live: record.pid !== null,
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),

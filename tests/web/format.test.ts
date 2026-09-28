@@ -35,6 +35,9 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
     expect(modeLine({ mode: 'orchestrator', workType: 'feature', phase: 'ui-first' })).toBe('orch · feature · UI-first');
     expect(modeLine({ mode: 'single', workType: 'qa', phase: 'integration' })).toBe('single · QA · integration');
     expect(modeLine({ mode: null, workType: null, phase: null })).toBe('');
+    // D16: a session moved in from a terminal (developer ruling 2026-09-28).
+    expect(modeLine({ mode: null, workType: null, phase: null, origin: 'terminal' })).toBe('terminal · moved');
+    expect(modeLine({ mode: null, workType: null, phase: null, origin: 'switchboard' })).toBe('');
   });
 
   it('formats the footer meters and never invents values', () => {

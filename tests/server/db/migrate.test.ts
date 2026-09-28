@@ -107,6 +107,27 @@ describe('shipped migrations', () => {
   });
 });
 
+describe('0004 session origin (D16)', () => {
+  it("marks sessions moved in from a terminal (their 'moved' lifecycle event) as origin terminal; every other session is switchboard", async () => {
+    const database = await db();
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version <= 3));
+    const ts = '2026-09-28T10:00:00.000Z';
+    const insert = database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)');
+    insert.run('s-moved', 'moved-one', 'c-moved', ts, ts);
+    insert.run('s-new', 'started-here', 'c-new', ts, ts);
+    const event = database.prepare('INSERT INTO events (session_id, ts, kind, label, payload) VALUES (?, ?, ?, ?, ?)');
+    event.run('s-moved', ts, 'text', 'Moved from a terminal', JSON.stringify({ type: 'lifecycle', action: 'moved' }));
+    event.run('s-new', ts, 'text', 'Started', JSON.stringify({ type: 'lifecycle', action: 'started' }));
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 3).map((m) => m.version));
+    expect(database.prepare('SELECT id, origin FROM sessions ORDER BY id').all()).toEqual([
+      { id: 's-moved', origin: 'terminal' },
+      { id: 's-new', origin: 'switchboard' },
+    ]);
+    expect(() => database.prepare("UPDATE sessions SET origin = 'elsewhere' WHERE id = 's-new'").run()).toThrow(/CHECK/);
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

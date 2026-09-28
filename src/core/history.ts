@@ -7,8 +7,11 @@
  * `docs/derivations.md` → *History*.
  */
 import type { BranchRef, HistoryItem } from './api.ts';
-import type { FolderKind, Phase, SessionMode, SessionStatus, WorkType } from './model.ts';
+import type { FolderKind, Phase, SessionMode, SessionOrigin, SessionStatus, WorkType } from './model.ts';
 import type { TranscriptFacts } from './transcript.ts';
+
+/** The mode line of a session moved in from a terminal (D16; developer ruling 2026-09-28). */
+export const MOVED_MODE_LINE = 'terminal · moved';
 
 /** A transcript that changed less than this long ago belongs to an active session (gap #5's 2 minutes). */
 export const ACTIVE_WINDOW_MS = 2 * 60_000;
@@ -59,6 +62,8 @@ export interface HistorySession {
   readonly folder: string | null;
   /** D14: the session's folder path (its root). */
   readonly folderPath: string | null;
+  /** D16: `terminal` when the session was moved in from a terminal (optional: `switchboard` when absent). */
+  readonly origin?: SessionOrigin;
 }
 
 /**
@@ -114,7 +119,9 @@ export function clip(text: string, max: number): string {
  * The sidebar's mode line (`src/web/shell/format.ts` `modeLine`, the prototype's
  * new-session wording): `orch|single · QA|feature · UI-first|integration`.
  */
-export function sessionModeLine(session: Pick<HistorySession, 'mode' | 'workType' | 'phase'>): string {
+export function sessionModeLine(session: Pick<HistorySession, 'mode' | 'workType' | 'phase'> & { readonly origin?: HistorySession['origin'] }): string {
+  // D16: a session moved in from a terminal has no session-start answers (developer ruling 2026-09-28).
+  if (session.origin === 'terminal') return MOVED_MODE_LINE;
   const parts: string[] = [];
   if (session.mode) parts.push(session.mode === 'orchestrator' ? 'orch' : 'single');
   if (session.workType) parts.push(session.workType === 'qa' ? 'QA' : 'feature');

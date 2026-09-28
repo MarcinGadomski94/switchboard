@@ -62,3 +62,6 @@ Blank lines and duplicates are dropped. `markedAt` is `null` (the file keeps no 
 
 ### Origin and Referer (D15 amendment, 2026-09-28)
 The real Codebase Memory UI (v0.11.0) answers 403 to any request whose `Origin` is not its own, and the browser sends `Origin` on module scripts and fetches. Seen through the proxy, the tool's own page names the proxy's origin, so the proxy rewrites an `Origin` / `Referer` that names the proxy itself to the tool's origin (`rewriteOriginHeader` in `src/server/tools/proxy.ts`). Any other value (another site, `null`) passes unchanged, so the tool's own checks still see a foreign caller. Checked against the real tool: the UI renders inside the app (38 projects, the graph stats) with no failing request.
+
+### Stable proxy port (developer ruling 2026-09-28)
+Each tool keeps the proxy port it got the first time, remembered in the settings table (`tools.proxyPort.<id>`, `settingsProxyPorts` in `src/server/tools/proxies.ts`). A restart or a URL change starts the proxy on that port again, so the tool's origin inside the frame, and whatever it stores there (localStorage), survives. Only when the port is taken does the proxy take a new OS-assigned one, which is then remembered.

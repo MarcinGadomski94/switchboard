@@ -446,6 +446,7 @@ describe('History helpers', () => {
     expect(commandHead('/clear')).toBe('/clear');
     expect(sessionModeLine({ mode: 'orchestrator', workType: 'qa', phase: null })).toBe('orch · QA');
     expect(sessionModeLine({ mode: null, workType: null, phase: 'integration' })).toBe('integration');
+    expect(sessionModeLine({ mode: null, workType: null, phase: null, origin: 'terminal' })).toBe('terminal · moved');
   });
 });
 

@@ -12,6 +12,7 @@ import {
 
 function session(overrides: Partial<Session>): Session {
   return {
+    origin: 'switchboard',
     id: 's1',
     name: 'free-talk-feature',
     claudeSessionId: 'c1',

@@ -132,7 +132,8 @@ describe('npm start entry point (src/server/main.ts)', () => {
       expect(tools[1]?.frameUrl).toBeNull();
       const saved = (await (await api('PUT', '/api/tools', [{ ...tools[0], url: tool.origin }, tools[1]])).json()) as Tool[];
       const frameUrl = saved[0]!.frameUrl!;
-      expect(frameUrl).not.toBe(tools[0]?.frameUrl);
+      // A URL change keeps the tool's port (developer ruling 2026-09-28): same frame origin, new target behind it.
+      expect(frameUrl).toBe(tools[0]?.frameUrl);
       const framed = await fetch(frameUrl, { headers: { cookie: `sb_token=${token}` } });
       expect(framed.status).toBe(200);
       expect(await framed.text()).toContain('Framed tool');

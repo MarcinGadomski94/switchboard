@@ -20,7 +20,7 @@ import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
 import { loadOrCreateToken } from './token.ts';
-import { ToolProxies } from './tools/proxies.ts';
+import { ToolProxies, settingsProxyPorts } from './tools/proxies.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
 import { demoFolderChecks } from './demo/folders.ts';
@@ -65,7 +65,12 @@ async function main(): Promise<void> {
     // D15 (docs/tools.md → Framing proxy): each tool with a URL behind its own loopback framing proxy; the demo runs none.
     const toolProxies = config.demo
       ? null
-      : new ToolProxies({ switchboardPort: config.port, onError: (error, toolId) => console.error(`switchboard tool proxy (${toolId}):`, error) });
+      : new ToolProxies({
+          switchboardPort: config.port,
+          // Each tool keeps its proxy port across restarts (its origin, and what it stores in the frame).
+          ports: settingsProxyPorts(store.settings),
+          onError: (error, toolId) => console.error(`switchboard tool proxy (${toolId}):`, error),
+        });
     let providers: Providers = { diff: worktrees, solutions, system, loginService, ...(toolProxies ? { toolFrames: toolProxies } : {}) };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.

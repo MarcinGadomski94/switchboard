@@ -9,10 +9,40 @@ export interface ToolTarget {
   readonly url: string | null;
 }
 
+/**
+ * Where each tool's proxy port is remembered (developer ruling 2026-09-28): a tool
+ * keeps its port, so its origin inside the frame (and whatever it stores there,
+ * e.g. localStorage) survives Switchboard restarts and URL changes.
+ */
+export interface ProxyPortMemory {
+  get(toolId: string): Promise<number | null>;
+  set(toolId: string, port: number): Promise<void>;
+}
+
+/** Settings key of a tool's remembered proxy port. */
+export function proxyPortSettingKey(toolId: string): string {
+  return `tools.proxyPort.${toolId}`;
+}
+
+/** A {@link ProxyPortMemory} in the settings table (`tools.proxyPort.<id>`). */
+export function settingsProxyPorts(settings: { get(key: string): Promise<unknown>; set(key: string, value: unknown): Promise<void> }): ProxyPortMemory {
+  return {
+    async get(toolId) {
+      const value = await settings.get(proxyPortSettingKey(toolId));
+      return typeof value === 'number' && Number.isInteger(value) && value >= 1024 && value <= 65535 ? value : null;
+    },
+    async set(toolId, port) {
+      await settings.set(proxyPortSettingKey(toolId), port);
+    },
+  };
+}
+
 /** Options for {@link ToolProxies}. */
 export interface ToolProxiesOptions {
   /** Switchboard's own port: `frame-ancestors` lists `http://127.0.0.1:<port>` and `http://localhost:<port>`. */
   readonly switchboardPort: number;
+  /** Remembered ports (main.ts: the settings table); without it every start takes an OS-assigned port. */
+  readonly ports?: ProxyPortMemory;
   /** A proxy that could not start (its tool keeps `frameUrl: null`); logged by main.ts. */
   readonly onError?: (error: unknown, toolId: string) => void;
   /** Starts one proxy; tests swap it. Default {@link startToolProxy}. */
@@ -30,6 +60,7 @@ export class ToolProxies implements ToolFrameProvider {
   readonly #frameOrigins: readonly string[];
   readonly #onError: (error: unknown, toolId: string) => void;
   readonly #start: (options: ToolProxyOptions) => Promise<ToolProxy>;
+  readonly #ports: ProxyPortMemory | null;
   readonly #proxies = new Map<string, ToolProxy>();
   #queue: Promise<void> = Promise.resolve();
   #closed = false;
@@ -38,6 +69,7 @@ export class ToolProxies implements ToolFrameProvider {
     this.#frameOrigins = switchboardOrigins(options.switchboardPort);
     this.#onError = options.onError ?? (() => undefined);
     this.#start = options.start ?? startToolProxy;
+    this.#ports = options.ports ?? null;
   }
 
   /**
@@ -69,7 +101,7 @@ export class ToolProxies implements ToolFrameProvider {
       [...wanted].map(async ([id, url]) => {
         if (this.#proxies.has(id)) return;
         try {
-          const proxy = await this.#start({ target: url, frameOrigins: this.#frameOrigins });
+          const proxy = await this.#startOnRememberedPort(id, url);
           if (this.#closed) await proxy.close();
           else this.#proxies.set(id, proxy);
         } catch (error) {
@@ -77,6 +109,24 @@ export class ToolProxies implements ToolFrameProvider {
         }
       }),
     );
+  }
+
+  /**
+   * Starts `id`'s proxy on its remembered port; when there is none, or it is taken
+   * now, on an OS-assigned one, which is then remembered (the tool's origin changes
+   * only in that case).
+   */
+  async #startOnRememberedPort(id: string, url: string): Promise<ToolProxy> {
+    const remembered = this.#ports ? await this.#ports.get(id) : null;
+    let proxy: ToolProxy;
+    try {
+      proxy = await this.#start({ target: url, frameOrigins: this.#frameOrigins, ...(remembered !== null ? { port: remembered } : {}) });
+    } catch (error) {
+      if (remembered === null) throw error;
+      proxy = await this.#start({ target: url, frameOrigins: this.#frameOrigins });
+    }
+    if (this.#ports && proxy.port !== remembered) await this.#ports.set(id, proxy.port);
+    return proxy;
   }
 
   /** The URL the Tool view's iframe loads for `toolId` on `hostname` (`127.0.0.1` / `localhost`), or `null` without a running proxy. */

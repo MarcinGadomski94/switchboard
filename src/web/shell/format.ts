@@ -1,5 +1,6 @@
 import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
+import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { USAGE_ROW_LABELS } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
@@ -24,7 +25,9 @@ export function formatAge(iso: string | null, now: number = Date.now()): string 
  * `orch|single · QA|feature · UI-first|integration`. Parts the session does not
  * have are left out.
  */
-export function modeLine(session: Pick<Session, 'mode' | 'workType' | 'phase'>): string {
+export function modeLine(session: Pick<Session, 'mode' | 'workType' | 'phase'> & { readonly origin?: Session['origin'] }): string {
+  // D16: a session moved in from a terminal has no session-start answers (developer ruling 2026-09-28).
+  if (session.origin === 'terminal') return MOVED_MODE_LINE;
   const parts: string[] = [];
   if (session.mode) parts.push(session.mode === 'orchestrator' ? 'orch' : 'single');
   if (session.workType) parts.push(session.workType === 'qa' ? 'QA' : 'feature');

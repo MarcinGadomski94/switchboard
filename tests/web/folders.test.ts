@@ -27,6 +27,7 @@ function saved(id: string, folderPath: string, kind: Folder['kind'], isDefault =
 
 function session(fields: Partial<Session>): Session {
   return {
+    origin: 'switchboard',
     id: 's',
     name: 's',
     claudeSessionId: 'c',

@@ -145,6 +145,7 @@ export class TranscriptHistory implements HistoryProvider {
         .map((wt) => ({ repo: wt.repo, branch: wt.branch, prNumber: wt.prNumber, prState: wt.prState })),
       folder: record.folderId,
       folderPath: record.root,
+      origin: record.origin,
     }));
   }
 

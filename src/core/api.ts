@@ -24,6 +24,7 @@ import type {
   ScheduleRunResult,
   ScheduleRunTrigger,
   SessionMode,
+  SessionOrigin,
   SessionStatus,
   WorkType,
 } from './model.ts';
@@ -127,6 +128,8 @@ export interface Session {
   readonly folderPath: string | null;
   /** Additive (D14): what {@link folderPath} is. */
   readonly folderKind: FolderKind | null;
+  /** Additive (D16, migration 0004): `terminal` when the session was moved in from a terminal ("Continue in Switchboard"), else `switchboard`. */
+  readonly origin: SessionOrigin;
   /** Additive (M4.1): the session has a live supervised `claude` process (Pause applies; else Resume). */
   readonly live: boolean;
   /** Additive (M4.1): `claude --resume <claudeSessionId>`, the handoff card's command (prototype copy, M0.4). */

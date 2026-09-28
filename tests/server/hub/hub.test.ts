@@ -59,6 +59,8 @@ const SESSION_KEYS = keys<Session>()([
   'folder',
   'folderPath',
   'folderKind',
+  // additive, D16 (moved in from a terminal)
+  'origin',
   'live',
   'resumeCommand',
   'chips',

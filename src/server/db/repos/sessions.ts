@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionStatus, WorkType } from '../../../core/model.ts';
+import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 
@@ -40,6 +40,8 @@ export interface SessionRecord {
   readonly root: string | null;
   /** What {@link root} is (D14). */
   readonly rootKind: FolderKind | null;
+  /** Where the session came from (0004, D16): started in Switchboard, or moved in from a terminal. */
+  readonly origin: SessionOrigin;
   /** Pid of the live claude process, `null` when none. */
   readonly pid: number | null;
   readonly requestedPermissionMode: string | null;
@@ -95,6 +97,7 @@ const SPEC: TableSpec<SessionRecord> = {
     folderId: ['folder_id', 'text'],
     root: ['root', 'text'],
     rootKind: ['root_kind', 'text'],
+    origin: ['origin', 'text'],
     pid: ['pid', 'int'],
     requestedPermissionMode: ['requested_permission_mode', 'text'],
     observedPermissionMode: ['observed_permission_mode', 'text'],

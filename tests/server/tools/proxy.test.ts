@@ -2,7 +2,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { switchboardOrigins } from '../../../src/server/tools/framing.ts';
-import { ToolProxies } from '../../../src/server/tools/proxies.ts';
+import { type ProxyPortMemory, ToolProxies, proxyPortSettingKey, settingsProxyPorts } from '../../../src/server/tools/proxies.ts';
 import { type ToolProxy, proxiedResponseHeaders, rewriteLocation, rewriteOriginHeader, startToolProxy, stripTokenCookie } from '../../../src/server/tools/proxy.ts';
 import { type ToolStub, htmlAnswer, startToolStub } from '../../helpers/tool-stub.ts';
 
@@ -86,6 +86,75 @@ function all(rawHeaders: readonly string[], name: string): string[] {
   for (let i = 0; i + 1 < rawHeaders.length; i += 2) if (rawHeaders[i]!.toLowerCase() === name) values.push(rawHeaders[i + 1]!);
   return values;
 }
+
+describe('the framing proxies keep their port (developer ruling 2026-09-28)', () => {
+  function memory(): ProxyPortMemory & { readonly saved: Map<string, number> } {
+    const saved = new Map<string, number>();
+    return {
+      saved,
+      async get(id) {
+        return saved.get(id) ?? null;
+      },
+      async set(id, port) {
+        saved.set(id, port);
+      },
+    };
+  }
+
+  it('a tool gets the same port after a restart and after a URL change; a taken port falls back to a new one, remembered', async () => {
+    const tool = await stub(htmlAnswer('tool'));
+    const other = await stub(htmlAnswer('other'));
+    const ports = memory();
+
+    const first = manager({ ports });
+    await first.sync([{ id: 'cm', url: tool.origin }]);
+    const port = first.proxy('cm')!.port;
+    expect(ports.saved.get('cm')).toBe(port);
+    await first.close();
+
+    // A restart: the same port, so the tool keeps its origin in the frame.
+    const second = manager({ ports });
+    await second.sync([{ id: 'cm', url: tool.origin }]);
+    expect(second.proxy('cm')!.port).toBe(port);
+    // A URL change restarts the proxy on the same port too.
+    await second.sync([{ id: 'cm', url: other.origin }]);
+    expect(second.proxy('cm')!.port).toBe(port);
+    expect((await send(port)).body).toContain('other');
+    await second.close();
+
+    // Someone else holds the port now: a new one, which is remembered.
+    const squatter = http.createServer();
+    await new Promise<void>((resolve) => squatter.listen({ host: '127.0.0.1', port }, resolve));
+    try {
+      const third = manager({ ports });
+      await third.sync([{ id: 'cm', url: tool.origin }]);
+      const moved = third.proxy('cm')!.port;
+      expect(moved).not.toBe(port);
+      expect(ports.saved.get('cm')).toBe(moved);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  it('settingsProxyPorts reads only valid ports from the settings table', async () => {
+    const values = new Map<string, unknown>([[proxyPortSettingKey('cm'), 51234], [proxyPortSettingKey('sw'), 'x'], [proxyPortSettingKey('zz'), 80]]);
+    const settings = {
+      async get(key: string) {
+        return values.get(key);
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+    };
+    const ports = settingsProxyPorts(settings);
+    expect(await ports.get('cm')).toBe(51234);
+    expect(await ports.get('sw')).toBeNull();
+    expect(await ports.get('zz')).toBeNull();
+    expect(await ports.get('none')).toBeNull();
+    await ports.set('sw', 52000);
+    expect(values.get('tools.proxyPort.sw')).toBe(52000);
+  });
+});
 
 describe('the framing proxy · Origin / Referer (D15 amendment 2026-09-28)', () => {
   it('a tool that refuses foreign Origins (like Codebase Memory) serves its own module scripts through the proxy', async () => {

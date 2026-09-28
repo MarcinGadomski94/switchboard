@@ -47,6 +47,10 @@ export const FOLDER_KINDS = ['workspace', 'repo'] as const;
 /** Kind of a saved folder / of a session's folder. */
 export type FolderKind = (typeof FOLDER_KINDS)[number];
 
+/** Where a session came from (D16, migration 0004): started in Switchboard, or moved in from a terminal. */
+export const SESSION_ORIGINS = ['switchboard', 'terminal'] as const;
+export type SessionOrigin = (typeof SESSION_ORIGINS)[number];
+
 /** Event kind (locked). Drives the chat, the timeline and the terminal tail. */
 export const EVENT_KINDS = ['plan', 'impl', 'loop', 'ask', 'ok', 'tool', 'text', 'error'] as const;
 /** Event kind. */
