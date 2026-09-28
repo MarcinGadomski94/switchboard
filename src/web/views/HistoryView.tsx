@@ -59,7 +59,7 @@ interface Loaded {
  * moved session opens once the move is over.
  */
 export function HistoryView() {
-  const tagOf = useFolderTags();
+  const { tagOf } = useFolderTags();
   const { navigate } = useRouter();
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const openSession = useCallback(

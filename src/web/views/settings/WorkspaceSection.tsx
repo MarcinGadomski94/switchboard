@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type KeyboardEvent, useState } from 'react';
 import type { Folder, SolutionGroup } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
@@ -12,6 +12,78 @@ import { Action, Row, SectionTitle } from './rows.tsx';
 function refusal(verb: string, error: unknown): string {
   const reason = error instanceof ApiError ? folderRefusal(error.status, error.body) : String(error);
   return `${verb}: ${reason}`;
+}
+
+/**
+ * Rename (D18): the folder's custom name in an inline field (its current label;
+ * empty shows the folder's own name as the placeholder), **Save** / **Cancel**;
+ * Enter saves, Esc cancels. Save sends `PUT /api/folders/{id}/label` (an empty
+ * field = the folder's own name again; an unchanged one just closes); a refusal
+ * stays open with `Not renamed: <the server's message>` under the field.
+ */
+function RenameFolder({ folder, onDone }: { readonly folder: Folder; readonly onDone: () => void }) {
+  const [value, setValue] = useState(folder.label ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (): Promise<void> => {
+    const label = value.trim();
+    if (label === (folder.label ?? '')) {
+      onDone();
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await api.renameFolder(folder.id, label === '' ? null : label);
+      announceFoldersChanged();
+      onDone();
+    } catch (caught) {
+      setError(refusal('Not renamed', caught));
+      setSaving(false);
+    }
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void save();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      onDone();
+    }
+  };
+  return (
+    <>
+      <div className="sb-set-row-label sb-set-folder-label">
+        <input
+          className="sb-set-folder-rename"
+          data-testid="settings-folder-rename-input"
+          value={value}
+          spellCheck={false}
+          autoFocus
+          placeholder={folder.name}
+          aria-label={`Name of ${folder.path}`}
+          disabled={saving}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError(null);
+          }}
+          onKeyDown={onKeyDown}
+        />
+        <button type="button" className="sb-set-action" data-testid="settings-folder-rename-save" disabled={saving} onClick={() => void save()}>
+          Save
+        </button>
+        <button type="button" className="sb-set-action" data-testid="settings-folder-rename-cancel" disabled={saving} onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+      {error ? (
+        <div className="sb-set-folder-rename-error" role="alert" data-testid="settings-folder-rename-error">
+          {error}
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function FolderRow({
@@ -30,6 +102,39 @@ function FolderRow({
   readonly onRemove: () => void;
 }) {
   const line = folderCheckLine(folder.check);
+  const [renaming, setRenaming] = useState(false);
+  // D18: the path stays on the line under the name (so two folders are never confused), then the check line.
+  const details = (
+    <>
+      <div className="sb-set-row-desc" data-mono="" data-testid="settings-folder-path">
+        {folder.path}
+      </div>
+      {line ? (
+        <div className="sb-set-folder-check" data-testid="settings-folder-check" data-ok={String(line.ok)}>
+          {line.text}
+        </div>
+      ) : null}
+    </>
+  );
+  if (renaming) {
+    return (
+      <div
+        className="sb-set-row sb-set-folder"
+        data-row="folder"
+        data-testid="settings-folder"
+        data-folder-id={folder.id}
+        data-kind={folder.kind}
+        data-default={folder.isDefault ? 'true' : undefined}
+        data-selected={selected ? 'true' : undefined}
+        data-renaming="true"
+      >
+        <div className="sb-set-row-text sb-set-folder-edit">
+          <RenameFolder folder={folder} onDone={() => setRenaming(false)} />
+          {details}
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       className="sb-set-row sb-set-folder"
@@ -55,8 +160,8 @@ function FolderRow({
         }}
       >
         <div className="sb-set-row-label sb-set-folder-label">
-          <span className="sb-set-folder-name" data-testid="settings-folder-name">
-            {folder.name}
+          <span className="sb-set-folder-name" data-testid="settings-folder-name" data-label={folder.label === null ? undefined : 'true'}>
+            {folder.displayName}
           </span>
           <span className="sb-set-folder-kind" data-testid="settings-folder-kind">
             {FOLDER_KIND_LABEL[folder.kind]}
@@ -67,16 +172,12 @@ function FolderRow({
             </span>
           ) : null}
         </div>
-        <div className="sb-set-row-desc" data-mono="" data-testid="settings-folder-path">
-          {folder.path}
-        </div>
-        {line ? (
-          <div className="sb-set-folder-check" data-testid="settings-folder-check" data-ok={String(line.ok)}>
-            {line.text}
-          </div>
-        ) : null}
+        {details}
       </div>
       <div className="sb-set-folder-actions">
+        <button type="button" className="sb-set-action" data-testid="settings-folder-rename" disabled={busy} onClick={() => setRenaming(true)}>
+          Rename
+        </button>
         {folder.isDefault ? null : (
           <button type="button" className="sb-set-action" data-testid="settings-folder-make-default" disabled={busy} onClick={onDefault}>
             Make default
@@ -92,7 +193,8 @@ function FolderRow({
 
 /**
  * Folders (D14; the M8.2 "Workspace & solutions" section): the saved folders, each
- * with its kind, path and live check line (`✓ AGENTS.md (Workspace Router) · 38
+ * by its display name in bold (D18: its custom name, else its own name) with
+ * **Rename**, its kind, path and live check line (`✓ AGENTS.md (Workspace Router) · 38
  * solutions`, `✓ git repo · single solution`, or what is wrong), the **default**
  * marker and **Make default**, **Remove** (refused while a schedule starts its
  * runs there), and **Add…** (the setup wizard's folder picker: `POST
@@ -194,7 +296,7 @@ function FolderScan({ folder }: { readonly folder: Folder }) {
   else if (!solutions.data && solutions.error) note = errorCode === 'folder-missing' ? 'The folder is not there any more.' : 'The scan could not be loaded.';
   return (
     <div className="sb-set-folder-scan" data-testid="settings-folder-scan" data-folder-id={folder.id}>
-      <Row id="workspace-root" label={`Solutions in ${folder.name}`} mono description={folder.path}>
+      <Row id="workspace-root" label={`Solutions in ${folder.displayName}`} mono description={folder.path}>
         <Action testId="settings-rescan" onClick={solutions.reload}>
           Rescan
         </Action>

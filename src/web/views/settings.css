@@ -190,6 +190,11 @@
   outline-offset: 2px;
 }
 
+/* D18: the folder's display name (its custom name, else its own name) in bold; the path is the line under it. */
+.sb-set-folder-name {
+  font-weight: 600;
+}
+
 .sb-set-folder[data-selected='true'] .sb-set-folder-name {
   color: var(--text-strong);
   text-decoration: underline;
@@ -228,6 +233,36 @@
 
 .sb-set-folder-check[data-ok='false'] {
   color: var(--status-fail);
+}
+
+/* D18: Rename, an inline field + Save / Cancel in the name's place; the refusal under it. */
+.sb-set-folder-rename {
+  width: 260px;
+  min-width: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 4px 9px;
+  font: inherit;
+  font-weight: 600;
+  background: var(--bg-card-2);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-set-folder-rename::placeholder {
+  color: var(--muted-3);
+  font-weight: 400;
+}
+
+.sb-set-folder-rename:focus-visible {
+  border-color: var(--muted-2);
+}
+
+.sb-set-folder-rename-error {
+  margin: 4px 0 2px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--status-fail);
+  overflow-wrap: anywhere;
 }
 
 .sb-set-folder-actions {

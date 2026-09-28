@@ -187,7 +187,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
  */
 export function InboxView() {
   const inbox = useApi(api.inbox);
-  const tagOf = useFolderTags();
+  const { tagOf } = useFolderTags();
   const modals = useModals();
   const now = useNow(30_000);
   const [selectedId, setSelectedId] = useState<string | null>(null);

@@ -61,7 +61,7 @@ interface Loaded {
  * folder other than the default one carry its tag in the Session column.
  */
 export function ArtifactsView() {
-  const tagOf = useFolderTags();
+  const { tagOf } = useFolderTags();
   const [filterIndex, setFilterIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [loaded, setLoaded] = useState<Loaded | null>(null);

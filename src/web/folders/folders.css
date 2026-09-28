@@ -110,6 +110,23 @@
   color: var(--text-2);
 }
 
+/* D18: the optional Name under the path (the folder's custom name), a mono label like the form's. */
+.sb-fp-name-row {
+  cursor: text;
+}
+
+.sb-fp-name-label {
+  flex: none;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-fp-field.sb-fp-name {
+  flex: 0 1 280px;
+}
+
 /* A check line: ✓ green, ✕ the fail color (the wizard's root line, M5.3). */
 .sb-fp-line {
   font: 400 12px var(--font-mono);

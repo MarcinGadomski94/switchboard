@@ -221,6 +221,27 @@
   color: var(--status-fail);
 }
 
+/* D18: the optional Name of the folder (its custom name) under the check line, the form's mono label. */
+.sb-wz-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  max-width: 560px;
+  cursor: text;
+}
+
+.sb-wz-name-label {
+  flex: none;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-wz-field.sb-wz-name-field {
+  flex: 0 1 280px;
+}
+
 /* Browse…: the shared listing (`.sb-fp-browser`, src/web/folders/folders.css, D14). */
 
 /* Step 3: the scan table. */

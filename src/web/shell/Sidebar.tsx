@@ -103,7 +103,7 @@ export function Sidebar() {
   const artifacts = useApi(() => api.artifacts());
   const system = useApi(api.system);
   const [liveSystem, setLiveSystem] = useState<SystemInfo | null>(null);
-  const tagOf = useFolderTags();
+  const { tagOf } = useFolderTags();
 
   useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());

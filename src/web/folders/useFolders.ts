@@ -4,7 +4,7 @@ import { ApiError, api } from '../api/client.ts';
 import { type ApiState, useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
-import { type CheckLine, type FolderOption, type FolderOwned, folderCheckLine, folderRefusal, folderTag, selectedOption, switcherOptions } from './folders.ts';
+import { type CheckLine, type FolderOption, type FolderOwned, folderCheckLine, folderRefusal, folderTag, folderTagTitle, selectedOption, switcherOptions } from './folders.ts';
 
 /**
  * "The saved folders changed" inside this page (D14): Settings → Folders, the
@@ -32,15 +32,26 @@ export function useSavedFolders(): ApiState<Folder[]> {
   return folders;
 }
 
+/** What {@link useFolderTags} gives a list: the tag of a row and its tooltip. */
+export interface FolderTags {
+  /** The row's folder display name when it is not the default folder, else `null` (`folderTag`). */
+  readonly tagOf: (item: FolderOwned) => string | null;
+  /** The tag's tooltip: the tagged folder's path (D18: the path stays visible next to the name; `folderTagTitle`). */
+  readonly titleOf: (item: FolderOwned) => string | null;
+}
+
 /**
  * The folder tag of rows in a list that mixes folders (D14): `tagOf(row)` is the
- * row's folder name when it is not the default folder, else `null`
- * (`folderTag`). Reloads with the saved folders.
+ * row's folder display name (D18) when it is not the default folder, else `null`,
+ * and `titleOf(row)` that folder's path for the tag's tooltip. Reloads with the
+ * saved folders.
  */
-export function useFolderTags(): (item: FolderOwned) => string | null {
+export function useFolderTags(): FolderTags {
   const folders = useSavedFolders();
   const list = folders.data;
-  return useCallback((item: FolderOwned) => folderTag(item, list), [list]);
+  const tagOf = useCallback((item: FolderOwned) => folderTag(item, list), [list]);
+  const titleOf = useCallback((item: FolderOwned) => folderTagTitle(item, list), [list]);
+  return { tagOf, titleOf };
 }
 
 /** `sessionUpdated` comes in bursts; the session list behind the switcher reloads at most this often. */
@@ -125,8 +136,11 @@ export interface FolderPicker {
   readonly toggleBrowse: () => void;
   /** Shows the listing of `target` and puts it in the field (a click on a folder, `../`). */
   readonly openFolder: (target?: string) => void;
-  /** Adds the typed folder (`POST /api/folders`); the saved folder, or `null` when it was refused. */
-  readonly add: () => Promise<Folder | null>;
+  /**
+   * Adds the typed folder (`POST /api/folders`), with `label` as its custom name
+   * when not empty (D18); the saved folder, or `null` when it (or its name) was refused.
+   */
+  readonly add: (label?: string) => Promise<Folder | null>;
   /** Why the last add or listing failed, the server's words; `null` when none did. */
   readonly error: string | null;
   readonly setError: (error: string | null) => void;
@@ -232,7 +246,7 @@ export function useFolderPicker(options: { readonly initial?: string; readonly b
     // Only when the picker opens.
   }, []);
 
-  const add = useCallback(async (): Promise<Folder | null> => {
+  const add = useCallback(async (label?: string): Promise<Folder | null> => {
     const typed = input.trim();
     if (!typed) {
       setError('enter a folder path');
@@ -241,7 +255,7 @@ export function useFolderPicker(options: { readonly initial?: string; readonly b
     setAdding(true);
     setError(null);
     try {
-      const folder = await api.addFolder(typed);
+      const folder = await api.addFolder(typed, label?.trim() || undefined);
       announceFoldersChanged();
       if (mounted.current) {
         setInputState(folder.path);

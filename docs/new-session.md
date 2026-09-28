@@ -4,7 +4,7 @@ The form behind "+ New session" (SPEC → Modals → New session; prototype `mNe
 
 ## Layout
 1080px, `1fr | 360px` (`.sb-modal-new` in `modals.css`). Left, in order:
-0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row) and the folder's check line (`docs/folders.md` → *UI*). A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip.
+0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row, with its optional Name, D18) and the folder's check line (`docs/folders.md` → *UI*). D18: each option shows the folder's display name (its custom name, else its own name; a name two folders share, ignoring case, gets `· <path>`), the path as the option's and the dropdown's tooltip. A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip.
 1. **Task definition**: the name (220px, Geist Mono, placeholder `session-name`) and the task (`What should be implemented?`). The task comes first, as the router wants the developer to define the task before any questions.
 2. **Work type**: Feature-building · Test-authoring (QA).
 3. **Mode**: Single-solution · Workspace orchestrator.
@@ -39,7 +39,7 @@ Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solut
 The prototype's lines, in the router's terms (D14: the `folder` line is added once the folder is known):
 ```
 # claude code · background · Max
-folder    <folder name> · workspace             (D14)
+folder    <folder display name> · workspace     (D14; D18: the custom name, else the folder's own name)
 cwd       <workspace root>
 work      feature-building | test-authoring (QA)
 mode      single-solution | workspace orchestrator

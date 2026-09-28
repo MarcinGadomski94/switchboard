@@ -57,7 +57,7 @@ export function canStartResume(pick: ResumePick | null, typed: string, takenName
 export function resumeSummaryLines(pick: ResumePick, folder: FormFolder | null, typed: string, takenNames: readonly string[]): SummaryLine[] {
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [{ text: '# claude code · background · Max', tone: 'comment' }];
-  if (folder) lines.push(value(`folder    ${folder.name} · ${FOLDER_KIND_LABEL[folder.kind]}`));
+  if (folder) lines.push(value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`));
   lines.push(
     value(`cwd       ${pick.cwd ?? '—'}`),
     value(`resume    claude --resume ${pick.claudeSessionId}`),

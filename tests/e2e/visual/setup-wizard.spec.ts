@@ -40,6 +40,11 @@ import {
  * relative to the text's bottom; the check line is D14's (`✓ AGENTS.md
  * (Workspace Router) · <n> solutions` instead of "… found · 640 lines"), checked
  * against the app's own rule.
+ *
+ * D18 (not a finding): step 2 has an optional **Name** row (the folder's custom
+ * name) under the check line, so its Back / Skip / Continue row is the app's main
+ * child 6 instead of 5 (it keeps its place at the bottom); the row is checked on
+ * its own ({@link nameRowChecks}).
  */
 
 interface PartSpec {
@@ -48,6 +53,8 @@ interface PartSpec {
   readonly copy: boolean;
   /** D14: compared with the app's y less the step text's extra height (the parts below step 2's text). */
   readonly belowText?: boolean;
+  /** D18: the app's path when it differs from the prototype's (step 2's actions, below the added Name row). */
+  readonly app?: readonly number[];
 }
 
 /** D14: step 2's copy that differs from the prototype on purpose (part → why). */
@@ -109,9 +116,44 @@ function frameParts(actions: number): Record<string, PartSpec> {
   return out;
 }
 
-/** Step 2's frame (D14): the title and the two-line text, compared by x, y and width. */
+/** D18: step 2's Name row is the app's main child 5, so its actions row is child 6 (the prototype's 5). */
+const NAME_ROW = [...MAIN, 5];
+const APP_STEP2_ACTIONS = 6;
+
+/** Step 2's frame (D14): the title and the two-line text, compared by x, y and width; D18: the actions at the app's child 6. */
 function folderFrameParts(): Record<string, PartSpec> {
-  return { ...frameParts(5), text: { path: [...MAIN, 2], geometry: 'top', copy: true } };
+  const frame = frameParts(5);
+  const moved = (name: string, ...rest: number[]): PartSpec => ({ ...(frame[name] as PartSpec), app: [...MAIN, APP_STEP2_ACTIONS, ...rest] });
+  return {
+    ...frame,
+    text: { path: [...MAIN, 2], geometry: 'top', copy: true },
+    actions: moved('actions'),
+    back: moved('back', 0),
+    skip: moved('skip', 1),
+    next: moved('next', 2),
+  };
+}
+
+/**
+ * D18 (an addition, checked on its own): step 2's Name row sits between the check
+ * line and the actions, reads "Name" in the form's mono label style, and its
+ * field shows the folder's own name as the placeholder.
+ */
+async function nameRowChecks(page: Page, folderName: string, rows: string[], failures: string[]): Promise<void> {
+  const parts = await measurePanel(page, { line: [...MAIN, 4], name: NAME_ROW, label: [...NAME_ROW, 0], field: [...NAME_ROW, 1], actions: [...MAIN, APP_STEP2_ACTIONS] });
+  const placeholder = await page.getByTestId('wz-name-input').getAttribute('placeholder');
+  const { line, name, label, field, actions } = parts;
+  const checks: Array<[string, boolean, string]> = [
+    ['Name row between the check line and the actions', !!line && !!name && !!actions && name.box.y >= line.box.y + line.box.height && actions.box.y >= name.box.y + name.box.height, name ? fmtBox(name) : 'missing'],
+    ['label copy', label?.text === 'Name', JSON.stringify(label?.text ?? null)],
+    ['label: the mono section label (10.5px, uppercase)', label?.style['font-size'] === '10.5px' && label.style['text-transform'] === 'uppercase', `${label?.style['font-size'] ?? '?'} ${label?.style['text-transform'] ?? '?'}`],
+    ['field: the step field style', field?.style['font-size'] === '13px' && field.style['border-top-width'] === '1px', `${field?.style['font-size'] ?? '?'} ${field?.style['border-top-width'] ?? '?'}`],
+    ['placeholder: the folder\'s own name', placeholder === folderName, JSON.stringify(placeholder)],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`step 2 · D18 ${what}: ${note}`);
+    rows.push(`| step 2 · D18 ${what} | addition | — | ${note.replaceAll('|', '\\|')} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
 }
 
 function checksParts(): Record<string, PartSpec> {
@@ -219,8 +261,9 @@ async function measureAndCompare(
   d14 = false,
 ): Promise<void> {
   const paths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
+  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.app ?? part.path]));
   const proto = await measurePanel(protoPage, { ...paths, '@text': [...MAIN, 2] });
-  const app = await measurePanel(appPage, { ...paths, '@text': [...MAIN, 2] });
+  const app = await measurePanel(appPage, { ...appPaths, '@text': [...MAIN, 2] });
   // D14: step 2's text is taller than the prototype's; the parts below it move down by the difference.
   const extra = (app['@text']?.box.height ?? 0) - (proto['@text']?.box.height ?? 0);
   for (const [name, spec] of Object.entries(specs)) {
@@ -305,6 +348,7 @@ test('Setup wizard matches the prototype on all five steps (tokens, boxes ±2 px
   await wizard.getByTestId('wz-root-input').fill(root);
   await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ AGENTS.md (Workspace Router) · 0 solutions');
   await measureAndCompare('step 2', protoPage, appPage, { ...folderFrameParts(), ...rootParts() }, rows, failures, true);
+  await nameRowChecks(appPage, path.basename(root), rows, failures);
   const protoStep2 = await protoPage.screenshot({ clip });
   const appStep2 = await appPage.screenshot({ clip });
 
@@ -404,6 +448,9 @@ Side by side (prototype left, app right): \`setup-wizard-side-by-side.png\` (ste
 Step 2 is "Add your first folder" (a workspace or a git repo; skippable): its rail label, title and text differ from the prototype's "Workspace root" (${Object.entries(D14_COPY)
     .map(([part, why]) => `\`${part}\`: ${why}`)
     .join('; ')}). Its text runs to two lines, so the field row, Browse… and the check line are compared with y less the text's extra height (\`y − <px>\`), the check line's copy checked against the app's own rule instead of the prototype's.
+
+## D18 (not findings)
+Step 2 adds an optional **Name** row (the folder's custom name) under the check line. It is not in the prototype: it is checked on its own (\`step 2 · D18 …\` rows: between the check line and the actions, the "Name" label in the form's mono section-label style, the step's field style, the folder's own name as the placeholder), and step 2's Back / Skip / Continue are the app's main child 6 (the prototype's 5), compared at their usual boxes.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height; \`top\` = x, y, width. Styles compared: ${COMPARED_STYLES.join(', ')} (the app's root field is an \`<input>\`: its text cursor is accepted; its Browse… works, so its pointer cursor is accepted where the prototype's inert one has none).

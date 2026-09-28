@@ -347,12 +347,14 @@ test('a schedule saved for another folder stores it, carries its tag, and Edit r
 test('Solutions and the Codebase Memory strip: one folder at a time, ?folder= survives a reload, a repo is one solution', async ({ page }) => {
   await page.goto(`${server.baseUrl}/solutions`);
   const switcher = page.getByTestId('solutions-folder');
-  await expect(switcher.locator('option')).toHaveText([`${workspace} (default)`, repo, second]);
+  // D18: each folder by its display name (none has a custom name here: its own name), the path as the tooltip.
+  await expect(switcher.locator('option')).toHaveText(['work space (default)', 'tool-repo', 'second ws']);
+  expect(await switcher.locator('option').evaluateAll((els) => els.map((el) => el.getAttribute('title')))).toEqual([workspace, repo, second]);
   await expect(page.getByTestId('solution-row')).toHaveCount(2);
   await expect(page.getByTestId('solutions-meta')).toContainText('· 2 solutions ·');
 
   const repoId = await folderId(page, 'tool-repo');
-  await switcher.selectOption({ label: repo });
+  await switcher.selectOption({ label: 'tool-repo' });
   await expect(page).toHaveURL(`${server.baseUrl}/solutions?folder=${repoId}`);
   await expect(page.getByTestId('solution-group')).toHaveText(['tool-repo/']);
   await expect(page.getByTestId('solution-row')).toHaveCount(1);
@@ -361,15 +363,15 @@ test('Solutions and the Codebase Memory strip: one folder at a time, ?folder= su
   await page.reload();
   await expect(page.getByTestId('solutions-folder')).toHaveValue(repoId);
   await expect(page.getByTestId('solution-row')).toHaveAttribute('data-solution', 'tool-repo');
-  await page.getByTestId('solutions-folder').selectOption({ label: `${workspace} (default)` });
+  await page.getByTestId('solutions-folder').selectOption({ label: 'work space (default)' });
   await expect(page).toHaveURL(`${server.baseUrl}/solutions`);
   await expect(page.getByTestId('solution-row')).toHaveCount(2);
 
   // The Codebase Memory strip: its own switcher, the same ?folder=; a repo has no dirty list.
   await page.goto(`${server.baseUrl}/tools/cm`);
   const strip = page.getByTestId('cm-strip');
-  await expect(strip.getByTestId('cm-folder').locator('option')).toHaveText([`${workspace} (default)`, repo, second]);
-  await strip.getByTestId('cm-folder').selectOption({ label: repo });
+  await expect(strip.getByTestId('cm-folder').locator('option')).toHaveText(['work space (default)', 'tool-repo', 'second ws']);
+  await strip.getByTestId('cm-folder').selectOption({ label: 'tool-repo' });
   await expect(page).toHaveURL(`${server.baseUrl}/tools/cm?folder=${repoId}`);
   await expect(strip.getByTestId('cm-clean')).toHaveText('nothing to reindex');
 
@@ -378,9 +380,11 @@ test('Solutions and the Codebase Memory strip: one folder at a time, ?folder= su
   expect(removed).toBe(200);
   await page.goto(`${server.baseUrl}/solutions`);
   const options = page.getByTestId('solutions-folder').locator('option');
-  await expect(options).toHaveText([`${workspace} (default)`, second, repo]);
+  // A folder only a session uses: its path's last segment, the path as the tooltip.
+  await expect(options).toHaveText(['work space (default)', 'second ws', 'tool-repo']);
   await expect(options.nth(2)).toHaveAttribute('data-saved', 'false');
-  await page.getByTestId('solutions-folder').selectOption({ label: repo });
+  await expect(options.nth(2)).toHaveAttribute('title', repo);
+  await page.getByTestId('solutions-folder').selectOption({ label: 'tool-repo' });
   await expect(page).toHaveURL(`${server.baseUrl}/solutions?folder=${encodeURIComponent(repo)}`);
   await expect(page.getByTestId('solution-row')).toHaveAttribute('data-solution', 'tool-repo');
   // The session keeps its tag (its folder's name) after the folder left the list.

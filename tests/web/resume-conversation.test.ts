@@ -22,7 +22,7 @@ const ROW: HistoryItem = {
   firstPrompt: 'Remember the code word: marigold.',
   cwd: '/ws/other/handoff-mid',
 };
-const FOLDER: FormFolder = { id: 'f1', path: '/ws', name: 'ws', kind: 'workspace' };
+const FOLDER: FormFolder = { id: 'f1', path: '/ws', name: 'ws', displayName: 'ws', kind: 'workspace' };
 
 describe('resume a terminal conversation (D16)', () => {
   it('picks a row; its entry reads title, then date · first prompt', () => {

@@ -13,7 +13,7 @@ import {
   type WorkType,
   isOneOf,
 } from '../../core/model.ts';
-import { FOLDER_KIND_LABEL, sessionCwd } from '../folders/folders.ts';
+import { FOLDER_KIND_LABEL, distinctFolderNames, sessionCwd } from '../folders/folders.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
 /**
@@ -53,8 +53,10 @@ export interface NewSessionForm {
 /**
  * The folder the form targets (D14): a saved {@link Folder}'s id, path, name and
  * kind. A repo folder hides the router sections and is its own one solution.
+ * D18: `displayName` (its custom name, else its own name) is what the summary
+ * shows; `name` stays the one the repo's solution and worktree are named after.
  */
-export type FormFolder = Pick<Folder, 'id' | 'path' | 'name' | 'kind'>;
+export type FormFolder = Pick<Folder, 'id' | 'path' | 'name' | 'displayName' | 'kind'>;
 
 /** `true` for a repo folder (D14): only Task, Worktree and Ultracode apply. */
 export function isRepoFolder(folder: Pick<FormFolder, 'kind'> | null | undefined): boolean {
@@ -266,14 +268,15 @@ export interface FolderChoice {
 
 /**
  * The Folder dropdown (D14): the saved folders in the API's order (the default
- * first, then most recently used, then the order added), each by name, `(default)`
- * after the default one; a name two folders share gets its path.
+ * first, then most recently used, then the order added), each by its display name
+ * (D18: its custom name, else its own name), `(default)` after the default one; a
+ * name two folders share (ignoring case) gets its path. The path is each option's
+ * tooltip.
  */
 export function folderChoices(folders: readonly Folder[]): FolderChoice[] {
-  const count = new Map<string, number>();
-  for (const folder of folders) count.set(folder.name, (count.get(folder.name) ?? 0) + 1);
-  return folders.map((folder) => {
-    const name = (count.get(folder.name) ?? 0) > 1 ? `${folder.name} · ${folder.path}` : folder.name;
+  const names = distinctFolderNames(folders.map((folder) => ({ name: folder.displayName, path: folder.path })));
+  return folders.map((folder, index) => {
+    const name = names[index] ?? folder.displayName;
     return { id: folder.id, label: folder.isDefault ? `${name} (default)` : name, path: folder.path, kind: folder.kind };
   });
 }
@@ -375,7 +378,7 @@ const COORDINATION_SUMMARY: Readonly<Record<Coordination, string>> = {
 /**
  * The live summary (prototype `nsSummary`): what the session will start with,
  * in the router's terms, the worktree folders, and why Start is disabled. D14:
- * a `folder` line (its name and kind) before `cwd` once the folder is known,
+ * a `folder` line (its display name, D18, and kind) before `cwd` once the folder is known,
  * and `cwd` is the folder's; a repo folder has only the folder, the cwd (the repo,
  * or its worktree with Worktree on) and ultracode ({@link repoSummaryLines}).
  */
@@ -384,7 +387,7 @@ export function summaryLines(form: NewSessionForm, root: string | null, takenNam
   const name = sessionName(form);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [{ text: '# claude code · background · Max', tone: 'comment' }];
-  if (folder) lines.push(value(`folder    ${folder.name} · ${FOLDER_KIND_LABEL[folder.kind]}`));
+  if (folder) lines.push(value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`));
   lines.push(
     value(`cwd       ${folder?.path ?? root ?? '—'}`),
     value(`work      ${form.workType === 'qa' ? 'test-authoring (QA)' : 'feature-building'}`),
@@ -417,7 +420,7 @@ export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, taken
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [
     { text: '# claude code · background · Max', tone: 'comment' },
-    value(`folder    ${folder.name} · ${FOLDER_KIND_LABEL[folder.kind]}`),
+    value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`),
     value(`cwd       ${sessionCwd(folder, form.worktrees, name)}`),
     value(`ultracode ${form.ultracode ? 'on' : 'off'}`),
     value(' '),

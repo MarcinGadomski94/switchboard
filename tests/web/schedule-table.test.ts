@@ -149,7 +149,7 @@ describe('Schedule section of the New-session modal (D8)', () => {
     // D14: the template carries the form's folder; a repo folder's is a NewRepoSession.
     expect(toScheduleInput(form({ folder: 'f-ws' }), '0 2 * * *', undefined).template).toMatchObject({ folder: 'f-ws', solutions: ['mobile'] });
     expect(
-      toScheduleInput(form({ folder: 'f-repo' }), '0 2 * * *', undefined, { id: 'f-repo', path: '/src/switchboard', name: 'switchboard', kind: 'repo' }).template,
+      toScheduleInput(form({ folder: 'f-repo' }), '0 2 * * *', undefined, { id: 'f-repo', path: '/src/switchboard', name: 'switchboard', displayName: 'switchboard', kind: 'repo' }).template,
     ).toEqual({ name: 'nightly-check', task: 'Check the build.', folder: 'f-repo', solutions: ['switchboard'], worktrees: true, ultracode: false });
     expect(saveErrorText(422, { errors: [{ field: 'cron', message: 'cron: bad' }, { field: 'template.task', message: 'no task' }] })).toBe('Not saved: cron: bad; no task');
     expect(saveErrorText(404, { error: 'not-found', message: 'no schedule x' })).toBe('Not saved: no schedule x');

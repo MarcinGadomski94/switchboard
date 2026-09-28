@@ -8,6 +8,10 @@ import type { FolderKind } from '../../core/model.ts';
  * the folder switcher's options (Solutions, the Codebase Memory strip), the folder
  * tag of lists that mix folders, and the cwd a new session gets. Kept free of
  * React so `tests/web` can check them.
+ *
+ * D18: a folder is shown by its `displayName` (its custom name, else its own
+ * name), with its path next to it (a second line or a `title` tooltip); anything
+ * path-related (a new session's worktree) keeps using `Folder.name`.
  */
 
 /** A folder's check line: `✓ …` (usable) or `✕ <why not>`. */
@@ -78,6 +82,17 @@ export function folderName(folderPath: string): string {
   return trimmed.slice(lastSeparator(trimmed) + 1) || trimmed;
 }
 
+/**
+ * The placeholder of a folder's Name field (D18: the add panel, the wizard): the
+ * folder's own name (its last path segment, from the check once it answered) once
+ * a path is typed, so an empty field reads as "keep that name"; `optional` before.
+ */
+export function folderNamePlaceholder(input: string, check: Pick<FolderCheck, 'path'> | null): string {
+  const typed = input.trim();
+  if (!typed) return 'optional';
+  return folderName(check?.path ?? typed);
+}
+
 /** The parent of a path in either OS form (`/a/switchboard` → `/a`, `D:\ws` → `D:\`). */
 export function parentFolder(folderPath: string): string {
   const trimmed = trimPath(folderPath);
@@ -118,16 +133,8 @@ export interface FolderOwned {
   readonly folderPath?: string | null;
 }
 
-/**
- * The folder tag of a row in a list that mixes folders (D14: the sidebar's session
- * rows, the Inbox meta, History, Artifacts, Schedules): the folder's name when the
- * row belongs to a folder other than the default one, else `null`, so the default
- * folder's rows look exactly as before D14. Nothing is tagged until the saved
- * folders are known (`folders` `null`), so no tag flashes while they load. A row
- * without a folder id or path (a schedule saved before any folder) runs in the
- * default folder and is not tagged.
- */
-export function folderTag(item: FolderOwned, folders: readonly Folder[] | null): string | null {
+/** The folder a row's tag names: a saved folder, or (it left the list) the row's own folder path. */
+function taggedFolder(item: FolderOwned, folders: readonly Folder[] | null): { readonly saved: Folder | null; readonly path: string } | null {
   if (!folders) return null;
   const id = item.folder ?? null;
   const itemPath = item.folderPath ?? null;
@@ -136,15 +143,57 @@ export function folderTag(item: FolderOwned, folders: readonly Folder[] | null):
   if (home && id && home.id === id) return null;
   if (home && !id && (samePath(home.canonicalPath, itemPath) || samePath(home.path, itemPath))) return null;
   const saved = folderById(folders, id) ?? folderByPath(folders, itemPath);
-  if (saved) return saved.id === home?.id ? null : saved.name;
-  return itemPath ? folderName(itemPath) : null;
+  if (saved) return saved.id === home?.id ? null : { saved, path: saved.path };
+  return itemPath ? { saved: null, path: itemPath } : null;
+}
+
+/**
+ * The folder tag of a row in a list that mixes folders (D14: the sidebar's session
+ * rows, the Inbox meta, History, Artifacts, Schedules): the folder's display name
+ * (D18: its custom name, else its own name) when the row belongs to a folder other
+ * than the default one, else `null`, so the default folder's rows look exactly as
+ * before D14. A folder that left the saved list shows its path's last segment.
+ * Nothing is tagged until the saved folders are known (`folders` `null`), so no
+ * tag flashes while they load. A row without a folder id or path (a schedule saved
+ * before any folder) runs in the default folder and is not tagged.
+ */
+export function folderTag(item: FolderOwned, folders: readonly Folder[] | null): string | null {
+  const tagged = taggedFolder(item, folders);
+  if (!tagged) return null;
+  return tagged.saved ? tagged.saved.displayName : folderName(tagged.path);
+}
+
+/**
+ * The tooltip of a folder tag (D18: the path stays visible next to the name): the
+ * tagged folder's path (a saved folder's path as it was added, else the row's
+ * folder path); `null` when the row carries no tag ({@link folderTag}).
+ */
+export function folderTagTitle(item: FolderOwned, folders: readonly Folder[] | null): string | null {
+  return taggedFolder(item, folders)?.path ?? null;
+}
+
+/**
+ * The texts of folders listed together (D18: the New-session dropdown, the folder
+ * switchers): each folder's name as given, except that a name two or more of them
+ * share (ignoring case) gets its path after it, `<name> · <path>`, so two folders
+ * are never confused. Same order as `entries`.
+ */
+export function distinctFolderNames(entries: ReadonlyArray<{ readonly name: string; readonly path: string }>): string[] {
+  const count = new Map<string, number>();
+  const key = (name: string): string => name.normalize('NFC').toLowerCase();
+  for (const entry of entries) count.set(key(entry.name), (count.get(key(entry.name)) ?? 0) + 1);
+  return entries.map((entry) => ((count.get(key(entry.name)) ?? 0) > 1 ? `${entry.name} · ${entry.path}` : entry.name));
 }
 
 /** One entry of the folder switcher (Solutions, the Codebase Memory strip) and of the New-session dropdown. */
 export interface FolderOption {
   /** What `?folder=` / the API gets: a saved folder's id, or the path of a session's folder that is not saved. */
   readonly value: string;
-  /** The shown text (the path; `(default)` after the default folder). */
+  /**
+   * The shown text (D18: the folder's display name, or the last segment of a
+   * session's folder that is not saved; `<name> · <path>` for a name two options
+   * share; `(default)` after the default folder). {@link path} is its tooltip.
+   */
   readonly label: string;
   readonly path: string;
   readonly kind: FolderKind | null;
@@ -157,13 +206,15 @@ export interface FolderOption {
  * The folder switcher's options (D14): the default folder first, then the other
  * saved folders (the API's order: most recently used, then the order added), then
  * the folders sessions use that are not saved (a folder removed from the list
- * while its sessions stay), each once, by path.
+ * while its sessions stay), each once, by path. D18: each shows its display name
+ * (a folder that is not saved: its path's last segment), a name two options share
+ * gets its path ({@link distinctFolderNames}); the path is the option's tooltip.
  */
 export function switcherOptions(folders: readonly Folder[] | null, sessions: readonly Session[] | null): FolderOption[] {
   const saved = [...(folders ?? [])].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
-  const options: FolderOption[] = saved.map((folder) => ({
+  const entries: Array<Omit<FolderOption, 'label'> & { readonly name: string }> = saved.map((folder) => ({
     value: folder.id,
-    label: folder.isDefault ? `${folder.path} (default)` : folder.path,
+    name: folder.displayName,
     path: folder.path,
     kind: folder.kind,
     isDefault: folder.isDefault,
@@ -175,9 +226,13 @@ export function switcherOptions(folders: readonly Folder[] | null, sessions: rea
     const form = samePathForm(session.folderPath);
     if (seen.has(form)) continue;
     seen.add(form);
-    options.push({ value: session.folderPath, label: session.folderPath, path: session.folderPath, kind: session.folderKind, isDefault: false, saved: false });
+    entries.push({ value: session.folderPath, name: folderName(session.folderPath), path: session.folderPath, kind: session.folderKind, isDefault: false, saved: false });
   }
-  return options;
+  const names = distinctFolderNames(entries);
+  return entries.map(({ name: _name, ...entry }, index) => {
+    const text = names[index] ?? entry.path;
+    return { ...entry, label: entry.isDefault ? `${text} (default)` : text };
+  });
 }
 
 /**
@@ -194,7 +249,8 @@ export function selectedOption(options: readonly FolderOption[], param: string |
 /**
  * The working folder a new session gets (D14, gap #1): a workspace runs at its
  * root, a repo in the repo, or with Worktree on in its worktree next to it,
- * `<parent>/<repo>-wt-<name>` (the path's own separator, gap #17).
+ * `<parent>/<repo>-wt-<name>` (the path's own separator, gap #17). The worktree
+ * is named after the folder's own `name`, never its custom name (D18).
  */
 export function sessionCwd(folder: Pick<Folder, 'path' | 'kind' | 'name'>, worktrees: boolean, name: string): string {
   if (folder.kind !== 'repo' || !worktrees) return folder.path;

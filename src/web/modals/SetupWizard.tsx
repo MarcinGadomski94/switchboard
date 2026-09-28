@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SetupState, SolutionGroup, SystemInfo } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { FolderBrowserList } from '../folders/FolderTag.tsx';
-import { samePath } from '../folders/folders.ts';
+import { folderNamePlaceholder, samePath } from '../folders/folders.ts';
 import { useFolderPicker } from '../folders/useFolders.ts';
 import { notifyOs } from '../toast/notify.ts';
 import {
@@ -94,7 +94,10 @@ function ScanStep({ groups, error }: { readonly groups: readonly SolutionGroup[]
  * 2. Add your first folder (D14: a workspace or a git repo; skippable): typed or
  *    picked with Browse…, checked as you type (`GET /api/folders/check`, the
  *    shared folder picker `useFolderPicker`); Continue adds it (`POST /api/folders`;
- *    the first one becomes the default), an empty field just moves on.
+ *    the first one becomes the default), an empty field just moves on. D18: an
+ *    optional Name under the check line (the folder's custom name, sent as
+ *    `label`; its placeholder is the folder's own name); a folder saved already
+ *    moves on unless a name was typed for it.
  * 3. The scan of the default folder (`GET /api/solutions`).
  * 4. Notifications: asks the browser, then confirms with an OS notification.
  * 5. The usage warning threshold; Finish marks the setup done (`POST /api/setup/complete`).
@@ -107,6 +110,8 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [systemError, setSystemError] = useState<string | null>(null);
   const picker = useFolderPicker();
+  // D18: the optional custom name of the folder step 2 adds.
+  const [folderLabel, setFolderLabel] = useState('');
   const [groups, setGroups] = useState<SolutionGroup[] | null>(null);
   const [scanError, setScanError] = useState<ApiError | null>(null);
   const [permission, setPermission] = useState(currentPermission);
@@ -176,11 +181,13 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
 
   const saveFolderAndContinue = async (): Promise<void> => {
     const typed = picker.input.trim();
-    if (!typed || (setup && setup.folders.some((folder) => samePath(folder.path, typed) || samePath(folder.canonicalPath, typed)))) {
+    const saved = setup?.folders.some((folder) => samePath(folder.path, typed) || samePath(folder.canonicalPath, typed)) === true;
+    // A folder saved already moves on, unless a name was typed for it (D18: then it is renamed).
+    if (!typed || (saved && folderLabel.trim() === '')) {
       setStep(2);
       return;
     }
-    const added = await picker.add();
+    const added = await picker.add(folderLabel);
     if (!added) return;
     setSetup(await api.setup().catch(() => setup));
     setStep(2);
@@ -286,6 +293,24 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
                   {line.text}
                 </div>
               )}
+              <label className="sb-wz-name">
+                <span className="sb-wz-name-label">Name</span>
+                <input
+                  className="sb-wz-field sb-wz-name-field"
+                  data-testid="wz-name-input"
+                  value={folderLabel}
+                  spellCheck={false}
+                  placeholder={folderNamePlaceholder(picker.input, picker.check)}
+                  aria-label="Name (optional)"
+                  onChange={(event) => {
+                    setFolderLabel(event.target.value);
+                    picker.setError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void saveFolderAndContinue();
+                  }}
+                />
+              </label>
               {picker.listing && <FolderBrowserList listing={picker.listing} onOpen={picker.openFolder} testId="wz" />}
               {picker.error && (
                 <div className="sb-wz-error" data-testid="wz-root-error">

@@ -160,8 +160,13 @@ export const api = {
   savedFolders: () => request<Folder[]>('GET', '/api/folders'),
   /** The check line of a typed path; nothing is saved. */
   checkFolder: (path: string) => request<FolderCheck>('GET', `/api/folders/check${query({ path })}`),
-  /** 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but a workspace or a git repo. */
-  addFolder: (path: string) => request<Folder>('POST', '/api/folders', { path }),
+  /**
+   * 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but a workspace or a git repo.
+   * D18: `label` is the optional custom name (sent only when not empty); 409 `label-taken`, 422 `invalid-label`.
+   */
+  addFolder: (path: string, label?: string) => request<Folder>('POST', '/api/folders', label ? { path, label } : { path }),
+  /** D18: Rename (`null` or empty = the folder's own name again); the whole list; 404, 409 `label-taken`, 422 `invalid-label`. */
+  renameFolder: (id: string, label: string | null) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/label`, { label }),
   /** The list left; 409 `folder-in-use` (`FolderInUse`) while schedules start their runs there. */
   removeFolder: (id: string) => request<Folder[]>('DELETE', `/api/folders/${enc(id)}`),
   setDefaultFolder: (id: string) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/default`),

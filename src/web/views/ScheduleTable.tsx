@@ -49,7 +49,7 @@ export function ScheduleHeader() {
  */
 export function ScheduleTable() {
   const schedules = useApi(api.schedules);
-  const tagOf = useFolderTags();
+  const { tagOf, titleOf } = useFolderTags();
   const { modal, open } = useModals();
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,7 +118,7 @@ export function ScheduleTable() {
           >
             <span className="sb-sch-name" data-testid="schedule-name">
               {row.name}
-              <FolderTag name={tagOf({ folder: byId.get(row.id)?.folder ?? null })} />
+              <FolderTag name={tagOf({ folder: byId.get(row.id)?.folder ?? null })} title={titleOf({ folder: byId.get(row.id)?.folder ?? null })} />
             </span>
             <span className="sb-sch-desc" data-testid="schedule-desc">
               {row.description}

@@ -183,7 +183,7 @@ export function NewSessionModal({
   }, [folders.data]);
   const folderReady = folders.data !== null || folders.error !== null;
   const target = folderById(folders.data, form.folder) ?? (form.folder ? null : defaultFolder(folders.data));
-  const folder: FormFolder | null = target ? { id: target.id, path: target.path, name: target.name, kind: target.kind } : null;
+  const folder: FormFolder | null = target ? { id: target.id, path: target.path, name: target.name, displayName: target.displayName, kind: target.kind } : null;
   const repo = isRepoFolder(folder);
   // The chips are the chosen folder's scan (D14): read again when the folder changes, tagged with it so a switch never shows the last folder's chips.
   const scanFolder = folder?.id ?? form.folder ?? undefined;
@@ -374,7 +374,7 @@ export function NewSessionModal({
                   </div>
                 ) : conversationRows.length === 0 ? (
                   <div className="sb-ns-resume-empty" data-testid="ns-resume-empty">
-                    {folder ? `No terminal conversations in ${folder.name} that are not in Switchboard yet.` : 'Pick a folder first.'}
+                    {folder ? `No terminal conversations in ${folder.displayName} that are not in Switchboard yet.` : 'Pick a folder first.'}
                   </div>
                 ) : (
                   conversationRows.map((row) => (

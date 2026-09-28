@@ -293,8 +293,8 @@ describe('folders (D14)', () => {
   }
   const ws = saved('f-ws', '/src/workspace', 'workspace', true);
   const repo = saved('f-repo', '/src/switchboard', 'repo');
-  const repoFolder = { id: repo.id, path: repo.path, name: repo.name, kind: repo.kind };
-  const wsFolder = { id: ws.id, path: ws.path, name: ws.name, kind: ws.kind };
+  const repoFolder = { id: repo.id, path: repo.path, name: repo.name, displayName: repo.displayName, kind: repo.kind };
+  const wsFolder = { id: ws.id, path: ws.path, name: ws.name, displayName: ws.displayName, kind: ws.kind };
 
   it('takes the prefill folder, else the default one once the saved folders are known', () => {
     expect(formFromPrefill({ folder: ' f-repo ' }).folder).toBe('f-repo');
@@ -309,6 +309,27 @@ describe('folders (D14)', () => {
     expect(folderChoices([ws, repo]).map((c) => c.label)).toEqual(['workspace (default)', 'switchboard']);
     const twin = saved('f-2', '/other/switchboard', 'repo');
     expect(folderChoices([ws, repo, twin]).map((c) => c.label)).toEqual(['workspace (default)', 'switchboard · /src/switchboard', 'switchboard · /other/switchboard']);
+  });
+
+  it('D18: the dropdown shows display names (the path as the tooltip); a display name two folders share (any case) gets the path', () => {
+    const named = { ...repo, label: 'Tool box', displayName: 'Tool box' };
+    const main = { ...ws, label: 'Main', displayName: 'Main' };
+    expect(folderChoices([main, named]).map((c) => [c.id, c.label, c.path])).toEqual([
+      ['f-ws', 'Main (default)', '/src/workspace'],
+      ['f-repo', 'Tool box', '/src/switchboard'],
+    ]);
+    const other = saved('f-3', '/other/tool box', 'repo');
+    expect(folderChoices([main, named, other]).map((c) => c.label)).toEqual(['Main (default)', 'Tool box · /src/switchboard', 'tool box · /other/tool box']);
+    // The summary names the folder by its display name; the repo's solution, cwd and worktree keep its own name.
+    const namedFolder = { id: named.id, path: named.path, name: named.name, displayName: named.displayName, kind: named.kind };
+    expect(summaryLines(form({ name: 'n', folder: 'f-repo', worktrees: true }), null, [], namedFolder).map((l) => l.text).slice(1, 3)).toEqual([
+      'folder    Tool box · git repo',
+      'cwd       /src/switchboard-wt-n',
+    ]);
+    expect(summaryLines(form({ name: 'n', folder: 'f-repo', worktrees: true }), null, [], namedFolder).map((l) => l.text)).toContain('../switchboard-wt-n');
+    expect(toSessionBody(form({ name: 'fix', folder: 'f-repo' }), namedFolder)).toMatchObject({ folder: 'f-repo', solutions: ['switchboard'] });
+    const mainFolder = { id: main.id, path: main.path, name: main.name, displayName: main.displayName, kind: main.kind };
+    expect(summaryLines(form({ name: 'n', solutions: ['mobile'], folder: 'f-ws' }), '/derived', [], mainFolder).map((l) => l.text)[1]).toBe('folder    Main · workspace');
   });
 
   it('sends the folder with a workspace session and a NewRepoSession for a repo folder', () => {
