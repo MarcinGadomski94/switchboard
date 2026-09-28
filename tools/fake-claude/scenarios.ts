@@ -76,6 +76,24 @@ export function toolToken(text: string): { name: string; input: JsonObject } | {
   }
 }
 
+/**
+ * `[fake:say "<json string>"]` in a stdin user message (D20): the `default` turn
+ * with the reply text replaced by the JSON string's value (Markdown, raw HTML, …),
+ * so chat rendering can be tested on the real path. Newlines are written `\n`
+ * inside the JSON string, so the token fits on one line (the composer's field).
+ * @returns the reply text, `{ error }` for a token whose argument is not one JSON string, `null` without a token.
+ */
+export function sayToken(text: string): { text: string } | { error: string } | null {
+  const match = /\[fake:say\s+("(?:[^"\\]|\\.)*")\]/.exec(text);
+  if (!match) return /\[fake:say(?:\s|\])/.test(text) ? { error: 'expected [fake:say "<json string>"]' } : null;
+  try {
+    const value: unknown = JSON.parse(match[1] ?? '');
+    return typeof value === 'string' ? { text: value } : { error: 'the argument is not a JSON string' };
+  } catch (error) {
+    return { error: `the argument is not JSON (${error instanceof Error ? error.message : String(error)})` };
+  }
+}
+
 /** The tool_result text of a `[fake:tool]` call (invented: the real tools' results were never recorded). */
 export function toolResultText(name: string): string {
   return `fake-claude: ${name} done`;
