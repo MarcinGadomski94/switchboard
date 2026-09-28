@@ -184,6 +184,27 @@ export interface RemotePayload {
   readonly error?: string;
 }
 
+/**
+ * D31: the session's model or effort was changed (`PUT /api/sessions/{id}/model`,
+ * `docs/model-effort.md`), or the CLI refused the change. The event is `text`
+ * (changed) or `error` (failed); the chat shows it as a step line
+ * (`Model: Opus 5.5 · effort: high`, `Could not change the model: <CLI text>`).
+ */
+export interface ModelPayload {
+  readonly type: 'model';
+  readonly action: 'changed' | 'failed';
+  /** `changed`: the stored model now (`null` = the CLI's default); `failed`: the one that was asked for. */
+  readonly model: string | null;
+  /** `changed`: the stored effort now (`null` = the CLI's default); `failed`: the one that was asked for. */
+  readonly effort: string | null;
+  /** `changed`: `true` when the live process took it (control requests), `false` when it was only stored for the next spawn. */
+  readonly live?: boolean;
+  /** `failed`: the control request the CLI refused (`set_model` or `apply_flag_settings`). */
+  readonly request?: 'set_model' | 'apply_flag_settings';
+  /** `failed`: the CLI's error text, verbatim (or why there was no reply). */
+  readonly error?: string;
+}
+
 /** Every event payload the supervisor writes. */
 export type EventPayload =
   | UserPayload
@@ -195,7 +216,8 @@ export type EventPayload =
   | ResultPayload
   | LifecyclePayload
   | ModeMismatchPayload
-  | RemotePayload;
+  | RemotePayload
+  | ModelPayload;
 
 /** `text` cut to {@link PAYLOAD_TEXT_LIMIT} characters. */
 export function clip(text: string, limit = PAYLOAD_TEXT_LIMIT): { text: string; truncated: boolean } {

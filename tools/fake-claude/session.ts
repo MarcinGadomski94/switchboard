@@ -29,6 +29,7 @@ import {
   remoteControlError,
   remoteControlMode,
   writeToken, autoModeSupported } from './scenarios.ts';
+import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 
@@ -144,6 +145,22 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
+/** D31: the recorded `initialize` reply's `models` (`ctl-init`): what `set_model` accepts. */
+async function recordedModels(store: FixtureStore): Promise<JsonObject[]> {
+  const fixture = await store.fixture('ctl-init');
+  const request = fixture.stdin.find((line) => line['type'] === 'control_request' && requestOf(line)?.['subtype'] === 'initialize');
+  const reply = fixture.stdout.find((line) => line['type'] === 'control_response' && asObject(line['response'])?.['request_id'] === request?.['request_id']);
+  return asArray(asObject(asObject(reply?.['response'])?.['response'])?.['models']).filter(isObject);
+}
+
+/** D31: the `system/init.model` of a recording's first turn (the model the recordings ran on). */
+function recordedInitModel(fixture: Fixture): string {
+  for (const step of fixture.turns[0] ?? []) {
+    if (step.t === 'line' && step.line['type'] === 'system' && step.line['subtype'] === 'init') return asString(step.line['model']) ?? '';
+  }
+  return '';
+}
+
 /**
  * D24: the answer "the phone" gives to an open request (`[fake:remote-answer]`):
  * AskUserQuestion → every question's first option; any other tool → allowed with
@@ -206,6 +223,12 @@ export class Runner {
   private bridgeEpoch = 0;
   /** D24: pending `[fake:remote-answer]` timers. */
   private readonly remoteTimers = new Set<NodeJS.Timeout>();
+  /** D31: the model and effort (`--model` / `--effort`, then `set_model` / `apply_flag_settings`). */
+  private readonly modelState: FakeModelState;
+  /** D31: the recorded `initialize` models list (`ctl-init`), read at start. */
+  private models: JsonObject[] = [];
+  /** D31: the model the recordings ran on (the default `system/init.model`). */
+  private recordedModel = '';
 
   constructor(options: RunnerOptions) {
     this.o = options;
@@ -216,6 +239,8 @@ export class Runner {
     this.sessionId = this.args.resume !== null && !this.args.forkSession ? this.args.resume : (this.args.sessionId ?? randomUUID());
     this.permissionMode = this.args.permissionMode ?? 'default';
     this.scenario = options.env['FAKE_CLAUDE_SCENARIO']?.trim() || 'default';
+    const effort = this.args.effort !== null && FAKE_EFFORT_LEVELS.includes(this.args.effort) ? this.args.effort : null;
+    this.modelState = new FakeModelState(this.args.model, effort, options.env);
     // A waiting playback (hang, a tool "still running") must outlive stdin EOF.
     this.keepAlive = setInterval(() => undefined, 1 << 30);
   }
@@ -245,6 +270,10 @@ export class Runner {
       preamble: await store.fixture(resuming ? 'handoff-reattach' : DEFAULT_FIXTURE),
       maxTurns: this.args.maxTurns !== null ? await store.fixture('max-turns') : null,
     };
+    // D31: the models `set_model` accepts, and the model `system/init` reports by default.
+    this.models = await recordedModels(store);
+    this.recordedModel = recordedInitModel(this.core.base);
+    if (this.args.effort !== null && !FAKE_EFFORT_LEVELS.includes(this.args.effort)) this.o.writeStderr(effortWarning(this.args.effort));
 
     if (this.configDir === null) {
       if (resuming) return this.fail('fake-claude: --resume needs CLAUDE_CONFIG_DIR (the fake never reads ~/.claude)');
@@ -394,9 +423,17 @@ export class Runner {
         return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_session_cost', -1] : ['usage-ctl', 'get_session_cost', 0]);
       case 'initialize':
         // D24: `FAKE_CLAUDE_REMOTE_CONTROL=unavailable` reports Remote Control unavailable (the recording says true).
+        // D31: `FAKE_CLAUDE_MODELS=none` reports no models list.
         return this.replyFrom(requestId, ['ctl-init', 'initialize', 0], (response) => {
           if (remoteControlMode(this.o.env) === 'unavailable') response['remote_control_available'] = false;
+          if (!modelsListed(this.o.env)) delete response['models'];
         });
+      case 'set_model':
+        return this.writeControlReply(requestId, this.modelState.setModel(request ?? {}, this.models));
+      case 'apply_flag_settings':
+        return this.writeControlReply(requestId, this.modelState.applyFlagSettings(request ?? {}));
+      case 'get_settings':
+        return this.writeControlReply(requestId, { ok: true, response: this.modelState.settings(this.models, this.recordedModel) });
       case 'remote_control':
         return this.onRemoteControl(requestId, request ?? {});
       case 'set_permission_mode': {
@@ -447,6 +484,18 @@ export class Runner {
       environment_id: `env_${id}`,
       bridge_epoch: this.bridgeEpoch,
       bridge_session_id: `cse_${id}`,
+    });
+  }
+
+  /** D31: a `control_response` for `reply`: success (with no body unless it has one, as the CLI) or error (+ `error_code`). */
+  private writeControlReply(requestId: string, reply: ControlReply): void {
+    if (reply.ok) {
+      this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, ...(reply.response ? { response: reply.response } : {}) } });
+      return;
+    }
+    this.writeJson({
+      type: 'control_response',
+      response: { subtype: 'error', request_id: requestId, error: reply.error, ...(reply.code !== undefined ? { error_code: reply.code } : {}) },
     });
   }
 
@@ -949,6 +998,9 @@ export class Runner {
 
   private patchInit(line: JsonObject, turn: TurnState): void {
     if (!KEEP_RECORDED_PERMISSION_MODE.has(turn.scenario)) line['permissionMode'] = reportedPermissionMode(this.permissionMode);
+    // D31: the model chosen with `--model` / `set_model` (its `resolvedModel`); the recorded one otherwise.
+    const model = this.modelState.resolved(this.models);
+    if (model !== null) line['model'] = model;
     const tools = asArray(line['tools']).filter((t) => t !== 'AskUserQuestion');
     if (this.stdio) tools.push('AskUserQuestion');
     line['tools'] = tools;

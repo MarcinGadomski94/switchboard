@@ -18,6 +18,7 @@ SPEC → Session → Chat, prototype `vSession` chat markup + `msgs` / `card()` 
    | permission request (`request`) | `⏸` open · `✓` allowed · `✕` denied, cancelled or stale · D24: `✓` answered on claude.ai (the label gets ` · answered on claude.ai`) |
    | automatic denial (`denied`), failed turn (`result` with `isError`), permission-mode mismatch | `✕` |
    | D24 Remote Control (`remote`): `Remote Control on · <link>`, `… on again · <link>` (a reattach), `Remote Control off` | `✓` (`✕` for a failed request: `Remote Control could not … : <the CLI's text>`) |
+   | D31 model and effort (`model`): `Model: Opus 5.5 · effort: high` (a change, live or stored for the next start; `docs/model-effort.md`) | `✓` (`✕` for a refusal: `Could not change the model: <the CLI's text>` / `Could not change the effort: …`) |
 
    Not shown: successful `result`s (the text before them is the answer), lifecycle steps, subagent prompts, events without a `type` (the demo's timeline rows). The demo's terminal lines are successful results (M4.3, `docs/session-panel.md`), so they do not show here either.
 5. **Question batches** at their AskUserQuestion call (the tool event's `requestId` = `batchId`); batches with no such event among the loaded events (the demo seed's) come after everything else, in batch order:

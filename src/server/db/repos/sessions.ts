@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { SessionModelOption } from '../../../core/api.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
@@ -76,6 +77,12 @@ export interface SessionRecord {
   readonly remoteSessionUrl: string | null;
   /** D24: the last bridge's `cse_…` id (the next `reattach_session_id`); kept when Remote is turned off. */
   readonly remoteBridgeId: string | null;
+  /** D31 (0009): the chosen model, `--model` on every spawn; `null` = the CLI's default. */
+  readonly model: string | null;
+  /** D31: the chosen effort level, `--effort` on every spawn; `null` = the CLI's default. */
+  readonly effort: string | null;
+  /** D31: the models the session's last claude process reported in its `initialize` reply; `null` until one did. */
+  readonly modelOptions: SessionModelOption[] | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -132,6 +139,9 @@ const SPEC: TableSpec<SessionRecord> = {
     remoteEnabled: ['remote_enabled', 'bool'],
     remoteSessionUrl: ['remote_session_url', 'text'],
     remoteBridgeId: ['remote_bridge_id', 'text'],
+    model: ['model', 'text'],
+    effort: ['effort', 'text'],
+    modelOptions: ['model_options', 'json'],
   },
 };
 

@@ -1,4 +1,4 @@
-import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -79,7 +79,7 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * D22: its `title` (`null` when none) and `displayTitle` (the title, else the name),
  * what the UI shows. D24: its `remote` state ({@link toSessionRemote}). D25:
  * `remoteSource`, the remote session a teleported session is a local copy of
- * (`null` otherwise).
+ * (`null` otherwise). D31: its `model` ({@link toSessionModel}).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -116,7 +116,21 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     displayTitle: record.title ?? record.name,
     remoteSource: record.remoteSource,
     remote: toSessionRemote(record),
+    model: toSessionModel(record),
   };
+}
+
+/**
+ * D31 (`docs/model-effort.md`): `Session.model`: the stored model and effort
+ * (`null` = the CLI's default) and the models the session's last process
+ * reported (`null` until one did). `null` when there is no model information at
+ * all: Switchboard never ran a process for the session (`remoteAvailable` is
+ * `null`, set at every spawn since 0007) and nothing is stored, i.e. the demo seed,
+ * whose header shows no pickers.
+ */
+export function toSessionModel(record: Pick<SessionRecord, 'remoteAvailable' | 'model' | 'effort' | 'modelOptions'>): SessionModel | null {
+  if (record.remoteAvailable === null && record.model === null && record.effort === null && record.modelOptions === null) return null;
+  return { current: record.model, effort: record.effort, available: record.modelOptions };
 }
 
 /**

@@ -76,6 +76,9 @@ export function eventLines(event: SessionEvent): string[] {
     case 'remote':
       // D24: Remote Control on / off / a failed remote_control request (the CLI's text is in the label).
       return [`${payload.action === 'failed' ? '✕' : '✓'} ${event.label}`];
+    case 'model':
+      // D31: the model / effort changed, or the CLI refused the change (its text is in the label).
+      return [`${payload.action === 'failed' ? '✕' : '✓'} ${event.label}`];
     case 'denied':
       return [`✕ ${event.label}`];
     case 'result':

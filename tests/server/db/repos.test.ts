@@ -76,6 +76,10 @@ describe('sessions', () => {
       remoteEnabled: false,
       remoteSessionUrl: null,
       remoteBridgeId: null,
+      // D31 (0009): the CLI's default model and effort, no models reported yet.
+      model: null,
+      effort: null,
+      modelOptions: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

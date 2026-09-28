@@ -2,6 +2,7 @@ import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
 import type { Question, SessionEvent } from '../../../core/api.ts';
 import type {
   AssistantPayload,
+  ModelPayload,
   RemotePayload,
   RequestPayload,
   ResultPayload,
@@ -113,6 +114,9 @@ export function stepMark(event: SessionEvent): StepMark | null {
     case 'remote':
       // D24: Remote Control turned on / off, or a remote_control request failed.
       return (payload as RemotePayload).action === 'failed' ? '✕' : '✓';
+    case 'model':
+      // D31: the model / effort changed ("Model: Opus 5.5 · effort: high"), or the CLI refused the change.
+      return (payload as ModelPayload).action === 'failed' ? '✕' : '✓';
     case 'denied':
       return '✕';
     case 'mode-mismatch':

@@ -258,6 +258,33 @@ describe('0008 session remote source (D25)', () => {
   });
 });
 
+describe('0009 session model (D31)', () => {
+  it('adds nullable model, effort and model_options to an existing database: its sessions keep the CLI defaults', async () => {
+    const file = path.join(tmp, 'existing-model.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 9)).toMatchObject({ name: 'session_model' });
+    // A database as the build before D31 left it (0001–0008).
+    migrate(database, shipped.filter((m) => m.version <= 8));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 8).map((m) => m.version));
+    expect(database.prepare('SELECT id, model, effort, model_options FROM sessions').all()).toEqual([{ id: 's-old', model: null, effort: null, model_options: null }]);
+    database.close();
+
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ model: null, effort: null, modelOptions: null });
+      const options = [{ value: 'opus', label: 'Opus 5.5', efforts: ['low', 'high'] }, { value: 'haiku', label: 'Haiku 4.5' }];
+      const updated = await store.sessions.update('s-old', { model: 'opus', effort: 'high', modelOptions: options });
+      expect(updated).toMatchObject({ model: 'opus', effort: 'high', modelOptions: options });
+      expect(await store.sessions.get('s-old')).toMatchObject({ model: 'opus', effort: 'high', modelOptions: options });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

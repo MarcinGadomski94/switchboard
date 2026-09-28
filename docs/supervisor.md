@@ -10,7 +10,7 @@
 | `recorder.ts` | `StreamRecorder`: one per process; stores events, agents, artifacts, usage readings and the session's CLI fields, and keeps the bookkeeping the status is derived from. |
 | `supervisor.ts` | `SessionSupervisor`: start, message, pause, resume, detach, attach, respond, shutdown; the status; notifications for `/hub`; the restart-recovery steps (`resumeAfterRestart`, `settleAfterCrash`, `markPausedAfterRestart`, `recordServiceEvent`); `idleLiveSessionIds` + `controlRequest` (a stdin control request between turns, M9.2's `get_usage`, `docs/usage.md`). |
 | `recovery.ts` | `recoverSessions` (M2.4, D7): what the service does at start with the sessions it finds; `stopProcess`, `claudeAgentsLister`. |
-| `remote.ts` | `LiveRemote` (D24): one per live process; the `initialize` handshake, the Remote toggle (`remote_control`), the reattach after a new process, and whether a withdrawn request was answered on claude.ai (`docs/remote-control.md`). |
+| `remote.ts` | `LiveRemote` (D24): one per live process; the `initialize` handshake, the Remote toggle (`remote_control`), the reattach after a new process, and whether a withdrawn request was answered on claude.ai (`docs/remote-control.md`). D31: the handshake hands the reply to the supervisor (`RemoteHost.initialized`: the models list). |
 | `../sessions/wire.ts`, `../sessions/validate.ts` | API shapes (Session, SessionDetail, SessionEvent) and NewSession validation. |
 
 ## Spawning
@@ -18,6 +18,7 @@
 <SWITCHBOARD_CLAUDE_BIN…> -p --input-format stream-json --output-format stream-json --verbose
     --permission-prompt-tool stdio --permission-mode acceptEdits
     --session-id <new uuid> | --resume <claudeSessionId> | --teleport <session_X> (D25, first spawn only)
+    [--model <sessions.model>] [--effort <sessions.effort>] (D31, when set)
     --name <session title, else its name> --forward-subagent-text --replay-user-messages
     <SWITCHBOARD_CLAUDE_EXTRA_ARGS…>
 ```
@@ -28,7 +29,8 @@
 - Child env = the service's env without `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_PID`, `CLAUDE_EFFORT`; `CLAUDE_CONFIG_DIR` and everything else pass through.
 - The pid is stored in `sessions.pid` while the process lives; `null` after it ended.
 - `--name` (the CLI's display name and transcript title) is the session's title as stored at that spawn, else its short name (D22). A rename (`PUT /api/sessions/{id}/title`) does not touch a live process; the next spawn (resume, a message to a stopped session, attach, restart recovery) carries it.
-- **D24 handshake.** The first stdin line of every process is the `initialize` control request (`{"subtype":"initialize","hooks":null}`, no model call; `docs/spike-m0.md` → `ctl-init`), written before any user message. Its reply's `remote_control_available` becomes `sessions.remote_available` (0 from the spawn until the reply, 20 s at most). Nothing else in the reply is used. Then, if Remote is on for the session, it is reattached (below).
+- **D24 handshake.** The first stdin line of every process is the `initialize` control request (`{"subtype":"initialize","hooks":null}`, no model call; `docs/spike-m0.md` → `ctl-init`), written before any user message. Its reply's `remote_control_available` becomes `sessions.remote_available` (0 from the spawn until the reply, 20 s at most), and (D31) its `models[]` becomes `sessions.model_options` (a reply without a list keeps the last one; `docs/model-effort.md`). Nothing else in the reply is used. Then, if Remote is on for the session, it is reattached (below).
+- **D31 model and effort.** `--model` / `--effort` carry the session's stored choice (`sessions.model` / `sessions.effort`, `PUT /api/sessions/{id}/model`) on every spawn (new, resume, a message to a paused session, attach, restart recovery, a D16 move); neither is inherited on `--resume`. Without a choice neither flag is passed (the CLI's defaults). A change while the process is live goes to it as `set_model` / `apply_flag_settings {effortLevel}` (*Model and effort* below).
 
 ## Stdout, stdin
 - Lines are handled strictly in order through a per-process queue (parse → record → derive status → notify), and the exit is handled after the last line.
@@ -79,6 +81,9 @@ Oracle: `tests/server/history/continue.test.ts` (fake-claude, the M0.3/M0.4 tran
 
 Remote stays on across a new process: after its `initialize`, a session with `remote_enabled` is re-enabled with `reattach_session_id` (pause/resume, restart recovery `resumeAfterRestart`, Attach here), so the claude.ai entry stays the same. A failed reattach sets `remote_enabled = 0`, records `Remote Control could not reconnect: <CLI text>` (event kind `error`) and publishes the session; nothing is retried. The steps of one process run one at a time. Details, failure rules and the UI: `docs/remote-control.md`.
 
+## Model and effort (D31)
+`SessionSupervisor.setModel(sessionId, { model?, effort? })` (`PUT /api/sessions/{id}/model`) checks the choice against the models the session's last process reported (`checkModelChoice`, `src/core/model-choice.ts`; a refusal is `ModelChoiceError` → 422 on its field), then, when the session has a live process that is not being stopped, sends `set_model` (model changed) and `apply_flag_settings {"effortLevel": …}` (effort changed) and awaits each reply (30 s); without one the choice is only stored. The stored choice feeds every later spawn's `--model` / `--effort`. Each stored change is a `model` event (a chat step line `Model: Opus 5.5 · effort: high`) and a `sessionUpdated`; changes of one session run one at a time. A refusal is `SupervisorError` `model-failed` with the CLI's text verbatim (502) and an `error` step line; the stored choice stays, except a model the CLI took before it refused the effort. The CLI's side (probed on 2.1.283: there is no `set_effort`, and an unknown effort level is a silent success), the rules and the UI: `docs/model-effort.md`.
+
 ## Teleport (D25)
 A remote session (claude.ai/code, or Remote Control on another machine) continues as a **local copy** Switchboard supervises. `POST /api/sessions/teleport` (`src/server/sessions/teleport.ts`, `SessionTeleporter`) checks the body and the folder, names the session and makes its worktree; the supervisor does the rest in `SessionSupervisor.teleport`. The CLI's side is the print-mode path `docs/spike-remote.md` → *R.3 Teleport* reads from the binary: nobody had run it when this was built (P6), so every CLI error is shown verbatim and nothing is retried.
 
@@ -126,6 +131,7 @@ Oracle: `tests/server/supervisor/restart.test.ts` runs `src/server/main.ts` as a
 | `POST /api/sessions/{id}/pause`, `/resume` | The Session after the stop / after the new process got its message. |
 | `PUT /api/sessions/{id}/remote` (additive, D24) | `{ enabled: boolean }`: Remote Control on / off (*Remote Control* above). `200` + Session (`sessionUpdated` is published by the supervisor); `404`; `422` on field `enabled`; `409 not-live` / `remote-unavailable`; `502 remote-failed` with the CLI's text as `message`. |
 | `POST /api/sessions/teleport` (additive, D25) | `TeleportSession` `{ remote, folder, title?, task? }` → `201` Session with `remoteSource` (*Teleport* above); `422` / `409` refusals; `502 teleport-failed` / `504 teleport-timeout` with the CLI's text. A teleport not started yet is left out of `GET /api/sessions`. |
+| `PUT /api/sessions/{id}/model` (additive, D31) | `{ model?, effort? }` (text or `null`; a field left out keeps its value; `null` / `"default"` = the CLI's default): the model and effort (*Model and effort* above). `200` + Session (`sessionUpdated` is published by the supervisor); `404`; `422 invalid` on field `model` / `effort` (the body, or a value not on offer); `502 model-failed` with the CLI's text as `message`. |
 | `PUT /api/sessions/{id}/title` (additive, D22) | `{ title }`: text of 1–80 characters once trimmed renames the session; `null` or a blank title clears it. `200` + Session, published as `sessionUpdated`; `422` on field `title` otherwise (a body without `title` too); `404` for an unknown id. Only `sessions.title` changes. |
 | `POST /api/sessions/{id}/detach`, `/attach` | `{ resumeCommand }`. `/attach` takes an optional `{ confirm: true }`; without it a terminal warning answers `409 { error: "attach-warning", message, reasons }` (M4.1, *Attach here*). |
 | `GET /api/sessions/{id}/events?since=` | Events with `ts` strictly after `since` (any ISO date; `422` otherwise), oldest first. |

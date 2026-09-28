@@ -34,6 +34,10 @@ export interface ClaudeArgsInput {
   /** `--name` (the CLI's display name, the transcript title): the session's title, else its name (D22). */
   readonly name: string;
   readonly permissionMode: string;
+  /** D31: `--model <model>`, the session's stored model; `null` / absent = the CLI's default (no flag). */
+  readonly model?: string | null;
+  /** D31: `--effort <level>`, the session's stored effort; `null` / absent = the CLI's default (no flag). */
+  readonly effort?: string | null;
   /** Dev-only flags appended at the end (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`, the D13 real-CLI smoke). */
   readonly extraArgs?: readonly string[];
 }
@@ -54,10 +58,11 @@ function startArgs(start: ClaudeStart): [string, string] {
  * The baseline argv (without the CLI command itself): stream-json in and out,
  * `--permission-prompt-tool stdio` (questions and permission requests over stdin,
  * M0.2), the permission mode (not inherited on `--resume`, M0.4), the session id
- * (D25: or `--teleport <session_X>` for a local copy of a remote session),
- * `--name`, `--forward-subagent-text`, `--replay-user-messages`. No prompt argument:
- * every message, the first one included, goes through stdin. No `--settings`: no
- * hooks are needed (D6 allows a Switchboard-owned file if that changes).
+ * (D25: or `--teleport <session_X>` for a local copy of a remote session), D31's
+ * `--model` / `--effort` when the session has a choice (neither is inherited on
+ * `--resume`), `--name`, `--forward-subagent-text`, `--replay-user-messages`. No
+ * prompt argument: every message, the first one included, goes through stdin. No
+ * `--settings`: no hooks are needed (D6 allows a Switchboard-owned file if that changes).
  */
 export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
   return [
@@ -72,6 +77,8 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     '--permission-mode',
     input.permissionMode,
     ...startArgs(input.start),
+    ...(input.model ? ['--model', input.model] : []),
+    ...(input.effort ? ['--effort', input.effort] : []),
     '--name',
     input.name,
     '--forward-subagent-text',

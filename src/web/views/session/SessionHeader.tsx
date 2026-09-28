@@ -20,6 +20,7 @@ import {
   rootLine,
   tabLabels,
 } from './session-header.ts';
+import { ModelPicker } from './ModelPicker.tsx';
 import { RemotePopover } from './RemotePopover.tsx';
 
 /** Props of {@link SessionHeader}. */
@@ -63,6 +64,8 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  * Sessions without Remote state (`remote: null`, the demo's) show no toggle.
  * D25: a local copy of a remote session gets a note under the top row (new work
  * stays local) with a link to the remote session on claude.ai.
+ * D31: the model and effort picker (`Opus 5.5 · high ▾`, {@link ModelPicker}) is
+ * the first header action; sessions without model information (the demo's) show none.
  */
 export function SessionHeader({ sessionId, session, missing, tab, files, artifacts, onChanged }: SessionHeaderProps) {
   const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | null>(null);
@@ -131,6 +134,7 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           {missing ? 'no such session' : session ? rootLine(session) : ''}
         </div>
         <div className="sb-sv-actions">
+          {session ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
           {remote ? (
             <div className="sb-sv-remote" data-testid="session-remote">
               <button

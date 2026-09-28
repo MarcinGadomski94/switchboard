@@ -217,6 +217,50 @@ export interface Session {
    * older payloads and fixtures still type-check.
    */
   readonly remoteSource?: string | null;
+  /**
+   * Additive (D31, migration 0009): the session's model and effort choice and the
+   * models its claude process offers (`docs/model-effort.md`); `null` for a session
+   * with no model information at all (Switchboard never ran a process for it and
+   * nothing is stored: the demo's seeded sessions show no pickers). The server
+   * always sends it; optional here so older payloads and fixtures still type-check.
+   */
+  readonly model?: SessionModel | null;
+}
+
+/**
+ * Additive (D31): a session's model and effort (`Session.model`).
+ * - `current`: the stored model, passed as `--model` on every spawn; `null` = the
+ *   CLI's default (no `--model`);
+ * - `effort`: the stored effort level, passed as `--effort`; `null` = the CLI's default;
+ * - `available`: the models the session's last claude process reported in its
+ *   `initialize` reply (kept after it ends); `null` until a process reported them
+ *   (the pickers are disabled then).
+ */
+export interface SessionModel {
+  readonly current: string | null;
+  readonly effort: string | null;
+  readonly available: readonly SessionModelOption[] | null;
+}
+
+/** Additive (D31): one model the CLI offers (an `initialize` reply's `models[]` entry, read). */
+export interface SessionModelOption {
+  /** What `set_model` / `--model` take (`default`, `opus`, `claude-opus-4-7`, …). `default` is the CLI's default model. */
+  readonly value: string;
+  /** The CLI's `displayName` (`Opus 5.5`, `Default (recommended)`), else the value. */
+  readonly label: string;
+  /** The CLI's `description`, when it gave one. */
+  readonly description?: string;
+  /** The effort levels the model supports (`supportedEffortLevels`, in the CLI's order); absent when it has none. */
+  readonly efforts?: readonly string[];
+}
+
+/**
+ * Additive (D31): body of `PUT /api/sessions/{id}/model`. A field left out keeps
+ * its stored value; `null` (or `default` for the model) goes back to the CLI's default.
+ */
+export interface SessionModelInput {
+  readonly model?: string | null;
+  readonly effort?: string | null;
 }
 
 /**
