@@ -10,6 +10,7 @@ import type { SystemProvider } from '../../../src/server/providers.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { toWorktree } from '../../../src/server/worktrees/wire.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { rawRequest } from '../../helpers/net.ts';
 import { type HubStream, type SseParser, listenOnFreeTestPort, openHub, requestJson } from '../../helpers/sse.ts';
@@ -54,6 +55,10 @@ const SESSION_KEYS = keys<Session>()([
   'openQuestionCount',
   // additive, M4.1 (the session header)
   'cwd',
+  // additive, D14 (the session's folder)
+  'folder',
+  'folderPath',
+  'folderKind',
   'live',
   'resumeCommand',
   'chips',
@@ -145,9 +150,10 @@ beforeAll(async () => {
     },
   };
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
+  await seedFolder(sw.store, sw.workspace);
   ({ app, port } = await listenOnFreeTestPort((candidate) =>
     buildApp({
-      config: { ...base, port: candidate, workspaceRoot: sw.workspace },
+      config: { ...base, port: candidate },
       token,
       store: sw.store,
       webRoot: sw.root,
@@ -260,7 +266,7 @@ describe('/hub · events (contract, field by field)', () => {
 
   it('worktreeRemovable: a real worktree whose PR merged (temp git repo + fake gh) streams the Worktree', async () => {
     const stream = await connect();
-    const [record] = await manager.createForSession('hub-pr', ['web-front']);
+    const [record] = await manager.createForSession('hub-pr', ['web-front'], gw.folder);
     if (!record) throw new Error('no worktree');
     await gw.setPullRequests({ 'session/hub-pr': { number: 7, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/7' } });
     expect((await manager.checkPullRequests()).find((c) => c.worktreeId === record.id)).toMatchObject({ prState: 'MERGED', removable: true });
@@ -390,7 +396,7 @@ describe('/hub · shutdown', () => {
     const w = world;
     const listening = await listenOnFreeTestPort((candidate) =>
       buildApp({
-        config: { ...base, port: candidate, workspaceRoot: w.workspace },
+        config: { ...base, port: candidate },
         token: ownToken,
         store: w.store,
         webRoot: w.root,

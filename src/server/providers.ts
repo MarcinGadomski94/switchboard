@@ -1,5 +1,6 @@
 import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
+import type { FolderRef } from './folders/ref.ts';
 
 /**
  * Live data that is computed rather than stored (docs/database.md → "Not stored"),
@@ -15,16 +16,21 @@ export interface DiffProvider {
   diff(sessionId: string, file?: string): Promise<FileDiff[]>;
 }
 
-/** The workspace scan grouped by folder (M6.1 / M6.2). Real implementation: `WorkspaceScanner` (M6.1, `solutions/scanner.ts`). */
+/**
+ * One folder's solutions grouped by folder (M6.1 / M6.2; D14: one folder at a
+ * time). Real implementation: `LiveSolutions` (`solutions/live.ts`) over a
+ * `WorkspaceScanner` per workspace folder; a repo folder is one group with its
+ * one solution.
+ */
 export interface SolutionsProvider {
-  solutions(): Promise<SolutionGroup[]>;
+  solutions(folder: FolderRef): Promise<SolutionGroup[]>;
   /**
-   * `true` when the router's folder rules make a NewSession solution (a bare name
-   * or a workspace-relative path) read-only (`docs/solutions.md`). Optional:
-   * without it the session validation matches read-only rows of
-   * {@link solutions} by name.
+   * `true` when the router's folder rules of the workspace `folder` make a
+   * NewSession solution (a bare name or a workspace-relative path) read-only
+   * (`docs/solutions.md`). Optional: without it the session validation matches
+   * read-only rows of {@link solutions} by name.
    */
-  isReadOnly?(solution: string): Promise<boolean>;
+  isReadOnly?(solution: string, folder: FolderRef): Promise<boolean>;
 }
 
 /** CLI / gh status + machine metrics (gap #11) + usage (M9.2). Real implementation: `SystemProbe` (M5.3, `system/probe.ts`); M9.2 adds usage. */
@@ -59,11 +65,12 @@ export interface ToolProbeProvider {
 }
 
 /**
- * The Codebase Memory strip (M8.1, gap #4): the projects in `.codebase-memory-dirty`.
- * Real implementation: `tools/codebase-memory.ts` over the workspace root, used when none is given.
+ * The Codebase Memory strip (M8.1, gap #4): the projects in a workspace folder's
+ * `.claude/.codebase-memory-dirty` (D14: per folder; a repo folder has none).
+ * Real implementation: `tools/codebase-memory.ts`, used when none is given.
  */
 export interface CodebaseMemoryProvider {
-  status(): Promise<CodebaseMemoryStatus>;
+  status(folder: FolderRef): Promise<CodebaseMemoryStatus>;
 }
 
 /** The providers a running service has. A missing one means its item has not landed yet. */

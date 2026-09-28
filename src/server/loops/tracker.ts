@@ -2,6 +2,7 @@ import type { Loop, SessionEvent } from '../../core/api.ts';
 import { LOOP_SOURCE_TOOLS, type ObservedLoop, deriveLoops, isLoopCommand } from '../../core/derive/loops.ts';
 import type { LoopRecord } from '../db/repos/loops.ts';
 import type { Store } from '../db/store.ts';
+import { folderOfSession } from '../folders/ref.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { toSession } from '../sessions/wire.ts';
 import type { SupervisorEvents } from '../supervisor/supervisor.ts';
@@ -19,8 +20,6 @@ export interface LoopTrackerOptions {
   readonly events: LoopEventSource;
   /** Where `sessionUpdated` goes when a session's loops change (`/hub`). */
   readonly bus?: HubBus;
-  /** `SWITCHBOARD_WORKSPACE_ROOT`: shown progress paths are relative to it. */
-  readonly workspaceRoot: string | null;
   /** Events fold into one refresh per session per this many ms (default 150). */
   readonly debounceMs?: number;
   readonly now?: () => Date;
@@ -61,14 +60,13 @@ export function loopRowId(sessionId: string, key: string): string {
  * its process ending, a write to its progress file), schedules a refresh of that
  * session (folded per session, one at a time): all of its events
  * go through `deriveLoops`, cap + breaker are read from the newest
- * `.loop/progress.md` in its working folders, the rows are created or updated
+ * `.loop/progress.md` in its working folders (in its own folder, D14), the rows are created or updated
  * (never invented, never deleted), and a changed session is published as
  * `sessionUpdated` so the Schedules & loops view and the session header follow.
  */
 export class LoopTracker {
   readonly #store: Store;
   readonly #bus: HubBus | undefined;
-  readonly #root: string | null;
   readonly #debounceMs: number;
   readonly #now: () => Date;
   readonly #onError: (error: unknown) => void;
@@ -82,7 +80,6 @@ export class LoopTracker {
   constructor(options: LoopTrackerOptions) {
     this.#store = options.store;
     this.#bus = options.bus;
-    this.#root = options.workspaceRoot;
     this.#debounceMs = options.debounceMs ?? 150;
     this.#now = options.now ?? (() => new Date());
     this.#onError = options.onError ?? ((error) => console.error('switchboard loops:', error));
@@ -182,7 +179,8 @@ export class LoopTracker {
     const observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
     if (observed.length === 0) return (await this.#store.loops.list(sessionId)).map(toLoop);
     this.#tracked.set(sessionId, true);
-    const progress = await findLoopProgress(await sessionWorkingFolders(this.#store, session, this.#root), this.#root);
+    // D14: the session's own folders; the shown path is relative to its folder.
+    const progress = await findLoopProgress(await sessionWorkingFolders(this.#store, session), folderOfSession(session)?.root ?? null);
     let changed = false;
     for (const loop of observed) {
       const fields = rowFields(loop, progress);

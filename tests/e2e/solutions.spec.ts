@@ -6,6 +6,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { REPO_ROOT } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * The Solutions view (M6.2) on the real code path (D13, no demo seed):
@@ -35,9 +36,10 @@ test.beforeAll(async () => {
   await writeFile(path.join(ws, '.claude', '.codebase-memory-dirty'), `${hookProjectId(path.join(ws, 'microfrontends', 'web-front'))}\n`);
   const claudeConfig = path.join(world.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(world.root, 'data'), ws);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(world.root, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: ws,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,
@@ -163,11 +165,11 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   await expect(page).toHaveURL(`${server.baseUrl}/tools/cm`);
 });
 
-test('Solutions without a workspace root says so', async ({ page }) => {
+test('Solutions without a saved folder says so (D14)', async ({ page }) => {
   const bare = await startServer({ SWITCHBOARD_DATA_DIR: path.join(world.root, 'data-bare') });
   try {
     await page.goto(`${bare.baseUrl}/solutions`);
-    await expect(page.getByTestId('solutions-error')).toHaveText('No workspace root is configured (SWITCHBOARD_WORKSPACE_ROOT).');
+    await expect(page.getByTestId('solutions-error')).toHaveText('No folder is saved yet. Add a workspace or a git repository in Settings.');
     await expect(page.getByTestId('solutions-meta')).toHaveText('');
   } finally {
     expect(await bare.stop()).toBe(0);

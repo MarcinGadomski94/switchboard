@@ -5,8 +5,10 @@ import type { SessionStatus } from '../../src/core/model.ts';
 import type { EventRecord } from '../../src/server/db/repos/events.ts';
 import type { SessionRecord } from '../../src/server/db/repos/sessions.ts';
 import type { Store } from '../../src/server/db/store.ts';
+import type { FolderRef } from '../../src/server/folders/ref.ts';
 import { type LiveProcessLister, claudeAgentsLister } from '../../src/server/supervisor/recovery.ts';
-import { type ControlRequestHandler, SessionSupervisor, type StopTimeouts } from '../../src/server/supervisor/supervisor.ts';
+import { type ControlRequestHandler, type SessionPlace, SessionSupervisor, type StopTimeouts } from '../../src/server/supervisor/supervisor.ts';
+import { folderRef } from './folders.ts';
 import { fakeClaudeCommand } from '../../tools/fake-claude/command.ts';
 import { makeTempDir, removeTempDir } from './net.ts';
 import { openTempStore } from './store.ts';
@@ -16,6 +18,10 @@ export interface SupervisorWorld {
   readonly root: string;
   /** Canonical workspace root (the sessions' cwd). */
   readonly workspace: string;
+  /** D14: the workspace as a folder (not saved: `id` null). */
+  readonly folder: FolderRef;
+  /** D14: where `supervisor.start` runs a session of this world: the workspace folder, cwd = its root. */
+  readonly place: SessionPlace;
   readonly configDir: string;
   readonly logFile: string;
   readonly store: Store;
@@ -69,17 +75,19 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     store,
     claudeCommand,
     claudeExtraArgs: options.extraArgs ?? [],
-    workspaceRoot: workspace,
     env,
     // M4.1: the Attach warning's `claude agents --json` through the same CLI (the fake lists its live-process files).
-    listLive: options.listLive === undefined ? claudeAgentsLister({ claudeCommand, workspaceRoot: workspace, env }) : options.listLive ?? undefined,
+    listLive: options.listLive === undefined ? claudeAgentsLister({ claudeCommand, env }) : options.listLive ?? undefined,
     timeouts: { ack: 3_000, result: 5_000, exit: 5_000, signal: 2_000, ...options.timeouts },
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
     onError: (error) => errors.push(error),
   });
+  const folder = folderRef(workspace);
   return {
     root,
     workspace,
+    folder,
+    place: { folder, cwd: workspace },
     configDir,
     logFile,
     store,

@@ -23,7 +23,7 @@ afterEach(async () => {
 describe('npm start entry point (src/server/main.ts)', () => {
   it('starts on 127.0.0.1 with a per-install token in SWITCHBOARD_DATA_DIR and stops cleanly', async () => {
     const dataDir = path.join(tmp, 'data');
-    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir, SWITCHBOARD_WORKSPACE_ROOT: path.join(tmp, 'workspace') });
+    server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir });
     const token = (await readFile(path.join(dataDir, TOKEN_FILE), 'utf8')).trim();
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const host = `127.0.0.1:${server.port}`;

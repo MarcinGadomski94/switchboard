@@ -8,6 +8,7 @@ import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { TranscriptHistory, claudeConfigDir } from '../../../src/server/history/transcripts.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 import {
@@ -91,16 +92,27 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-/** The provider under test; the files are written with old mtimes, so the real clock reads them as ended. */
-function provider(options: { root?: string | null } = {}): TranscriptHistory {
-  return new TranscriptHistory({ store, workspaceRoot: options.root === undefined ? root : options.root, configDir, platform: 'darwin' });
+/** D14: exactly these folders are saved (History reads under every saved folder). */
+async function useFolders(...folders: string[]): Promise<void> {
+  for (const folder of await store.folders.list()) await store.folders.delete(folder.id);
+  for (const folder of folders) await seedFolder(store, folder);
+}
+
+/**
+ * The provider under test with `root` as the one saved folder (`null` = none);
+ * the files are written with old mtimes, so the real clock reads them as ended.
+ */
+async function provider(options: { root?: string | null } = {}): Promise<TranscriptHistory> {
+  const saved = options.root === undefined ? root : options.root;
+  await useFolders(...(saved === null ? [] : [saved]));
+  return new TranscriptHistory({ store, configDir, platform: 'darwin' });
 }
 
 const summary = (items: HistoryItem[]) => items.map((i) => [i.claudeSessionId, i.name, i.mode, i.summary, i.outcome, i.status]);
 
 describe('TranscriptHistory (M7.4)', () => {
   it('lists stored sessions and terminal sessions of this root, and hides headless files, stubs and other roots', async () => {
-    const history = provider();
+    const history = await provider();
     const items = await history.history();
     expect(summary(items)).toEqual([
       ['stored-2', 'fresh', 'orch · QA', 'Nothing yet.', 'idle', 'idle'],
@@ -116,7 +128,7 @@ describe('TranscriptHistory (M7.4)', () => {
   });
 
   it('searches server-side', async () => {
-    const history = provider();
+    const history = await provider();
     expect((await history.history('walnut')).map((i) => i.claudeSessionId)).toEqual(['term-conc']);
     expect((await history.history('TERMINAL QUESTION')).map((i) => i.claudeSessionId)).toEqual(['stored-1']);
     expect((await history.history('feature/tx-probe')).map((i) => i.claudeSessionId)).toEqual(['term-tx']);
@@ -124,7 +136,7 @@ describe('TranscriptHistory (M7.4)', () => {
   });
 
   it('parses each file once per (size, mtime): memory, then history_cache across instances; a change is re-read; gone files are pruned', async () => {
-    const first = provider();
+    const first = await provider();
     await first.history();
     await first.history('x');
     expect(first.parseCount).toBe(0); // the instances above already filled history_cache
@@ -148,20 +160,21 @@ describe('TranscriptHistory (M7.4)', () => {
 
   it('never writes under the config folder', async () => {
     const before = await snapshot(configDir);
-    const history = provider();
+    const history = await provider();
     await history.history();
     await history.history('tangerine');
     expect(await snapshot(configDir)).toEqual(before);
   });
 
-  it('without a workspace root lists only the stored sessions (no scan)', async () => {
-    const items = await provider({ root: null }).history();
+  it('without a saved folder (and no session folders) lists only the stored sessions (no scan)', async () => {
+    const items = await (await provider({ root: null })).history();
     expect(items.map((i) => i.claudeSessionId)).toEqual(['stored-2', 'stored-1']);
     expect(items[1]?.summary).toBe('Build the pay flow.');
   });
 
   it('a missing projects folder is not an error', async () => {
-    const empty = new TranscriptHistory({ store, workspaceRoot: root, configDir: path.join(tmp, 'nowhere') });
+    await useFolders(root);
+    const empty = new TranscriptHistory({ store, configDir: path.join(tmp, 'nowhere') });
     expect((await empty.history()).map((i) => i.name)).toEqual(['fresh', 'pay-flow']);
   });
 
@@ -178,7 +191,8 @@ describe('GET /api/history (M7.4)', () => {
 
   async function start(options: { providers?: Parameters<typeof buildApp>[0]['providers']; workspaceRoot: string | null }): Promise<void> {
     token = generateToken();
-    const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: PORT, workspaceRoot: options.workspaceRoot };
+    await useFolders(...(options.workspaceRoot === null ? [] : [options.workspaceRoot]));
+    const config = { ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: tmp }, platform: 'linux', home: tmp, cwd: tmp }), port: PORT };
     app = await buildApp({ config, token, store, webRoot: tmp, ...(options.providers ? { providers: options.providers } : {}) });
     await app.ready();
   }
@@ -192,7 +206,7 @@ describe('GET /api/history (M7.4)', () => {
     return { status: response.statusCode, body: response.json() as HistoryItem[] };
   }
 
-  it('by default reads $CLAUDE_CONFIG_DIR for the configured root; q filters (last value wins)', async () => {
+  it('by default reads $CLAUDE_CONFIG_DIR for the saved folders; q filters (last value wins)', async () => {
     vi.stubEnv('CLAUDE_CONFIG_DIR', configDir);
     await start({ workspaceRoot: root });
     const all = await get('/api/history');
@@ -213,5 +227,41 @@ describe('GET /api/history (M7.4)', () => {
   it('is behind the cookie guard', async () => {
     await start({ workspaceRoot: null });
     expect((await app.inject({ method: 'GET', url: '/api/history', headers: { host: HOST } })).statusCode).toBe(401);
+  });
+});
+
+describe('History across folders (D14)', () => {
+  it('reads under every saved folder and every session folder; each row carries its folder; a repo folder names its one solution', async () => {
+    const dir = await realpath(await makeTempDir('history-folders'));
+    const cfg = path.join(dir, 'claude config');
+    const s = await openTempStore(path.join(dir, 'data'));
+    try {
+      const wsA = path.join(dir, 'ws a');
+      const repoB = path.join(dir, 'repo b');
+      const sessionOnly = path.join(dir, 'session only');
+      const unsaved = path.join(dir, 'unsaved');
+      for (const folder of [wsA, repoB, sessionOnly, unsaved]) await mkdir(folder, { recursive: true });
+      const a = await seedFolder(s, wsA);
+      const b = await seedFolder(s, repoB, { kind: 'repo' });
+      const term = async (sandbox: string, id: string): Promise<void> => {
+        await writeTranscript(cfg, path.join(sandbox, 'tx main'), id, asTerminal(withSessionId(await fixtureLines('tx-main', sandbox), id)), OLD);
+      };
+      await term(path.join(wsA, 'other'), 'term-a');
+      await term(repoB, 'term-b');
+      await term(sessionOnly, 'term-c');
+      await term(unsaved, 'term-d');
+      // A session whose folder left the saved list: its folder is still read, and its row names it.
+      const stored = await s.sessions.create({ name: 'in-removed', claudeSessionId: 'stored-x', task: 'x', root: sessionOnly, rootKind: 'workspace', cwd: sessionOnly });
+      const items = await new TranscriptHistory({ store: s, configDir: cfg, platform: 'darwin' }).history();
+      const byId = Object.fromEntries(items.map((item) => [item.claudeSessionId, item]));
+      expect(byId['term-a']).toMatchObject({ folder: a.id, folderPath: wsA, branches: [{ solution: 'tx main', branch: 'feature/tx-probe' }] });
+      expect(byId['term-b']).toMatchObject({ folder: b.id, folderPath: repoB, branches: [{ solution: 'repo b', branch: 'feature/tx-probe' }] });
+      expect(byId['term-c']).toMatchObject({ folder: null, folderPath: sessionOnly });
+      expect(byId['stored-x']).toMatchObject({ sessionId: stored.id, folder: null, folderPath: sessionOnly });
+      expect(byId['term-d']).toBeUndefined();
+    } finally {
+      await s.close();
+      await removeTempDir(dir);
+    }
   });
 });

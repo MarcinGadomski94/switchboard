@@ -6,6 +6,7 @@ import { type Migration, type MigrationResult, loadMigrations, migrate } from '.
 import { AgentRepository } from './repos/agents.ts';
 import { ArtifactRepository } from './repos/artifacts.ts';
 import { EventRepository } from './repos/events.ts';
+import { FolderRepository } from './repos/folders.ts';
 import { HistoryCacheRepository } from './repos/history-cache.ts';
 import { LoopRepository } from './repos/loops.ts';
 import { PendingMessageRepository } from './repos/pending-messages.ts';
@@ -44,6 +45,8 @@ export interface Store {
   readonly usage: UsageRepository;
   readonly historyCache: HistoryCacheRepository;
   readonly pendingMessages: PendingMessageRepository;
+  /** Saved folders (D14, `docs/folders.md`). */
+  readonly folders: FolderRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -99,6 +102,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     usage: new UsageRepository(ctx),
     historyCache: new HistoryCacheRepository(ctx),
     pendingMessages: new PendingMessageRepository(ctx),
+    folders: new FolderRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

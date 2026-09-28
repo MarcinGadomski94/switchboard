@@ -80,7 +80,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
   it('groups every solution by folder with its rule; skips worktrees (gap #16), files, hidden and unnamed folders', async () => {
     const ws = await fixtureWorkspace();
     const p = (...parts: string[]): string => path.join(ws, ...parts);
-    const groups = await new WorkspaceScanner({ workspaceRoot: ws }).solutions();
+    const groups = await new WorkspaceScanner({ root: ws }).solutions();
     expect(summary(groups)).toEqual([
       [
         'microfrontends/',
@@ -124,7 +124,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
 
   it('the full scan reports the router file, every folder (present or not) and which solutions are git checkouts', async () => {
     const ws = await fixtureWorkspace();
-    const scan = await new WorkspaceScanner({ workspaceRoot: ws }).scan();
+    const scan = await new WorkspaceScanner({ root: ws }).scan();
     expect(scan.root).toBe(ws);
     expect(scan.router).toEqual({ path: path.join(ws, 'AGENTS.md'), found: true, lines: 66 });
     expect(scan.folders.map((f) => [f.folder, f.rule, f.depth, f.exists, f.inRouter, f.solutions.length])).toEqual([
@@ -165,7 +165,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     await worktree(ws, 'archive/old-repo-wt-x');
     await repo(ws, 'labs/spike');
     await repo(ws, 'tools');
-    const scanner = new WorkspaceScanner({ workspaceRoot: ws });
+    const scanner = new WorkspaceScanner({ root: ws });
     const groups = await scanner.solutions();
     expect(groups.map((g) => [g.folder, g.note, g.rule, g.solutions.map((s) => `${s.name}:${s.type}`)])).toEqual([
       ['microfrontends/', '', 'editable', ['web-front:Web']],
@@ -188,7 +188,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     await repo(ws, 'mobile');
     await repo(ws, 'other/it-dashboard');
     await repo(ws, 'infrastructure');
-    const scanner = new WorkspaceScanner({ workspaceRoot: ws });
+    const scanner = new WorkspaceScanner({ root: ws });
     const scan = await scanner.scan();
     expect(scan.router).toEqual({ path: path.join(ws, 'AGENTS.md'), found: false, lines: 0 });
     expect(scan.folders.every((f) => !f.inRouter)).toBe(true);
@@ -203,7 +203,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     const ws = await tempWorkspace();
     await worktree(ws, 'mobile');
     await mkdir(path.join(ws, 'microfrontends'));
-    expect(await new WorkspaceScanner({ workspaceRoot: ws }).solutions()).toEqual([]);
+    expect(await new WorkspaceScanner({ root: ws }).solutions()).toEqual([]);
   });
 
   it.skipIf(process.platform === 'win32')('never follows symlinks: a linked solution or a linked group folder is not listed', async () => {
@@ -214,7 +214,7 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     await repo(ws, 'microfrontends/web-front');
     await symlink(path.join(outside, 'linked-front'), path.join(ws, 'microfrontends', 'linked-front'));
     await symlink(path.join(outside, 'nugets-elsewhere'), path.join(ws, 'nugets'));
-    const scan = await new WorkspaceScanner({ workspaceRoot: ws }).scan();
+    const scan = await new WorkspaceScanner({ root: ws }).scan();
     expect(scan.folders[0]?.solutions.map((s) => s.name)).toEqual(['web-front']);
     expect(scan.folders[2]).toMatchObject({ folder: 'nugets', exists: false, solutions: [] });
   });
@@ -223,30 +223,28 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     const workspace = await tempWorkspace();
     await repo(workspace, 'mobile/acme-app-mobile');
     await writeFile(path.join(workspace, 'mobile', 'AGENTS.md'), 'rules\n');
-    const scan = await new WorkspaceScanner({ workspaceRoot: workspace }).scan();
+    const scan = await new WorkspaceScanner({ root: workspace }).scan();
     const mobile = scan.folders.find((folder) => folder.folder === 'mobile')?.solutions;
     expect(mobile).toEqual([
       { name: 'mobile', relativePath: 'mobile', path: path.join(workspace, 'mobile'), git: true, repoPath: path.join(workspace, 'mobile', 'acme-app-mobile') },
     ]);
   });
 
-  it('refuses to scan without a configured or existing workspace root (ScanError codes)', async () => {
-    await expect(new WorkspaceScanner({ workspaceRoot: null }).solutions()).rejects.toMatchObject({ name: 'ScanError', code: 'workspace-not-configured' });
+  it('refuses to scan a workspace folder that is gone (ScanError folder-missing)', async () => {
     const ws = await tempWorkspace();
     const missing = path.join(ws, 'nope');
-    await expect(new WorkspaceScanner({ workspaceRoot: missing }).scan()).rejects.toBeInstanceOf(ScanError);
-    await expect(new WorkspaceScanner({ workspaceRoot: missing }).solutions()).rejects.toMatchObject({ code: 'workspace-missing' });
+    await expect(new WorkspaceScanner({ root: missing }).scan()).rejects.toBeInstanceOf(ScanError);
+    await expect(new WorkspaceScanner({ root: missing }).solutions()).rejects.toMatchObject({ name: 'ScanError', code: 'folder-missing' });
     await writeFile(path.join(ws, 'a-file'), 'x');
-    await expect(new WorkspaceScanner({ workspaceRoot: path.join(ws, 'a-file') }).solutions()).rejects.toMatchObject({ code: 'workspace-missing' });
+    await expect(new WorkspaceScanner({ root: path.join(ws, 'a-file') }).solutions()).rejects.toMatchObject({ code: 'folder-missing' });
     // isReadOnly never throws for a missing root; the other checks refuse such a session.
-    expect(await new WorkspaceScanner({ workspaceRoot: null }).isReadOnly('deprecated/x')).toBe(false);
-    expect(await new WorkspaceScanner({ workspaceRoot: missing }).isReadOnly('infrastructure')).toBe(true);
+    expect(await new WorkspaceScanner({ root: missing }).isReadOnly('infrastructure')).toBe(true);
   });
 
   it('writes nothing: the workspace is byte-for-byte the same after a scan', async () => {
     const ws = await fixtureWorkspace();
     const before = await listTree(ws);
-    await new WorkspaceScanner({ workspaceRoot: ws }).scan();
+    await new WorkspaceScanner({ root: ws }).scan();
     expect(await listTree(ws)).toEqual(before);
   });
 });
@@ -270,7 +268,7 @@ describe('WorkspaceScanner · real git checkouts and worktrees', () => {
     await w.makeRepo(path.join(w.workspace, 'deprecated', 'mobile'));
     await copyFile(ROUTER_FIXTURE, path.join(w.workspace, 'AGENTS.md'));
 
-    const scanner = new WorkspaceScanner({ workspaceRoot: w.workspace });
+    const scanner = new WorkspaceScanner({ root: w.workspace });
     const groups = await scanner.solutions();
     expect(groups.map((g) => [g.folder, g.solutions.map((s) => s.name)])).toEqual([
       ['microfrontends/', ['web-front']],
@@ -282,7 +280,7 @@ describe('WorkspaceScanner · real git checkouts and worktrees', () => {
     // Every writable solution the scan lists is a name the worktree manager resolves to the same folder.
     const manager = w.manager();
     for (const solution of groups.filter((g) => g.rule !== 'read-only').flatMap((g) => g.solutions)) {
-      const resolved = await manager.resolveRepo(solution.name);
+      const resolved = await manager.resolveRepo(solution.name, w.folder);
       expect(resolved.repoPath, solution.name).toBe(solution.path);
       expect(await scanner.isReadOnly(solution.name), solution.name).toBe(false);
     }

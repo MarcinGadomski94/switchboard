@@ -12,8 +12,7 @@ export const SESSION_ROUTES_PENDING: readonly PendingRoute[] = [];
 /** HTTP status of each supervisor refusal. */
 const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'not-found': 404,
-  'workspace-not-configured': 409,
-  'workspace-missing': 409,
+  'folder-missing': 409,
   detached: 409,
   'already-running': 409,
   'request-not-open': 409,

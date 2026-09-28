@@ -34,8 +34,11 @@ export interface LiveClaudeProcess {
   readonly sessionId: string;
 }
 
-/** Lists the live claude processes; `null` when the list could not be read. */
-export type LiveProcessLister = () => Promise<LiveClaudeProcess[] | null>;
+/**
+ * Lists the live claude processes, asked from `cwd` (D14: the session's working
+ * folder; `null` = the service's own folder); `null` when the list could not be read.
+ */
+export type LiveProcessLister = (cwd?: string | null) => Promise<LiveClaudeProcess[] | null>;
 
 /** OS process access (tests replace it). */
 export interface ProcessControl {
@@ -70,7 +73,7 @@ export const osProcesses: ProcessControl = {
 export interface RecoveryOptions {
   readonly store: Store;
   readonly supervisor: SessionSupervisor;
-  /** `claude agents --json` ({@link claudeAgentsLister}). */
+  /** `claude agents --json` ({@link claudeAgentsLister}), asked once per session cwd (D14). */
   readonly listLive: LiveProcessLister;
   readonly processes?: ProcessControl;
   /** How long to wait for a leftover to end after each signal (default {@link DEFAULT_STOP_TIMEOUTS}.signal). */
@@ -125,13 +128,19 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
   const candidates = (await store.sessions.list()).filter((session) => session.pid !== null || wantsResume(session));
   if (candidates.length === 0) return { sessions: [] };
 
-  let listed: Promise<LiveClaudeProcess[] | null> | undefined;
-  const list = (): Promise<LiveClaudeProcess[] | null> => {
-    listed ??= options.listLive().catch((error: unknown) => {
-      onError(error);
-      return null;
-    });
-    return listed;
+  // D14: sessions run in their own folders, so the list is read once per cwd.
+  const listed = new Map<string, Promise<LiveClaudeProcess[] | null>>();
+  const list = (cwd: string | null): Promise<LiveClaudeProcess[] | null> => {
+    const key = cwd ?? '';
+    let rows = listed.get(key);
+    if (!rows) {
+      rows = options.listLive(cwd).catch((error: unknown) => {
+        onError(error);
+        return null;
+      });
+      listed.set(key, rows);
+    }
+    return rows;
   };
   const stopOptions = {
     processes,
@@ -146,7 +155,7 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
 
     // 1. A process left behind by the service that died: stop it when it is this session's.
     if (pid !== null && processes.isAlive(pid)) {
-      const live = await list();
+      const live = await list(session.cwd);
       if (live === null) {
         reason = `could not check whether pid ${pid} is still this session's claude process (claude agents --json failed)`;
       } else if (live.some((row) => row.pid === pid && row.sessionId === session.claudeSessionId)) {
@@ -205,7 +214,7 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
 
     // 4. Another live process holds the id (e.g. a terminal opened while the service was down).
     if (reason === null) {
-      const live = await list();
+      const live = await list(session.cwd);
       const other = live?.find((row) => row.sessionId === session.claudeSessionId && row.pid !== pid && processes.isAlive(row.pid));
       if (other) reason = `the session is open in another claude process (pid ${other.pid}); resume it once that process has ended`;
     }
@@ -267,22 +276,22 @@ export async function stopProcess(
 /**
  * `claude agents --json` through the configured CLI command (M0.1: no model call;
  * supervised `-p` processes are listed while they run). Runs with the scrubbed child
- * env (so `CLAUDE_CONFIG_DIR` applies) in the workspace root when it exists. Any
- * failure or an unexpected shape → `null`.
+ * env (so `CLAUDE_CONFIG_DIR` applies) in the folder it is asked for (D14: the
+ * session's cwd) when it exists, else in the service's own folder. Any failure or
+ * an unexpected shape → `null`.
  */
 export function claudeAgentsLister(options: {
   readonly claudeCommand: readonly string[];
-  readonly workspaceRoot: string | null;
   readonly env?: NodeJS.ProcessEnv;
   readonly timeoutMs?: number;
 }): LiveProcessLister {
-  return async () => {
+  return async (folder) => {
     let cwd = process.cwd();
-    if (options.workspaceRoot) {
+    if (folder) {
       try {
-        cwd = await realpath(options.workspaceRoot);
+        cwd = await realpath(folder);
       } catch {
-        // No workspace root on disk: list from the service's own folder.
+        // The folder is gone: list from the service's own folder.
       }
     }
     const result = await runCommand(options.claudeCommand, ['agents', '--json'], {

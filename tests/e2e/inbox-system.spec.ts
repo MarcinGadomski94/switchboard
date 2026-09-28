@@ -8,6 +8,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M3.3 oracle (E2E): system Inbox items on the real code path (no demo seed, D13):
@@ -79,9 +80,10 @@ test.describe('failed scheduled runs', () => {
       'Android build failed at XamlC',
     );
     await insertSchedule(dataDir, 'dependency-audit', { task: 'Audit dependencies.' }, ['ok', 'fail'], null);
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(dataDir, workspace);
     server = await startServer({
       SWITCHBOARD_DATA_DIR: dataDir,
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),
@@ -213,10 +215,11 @@ test.describe('PR merged → worktree removable', () => {
     await git(repo, 'remote', 'add', 'origin', bare);
     await git(repo, 'push', '-q', '-u', 'origin', 'main');
 
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
     server = await startServer({
       ...gitEnv,
       SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),

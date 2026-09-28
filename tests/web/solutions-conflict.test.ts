@@ -34,7 +34,7 @@ describe('conflictCard (M6.3)', () => {
 
   it('the demo mobile row gives the prototype card verbatim', async () => {
     const { solutions } = createDemoProviders(await loadDemoData());
-    const mobile = (await solutions.solutions()).flatMap((g) => g.solutions).find((s) => s.name === 'mobile');
+    const mobile = (await solutions.solutions({ id: 'demo', path: 'D:\\acme', root: 'D:\\acme', kind: 'workspace' })).flatMap((g) => g.solutions).find((s) => s.name === 'mobile');
     expect(mobile).toBeDefined();
     expect(conflictCard(mobile as Solution)).toEqual({
       text: "free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",

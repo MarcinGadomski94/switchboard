@@ -25,10 +25,10 @@ import './solutions.css';
 /** Session updates arrive in bursts (every status change); the list reloads at most this often. */
 const RELOAD_DEBOUNCE_MS = 1_000;
 
-/** The message of a failed `GET /api/solutions` (409 without a usable workspace root). */
+/** The message of a failed `GET /api/solutions` (409 `no-folder` while no folder is saved, D14). */
 function errorText(error: ApiError): string {
   const body = error.body as { error?: unknown; message?: unknown } | null;
-  if (body?.error === 'workspace-not-configured') return 'No workspace root is configured (SWITCHBOARD_WORKSPACE_ROOT).';
+  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository in Settings.';
   if (typeof body?.message === 'string') return body.message;
   return error.unreachable ? 'Switchboard is not reachable.' : `The solutions could not be loaded (HTTP ${error.status}).`;
 }

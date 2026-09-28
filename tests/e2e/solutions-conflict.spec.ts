@@ -6,6 +6,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { REPO_ROOT } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * Conflict detection + "Move … to worktree" (M6.3) on the real code path (D13,
@@ -26,9 +27,10 @@ test.beforeAll(async () => {
   await writeFile(path.join(world.workspace, 'AGENTS.md'), await readFile(path.join(REPO_ROOT, 'tests', 'fixtures', 'workspace', 'router-AGENTS.md'), 'utf8'));
   const claudeConfig = path.join(world.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(world.root, 'data'), world.workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(world.root, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: world.workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

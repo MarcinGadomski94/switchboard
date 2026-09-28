@@ -12,6 +12,8 @@ export interface ScheduleRecord {
   /** Session config (NewSession shape) + prompt, as saved by the New-session modal. */
   readonly template: unknown;
   readonly paused: boolean;
+  /** The saved folder its runs start in (D14; also `template.folder`); `null` = the default folder at run time, or the folder was removed. */
+  readonly folderId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -53,6 +55,7 @@ const SPEC: TableSpec<ScheduleRecord> = {
     cron: ['cron', 'text'],
     template: ['template', 'json'],
     paused: ['paused', 'bool'],
+    folderId: ['folder_id', 'text'],
     createdAt: ['created_at', 'text'],
     updatedAt: ['updated_at', 'text'],
   },

@@ -1,19 +1,21 @@
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, realpath } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDiff, Solution, SolutionArtifact, SolutionBranch, SolutionGroup } from '../../core/api.ts';
 import type { Phase, SessionStatus } from '../../core/model.ts';
 import { solutionFreshness } from '../../core/codebase-memory.ts';
 import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
 import { branchFromHead, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
-import { toSolutionGroups } from '../../core/workspace-rules.ts';
+import { type WorkspaceScan, repoFolderScan, toSolutionGroups } from '../../core/workspace-rules.ts';
 import { solutionCandidates } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
+import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import type { DiffProvider, SolutionsProvider } from '../providers.ts';
+import { isMainCheckout } from './checkout.ts';
 import { readDirtyList } from './codebase-memory.ts';
-import type { WorkspaceScanner } from './scanner.ts';
+import { ScanError, WorkspaceScanner } from './scanner.ts';
 
 /** A solution's phase ledger file, at its root (gap #12). */
 export const PHASE_LEDGER_FILE = 'phase-ledger.md';
@@ -26,11 +28,17 @@ export const NO_SESSION_OWNER = '—';
 
 /** Options for {@link LiveSolutions}. */
 export interface LiveSolutionsOptions {
-  /** The M6.1 scanner (folder rules, solutions, read-only check). */
-  readonly scanner: WorkspaceScanner;
   readonly store: Store;
   /** The session diff (gap #10, the worktree manager); without it the changes column reads `—`. */
   readonly diff?: DiffProvider;
+  /**
+   * Which repo a solution name means in a session's own folder (the worktree
+   * manager's `resolveRepo`, D14), for the open sessions of **other** folders
+   * that write a repo of the folder shown (e.g. a workspace session in place in
+   * `other/switchboard` while the repo folder `switchboard` is shown). Without it
+   * only the shown folder's own sessions count.
+   */
+  readonly resolveRepo?: (solution: string, folder: FolderRef) => Promise<{ readonly repoPath: string }>;
   /** Called when a live field could not be read (default: ignored; the field stays neutral). */
   readonly onError?: (error: unknown) => void;
 }
@@ -57,9 +65,11 @@ function isGone(error: unknown): boolean {
 }
 
 /**
- * The real {@link SolutionsProvider} (M6.2, `docs/solutions.md` → *Live fields*):
- * the M6.1 workspace scan with every row's live fields filled from what
- * Switchboard knows and what the solution folders hold:
+ * The real {@link SolutionsProvider} (M6.2, `docs/solutions.md` → *Live fields*;
+ * D14: one folder at a time): the scan of the folder asked for (a workspace:
+ * the M6.1 `WorkspaceScanner` of that folder; a repo: its one solution) with
+ * every row's live fields filled from what Switchboard knows and what the
+ * solution folders hold:
  * - **branches**: each live worktree of the repo (its branch, path and session),
  *   then each open session working in place (the checkout's branch); a row
  *   nobody works on shows its checkout's branch, owner `idle`;
@@ -68,38 +78,54 @@ function isGone(error: unknown): boolean {
  *   diffs (gap #10);
  * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: the sessions'
  *   artifacts for the solution + its `mobile-followups/*.md`;
- * - **codebaseMemory**: the workspace's `.claude/.codebase-memory-dirty` (M6.4,
- *   `src/core/codebase-memory.ts`);
+ * - **codebaseMemory**: a workspace's `.claude/.codebase-memory-dirty` (M6.4,
+ *   `src/core/codebase-memory.ts`); `unknown` in a repo folder, which has no
+ *   dirty list;
  * - **conflict** (M6.3): two or more open sessions write the repo while at
  *   least one has no worktree of its own (`flag` "⚠ shared working tree",
  *   `conflictSessions` for the card and its "Move … to worktree" actions).
+ *
+ * A session's solutions resolve in the session's own folder (D14), so sessions
+ * of any folder that write a repo of this one count.
  *
  * Read-only: it reads the database, `.git/HEAD`, `phase-ledger.md`,
  * `mobile-followups/` and the dirty list; git runs only through the diff provider.
  */
 export class LiveSolutions implements SolutionsProvider {
-  readonly #scanner: WorkspaceScanner;
   readonly #store: Store;
   readonly #diff: DiffProvider | null;
+  readonly #resolveRepo: LiveSolutionsOptions['resolveRepo'] | null;
   readonly #onError: (error: unknown) => void;
 
   constructor(options: LiveSolutionsOptions) {
-    this.#scanner = options.scanner;
     this.#store = options.store;
     this.#diff = options.diff ?? null;
+    this.#resolveRepo = options.resolveRepo ?? null;
     this.#onError = options.onError ?? (() => {});
   }
 
-  /** NewSession read-only check: the scanner's (M6.1). */
-  isReadOnly(solution: string): Promise<boolean> {
-    return this.#scanner.isReadOnly(solution);
+  /** NewSession read-only check: the scanner's of a workspace folder (M6.1); nothing in a repo folder is read-only. */
+  isReadOnly(solution: string, folder: FolderRef): Promise<boolean> {
+    if (folder.kind === 'repo') return Promise.resolve(false);
+    return new WorkspaceScanner({ root: folder.path }).isReadOnly(solution);
   }
 
-  /** `GET /api/solutions` with the live fields. @throws {ScanError} without a usable workspace root. */
-  async solutions(): Promise<SolutionGroup[]> {
-    const scan = await this.#scanner.scan();
+  /** The folder's scan without live fields (a workspace's `WorkspaceScanner`, a repo's one row). @throws {ScanError} when the folder is gone. */
+  async scan(folder: FolderRef): Promise<WorkspaceScan> {
+    if (folder.kind === 'workspace') return new WorkspaceScanner({ root: folder.path }).scan();
+    try {
+      if (!(await stat(folder.path)).isDirectory()) throw new Error('not a folder');
+    } catch {
+      throw new ScanError('folder-missing', `the folder does not exist: ${folder.path}`);
+    }
+    return repoFolderScan(folder.path, repoSolutionName(folder), (await isMainCheckout(folder.path)) ? folder.path : null);
+  }
+
+  /** `GET /api/solutions?folder=` with the live fields. @throws {ScanError} when the folder is gone. */
+  async solutions(folder: FolderRef): Promise<SolutionGroup[]> {
+    const scan = await this.scan(folder);
     const groups = toSolutionGroups(scan);
-    const repoByPath = new Map(scan.folders.flatMap((folder) => folder.solutions.map((s) => [s.path, s.repoPath] as const)));
+    const repoByPath = new Map(scan.folders.flatMap((f) => f.solutions.map((s) => [s.path, s.repoPath] as const)));
     const rows: Row[] = await Promise.all(
       groups.flatMap((group) =>
         group.solutions.map(async (solution): Promise<Row> => {
@@ -120,22 +146,13 @@ export class LiveSolutions implements SolutionsProvider {
       this.#store.sessions.list(),
       this.#store.worktrees.list(),
       this.#store.artifacts.list(),
-      readDirtyList(scan.root),
+      folder.kind === 'workspace' ? readDirtyList(scan.root) : Promise.resolve(null),
     ]);
-    if (dirty.state === 'unreadable') this.#onError(dirty.error);
+    if (dirty?.state === 'unreadable') this.#onError(dirty.error);
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     const writable = rows.filter((row) => !row.readOnly);
-
-    // Which row a session's solution string means (the worktree manager's resolution: a unique git checkout).
-    const resolved = new Map<string, Row | null>();
-    const resolve = (solution: string): Row | null => {
-      if (!resolved.has(solution)) {
-        const candidates = new Set(solutionCandidates(scan.root, solution) ?? []);
-        const matches = writable.filter((row) => row.git && (candidates.has(row.solution.path) || candidates.has(row.repo)));
-        resolved.set(solution, matches.length === 1 ? (matches[0] as Row) : null);
-      }
-      return resolved.get(solution) ?? null;
-    };
+    const shownRoots = new Set([folder.root, folder.path]);
+    const rowOf = this.#rowResolver(folder, scan, writable, shownRoots, worktrees);
 
     // Worktrees per row (by canonical repo path), in-place sessions per row.
     const worktreesByRow = new Map<Row, WorktreeRecord[]>();
@@ -150,7 +167,7 @@ export class LiveSolutions implements SolutionsProvider {
     for (const session of sessions) {
       if (session.endedAt !== null) continue;
       for (const name of session.solutions) {
-        const row = resolve(name);
+        const row = await rowOf(session, name);
         if (!row) continue;
         if ((worktreesByRow.get(row) ?? []).some((w) => w.sessionId === session.id)) continue;
         const list = inPlaceByRow.get(row) ?? [];
@@ -163,7 +180,10 @@ export class LiveSolutions implements SolutionsProvider {
 
     const changes = await this.#changes(
       [...new Set([...[...worktreesByRow.values()].flat().flatMap((w) => (w.sessionId ? [w.sessionId] : [])), ...[...inPlaceByRow.values()].flat().map((s) => s.id)])],
-      (solution) => resolve(solution),
+      async (sessionId, solution) => {
+        const session = sessionsById.get(sessionId);
+        return session ? rowOf(session, solution) : null;
+      },
     );
 
     const enriched = new Map<Solution, Solution>();
@@ -213,28 +233,77 @@ export class LiveSolutions implements SolutionsProvider {
           branches,
           ledger,
           artifacts: await this.#artifacts(row, artifacts),
-          codebaseMemory: solutionFreshness(dirty.projects, dirty.roots, row.solution.relativePath),
+          codebaseMemory: dirty ? solutionFreshness(dirty.projects, dirty.roots, row.solution.relativePath) : 'unknown',
         });
       }),
     );
     return groups.map((group) => ({ ...group, solutions: group.solutions.map((solution) => enriched.get(solution) ?? solution) }));
   }
 
+  /**
+   * Which row a session's solution string means (cached per call): the row of the
+   * session's worktree for that name; else, for a session of the shown folder,
+   * the worktree manager's resolution done in memory (a workspace: a unique git
+   * checkout among the writable rows; a repo: its one row); else (a session of
+   * another folder) the repo it resolves to in its own folder, when that repo is
+   * a row here.
+   */
+  #rowResolver(
+    folder: FolderRef,
+    scan: WorkspaceScan,
+    writable: readonly Row[],
+    shownRoots: ReadonlySet<string>,
+    worktrees: readonly WorktreeRecord[],
+  ): (session: SessionRecord, solution: string) => Promise<Row | null> {
+    const cache = new Map<string, Promise<Row | null>>();
+    const byCanonical = (repoPath: string): Row | null => writable.find((row) => row.git && row.canonical === repoPath) ?? null;
+    const resolveHere = (solution: string): Row | null => {
+      if (folder.kind === 'repo') return writable.find((row) => row.git && row.solution.name === solution) ?? null;
+      const candidates = new Set(solutionCandidates(scan.root, solution) ?? []);
+      const matches = writable.filter((row) => row.git && (candidates.has(row.solution.path) || candidates.has(row.repo)));
+      return matches.length === 1 ? (matches[0] as Row) : null;
+    };
+    return (session, solution) => {
+      const key = `${session.id}\u0000${solution}`;
+      let found = cache.get(key);
+      if (!found) {
+        found = (async (): Promise<Row | null> => {
+          const own = worktrees.find((w) => w.sessionId === session.id && w.repo === solution);
+          if (own) return byCanonical(own.repoPath);
+          const home = folderOfSession(session);
+          if (!home || (shownRoots.has(home.root) && home.kind === folder.kind)) return resolveHere(solution);
+          if (!this.#resolveRepo) return null;
+          try {
+            return byCanonical((await this.#resolveRepo(solution, home)).repoPath);
+          } catch {
+            return null;
+          }
+        })();
+        cache.set(key, found);
+      }
+      return found;
+    };
+  }
+
   /** Lines added / removed per row by the sessions' diffs (gap #10); a failing diff counts nothing. */
-  async #changes(sessionIds: readonly string[], resolve: (solution: string) => Row | null): Promise<Map<Row, { added: number; removed: number }>> {
+  async #changes(
+    sessionIds: readonly string[],
+    resolve: (sessionId: string, solution: string) => Promise<Row | null>,
+  ): Promise<Map<Row, { added: number; removed: number }>> {
     const totals = new Map<Row, { added: number; removed: number }>();
     const diff = this.#diff;
     if (!diff) return totals;
     const results = await Promise.all(
-      sessionIds.map((id) =>
-        diff.diff(id).catch((error: unknown): FileDiff[] => {
+      sessionIds.map(async (id) => ({
+        id,
+        files: await diff.diff(id).catch((error: unknown): FileDiff[] => {
           this.#onError(error);
           return [];
         }),
-      ),
+      })),
     );
-    for (const file of results.flat()) {
-      const row = resolve(file.solution);
+    for (const { id, files } of results) for (const file of files) {
+      const row = await resolve(id, file.solution);
       if (!row) continue;
       const total = totals.get(row) ?? { added: 0, removed: 0 };
       totals.set(row, { added: total.added + file.added, removed: total.removed + file.removed });

@@ -15,7 +15,8 @@ export function toScheduleRun(run: ScheduleRunRecord): ScheduleRun {
 
 /**
  * `GET /api/schedules` item (M7.1): the stored schedule, its newest runs (oldest
- * first, at most 14), when it fires next and whether a run is in progress.
+ * first, at most 14), when it fires next, whether a run is in progress and the
+ * folder its runs start in (D14).
  */
 export function toSchedule(schedule: ScheduleRecord, runs: readonly ScheduleRunRecord[], nextRunAt: Date | null, running: boolean): Schedule {
   return {
@@ -28,5 +29,6 @@ export function toSchedule(schedule: ScheduleRecord, runs: readonly ScheduleRunR
     runs: runs.slice(-14).map(toScheduleRun),
     nextRunAt: nextRunAt ? nextRunAt.toISOString() : null,
     running,
+    folder: schedule.folderId,
   };
 }

@@ -32,7 +32,7 @@ describe('agent placement · real path (fake-claude Write turns)', () => {
   it('the main agent is placed by its first write into a solution, with the worktree branch; root files and later writes do not move it', async () => {
     world = await makeSupervisorWorld();
     const w = world;
-    const session = await w.supervisor.start(newSession({ task: 'Write the contract. [fake:write contracts/free-talk.md]' }));
+    const session = await w.supervisor.start(newSession({ task: 'Write the contract. [fake:write contracts/free-talk.md]' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
     const main = async () => (await w.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
     expect(await main()).toMatchObject({ name: 'acme-app-front', solutionPath: null, branch: null });

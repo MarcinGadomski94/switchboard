@@ -12,13 +12,14 @@ import {
 } from '../../core/event-payload.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import {
+  type SessionPlace,
   createdBranches,
   diffArtifactName,
   fileArtifactType,
   findPullRequests,
-  locateFile,
+  locateSessionFile,
   runsGh,
-  solutionFolder,
+  sessionSolutionFolder,
 } from '../../core/derive/artifacts.ts';
 import {
   AGENT_TOOLS,
@@ -82,7 +83,8 @@ export class StreamRecorder {
   readonly #store: Store;
   readonly #sessionId: string;
   readonly #sessionName: string;
-  readonly #root: string | null;
+  /** Where the session works (D14): its folder, its kind and its cwd; `null` before it has a cwd. */
+  readonly #place: SessionPlace | null;
   #requestedMode: string | null;
   readonly #mainAgentId: string;
   readonly #onEvent: (event: EventRecord) => void;
@@ -112,7 +114,8 @@ export class StreamRecorder {
     this.#store = options.store;
     this.#sessionId = options.session.id;
     this.#sessionName = options.session.name;
-    this.#root = options.session.cwd;
+    const cwd = options.session.cwd;
+    this.#place = cwd ? { root: options.session.root ?? cwd, kind: options.session.rootKind ?? 'workspace', cwd } : null;
     this.#requestedMode = options.session.requestedPermissionMode;
     this.#mainAgentId = options.mainAgentId;
     this.#onEvent = options.onEvent;
@@ -563,7 +566,8 @@ export class StreamRecorder {
   }
 
   async #deriveArtifacts(entry: ToolEntry, output: string): Promise<void> {
-    if (!this.#root) return;
+    const place = this.#place;
+    if (!place) return;
     if (WRITE_TOOLS.includes(entry.name)) {
       const file = typeof entry.input['file_path'] === 'string'
         ? (entry.input['file_path'] as string)
@@ -571,14 +575,14 @@ export class StreamRecorder {
           ? (entry.input['notebook_path'] as string)
           : null;
       if (file) {
-        await this.#fileArtifacts(path.resolve(this.#root, file));
-        await this.#placeAgent(entry.agentId, path.resolve(this.#root, file));
+        await this.#fileArtifacts(path.resolve(place.cwd, file));
+        await this.#placeAgent(entry.agentId, path.resolve(place.cwd, file));
       }
       return;
     }
     if (entry.name === 'Bash' && entry.command) {
       for (const created of createdBranches(entry.command)) {
-        const solution = created.dir ? locateFile(this.#root, path.join(created.dir, '_'), this.#sessionName).solution : null;
+        const solution = created.dir ? locateSessionFile(place, path.join(created.dir, '_'), this.#sessionName).solution : null;
         await this.#upsertArtifact(`branch:${this.#sessionId}:${solution ?? ''}:${created.branch}`, 'BRANCH', created.branch, {
           solution,
           branch: created.branch,
@@ -596,8 +600,8 @@ export class StreamRecorder {
   }
 
   async #fileArtifacts(file: string): Promise<void> {
-    if (!this.#root) return;
-    const where = locateFile(this.#root, file, this.#sessionName);
+    if (!this.#place) return;
+    const where = locateSessionFile(this.#place, file, this.#sessionName);
     if (where.outside) return;
     const branch = await this.#branchFor(file);
     const type = fileArtifactType(where.relative);
@@ -627,8 +631,8 @@ export class StreamRecorder {
    * worktree fills a missing branch. Workspace-root files place nobody.
    */
   async #placeAgent(agentId: string, file: string): Promise<void> {
-    if (!this.#root) return;
-    const folder = solutionFolder(this.#root, file, this.#sessionName);
+    if (!this.#place) return;
+    const folder = sessionSolutionFolder(this.#place, file, this.#sessionName);
     if (!folder) return;
     const agent = await this.#store.agents.get(agentId);
     if (!agent) return;

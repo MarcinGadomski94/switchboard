@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FolderListing, SetupState, SolutionGroup, SystemInfo, WorkspaceRootCheck } from '../../core/api.ts';
+import type { FolderCheck, FolderListing, SetupState, SolutionGroup, SystemInfo } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { notifyOs } from '../toast/notify.ts';
 import {
@@ -38,6 +38,11 @@ function rememberSkipped(): void {
   }
 }
 
+/** The default saved folder of a setup state (D14), `undefined` while none is saved. */
+function defaultFolder(state: SetupState) {
+  return state.folders.find((folder) => folder.isDefault) ?? state.folders[0];
+}
+
 /** Step 1: `claude --version`, `claude auth status`, `gh auth status` through `GET /api/system?fresh=1`. */
 function ChecksStep({ system, error }: { readonly system: SystemInfo | null; readonly error: string | null }) {
   if (error) return <div className="sb-wz-error" data-testid="wz-checks-error">{`Could not check: ${error}`}</div>;
@@ -61,7 +66,7 @@ function ChecksStep({ system, error }: { readonly system: SystemInfo | null; rea
 function ScanStep({ groups, error }: { readonly groups: readonly SolutionGroup[] | null; readonly error: ApiError | null }) {
   if (error) {
     const code = (error.body as { error?: unknown } | null)?.error;
-    const text = code === 'workspace-not-configured' ? 'No workspace root yet. Choose one in step 2.' : `Scan failed: ${errorMessage(error)}`;
+    const text = code === 'no-folder' ? 'No folder yet. Add one in step 2.' : `Scan failed: ${errorMessage(error)}`;
     return <div className="sb-wz-error" data-testid="wz-scan-error">{text}</div>;
   }
   if (!groups) return <div className="sb-wz-muted" data-testid="wz-scan-loading">Scanning…</div>;
@@ -87,10 +92,10 @@ function ScanStep({ groups, error }: { readonly groups: readonly SolutionGroup[]
  * First-run setup wizard (M5.3, SPEC → Modals → Setup wizard; `docs/setup.md`):
  * 960×620, a steps rail with ✓/number dots, Back / Skip / Continue → Finish.
  * 1. Claude Code CLI + login and the GitHub CLI (`GET /api/system?fresh=1`).
- * 2. The workspace root: typed or picked with Browse…, checked for `AGENTS.md`
- *    as you type; Continue saves it (`PUT /api/setup/root`) and the service uses
- *    it at once. A root set by `SWITCHBOARD_WORKSPACE_ROOT` is shown read-only.
- * 3. The scan of that root (`GET /api/solutions`).
+ * 2. A folder (D14: a workspace or a git repo; skippable): typed or picked with
+ *    Browse…, checked as you type (`GET /api/folders/check`); Continue adds it
+ *    (`POST /api/folders`; the first one becomes the default).
+ * 3. The scan of the default folder (`GET /api/solutions`).
  * 4. Notifications: asks the browser, then confirms with an OS notification.
  * 5. The usage warning threshold; Finish marks the setup done (`POST /api/setup/complete`).
  * No click outside closes it (as in the prototype); Skip or Esc does, and then it
@@ -102,7 +107,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [systemError, setSystemError] = useState<string | null>(null);
   const [rootInput, setRootInput] = useState('');
-  const [rootCheck, setRootCheck] = useState<WorkspaceRootCheck | null>(null);
+  const [rootCheck, setRootCheck] = useState<FolderCheck | null>(null);
   const [browse, setBrowse] = useState<FolderListing | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -126,8 +131,9 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
       (state) => {
         if (cancelled) return;
         setSetup(state);
-        setRootInput(state.workspaceRoot.path ?? '');
-        setRootCheck(state.workspaceRoot.check);
+        const saved = defaultFolder(state);
+        setRootInput(saved?.path ?? '');
+        setRootCheck(saved?.check ?? null);
       },
       () => undefined,
     );
@@ -173,10 +179,9 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
     };
   }, [step]);
 
-  // The root field is checked a moment after typing stops.
-  const envLocked = setup?.workspaceRoot.source === 'env';
+  // The folder field is checked a moment after typing stops.
   useEffect(() => {
-    if (!setup || envLocked) return;
+    if (!setup) return;
     const typed = rootInput.trim();
     if (!typed) {
       setRootCheck(null);
@@ -184,7 +189,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      api.checkRoot(typed).then(
+      api.checkFolder(typed).then(
         (check) => {
           if (!cancelled) setRootCheck(check);
         },
@@ -195,7 +200,7 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [rootInput, setup, envLocked]);
+  }, [rootInput, setup]);
 
   const openFolder = (target?: string): void => {
     api.folders(target).then(
@@ -229,17 +234,17 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
 
   const saveRootAndContinue = async (): Promise<void> => {
     const typed = rootInput.trim();
-    if (envLocked || !typed || typed === setup?.workspaceRoot.path) {
+    if (!typed || (setup && setup.folders.some((folder) => folder.path === typed))) {
       setStep(2);
       return;
     }
     setSaving(true);
     setRootError(null);
     try {
-      const state = await api.saveRoot(typed);
-      setSetup(state);
-      setRootInput(state.workspaceRoot.path ?? '');
-      setRootCheck(state.workspaceRoot.check);
+      const added = await api.addFolder(typed);
+      setSetup(await api.setup());
+      setRootInput(added.path);
+      setRootCheck(added.check);
       setBrowse(null);
       setStep(2);
     } catch (error) {
@@ -332,10 +337,9 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
                   className="sb-wz-field"
                   data-testid="wz-root-input"
                   value={rootInput}
-                  readOnly={envLocked}
                   spellCheck={false}
-                  placeholder="Folder with your router AGENTS.md"
-                  aria-label="Workspace root"
+                  placeholder="A workspace (router AGENTS.md) or a git repository"
+                  aria-label="Folder"
                   onChange={(event) => {
                     setRootInput(event.target.value);
                     setRootError(null);
@@ -344,20 +348,13 @@ export function SetupWizard({ onClose }: { readonly onClose: () => void }) {
                     if (event.key === 'Enter') void saveRootAndContinue();
                   }}
                 />
-                {!envLocked && (
-                  <button type="button" className="sb-button sb-wz-browse" data-testid="wz-browse" onClick={toggleBrowse}>
-                    Browse…
-                  </button>
-                )}
+                <button type="button" className="sb-button sb-wz-browse" data-testid="wz-browse" onClick={toggleBrowse}>
+                  Browse…
+                </button>
               </div>
               {line && (
                 <div className="sb-wz-root-line" data-testid="wz-root-line" data-ok={String(line.ok)}>
                   {line.text}
-                </div>
-              )}
-              {envLocked && (
-                <div className="sb-wz-muted" data-testid="wz-root-env">
-                  set by SWITCHBOARD_WORKSPACE_ROOT · change it there
                 </div>
               )}
               {browse && (

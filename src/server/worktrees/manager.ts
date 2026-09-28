@@ -19,16 +19,16 @@ import {
 } from '../../core/worktrees.ts';
 import type { WorktreePatch, WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
+import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { toWorktree } from './wire.ts';
-import { checkoutOf } from '../solutions/checkout.ts';
+import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
 
 /** Why the worktree manager refused a call. `code` maps to an HTTP status in the routes. */
 export type WorktreeErrorCode =
-  | 'workspace-not-configured'
-  | 'workspace-missing'
+  | 'folder-missing'
   | 'solution-not-found'
   | 'solution-ambiguous'
   | 'read-only'
@@ -69,8 +69,6 @@ export interface WorktreeEvents {
 /** Options for {@link WorktreeManager}. */
 export interface WorktreeManagerOptions {
   readonly store: Store;
-  /** `SWITCHBOARD_WORKSPACE_ROOT`; nothing can be created while it is `null`. */
-  readonly workspaceRoot: string | null;
   /** `SWITCHBOARD_GH_BIN` argv prefix. */
   readonly ghCommand: readonly string[];
   /** git argv prefix (default `["git"]`; tests wrap it to log every call). */
@@ -186,7 +184,6 @@ function errorText(error: unknown): string {
  */
 export class WorktreeManager implements DiffProvider {
   readonly #store: Store;
-  #root: string | null;
   readonly #gh: readonly string[];
   readonly #git: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
@@ -201,7 +198,6 @@ export class WorktreeManager implements DiffProvider {
 
   constructor(options: WorktreeManagerOptions) {
     this.#store = options.store;
-    this.#root = options.workspaceRoot;
     this.#gh = options.ghCommand;
     this.#git = options.gitCommand ?? ['git'];
     this.#env = options.env ?? process.env;
@@ -218,19 +214,22 @@ export class WorktreeManager implements DiffProvider {
     return () => this.#listeners.delete(listener);
   }
 
-  /** The workspace root solutions resolve in, as the setup wizard changed it (M5.3, `docs/setup.md`). Registered worktrees keep their paths. */
-  setWorkspaceRoot(root: string | null): void {
-    this.#root = root;
-  }
-
   // ── solutions ─────────────────────────────────────────────────────────
 
   /**
-   * The main checkout a solution name means (router layout: `mobile`,
-   * `<group>/<name>`, or a relative path). Read-only folders are refused.
+   * The main checkout a solution name means in `folder` (D14): in a workspace
+   * folder the router layout (`mobile`, `<group>/<name>`, or a relative path;
+   * read-only folders are refused); in a repo folder the repo itself, whose one
+   * solution is its name.
    */
-  async resolveRepo(solution: string): Promise<RepoLocation> {
-    const root = await this.#workspaceRoot();
+  async resolveRepo(solution: string, folder: FolderRef): Promise<RepoLocation> {
+    const root = await this.#folderRoot(folder);
+    if (folder.kind === 'repo') {
+      const names = new Set([repoSolutionName(folder), path.basename(folder.path)]);
+      if (!names.has(solution)) throw new WorktreeError('solution-not-found', `"${solution}" is not ${repoSolutionName(folder)}, the one solution of this repo folder`);
+      if (!(await isMainCheckout(root))) throw new WorktreeError('solution-not-found', `${root} is not a git repository any more`);
+      return { solution, repoPath: root };
+    }
     if (isReadOnlyByLayout(solution)) throw new WorktreeError('read-only', `"${solution}" is read-only and cannot get a worktree`);
     const candidates = solutionCandidates(root, solution);
     if (candidates === null) throw new WorktreeError('solution-not-found', `"${solution}" is not a workspace solution`);
@@ -250,15 +249,16 @@ export class WorktreeManager implements DiffProvider {
   // ── create (gap #1) ───────────────────────────────────────────────────
 
   /**
-   * Creates one worktree per solution (gap #1: branch `session/{name}` from the
-   * repo's current HEAD, folder `../{repo}-wt-{name}`) and registers it. All or
-   * nothing: every precondition is checked first, and a failure part-way removes
-   * the worktrees this call made. `sessionId` may be set later with {@link assign}.
+   * Creates one worktree per solution of `folder` (gap #1: branch
+   * `session/{name}` from the repo's current HEAD, folder `../{repo}-wt-{name}`)
+   * and registers it. All or nothing: every precondition is checked first, and a
+   * failure part-way removes the worktrees this call made. `sessionId` may be set
+   * later with {@link assign}.
    */
-  async createForSession(sessionName: string, solutions: readonly string[], sessionId: string | null = null): Promise<WorktreeRecord[]> {
+  async createForSession(sessionName: string, solutions: readonly string[], folder: FolderRef, sessionId: string | null = null): Promise<WorktreeRecord[]> {
     const plans: Plan[] = [];
     for (const solution of solutions) {
-      const plan = await this.#plan(solution, sessionName);
+      const plan = await this.#plan(solution, sessionName, folder);
       if (plans.some((other) => other.path === plan.path)) {
         throw new WorktreeError('path-exists', `"${solution}" names the same repository as another solution in scope`);
       }
@@ -296,8 +296,8 @@ export class WorktreeManager implements DiffProvider {
     }
   }
 
-  async #plan(solution: string, sessionName: string): Promise<Plan> {
-    const { repoPath } = await this.resolveRepo(solution);
+  async #plan(solution: string, sessionName: string, folder: FolderRef): Promise<Plan> {
+    const { repoPath } = await this.resolveRepo(solution, folder);
     const branch = worktreeBranch(sessionName);
     const target = worktreePath(repoPath, sessionName);
     if ((await pathExists(target)) || (await this.#store.worktrees.getLiveByPath(target))) {
@@ -340,6 +340,7 @@ export class WorktreeManager implements DiffProvider {
    * telling it to move its work there. The developer's working tree is never
    * stashed, reset or checked out. A session that already has a worktree for `repo`
    * gets nothing new (`created: false`). Refused while the session is detached.
+   * `repo` resolves in the session's own folder (D14).
    */
   async isolate(repo: string, sessionId: string): Promise<IsolateResult> {
     const session = await this.#store.sessions.get(sessionId);
@@ -349,7 +350,9 @@ export class WorktreeManager implements DiffProvider {
     if (!session.attached) throw new WorktreeError('detached', 'the session continues in a terminal; attach it first');
     const control = this.#sessions;
     if (!control) throw new Error('isolate needs the session supervisor');
-    const [worktree] = await this.createForSession(session.name, [repo], session.id);
+    const folder = folderOfSession(session);
+    if (!folder) throw new WorktreeError('folder-missing', `the session ${session.name} has no folder`);
+    const [worktree] = await this.createForSession(session.name, [repo], folder, session.id);
     if (!worktree) throw new Error('no worktree was created');
     if (control.isLive(sessionId)) await control.pause(sessionId);
     await control.sendMessage(
@@ -541,21 +544,22 @@ export class WorktreeManager implements DiffProvider {
    * Changed files of a session (gap #10): each of its worktrees against the
    * merge-base with its base branch, committed and uncommitted changes and new
    * untracked files included; each solution in scope without a worktree (in
-   * place) against its HEAD. `file` limits the result to that solution-relative
-   * path. Each file says whether it still has uncommitted changes
-   * (`FileDiff.uncommitted`). A solution that cannot be read is skipped
-   * (reported through `onError`).
+   * place) against its HEAD, resolved in the session's own folder (D14). `file`
+   * limits the result to that solution-relative path. Each file says whether it
+   * still has uncommitted changes (`FileDiff.uncommitted`). A solution that
+   * cannot be read is skipped (reported through `onError`).
    */
   async diff(sessionId: string, file?: string): Promise<FileDiff[]> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
     const worktrees = await this.#store.worktrees.list({ sessionId });
     const targets: DiffTarget[] = worktrees.map((w) => ({ solution: w.repo, dir: w.path, branch: w.branch, mergeBaseWith: w.baseRef ?? 'HEAD', worktree: true }));
-    for (const solution of session.solutions) {
+    const folder = folderOfSession(session);
+    for (const solution of folder ? session.solutions : []) {
       if (worktrees.some((w) => w.repo === solution)) continue;
       let repo: RepoLocation;
       try {
-        repo = await this.resolveRepo(solution);
+        repo = await this.resolveRepo(solution, folder as FolderRef);
       } catch {
         continue;
       }
@@ -641,12 +645,12 @@ export class WorktreeManager implements DiffProvider {
 
   // ── processes ─────────────────────────────────────────────────────────
 
-  async #workspaceRoot(): Promise<string> {
-    if (!this.#root) throw new WorktreeError('workspace-not-configured', 'SWITCHBOARD_WORKSPACE_ROOT is not set');
+  /** The folder resolved on disk. @throws {WorktreeError} `folder-missing`. */
+  async #folderRoot(folder: FolderRef): Promise<string> {
     try {
-      return await realpath(this.#root);
+      return await realpath(folder.root);
     } catch {
-      throw new WorktreeError('workspace-missing', `the workspace root does not exist: ${this.#root}`);
+      throw new WorktreeError('folder-missing', `the folder does not exist: ${folder.path}`);
     }
   }
 

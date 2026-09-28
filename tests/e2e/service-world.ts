@@ -5,6 +5,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { fakeServiceCtlEnv } from '../../tools/fake-servicectl/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * The real app for the "Start at login" specs (M9.1, D13: no demo seed): a temp
@@ -33,9 +34,10 @@ export async function startServiceWorld(env: Record<string, string> = {}): Promi
   await mkdir(workspace, { recursive: true });
   let server: ServerProcess;
   try {
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(path.join(root, 'data'), workspace);
     server = await startServer({
       SWITCHBOARD_DATA_DIR: path.join(root, 'data'),
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: path.join(root, 'claude-config'),

@@ -5,13 +5,12 @@ const HOME = '/Users/dev';
 const CWD = '/tmp/switchboard-cwd';
 
 describe('loadConfig', () => {
-  it('uses the documented defaults', () => {
+  it('uses the documented defaults (D14: no workspace setting; sessions pick saved folders)', () => {
     const config = loadConfig({ env: {}, platform: 'darwin', home: HOME, cwd: CWD });
     expect(config).toEqual({
       host: '127.0.0.1',
       port: 4870,
       dataDir: '/Users/dev/Library/Application Support/Switchboard',
-      workspaceRoot: null,
       claudeCommand: ['claude'],
       claudeExtraArgs: [],
       ghCommand: ['gh'],
@@ -26,7 +25,6 @@ describe('loadConfig', () => {
       env: {
         SWITCHBOARD_PORT: '4875',
         SWITCHBOARD_DATA_DIR: 'data',
-        SWITCHBOARD_WORKSPACE_ROOT: '/work/space',
         SWITCHBOARD_CLAUDE_BIN: '["/usr/bin/node","/repo/tools/fake-claude/main.ts"]',
         SWITCHBOARD_CLAUDE_EXTRA_ARGS: '["--model","haiku","--max-turns","3"]',
         SWITCHBOARD_GH_BIN: '/opt/bin/gh',
@@ -38,7 +36,6 @@ describe('loadConfig', () => {
     });
     expect(config.port).toBe(4875);
     expect(config.dataDir).toBe('/tmp/switchboard-cwd/data');
-    expect(config.workspaceRoot).toBe('/work/space');
     expect(config.claudeCommand).toEqual(['/usr/bin/node', '/repo/tools/fake-claude/main.ts']);
     expect(config.claudeExtraArgs).toEqual(['--model', 'haiku', '--max-turns', '3']);
     expect(config.ghCommand).toEqual(['/opt/bin/gh']);

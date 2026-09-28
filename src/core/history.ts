@@ -7,7 +7,7 @@
  * `docs/derivations.md` → *History*.
  */
 import type { BranchRef, HistoryItem } from './api.ts';
-import type { Phase, SessionMode, SessionStatus, WorkType } from './model.ts';
+import type { FolderKind, Phase, SessionMode, SessionStatus, WorkType } from './model.ts';
 import type { TranscriptFacts } from './transcript.ts';
 
 /** A transcript that changed less than this long ago belongs to an active session (gap #5's 2 minutes). */
@@ -55,6 +55,26 @@ export interface HistorySession {
   readonly createdAt: string;
   /** Oldest first, removed ones included (the branch is kept, gap #3). */
   readonly worktrees: readonly HistoryWorktree[];
+  /** D14: the saved folder the session started in (`null` once removed from the list). */
+  readonly folder: string | null;
+  /** D14: the session's folder path (its root). */
+  readonly folderPath: string | null;
+}
+
+/**
+ * A folder History reads terminal sessions under (D14): every saved folder and
+ * every session's folder, each in the form(s) a transcript's `cwd` may use.
+ */
+export interface HistoryRoot {
+  /** An absolute folder path (as saved, or as resolved on disk: either may match a transcript's `cwd`). */
+  readonly path: string;
+  readonly kind: FolderKind;
+  /** The saved folder's id; `null` for a session's folder that is not saved. */
+  readonly folder: string | null;
+  /** The folder path rows name ({@link HistoryItem.folderPath}). */
+  readonly folderPath: string;
+  /** A repo folder's one solution (its name); `null` for a workspace. */
+  readonly repoName: string | null;
 }
 
 /** A parsed transcript file and its modification time. */
@@ -68,10 +88,10 @@ export interface HistoryInput {
   readonly sessions: readonly HistorySession[];
   readonly transcripts: readonly HistoryTranscript[];
   /**
-   * The workspace root as configured and as resolved on disk (either may match a
-   * transcript's `cwd`); empty when no root is configured (then no terminal rows).
+   * The folders terminal sessions may have started in (D14: saved folders and
+   * sessions' folders); empty = no terminal rows.
    */
-  readonly roots: readonly string[];
+  readonly roots: readonly HistoryRoot[];
   /** Case-insensitive path comparison (macOS, Windows). */
   readonly caseInsensitive: boolean;
   readonly now: number;
@@ -211,6 +231,8 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     solutions,
     outcome: sessionOutcome(session, facts),
     status: session.status,
+    folder: session.folder,
+    folderPath: session.folderPath,
   };
   return {
     item,
@@ -231,35 +253,48 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
   };
 }
 
-/** Where the session is, relative to the first root that contains `cwd`. */
-function relativeCwd(cwd: string, input: HistoryInput): string | null {
+/** Where a `cwd` is: the most specific root that contains it (a repo inside a saved workspace wins), and the part below it. */
+interface Located {
+  readonly root: HistoryRoot;
+  readonly relative: string;
+}
+
+function locate(cwd: string, input: HistoryInput): Located | null {
+  let best: Located | null = null;
   for (const root of input.roots) {
-    const relative = relativeToRoot(cwd, root, input.caseInsensitive);
-    if (relative !== null) return relative;
+    const relative = relativeToRoot(cwd, root.path, input.caseInsensitive);
+    if (relative === null) continue;
+    if (!best || trimSeparators(root.path).length > trimSeparators(best.root.path).length) best = { root, relative };
   }
-  return null;
+  return best;
+}
+
+/** The solution a located `cwd` belongs to: a repo folder's one solution, else the router layout's (`solutionOfPath`). */
+function solutionAt(where: Located): string | null {
+  return where.root.kind === 'repo' ? where.root.repoName : solutionOfPath(where.relative);
 }
 
 /**
- * A terminal-started session (gap #5): not in the database, started at the
- * workspace root or below it, its first prompt (or command) typed in an
- * interactive terminal (`entrypoint: "cli"`), and not a stub. Else `null`.
+ * A terminal-started session (gap #5): not in the database, started in one of
+ * the folders (D14) or below it, its first prompt (or command) typed in an
+ * interactive terminal (`entrypoint: "cli"`), and not a stub. Else `null`. The
+ * row belongs to the most specific folder its start `cwd` is in.
  */
 function terminalRow(transcript: HistoryTranscript, input: HistoryInput): HistoryRow | null {
   const { facts, mtimeMs } = transcript;
   if (facts.startCwd === null) return null;
-  const startRelative = relativeCwd(facts.startCwd, input);
-  if (startRelative === null) return null;
+  const start = locate(facts.startCwd, input);
+  if (start === null) return null;
   if (facts.entrypoint !== 'cli') return null;
   if (facts.firstPrompt === null && facts.firstCommand === null) return null;
 
   const branches: BranchRef[] = [];
   if (facts.gitBranch && facts.gitBranch !== 'HEAD') {
-    branches.push({ solution: solutionOfPath(startRelative) ?? 'root', branch: facts.gitBranch });
+    branches.push({ solution: solutionAt(start) ?? 'root', branch: facts.gitBranch });
   }
   const cwdSolutions = facts.cwds
-    .map((cwd) => relativeCwd(cwd, input))
-    .map((relative) => (relative === null ? null : solutionOfPath(relative)))
+    .map((cwd) => locate(cwd, input))
+    .map((where) => (where === null ? null : solutionAt(where)))
     .filter((solution): solution is string => solution !== null);
   const active = input.now - mtimeMs < ACTIVE_WINDOW_MS;
   const name =
@@ -276,6 +311,8 @@ function terminalRow(transcript: HistoryTranscript, input: HistoryInput): Histor
     solutions: withoutBranch(cwdSolutions, branches),
     outcome: facts.prNumber !== null ? `PR #${facts.prNumber}` : active ? 'active' : 'ended',
     status: active ? 'run' : 'idle',
+    folder: start.root.folder,
+    folderPath: start.root.folderPath,
   };
   return {
     item,
@@ -297,7 +334,7 @@ function terminalRow(transcript: HistoryTranscript, input: HistoryInput): Histor
 /**
  * Every History row, newest first (by start time): each stored session (with its
  * transcript's summary when one is found, whatever its entrypoints) plus the
- * terminal-started sessions from the transcripts. Transcripts of other roots,
+ * terminal-started sessions from the transcripts. Transcripts outside every folder,
  * stubs (no prompt and no command) and headless (`sdk-cli`) files that are not in
  * the database are left out.
  */

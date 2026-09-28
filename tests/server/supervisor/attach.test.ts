@@ -46,7 +46,7 @@ function envOf(w: SupervisorWorld, extraEnv: Record<string, string> = {}): Recor
 async function detachedSession(options: Parameters<typeof makeSupervisorWorld>[0] = {}) {
   world = await makeSupervisorWorld(options);
   const w = world;
-  const session = await w.supervisor.start(newSession({ task: 'Remember the code word: tangerine. Reply with just OK.' }));
+  const session = await w.supervisor.start(newSession({ task: 'Remember the code word: tangerine. Reply with just OK.' }), w.place);
   await waitForStatus(w.store, session.id, ['done']);
   const { resumeCommand } = await w.supervisor.detach(session.id);
   expect(resumeCommand).toBe(`claude --resume ${session.claudeSessionId}`);

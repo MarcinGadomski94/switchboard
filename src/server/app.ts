@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
+import { FolderService } from './folders/service.ts';
 import { HubBus } from './hub/bus.ts';
 import { type HubTimingOptions, SseHub } from './hub/hub.ts';
 import { forwardServiceEvents } from './hub/wire.ts';
@@ -60,10 +61,13 @@ export interface AppOptions {
    */
   readonly systemItems?: SystemItemService;
   /**
-   * First-run setup (M5.3, docs/setup.md). main.ts passes the one whose root its
-   * services started with; without one the app makes its own over `config` and the
-   * store. Either way a root saved by the wizard goes to the app's supervisor and
-   * worktree manager at once.
+   * The saved folders (D14, docs/folders.md). main.ts passes the one it opened;
+   * without one the app opens its own over the store.
+   */
+  readonly folders?: FolderService;
+  /**
+   * First-run setup (M5.3, docs/setup.md). Without one the app makes its own over
+   * the store and the folders.
    */
   readonly setup?: SetupService;
   /**
@@ -121,7 +125,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // Loop cards (M7.2, D9): the `loops` rows follow the sessions' events. Stopped before
   // anything closes, so no refresh runs against a closed store; the sweep at start
   // re-derives the loops whose process the last stop ended.
-  const loops = new LoopTracker({ store: options.store, events: supervisor, bus, workspaceRoot: options.config.workspaceRoot });
+  const loops = new LoopTracker({ store: options.store, events: supervisor, bus });
   const sweeping = loops.sweep().catch((error: unknown) => console.error('switchboard loops:', error));
   app.addHook('preClose', async () => {
     await sweeping;
@@ -134,21 +138,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     stopForwarding();
   });
-  const setup = options.setup ?? (await SetupService.open({ store: options.store, envRoot: options.config.workspaceRoot }));
-  const applyRoot = (root: string | null): void => {
-    supervisor.setWorkspaceRoot(root);
-    worktrees.setWorkspaceRoot(root);
-  };
-  // A root the wizard saved earlier, when the configuration has none (main.ts passes a config that already follows it).
-  if (setup.workspaceRoot !== options.config.workspaceRoot) applyRoot(setup.workspaceRoot);
-  const stopRootUpdates = setup.onRootChange(applyRoot);
-  app.addHook('onClose', async () => {
-    stopRootUpdates();
-  });
-  const config = setup.liveConfig(options.config);
+  // D14: no workspace root; every session, scan and schedule names its folder through this service.
+  const folders = options.folders ?? (await FolderService.open({ store: options.store }));
+  const setup = options.setup ?? new SetupService({ store: options.store, folders });
+  const config = options.config;
   let scheduler = options.scheduler;
   if (!scheduler) {
-    const own = new Scheduler({ store: options.store, sessions: { config, store: options.store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    const own = new Scheduler({ store: options.store, sessions: { store: options.store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
     app.addHook('onClose', async () => {
       await own.close();
     });
@@ -156,20 +152,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!options.systemItems) systemItems.useScheduleRunner(scheduleRunnerFor(own));
     scheduler = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, scheduler });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
 
-/** A supervisor for the configured CLI command, extra args and workspace root. */
+/** A supervisor for the configured CLI command and extra args (D14: each session brings its own folder). */
 export function createSupervisor(config: ServerConfig, store: Store, controlHandler?: ControlRequestHandler): SessionSupervisor {
   return new SessionSupervisor({
     store,
     claudeCommand: config.claudeCommand,
     claudeExtraArgs: config.claudeExtraArgs,
-    workspaceRoot: config.workspaceRoot,
-    // M4.1: the "Attach here" warning asks `claude agents --json` whether a terminal holds the session.
-    listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand, workspaceRoot: config.workspaceRoot }),
+    // M4.1: the "Attach here" warning asks `claude agents --json` (in the session's cwd) whether a terminal holds the session.
+    listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand }),
     ...(controlHandler ? { controlHandler } : {}),
   });
 }
@@ -186,11 +181,10 @@ export function createSessionServices(config: ServerConfig, store: Store, bus: H
   return { supervisor, questions };
 }
 
-/** A worktree manager for the configured workspace root and gh command, isolating through `supervisor`. */
+/** A worktree manager for the configured gh command, isolating through `supervisor` (D14: solutions resolve in each session's folder). */
 export function createWorktreeManager(config: ServerConfig, store: Store, supervisor: SessionSupervisor): WorktreeManager {
   return new WorktreeManager({
     store,
-    workspaceRoot: config.workspaceRoot,
     ghCommand: config.ghCommand,
     sessions: supervisor,
   });

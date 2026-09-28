@@ -65,7 +65,7 @@ const DARWIN: ServiceTarget = {
   nodePath: '/opt/homebrew/bin/node',
   appDir: '/Users/dev/Acme Corp/switchboard',
   entry: '/Users/dev/Acme Corp/switchboard/src/server/main.ts',
-  env: { SWITCHBOARD_WORKSPACE_ROOT: '/Users/dev/R&D <ws>', SWITCHBOARD_PORT: '4880' },
+  env: { SWITCHBOARD_DATA_DIR: '/Users/dev/R&D <data>', SWITCHBOARD_PORT: '4880' },
   searchPath: '/opt/homebrew/bin:/usr/bin:/bin',
   uid: 501,
   user: null,
@@ -80,7 +80,7 @@ const LINUX: ServiceTarget = {
   nodePath: '/usr/bin/node',
   appDir: '/home/dev/Acme Corp/switch%board',
   entry: '/home/dev/Acme Corp/switch%board/src/server/main.ts',
-  env: { SWITCHBOARD_WORKSPACE_ROOT: '/home/dev/work "space" $HOME 100%' },
+  env: { SWITCHBOARD_DATA_DIR: '/home/dev/work "space" $HOME 100%' },
   searchPath: '/usr/local/bin:/usr/bin',
   uid: null,
   user: null,
@@ -95,7 +95,7 @@ const WIN32: ServiceTarget = {
   nodePath: 'C:\\Program Files\\nodejs\\node.exe',
   appDir: 'D:\\Acme Corp\\switchboard',
   entry: 'D:\\Acme Corp\\switchboard\\src\\server\\main.ts',
-  env: { SWITCHBOARD_WORKSPACE_ROOT: 'D:\\acme', SWITCHBOARD_CLAUDE_BIN: 'C:\\Users\\dev\\.local\\bin\\claude.exe' },
+  env: { SWITCHBOARD_DATA_DIR: 'D:\\switchboard data', SWITCHBOARD_CLAUDE_BIN: 'C:\\Users\\dev\\.local\\bin\\claude.exe' },
   searchPath: null,
   uid: null,
   user: 'DEVBOX\\dev',
@@ -143,10 +143,10 @@ describe('launchd agent (macOS)', () => {
         '\t<dict>',
         '\t\t<key>PATH</key>',
         '\t\t<string>/opt/homebrew/bin:/usr/bin:/bin</string>',
+        '\t\t<key>SWITCHBOARD_DATA_DIR</key>',
+        '\t\t<string>/Users/dev/R&amp;D &lt;data&gt;</string>',
         '\t\t<key>SWITCHBOARD_PORT</key>',
         '\t\t<string>4880</string>',
-        '\t\t<key>SWITCHBOARD_WORKSPACE_ROOT</key>',
-        '\t\t<string>/Users/dev/R&amp;D &lt;ws&gt;</string>',
         '\t</dict>',
         '\t<key>RunAtLoad</key>',
         '\t<true/>',
@@ -168,7 +168,7 @@ describe('launchd agent (macOS)', () => {
   });
 
   it('refuses a control character rather than write a broken plist', () => {
-    expect(() => launchdPlist({ ...DARWIN, env: { SWITCHBOARD_WORKSPACE_ROOT: 'a\u0001b' } })).toThrow(ServiceFileError);
+    expect(() => launchdPlist({ ...DARWIN, env: { SWITCHBOARD_DATA_DIR: 'a\u0001b' } })).toThrow(ServiceFileError);
   });
 
   describe.runIf(process.platform === 'darwin')('read back by plutil (macOS only)', () => {
@@ -191,7 +191,7 @@ describe('launchd agent (macOS)', () => {
         Label: 'local.switchboard',
         ProgramArguments: [DARWIN.nodePath, DARWIN.entry],
         WorkingDirectory: DARWIN.appDir,
-        EnvironmentVariables: { PATH: DARWIN.searchPath, SWITCHBOARD_PORT: '4880', SWITCHBOARD_WORKSPACE_ROOT: '/Users/dev/R&D <ws>' },
+        EnvironmentVariables: { PATH: DARWIN.searchPath, SWITCHBOARD_DATA_DIR: '/Users/dev/R&D <data>', SWITCHBOARD_PORT: '4880' },
         RunAtLoad: true,
         KeepAlive: false,
         StandardOutPath: '/Users/dev/Library/Application Support/Switchboard/logs/service.log',
@@ -219,7 +219,7 @@ describe('systemd user unit (Linux)', () => {
         'Type=simple',
         'WorkingDirectory=/home/dev/Acme Corp/switch%%board',
         'Environment="PATH=/usr/local/bin:/usr/bin"',
-        'Environment="SWITCHBOARD_WORKSPACE_ROOT=/home/dev/work \\"space\\" $HOME 100%%"',
+        'Environment="SWITCHBOARD_DATA_DIR=/home/dev/work \\"space\\" $HOME 100%%"',
         'ExecStart=/usr/bin/node "/home/dev/Acme Corp/switch%%board/src/server/main.ts"',
         'KillMode=mixed',
         'Restart=no',
@@ -387,8 +387,8 @@ describe('env file (Windows, node --env-file)', () => {
 
     it('gives the service exactly the carried values', async () => {
       const env = {
-        SWITCHBOARD_WORKSPACE_ROOT: 'C:\\Users\\dev\\new folder\\ws #1',
         SWITCHBOARD_CLAUDE_BIN: '["C:\\\\node.exe","C:\\\\fake\\\\main.ts"]',
+        SWITCHBOARD_DATA_DIR: 'C:\\Users\\dev\\new folder\\data #1',
         SWITCHBOARD_PORT: "it's 4880",
       };
       const file = path.join(tmp, 'switchboard.env');

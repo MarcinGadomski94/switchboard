@@ -8,6 +8,7 @@ import type { UserPayload } from '../../../src/core/event-payload.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { delay } from '../../helpers/fake-claude.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
@@ -43,8 +44,9 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld }> {
   const worktrees = g.manager({ sessions: sw.supervisor });
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
+  await seedFolder(sw.store, g.workspace);
   app = await buildApp({
-    config: { ...base, port: PORT, workspaceRoot: g.workspace },
+    config: { ...base, port: PORT },
     token,
     store: sw.store,
     webRoot: sw.root,

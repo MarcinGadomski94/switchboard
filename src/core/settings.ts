@@ -21,12 +21,12 @@ export interface KnownSettings {
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
   readonly 'service.address': string;
-  /** `SWITCHBOARD_WORKSPACE_ROOT`, absolute; `null` when not configured. Read-only. */
+  /** D14: the default saved folder's path (`docs/folders.md`); `null` when no folder is saved. Read-only (Settings → Folders changes it). */
   readonly 'workspace.root': string | null;
   /**
-   * The router file at the workspace root: its first `# ` heading (`AGENTS.md
-   * (Workspace Router)`), `AGENTS.md` when it has none, `null` when there is no
-   * `AGENTS.md` (or no workspace root). Read-only.
+   * The router file of the default folder when it is a workspace: its first `# `
+   * heading (`AGENTS.md (Workspace Router)`), `AGENTS.md` when it has none,
+   * `null` when there is no `AGENTS.md`, no default folder, or it is a repo (D14). Read-only.
    */
   readonly 'workspace.router': string | null;
   /** How often the worktree manager asks gh for PR state, in minutes. Read-only. */

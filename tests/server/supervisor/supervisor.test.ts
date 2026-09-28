@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function start(options: Parameters<typeof makeSupervisorWorld>[0], overrides: Parameters<typeof newSession>[0] = {}) {
   world = await makeSupervisorWorld(options);
-  const session = await world.supervisor.start(newSession(overrides));
+  const session = await world.supervisor.start(newSession(overrides), world.place);
   return { w: world, session };
 }
 
@@ -414,7 +414,7 @@ describe('SessionSupervisor · pause / resume (D7)', () => {
     world = await makeSupervisorWorld({ command: [process.execPath, '-e', script, '--'] });
     world.env['STUB_LOG'] = path.join(world.root, 'stub.log');
     const w = world;
-    const session = await w.supervisor.start(newSession({ task: '' }));
+    const session = await w.supervisor.start(newSession({ task: '' }), w.place);
     const logged = await until(async () => {
       const text = await readFile(path.join(w.root, 'stub.log'), 'utf8').catch(() => '');
       return text.includes('cli-1') ? text : undefined;
@@ -436,7 +436,7 @@ describe('SessionSupervisor · shutdown', () => {
     const stored = await w.store.sessions.get(session.id);
     expect(stored).toMatchObject({ status: 'run', pid: null });
     expect(lifecycle(await w.store.events.list(session.id), 'stopped')).toBeDefined();
-    await expect(w.supervisor.start(newSession({ name: 'another' }))).rejects.toMatchObject({ code: 'closing' });
+    await expect(w.supervisor.start(newSession({ name: 'another' }), w.place)).rejects.toMatchObject({ code: 'closing' });
     await delay(10);
     expect((await readFakeLog(w.logFile)).filter((l) => l.kind === 'argv')).toHaveLength(1);
   });

@@ -6,6 +6,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { openWithHub } from './question-world.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * The Artifacts tab (M4.6) on the real code path (D13, no demo seed): `node
@@ -25,9 +26,10 @@ test.beforeAll(async () => {
   world = await makeGitWorld();
   const claudeConfig = path.join(world.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(world.root, 'data'), world.workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(world.root, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: world.workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

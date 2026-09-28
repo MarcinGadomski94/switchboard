@@ -5,6 +5,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M3.2 oracle (E2E): the Inbox view on the real code path (no demo seed, D13):
@@ -25,9 +26,10 @@ test.beforeAll(async () => {
   logFile = path.join(tmp, 'fake.log');
   await mkdir(workspace, { recursive: true });
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

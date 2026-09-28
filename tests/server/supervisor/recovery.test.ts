@@ -4,6 +4,8 @@
  * real leftover cannot be staged. The kill/restart oracle is restart.test.ts.
  */
 import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { LifecyclePayload, RequestPayload, ToolPayload, UserPayload } from '../../../src/core/event-payload.ts';
 import type { SessionRecord } from '../../../src/server/db/repos/sessions.ts';
@@ -48,7 +50,6 @@ function restarted(w: SupervisorWorld, options: { readonly controlHandler?: Cont
   const supervisor = new SessionSupervisor({
     store: w.store,
     claudeCommand: fakeClaudeCommand(),
-    workspaceRoot: w.workspace,
     env: w.env,
     timeouts: { ack: 3_000, result: 5_000, exit: 5_000, signal: 2_000 },
     ...(options.controlHandler ? { controlHandler: options.controlHandler } : {}),
@@ -110,9 +111,9 @@ describe('recoverSessions · after a clean shutdown (statuses kept, no leftovers
   it('run → --resume + the restart message; need → resumed idle, the note waits and goes with the next message; paused stays paused', async () => {
     world = await makeSupervisorWorld();
     const w = world;
-    const run = await w.supervisor.start(newSession({ name: 'running', task: '[fake:hang] Work.' }));
-    const need = await w.supervisor.start(newSession({ name: 'asking', task: '[fake:ask-2q] Ask.' }));
-    const paused = await w.supervisor.start(newSession({ name: 'resting', task: 'Reply with OK.' }));
+    const run = await w.supervisor.start(newSession({ name: 'running', task: '[fake:hang] Work.' }), w.place);
+    const need = await w.supervisor.start(newSession({ name: 'asking', task: '[fake:ask-2q] Ask.' }), w.place);
+    const paused = await w.supervisor.start(newSession({ name: 'resting', task: 'Reply with OK.' }), w.place);
     await waitForStatus(w.store, run.id, ['run']);
     await waitForStatus(w.store, need.id, ['need']);
     await waitForStatus(w.store, paused.id, ['done']);
@@ -165,7 +166,7 @@ describe('recoverSessions · after a clean shutdown (statuses kept, no leftovers
 
   it('nothing to do: no candidates → agents --json is not even called', async () => {
     world = await makeSupervisorWorld();
-    const s = await world.supervisor.start(newSession({ task: 'Reply with OK.' }));
+    const s = await world.supervisor.start(newSession({ task: 'Reply with OK.' }), world.place);
     await waitForStatus(world.store, s.id, ['done']);
     await world.supervisor.shutdown();
     let calls = 0;
@@ -223,6 +224,31 @@ describe('recoverSessions · after a crash (recorded pids)', () => {
     );
     const [spawned] = await sessionSpawns(world.logFile, 1);
     expect(spawned?.argv).toEqual(expect.arrayContaining(['--resume', run.claudeSessionId]));
+  });
+
+  it('D14: claude agents --json is asked once per session cwd, and each session resumes in its own folder', async () => {
+    world = await makeSupervisorWorld();
+    const other = path.join(world.root, 'other folder');
+    await mkdir(other, { recursive: true });
+    const a = await crashed(world, { name: 'in-ws-a', status: 'run', pid: 91_010 });
+    const b = await crashed(world, { name: 'in-ws-b', status: 'run', pid: 91_011 });
+    const c = await crashed(world, { name: 'in-other', status: 'run', pid: 91_012 });
+    await world.store.sessions.update(c.id, { cwd: other, root: other, rootKind: 'repo' });
+    const asked: Array<string | null | undefined> = [];
+    const report = await recoverSessions({
+      store: world.store,
+      supervisor: restarted(world),
+      listLive: async (cwd) => {
+        asked.push(cwd);
+        return [];
+      },
+      processes: stubProcesses(new Set([91_010, 91_011, 91_012])),
+    });
+    expect([...asked].sort()).toEqual([other, world.workspace].sort());
+    expect(report.sessions.map((r) => r.action)).toEqual(['resumed', 'resumed', 'resumed']);
+    const spawns = await sessionSpawns(world.logFile, 3);
+    const cwdOf = (session: SessionRecord) => spawns.find((line) => line.argv?.includes(session.claudeSessionId))?.cwd;
+    expect([cwdOf(a), cwdOf(b), cwdOf(c)]).toEqual([world.workspace, world.workspace, other]);
   });
 
   it('a live pid that agents --json cannot confirm (the list failed) is never signalled, and the session is not resumed', async () => {
@@ -426,10 +452,12 @@ describe('claude agents --json', () => {
     children.push(fake.child);
     fake.send(userLine('Work.'));
     await fake.waitFor((line) => line['type'] === 'system' && line['subtype'] === 'init');
-    const list = claudeAgentsLister({ claudeCommand: fakeClaudeCommand(), workspaceRoot: world.workspace, env: world.env });
-    expect(await list()).toEqual([{ pid: fake.child.pid, sessionId: id }]);
-    const failing = claudeAgentsLister({ claudeCommand: [process.execPath, '-e', 'process.exit(3)'], workspaceRoot: null, env: world.env });
-    expect(await failing()).toBeNull();
+    // D14: asked from a session's cwd; a folder that is gone falls back to the service's own folder.
+    const list = claudeAgentsLister({ claudeCommand: fakeClaudeCommand(), env: world.env });
+    expect(await list(world.workspace)).toEqual([{ pid: fake.child.pid, sessionId: id }]);
+    expect(await list(path.join(world.root, 'gone'))).toEqual([{ pid: fake.child.pid, sessionId: id }]);
+    const failing = claudeAgentsLister({ claudeCommand: [process.execPath, '-e', 'process.exit(3)'], env: world.env });
+    expect(await failing(null)).toBeNull();
     fake.kill('SIGKILL');
     await fake.exited;
   });

@@ -6,6 +6,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * A real-path world for the notification specs (M3.4, D13): `node src/server/main.ts`
@@ -54,10 +55,11 @@ export async function startQuestionWorld(label: string): Promise<QuestionWorld> 
     await git('add', '-A');
     await git('commit', '-q', '-m', 'init');
 
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
     const server = await startServer({
       ...gitEnv,
       SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),

@@ -52,7 +52,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   sessions: [
     'id', 'name', 'claude_session_id', 'status', 'work_type', 'mode', 'phase', 'coordination', 'qa_stack', 'ultracode',
     'solutions', 'created_at', 'attached', 'pid', 'requested_permission_mode', 'observed_permission_mode', 'cli_version',
-    'last_transcript_uuid', 'task', 'worktrees', 'qa_confluence_url', 'qa_figma_urls',
+    'last_transcript_uuid', 'task', 'worktrees', 'qa_confluence_url', 'qa_figma_urls', 'folder_id', 'root', 'root_kind',
   ],
   agents: ['session_id', 'name', 'description', 'solution_path', 'branch', 'status', 'tool_use_id', 'task_id', 'subagent_type'],
   events: ['session_id', 'agent_id', 'ts', 'kind', 'label', 'payload'],
@@ -68,7 +68,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   system_items: ['id', 'kind', 'source', 'title', 'detail', 'branches', 'actions', 'state'],
   worktrees: ['repo', 'branch', 'path', 'session_id', 'pr_number', 'pr_state', 'removable'],
   artifacts: ['type', 'name', 'solution', 'branch', 'session_id', 'meta', 'created_at'],
-  schedules: ['name', 'cron', 'template', 'paused'],
+  schedules: ['name', 'cron', 'template', 'paused', 'folder_id'],
+  folders: ['id', 'path', 'canonical_path', 'kind', 'is_default', 'added_at', 'last_used_at'],
   schedule_runs: ['schedule_id', 'ts', 'result'],
   loops: ['session_id', 'kind', 'iteration', 'cap', 'breaker_count', 'expires_at'],
   tools: ['id', 'name', 'url', 'show_in_sidebar'],
@@ -103,6 +104,59 @@ describe('shipped migrations', () => {
     expect(strict).toEqual([]);
     expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(database.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
+  });
+});
+
+describe('0003 folders (D14)', () => {
+  /** A database at version 2 (before D14), with what a pre-D14 install holds. */
+  async function beforeD14(settingValue: unknown | undefined) {
+    const database = await db();
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version <= 2));
+    const ts = '2026-09-27T10:00:00.000Z';
+    if (settingValue !== undefined) {
+      database.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)').run('setup.workspaceRoot', JSON.stringify(settingValue), ts);
+    }
+    const insert = database.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)');
+    insert.run('s-root', 'at-root', 'c-root', '/Users/dev/ws', ts, ts);
+    insert.run('s-elsewhere', 'elsewhere', 'c-else', '/Users/dev/other root', ts, ts);
+    insert.run('s-never', 'never-started', 'c-never', null, ts, ts);
+    database.prepare('INSERT INTO schedules (id, name, cron, template, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('sch', 'nightly', '0 2 * * *', '{}', ts, ts);
+    return { database, shipped };
+  }
+
+  it('moves a saved setup.workspaceRoot into the list as the default workspace; sessions and schedules get their folder', async () => {
+    const { database, shipped } = await beforeD14('/Users/dev/ws');
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 2).map((m) => m.version));
+    const folders = database.prepare('SELECT id, path, canonical_path, kind, is_default, last_used_at FROM folders').all();
+    expect(folders).toEqual([{ id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), path: '/Users/dev/ws', canonical_path: '/Users/dev/ws', kind: 'workspace', is_default: 1, last_used_at: null }]);
+    const id = folders[0]?.['id'];
+    const sessions = database.prepare('SELECT id, folder_id, root, root_kind FROM sessions ORDER BY id').all();
+    expect(sessions).toEqual([
+      { id: 's-elsewhere', folder_id: null, root: '/Users/dev/other root', root_kind: 'workspace' },
+      { id: 's-never', folder_id: null, root: null, root_kind: null },
+      { id: 's-root', folder_id: id, root: '/Users/dev/ws', root_kind: 'workspace' },
+    ]);
+    expect(database.prepare('SELECT folder_id FROM schedules').get()).toEqual({ folder_id: id });
+    // The setting stays (unread); the schema keeps foreign keys and one default at most.
+    expect(database.prepare("SELECT value FROM settings WHERE key = 'setup.workspaceRoot'").get()).toEqual({ value: '"/Users/dev/ws"' });
+    expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(() => database.prepare("INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at) VALUES ('x', '/b', '/b', 'repo', 1, 'now')").run()).toThrow(/UNIQUE/);
+    expect(() => database.prepare("INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at) VALUES ('y', '/c', '/c', 'other', 0, 'now')").run()).toThrow(/CHECK/);
+  });
+
+  it('without a saved root: no folder; sessions still remember their root', async () => {
+    const { database, shipped } = await beforeD14(undefined);
+    migrate(database, shipped);
+    expect(database.prepare('SELECT COUNT(*) AS n FROM folders').get()).toEqual({ n: 0 });
+    expect(database.prepare("SELECT folder_id, root, root_kind FROM sessions WHERE id = 's-root'").get()).toEqual({ folder_id: null, root: '/Users/dev/ws', root_kind: 'workspace' });
+    expect(database.prepare('SELECT folder_id FROM schedules').get()).toEqual({ folder_id: null });
+  });
+
+  it('ignores a stored root that is not a path string', async () => {
+    const { database, shipped } = await beforeD14(42);
+    migrate(database, shipped);
+    expect(database.prepare('SELECT COUNT(*) AS n FROM folders').get()).toEqual({ n: 0 });
   });
 });
 

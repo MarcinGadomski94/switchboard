@@ -1,15 +1,16 @@
-import type { NewSession } from '../../core/api.ts';
 import { SESSION_START_KIND } from '../../core/first-turn.ts';
 import { type RefusalBody, worktreeRefusal } from '../api/worktree-errors.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
+import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
+import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
-import { validateNewSession } from './validate.ts';
+import { type ValidNewSession, validateNewSession } from './validate.ts';
 
 /** What {@link startNewSession} needs (a subset of the route context). */
-export type SessionStartContext = Pick<ApiContext, 'config' | 'store' | 'providers' | 'supervisor' | 'worktrees'>;
+export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supervisor' | 'worktrees' | 'folders'>;
 
 /** Options for {@link startNewSession}. */
 export interface StartNewSessionOptions {
@@ -19,31 +20,67 @@ export interface StartNewSessionOptions {
 
 /** Result of {@link startNewSession}: the started session, or a refusal to send as it is. */
 export type StartNewSessionOutcome =
-  | { readonly ok: true; readonly session: NewSession; readonly record: SessionRecord }
+  | { readonly ok: true; readonly session: ValidNewSession; readonly folder: FolderRef; readonly record: SessionRecord }
   | { readonly ok: false; readonly status: number; readonly body: RefusalBody };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
- * The `POST /api/sessions` flow (M2.1 / M2.2 / M5.2 / M6.1), shared with the
- * scheduler (M7.1): validate the NewSession (422 with `{errors}`; read-only
- * solutions through the workspace scan), create its worktrees first (gap #1;
- * refusals as {@link worktreeRefusal}), build the first stdin message (M5.2: the
- * task + the confirmed answers; with no task the answers wait in the outbox) and
- * start the process. A supervisor refusal is thrown (a `SupervisorError`) after the
- * worktrees created for it are discarded again.
+ * The folder a NewSession names (D14): `folder` = a saved folder's id, omitted or
+ * `null` = the default folder. A refusal comes back as the HTTP answer: 422
+ * (`folder` not a string, or no such saved folder), 409 `no-folder` (none saved)
+ * or 409 `folder-missing` (the folder is gone from disk).
+ */
+export async function resolveSessionFolder(
+  context: Pick<ApiContext, 'folders'>,
+  body: unknown,
+  field = 'folder',
+): Promise<{ readonly ok: true; readonly folder: FolderRef } | { readonly ok: false; readonly status: number; readonly body: RefusalBody }> {
+  const raw = isRecord(body) ? body['folder'] : undefined;
+  if (raw !== undefined && raw !== null && (typeof raw !== 'string' || raw.trim() === '')) {
+    return { ok: false, status: 422, body: { error: 'invalid', errors: [{ field, message: 'folder must be the id of a saved folder' }] } };
+  }
+  try {
+    return { ok: true, folder: await context.folders.resolveForSession(typeof raw === 'string' ? raw : null) };
+  } catch (error) {
+    if (!(error instanceof FolderError)) throw error;
+    if (error.code === 'not-found') return { ok: false, status: 422, body: { error: 'invalid', errors: [{ field, message: error.message }] } };
+    return { ok: false, status: error.status, body: { error: error.code, message: error.message } };
+  }
+}
+
+/**
+ * The `POST /api/sessions` flow (M2.1 / M2.2 / M5.2 / M6.1; D14), shared with the
+ * scheduler (M7.1): resolve the session's folder (default when omitted),
+ * validate the NewSession for it (422 with `{errors}`; read-only solutions
+ * through the workspace scan; a repo folder allows only its own solution),
+ * create its worktrees first (gap #1; refusals as {@link worktreeRefusal}), pick
+ * the process's cwd (the workspace root; the repo, or its worktree), build the
+ * first stdin message (M5.2: task + the confirmed answers for a workspace, only
+ * the worktree note for a repo; with no task the block waits in the outbox) and
+ * start the process. A supervisor refusal is thrown (a `SupervisorError`) after
+ * the worktrees created for it are discarded again.
  */
 export async function startNewSession(context: SessionStartContext, body: unknown, options: StartNewSessionOptions = {}): Promise<StartNewSessionOutcome> {
-  const { store, supervisor, providers, worktrees } = context;
+  const { store, supervisor, providers, worktrees, folders } = context;
+  const resolved = await resolveSessionFolder(context, body);
+  if (!resolved.ok) return resolved;
+  const { folder } = resolved;
   const scan = providers.solutions;
-  const readOnly = scan
-    ? async (solution: string): Promise<boolean> => {
-        // The scanner's own rule (M6.1, docs/solutions.md) resolves the name like the worktree manager does.
-        if (scan.isReadOnly) return scan.isReadOnly(solution);
-        const groups = await scan.solutions();
-        return groups.some((group) => group.solutions.some((s) => s.name === solution && s.rule === 'read-only'));
-      }
-    : undefined;
+  const readOnly =
+    scan && folder.kind === 'workspace'
+      ? async (solution: string): Promise<boolean> => {
+          // The scanner's own rule (M6.1, docs/solutions.md) resolves the name like the worktree manager does.
+          if (scan.isReadOnly) return scan.isReadOnly(solution, folder);
+          const groups = await scan.solutions(folder);
+          return groups.some((group) => group.solutions.some((s) => s.name === solution && s.rule === 'read-only'));
+        }
+      : undefined;
   const result = await validateNewSession(body, {
     nameTaken: async (name) => (await store.sessions.getByName(name)) !== null,
+    folder: { kind: folder.kind, repoName: repoSolutionName(folder) },
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
@@ -52,7 +89,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   let created: WorktreeRecord[] = [];
   if (input.worktrees) {
     try {
-      created = await worktrees.createForSession(input.name, input.solutions);
+      created = await worktrees.createForSession(input.name, input.solutions, folder);
     } catch (error) {
       if (!(error instanceof WorktreeError)) throw error;
       return { ok: false, ...worktreeRefusal(error, 'solutions') };
@@ -62,18 +99,21 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     // M5.2: the task + the confirmed session-start answers are the first stdin message; with no task the
     // process starts idle and the answers wait in the outbox for the developer's first message.
     const firstTurn = await buildFirstTurn(input, {
-      workspaceRoot: context.config.workspaceRoot,
+      folder,
       worktrees: created,
-      resolveRepo: (solution) => worktrees.resolveRepo(solution),
+      resolveRepo: (solution) => worktrees.resolveRepo(solution, folder),
     });
-    const record = await supervisor.start(input, firstTurn.message, {
+    // D14: a workspace session runs at the folder root (the router applies); a repo session in the repo, or in its worktree.
+    const cwd = folder.kind === 'repo' && created[0] ? created[0].path : folder.root;
+    const record = await supervisor.start(input, { folder, cwd }, firstTurn.message, {
       beforeSpawn: async (session) => {
         await worktrees.assign(created, session.id);
-        if (firstTurn.message === '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
+        if (firstTurn.message === '' && firstTurn.block !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
         if (options.beforeSpawn) await options.beforeSpawn(session);
       },
     });
-    return { ok: true, session: input, record };
+    await folders.markUsed(folder.id);
+    return { ok: true, session: input, folder, record };
   } catch (error) {
     if (created.length > 0 && (await store.sessions.getByName(input.name)) === null) await worktrees.discard(created);
     throw error;

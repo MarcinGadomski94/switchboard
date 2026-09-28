@@ -391,7 +391,7 @@ export function kebab(text: string): string {
  * `<schedule>: <title>.` plus ` Fix on <branch>.` when the run's session had a
  * branch, the schedule template's solutions, mode, phase, coordination and toggles
  * where it has valid ones, work type feature, and the router's recommended mode
- * (single) and phase (UI-first) where it has none.
+ * (single) and phase (UI-first) where it has none; D14: the schedule's folder.
  */
 export function fixSessionPrefill(schedule: ScheduleRecord, title: string, branches: readonly BranchRef[]): NewSessionPrefill {
   const template = isRecord(schedule.template) ? schedule.template : {};
@@ -413,6 +413,9 @@ export function fixSessionPrefill(schedule: ScheduleRecord, title: string, branc
   if (coordination) prefill.coordination = coordination;
   if (typeof template['worktrees'] === 'boolean') prefill.worktrees = template['worktrees'];
   if (typeof template['ultracode'] === 'boolean') prefill.ultracode = template['ultracode'];
+  // D14: the fix session starts in the schedule's folder.
+  const folder = schedule.folderId ?? (typeof template['folder'] === 'string' && template['folder'] !== '' ? template['folder'] : null);
+  if (folder) prefill.folder = folder;
   return prefill;
 }
 

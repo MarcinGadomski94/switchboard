@@ -8,7 +8,6 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NewSession, Schedule } from '../../../src/core/api.ts';
-import { loadConfig } from '../../../src/server/config.ts';
 import type { ScheduleRunRecord } from '../../../src/server/db/repos/schedules.ts';
 import { type HubMessage, HubBus } from '../../../src/server/hub/bus.ts';
 import { QuestionPipeline } from '../../../src/server/inbox/pipeline.ts';
@@ -17,6 +16,8 @@ import { SKIPPED_SUMMARY, Scheduler, SchedulerError, runResultFor, scheduleRunne
 import type { ControlRequestHandler } from '../../../src/server/supervisor/supervisor.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
 import { FakeClock } from '../../helpers/clock.ts';
+import { FolderService } from '../../../src/server/folders/service.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, stdinOf, until } from '../../helpers/supervisor.ts';
 
@@ -64,12 +65,13 @@ async function setup(start: Date, options: { readonly scenario?: string } = {}):
   holder.pipeline = new QuestionPipeline({ store: w.store, bus }).bind(w.supervisor);
   const errors: unknown[] = [];
   const systemItems = new SystemItemService({ store: w.store, bus, worktrees, onError: (error) => errors.push(error) });
-  const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
-  const config = { ...base, workspaceRoot: w.workspace };
+  // D14: the world's workspace is the saved (default) folder the schedules' runs start in.
+  await seedFolder(w.store, w.workspace);
+  const folders = new FolderService({ store: w.store });
   const clock = new FakeClock(start);
   const scheduler = new Scheduler({
     store: w.store,
-    sessions: { config, store: w.store, providers: {}, supervisor: w.supervisor, worktrees },
+    sessions: { store: w.store, providers: {}, supervisor: w.supervisor, worktrees, folders },
     updates: w.supervisor,
     bus,
     systemItems,
@@ -140,7 +142,10 @@ describe('Scheduler · Save schedule (D8)', () => {
       running: false,
       nextRunAt: at(2).toISOString(),
     });
-    expect(created.template).toEqual({ ...template({ task: 'Check the build and report.\nThen stop.' }) });
+    // D14: the stored template carries the folder the runs start in (the default folder here).
+    const folder = (await r.w.store.folders.getDefault())?.id;
+    expect(created.folder).toBe(folder);
+    expect(created.template).toEqual({ ...template({ task: 'Check the build and report.\nThen stop.' }), folder });
 
     // The name is unique among schedules.
     const duplicate = await save(r, { cron: '0 3 * * *', template: template() }).catch((caught: unknown) => caught);
@@ -327,17 +332,39 @@ describe('Scheduler · runs in progress, questions and failures', () => {
   });
 });
 
+describe('Scheduler · folders (D14)', () => {
+  it('the template stores its folder; runs start there (a repo folder: its one solution, in the repo); an unknown folder is refused; a used folder cannot be removed', async () => {
+    const r = await setup(at(2, 0));
+    const repoPath = await r.g.makeRepo(path.join(r.w.root, 'solo'));
+    const repo = await seedFolder(r.w.store, repoPath, { kind: 'repo' });
+    const unknown = await save(r, { cron: '0 2 * * *', template: { name: 'nowhere', task: 'Hi.', folder: 'nope', worktrees: false, ultracode: false } }).catch((caught: unknown) => caught);
+    expect(unknown).toBeInstanceOf(SchedulerError);
+    expect((unknown as SchedulerError).errors.map((e) => e.field)).toEqual(['template.folder']);
+
+    const schedule = await save(r, { cron: '0 2 * * *', template: { name: 'solo-nightly', task: 'Check the repo.', folder: repo.id, worktrees: false, ultracode: false } });
+    expect(schedule.folder).toBe(repo.id);
+    expect(schedule.template).toMatchObject({ folder: repo.id, solutions: ['solo'], workType: null, mode: null, phase: null });
+    expect((await r.w.store.schedules.get(schedule.id))?.folderId).toBe(repo.id);
+    const run = await r.scheduler.runNow(schedule.id);
+    const session = await r.w.store.sessions.get(run.sessionId ?? '');
+    expect(session).toMatchObject({ cwd: repoPath, root: repoPath, rootKind: 'repo', folderId: repo.id, solutions: ['solo'] });
+    await waitForRun(r, schedule.id, 'ok');
+    await expect(new FolderService({ store: r.w.store }).remove(repo.id)).rejects.toMatchObject({ code: 'folder-in-use', schedules: ['solo-nightly'] });
+    expect(r.errors).toEqual([]);
+  });
+});
+
 describe('Scheduler · restart', () => {
   it('follows unfinished runs of live sessions again and fails a start that was cut short', async () => {
     const r = await setup(at(2, 0));
     const schedule = await r.w.store.schedules.create({ name: 'restart-check', cron: '0 2 * * *', template: template({ name: 'restart-check' }) });
     const cut = await r.w.store.schedules.addRun({ scheduleId: schedule.id, ts: at(1, 0).toISOString(), result: 'running', triggeredBy: 'cron' });
-    const record = await r.w.supervisor.start(newSession({ name: 'restart-check-0928-0200', solutions: ['mobile'] }));
+    const record = await r.w.supervisor.start(newSession({ name: 'restart-check-0928-0200', solutions: ['mobile'] }), r.w.place);
     const live = await r.w.store.schedules.addRun({ scheduleId: schedule.id, ts: at(2, 0).toISOString(), result: 'running', sessionId: record.id, triggeredBy: 'cron' });
     // A second scheduler over the same store = the service after a restart.
     const again = new Scheduler({
       store: r.w.store,
-      sessions: { config: { ...loadConfig({ env: {}, platform: 'linux', home: r.w.root, cwd: r.w.root }), workspaceRoot: r.w.workspace }, store: r.w.store, providers: {}, supervisor: r.w.supervisor, worktrees: r.worktrees },
+      sessions: { store: r.w.store, providers: {}, supervisor: r.w.supervisor, worktrees: r.worktrees, folders: new FolderService({ store: r.w.store }) },
       updates: r.w.supervisor,
       clock: r.clock,
       onError: (error) => r.errors.push(error),

@@ -11,6 +11,7 @@ import type {
 } from '../providers.ts';
 import type { DemoData, DemoFile } from './data.ts';
 import { createDemoLoginService } from './login-service.ts';
+import { DEMO_FOLDER_ID } from './seed.ts';
 
 /**
  * Demo implementations of the provider interfaces (providers.ts) for the data the
@@ -167,6 +168,9 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
             solutions: parseBranchRefs(row.branches).length === 0 ? [row.branches] : [],
             outcome: row.outcome,
             status: row.status,
+            // D14: every demo row belongs to the demo's one folder (the prototype's root).
+            folder: DEMO_FOLDER_ID,
+            folderPath: data.solutions.root,
           };
         });
     },

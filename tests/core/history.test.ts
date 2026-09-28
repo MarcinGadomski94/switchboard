@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_WINDOW_MS,
+  type HistoryRoot,
   type HistorySession,
   type HistoryTranscript,
   buildHistoryRows,
@@ -81,6 +82,8 @@ function session(fields: Partial<HistorySession>): HistorySession {
     solutions: ['alpha-front', 'mobile'],
     createdAt: '2026-09-26T16:40:00.000Z',
     worktrees: [],
+    folder: null,
+    folderPath: null,
     ...fields,
   };
 }
@@ -88,8 +91,14 @@ function session(fields: Partial<HistorySession>): HistorySession {
 const NOW = Date.parse('2026-09-28T12:00:00.000Z');
 const OLD = NOW - 60 * 60_000;
 
-function rows(sessions: HistorySession[], transcripts: HistoryTranscript[], roots: string[] = [ROOT], caseInsensitive = false) {
-  return buildHistoryRows({ sessions, transcripts, roots, caseInsensitive, now: NOW });
+/** A workspace folder History reads under (D14): plain paths are unsaved workspaces. */
+function workspaceRoot(root: string, folder: string | null = null): HistoryRoot {
+  return { path: root, kind: 'workspace', folder, folderPath: root, repoName: null };
+}
+
+function rows(sessions: HistorySession[], transcripts: HistoryTranscript[], roots: ReadonlyArray<string | HistoryRoot> = [ROOT], caseInsensitive = false) {
+  const folders = roots.map((root) => (typeof root === 'string' ? workspaceRoot(root) : root));
+  return buildHistoryRows({ sessions, transcripts, roots: folders, caseInsensitive, now: NOW });
 }
 
 describe('transcript facts (M7.4, docs/spike-m0.md → Sample parse)', () => {
@@ -235,6 +244,8 @@ describe('History rows (M7.4, gap #5)', () => {
       solutions: ['contracts'],
       outcome: 'PR #231 merged',
       status: 'done',
+      folder: null,
+      folderPath: null,
     });
     expect(historyBranchLine(row!)).toBe('alpha-front ⎇ session/pay-flow · mobile ⎇ session/pay-flow · contracts');
   });
@@ -335,6 +346,33 @@ describe('History rows (M7.4, gap #5)', () => {
     expect(filterHistory(rows([], [{ facts: facts1, mtimeMs: OLD }], [ROOT], true), '')).toHaveLength(1);
     expect(filterHistory(rows([], [{ facts: facts1, mtimeMs: OLD }], [ROOT], false), '')).toHaveLength(0);
     expect(filterHistory(rows([], [{ facts: baseFacts({}), mtimeMs: OLD }], ['/real/root', ROOT]), '')).toHaveLength(1);
+  });
+
+  it('D14: each row carries its folder; a terminal row belongs to the most specific folder; in a repo folder its one solution', () => {
+    const repoRoot = `${ROOT}/other/switchboard`;
+    const roots: HistoryRoot[] = [
+      workspaceRoot(ROOT, 'ws-id'),
+      { path: repoRoot, kind: 'repo', folder: 'repo-id', folderPath: repoRoot, repoName: 'switchboard' },
+    ];
+    const stored = session({ folder: 'ws-id', folderPath: ROOT });
+    const all = filterHistory(
+      rows(
+        [stored],
+        [
+          { facts: baseFacts({ sessionId: 'in-ws', startCwd: `${ROOT}/mobile`, cwds: [`${ROOT}/mobile`], gitBranch: 'main', startedAt: '2026-09-28T01:00:00.000Z' }), mtimeMs: OLD },
+          {
+            facts: baseFacts({ sessionId: 'in-repo', startCwd: `${repoRoot}/src`, cwds: [`${repoRoot}/src`, `${ROOT}/nugets/typography-nuget`], gitBranch: 'dev', startedAt: '2026-09-28T02:00:00.000Z' }),
+            mtimeMs: OLD,
+          },
+        ],
+        roots,
+      ),
+      '',
+    );
+    const byId = Object.fromEntries(all.map((item) => [item.claudeSessionId, item]));
+    expect(byId['claude-1']).toMatchObject({ folder: 'ws-id', folderPath: ROOT });
+    expect(byId['in-ws']).toMatchObject({ folder: 'ws-id', folderPath: ROOT, branches: [{ solution: 'mobile', branch: 'main' }] });
+    expect(byId['in-repo']).toMatchObject({ folder: 'repo-id', folderPath: repoRoot, branches: [{ solution: 'switchboard', branch: 'dev' }], solutions: ['typography-nuget'] });
   });
 
   it('lists newest first and searches the row, the task, every prompt, the whole last reply and the folders', () => {

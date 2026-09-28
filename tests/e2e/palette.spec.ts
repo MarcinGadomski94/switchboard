@@ -7,6 +7,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { REPO_ROOT } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * The ⌘K / Ctrl+K palette (M8.3) on the real code path (D13, no demo seed):
@@ -30,9 +31,10 @@ test.beforeAll(async () => {
   await world.makeRepo(path.join(ws, 'deprecated', 'microfrontends', 'old-front'));
   const claudeConfig = path.join(world.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(world.root, 'data'), ws);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(world.root, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: ws,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

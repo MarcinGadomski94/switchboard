@@ -2,10 +2,19 @@ import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NewSession } from '../../src/core/api.ts';
-import { SESSION_START_HEADER, asksMobileCoordination, firstTurnPayload, sessionStartBlock, withoutSessionStartBlock } from '../../src/core/first-turn.ts';
+import {
+  REPO_WORKTREE_NOTE_HEADER,
+  SESSION_START_HEADER,
+  asksMobileCoordination,
+  firstTurnPayload,
+  repoWorktreeNote,
+  sessionStartBlock,
+  withoutSessionStartBlock,
+} from '../../src/core/first-turn.ts';
 import type { WorktreeRecord } from '../../src/server/db/repos/worktrees.ts';
 import { buildFirstTurn, sessionStartAnswers } from '../../src/server/sessions/first-turn.ts';
 import { WorktreeError } from '../../src/server/worktrees/manager.ts';
+import { folderRef } from '../helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 
 function session(overrides: Partial<NewSession> = {}): NewSession {
@@ -106,7 +115,7 @@ describe('sessionStartAnswers (M5.2): workspace folders', () => {
     const record = { repo: 'web-front', repoPath: path.join(root, 'microfrontends', 'web-front'), path: path.join(root, 'microfrontends', 'web-front-wt-demo'), branch: 'session/demo' } as WorktreeRecord;
     const resolved: string[] = [];
     const answers = await sessionStartAnswers(session({ solutions: ['web-front', 'mobile', 'nowhere', 'outside'], worktrees: true }), {
-      workspaceRoot: root,
+      folder: folderRef(root),
       worktrees: [record],
       resolveRepo: async (solution) => {
         resolved.push(solution);
@@ -120,13 +129,44 @@ describe('sessionStartAnswers (M5.2): workspace folders', () => {
     expect(answers.worktrees).toEqual([{ folder: 'microfrontends/web-front', path: record.path, branch: 'session/demo' }]);
   });
 
-  it('without a (usable) workspace root the names are used as given', async () => {
+  it('a name that resolves outside the folder (or not at all) is used as given', async () => {
     const sources = { worktrees: [], resolveRepo: async () => ({ solution: 'x', repoPath: '/x' }) };
-    expect((await sessionStartAnswers(session({ solutions: ['a\\b'] }), { ...sources, workspaceRoot: null })).folders).toEqual(['a/b']);
-    expect((await sessionStartAnswers(session(), { ...sources, workspaceRoot: '/does/not/exist/switchboard' })).folders).toEqual(['web-front']);
-    const turn = await buildFirstTurn(session({ task: '' }), { ...sources, workspaceRoot: null });
+    expect((await sessionStartAnswers(session({ solutions: ['a\\b'] }), { ...sources, folder: folderRef('/does/not/exist/switchboard') })).folders).toEqual(['a/b']);
+    expect((await sessionStartAnswers(session(), { ...sources, folder: folderRef('/does/not/exist/switchboard') })).folders).toEqual(['web-front']);
+    const turn = await buildFirstTurn(session({ task: '' }), { ...sources, folder: folderRef('/does/not/exist/switchboard') });
     expect(turn.message).toBe('');
     expect(turn.block).toContain('- Solutions in scope: web-front');
+  });
+});
+
+describe('buildFirstTurn · repo folder (D14): only the worktree note, no router answers', () => {
+  const repo = folderRef('/w/switchboard', 'repo');
+  const noResolve = async (): Promise<never> => {
+    throw new Error('a repo folder resolves nothing');
+  };
+  const repoSession = { ...session({ solutions: ['switchboard'] }), workType: null, mode: null, phase: null, coordination: null };
+
+  it('without a worktree the task goes out alone', async () => {
+    const turn = await buildFirstTurn(repoSession, { folder: repo, worktrees: [], resolveRepo: noResolve });
+    expect(turn).toEqual({ message: 'Do the thing.', block: '' });
+    expect(await buildFirstTurn({ ...repoSession, task: '  ' }, { folder: repo, worktrees: [], resolveRepo: noResolve })).toEqual({ message: '', block: '' });
+  });
+
+  it('with its worktree the task + the note (worktree, branch, base, main checkout)', async () => {
+    const record = { repo: 'switchboard', repoPath: '/w/switchboard', path: '/w/switchboard-wt-demo', branch: 'session/demo', baseRef: 'main' } as WorktreeRecord;
+    const turn = await buildFirstTurn({ ...repoSession, worktrees: true }, { folder: repo, worktrees: [record], resolveRepo: noResolve });
+    const note = repoWorktreeNote({ path: record.path, branch: 'session/demo', base: 'main', repoPath: '/w/switchboard' });
+    expect(turn).toEqual({ message: `Do the thing.\n\n${note}`, block: note });
+    expect(note.split('\n')).toEqual([
+      REPO_WORKTREE_NOTE_HEADER,
+      '- Worktree: /w/switchboard-wt-demo (branch session/demo, from main); it is your working folder: make every change here.',
+      '- Main checkout: /w/switchboard (leave it as it is).',
+    ]);
+    expect(turn.message).not.toContain(SESSION_START_HEADER[0]);
+    expect(turn.message).not.toContain('Work type');
+    // The chat shows only what the developer typed.
+    expect(withoutSessionStartBlock(turn.message)).toBe('Do the thing.');
+    expect(withoutSessionStartBlock(note)).toBe('');
   });
 });
 

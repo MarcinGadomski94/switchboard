@@ -14,6 +14,7 @@ import { storeFile } from '../../../src/server/db/store.ts';
 import { RESTART_MESSAGE, RESTART_NOTE } from '../../../src/server/supervisor/recovery.ts';
 import { TOKEN_FILE } from '../../../src/server/token.ts';
 import { fakeClaudeBinEnv } from '../../../tools/fake-claude/command.ts';
+import { seedFolderInDataDir } from '../../helpers/folders.ts';
 import { BASELINE, delay, userLine } from '../../helpers/fake-claude.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type ServerProcess, spawnServer, startServer } from '../../helpers/server-process.ts';
@@ -95,9 +96,10 @@ describe('M2.4 crash recovery (server child process + fake-claude, SIGKILL and r
     const dataDir = path.join(tmp, 'data');
     await mkdir(workspace, { recursive: true });
     await mkdir(configDir, { recursive: true });
+    // D14: the workspace is a saved folder (the default) in the server's database, as a user saved it.
+    await seedFolderInDataDir(dataDir, workspace);
     const env = {
       SWITCHBOARD_DATA_DIR: dataDir,
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       CLAUDE_CONFIG_DIR: configDir,
       FAKE_CLAUDE_LOG: logFile,

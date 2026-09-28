@@ -9,6 +9,7 @@ import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { stubToolProbes } from './probes.ts';
 import { type DemoApp, startDemoApp } from './visual/harness.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M7.3 oracle: the global Artifacts view. The real code path first (no demo seed,
@@ -111,9 +112,10 @@ test.describe('real path (fake-claude, temp workspace + git worktree)', () => {
     await git(repo, gitEnv, 'add', '-A');
     await git(repo, gitEnv, 'commit', '-q', '-m', 'init');
     await mkdir(path.join(workspace, 'mobile'), { recursive: true });
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
     server = await startServer({
       SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: claudeConfig,

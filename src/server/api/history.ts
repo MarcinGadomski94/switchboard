@@ -18,12 +18,13 @@ interface HistoryQueryString {
  * row, the task, the prompts, the last reply, the folders and the session id.
  * The rows come from `providers.history` (the demo's when `SWITCHBOARD_DEMO=1`),
  * else from the stored sessions + the transcripts under `$CLAUDE_CONFIG_DIR` or
- * `~/.claude` for the configured workspace root ({@link TranscriptHistory}).
+ * `~/.claude` for every saved folder and every session's folder (D14,
+ * {@link TranscriptHistory}); each row carries its folder.
  */
 export async function registerHistoryRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const provider =
     context.providers.history ??
-    new TranscriptHistory({ store: context.store, workspaceRoot: context.config.workspaceRoot, configDir: claudeConfigDir() });
+    new TranscriptHistory({ store: context.store, configDir: claudeConfigDir() });
 
   app.get<{ Querystring: HistoryQueryString }>('/api/history', async (request): Promise<HistoryItem[]> => {
     const rawQ = request.query.q;

@@ -10,6 +10,7 @@ import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { type HubMessage, HubBus } from '../../../src/server/hub/bus.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, until } from '../../helpers/supervisor.ts';
 
 const PORT = 4873; // inject() opens no socket; the port feeds the Host check only
@@ -24,7 +25,8 @@ async function setup(): Promise<SupervisorWorld> {
   world = await makeSupervisorWorld();
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: world.root }, platform: 'linux', home: world.root, cwd: world.root });
-  const config = { ...base, port: PORT, workspaceRoot: world.workspace };
+  const config = { ...base, port: PORT };
+  await seedFolder(world.store, world.workspace);
   const bus = new HubBus();
   messages = [];
   bus.subscribe((message) => messages.push(message));

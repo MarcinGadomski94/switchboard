@@ -11,6 +11,7 @@ import {
   isEditableSetting,
 } from '../../core/settings.ts';
 import type { ServerConfig } from '../config.ts';
+import type { FolderRecord } from '../db/repos/folders.ts';
 import type { SettingRepository } from '../db/repos/settings.ts';
 import type { FieldError } from '../sessions/validate.ts';
 import { DEFAULT_PR_POLL_MS } from '../worktrees/manager.ts';
@@ -104,9 +105,15 @@ export async function routerTitle(workspaceRoot: string | null): Promise<string 
  * Every known setting (`GET /api/settings`): the stored editable values (their
  * default until set), the stored `service.startAtLogin` (`false` until M9.1 sets
  * it), and what the service reports about itself from its configuration, the
- * router file and the worktree manager's PR poll interval.
+ * default folder (D14: `workspace.root` / `workspace.router`; `null` without
+ * one, the router `null` for a repo folder) and the worktree manager's PR poll
+ * interval.
  */
-export async function readSettings(repo: SettingRepository, config: Pick<ServerConfig, 'host' | 'port' | 'workspaceRoot'>): Promise<KnownSettings> {
+export async function readSettings(
+  repo: SettingRepository,
+  config: Pick<ServerConfig, 'host' | 'port'>,
+  defaultFolder: Pick<FolderRecord, 'path' | 'kind'> | null,
+): Promise<KnownSettings> {
   const stored = await repo.getAll();
   const editable = Object.fromEntries(
     EDITABLE_SETTINGS.map((key) => {
@@ -120,8 +127,8 @@ export async function readSettings(repo: SettingRepository, config: Pick<ServerC
     ...editable,
     'service.startAtLogin': typeof startAtLogin === 'boolean' ? startAtLogin : false,
     'service.address': `${config.host}:${config.port}`,
-    'workspace.root': config.workspaceRoot,
-    'workspace.router': await routerTitle(config.workspaceRoot),
+    'workspace.root': defaultFolder?.path ?? null,
+    'workspace.router': defaultFolder?.kind === 'workspace' ? await routerTitle(defaultFolder.path) : null,
     'github.prPollMinutes': DEFAULT_PR_POLL_MS / 60_000,
   };
 }

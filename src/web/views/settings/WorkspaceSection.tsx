@@ -24,7 +24,7 @@ export function WorkspaceSection({ settings }: { readonly settings: KnownSetting
   let note: string | null = null;
   if (solutions.data && rows.length === 0) note = 'No solutions found.';
   else if (!solutions.data && solutions.error) {
-    note = errorCode === 'workspace-not-configured' ? 'No workspace root is configured.' : 'The scan could not be loaded.';
+    note = errorCode === 'no-folder' ? 'No folder is saved yet.' : 'The scan could not be loaded.';
   }
   return (
     <>

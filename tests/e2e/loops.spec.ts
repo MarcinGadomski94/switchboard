@@ -6,6 +6,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { openWithHub } from './question-world.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * Loop cards (M7.2, D9) on the real code path (D13, no demo seed): `node
@@ -33,9 +34,10 @@ test.beforeAll(async () => {
   await mkdir(path.join(tmp, 'claude-config'), { recursive: true });
   const prsFile = path.join(tmp, 'fake-gh-prs.json');
   await writeFile(prsFile, '{}');
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),

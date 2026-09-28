@@ -8,6 +8,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { type StubServer, htmlPage, startStubServer } from '../helpers/stub-http.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M8.2 oracle: Settings on the real code path (no demo seed, D13). The real
@@ -85,9 +86,10 @@ test.beforeAll(async () => {
   }
   await writeFile(path.join(workspace, 'AGENTS.md'), '# AGENTS.md (Workspace Router)\n\nFixture workspace for the Settings E2E.\n');
   cmStub = await stub('Codebase Memory stub');
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(dataDir, workspace);
   env = {
     SWITCHBOARD_DATA_DIR: dataDir,
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

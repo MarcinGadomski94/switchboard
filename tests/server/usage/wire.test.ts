@@ -80,7 +80,7 @@ describe('usage on /hub `system` (real poller with fake-claude, non-demo)', () =
     const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: dataDir }, platform: 'linux', home: w.root, cwd: w.root });
     ({ app, port } = await listenOnFreeTestPort((candidate) =>
       buildApp({
-        config: { ...base, port: candidate, workspaceRoot: w.workspace },
+        config: { ...base, port: candidate },
         token,
         store: w.store,
         webRoot: w.root,

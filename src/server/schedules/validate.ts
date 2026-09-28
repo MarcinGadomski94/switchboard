@@ -1,6 +1,11 @@
-import type { NewSession } from '../../core/api.ts';
 import { parseCron } from '../../core/cron.ts';
-import { type FieldError, validateNewSession } from '../sessions/validate.ts';
+import { type FieldError, type ValidNewSession, type ValidationFolder, validateNewSession } from '../sessions/validate.ts';
+
+/** A schedule's stored template (D8; D14): the validated NewSession each run starts, with its folder's id. */
+export type ScheduleTemplate = ValidNewSession & {
+  /** The saved folder the runs start in (D14). */
+  readonly folder: string | null;
+};
 
 /** A validated `POST /api/schedules` body (`ScheduleInput`, M7.1 / D8). */
 export interface ValidScheduleInput {
@@ -8,8 +13,8 @@ export interface ValidScheduleInput {
   readonly id: string | null;
   /** The expression as normalized by the parser (single spaces, lower case; macros expanded). */
   readonly cron: string;
-  /** The session template: the NewSession each run starts, its `task` being the prompt. */
-  readonly template: NewSession;
+  /** The session template: the NewSession each run starts, its `task` being the prompt, with its folder (D14). */
+  readonly template: ScheduleTemplate;
   /** The schedule's name = `template.name`. */
   readonly name: string;
   /** The first line of the prompt, as the table's description. */
@@ -25,6 +30,12 @@ export interface ScheduleInputChecks {
   readonly scheduleNameTaken: (name: string, exceptId: string | null) => Promise<boolean>;
   /** The New-session read-only check (the workspace scan, M6.1). */
   readonly readOnly?: (solution: string) => Promise<boolean>;
+  /**
+   * The folder the runs start in (D14), resolved by the caller from
+   * `template.folder` (default folder when omitted); its id goes into the stored
+   * template. Without it the template is validated as a workspace session.
+   */
+  readonly folder?: ValidationFolder & { readonly id: string | null };
 }
 
 /** Longest description kept from the prompt's first line. */
@@ -69,7 +80,7 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
   }
 
   const template = body['template'];
-  let session: NewSession | null = null;
+  let session: ValidNewSession | null = null;
   if (!isRecord(template)) {
     errors.push({ field: 'template', message: 'template must be the NewSession each run starts' });
   } else {
@@ -77,6 +88,7 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
       // Runs get their own names (<schedule>-<MMDD>-<HHMM>); the schedule's name is checked among schedules below.
       nameTaken: async () => false,
       ...(checks.readOnly ? { readOnly: checks.readOnly } : {}),
+      ...(checks.folder ? { folder: checks.folder } : {}),
     });
     if (!result.ok) {
       for (const error of result.errors) errors.push({ field: error.field ? `template.${error.field}` : 'template', message: error.message });
@@ -91,7 +103,7 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
   const value: ValidScheduleInput = {
     id,
     cron,
-    template: { ...session, task: session.task.trim() },
+    template: { ...session, task: session.task.trim(), folder: checks.folder?.id ?? null },
     name: session.name,
     description: scheduleDescription(session.task),
   };

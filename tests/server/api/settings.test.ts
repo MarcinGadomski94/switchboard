@@ -8,6 +8,7 @@ import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { routerTitle, validateSettingsPatch } from '../../../src/server/settings/settings.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -38,7 +39,9 @@ async function open(dir: string, workspace: string | null): Promise<void> {
   store = await openTempStore(path.join(dir, 'data'));
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: path.join(dir, 'data') }, platform: 'linux', home: dir, cwd: dir });
-  app = await buildApp({ config: { ...base, port: PORT, workspaceRoot: workspace }, token, store, webRoot: dir });
+  // D14: `workspace.root` / `workspace.router` report the default saved folder.
+  if (workspace) await seedFolder(store, workspace);
+  app = await buildApp({ config: { ...base, port: PORT }, token, store, webRoot: dir });
   await app.ready();
 }
 
@@ -156,6 +159,13 @@ describe('GET/PUT /api/settings (M8.2)', () => {
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'workspace.root': plain.workspace, 'workspace.router': null });
     await writeFile(path.join(plain.workspace!, 'AGENTS.md'), 'no heading here\n## only a second-level one\n');
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'workspace.router': 'AGENTS.md' });
+
+    // D14: a repo as the default folder has no router, whatever AGENTS.md it holds.
+    const repo = path.join(tmp!, 'repo');
+    await mkdir(path.join(repo, '.git'), { recursive: true });
+    await writeFile(path.join(repo, 'AGENTS.md'), '# Repo rules\n');
+    await seedFolder(store!, repo, { kind: 'repo', isDefault: true });
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'workspace.root': repo, 'workspace.router': null });
   });
 
   it('keeps a stored start-at-login value (M9.1 writes it) and ignores stored values of the wrong type', async () => {

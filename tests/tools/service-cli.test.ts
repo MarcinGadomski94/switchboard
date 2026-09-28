@@ -37,7 +37,6 @@ function script(name: 'install' | 'uninstall', args: readonly string[], env: Rec
         SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
         FAKE_SERVICECTL_LOG: log,
         SWITCHBOARD_DATA_DIR: dataDir,
-        SWITCHBOARD_WORKSPACE_ROOT: path.join(tmp, 'work space'),
         ...env,
       },
       shell: false,
@@ -97,7 +96,9 @@ describe('--dry-run', () => {
     expect(result.stdout).toMatch(/^node: \S.* \(v\d+\.\d+\.\d+\)$/m);
     expect(result.stdout).toContain(`definition: ${definition} (not installed)`);
     expect(result.stdout).toContain(`write   ${definition}`);
-    expect(result.stdout).toContain(path.join(tmp, 'work space'));
+    // The data folder (not the default) is carried into the service (D14: there is no workspace variable).
+    expect(result.stdout).toContain(`SWITCHBOARD_DATA_DIR`);
+    expect(result.stdout).toContain(dataDir);
     expect(await tree(tmp)).toEqual([]);
   });
 

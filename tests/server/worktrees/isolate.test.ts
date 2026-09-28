@@ -8,6 +8,7 @@ import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, forbiddenGitCalls, makeGitWorld } from '../../helpers/git.ts';
 import {
   type SupervisorWorld,
@@ -63,7 +64,9 @@ async function exists(file: string): Promise<boolean> {
 async function withApp(s: SupervisorWorld, m: WorktreeManager, workspace: string | null = s.workspace): Promise<void> {
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: s.root }, platform: 'linux', home: s.root, cwd: s.root });
-  app = await buildApp({ config: { ...base, port: PORT, workspaceRoot: workspace }, token, store: s.store, webRoot: s.root, supervisor: s.supervisor, worktrees: m });
+  // D14: the workspace is the saved (default) folder; `null` = nothing saved.
+  if (workspace) await seedFolder(s.store, workspace);
+  app = await buildApp({ config: { ...base, port: PORT }, token, store: s.store, webRoot: s.root, supervisor: s.supervisor, worktrees: m });
   await app.ready();
 }
 
@@ -80,7 +83,7 @@ function call(method: InjectOptions['method'], url: string, payload?: unknown) {
 describe('WorktreeManager · isolate (gap #2)', () => {
   it('creates the worktree, pauses the session and resumes it with the move message; the developer tree is untouched', async () => {
     const { s, g, m } = await setup();
-    const session = await s.supervisor.start(newSession({ name: 'mover', solutions: ['web-front'] }));
+    const session = await s.supervisor.start(newSession({ name: 'mover', solutions: ['web-front'] }), s.place);
     await waitForStatus(s.store, session.id, ['done']);
     await writeFile(path.join(g.web, 'README.md'), 'hello\nthe session wrote here in place\n');
     const statusBefore = await g.git(g.web, 'status', '--porcelain');
@@ -124,14 +127,14 @@ describe('WorktreeManager · isolate (gap #2)', () => {
 
   it('a session without a live process is resumed with the message; detached and unknown sessions are refused before anything is created', async () => {
     const { s, g, m } = await setup();
-    const paused = await s.supervisor.start(newSession({ name: 'paused-one', solutions: ['mobile'] }));
+    const paused = await s.supervisor.start(newSession({ name: 'paused-one', solutions: ['mobile'] }), s.place);
     await waitForStatus(s.store, paused.id, ['done']);
     await s.supervisor.pause(paused.id);
     expect((await m.isolate('mobile', paused.id)).created).toBe(true);
     expect(await spawnsWhenLogged(s, 2)).toHaveLength(2);
     await waitForStatus(s.store, paused.id, ['done']);
 
-    const away = await s.supervisor.start(newSession({ name: 'away', solutions: ['mobile'] }));
+    const away = await s.supervisor.start(newSession({ name: 'away', solutions: ['mobile'] }), s.place);
     await waitForStatus(s.store, away.id, ['done']);
     await s.supervisor.detach(away.id);
     await expect(m.isolate('mobile', away.id)).rejects.toMatchObject({ code: 'detached' });
@@ -181,12 +184,12 @@ describe('REST · worktrees (M2.2)', () => {
     expect(await s.store.worktrees.list()).toEqual([]);
   });
 
-  it('POST /api/sessions with worktrees and no workspace root → 409', async () => {
+  it('POST /api/sessions with worktrees and no saved folder → 409 no-folder (D14)', async () => {
     const { s, g } = await setup();
-    await withApp(s, g.manager({ sessions: s.supervisor, workspaceRoot: null }), null);
+    await withApp(s, g.manager({ sessions: s.supervisor }), null);
     const response = await call('POST', '/api/sessions', newSession({ name: 'nowhere', worktrees: true }));
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: 'workspace-not-configured' });
+    expect(response.json()).toMatchObject({ error: 'no-folder' });
   });
 
   it('POST /api/solutions/{repo}/isolate → 201 Worktree, then 200 with the same one; 422 / 404 on bad input', async () => {

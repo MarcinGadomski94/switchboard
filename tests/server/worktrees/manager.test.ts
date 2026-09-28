@@ -6,6 +6,7 @@ import type { Worktree } from '../../../src/core/api.ts';
 import { buildApp, createSupervisor, createWorktreeManager } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
+import { folderRef } from '../../helpers/folders.ts';
 import { type GitWorld, forbiddenGitCalls, makeGitWorld } from '../../helpers/git.ts';
 import { until } from '../../helpers/supervisor.ts';
 
@@ -35,7 +36,8 @@ async function branchExists(w: GitWorld, repo: string, branch: string): Promise<
 }
 
 async function newSessionRow(w: GitWorld, name: string, solutions: string[]): Promise<string> {
-  const session = await w.store.sessions.create({ name, claudeSessionId: randomUUID(), solutions, worktrees: solutions.length > 0 });
+  // D14: the session works in the world's workspace folder (in-place diffs resolve there).
+  const session = await w.store.sessions.create({ name, claudeSessionId: randomUUID(), solutions, worktrees: solutions.length > 0, root: w.workspace, rootKind: 'workspace', cwd: w.workspace });
   return session.id;
 }
 
@@ -47,7 +49,7 @@ describe('WorktreeManager · create (gap #1)', () => {
     const statusBefore = await w.git(w.web, 'status', '--porcelain');
     const head = await w.git(w.web, 'rev-parse', 'HEAD');
 
-    const records = await m.createForSession('free-talk', ['web-front', 'mobile']);
+    const records = await m.createForSession('free-talk', ['web-front', 'mobile'], w.folder);
 
     const webPath = path.join(path.dirname(w.web), 'web-front-wt-free-talk');
     const mobilePath = path.join(w.workspace, 'mobile-wt-free-talk');
@@ -77,56 +79,54 @@ describe('WorktreeManager · create (gap #1)', () => {
     const { w, m } = await setup();
     const head = await w.git(w.mobile, 'rev-parse', 'HEAD');
     await w.git(w.mobile, 'checkout', '-q', '--detach');
-    const [record] = await m.createForSession('detached', ['mobile']);
+    const [record] = await m.createForSession('detached', ['mobile'], w.folder);
     expect(record?.baseRef).toBe(head);
   });
 
   it('accepts a relative path and the router groups; a worktree folder is not a solution (gap #16)', async () => {
     const { w, m } = await setup();
     const tool = await w.makeRepo(path.join(w.workspace, 'other', 'tool'));
-    expect(await m.resolveRepo('other/tool')).toEqual({ solution: 'other/tool', repoPath: tool });
-    expect(await m.resolveRepo('tool')).toEqual({ solution: 'tool', repoPath: tool });
-    await m.createForSession('wt', ['web-front']);
-    await expect(m.resolveRepo('web-front-wt-wt')).rejects.toMatchObject({ code: 'solution-not-found' });
+    expect(await m.resolveRepo('other/tool', w.folder)).toEqual({ solution: 'other/tool', repoPath: tool });
+    expect(await m.resolveRepo('tool', w.folder)).toEqual({ solution: 'tool', repoPath: tool });
+    await m.createForSession('wt', ['web-front'], w.folder);
+    await expect(m.resolveRepo('web-front-wt-wt', w.folder)).rejects.toMatchObject({ code: 'solution-not-found' });
   });
 
   it('a solution folder that is not a repo but holds exactly one resolves to it; its worktree sits next to the nested repo', async () => {
     const { w, m } = await setup();
     const inner = await w.makeRepo(path.join(w.workspace, 'other', 'nest', 'inner'));
-    expect(await m.resolveRepo('nest')).toEqual({ solution: 'nest', repoPath: inner });
-    const [record] = await m.createForSession('n1', ['nest']);
+    expect(await m.resolveRepo('nest', w.folder)).toEqual({ solution: 'nest', repoPath: inner });
+    const [record] = await m.createForSession('n1', ['nest'], w.folder);
     expect(record?.path).toBe(path.join(w.workspace, 'other', 'nest', 'inner-wt-n1'));
     // The worktree beside it (`.git` is a file) does not make the folder ambiguous.
-    expect(await m.resolveRepo('nest')).toEqual({ solution: 'nest', repoPath: inner });
+    expect(await m.resolveRepo('nest', w.folder)).toEqual({ solution: 'nest', repoPath: inner });
   });
 
   it('refusals leave nothing behind', async () => {
     const { w, m } = await setup();
     await w.git(w.mobile, 'branch', 'session/taken');
-    await expect(m.createForSession('taken', ['web-front', 'mobile'])).rejects.toMatchObject({ code: 'branch-exists' });
+    await expect(m.createForSession('taken', ['web-front', 'mobile'], w.folder)).rejects.toMatchObject({ code: 'branch-exists' });
     expect(await exists(path.join(path.dirname(w.web), 'web-front-wt-taken'))).toBe(false);
     expect(await branchExists(w, w.web, 'session/taken')).toBe(false);
 
     await mkdir(path.join(w.workspace, 'mobile-wt-occupied'));
-    await expect(m.createForSession('occupied', ['mobile'])).rejects.toMatchObject({ code: 'path-exists' });
+    await expect(m.createForSession('occupied', ['mobile'], w.folder)).rejects.toMatchObject({ code: 'path-exists' });
 
-    await expect(m.createForSession('x', ['nope-front'])).rejects.toMatchObject({ code: 'solution-not-found' });
-    await expect(m.createForSession('x', ['deprecated/microfrontends/old-front'])).rejects.toMatchObject({ code: 'read-only' });
-    await expect(m.createForSession('x', ['infrastructure'])).rejects.toMatchObject({ code: 'read-only' });
-    await expect(m.createForSession('x', ['../elsewhere'])).rejects.toMatchObject({ code: 'solution-not-found' });
+    await expect(m.createForSession('x', ['nope-front'], w.folder)).rejects.toMatchObject({ code: 'solution-not-found' });
+    await expect(m.createForSession('x', ['deprecated/microfrontends/old-front'], w.folder)).rejects.toMatchObject({ code: 'read-only' });
+    await expect(m.createForSession('x', ['infrastructure'], w.folder)).rejects.toMatchObject({ code: 'read-only' });
+    await expect(m.createForSession('x', ['../elsewhere'], w.folder)).rejects.toMatchObject({ code: 'solution-not-found' });
 
     await w.makeRepo(path.join(w.workspace, 'nugets', 'mobile'));
-    await expect(m.createForSession('x', ['mobile'])).rejects.toMatchObject({ code: 'solution-ambiguous' });
+    await expect(m.createForSession('x', ['mobile'], w.folder)).rejects.toMatchObject({ code: 'solution-ambiguous' });
 
     const empty = path.join(w.workspace, 'functions', 'empty-func');
     await mkdir(empty, { recursive: true });
     await w.git(empty, 'init', '-q', '-b', 'main');
-    await expect(m.createForSession('x', ['empty-func'])).rejects.toMatchObject({ code: 'no-commits' });
+    await expect(m.createForSession('x', ['empty-func'], w.folder)).rejects.toMatchObject({ code: 'no-commits' });
 
-    await expect(w.manager({ workspaceRoot: null }).createForSession('x', ['web-front'])).rejects.toMatchObject({ code: 'workspace-not-configured' });
-    await expect(w.manager({ workspaceRoot: path.join(w.root, 'missing') }).createForSession('x', ['web-front'])).rejects.toMatchObject({
-      code: 'workspace-missing',
-    });
+    // D14: a folder that is gone from disk.
+    await expect(m.createForSession('x', ['web-front'], folderRef(path.join(w.root, 'missing')))).rejects.toMatchObject({ code: 'folder-missing' });
     expect(await w.store.worktrees.list({ includeRemoved: true })).toEqual([]);
   });
 
@@ -135,7 +135,7 @@ describe('WorktreeManager · create (gap #1)', () => {
     // A stale ref lock makes `git worktree add -b session/half` fail in mobile only.
     await mkdir(path.join(w.mobile, '.git', 'refs', 'heads', 'session'), { recursive: true });
     await writeFile(path.join(w.mobile, '.git', 'refs', 'heads', 'session', 'half.lock'), '');
-    await expect(m.createForSession('half', ['web-front', 'mobile'])).rejects.toMatchObject({ code: 'git-failed' });
+    await expect(m.createForSession('half', ['web-front', 'mobile'], w.folder)).rejects.toMatchObject({ code: 'git-failed' });
     const webPath = path.join(path.dirname(w.web), 'web-front-wt-half');
     expect(await exists(webPath)).toBe(false);
     expect(await branchExists(w, w.web, 'session/half')).toBe(false);
@@ -148,7 +148,7 @@ describe('WorktreeManager · create (gap #1)', () => {
 describe('WorktreeManager · remove (gap #3)', () => {
   it('removes a clean worktree with nothing unpushed; the branch is kept; never --force', async () => {
     const { w, m } = await setup();
-    const [record] = await m.createForSession('clean', ['web-front']);
+    const [record] = await m.createForSession('clean', ['web-front'], w.folder);
     if (!record) throw new Error('no worktree');
     expect(await m.inspect(record.id)).toEqual({ exists: true, uncommitted: 0, unpushed: 0 });
     const removed = await m.remove(record.id);
@@ -166,7 +166,7 @@ describe('WorktreeManager · remove (gap #3)', () => {
 
   it('refuses uncommitted changes (modified or untracked) and keeps the folder', async () => {
     const { w, m } = await setup();
-    const [record] = await m.createForSession('dirty', ['web-front']);
+    const [record] = await m.createForSession('dirty', ['web-front'], w.folder);
     if (!record) throw new Error('no worktree');
     await writeFile(path.join(record.path, 'src', 'app.txt'), 'changed\n');
     await expect(m.remove(record.id)).rejects.toMatchObject({ code: 'uncommitted', message: expect.stringContaining('1 uncommitted change') });
@@ -179,7 +179,7 @@ describe('WorktreeManager · remove (gap #3)', () => {
 
   it('refuses unpushed commits; allows them once pushed', async () => {
     const { w, m } = await setup();
-    const [web, mobile] = await m.createForSession('ahead', ['web-front', 'mobile']);
+    const [web, mobile] = await m.createForSession('ahead', ['web-front', 'mobile'], w.folder);
     if (!web || !mobile) throw new Error('no worktree');
     await w.commit(web.path, 'src/feature.txt', 'feature\n');
     await w.commit(mobile.path, 'src/feature.txt', 'feature\n');
@@ -195,14 +195,14 @@ describe('WorktreeManager · remove (gap #3)', () => {
   it('commits already on the base branch are not "unpushed"', async () => {
     const { w, m } = await setup();
     await w.commit(w.mobile, 'local.txt', 'local only\n');
-    const [record] = await m.createForSession('base', ['mobile']);
+    const [record] = await m.createForSession('base', ['mobile'], w.folder);
     if (!record) throw new Error('no worktree');
     expect(await m.inspect(record.id)).toEqual({ exists: true, uncommitted: 0, unpushed: 0 });
   });
 
   it('a folder deleted by hand just leaves the registry', async () => {
     const { w, m } = await setup();
-    const [record] = await m.createForSession('gone', ['mobile']);
+    const [record] = await m.createForSession('gone', ['mobile'], w.folder);
     if (!record) throw new Error('no worktree');
     await rm(record.path, { recursive: true, force: true });
     expect(await m.inspect(record.id)).toEqual({ exists: false, uncommitted: 0, unpushed: 0 });
@@ -215,7 +215,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
   it('stores the PR state verbatim; removable only when MERGED and removal would be allowed; worktreeRemovable fires once', async () => {
     const { w, m } = await setup();
     const sessionId = await newSessionRow(w, 'pr-flow', ['web-front']);
-    const [record] = await m.createForSession('pr-flow', ['web-front'], sessionId);
+    const [record] = await m.createForSession('pr-flow', ['web-front'], w.folder, sessionId);
     if (!record) throw new Error('no worktree');
     const events: Worktree[] = [];
     m.on('worktreeRemovable', (worktree) => events.push(worktree));
@@ -252,7 +252,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
 
   it('CLOSED is not removable; a gh failure leaves the row as it was', async () => {
     const { w, m } = await setup();
-    const [record] = await m.createForSession('closed', ['mobile']);
+    const [record] = await m.createForSession('closed', ['mobile'], w.folder);
     if (!record) throw new Error('no worktree');
     await w.setPullRequests({ 'session/closed': { number: 3, state: 'CLOSED', url: 'https://github.com/acme/mobile/pull/3' } });
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'CLOSED', removable: false, error: null });
@@ -267,7 +267,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
 
   it('a squash-merged PR whose remote branch was deleted: its head commit counts as pushed', async () => {
     const { w, m } = await setup();
-    const [record] = await m.createForSession('squash', ['web-front']);
+    const [record] = await m.createForSession('squash', ['web-front'], w.folder);
     if (!record) throw new Error('no worktree');
     const head = await w.commit(record.path, 'src/squash.txt', 'squashed\n');
     await w.git(record.path, 'push', '-q', '-u', 'origin', 'session/squash');
@@ -282,7 +282,7 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
 
   it('polls on a timer until stopped', async () => {
     const { w, m } = await setup();
-    await m.createForSession('poll', ['mobile']);
+    await m.createForSession('poll', ['mobile'], w.folder);
     m.startPolling({ intervalMs: 30, initialDelayMs: 0 });
     await until(async () => (await w.ghCalls()).length >= 2, 'two polls');
     await m.stopPolling();
@@ -295,11 +295,8 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     const { w } = await setup();
     const log = path.join(w.root, 'gh-bin.log');
     const script = `require('node:fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(1)) + '\\n'); process.stdout.write('{"number":5,"state":"OPEN"}')`;
-    const config = {
-      ...loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root, SWITCHBOARD_GH_BIN: JSON.stringify([process.execPath, '-e', script]) }, platform: 'linux', home: w.root, cwd: w.root }),
-      workspaceRoot: w.workspace,
-    };
-    await w.manager().createForSession('config', ['mobile']);
+    const config = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root, SWITCHBOARD_GH_BIN: JSON.stringify([process.execPath, '-e', script]) }, platform: 'linux', home: w.root, cwd: w.root });
+    await w.manager().createForSession('config', ['mobile'], w.folder);
     const supervisor = createSupervisor(config, w.store);
     const manager = createWorktreeManager(config, w.store, supervisor);
     expect((await manager.checkPullRequests())[0]).toMatchObject({ prState: 'OPEN', error: null });
@@ -314,7 +311,7 @@ describe('WorktreeManager · diff (gap #10)', () => {
   it('worktree: vs the merge-base with its base branch, committed + uncommitted + untracked; later base commits are not in it', async () => {
     const { w, m } = await setup();
     const sessionId = await newSessionRow(w, 'diff', ['web-front']);
-    const [record] = await m.createForSession('diff', ['web-front'], sessionId);
+    const [record] = await m.createForSession('diff', ['web-front'], w.folder, sessionId);
     if (!record) throw new Error('no worktree');
     await w.commit(record.path, 'src/app.txt', 'one\nTWO\nthree\n', 'change two');
     await writeFile(path.join(record.path, 'README.md'), 'hello again\n');

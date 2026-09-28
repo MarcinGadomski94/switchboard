@@ -8,6 +8,7 @@ import { isDiffFilePath } from '../../../src/server/api/sessions.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, forbiddenGitCalls, makeGitWorld } from '../../helpers/git.ts';
 
 const PORT = 4873; // inject() opens no socket; the port feeds the Host check only
@@ -36,8 +37,9 @@ async function setup(withProvider = true): Promise<GitWorld> {
   const manager = w.manager();
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
+  await seedFolder(w.store, w.workspace);
   app = await buildApp({
-    config: { ...base, port: PORT, workspaceRoot: w.workspace },
+    config: { ...base, port: PORT },
     token,
     store: w.store,
     webRoot: w.root,
@@ -54,14 +56,15 @@ function get(url: string) {
 }
 
 async function sessionRow(w: GitWorld, name: string, solutions: string[], worktrees: boolean): Promise<string> {
-  return (await w.store.sessions.create({ name, claudeSessionId: randomUUID(), solutions, worktrees })).id;
+  // D14: the session works in the world's workspace folder (in-place solutions resolve there).
+  return (await w.store.sessions.create({ name, claudeSessionId: randomUUID(), solutions, worktrees, root: w.workspace, rootKind: 'workspace', cwd: w.workspace })).id;
 }
 
 describe('GET /api/sessions/{id}/diff (M4.5)', () => {
   it('worktree session: files vs the merge-base with branch, counts, lines and the uncommitted flag per file', async () => {
     const w = await setup();
     const id = await sessionRow(w, 'diff-api', ['web-front'], true);
-    const [record] = await w.manager().createForSession('diff-api', ['web-front'], id);
+    const [record] = await w.manager().createForSession('diff-api', ['web-front'], w.folder, id);
     if (!record) throw new Error('no worktree');
     // Committed on the session branch only (the developer approved it).
     await w.commit(record.path, 'src/app.txt', 'one\nTWO\nthree\n', 'approved change');

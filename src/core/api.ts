@@ -17,6 +17,7 @@ import type {
   ArtifactType,
   Coordination,
   EventKind,
+  FolderKind,
   Phase,
   QaStack,
   QuestionState,
@@ -29,7 +30,15 @@ import type {
 
 export type { SessionChip } from './derive/chips.ts';
 
-/** `POST /api/sessions` body (contract, locked). `coordination` is `null` when not applicable. */
+/**
+ * `POST /api/sessions` body (contract, locked; `folder` additive, D14).
+ * `coordination` is `null` when not applicable.
+ *
+ * **Repo folder (D14):** the router-only fields (`workType`, `mode`, `phase`,
+ * `coordination`, `qa`) do not apply: the server ignores them (they may be
+ * omitted) and stores `null`. `solutions` may be empty or omitted; the repo is
+ * the one solution (`[<repo name>]`), and any other name is refused (422).
+ */
 export interface NewSession {
   readonly name: string;
   readonly task: string;
@@ -40,6 +49,29 @@ export interface NewSession {
   readonly coordination: Coordination | null;
   /** Required when `workType` is `qa`. */
   readonly qa?: { readonly stack: QaStack; readonly confluenceUrl: string; readonly figmaUrls: readonly string[] } | null;
+  readonly worktrees: boolean;
+  readonly ultracode: boolean;
+  /**
+   * Additive (D14): the id of the saved folder ({@link Folder}) the session starts
+   * in. Omitted or `null` = the default folder (409 `no-folder` when none is
+   * saved); an unknown id is refused (422, field `folder`).
+   */
+  readonly folder?: string | null;
+}
+
+/**
+ * Additive (D14): the `POST /api/sessions` body for a **repo** folder: only the
+ * fields that apply there (the repo is the one solution; the router-only fields
+ * are left out). The server also accepts a full {@link NewSession} for a repo
+ * folder and ignores its router fields.
+ */
+export interface NewRepoSession {
+  readonly name: string;
+  readonly task: string;
+  /** The saved repo folder's id (`Folder.kind` = `repo`). */
+  readonly folder: string;
+  /** Empty, omitted, or `[<repo name>]` (`Folder.name`); anything else is 422. */
+  readonly solutions?: readonly string[];
   readonly worktrees: boolean;
   readonly ultracode: boolean;
 }
@@ -83,8 +115,18 @@ export interface Session {
   readonly lastActivityAt: string | null;
   readonly agents: readonly Agent[];
   readonly openQuestionCount: number;
-  /** Additive (M4.1): the folder the session's process runs in (the workspace root), `null` before its first spawn. */
+  /**
+   * Additive (M4.1; D14): the folder the session's process runs in: the workspace
+   * root (workspace folder), the repo or its worktree (repo folder). `null` only
+   * for a session that never started.
+   */
   readonly cwd: string | null;
+  /** Additive (D14): the id of the saved folder the session started in; `null` once that folder was removed from the list. */
+  readonly folder: string | null;
+  /** Additive (D14): the session's folder (canonical path), kept when the folder leaves the saved list; tags the session in lists. */
+  readonly folderPath: string | null;
+  /** Additive (D14): what {@link folderPath} is. */
+  readonly folderKind: FolderKind | null;
   /** Additive (M4.1): the session has a live supervised `claude` process (Pause applies; else Resume). */
   readonly live: boolean;
   /** Additive (M4.1): `claude --resume <claudeSessionId>`, the handoff card's command (prototype copy, M0.4). */
@@ -127,7 +169,7 @@ export interface Loop {
   readonly nextFireAt: string | null;
   readonly expiresAt: string | null;
   readonly iterations: readonly LoopIteration[];
-  /** The `.loop/progress.md` cap and breaker were read from (as shown: relative to the workspace root when inside it). */
+  /** The `.loop/progress.md` cap and breaker were read from (as shown: relative to the session's folder when inside it, D14). */
   readonly progressPath: string | null;
   readonly note: string | null;
   readonly createdAt: string;
@@ -188,6 +230,10 @@ export interface Artifact {
 export interface ArtifactListItem extends Artifact {
   readonly sessionName: string | null;
   readonly updatedAt: string;
+  /** Additive (D14): the source session's saved folder (`null` without a session, or once the folder left the list). */
+  readonly folder: string | null;
+  /** Additive (D14): the source session's folder path (`null` without a session); tags the row with its folder. */
+  readonly folderPath: string | null;
 }
 
 /** `GET /api/sessions/{id}`. Provisional: M4.1. */
@@ -442,6 +488,12 @@ export interface Schedule {
   readonly nextRunAt: string | null;
   /** Additive (M7.1): a run is in progress (its session runs or waits for the developer); Run now is refused (409) and a cron firing is `skipped`. */
   readonly running?: boolean;
+  /**
+   * Additive (D14): the saved folder the runs start in (also `template.folder`);
+   * `null` = the default folder at run time (a schedule saved before any folder
+   * existed) or the folder was removed.
+   */
+  readonly folder?: string | null;
 }
 
 /**
@@ -449,11 +501,14 @@ export interface Schedule {
  * "Save schedule" sends. Without `id` it creates a schedule; with the `id` of an
  * existing one it replaces its cron and template (Edit). The schedule's name is
  * `template.name`, its description the first line of `template.task` (the prompt).
+ * D14: `template.folder` picks the folder (default folder when omitted); the
+ * stored template always carries the folder's id.
  */
 export interface ScheduleInput {
   readonly id?: string;
   readonly cron: string;
-  readonly template: NewSession;
+  /** The NewSession each run starts (D14: a {@link NewRepoSession} for a repo folder). */
+  readonly template: NewSession | NewRepoSession;
 }
 
 /**
@@ -478,6 +533,10 @@ export interface HistoryItem {
   readonly outcome: string;
   /** The outcome's color (terminal sessions: `run` while active, else `idle`). */
   readonly status: SessionStatus;
+  /** Additive (D14): the saved folder the session belongs to (a stored session's folder, else the saved folder its transcript started in); `null` when none. */
+  readonly folder: string | null;
+  /** Additive (D14): that folder's path (a stored session's root, else the folder the transcript started in); `null` when unknown. */
+  readonly folderPath: string | null;
 }
 
 /** `GET/PUT /api/settings`: key → JSON value. Provisional: M8.2. */
@@ -563,36 +622,95 @@ export interface UsageWarning {
   readonly firedAt: string;
 }
 
-/** Additive (M5.3): where the workspace root comes from (`docs/setup.md`). */
-export type WorkspaceRootSource = 'env' | 'setup';
+/**
+ * Additive (D14): why a path cannot be a saved folder (`docs/folders.md` → *Kinds*).
+ * - `not-absolute`: the path is not absolute (`~` counts as the home folder);
+ * - `missing`: nothing is there;
+ * - `not-a-folder`: a file;
+ * - `git-worktree`: `.git` is a file (a linked worktree or a submodule): add its main checkout instead;
+ * - `unsupported`: neither a git main checkout nor a folder with an `AGENTS.md`.
+ */
+export type FolderProblem = 'not-absolute' | 'missing' | 'not-a-folder' | 'git-worktree' | 'unsupported';
 
-/** Additive (M5.3): what a folder offered as the workspace root holds (`GET /api/setup/root`). */
-export interface WorkspaceRootCheck {
-  /** The folder, absolute (`~` expanded); as typed when it is not absolute. */
+/**
+ * Additive (D14): what a folder is, checked live on disk (`GET /api/folders/check`,
+ * and each saved {@link Folder}'s `check`). The UI builds the check line from it:
+ * `✓ AGENTS.md (Workspace Router) · 38 solutions`, `✓ git repo · single solution`,
+ * or the problem.
+ */
+export interface FolderCheck {
+  /** The path checked: absolute with `~` expanded (as typed when it is not absolute). */
   readonly path: string;
-  /** `ok` = a folder with an `AGENTS.md`; `no-router` = a folder without one; `missing` = no such folder. */
-  readonly state: 'ok' | 'no-router' | 'missing' | 'not-absolute';
-  /** `<path>/AGENTS.md`: its first `# ` heading and its line count; `null` unless `state` is `ok`. */
+  /** The folder resolved on disk (realpath); `null` when there is nothing there. */
+  readonly canonicalPath: string | null;
+  /** A folder exists at {@link path}. */
+  readonly exists: boolean;
+  /** `repo` = a git main checkout; `workspace` = a folder with a router `AGENTS.md` that is not a main checkout; `null` = refused ({@link problem}). */
+  readonly kind: FolderKind | null;
+  /** Workspace: `<path>/AGENTS.md`'s first `# ` heading and its line count; `null` otherwise. */
   readonly router: { readonly title: string | null; readonly lines: number } | null;
+  /** Workspace: how many solutions its scan lists (every group of `GET /api/solutions`); repo: 1; `null` when refused or the scan failed. */
+  readonly solutionCount: number | null;
+  /** Repo: its name (the folder name), which is its one solution; `null` otherwise. */
+  readonly repoName: string | null;
+  /** Why it cannot be a folder; `null` for a workspace or a repo. */
+  readonly problem: FolderProblem | null;
+  /** The problem in words (`no AGENTS.md here and not a git repository`); empty when there is none. */
+  readonly message: string;
 }
 
-/** Additive (M5.3): `GET /api/setup`, the first-run wizard's state (`docs/setup.md`). */
+/**
+ * Additive (D14): a saved folder (`GET /api/folders`, Settings → Folders, the
+ * New-session form's Folder row): a workspace or a git repo sessions start in.
+ */
+export interface Folder {
+  readonly id: string;
+  /** Absolute path as it was added (`~` expanded). */
+  readonly path: string;
+  /** The folder resolved on disk when it was added or last used (realpath); unique among saved folders. */
+  readonly canonicalPath: string;
+  /** Its last path segment (for a repo: the repo's name, its one solution). */
+  readonly name: string;
+  /** What it was when added (sessions use this); {@link check} says what it is now. */
+  readonly kind: FolderKind;
+  /** Sessions, scans and schedules use it when no folder is named. Exactly one saved folder is the default. */
+  readonly isDefault: boolean;
+  readonly addedAt: string;
+  /** When a session last started in it; `null` before the first. */
+  readonly lastUsedAt: string | null;
+  /** The live check of {@link path}. */
+  readonly check: FolderCheck;
+}
+
+/** Additive (D14): `POST /api/folders` body. `path` is absolute, or `~/…`. */
+export interface AddFolderRequest {
+  readonly path: string;
+}
+
+/** Additive (D14): the `409` body of `DELETE /api/folders/{id}` while schedules still start their runs in the folder. */
+export interface FolderInUse {
+  readonly error: 'folder-in-use';
+  readonly message: string;
+  /** The schedules' names. */
+  readonly schedules: readonly string[];
+}
+
+/** Additive (M5.3; D14): `GET /api/setup`, the first-run wizard's state (`docs/setup.md`). */
 export interface SetupState {
   /** When the wizard was finished; `null` = setup not done. */
   readonly completedAt: string | null;
   /** Open the wizard when the UI loads: setup not done and `SWITCHBOARD_SETUP_WIZARD` is not `off`. */
   readonly autoOpen: boolean;
-  readonly workspaceRoot: {
-    /** The root sessions start in; `null` = not configured. */
-    readonly path: string | null;
-    readonly source: WorkspaceRootSource | null;
-    readonly check: WorkspaceRootCheck | null;
-  };
+  /**
+   * D14: the saved folders (as `GET /api/folders`, the default first). Empty = the
+   * wizard's "Add your first folder" step has nothing yet; the step is skippable.
+   */
+  readonly folders: readonly Folder[];
   /** The usage warning threshold (M8.2's `usage.warnAtPct`, default 90). */
   readonly warnAtPct: number;
 }
 
-/** Additive (M5.3): `GET /api/setup/folders`, one folder's subfolders for the wizard's Browse…. */
+/** Additive (M5.3): `GET /api/setup/folders`, one folder's subfolders for Browse… (the wizard, Settings → Folders → Add…, the New-session form). */
 export interface FolderListing {
   readonly path: string;
   /** `null` at the top of the file system. */

@@ -13,16 +13,15 @@ import {
   parseRouterRules,
   toSolutionGroups,
 } from '../../core/workspace-rules.ts';
-import type { SolutionsProvider } from '../providers.ts';
 import { checkoutOf } from './checkout.ts';
 
 /** The router file at the workspace root. */
 export const ROUTER_FILE = 'AGENTS.md';
 
-/** Why a scan could not run. */
-export type ScanErrorCode = 'workspace-not-configured' | 'workspace-missing';
+/** Why a scan could not run: the folder is gone (D14: `no-folder` is the folder service's). */
+export type ScanErrorCode = 'folder-missing';
 
-/** A scan refusal: no workspace root configured, or the root is not a folder. */
+/** A scan refusal: the workspace folder is not a folder (any more). */
 export class ScanError extends Error {
   override name = 'ScanError';
   readonly code: ScanErrorCode;
@@ -35,8 +34,8 @@ export class ScanError extends Error {
 
 /** Options for {@link WorkspaceScanner}. */
 export interface WorkspaceScannerOptions {
-  /** `SWITCHBOARD_WORKSPACE_ROOT` (absolute), `null` when not configured. */
-  readonly workspaceRoot: string | null;
+  /** The workspace folder to scan (absolute; a saved folder's path, D14). */
+  readonly root: string;
 }
 
 /** The folder rules of a workspace and the router file they came from. */
@@ -86,24 +85,19 @@ async function listDirs(dir: string): Promise<Dirent[]> {
 
 /**
  * The WorkspaceScanner (M6.1, `docs/solutions.md`): reads the folder rules out of
- * the router `AGENTS.md` at the workspace root, lists each folder's solutions
- * and serves them grouped as `GET /api/solutions` (it is the real
- * {@link SolutionsProvider}). Read-only: it never writes anywhere, never runs a
- * process and never follows a symlink.
+ * the router `AGENTS.md` of one workspace folder (D14: one scanner per folder),
+ * lists each folder's solutions and groups them as `GET /api/solutions` does.
+ * Read-only: it never writes anywhere, never runs a process and never follows a
+ * symlink.
  */
-export class WorkspaceScanner implements SolutionsProvider {
-  #root: string | null;
+export class WorkspaceScanner {
+  readonly #root: string;
 
   constructor(options: WorkspaceScannerOptions) {
-    this.#root = options.workspaceRoot;
+    this.#root = options.root;
   }
 
-  /** The workspace root to scan, as the setup wizard changed it (M5.3, `docs/setup.md`). */
-  setWorkspaceRoot(root: string | null): void {
-    this.#root = root;
-  }
-
-  /** `GET /api/solutions`. @throws {ScanError} without a usable workspace root. */
+  /** The scanned rows grouped as `GET /api/solutions` (without the live fields). @throws {ScanError} when the folder is gone. */
   async solutions(): Promise<SolutionGroup[]> {
     return toSolutionGroups(await this.scan());
   }
@@ -112,12 +106,10 @@ export class WorkspaceScanner implements SolutionsProvider {
    * NewSession validation (`POST /api/sessions`, 422): `true` when the router's
    * folder rules make `solution` read-only ({@link readOnlyCheck}): its path
    * starts in a read-only folder, or a folder it can resolve to lies in one and
-   * exists. Without a configured root it answers `false`; the other checks
-   * refuse such a session.
+   * exists.
    */
   async isReadOnly(solution: string): Promise<boolean> {
     const root = this.#root;
-    if (!root) return false;
     const { folders } = await this.rules(root);
     const check = readOnlyCheck(folders, root, solution);
     if (check.always) return true;
@@ -161,13 +153,12 @@ export class WorkspaceScanner implements SolutionsProvider {
 
   async #workspaceRoot(): Promise<string> {
     const root = this.#root;
-    if (!root) throw new ScanError('workspace-not-configured', 'SWITCHBOARD_WORKSPACE_ROOT is not set');
     try {
       if ((await stat(root)).isDirectory()) return root;
     } catch {
       // reported below
     }
-    throw new ScanError('workspace-missing', `the workspace root does not exist: ${root}`);
+    throw new ScanError('folder-missing', `the folder does not exist: ${root}`);
   }
 
   async #scanFolder(root: string, spec: FolderSpec): Promise<ScannedFolder> {

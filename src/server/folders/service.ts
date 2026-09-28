@@ -1,0 +1,269 @@
+import { realpath, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { Folder, FolderCheck } from '../../core/api.ts';
+import type { FolderRecord } from '../db/repos/folders.ts';
+import type { Store } from '../db/store.ts';
+import { expandHome, inspectFolder } from './inspect.ts';
+import { type FolderRef, folderRefOf } from './ref.ts';
+
+/** Why a folder call was refused (`docs/folders.md` → *API*). */
+export type FolderErrorCode = 'invalid' | 'not-found' | 'no-folder' | 'folder-in-use' | 'folder-missing';
+
+const STATUS: Readonly<Record<FolderErrorCode, number>> = {
+  invalid: 422,
+  'not-found': 404,
+  'no-folder': 409,
+  'folder-in-use': 409,
+  'folder-missing': 409,
+};
+
+/** A refused folder call, with its HTTP status. */
+export class FolderError extends Error {
+  override name = 'FolderError';
+  readonly code: FolderErrorCode;
+  readonly status: number;
+  /** The check behind an `invalid` path. */
+  readonly check: FolderCheck | null;
+  /** The schedules behind `folder-in-use`. */
+  readonly schedules: readonly string[];
+
+  constructor(code: FolderErrorCode, message: string, extra: { readonly check?: FolderCheck; readonly schedules?: readonly string[] } = {}) {
+    super(message);
+    this.code = code;
+    this.status = STATUS[code];
+    this.check = extra.check ?? null;
+    this.schedules = extra.schedules ?? [];
+  }
+}
+
+/** Options for {@link FolderService}. */
+export interface FolderServiceOptions {
+  readonly store: Store;
+  /** `~` in typed paths (default `os.homedir()`). */
+  readonly home?: string;
+  /** Called when a background step fails (default: `console.error`). */
+  readonly onError?: (error: unknown) => void;
+}
+
+/** Message of `no-folder`. */
+export const NO_FOLDER_MESSAGE = 'no folder is saved yet: add a workspace or a git repository (Settings → Folders)';
+
+/**
+ * The saved folders (D14, `docs/folders.md`): list (with a live check each), add
+ * (a workspace or a git main checkout, else 422), remove, the one default, and
+ * which folder a request means. Every session, scan, schedule and Codebase Memory
+ * view names its folder through this service; there is no configured root.
+ */
+export class FolderService {
+  readonly #store: Store;
+  readonly #home: string;
+  readonly #onError: (error: unknown) => void;
+
+  constructor(options: FolderServiceOptions) {
+    this.#store = options.store;
+    this.#home = options.home ?? os.homedir();
+    this.#onError = options.onError ?? ((error) => console.error('switchboard folders:', error));
+  }
+
+  /** A service whose stored folders were reconciled with the disk ({@link reconcile}). */
+  static async open(options: FolderServiceOptions): Promise<FolderService> {
+    const service = new FolderService(options);
+    await service.reconcile();
+    return service;
+  }
+
+  /**
+   * Startup housekeeping: a stored canonical path that no longer matches the
+   * folder on disk is refreshed (the 0003 migration copies the wizard's root
+   * as given), a list without a default gets one (the most recently used), and
+   * sessions without a saved folder that ran in a saved one are linked to it.
+   * Missing folders are left as they are (the list shows the problem).
+   */
+  async reconcile(): Promise<void> {
+    const folders = await this.#store.folders.list();
+    for (const folder of folders) {
+      try {
+        const real = await realpath(folder.path);
+        if (real !== folder.canonicalPath && !(await this.#store.folders.getByCanonicalPath(real))) {
+          await this.#store.folders.update(folder.id, { canonicalPath: real });
+        }
+        await this.#store.folders.linkSessions({ ...folder, canonicalPath: real });
+      } catch {
+        await this.#store.folders.linkSessions(folder);
+      }
+    }
+    await this.#ensureDefault();
+  }
+
+  // ── reading ─────────────────────────────────────────────────────────────
+
+  /** `GET /api/folders`: every saved folder with its live check, the default first, then most recently used. */
+  async list(): Promise<Folder[]> {
+    const records = await this.#store.folders.list();
+    return Promise.all(records.map((record) => this.#toFolder(record)));
+  }
+
+  /** One saved folder. @throws {FolderError} `not-found`. */
+  async get(id: string): Promise<Folder> {
+    return this.#toFolder(await this.#record(id));
+  }
+
+  /** `GET /api/folders/check?path=`: what `input` is (D14 kinds), without saving anything. */
+  check(input: string): Promise<FolderCheck> {
+    return inspectFolder(input, { home: this.#home });
+  }
+
+  /** The default folder's record, or `null` when none is saved. */
+  defaultRecord(): Promise<FolderRecord | null> {
+    return this.#store.folders.getDefault();
+  }
+
+  // ── changes ─────────────────────────────────────────────────────────────
+
+  /**
+   * `POST /api/folders`: saves a workspace or a git repo. A path whose folder is
+   * saved already (same canonical path) returns that folder (`created: false`).
+   * The first saved folder becomes the default. Sessions that ran in the folder
+   * before (it was removed and is added again) are linked to it.
+   * @throws {FolderError} `invalid` (with the check) for anything else.
+   */
+  async add(input: string): Promise<{ readonly folder: Folder; readonly created: boolean }> {
+    const check = await this.check(input);
+    if (check.kind === null || check.canonicalPath === null) throw new FolderError('invalid', check.message || 'not a workspace or a git repository', { check });
+    const existing = await this.#store.folders.getByCanonicalPath(check.canonicalPath);
+    if (existing) return { folder: await this.#toFolder(existing, check), created: false };
+    const record = await this.#store.folders.create({ path: check.path, canonicalPath: check.canonicalPath, kind: check.kind });
+    await this.#store.folders.linkSessions(record);
+    await this.#ensureDefault();
+    return { folder: await this.#toFolder((await this.#store.folders.get(record.id)) ?? record, check), created: true };
+  }
+
+  /**
+   * `DELETE /api/folders/{id}`: removes a folder from the list. Its sessions keep
+   * their folder path (and lose the id); the default moves to the most recently
+   * used folder left. Refused while a schedule starts its runs there.
+   * @throws {FolderError} `not-found`, `folder-in-use`.
+   */
+  async remove(id: string): Promise<Folder[]> {
+    const record = await this.#record(id);
+    const schedules = await this.#store.folders.scheduleNames(record.id);
+    if (schedules.length > 0) {
+      throw new FolderError('folder-in-use', `schedules start their runs in ${record.path}: ${schedules.join(', ')}; change or delete them first`, { schedules });
+    }
+    await this.#store.folders.delete(record.id);
+    await this.#ensureDefault();
+    return this.list();
+  }
+
+  /** `PUT /api/folders/{id}/default`. @throws {FolderError} `not-found`. */
+  async setDefault(id: string): Promise<Folder[]> {
+    await this.#record(id);
+    await this.#store.folders.setDefault(id);
+    return this.list();
+  }
+
+  /** Records that a session started in the saved folder `id` (the form lists recently used folders first). */
+  async markUsed(id: string | null): Promise<void> {
+    if (id === null) return;
+    try {
+      await this.#store.folders.markUsed(id);
+    } catch (error) {
+      this.#onError(error);
+    }
+  }
+
+  // ── resolving ───────────────────────────────────────────────────────────
+
+  /**
+   * The folder a view asks for (`?folder=` of `GET /api/solutions` and
+   * `/api/codebase-memory`): omitted = the default; a saved folder's id; or an
+   * absolute path that is a saved folder's or a session's folder (D14: the
+   * switcher also offers the folders open sessions use, which may have left the
+   * saved list). Nothing is read from disk here: the views report a missing folder.
+   * @throws {FolderError} `no-folder` (nothing saved), `not-found`.
+   */
+  async resolveForView(param?: string | null): Promise<FolderRef> {
+    const wanted = param?.trim() ?? '';
+    if (wanted === '') return folderRefOf(await this.#defaultOrThrow());
+    const byId = await this.#store.folders.get(wanted);
+    if (byId) return folderRefOf(byId);
+    if (path.isAbsolute(wanted)) {
+      const resolved = path.resolve(wanted);
+      for (const record of await this.#store.folders.list()) {
+        if (record.path === resolved || record.canonicalPath === resolved) return folderRefOf(record);
+      }
+      for (const session of await this.#store.sessions.list()) {
+        if (session.root === resolved && session.rootKind) return { id: session.folderId, path: session.root, root: session.root, kind: session.rootKind };
+      }
+    }
+    throw new FolderError('not-found', `no saved folder or session folder ${wanted}`);
+  }
+
+  /**
+   * The folder a new session (or a schedule) starts in: `id` = a saved folder,
+   * omitted = the default. The folder must still be a folder on disk; its
+   * canonical path is taken now (and stored when it moved). The kind is the one
+   * it was saved with.
+   * @throws {FolderError} `not-found` (unknown id), `no-folder`, `folder-missing`.
+   */
+  async resolveForSession(id?: string | null): Promise<FolderRef> {
+    const record = id ? await this.#record(id) : await this.#defaultOrThrow();
+    let root: string;
+    try {
+      root = await realpath(record.path);
+      if (!(await stat(root)).isDirectory()) throw new Error('not a folder');
+    } catch {
+      throw new FolderError('folder-missing', `the folder ${record.path} does not exist any more`);
+    }
+    if (root !== record.canonicalPath && !(await this.#store.folders.getByCanonicalPath(root))) {
+      await this.#store.folders.update(record.id, { canonicalPath: root });
+    }
+    return { id: record.id, path: record.path, root, kind: record.kind };
+  }
+
+  /** Browse…'s starting folder: the default folder, else the home folder. */
+  async browseStart(): Promise<string> {
+    return (await this.#store.folders.getDefault())?.path ?? this.#home;
+  }
+
+  /** `~` expansion with this service's home folder. */
+  expand(typed: string): string {
+    return expandHome(typed, this.#home);
+  }
+
+  // ── internals ───────────────────────────────────────────────────────────
+
+  async #record(id: string): Promise<FolderRecord> {
+    const record = await this.#store.folders.get(id);
+    if (!record) throw new FolderError('not-found', `no saved folder ${id}`);
+    return record;
+  }
+
+  async #defaultOrThrow(): Promise<FolderRecord> {
+    const record = await this.#store.folders.getDefault();
+    if (!record) throw new FolderError('no-folder', NO_FOLDER_MESSAGE);
+    return record;
+  }
+
+  /** Keeps exactly one default while folders are saved: the most recently used (else the first added). */
+  async #ensureDefault(): Promise<void> {
+    if (await this.#store.folders.getDefault()) return;
+    const first = (await this.#store.folders.list())[0];
+    if (first) await this.#store.folders.setDefault(first.id);
+  }
+
+  async #toFolder(record: FolderRecord, known?: FolderCheck): Promise<Folder> {
+    return {
+      id: record.id,
+      path: record.path,
+      canonicalPath: record.canonicalPath,
+      name: path.basename(record.path) || record.path,
+      kind: record.kind,
+      isDefault: record.isDefault,
+      addedAt: record.addedAt,
+      lastUsedAt: record.lastUsedAt,
+      check: known ?? (await this.check(record.path)),
+    };
+  }
+}

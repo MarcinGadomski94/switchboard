@@ -5,8 +5,9 @@
  *   npm run build && node tools/smoke/real-cli.ts
  *
  * It starts the built app on 127.0.0.1:$SMOKE_PORT (default 4975) with a fixture
- * workspace under `.spike/sandbox/real-cli-smoke/` (gitignored; one git repo,
- * `microfrontends/smoke-front`), the **real** `claude` limited to Haiku and 3 turns
+ * workspace under `.spike/sandbox/real-cli-smoke/` (gitignored; a router
+ * `AGENTS.md` and one git repo, `microfrontends/smoke-front`), saved as the app's
+ * folder through `POST /api/folders` like a user would (D14), the **real** `claude` limited to Haiku and 3 turns
  * (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`), fake gh, and a temp data dir. Through the UI it
  * starts one session whose harmless prompt asks one AskUserQuestion, answers it in
  * the Inbox, waits for the reply, and prints a JSON report. The real CLI writes its
@@ -57,6 +58,8 @@ async function git(...args: string[]): Promise<void> {
 async function main(): Promise<void> {
   await rm(SANDBOX, { recursive: true, force: true });
   await mkdir(SOLUTION, { recursive: true });
+  // D14: a workspace folder is one with a router AGENTS.md.
+  await writeFile(path.join(WORKSPACE, 'AGENTS.md'), '# AGENTS.md (Smoke Workspace)\n\n- `microfrontends/<repo-name>-front/` — the smoke solution\n');
   await writeFile(path.join(SOLUTION, 'README.md'), 'smoke\n');
   await git('init', '-q', '-b', 'main');
   await git('add', '-A');
@@ -70,7 +73,6 @@ async function main(): Promise<void> {
       ...process.env,
       SWITCHBOARD_PORT: String(PORT),
       SWITCHBOARD_DATA_DIR: path.join(SANDBOX, 'data'),
-      SWITCHBOARD_WORKSPACE_ROOT: WORKSPACE,
       SWITCHBOARD_CLAUDE_BIN: JSON.stringify([CLAUDE]),
       SWITCHBOARD_CLAUDE_EXTRA_ARGS: JSON.stringify(['--model', 'haiku', '--max-turns', '3']),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
@@ -88,6 +90,12 @@ async function main(): Promise<void> {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(`${BASE}/inbox`);
     const api = async <T>(url: string): Promise<T> => page.evaluate(async (u) => (await (await fetch(u)).json()) as T, url);
+    // D14: save the fixture workspace as the folder (the first one is the default), as Settings → Folders → Add… does.
+    const added = await page.evaluate(async (folder) => {
+      const response = await fetch('/api/folders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: folder }) });
+      return response.status;
+    }, WORKSPACE);
+    if (added !== 201 && added !== 200) throw new Error(`POST /api/folders answered ${added}`);
 
     // New session from the modal (edits in place: the prompt changes nothing).
     await page.getByTestId('new-session').click();

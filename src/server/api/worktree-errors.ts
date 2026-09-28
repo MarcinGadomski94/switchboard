@@ -3,8 +3,7 @@ import { WorktreeError, type WorktreeErrorCode } from '../worktrees/manager.ts';
 
 /** HTTP status of each worktree manager refusal (M2.2, `docs/worktrees.md`). */
 export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
-  'workspace-not-configured': 409,
-  'workspace-missing': 409,
+  'folder-missing': 409,
   'solution-not-found': 422,
   'solution-ambiguous': 422,
   'read-only': 422,

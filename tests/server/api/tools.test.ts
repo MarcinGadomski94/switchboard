@@ -16,6 +16,7 @@ import {
 import { probeUrl } from '../../../src/server/tools/probe.ts';
 import { normalizeToolUrl } from '../../../src/server/tools/validate.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type StubServer, htmlPage, startStubServer, unusedTestPort } from '../../helpers/stub-http.ts';
 import { type SupervisorWorld, makeSupervisorWorld, spawnedArgv, stdinOf, until, waitForStatus } from '../../helpers/supervisor.ts';
 
@@ -31,7 +32,9 @@ async function setup(workspace: 'world' | 'none' = 'world'): Promise<SupervisorW
   world = await makeSupervisorWorld({ scenario: 'handoff-start' });
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: world.root }, platform: 'linux', home: world.root, cwd: world.root });
-  const config = { ...base, port: PORT, workspaceRoot: workspace === 'world' ? world.workspace : null };
+  const config = { ...base, port: PORT };
+  // D14: the world's workspace is the saved (default) folder; 'none' = nothing saved.
+  if (workspace === 'world') await seedFolder(world.store, world.workspace);
   app = await buildApp({ config, token, store: world.store, webRoot: world.root, supervisor: world.supervisor });
   await app.ready();
   return world;

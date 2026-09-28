@@ -1,14 +1,12 @@
 /**
  * Pure rules of the first-run setup (M5.3, `docs/setup.md`), shared by the
- * server (the workspace-root check) and the UI (the wizard's lines).
+ * server (the folder check, D14) and the UI (the wizard's lines).
  */
 
 /** Settings-table keys the setup owns (`docs/setup.md`). */
 export const SETUP_KEYS = {
   /** ISO time the wizard was finished; absent = setup not done. */
   completedAt: 'setup.completedAt',
-  /** The workspace root chosen in the wizard (absolute); `SWITCHBOARD_WORKSPACE_ROOT` wins over it. */
-  workspaceRoot: 'setup.workspaceRoot',
 } as const;
 
 /** The usage-warning threshold key (M8.2's `usage.warnAtPct`) and its default. */

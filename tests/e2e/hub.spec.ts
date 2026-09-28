@@ -6,6 +6,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { stubToolProbes } from './probes.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * The page's `/hub` client (src/web/api/useHub.ts) over the real SSE route
@@ -23,9 +24,10 @@ test.beforeAll(async () => {
   const claudeConfig = path.join(tmp, 'claude-config');
   await mkdir(workspace, { recursive: true });
   await mkdir(claudeConfig, { recursive: true });
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,

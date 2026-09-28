@@ -143,7 +143,6 @@ export async function runServiceCli(action: ServiceAction, args: readonly string
     if (action === 'install') {
       const node = await checkNode({ env: withCleanSearchPath(env, host), platform: host, cwd: APP_DIR });
       lines.push(`node: ${node.path} (${node.version})`);
-      if (!config.workspaceRoot) io.err('warning: SWITCHBOARD_WORKSPACE_ROOT is not set, so the service starts without a workspace (set it and install again).\n');
       if (!(await exists(path.join(APP_DIR, 'dist', 'web', 'index.html')))) io.err('warning: dist/web is not built; run `npm run build` before the service starts.\n');
       const carried = carriedEnvironment({ ...config, dataDir }, defaultDataDir(platform, env, os.homedir()));
       const target = serviceTarget({ location, nodePath: node.path, env, carried, address: `${config.host}:${config.port}`, uid: currentUid() });

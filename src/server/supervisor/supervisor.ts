@@ -11,6 +11,7 @@ import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import type { FolderRef } from '../folders/ref.ts';
 import { toEvent, toSession } from '../sessions/wire.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildClaudeArgs, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
@@ -68,6 +69,17 @@ export interface StartOptions {
 }
 
 /**
+ * Where a new session works (D14, `docs/folders.md`): its folder and the folder
+ * its process runs in: the workspace root for a workspace folder; the repo, or
+ * the repo's worktree when the session has one, for a repo folder.
+ */
+export interface SessionPlace {
+  readonly folder: FolderRef;
+  /** The process's working folder (canonicalized when the session is stored). */
+  readonly cwd: string;
+}
+
+/**
  * What {@link SessionSupervisor.start} stores: a validated NewSession, or a session
  * the service starts itself (gap #4 reindex, schedules) without a work type, mode
  * or phase (the database allows them `null`, docs/database.md).
@@ -91,15 +103,14 @@ export interface SupervisorOptions {
   readonly claudeCommand: readonly string[];
   /** Dev-only flags appended to every spawn (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`). */
   readonly claudeExtraArgs?: readonly string[];
-  /** `SWITCHBOARD_WORKSPACE_ROOT`; sessions cannot start while it is `null`. */
-  readonly workspaceRoot: string | null;
   /** Base environment of the children (default `process.env`); scrubbed by `childEnv`. */
   readonly env?: NodeJS.ProcessEnv;
   readonly timeouts?: Partial<StopTimeouts>;
   readonly controlHandler?: ControlRequestHandler;
   /**
    * `claude agents --json` for the "Attach here" warning (M4.1: `claudeAgentsLister`
-   * in recovery.ts). Without one, liveness is unknown and every attach asks first.
+   * in recovery.ts), run in the session's cwd (D14). Without one, liveness is
+   * unknown and every attach asks first.
    */
   readonly listLive?: LiveProcessLister;
   /** Called when processing a line or an exit throws (default: `console.error`). */
@@ -115,8 +126,7 @@ export interface AttachOptions {
 /** Why the supervisor refused a call. `code` maps to an HTTP status in the routes. */
 export type SupervisorErrorCode =
   | 'not-found'
-  | 'workspace-not-configured'
-  | 'workspace-missing'
+  | 'folder-missing'
   | 'detached'
   | 'already-running'
   | 'request-not-open'
@@ -177,7 +187,6 @@ export class SessionSupervisor {
   readonly #store: Store;
   readonly #command: readonly string[];
   readonly #extraArgs: readonly string[];
-  #root: string | null;
   readonly #env: NodeJS.ProcessEnv;
   readonly #timeouts: StopTimeouts;
   readonly #handler: ControlRequestHandler;
@@ -195,7 +204,6 @@ export class SessionSupervisor {
     this.#store = options.store;
     this.#command = options.claudeCommand;
     this.#extraArgs = options.claudeExtraArgs ?? [];
-    this.#root = options.workspaceRoot;
     this.#env = options.env ?? process.env;
     this.#timeouts = { ...DEFAULT_STOP_TIMEOUTS, ...options.timeouts };
     this.#handler = options.controlHandler ?? {};
@@ -225,28 +233,22 @@ export class SessionSupervisor {
     return this.#live.get(sessionId)?.proc.pid ?? null;
   }
 
-  /**
-   * The workspace root new sessions start in, as the setup wizard changed it (M5.3,
-   * `docs/setup.md`). Sessions that exist keep their stored cwd.
-   */
-  setWorkspaceRoot(root: string | null): void {
-    this.#root = root;
-  }
-
   // ── commands ───────────────────────────────────────────────────────────
 
   /**
-   * Stores a new session and starts its process in the workspace root with a new
-   * `--session-id`. The first stdin message is `firstMessage` (default: the task text;
-   * `POST /api/sessions` passes the M5.2 first-turn payload, `sessions/first-turn.ts`);
-   * an empty one leaves the process idle.
+   * Stores a new session and starts its process with a new `--session-id` in
+   * `place.cwd` (D14: the session's folder, or its repo worktree); the session
+   * remembers its folder (`folderId`, `root`, `rootKind`) for resume, restart
+   * recovery, worktrees, diffs, artifacts and loops. The first stdin message is
+   * `firstMessage` (default: the task text; `POST /api/sessions` passes the M5.2
+   * first-turn payload, `sessions/first-turn.ts`); an empty one leaves the process idle.
    * The input must already be validated (sessions/validate.ts). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).
    */
-  async start(input: SessionStartInput, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
+  async start(input: SessionStartInput, place: SessionPlace, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
     this.#assertOpen();
-    const cwd = await this.#workspaceCwd();
+    const cwd = await canonicalFolder(place.cwd);
     const session = await this.#store.sessions.create({
       name: input.name,
       task: input.task,
@@ -264,6 +266,9 @@ export class SessionSupervisor {
       ultracode: input.ultracode,
       attached: true,
       cwd,
+      folderId: place.folder.id,
+      root: place.folder.root,
+      rootKind: place.folder.kind,
       requestedPermissionMode: DEFAULT_PERMISSION_MODE,
     });
     await this.#store.agents.create({
@@ -379,7 +384,9 @@ export class SessionSupervisor {
     if (this.#live.has(sessionId)) return command;
     const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
     if (options.confirm !== true) {
-      const reasons = await attachWarnings({ transcript, claudeSessionId: session.claudeSessionId, listLive: this.#listLive, now: Date.now() });
+      const lister = this.#listLive;
+      const listLive = lister ? () => lister(session.cwd) : null;
+      const reasons = await attachWarnings({ transcript, claudeSessionId: session.claudeSessionId, listLive, now: Date.now() });
       if (reasons.length > 0) throw new AttachWarningError(reasons);
     }
     this.#assertOpen();
@@ -582,15 +589,6 @@ export class SessionSupervisor {
     return session;
   }
 
-  async #workspaceCwd(): Promise<string> {
-    if (!this.#root) throw new SupervisorError('workspace-not-configured', 'SWITCHBOARD_WORKSPACE_ROOT is not set');
-    try {
-      return await realpath(this.#root);
-    } catch {
-      throw new SupervisorError('workspace-missing', `the workspace root does not exist: ${this.#root}`);
-    }
-  }
-
   async #mainAgentId(session: SessionRecord): Promise<string> {
     const agents = await this.#store.agents.listBySession(session.id);
     const main = agents.find((agent) => agent.kind === 'main');
@@ -605,7 +603,9 @@ export class SessionSupervisor {
   }
 
   async #spawn(session: SessionRecord, start: ClaudeStart, action: LifecycleAction): Promise<Live> {
-    const cwd = session.cwd ?? (await this.#workspaceCwd());
+    // D14: a session always runs in its own stored cwd (its folder or its repo worktree), never a global root.
+    const cwd = session.cwd;
+    if (!cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
     const permissionMode = DEFAULT_PERMISSION_MODE;
     const prepared =
       (await this.#store.sessions.update(session.id, {
@@ -873,6 +873,15 @@ export class SessionSupervisor {
         this.#onError(error);
       }
     }
+  }
+}
+
+/** `folder` resolved on disk. @throws {SupervisorError} `folder-missing` when it is not there. */
+async function canonicalFolder(folder: string): Promise<string> {
+  try {
+    return await realpath(folder);
+  } catch {
+    throw new SupervisorError('folder-missing', `the session's folder does not exist: ${folder}`);
   }
 }
 

@@ -6,7 +6,8 @@ import type { ScheduleRecord, ScheduleRunRecord } from '../db/repos/schedules.ts
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
 import { type ScheduleRunner, SystemItemError } from '../inbox/system-items.ts';
-import { type SessionStartContext, startNewSession } from '../sessions/start.ts';
+import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
+import { type SessionStartContext, resolveSessionFolder, startNewSession } from '../sessions/start.ts';
 import { type FieldError, SESSION_NAME } from '../sessions/validate.ts';
 import { type ValidScheduleInput, validateScheduleInput } from './validate.ts';
 import { toSchedule } from './wire.ts';
@@ -238,13 +239,26 @@ export class Scheduler {
    */
   async save(body: unknown): Promise<Schedule> {
     this.#assertOpen();
+    // D14: the runs start in `template.folder` (a saved folder's id), the default folder when omitted.
+    const template = isRecord(body) && isRecord(body['template']) ? body['template'] : null;
+    let folder: FolderRef | null = null;
+    if (template) {
+      const resolved = await resolveSessionFolder(this.#sessions, template, 'template.folder');
+      if (!resolved.ok) {
+        const errors = resolved.body.errors ?? [{ field: 'template.folder', message: resolved.body.message ?? 'no usable folder' }];
+        throw new SchedulerError('invalid', errors.map((e) => e.message).join('; '), errors);
+      }
+      folder = resolved.folder;
+    }
     const scan = this.#sessions.providers.solutions;
+    const readOnlyIn = folder?.kind === 'workspace' ? folder : null;
     const result = await validateScheduleInput(body, {
       scheduleNameTaken: async (name, exceptId) => {
         const other = await this.#store.schedules.getByName(name);
         return other !== null && other.id !== exceptId;
       },
-      ...(scan?.isReadOnly ? { readOnly: (solution: string) => scan.isReadOnly!(solution) } : {}),
+      ...(scan?.isReadOnly && readOnlyIn ? { readOnly: (solution: string) => scan.isReadOnly!(solution, readOnlyIn) } : {}),
+      ...(folder ? { folder: { id: folder.id, kind: folder.kind, repoName: repoSolutionName(folder) } } : {}),
     });
     if (!result.ok) throw new SchedulerError('invalid', result.errors.map((e) => e.message).join('; '), result.errors);
     const record = await this.#persist(result.value);
@@ -323,7 +337,7 @@ export class Scheduler {
   }
 
   async #persist(input: ValidScheduleInput): Promise<ScheduleRecord> {
-    const fields = { name: input.name, description: input.description, cron: input.cron, template: input.template };
+    const fields = { name: input.name, description: input.description, cron: input.cron, template: input.template, folderId: input.template.folder };
     if (input.id === null) return this.#store.schedules.create({ ...fields, paused: false });
     await this.#record(input.id);
     const updated = await this.#store.schedules.update(input.id, fields);
@@ -408,7 +422,10 @@ export class Scheduler {
       const run = await this.#store.schedules.addRun({ scheduleId: schedule.id, ts: now.toISOString(), result: 'running', triggeredBy: trigger });
       this.#publish(schedule.id, 'running');
       try {
-        const body = { ...(isRecord(schedule.template) ? schedule.template : {}), name: await this.#freeName(schedule.name, now) };
+        const template = isRecord(schedule.template) ? schedule.template : {};
+        // D14: the run starts in the schedule's folder (a schedule without one: the default folder at run time).
+        const folder = schedule.folderId ?? (typeof template['folder'] === 'string' ? template['folder'] : null);
+        const body = { ...template, folder, name: await this.#freeName(schedule.name, now) };
         const outcome = await startNewSession(this.#sessions, body, {
           beforeSpawn: async (session) => {
             await this.#store.sessions.update(session.id, { scheduleId: schedule.id });

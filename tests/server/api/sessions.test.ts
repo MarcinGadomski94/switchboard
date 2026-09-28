@@ -5,6 +5,7 @@ import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { delay } from '../../helpers/fake-claude.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, stdinOf, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 const PORT = 4872; // inject() opens no socket; the port feeds the Host check only
@@ -18,7 +19,9 @@ async function setup(scenario: string, workspace: 'world' | 'none' = 'world'): P
   world = await makeSupervisorWorld({ scenario });
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: world.root }, platform: 'linux', home: world.root, cwd: world.root });
-  const config = { ...base, port: PORT, workspaceRoot: workspace === 'world' ? world.workspace : null };
+  const config = { ...base, port: PORT };
+  // D14: the world's workspace is the saved (default) folder; 'none' = nothing saved.
+  if (workspace === 'world') await seedFolder(world.store, world.workspace);
   app = await buildApp({
     config,
     token,
@@ -86,11 +89,22 @@ describe('POST /api/sessions · validation (contract → NewSession)', () => {
     await waitForStatus(w.store, (await w.store.sessions.list())[0]?.id ?? '', ['done']);
   });
 
-  it('409 while no workspace root is configured', async () => {
+  it('409 no-folder while no folder is saved (D14)', async () => {
     await setup('handoff-start', 'none');
     const response = await call('POST', '/api/sessions', newSession());
     expect(response.statusCode).toBe(409);
-    expect(response.json().error).toBe('workspace-not-configured');
+    expect(response.json().error).toBe('no-folder');
+  });
+
+  it('422 for an unknown or malformed folder (D14); nothing is spawned', async () => {
+    const w = await setup('handoff-start');
+    for (const folder of ['no-such-folder', 42, '']) {
+      const response = await call('POST', '/api/sessions', { ...newSession(), folder });
+      expect(response.statusCode, String(folder)).toBe(422);
+      expect(response.json().errors.map((e: { field: string }) => e.field)).toEqual(['folder']);
+    }
+    expect(await w.store.sessions.list()).toHaveLength(0);
+    expect(await spawnedArgv(w.logFile)).toHaveLength(0);
   });
 });
 

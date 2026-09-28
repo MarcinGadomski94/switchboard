@@ -1,6 +1,7 @@
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodebaseMemoryProject, CodebaseMemoryStatus } from '../../core/api.ts';
+import type { FolderRef } from '../folders/ref.ts';
 import type { CodebaseMemoryProvider } from '../providers.ts';
 import { codebaseMemoryProjectId, dirtyLines, dirtyProject } from '../../core/codebase-memory.ts';
 
@@ -73,14 +74,16 @@ export async function readDirtyProjects(workspaceRoot: string | null): Promise<C
 }
 
 /**
- * The real {@link CodebaseMemoryProvider}: the dirty file of `workspaceRoot`.
- * The indexed-project count is unknown without calling codebase-memory itself,
- * which gap #4 rules out for the service, so `indexed` is `null`.
+ * The real {@link CodebaseMemoryProvider}: the dirty file of the folder asked
+ * for (D14): a workspace folder's `.claude/.codebase-memory-dirty`; a repo folder
+ * has no workspace dirty list, so its list is empty. The indexed-project count is
+ * unknown without calling codebase-memory itself, which gap #4 rules out for the
+ * service, so `indexed` is `null`.
  */
-export function dirtyFileCodebaseMemory(workspaceRoot: string | null): CodebaseMemoryProvider {
+export function dirtyFileCodebaseMemory(): CodebaseMemoryProvider {
   return {
-    async status(): Promise<CodebaseMemoryStatus> {
-      return { projects: await readDirtyProjects(workspaceRoot), indexed: null };
+    async status(folder: FolderRef): Promise<CodebaseMemoryStatus> {
+      return { projects: folder.kind === 'workspace' ? await readDirtyProjects(folder.path) : [], indexed: null };
     },
   };
 }

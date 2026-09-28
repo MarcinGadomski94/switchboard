@@ -27,6 +27,7 @@ import {
 } from '../../../src/server/inbox/system-items.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, forbiddenGitCalls, makeGitWorld } from '../../helpers/git.ts';
 import { until } from '../../helpers/supervisor.ts';
 
@@ -60,7 +61,8 @@ async function setup(): Promise<Rig> {
   bus.subscribe((message) => messages.push(message));
   const service = new SystemItemService({ store: w.store, bus, worktrees: m, onError: (error) => w.errors.push(error) });
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
-  const config = { ...base, port: PORT, workspaceRoot: w.workspace };
+  const config = { ...base, port: PORT };
+  await seedFolder(w.store, w.workspace);
   const token = generateToken();
   const app = await buildApp({ config, token, store: w.store, webRoot: w.root, worktrees: m, systemItems: service, bus });
   await app.ready();
@@ -270,7 +272,7 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
   it('worktreeRemovable raises one item; Remove worktree is refused while uncommitted, then removes the folder and keeps the branch', async () => {
     const r = await setup();
     const session = await r.w.store.sessions.create({ name: 'speaking-page', claudeSessionId: randomUUID(), solutions: ['web-front'], worktrees: true });
-    const [record] = await r.m.createForSession('speaking-page', ['web-front'], session.id);
+    const [record] = await r.m.createForSession('speaking-page', ['web-front'], r.w.folder, session.id);
     if (!record) throw new Error('no worktree');
     await r.w.setPullRequests({ 'session/speaking-page': { number: 231, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/231' } });
 
@@ -325,8 +327,8 @@ describe('M3.3 · PR merged → worktree removable (real git, fake gh)', () => {
 
   it('Keep closes the item and leaves the worktree; sync raises a removable worktree that has no item; an already removed folder counts as done', async () => {
     const r = await setup();
-    const [kept] = await r.m.createForSession('kept', ['web-front']);
-    const [gone] = await r.m.createForSession('gone', ['mobile']);
+    const [kept] = await r.m.createForSession('kept', ['web-front'], r.w.folder);
+    const [gone] = await r.m.createForSession('gone', ['mobile'], r.w.folder);
     if (!kept || !gone) throw new Error('no worktree');
     // Flagged removable without the event (e.g. the service stopped right after the check).
     await r.w.store.worktrees.update(kept.id, { prNumber: 7, prState: 'MERGED', removable: true });
@@ -386,6 +388,7 @@ describe('M3.3 · item builders', () => {
       description: '',
       cron: '0 2 * * *',
       template,
+      folderId: null,
       paused: false,
       createdAt: '',
       updatedAt: '',
@@ -399,5 +402,8 @@ describe('M3.3 · item builders', () => {
         { solution: 'web', branch: 'main' },
       ]),
     ).toEqual({ name: 'fix-qa-sweep', task: 'qa-sweep: Failed. Fix on main.', workType: 'feature', mode: 'orchestrator', solutions: ['web'], phase: 'ui-first' });
+    // D14: the fix session starts in the schedule's folder (its column, else the template's).
+    expect(fixSessionPrefill({ ...schedule('in-repo', { folder: 'from-template' }), folderId: 'repo-folder' }, 'Failed', []).folder).toBe('repo-folder');
+    expect(fixSessionPrefill(schedule('in-repo', { folder: 'from-template' }), 'Failed', []).folder).toBe('from-template');
   });
 });

@@ -21,6 +21,7 @@ import {
   writeTranscript,
 } from '../helpers/transcripts.ts';
 import { stubToolProbes } from './probes.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M7.4 oracle: History on the real code path (no demo seed, D13). The server runs
@@ -135,9 +136,10 @@ test.beforeAll(async () => {
   await writeTranscript(configDir, path.join(otherRoot, 'app'), OTHER_ID, asTerminal(withSessionId(await fixtureLines('tx-main', path.join(otherRoot, 'app')), OTHER_ID)), OLD);
   expect(slugForCwd(path.join(otherRoot, 'app')).startsWith(slugForCwd(workspace))).toBe(true);
 
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     CLAUDE_CONFIG_DIR: configDir,
   });

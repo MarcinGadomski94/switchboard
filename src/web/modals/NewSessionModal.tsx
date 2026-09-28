@@ -36,7 +36,7 @@ const SESSIONS_RELOAD_MS = 1_000;
 /** The message of a failed `GET /api/solutions` (as in the Solutions view). */
 function solutionsErrorText(error: ApiError): string {
   const body = error.body as { error?: unknown; message?: unknown } | null;
-  if (body?.error === 'workspace-not-configured') return 'No workspace root is configured (SWITCHBOARD_WORKSPACE_ROOT).';
+  if (body?.error === 'no-folder') return 'No folder is saved yet. Add a workspace or a git repository in Settings.';
   if (typeof body?.message === 'string') return body.message;
   return error.unreachable ? 'Switchboard is not reachable.' : `The solutions could not be loaded (HTTP ${error.status}).`;
 }

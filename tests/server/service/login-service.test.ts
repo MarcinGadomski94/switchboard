@@ -65,7 +65,7 @@ function service(platform: ServiceLocation['platform'], env: NodeJS.ProcessEnv =
     location: location(platform),
     manager: fakeServiceCtlCommand(),
     env: { ...process.env, FAKE_SERVICECTL_LOG: log, USERDOMAIN: 'DEVBOX', USERNAME: 'dev', ...env },
-    carried: { SWITCHBOARD_WORKSPACE_ROOT: path.join(tmp, 'work space') },
+    carried: { SWITCHBOARD_DATA_DIR: path.join(tmp, 'data dir') },
     address: '127.0.0.1:4870',
     settings: store.settings,
     uid: 501,
@@ -101,7 +101,7 @@ describe('LoginService on macOS (launchd)', () => {
           location: location('darwin'),
           nodePath,
           env: { ...process.env, FAKE_SERVICECTL_LOG: log },
-          carried: { SWITCHBOARD_WORKSPACE_ROOT: path.join(tmp, 'work space') },
+          carried: { SWITCHBOARD_DATA_DIR: path.join(tmp, 'data dir') },
           address: '127.0.0.1:4870',
           uid: 501,
         }),
@@ -128,7 +128,7 @@ describe('LoginService on Linux (systemd --user)', () => {
     expect((await login.setStartAtLogin(true)).startAtLogin).toBe(true);
     const content = await readFile(unit, 'utf8');
     expect(content).toContain('WantedBy=default.target');
-    expect(content).toContain(`Environment="SWITCHBOARD_WORKSPACE_ROOT=${path.join(tmp, 'work space')}"`);
+    expect(content).toContain(`Environment="SWITCHBOARD_DATA_DIR=${path.join(tmp, 'data dir')}"`);
     const nodePath = /^ExecStart=(\S+) /m.exec(content)?.[1] ?? '';
     expect(content).toBe(
       systemdUnit(
@@ -136,7 +136,7 @@ describe('LoginService on Linux (systemd --user)', () => {
           location: location('linux'),
           nodePath,
           env: process.env,
-          carried: { SWITCHBOARD_WORKSPACE_ROOT: path.join(tmp, 'work space') },
+          carried: { SWITCHBOARD_DATA_DIR: path.join(tmp, 'data dir') },
           address: '127.0.0.1:4870',
         }),
       ),
@@ -173,7 +173,7 @@ describe('LoginService on Windows (Task Scheduler)', () => {
     expect([...bytes.subarray(0, 2)]).toEqual([0xff, 0xfe]);
     const xml = bytes.subarray(2).toString('utf16le');
     expect(xml).toContain('<UserId>DEVBOX\\dev</UserId>');
-    expect(await readFile(envFile ?? '', 'utf8')).toContain(`SWITCHBOARD_WORKSPACE_ROOT='${path.join(tmp, 'work space')}'`);
+    expect(await readFile(envFile ?? '', 'utf8')).toContain(`SWITCHBOARD_DATA_DIR='${path.join(tmp, 'data dir')}'`);
     await login.setStartAtLogin(false);
     expect(await exists(definition)).toBe(false);
     expect(await exists(envFile ?? '')).toBe(false);
@@ -260,7 +260,7 @@ describe('executePlan', () => {
 });
 
 describe('configuration of the service', () => {
-  it('carries the workspace root, and the port / data folder / CLIs only when they differ from the defaults', () => {
+  it('carries the port / data folder / CLIs only when they differ from the defaults (D14: no workspace variable)', () => {
     const real = '/Users/dev/Library/Application Support/Switchboard';
     const defaults = loadConfig({ env: {}, platform: 'darwin', home: '/Users/dev', cwd: '/' });
     expect(carriedEnvironment(defaults, real)).toEqual({});
@@ -268,7 +268,6 @@ describe('configuration of the service', () => {
       env: {
         SWITCHBOARD_PORT: '4880',
         SWITCHBOARD_DATA_DIR: '/data/sb',
-        SWITCHBOARD_WORKSPACE_ROOT: '/work/space',
         SWITCHBOARD_CLAUDE_BIN: '/opt/claude',
         SWITCHBOARD_GH_BIN: '["/usr/bin/node","/fake/gh.ts"]',
         SWITCHBOARD_CLAUDE_EXTRA_ARGS: '["--model","haiku"]',
@@ -281,7 +280,6 @@ describe('configuration of the service', () => {
     expect(carriedEnvironment(custom, real)).toEqual({
       SWITCHBOARD_PORT: '4880',
       SWITCHBOARD_DATA_DIR: '/data/sb',
-      SWITCHBOARD_WORKSPACE_ROOT: '/work/space',
       SWITCHBOARD_CLAUDE_BIN: '/opt/claude',
       SWITCHBOARD_GH_BIN: '["/usr/bin/node","/fake/gh.ts"]',
     });

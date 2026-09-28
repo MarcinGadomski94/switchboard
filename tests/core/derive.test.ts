@@ -7,7 +7,9 @@ import {
   fileArtifactType,
   findPullRequests,
   locateFile,
+  locateSessionFile,
   runsGh,
+  sessionSolutionFolder,
 } from '../../src/core/derive/artifacts.ts';
 import { toolEventKind, toolLabel, userMessageKind } from '../../src/core/derive/event-kind.ts';
 import { deriveSessionStatus } from '../../src/core/derive/status.ts';
@@ -192,5 +194,29 @@ describe('payload clipping and the child env', () => {
     expect(
       childEnv({ CLAUDECODE: '1', CLAUDE_CODE_X: '1', CLAUDE_PID: '1', CLAUDE_EFFORT: 'h', CLAUDE_CONFIG_DIR: '/c', PATH: '/bin', HOME: '/h' }),
     ).toEqual({ CLAUDE_CONFIG_DIR: '/c', PATH: '/bin', HOME: '/h' });
+  });
+});
+
+describe('artifacts in a repo folder (D14)', () => {
+  const repo = path.join('/w', 'solo');
+  const worktree = path.join('/w', 'solo-wt-demo');
+
+  it('every file of a repo session belongs to its one solution, in its worktree or in the main checkout', () => {
+    const inWorktree = { root: repo, kind: 'repo' as const, cwd: worktree };
+    expect(locateSessionFile(inWorktree, 'docs/x.md', 'demo')).toEqual({ solution: 'solo', relative: 'docs/x.md', worktree: true, outside: false });
+    expect(locateSessionFile(inWorktree, path.join(repo, 'contracts', 'a.md'), 'demo')).toEqual({ solution: 'solo', relative: 'contracts/a.md', worktree: false, outside: false });
+    expect(locateSessionFile(inWorktree, path.join('/w', 'elsewhere', 'a.md'), 'demo')).toMatchObject({ solution: null, outside: true });
+    expect(sessionSolutionFolder(inWorktree, 'src/app.ts', 'demo')).toBe('solo/');
+    // In place (cwd = the repo); a worktree made later by "Move … to worktree" still maps to the repo.
+    const inPlace = { root: repo, kind: 'repo' as const, cwd: repo };
+    expect(locateSessionFile(inPlace, 'README.md', 'demo')).toEqual({ solution: 'solo', relative: 'README.md', worktree: false, outside: false });
+    expect(locateSessionFile(inPlace, path.join(worktree, 'README.md'), 'demo')).toEqual({ solution: 'solo', relative: 'README.md', worktree: true, outside: false });
+    expect(sessionSolutionFolder(inPlace, path.join('/w', 'other', 'x'), 'demo')).toBeNull();
+  });
+
+  it('a workspace session keeps the router layout', () => {
+    const place = { root: '/ws', kind: 'workspace' as const, cwd: '/ws' };
+    expect(locateSessionFile(place, '/ws/microfrontends/web-front/src/a.ts', 'demo')).toMatchObject({ solution: 'web-front', relative: 'src/a.ts' });
+    expect(sessionSolutionFolder(place, '/ws/microfrontends/web-front/src/a.ts', 'demo')).toBe('microfrontends/web-front');
   });
 });

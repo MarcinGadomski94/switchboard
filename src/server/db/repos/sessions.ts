@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Coordination, Phase, QaStack, SessionMode, SessionStatus, WorkType } from '../../../core/model.ts';
+import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 
@@ -28,8 +28,18 @@ export interface SessionRecord {
   readonly ultracode: boolean;
   /** `false` after "Continue in terminal" until "Attach here". */
   readonly attached: boolean;
-  /** Working folder of the claude process (the workspace root). */
+  /**
+   * Working folder of the claude process (D14): the workspace root for a
+   * workspace folder; the repo, or its worktree when the session has one, for a
+   * repo folder. Canonical (realpath).
+   */
   readonly cwd: string | null;
+  /** The saved folder the session started in (D14); `null` once that folder is removed from the list (or before D14 without a saved root). */
+  readonly folderId: string | null;
+  /** The session's folder, canonical: the workspace root or the repo (D14). Kept when the folder leaves the saved list. */
+  readonly root: string | null;
+  /** What {@link root} is (D14). */
+  readonly rootKind: FolderKind | null;
   /** Pid of the live claude process, `null` when none. */
   readonly pid: number | null;
   readonly requestedPermissionMode: string | null;
@@ -82,6 +92,9 @@ const SPEC: TableSpec<SessionRecord> = {
     ultracode: ['ultracode', 'bool'],
     attached: ['attached', 'bool'],
     cwd: ['cwd', 'text'],
+    folderId: ['folder_id', 'text'],
+    root: ['root', 'text'],
+    rootKind: ['root_kind', 'text'],
     pid: ['pid', 'int'],
     requestedPermissionMode: ['requested_permission_mode', 'text'],
     observedPermissionMode: ['observed_permission_mode', 'text'],

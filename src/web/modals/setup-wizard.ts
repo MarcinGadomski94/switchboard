@@ -1,4 +1,4 @@
-import type { FolderRule, SolutionGroup, SystemInfo, WorkspaceRootCheck } from '../../core/api.ts';
+import type { FolderCheck, FolderRule, SolutionGroup, SystemInfo } from '../../core/api.ts';
 
 /**
  * The first-run setup wizard's rules and copy (M5.3, SPEC → Modals → Setup
@@ -91,33 +91,28 @@ export function checkRows(info: SystemInfo): CheckRow[] {
   return [cli, login, gh];
 }
 
-/** A status line under the workspace-root field. */
+/** A status line under the folder field. */
 export interface RootLine {
   readonly ok: boolean;
   readonly text: string;
 }
 
 /**
- * The line under the root field (prototype: `✓ AGENTS.md (Workspace Router)
- * found · 640 lines`): the router file's first `# ` heading and line count, or
- * what is wrong with the folder.
+ * The line under the folder field (prototype: `✓ AGENTS.md (Workspace Router)
+ * found · 640 lines`; D14: a git repo is `✓ git repo · single solution`): the
+ * router file's first `# ` heading and line count, or what is wrong with the
+ * folder (the server's words).
  */
-export function rootLine(check: WorkspaceRootCheck | null): RootLine | null {
+export function rootLine(check: FolderCheck | null): RootLine | null {
   if (!check) return null;
-  switch (check.state) {
-    case 'ok': {
-      const title = check.router?.title ?? null;
-      const name = !title ? 'AGENTS.md' : title.startsWith('AGENTS.md') ? title : `AGENTS.md (${title})`;
-      const lines = check.router?.lines ?? 0;
-      return { ok: true, text: `✓ ${name} found · ${lines} line${lines === 1 ? '' : 's'}` };
-    }
-    case 'no-router':
-      return { ok: false, text: '✕ no AGENTS.md in this folder' };
-    case 'missing':
-      return { ok: false, text: '✕ folder not found' };
-    case 'not-absolute':
-      return { ok: false, text: '✕ enter an absolute path' };
+  if (check.kind === 'repo') return { ok: true, text: '✓ git repo · single solution' };
+  if (check.kind === 'workspace') {
+    const title = check.router?.title ?? null;
+    const name = !title ? 'AGENTS.md' : title.startsWith('AGENTS.md') ? title : `AGENTS.md (${title})`;
+    const lines = check.router?.lines ?? 0;
+    return { ok: true, text: `✓ ${name} found · ${lines} line${lines === 1 ? '' : 's'}` };
   }
+  return { ok: false, text: `✕ ${check.message}` };
 }
 
 /** One row of the scan table (prototype `scan`: folder, count, examples, rule). */

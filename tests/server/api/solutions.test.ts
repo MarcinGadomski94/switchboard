@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { SolutionGroup } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
-import type { Providers } from '../../../src/server/providers.ts';
+import type { Providers, SolutionsProvider } from '../../../src/server/providers.ts';
 import { WorkspaceScanner } from '../../../src/server/solutions/scanner.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, spawnedArgv, waitForStatus } from '../../helpers/supervisor.ts';
 
@@ -31,6 +32,12 @@ afterEach(async () => {
   world = undefined;
 });
 
+/** The M6.1 scan alone as the provider (no live fields): a scanner per workspace folder (D14). */
+const scanOnly: SolutionsProvider = {
+  solutions: (folder) => new WorkspaceScanner({ root: folder.path }).solutions(),
+  isReadOnly: (solution, folder) => new WorkspaceScanner({ root: folder.path }).isReadOnly(solution),
+};
+
 async function repo(workspace: string, relative: string): Promise<void> {
   await mkdir(path.join(workspace, relative, '.git'), { recursive: true });
 }
@@ -48,9 +55,10 @@ async function setup(options: { root?: 'world' | 'none'; providers?: 'scanner' |
   await repo(ws, 'other/it-dashboard');
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: world.root }, platform: 'linux', home: world.root, cwd: world.root });
-  const workspaceRoot = options.root === 'none' ? null : ws;
-  const config = { ...base, port: PORT, workspaceRoot };
-  const providers: Providers = options.providers === 'none' ? {} : { solutions: new WorkspaceScanner({ workspaceRoot }) };
+  const config = { ...base, port: PORT };
+  // D14: the workspace is the saved (default) folder; 'none' = nothing saved.
+  if (options.root !== 'none') await seedFolder(world.store, ws);
+  const providers: Providers = options.providers === 'none' ? {} : { solutions: scanOnly };
   app = await buildApp({ config, token, store: world.store, webRoot: world.root, supervisor: world.supervisor, providers });
   await app.ready();
   return world;
@@ -93,36 +101,38 @@ describe('GET /api/solutions (M6.1)', () => {
     expect((await call('GET', '/api/solutions', undefined, false)).statusCode).toBe(401);
   });
 
-  it('without a passed provider the route scans the configured workspace root itself', async () => {
+  it('without a passed provider the route scans the default folder itself (live solutions)', async () => {
     await setup({ providers: 'none' });
     const response = await call('GET', '/api/solutions');
     expect(response.statusCode).toBe(200);
     expect((response.json() as SolutionGroup[]).map((g) => g.folder)).toEqual(['microfrontends/', 'mobile/', 'other/', 'read-only']);
   });
 
-  it('409 workspace-not-configured without a workspace root; 409 workspace-missing when it is gone', async () => {
+  it('409 no-folder while no folder is saved; 404 for an unknown folder; 409 folder-missing when it is gone (D14)', async () => {
     await setup({ root: 'none' });
     const response = await call('GET', '/api/solutions');
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: 'workspace-not-configured' });
+    expect(response.json()).toMatchObject({ error: 'no-folder' });
+    expect((await call('GET', '/api/solutions?folder=nope')).statusCode).toBe(404);
     await app?.close();
     await world?.cleanup();
     world = await makeSupervisorWorld();
     token = generateToken();
     const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: world.root }, platform: 'linux', home: world.root, cwd: world.root });
     const missing = path.join(world.root, 'gone');
+    await seedFolder(world.store, missing);
     app = await buildApp({
-      config: { ...base, port: PORT, workspaceRoot: missing },
+      config: { ...base, port: PORT },
       token,
       store: world.store,
       webRoot: world.root,
       supervisor: world.supervisor,
-      providers: { solutions: new WorkspaceScanner({ workspaceRoot: missing }) },
+      providers: { solutions: scanOnly },
     });
     await app.ready();
     const gone = await call('GET', '/api/solutions');
     expect(gone.statusCode).toBe(409);
-    expect(gone.json()).toMatchObject({ error: 'workspace-missing' });
+    expect(gone.json()).toMatchObject({ error: 'folder-missing' });
   });
 });
 

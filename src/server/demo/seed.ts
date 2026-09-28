@@ -20,6 +20,9 @@ export const DEMO_SEED_KEY = 'demo.seed';
 /** Version of the seed mapping; stored in the marker. */
 export const DEMO_SEED_VERSION = 1;
 
+/** The id of the demo's one saved folder (D14): the prototype's workspace root, the default. */
+export const DEMO_FOLDER_ID = 'demo';
+
 /** Stored under {@link DEMO_SEED_KEY}. */
 export interface DemoSeedMarker {
   readonly version: number;
@@ -189,6 +192,9 @@ export async function seedDemo(store: Store, data: DemoData, options: SeedDemoOp
 
 async function insertAll(store: Store, data: DemoData, now: Date, base: Date): Promise<void> {
   const sessionIds = new Map<string, string>();
+  // D14: the prototype's root is the demo's saved folder (a workspace; the default unless one is saved already).
+  const isDefault = (await store.folders.getDefault()) === null;
+  await store.folders.create({ id: DEMO_FOLDER_ID, path: data.solutions.root, canonicalPath: data.solutions.root, kind: 'workspace', isDefault });
 
   for (const s of data.sessions) {
     const lastActivity = minutesBefore(now, ageMinutes(s.age));
@@ -211,8 +217,11 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       worktrees: s.agents.some((a) => a.branch !== ''),
       ultracode: false,
       attached: true,
-      // The header's root path (M4.1): the prototype's workspace root (`D:\acme · workspace root`).
+      // The header's root path (M4.1): the prototype's workspace root (`D:\acme · workspace root`), the demo folder (D14).
       cwd: data.solutions.root,
+      folderId: DEMO_FOLDER_ID,
+      root: data.solutions.root,
+      rootKind: 'workspace',
       lastActivityAt: lastActivity,
     });
     sessionIds.set(s.name, session.id);
@@ -307,8 +316,9 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       name: sch.name,
       description: sch.description,
       cron: sch.cron,
-      template: { name: sch.name, task: sch.description },
+      template: { name: sch.name, task: sch.description, folder: DEMO_FOLDER_ID },
       paused: false,
+      folderId: DEMO_FOLDER_ID,
     });
     scheduleIds.set(sch.name, schedule.id);
     const lastAgo = failedRun && failedRun.schedule === sch.name ? ageMinutes(failedRun.age) : 60;

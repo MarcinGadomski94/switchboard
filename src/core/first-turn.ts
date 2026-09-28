@@ -1,5 +1,5 @@
 import type { NewSession } from './api.ts';
-import type { Coordination, QaStack } from './model.ts';
+import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './model.ts';
 
 /**
  * The first stdin user message of a new session (M5.2, `docs/new-session.md` →
@@ -8,6 +8,11 @@ import type { Coordination, QaStack } from './model.ts';
  * New-session form go into that first message, and the agent confirms them
  * instead of asking the router's session-start questions again. The terms are
  * the modal summary's (`src/web/modals/new-session.ts` → `summaryLines`).
+ *
+ * D14: only a session in a **workspace** folder gets the answers block (the
+ * router's session-start questions). A session in a **repo** folder gets only
+ * the worktree note ({@link repoWorktreeNote}) when it runs in a worktree, and
+ * nothing appended otherwise.
  */
 
 /** Outbox kind (`pending_messages.kind`) of the answers block when the task is empty. */
@@ -23,9 +28,19 @@ export interface FirstTurnWorktree {
   readonly branch: string;
 }
 
+/**
+ * The validated NewSession fields the block reads (the router fields are `null`
+ * only for a repo folder's session, which gets no block, D14).
+ */
+export type FirstTurnSession = Pick<NewSession, 'solutions' | 'coordination' | 'qa' | 'worktrees' | 'ultracode'> & {
+  readonly workType: WorkType | null;
+  readonly mode: SessionMode | null;
+  readonly phase: Phase | null;
+};
+
 /** What the answers block says: the validated NewSession plus what the service resolved. */
 export interface SessionStartAnswers {
-  readonly session: NewSession;
+  readonly session: FirstTurnSession;
   /** One workspace folder per `session.solutions` entry, same order. */
   readonly folders: readonly string[];
   /** The worktrees created for the session; empty when `session.worktrees` is false. */
@@ -60,7 +75,7 @@ function lastSegment(solution: string): string {
  * single-solution sessions with a `*-front` (microfrontend) in scope (router
  * *Session start*; the modal's section 6).
  */
-export function asksMobileCoordination(session: Pick<NewSession, 'workType' | 'mode' | 'solutions'>): boolean {
+export function asksMobileCoordination(session: Pick<FirstTurnSession, 'workType' | 'mode' | 'solutions'>): boolean {
   return session.workType === 'feature' && session.mode === 'single' && session.solutions.some((s) => lastSegment(s).endsWith('-front'));
 }
 
@@ -103,25 +118,59 @@ export function sessionStartBlock(answers: SessionStartAnswers): string {
   return lines.join('\n');
 }
 
+/** First line of the repo-folder worktree note (D14). */
+export const REPO_WORKTREE_NOTE_HEADER = 'Worktree note from Switchboard: this session runs in a git worktree, not in the main checkout of the repository.';
+
+/** The worktree a repo folder's session runs in (D14). */
+export interface RepoWorktree {
+  /** Absolute worktree path (the session's cwd), in the OS's form. */
+  readonly path: string;
+  /** `session/{name}`. */
+  readonly branch: string;
+  /** The branch (or commit) it was made from. */
+  readonly base: string;
+  /** The repository's main checkout. */
+  readonly repoPath: string;
+}
+
+/**
+ * The only thing a repo folder's session gets appended to its first message
+ * (D14: no router answers): which worktree it runs in and that the main
+ * checkout is not its working tree. Lines are `- Label: value`.
+ */
+export function repoWorktreeNote(worktree: RepoWorktree): string {
+  return [
+    REPO_WORKTREE_NOTE_HEADER,
+    `- Worktree: ${worktree.path} (branch ${worktree.branch}, from ${worktree.base}); it is your working folder: make every change here.`,
+    `- Main checkout: ${worktree.repoPath} (leave it as it is).`,
+  ].join('\n');
+}
+
 /**
  * The first stdin user message: the task text (the router lets the developer
- * define the task first), a blank line, then the answers block. An empty task
- * gives `''`: the process starts idle and the block waits in the outbox
+ * define the task first), a blank line, then the answers block (or a repo
+ * folder's worktree note, D14). An empty block leaves the task alone. An empty
+ * task gives `''`: the process starts idle and the block waits in the outbox
  * ({@link SESSION_START_KIND}) for the developer's first message.
  */
 export function firstTurnPayload(task: string, block: string): string {
   const text = task.trim();
-  return text === '' ? '' : `${text}\n\n${block}`;
+  if (text === '') return '';
+  return block === '' ? text : `${text}\n\n${block}`;
 }
 
 /**
  * A user message as the chat shows it: without the session-start answers block
- * Switchboard appended ({@link firstTurnPayload}). The block goes to the agent
- * unchanged; the bubble shows what the developer typed, as in the prototype.
+ * (or the repo worktree note, D14) Switchboard appended ({@link firstTurnPayload}).
+ * The block goes to the agent unchanged; the bubble shows what the developer
+ * typed, as in the prototype.
  */
 export function withoutSessionStartBlock(text: string): string {
-  const header = SESSION_START_HEADER[0];
-  if (text.startsWith(header)) return '';
-  const at = text.indexOf(`\n\n${header}`);
-  return at === -1 ? text : text.slice(0, at);
+  let shown = text;
+  for (const header of [SESSION_START_HEADER[0], REPO_WORKTREE_NOTE_HEADER]) {
+    if (shown.startsWith(header)) return '';
+    const at = shown.indexOf(`\n\n${header}`);
+    if (at !== -1) shown = shown.slice(0, at);
+  }
+  return shown;
 }

@@ -4,6 +4,7 @@ import type { ToolRecord } from '../db/repos/tools.ts';
 import type { Store } from '../db/store.ts';
 import type { ApiContext } from '../routes.ts';
 import { toSession } from '../sessions/wire.ts';
+import { sendFolderError } from './folders.ts';
 import { SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { REINDEX_SESSION_NAME, dirtyFileCodebaseMemory, reindexPrompt } from '../tools/codebase-memory.ts';
 import { httpToolProbe } from '../tools/probe.ts';
@@ -15,8 +16,7 @@ export const TOOL_ROUTES_PENDING: readonly PendingRoute[] = [];
 
 /** HTTP status of each supervisor refusal of the reindex session. */
 const START_ERROR_STATUS: Partial<Record<SupervisorErrorCode, number>> = {
-  'workspace-not-configured': 409,
-  'workspace-missing': 409,
+  'folder-missing': 409,
   closing: 503,
 };
 
@@ -45,15 +45,18 @@ async function freeSessionName(store: Store, base: string): Promise<string> {
  * - `POST /api/tools/{id}/probe` → `{ state: up|down }` from a server-side GET with
  *   a 3 s timeout (`providers.toolProbe`, else `tools/probe.ts`); `404` for an
  *   unknown tool, `409 not-configured` for a tool without a URL;
- * - additive, not in the contract: `GET /api/codebase-memory` (the Codebase Memory
- *   strip: `.codebase-memory-dirty` projects) and `POST /api/codebase-memory/reindex`
- *   (gap #4: starts a session from the built-in reindex prompt → `201` Session,
- *   `409 nothing-to-reindex` when the list is empty).
+ * - additive, not in the contract: `GET /api/codebase-memory?folder=` (the Codebase
+ *   Memory strip: the folder's `.codebase-memory-dirty` projects; D14: `folder` as
+ *   for `GET /api/solutions`, the default when omitted; a repo folder's list is
+ *   empty) and `POST /api/codebase-memory/reindex?folder=` (gap #4: starts a
+ *   session in that folder from the built-in reindex prompt → `201` Session,
+ *   `409 nothing-to-reindex` when the list is empty). Folder refusals as
+ *   `docs/folders.md` (`409 no-folder`, `404 not-found`).
  */
 export async function registerToolRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { store, providers, supervisor, config } = context;
+  const { store, providers, supervisor, folders } = context;
   const prober = providers.toolProbe ?? httpToolProbe;
-  const codebaseMemory = providers.codebaseMemory ?? dirtyFileCodebaseMemory(config.workspaceRoot);
+  const codebaseMemory = providers.codebaseMemory ?? dirtyFileCodebaseMemory();
 
   app.get('/api/tools', async (): Promise<Tool[]> => (await store.tools.list()).map(toTool));
 
@@ -70,10 +73,22 @@ export async function registerToolRoutes(app: FastifyInstance, context: ApiConte
     return { state: await prober.probe(tool.url) };
   });
 
-  app.get('/api/codebase-memory', async (): Promise<CodebaseMemoryStatus> => codebaseMemory.status());
+  app.get<{ Querystring: { folder?: string } }>('/api/codebase-memory', async (request, reply): Promise<CodebaseMemoryStatus | FastifyReply> => {
+    try {
+      return await codebaseMemory.status(await folders.resolveForView(request.query.folder));
+    } catch (error) {
+      return sendFolderError(reply, error);
+    }
+  });
 
-  app.post('/api/codebase-memory/reindex', async (_request, reply) => {
-    const { projects } = await codebaseMemory.status();
+  app.post<{ Querystring: { folder?: string } }>('/api/codebase-memory/reindex', async (request, reply) => {
+    let folder;
+    try {
+      folder = await folders.resolveForView(request.query.folder);
+    } catch (error) {
+      return sendFolderError(reply, error);
+    }
+    const { projects } = await codebaseMemory.status(folder);
     if (projects.length === 0) {
       return reply.code(409).send({ error: 'nothing-to-reindex', message: '.codebase-memory-dirty lists no projects' });
     }
@@ -92,8 +107,11 @@ export async function registerToolRoutes(app: FastifyInstance, context: ApiConte
           worktrees: false,
           ultracode: false,
         },
+        // D14: the reindex session runs at the root of the folder whose dirty list it works through.
+        { folder, cwd: folder.root },
         prompt,
       );
+      await folders.markUsed(folder.id);
       return reply.code(201).send(await toSession(store, record));
     } catch (error) {
       const status = error instanceof SupervisorError ? START_ERROR_STATUS[error.code] : undefined;

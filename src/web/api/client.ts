@@ -5,9 +5,12 @@ import type {
   ArtifactListItem,
   CodebaseMemoryStatus,
   FileDiff,
+  Folder,
+  FolderCheck,
   FolderListing,
   HistoryItem,
   InboxItem,
+  NewRepoSession,
   NewSession,
   ResumeCommand,
   Schedule,
@@ -20,7 +23,6 @@ import type {
   SystemInfo,
   Tool,
   ToolProbe,
-  WorkspaceRootCheck,
   Worktree,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
@@ -55,7 +57,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PUT';
+type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   let response: Response;
@@ -96,7 +98,8 @@ const enc = encodeURIComponent;
 /** The contract's REST calls. */
 export const api = {
   listSessions: () => request<Session[]>('GET', '/api/sessions'),
-  createSession: (body: NewSession) => request<Session>('POST', '/api/sessions', body),
+  /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`. */
+  createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
   getSession: (id: string) => request<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
@@ -112,7 +115,8 @@ export const api = {
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),
   inboxAction: (id: string, action: string) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`),
 
-  solutions: () => request<SolutionGroup[]>('GET', '/api/solutions'),
+  /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
+  solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
   isolate: (repo: string, sessionId: string) => request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, { sessionId }),
 
   schedules: () => request<Schedule[]>('GET', '/api/schedules'),
@@ -131,8 +135,8 @@ export const api = {
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),
   probeTool: (id: string) => request<ToolProbe>('POST', `/api/tools/${enc(id)}/probe`),
   /** Additive (M8.1, docs/tools.md): the Codebase Memory strip and its "Reindex n now" (gap #4). */
-  codebaseMemory: () => request<CodebaseMemoryStatus>('GET', '/api/codebase-memory'),
-  reindexCodebaseMemory: () => request<Session>('POST', '/api/codebase-memory/reindex'),
+  codebaseMemory: (folder?: string) => request<CodebaseMemoryStatus>('GET', `/api/codebase-memory${query({ folder })}`),
+  reindexCodebaseMemory: (folder?: string) => request<Session>('POST', `/api/codebase-memory/reindex${query({ folder })}`),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
 
@@ -144,10 +148,19 @@ export const api = {
 
   // M5.3, additive to the contract: the first-run setup wizard (docs/setup.md).
   setup: () => request<SetupState>('GET', '/api/setup'),
-  checkRoot: (path: string) => request<WorkspaceRootCheck>('GET', `/api/setup/root${query({ path })}`),
-  saveRoot: (path: string) => request<SetupState>('PUT', '/api/setup/root', { path }),
+  /** Browse…: one folder's subfolders (`GET /api/setup/folders`). */
   folders: (path?: string) => request<FolderListing>('GET', `/api/setup/folders${query({ path })}`),
   completeSetup: () => request<SetupState>('POST', '/api/setup/complete'),
+
+  // D14, additive to the contract: the saved folders (docs/folders.md).
+  savedFolders: () => request<Folder[]>('GET', '/api/folders'),
+  /** The check line of a typed path; nothing is saved. */
+  checkFolder: (path: string) => request<FolderCheck>('GET', `/api/folders/check${query({ path })}`),
+  /** 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but a workspace or a git repo. */
+  addFolder: (path: string) => request<Folder>('POST', '/api/folders', { path }),
+  /** The list left; 409 `folder-in-use` (`FolderInUse`) while schedules start their runs there. */
+  removeFolder: (id: string) => request<Folder[]>('DELETE', `/api/folders/${enc(id)}`),
+  setDefaultFolder: (id: string) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/default`),
 } as const;
 
 /** The client's type (for test doubles). */

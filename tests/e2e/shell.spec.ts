@@ -58,9 +58,9 @@ test('the shell renders from the real API and shows only what the API returns', 
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toEqual([]);
     } else if (call.url === '/api/solutions') {
-      // M6.1: the real scanner; this server has no workspace root configured.
+      // M6.1 / D14: the real scanner; this server has no saved folder.
       expect(call.status, call.url).toBe(409);
-      expect(call.body, call.url).toMatchObject({ error: 'workspace-not-configured' });
+      expect(call.body, call.url).toMatchObject({ error: 'no-folder' });
     } else if (call.url === '/api/tools') {
       expect(call.status, call.url).toBe(200);
       expect((call.body as Array<{ id: string }>).map((tool) => tool.id), call.url).toEqual(['cm', 'sw']);

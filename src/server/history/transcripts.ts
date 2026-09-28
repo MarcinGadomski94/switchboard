@@ -4,10 +4,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import type { HistoryItem } from '../../core/api.ts';
-import { type HistorySession, type HistoryTranscript, buildHistoryRows, filterHistory } from '../../core/history.ts';
+import { type HistoryRoot, type HistorySession, type HistoryTranscript, buildHistoryRows, filterHistory } from '../../core/history.ts';
 import { type TranscriptFacts, TranscriptParser, isCurrentFacts, projectFolderPrefix } from '../../core/transcript.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { type FolderRef, folderOfSession, folderRefOf, repoSolutionName } from '../folders/ref.ts';
 import type { HistoryProvider } from '../providers.ts';
+
+/** Each path resolved, then its real path when that differs; no duplicates. */
+async function pathForms(paths: readonly string[]): Promise<string[]> {
+  const forms: string[] = [];
+  for (const entry of paths) {
+    const resolved = path.resolve(entry);
+    const real = await realpath(resolved).catch(() => resolved);
+    for (const form of [real, resolved]) if (!forms.includes(form)) forms.push(form);
+  }
+  return forms;
+}
 
 /**
  * The Claude Code config folder transcripts live under (`docs/spike-m0.md` →
@@ -22,9 +35,8 @@ export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env, home: stri
 
 /** Options of {@link TranscriptHistory}. */
 export interface TranscriptHistoryOptions {
+  /** Sessions and saved folders (D14: History reads under every saved folder and every session's folder). */
   readonly store: Store;
-  /** The workspace root (`SWITCHBOARD_WORKSPACE_ROOT`); `null` = only stored sessions are listed. */
-  readonly workspaceRoot: string | null;
   /** From {@link claudeConfigDir}. Only ever read. */
   readonly configDir: string;
   /** Default: the current platform (macOS and Windows compare paths case-insensitively). */
@@ -48,14 +60,16 @@ interface Found {
 }
 
 /**
- * The real History provider (M7.4): stored sessions from the database joined
- * with the transcripts under `<configDir>/projects/`, plus the terminal-started
- * sessions (gap #5). Rules for which rows exist and what they show are in
- * `src/core/history.ts`; this class finds and parses the files.
+ * The real History provider (M7.4; D14): stored sessions from the database
+ * joined with the transcripts under `<configDir>/projects/`, plus the
+ * terminal-started sessions (gap #5) of every saved folder and every session's
+ * folder. Each row carries its folder. Rules for which rows exist and what they
+ * show are in `src/core/history.ts`; this class finds and parses the files.
  *
- * - Only project folders whose name starts with the slug of the workspace root are
- *   read (the slug is lossy, so `src/core/history.ts` also checks each file's
- *   start `cwd`), and only their top-level `*.jsonl` (never `<id>/subagents/`).
+ * - Only project folders whose name starts with the slug of a folder (saved or a
+ *   session's) or of a session's cwd (a repo worktree) are read (the slug is
+ *   lossy, so `src/core/history.ts` also checks each file's start `cwd`), and only
+ *   their top-level `*.jsonl` (never `<id>/subagents/`).
  * - Each file is streamed line by line (they reach tens of MB) and parsed once per
  *   `(size, mtime)`: the facts are cached in memory and in `history_cache`, so a
  *   restart does not re-read unchanged files. Cache rows of files that are gone
@@ -64,7 +78,6 @@ interface Found {
  */
 export class TranscriptHistory implements HistoryProvider {
   readonly #store: Store;
-  readonly #workspaceRoot: string | null;
   readonly #projectsDir: string;
   readonly #caseInsensitive: boolean;
   readonly #now: () => number;
@@ -74,7 +87,6 @@ export class TranscriptHistory implements HistoryProvider {
 
   constructor(options: TranscriptHistoryOptions) {
     this.#store = options.store;
-    this.#workspaceRoot = options.workspaceRoot;
     this.#projectsDir = path.join(options.configDir, 'projects');
     const platform = options.platform ?? process.platform;
     this.#caseInsensitive = platform === 'darwin' || platform === 'win32';
@@ -87,15 +99,17 @@ export class TranscriptHistory implements HistoryProvider {
   }
 
   async history(q?: string): Promise<HistoryItem[]> {
-    const sessions = await this.#storedSessions();
-    const roots = await this.#roots();
-    const transcripts = roots.length > 0 ? await this.#transcripts(roots) : [];
+    const records = await this.#store.sessions.list();
+    const sessions = await this.#storedSessions(records);
+    const roots = await this.#roots(records);
+    // The transcript folders: every folder, plus each session's cwd (a repo session's worktree sits next to the repo).
+    const scanned = [...new Set([...roots.map((root) => root.path), ...records.flatMap((record) => (record.cwd ? [record.cwd] : []))])];
+    const transcripts = scanned.length > 0 ? await this.#transcripts(scanned) : [];
     const rows = buildHistoryRows({ sessions, transcripts, roots, caseInsensitive: this.#caseInsensitive, now: this.#now() });
     return filterHistory(rows, q);
   }
 
-  async #storedSessions(): Promise<HistorySession[]> {
-    const records = await this.#store.sessions.list();
+  async #storedSessions(records: readonly SessionRecord[]): Promise<HistorySession[]> {
     const worktrees = await this.#store.worktrees.list({ includeRemoved: true });
     return records.map((record) => ({
       id: record.id,
@@ -112,19 +126,37 @@ export class TranscriptHistory implements HistoryProvider {
         .filter((wt) => wt.sessionId === record.id)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .map((wt) => ({ repo: wt.repo, branch: wt.branch, prNumber: wt.prNumber, prState: wt.prState })),
+      folder: record.folderId,
+      folderPath: record.root,
     }));
   }
 
-  /** The configured root and its canonical form (the CLI records the on-disk case, M0.3). */
-  async #roots(): Promise<string[]> {
-    if (!this.#workspaceRoot) return [];
-    const configured = path.resolve(this.#workspaceRoot);
-    const real = await realpath(configured).catch(() => configured);
-    return real === configured ? [configured] : [real, configured];
+  /**
+   * Every saved folder and every session's folder (D14), each as saved and in its
+   * canonical form (the CLI records the on-disk case, M0.3). A saved folder wins
+   * over a session's copy of the same path.
+   */
+  async #roots(records: readonly SessionRecord[]): Promise<HistoryRoot[]> {
+    const roots: HistoryRoot[] = [];
+    const seen = new Set<string>();
+    const add = async (folder: FolderRef): Promise<void> => {
+      const repoName = folder.kind === 'repo' ? repoSolutionName(folder) : null;
+      for (const form of await pathForms([folder.path, folder.root])) {
+        if (seen.has(form)) continue;
+        seen.add(form);
+        roots.push({ path: form, kind: folder.kind, folder: folder.id, folderPath: folder.path, repoName });
+      }
+    };
+    for (const record of await this.#store.folders.list()) await add(folderRefOf(record));
+    for (const record of records) {
+      const folder = folderOfSession(record);
+      if (folder) await add(folder);
+    }
+    return roots;
   }
 
-  async #transcripts(roots: readonly string[]): Promise<HistoryTranscript[]> {
-    const prefixes = roots.map((root) => this.#fold(projectFolderPrefix(root)));
+  async #transcripts(scanned: readonly string[]): Promise<HistoryTranscript[]> {
+    const prefixes = (await pathForms(scanned)).map((folder) => this.#fold(projectFolderPrefix(folder)));
     let folders: string[];
     try {
       folders = (await readdir(this.#projectsDir, { withFileTypes: true }))

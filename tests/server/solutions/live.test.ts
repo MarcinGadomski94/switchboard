@@ -6,9 +6,9 @@ import type { Session, Solution, SolutionGroup } from '../../../src/core/api.ts'
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { LiveSolutions } from '../../../src/server/solutions/live.ts';
-import { WorkspaceScanner } from '../../../src/server/solutions/scanner.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type GitWorld, forbiddenGitCalls, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
@@ -67,9 +67,10 @@ async function setup(): Promise<{ s: SupervisorWorld; g: GitWorld; m: WorktreeMa
 
   token = generateToken();
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: sw.root }, platform: 'linux', home: sw.root, cwd: sw.root });
-  const solutions = new LiveSolutions({ scanner: new WorkspaceScanner({ workspaceRoot: ws }), store: sw.store, diff: m, onError: (e) => errors.push(e) });
+  const solutions = new LiveSolutions({ store: sw.store, diff: m, resolveRepo: (solution, folder) => m.resolveRepo(solution, folder), onError: (e) => errors.push(e) });
+  await seedFolder(sw.store, ws);
   app = await buildApp({
-    config: { ...base, port: PORT, workspaceRoot: ws },
+    config: { ...base, port: PORT },
     token,
     store: sw.store,
     webRoot: sw.root,

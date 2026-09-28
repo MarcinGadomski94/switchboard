@@ -15,6 +15,7 @@ import { QuestionPipeline } from '../../../src/server/inbox/pipeline.ts';
 import { SYSTEM_ITEM_LABELS, inboxCount, questionBatchItem, sessionBranches, sourceName, systemItem } from '../../../src/server/inbox/wire.ts';
 import type { ControlRequestHandler } from '../../../src/server/supervisor/supervisor.ts';
 import { generateToken } from '../../../src/server/token.ts';
+import { seedFolder } from '../../helpers/folders.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 const PORT = 4911; // inject() opens no socket; the port feeds the Host check only
@@ -52,7 +53,8 @@ async function setup(scenario: string): Promise<Rig> {
   const pipeline = new QuestionPipeline({ store: w.store, bus }).bind(w.supervisor);
   holder.pipeline = pipeline;
   const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: w.root }, platform: 'linux', home: w.root, cwd: w.root });
-  const config = { ...base, port: PORT, workspaceRoot: w.workspace };
+  const config = { ...base, port: PORT };
+  await seedFolder(w.store, w.workspace);
   const token = generateToken();
   const app = await buildApp({ config, token, store: w.store, webRoot: w.root, supervisor: w.supervisor, questions: pipeline, bus });
   await app.ready();

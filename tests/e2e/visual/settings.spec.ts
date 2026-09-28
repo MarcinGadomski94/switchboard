@@ -244,7 +244,8 @@ test.beforeAll(async () => {
   root = path.join(tmp, 'ws');
   await mkdir(root, { recursive: true });
   await writeFile(path.join(root, 'AGENTS.md'), '# AGENTS.md (Workspace Router)\n');
-  app = await startDemoApp({ SWITCHBOARD_WORKSPACE_ROOT: root, SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv() });
+  // D14: the temp root is the default saved folder (Settings reports it as the workspace root).
+  app = await startDemoApp({ SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv() }, { folder: root });
 });
 
 test.afterAll(async () => {

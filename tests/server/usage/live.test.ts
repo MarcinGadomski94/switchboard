@@ -45,7 +45,7 @@ function meterFor(world: SupervisorWorld, now: () => number, warnings: UsageWarn
 describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
   it('asks a live idle session for get_usage over stdin and stores the answer as its reading', async () => {
     w = await makeSupervisorWorld();
-    const session = await w.supervisor.start(newSession({ name: 'usage-idle' }), '');
+    const session = await w.supervisor.start(newSession({ name: 'usage-idle' }), w.place, '');
     expect(w.supervisor.idleLiveSessionIds()).toEqual([session.id]);
     let now = PROBE_TIME;
     const meter = meterFor(w, () => now);
@@ -80,7 +80,7 @@ describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
 
   it('never asks mid-turn; the turn’s rate_limit_event is a reading of its own', async () => {
     w = await makeSupervisorWorld({ scenario: 'hang' });
-    const session = await w.supervisor.start(newSession({ name: 'usage-busy' }));
+    const session = await w.supervisor.start(newSession({ name: 'usage-busy' }), w.place);
     await waitForStatus(w.store, session.id, ['run']);
     const pid = w.supervisor.pid(session.id) as number;
     const logFile = w.logFile;
@@ -95,7 +95,7 @@ describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
 
     // usage-turn: one API turn with `rate_limit_event` 0.1 / 0.18, recorded by the M2.1 recorder.
     w.env['FAKE_CLAUDE_SCENARIO'] = 'usage-turn';
-    const turn = await w.supervisor.start(newSession({ name: 'usage-turn' }));
+    const turn = await w.supervisor.start(newSession({ name: 'usage-turn' }), w.place);
     await waitForStatus(w.store, turn.id, ['done']);
     const reading = await until(async () => (await w?.store.usage.list())?.find((r) => r.sessionId === turn.id), 'the rate_limit_event reading');
     expect(reading).toMatchObject({ source: 'rate_limit_event', fiveHourPct: 10, sevenDayPct: 18, fiveHourResetsAt: '2026-09-27T23:40:00.000Z' });
@@ -104,7 +104,7 @@ describe('UsageMeter + SessionSupervisor (fake-claude)', () => {
 
   it('a session that ends before answering: no reading is invented (unknown)', async () => {
     w = await makeSupervisorWorld();
-    const session = await w.supervisor.start(newSession({ name: 'usage-gone' }), '');
+    const session = await w.supervisor.start(newSession({ name: 'usage-gone' }), w.place, '');
     // Straight to the supervisor: a stopped session answers nothing.
     await w.supervisor.pause(session.id);
     expect(await w.supervisor.controlRequest(session.id, getUsageLine('sb-usage-gone'), 1_000)).toBeNull();

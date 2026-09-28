@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Solution, SolutionGroup, SystemInfo } from '../../src/core/api.ts';
+import type { FolderCheck, Solution, SolutionGroup, SystemInfo } from '../../src/core/api.ts';
 import {
   WIZARD_STEPS,
   checkRows,
@@ -94,15 +94,30 @@ describe('setup wizard model (M5.3)', () => {
   });
 
   it('the root line: the prototype’s “✓ AGENTS.md (Workspace Router) found · 640 lines”, or what is wrong', () => {
-    expect(rootLine({ path: '/ws', state: 'ok', router: { title: 'AGENTS.md (Workspace Router)', lines: 640 } })).toEqual({
+    // D14: the folder field's line comes from a FolderCheck (`GET /api/folders/check`).
+    const check = (fields: Partial<FolderCheck>): FolderCheck => ({
+      path: '/ws',
+      canonicalPath: '/ws',
+      exists: true,
+      kind: 'workspace',
+      router: null,
+      solutionCount: 3,
+      repoName: null,
+      problem: null,
+      message: '',
+      ...fields,
+    });
+    expect(rootLine(check({ router: { title: 'AGENTS.md (Workspace Router)', lines: 640 } }))).toEqual({
       ok: true,
       text: '✓ AGENTS.md (Workspace Router) found · 640 lines',
     });
-    expect(rootLine({ path: '/ws', state: 'ok', router: { title: 'Workspace Router', lines: 1 } })?.text).toBe('✓ AGENTS.md (Workspace Router) found · 1 line');
-    expect(rootLine({ path: '/ws', state: 'ok', router: { title: null, lines: 3 } })?.text).toBe('✓ AGENTS.md found · 3 lines');
-    expect(rootLine({ path: '/ws', state: 'no-router', router: null })).toEqual({ ok: false, text: '✕ no AGENTS.md in this folder' });
-    expect(rootLine({ path: '/ws', state: 'missing', router: null })).toEqual({ ok: false, text: '✕ folder not found' });
-    expect(rootLine({ path: 'ws', state: 'not-absolute', router: null })).toEqual({ ok: false, text: '✕ enter an absolute path' });
+    expect(rootLine(check({ router: { title: 'Workspace Router', lines: 1 } }))?.text).toBe('✓ AGENTS.md (Workspace Router) found · 1 line');
+    expect(rootLine(check({ router: { title: null, lines: 3 } }))?.text).toBe('✓ AGENTS.md found · 3 lines');
+    expect(rootLine(check({ kind: 'repo', repoName: 'switchboard', solutionCount: 1 }))).toEqual({ ok: true, text: '✓ git repo · single solution' });
+    const refused = (problem: FolderCheck['problem'], message: string): FolderCheck => check({ kind: null, solutionCount: null, problem, message });
+    expect(rootLine(refused('unsupported', 'no AGENTS.md here and not a git repository'))).toEqual({ ok: false, text: '✕ no AGENTS.md here and not a git repository' });
+    expect(rootLine(refused('missing', 'folder not found'))).toEqual({ ok: false, text: '✕ folder not found' });
+    expect(rootLine(refused('not-absolute', 'enter an absolute path'))).toEqual({ ok: false, text: '✕ enter an absolute path' });
     expect(rootLine(null)).toBeNull();
   });
 

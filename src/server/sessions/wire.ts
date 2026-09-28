@@ -69,7 +69,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
 
 /**
  * `GET /api/sessions` item: the session with its agents and open question count,
- * plus the header's fields (M4.1): `cwd`, `live` (a supervised process is
+ * plus the header's fields (M4.1): `cwd`, the session's folder (D14: `folder`
+ * id, `folderPath`, `folderKind`), `live` (a supervised process is
  * running: its pid is recorded), the handoff command and the chips (session-start
  * answers + the session's observed loops, `src/core/derive/chips.ts`), and its loops
  * (M7.2, the Schedules & loops cards).
@@ -96,6 +97,9 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     agents: agents.map(toAgent),
     openQuestionCount: await openQuestionCount(store, record.id),
     cwd: record.cwd,
+    folder: record.folderId,
+    folderPath: record.root,
+    folderKind: record.rootKind,
     live: record.pid !== null,
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),

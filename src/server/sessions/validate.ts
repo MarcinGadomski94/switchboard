@@ -1,5 +1,5 @@
 import type { NewSession } from '../../core/api.ts';
-import { COORDINATIONS, PHASES, QA_STACKS, SESSION_MODES, WORK_TYPES, isOneOf } from '../../core/model.ts';
+import { COORDINATIONS, type FolderKind, PHASES, type Phase, QA_STACKS, SESSION_MODES, type SessionMode, WORK_TYPES, type WorkType, isOneOf } from '../../core/model.ts';
 
 /** One validation failure of a request body. */
 export interface FieldError {
@@ -7,8 +7,25 @@ export interface FieldError {
   readonly message: string;
 }
 
+/**
+ * A validated NewSession (D14: without `folder`, which the caller resolved; the
+ * router-only fields `workType`, `mode`, `phase` are `null` for a repo folder).
+ */
+export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder'> & {
+  readonly workType: WorkType | null;
+  readonly mode: SessionMode | null;
+  readonly phase: Phase | null;
+};
+
 /** Result of {@link validateNewSession}. */
-export type NewSessionValidation = { readonly ok: true; readonly value: NewSession } | { readonly ok: false; readonly errors: FieldError[] };
+export type NewSessionValidation = { readonly ok: true; readonly value: ValidNewSession } | { readonly ok: false; readonly errors: FieldError[] };
+
+/** The folder a NewSession starts in, as the validation needs it (D14). */
+export interface ValidationFolder {
+  readonly kind: FolderKind;
+  /** A repo folder's one solution (its name). */
+  readonly repoName: string;
+}
 
 /** What the validation needs to know beyond the body. */
 export interface NewSessionChecks {
@@ -17,8 +34,11 @@ export interface NewSessionChecks {
   /**
    * `true` if the router marks this solution read-only. The static layout check
    * ({@link isReadOnlyByLayout}) always applies; the workspace scan (M6.1) can add more.
+   * Workspace folders only (D14).
    */
   readonly readOnly?: (solution: string) => Promise<boolean>;
+  /** The session's folder (D14). Default: a workspace. */
+  readonly folder?: ValidationFolder;
 }
 
 /** Session names: kebab-case (contract), at most 64 characters. */
@@ -41,9 +61,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Validates a `POST /api/sessions` body (contract → NewSession): name unique and
  * kebab-case; solutions not empty; read-only solutions rejected; `qa` required
- * when `workType` is `qa`; every enum from the contract. Unknown fields are ignored.
+ * when `workType` is `qa`; every enum from the contract. Unknown fields (and
+ * `folder`, which the caller resolves) are ignored.
+ *
+ * D14, a **repo** folder ({@link NewSessionChecks.folder}): the router-only
+ * fields (`workType`, `mode`, `phase`, `coordination`, `qa`) are not read and come
+ * back `null`; `solutions` may be empty or omitted and becomes `[repoName]`; any
+ * other solution is refused.
  */
 export async function validateNewSession(body: unknown, checks: NewSessionChecks): Promise<NewSessionValidation> {
+  if (checks.folder?.kind === 'repo') return validateRepoSession(body, checks, checks.folder.repoName);
   const errors: FieldError[] = [];
   const fail = (field: string, message: string): void => {
     errors.push({ field, message });
@@ -117,12 +144,61 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
     value: {
       name: name as string,
       task: task as string,
-      workType: workType as NewSession['workType'],
-      mode: mode as NewSession['mode'],
+      workType: workType as WorkType,
+      mode: mode as SessionMode,
       solutions: solutions as string[],
-      phase: phase as NewSession['phase'],
+      phase: phase as Phase,
       coordination: coordination as NewSession['coordination'],
       qa: workType === 'qa' ? qa : null,
+      worktrees: worktrees as boolean,
+      ultracode: ultracode as boolean,
+    },
+  };
+}
+
+/** The fields every folder kind validates the same way: name, task, worktrees, ultracode. */
+async function commonFields(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void) {
+  const name = body['name'];
+  if (typeof name !== 'string' || !SESSION_NAME.test(name) || name.length > 64) {
+    fail('name', 'the name must be kebab-case (a-z, 0-9, single dashes), at most 64 characters');
+  } else if (await checks.nameTaken(name)) {
+    fail('name', `a session named "${name}" already exists`);
+  }
+  const task = body['task'] ?? '';
+  if (typeof task !== 'string') fail('task', 'the task must be text');
+  const worktrees = body['worktrees'];
+  if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
+  const ultracode = body['ultracode'];
+  if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
+  return { name, task, worktrees, ultracode };
+}
+
+/** {@link validateNewSession} for a repo folder (D14): one solution, no router fields. */
+async function validateRepoSession(body: unknown, checks: NewSessionChecks, repoName: string): Promise<NewSessionValidation> {
+  const errors: FieldError[] = [];
+  const fail = (field: string, message: string): void => {
+    errors.push({ field, message });
+  };
+  if (!isRecord(body)) return { ok: false, errors: [{ field: '', message: 'the body must be a NewSession object' }] };
+  const { name, task, worktrees, ultracode } = await commonFields(body, checks, fail);
+  const solutions = body['solutions'] ?? [];
+  if (!Array.isArray(solutions) || !solutions.every((s) => typeof s === 'string')) {
+    fail('solutions', 'solutions must be a list of names');
+  } else if (solutions.some((s) => s !== repoName)) {
+    fail('solutions', `a repo folder has one solution, ${repoName}`);
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      name: name as string,
+      task: task as string,
+      workType: null,
+      mode: null,
+      solutions: [repoName],
+      phase: null,
+      coordination: null,
+      qa: null,
       worktrees: worktrees as boolean,
       ultracode: ultracode as boolean,
     },

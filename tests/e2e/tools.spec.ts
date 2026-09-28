@@ -7,6 +7,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { type StubServer, htmlPage, startStubServer, unusedTestPort } from '../helpers/stub-http.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M8.1 oracle: embedded tools on the real code path (no demo seed, D13). The real
@@ -64,9 +65,10 @@ test.beforeAll(async () => {
   );
   cmStub = await stub(htmlPage('Codebase Memory stub'));
   const dataDir = path.join(tmp, 'data');
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(dataDir, workspace);
   server = await startServer({
     SWITCHBOARD_DATA_DIR: dataDir,
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     CLAUDE_CONFIG_DIR: claudeConfig,
     FAKE_CLAUDE_SCENARIO: 'handoff-start',

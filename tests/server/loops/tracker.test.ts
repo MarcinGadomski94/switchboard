@@ -5,6 +5,7 @@ import type { HubEventName, HubEvents } from '../../../src/core/api.ts';
 import { CRON_EXPIRY_MS, SESSION_ONLY_NOTE } from '../../../src/core/derive/loops.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
 import { toLoop } from '../../../src/server/loops/wire.ts';
+import { findLoopProgress, sessionWorkingFolders } from '../../../src/server/loops/progress.ts';
 import { LoopTracker, loopRowId } from '../../../src/server/loops/tracker.ts';
 import { toSession } from '../../../src/server/sessions/wire.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
@@ -45,9 +46,9 @@ describe('LoopTracker', () => {
     await writeFile(path.join(folder, '.loop', 'progress.md'), PROGRESS);
     const bus = new HubBus();
     const seen = recorder(bus);
-    tracker = new LoopTracker({ store: w.store, events: w.supervisor, bus, workspaceRoot: w.workspace, debounceMs: 20 });
+    tracker = new LoopTracker({ store: w.store, events: w.supervisor, bus, debounceMs: 20 });
 
-    const session = await w.supervisor.start(newSession({ name: 'loopy', task: 'Hello', solutions: ['other/loopy'] }));
+    const session = await w.supervisor.start(newSession({ name: 'loopy', task: 'Hello', solutions: ['other/loopy'] }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
     await tracker.idle();
     expect(await w.store.loops.list(session.id)).toEqual([]);
@@ -98,11 +99,11 @@ describe('LoopTracker', () => {
   it('ScheduleWakeup and Workflow sessions; no progress file → cap and breaker stay null; other sessions get no rows', async () => {
     world = await makeSupervisorWorld({ extraArgs: ['--replay-user-messages'] });
     const w = world;
-    tracker = new LoopTracker({ store: w.store, events: w.supervisor, workspaceRoot: w.workspace, debounceMs: 20 });
+    tracker = new LoopTracker({ store: w.store, events: w.supervisor, debounceMs: 20 });
 
-    const plain = await w.supervisor.start(newSession({ name: 'plain', task: 'Just reply' }));
-    const wake = await w.supervisor.start(newSession({ name: 'wake', task: '/loop watch the queue [fake:tool ScheduleWakeup {"delaySeconds":1200,"reason":"next check"}]' }));
-    const flow = await w.supervisor.start(newSession({ name: 'flow', task: 'Roll out [fake:tool Workflow {"name":"button rollout"}]' }));
+    const plain = await w.supervisor.start(newSession({ name: 'plain', task: 'Just reply' }), w.place);
+    const wake = await w.supervisor.start(newSession({ name: 'wake', task: '/loop watch the queue [fake:tool ScheduleWakeup {"delaySeconds":1200,"reason":"next check"}]' }), w.place);
+    const flow = await w.supervisor.start(newSession({ name: 'flow', task: 'Roll out [fake:tool Workflow {"name":"button rollout"}]' }), w.place);
     for (const id of [plain.id, wake.id, flow.id]) await waitForStatus(w.store, id, ['done']);
 
     const [wakeLoop] = await until(async () => {
@@ -129,8 +130,8 @@ describe('LoopTracker', () => {
   it('sweep() re-derives tracker rows whose process ended while no tracker listened; demo-seeded rows are left alone', async () => {
     world = await makeSupervisorWorld({ extraArgs: ['--replay-user-messages'] });
     const w = world;
-    tracker = new LoopTracker({ store: w.store, events: w.supervisor, workspaceRoot: w.workspace, debounceMs: 20 });
-    const session = await w.supervisor.start(newSession({ name: 'sweepy', task: '/loop 1h sweep [fake:tool CronCreate {"cron":"7 * * * *","prompt":"sweep"}]' }));
+    tracker = new LoopTracker({ store: w.store, events: w.supervisor, debounceMs: 20 });
+    const session = await w.supervisor.start(newSession({ name: 'sweepy', task: '/loop 1h sweep [fake:tool CronCreate {"cron":"7 * * * *","prompt":"sweep"}]' }), w.place);
     await waitForStatus(w.store, session.id, ['done']);
     const [live] = await until(async () => {
       await tracker?.idle();
@@ -146,10 +147,31 @@ describe('LoopTracker', () => {
     await waitForStatus(w.store, session.id, ['paused']);
     expect((await w.store.loops.get(loopRowId(session.id, 'loop')))?.nextFireAt).not.toBeNull();
 
-    tracker = new LoopTracker({ store: w.store, events: w.supervisor, workspaceRoot: w.workspace, debounceMs: 20 });
+    tracker = new LoopTracker({ store: w.store, events: w.supervisor, debounceMs: 20 });
     await tracker.sweep();
     const row = await w.store.loops.get(loopRowId(session.id, 'loop'));
     expect(row).toMatchObject({ nextFireAt: null, expiresAt: null });
     expect(await w.store.loops.get(seeded.id)).toEqual(seeded);
+  });
+});
+
+describe('loop progress in the session\'s own folder (D14)', () => {
+  it('a repo session: its worktree, the repo and its cwd; the shown path is relative to its folder', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const repo = path.join(w.root, 'solo');
+    const worktree = path.join(w.root, 'solo-wt-loopy');
+    await mkdir(path.join(repo, '.loop'), { recursive: true });
+    await mkdir(worktree, { recursive: true });
+    await writeFile(path.join(repo, '.loop', 'progress.md'), PROGRESS);
+    const session = await w.store.sessions.create({ name: 'loopy', claudeSessionId: 'c-loopy', solutions: ['solo'], root: repo, rootKind: 'repo', cwd: worktree });
+    await w.store.worktrees.create({ repo: 'solo', repoPath: repo, branch: 'session/loopy', path: worktree, sessionId: session.id });
+    const folders = await sessionWorkingFolders(w.store, session);
+    expect(folders).toEqual([worktree, repo]);
+    const found = await findLoopProgress(folders, repo);
+    expect(found).toMatchObject({ file: path.join(repo, '.loop', 'progress.md'), shown: '.loop/progress.md' });
+    // A workspace session: its solutions under its own root (not any other folder).
+    const ws = await w.store.sessions.create({ name: 'in-ws', claudeSessionId: 'c-in-ws', solutions: ['other/loopy'], root: w.workspace, rootKind: 'workspace', cwd: w.workspace });
+    expect(await sessionWorkingFolders(w.store, ws)).toEqual([path.join(w.workspace, 'other', 'loopy'), w.workspace]);
   });
 });

@@ -6,6 +6,7 @@ import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
+import { FolderService } from './folders/service.ts';
 import { HubBus } from './hub/bus.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
@@ -15,7 +16,6 @@ import { loadServiceRedirect } from './service/target.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
-import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
@@ -34,22 +34,26 @@ async function main(): Promise<void> {
   const store = await openStore(storeFile(config.dataDir));
   let app: FastifyInstance;
   try {
-    // M5.3 (docs/setup.md): the workspace root is SWITCHBOARD_WORKSPACE_ROOT, else the one the
-    // setup wizard saved; `live` reads it on every access and the services below get changes.
-    const setup = await SetupService.open({ store, envRoot: config.workspaceRoot, autoOpen: setupWizardAutoOpen() });
-    const live = setup.liveConfig(config);
+    // D14 (docs/folders.md): no workspace root. The saved folders (reconciled with the disk
+    // here) say where each session, scan and schedule works; the wizard only offers to add one.
+    const folders = await FolderService.open({ store });
+    const setup = new SetupService({ store, folders, autoOpen: setupWizardAutoOpen() });
     // `/hub` events (docs/hub.md): services created here that publish take this bus.
     const bus = new HubBus();
     // The question pipeline (M3.1) is the supervisor's control-request handler, so it
     // also hears about requests a crash left open (restart recovery below).
-    const { supervisor, questions } = createSessionServices(live, store, bus);
-    const worktrees = createWorktreeManager(live, store, supervisor);
+    const { supervisor, questions } = createSessionServices(config, store, bus);
+    const worktrees = createWorktreeManager(config, store, supervisor);
     // System Inbox items (M3.3): "PR merged" from the manager's worktreeRemovable, "Scheduled run failed" from schedule_runs.
     const systemItems = new SystemItemService({ store, bus, worktrees });
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
-    const scanner = new WorkspaceScanner({ workspaceRoot: live.workspaceRoot });
-    setup.onRootChange((root) => scanner.setWorkspaceRoot(root));
-    const solutions = new LiveSolutions({ scanner, store, diff: worktrees, onError: (error) => console.error('switchboard solutions:', error) });
+    // Solutions of one folder at a time (a scanner per workspace folder); sessions' solutions resolve in their own folders.
+    const solutions = new LiveSolutions({
+      store,
+      diff: worktrees,
+      resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+      onError: (error) => console.error('switchboard solutions:', error),
+    });
     // "Start at login" (M9.1): the per-user service definition of this OS (docs/service.md).
     const loginService = createLoginService({ config, settings: store.settings, redirect: serviceRedirect });
     // CLI / gh sign-in + machine metrics (M5.3, gap #11) through the configured commands.
@@ -65,7 +69,7 @@ async function main(): Promise<void> {
       config.demo || !providers.system
         ? null
         : createUsageMeter({
-            config: live,
+            config,
             store,
             sessions: supervisor,
             onWarning: (warning) => console.warn(`switchboard usage: Max ${USAGE_WINDOW_LABELS[warning.window]} at ${warning.pct}% (warning at ${warning.threshold}%)`),
@@ -73,9 +77,9 @@ async function main(): Promise<void> {
           });
     if (usage) providers = withUsage(providers, usage);
     // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
-    const scheduler = new Scheduler({ store, sessions: { config: live, store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
-    app = await buildApp({ config: live, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, setup, scheduler, ...(usage ? { usage } : {}), logger: true });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -102,7 +106,7 @@ async function main(): Promise<void> {
     if (!config.demo) scheduler.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
     if (releaseCommands) {
-      recovering = recover(app, live, store, supervisor).finally(releaseCommands);
+      recovering = recover(app, config, store, supervisor).finally(releaseCommands);
       await recovering;
     }
     // Usage readings start once the resumed sessions are back (it reads only while a /hub client is connected).
@@ -124,7 +128,8 @@ async function recover(
     const report = await recoverSessions({
       store,
       supervisor,
-      listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand, workspaceRoot: config.workspaceRoot }),
+      // D14: asked once per session cwd (sessions run in their own folders).
+      listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand }),
       onError: (error) => app.log.error(error),
     });
     if (report.sessions.length > 0) app.log.info({ recovery: report.sessions }, 'restart recovery');

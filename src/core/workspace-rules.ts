@@ -252,6 +252,33 @@ export interface WorkspaceScan {
   readonly folders: readonly ScannedFolder[];
 }
 
+/** Filter pill of a repo folder's one solution (D14; shown under All). */
+export const REPO_TYPE = 'Repo';
+
+/**
+ * The scan of a repo folder (D14): one group, named after the repo, with its one
+ * solution (`name`, the repo's name; `relativePath` empty: the solution is the
+ * folder itself). `repoPath` is the git main checkout, `null` when the folder is
+ * not one (any more). There is no router file.
+ */
+export function repoFolderScan(root: string, name: string, repoPath: string | null): WorkspaceScan {
+  return {
+    root,
+    router: { path: path.join(root, 'AGENTS.md'), found: false, lines: 0 },
+    folders: [
+      {
+        folder: name,
+        rule: 'editable',
+        depth: 0,
+        type: REPO_TYPE,
+        inRouter: false,
+        exists: true,
+        solutions: [{ name, relativePath: '', path: root, git: repoPath !== null, repoPath }],
+      },
+    ],
+  };
+}
+
 function compareSolutions(a: Solution, b: Solution): number {
   const byName = a.name.toLowerCase().localeCompare(b.name.toLowerCase(), 'en');
   return byName !== 0 ? byName : a.path.localeCompare(b.path, 'en');

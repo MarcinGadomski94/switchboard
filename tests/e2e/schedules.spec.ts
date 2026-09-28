@@ -9,6 +9,7 @@ import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M7.1 oracle (E2E): schedules on the real code path (no demo seed, D13):
@@ -82,10 +83,11 @@ test.beforeAll(async () => {
   await makeRepo(path.join(workspace, 'microfrontends', 'web-front'));
   await makeRepo(path.join(workspace, 'mobile'));
   await makeRepo(path.join(workspace, 'deprecated', 'microfrontends', 'old-front'));
+  // D14: the workspace is a saved folder (the default) in the server's database.
+  await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
-    SWITCHBOARD_WORKSPACE_ROOT: workspace,
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),

@@ -9,7 +9,7 @@
  * (`../{repo}-wt-{session}`, a sibling of the repo).
  */
 import path from 'node:path';
-import type { ArtifactType } from '../model.ts';
+import type { ArtifactType, FolderKind } from '../model.ts';
 
 /** Grouping folders whose children are solutions (`microfrontends/<repo>-front`, …). */
 export const GROUP_FOLDERS: readonly string[] = ['microfrontends', 'nugets', 'microservices', 'functions', 'other'];
@@ -85,6 +85,46 @@ export function solutionFolder(workspaceRoot: string, file: string, sessionName:
   if (first && GROUP_FOLDERS.includes(first)) return `${first}/${where.solution}`;
   if (first === 'deprecated' && second) return `deprecated/${second}/${where.solution}`;
   return `${where.solution}/`;
+}
+
+/**
+ * Where a session works, for mapping the files it writes to solutions (D14): a
+ * workspace session maps them with the router layout ({@link locateFile}); a repo
+ * session's files all belong to its one solution, the repo, whether they are in
+ * its worktree or in the main checkout.
+ */
+export interface SessionPlace {
+  /** The session's folder, canonical: the workspace root or the repo. */
+  readonly root: string;
+  readonly kind: FolderKind;
+  /** The process's working folder (relative paths resolve against it): the root, or a repo session's worktree. */
+  readonly cwd: string;
+}
+
+/** A repo session's file (D14): in its worktree (the cwd, or the gap #1 `../{repo}-wt-{session}` folder) or in the repo, else outside. */
+function locateRepoFile(place: SessionPlace, file: string, sessionName: string | null): FileLocation {
+  const name = path.basename(place.root);
+  const absolute = path.resolve(place.cwd, file);
+  const worktrees = [place.cwd, ...(sessionName ? [path.join(path.dirname(place.root), `${name}-wt-${sessionName}`)] : [])].filter((dir) => dir !== place.root);
+  const candidates: Array<readonly [string, boolean]> = [...worktrees.map((dir) => [dir, true] as const), [place.root, false] as const];
+  for (const [dir, worktree] of candidates) {
+    const rel = path.relative(dir, absolute);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+    return { solution: name, relative: rel.split(path.sep).filter(Boolean).join('/'), worktree, outside: false };
+  }
+  return { solution: null, relative: absolute, worktree: false, outside: true };
+}
+
+/** {@link locateFile} for a session's place (D14): the router layout in a workspace, the repo's one solution in a repo folder. */
+export function locateSessionFile(place: SessionPlace, file: string, sessionName: string | null = null): FileLocation {
+  return place.kind === 'repo' ? locateRepoFile(place, file, sessionName) : locateFile(place.root, file, sessionName);
+}
+
+/** {@link solutionFolder} for a session's place (D14): a repo folder's files are all in `<repo>/`. */
+export function sessionSolutionFolder(place: SessionPlace, file: string, sessionName: string | null = null): string | null {
+  if (place.kind === 'workspace') return solutionFolder(place.root, file, sessionName);
+  const where = locateRepoFile(place, file, sessionName);
+  return where.solution === null ? null : `${where.solution}/`;
 }
 
 /** The artifact type of a written file (by its path inside the solution), or `null` for none. */

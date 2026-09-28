@@ -1,10 +1,12 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Store } from '../../src/server/db/store.ts';
+import type { FolderRef } from '../../src/server/folders/ref.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { type SessionControl, WorktreeManager } from '../../src/server/worktrees/manager.ts';
 import { fakeGhCommand } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from './net.ts';
+import { folderRef } from './folders.ts';
 import { openTempStore } from './store.ts';
 
 /** `[node, tests/helpers/git-spy.ts]`: git that logs its argv to `GIT_SPY_LOG`. */
@@ -26,6 +28,8 @@ export interface GitWorld {
   readonly root: string;
   /** Canonical workspace root (contains a space). */
   readonly workspace: string;
+  /** D14: the workspace as a folder (not saved; solutions resolve in it). */
+  readonly folder: FolderRef;
   /** `<workspace>/microfrontends/web-front`, pushed to its origin. */
   readonly web: string;
   /** `<workspace>/mobile`, no remote. */
@@ -50,7 +54,7 @@ export interface GitWorld {
   gitCalls(): Promise<LoggedCall[]>;
   ghCalls(): Promise<LoggedCall[]>;
   /** A manager over this world (spy git, fake gh). */
-  manager(options?: { sessions?: SessionControl; workspaceRoot?: string | null; ghCommand?: readonly string[] }): WorktreeManager;
+  manager(options?: { sessions?: SessionControl; ghCommand?: readonly string[] }): WorktreeManager;
   cleanup(): Promise<void>;
 }
 
@@ -144,9 +148,11 @@ export async function makeGitWorld(options: GitWorldOptions = {}): Promise<GitWo
   await addOrigin(web);
   const mobile = await makeRepo(path.join(workspace, 'mobile'));
 
+  const canonical = await realpath(workspace);
   return {
     root,
-    workspace: await realpath(workspace),
+    workspace: canonical,
+    folder: folderRef(canonical),
     web,
     mobile,
     store,
@@ -167,7 +173,6 @@ export async function makeGitWorld(options: GitWorldOptions = {}): Promise<GitWo
     manager(managerOptions = {}) {
       return new WorktreeManager({
         store,
-        workspaceRoot: managerOptions.workspaceRoot === undefined ? workspace : managerOptions.workspaceRoot,
         ghCommand: managerOptions.ghCommand ?? fakeGhCommand(),
         gitCommand: GIT_SPY_COMMAND,
         env,

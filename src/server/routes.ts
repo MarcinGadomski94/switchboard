@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
+import { registerFolderRoutes } from './api/folders.ts';
 import { registerHistoryRoutes } from './api/history.ts';
 import { registerHubRoutes } from './api/hub.ts';
 import { registerInboxRoutes } from './api/inbox.ts';
@@ -13,6 +14,7 @@ import { registerSystemRoutes } from './api/system.ts';
 import { registerToolRoutes } from './api/tools.ts';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
+import type { FolderService } from './folders/service.ts';
 import type { HubBus } from './hub/bus.ts';
 import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
@@ -42,8 +44,10 @@ export interface ApiContext {
   readonly questions: QuestionPipeline;
   /** System Inbox items: failed scheduled runs, removable worktrees, and their actions (M3.3, docs/system-items.md). */
   readonly systemItems: SystemItemService;
-  /** First-run setup: wizard state, the workspace root chosen there (M5.3, docs/setup.md). */
+  /** First-run setup: wizard state, Browse…'s folder listing (M5.3, docs/setup.md). */
   readonly setup: SetupService;
+  /** Saved folders (D14, docs/folders.md): which folder a session, a scan or a schedule works in. */
+  readonly folders: FolderService;
   /** Schedules: cron runs from templates, Run now, Pause/Resume (M7.1, docs/schedules.md). */
   readonly scheduler: Scheduler;
 }
@@ -68,5 +72,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerSystemRoutes(app, context);
   await registerServiceRoutes(app, context);
   await registerSetupRoutes(app, context);
+  await registerFolderRoutes(app, context);
   await registerHubRoutes(app, context);
 }

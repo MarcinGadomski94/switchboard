@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { loadDemoData } from '../../../src/server/demo/data.ts';
+import { folderRef } from '../../helpers/folders.ts';
 import { createDemoProviders, parseBranchRefs, parseDelta } from '../../../src/server/demo/providers.ts';
+
+/** D14: the demo providers ignore the folder; this is the demo's one folder. */
+const DEMO_FOLDER = folderRef('D:\\acme', 'workspace', 'demo');
 
 const NOW = new Date('2026-09-28T12:00:00.000Z');
 const GIB = 1024 ** 3;
@@ -25,7 +29,7 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
 
   it('solutions: groups with rules, conflicts and branch owners', async () => {
     const { solutions } = createDemoProviders(await loadDemoData(), () => NOW);
-    const groups = await solutions.solutions();
+    const groups = await solutions.solutions(DEMO_FOLDER);
     expect(groups.map((g) => [g.folder, g.rule])).toEqual([
       ['microfrontends/', 'editable'],
       ['mobile/', 'editable'],
@@ -101,7 +105,7 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
   it('tools (M8.1): every probe is down without touching the network; the prototype dirty list with its times', async () => {
     const { toolProbe, codebaseMemory } = createDemoProviders(await loadDemoData(), () => NOW);
     expect(await toolProbe.probe('http://localhost:13000')).toBe('down');
-    const status = await codebaseMemory.status();
+    const status = await codebaseMemory.status(DEMO_FOLDER);
     expect(status.indexed).toEqual({ projects: 16, mode: 'full' });
     expect(
       status.projects.map((p) => {

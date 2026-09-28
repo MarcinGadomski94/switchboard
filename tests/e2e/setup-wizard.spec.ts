@@ -6,6 +6,7 @@ import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { fakeClaudeCommand } from '../../tools/fake-claude/command.ts';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { seedFolderInDataDir } from '../helpers/folders.ts';
 
 /**
  * M5.3 oracle (E2E): the first-run setup wizard on the real code path (no demo
@@ -14,16 +15,20 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
  * fixture workspace in a temp folder (the router AGENTS.md fixture, git repos
  * `microfrontends/web-front`, `mobile`, `deprecated/microfrontends/old-front`,
  * plain folders `nugets/ui-nuget`, `other/tool`, `infrastructure`).
- * 1. First run without SWITCHBOARD_WORKSPACE_ROOT: the wizard opens by itself and
+ * 1. First run without a saved folder (D14): the wizard opens by itself and
  *    walks its five steps: the `claude --version` / `claude auth status` /
- *    `gh auth status` rows, the root chosen with Browse… (a wrong folder refused
- *    first), the real scan of that root, the notification permission (mocked
- *    `Notification`) with its confirmation, the usage threshold; Back and the
- *    rail move between steps; Finish stores it. The root is used at once (a
- *    session starts there) and after a restart; the wizard does not open again.
- * 2. Signed out (claude + gh), root from the environment: failing rows, the root
- *    read-only, Skip / Esc close it, it stays closed in this tab and opens again
- *    in a new one because the setup is not finished.
+ *    `gh auth status` rows, the first folder chosen with Browse… (a wrong folder
+ *    refused first) and added (`POST /api/folders`, the default), the real scan
+ *    of it, the notification permission (mocked `Notification`) with its
+ *    confirmation, the usage threshold; Back and the rail move between steps;
+ *    Finish stores it. The folder is used at once (a session starts there) and
+ *    after a restart; the wizard does not open again.
+ * 2. Signed out (claude + gh), a folder saved already: failing rows, the saved
+ *    folder shown, Skip / Esc close it, it stays closed in this tab and opens
+ *    again in a new one because the setup is not finished.
+ *
+ * D14 note: step 2 still carries the M5.3 copy ("Workspace root"); the UI stage
+ * turns it into "Add your first folder".
  */
 
 let tmp: string;
@@ -147,7 +152,7 @@ test.afterAll(async () => {
   if (tmp) await removeTempDir(tmp);
 });
 
-test.describe('first run without a configured root', () => {
+test.describe('first run without a saved folder', () => {
   let server: ServerProcess | undefined;
   let env: Record<string, string>;
   const logFile = () => path.join(tmp, 'fake-first-run.log');
@@ -210,11 +215,11 @@ test.describe('first run without a configured root', () => {
     await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ folder not found');
     await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'false');
     await input.fill(path.join(tmp, 'not a workspace'));
-    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ no AGENTS.md in this folder');
+    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ no AGENTS.md here and not a git repository');
     await wizard.getByTestId('wz-next').click();
-    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not saved: no AGENTS.md in this folder');
+    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not saved: no AGENTS.md here and not a git repository');
     await expectStep(wizard, 1, 'Workspace root');
-    expect((await setupState(page)).workspaceRoot.path).toBeNull();
+    expect((await setupState(page)).folders).toEqual([]);
 
     // Browse…: from the typed folder's parent down to the workspace.
     await input.fill(tmp);
@@ -232,11 +237,13 @@ test.describe('first run without a configured root', () => {
     await wizard.getByTestId('wz-folder').filter({ hasText: /^work space\/$/ }).click();
     await expect(input).toHaveValue(workspace);
 
-    // Continue saves the root (PUT /api/setup/root).
+    // Continue adds the folder (POST /api/folders): the first one is the default.
     await wizard.getByTestId('wz-next').click();
     await expectStep(wizard, 2, 'Solutions found');
     const saved = await setupState(page);
-    expect(saved.workspaceRoot).toMatchObject({ path: workspace, source: 'setup', check: { state: 'ok', router: { title: 'AGENTS.md (Workspace Router)', lines: routerLines } } });
+    expect(saved.folders).toMatchObject([
+      { path: workspace, kind: 'workspace', isDefault: true, check: { kind: 'workspace', router: { title: 'AGENTS.md (Workspace Router)', lines: routerLines } } },
+    ]);
     expect(saved.completedAt).toBeNull();
 
     // Step 3: the real scan of the chosen root.
@@ -291,7 +298,7 @@ test.describe('first run without a configured root', () => {
     await load(page, `${server.baseUrl}/`);
     await expect(page.getByTestId('modal-setup-wizard')).toHaveCount(0);
 
-    // The chosen root is used at once: the scan answers and a session's process runs there.
+    // The chosen folder is used at once: the scan answers and a session's process runs there.
     const solutions = await page.evaluate(async () => (await fetch('/api/solutions')).status);
     expect(solutions).toBe(200);
     const created = await page.evaluate(async () => {
@@ -305,25 +312,26 @@ test.describe('first run without a configured root', () => {
     expect(created).toBe(201);
     await expect.poll(() => fakeLogCwds(logFile())).toEqual([workspace]);
 
-    // …and after a restart (the setting is stored; the environment still has no root).
+    // …and after a restart (the folder is stored in the database).
     expect(await server.stop()).toBe(0);
     server = await startServer(env);
     await load(page, `${server.baseUrl}/`);
     await expect(page.getByTestId('modal-setup-wizard')).toHaveCount(0);
     const after = await setupState(page);
-    expect(after).toMatchObject({ completedAt: done.completedAt, autoOpen: false, workspaceRoot: { path: workspace, source: 'setup' } });
+    expect(after).toMatchObject({ completedAt: done.completedAt, autoOpen: false, folders: [{ path: workspace, isDefault: true }] });
     expect(await page.evaluate(async () => (await fetch('/api/solutions')).status)).toBe(200);
   });
 });
 
-test.describe('signed out, root from the environment', () => {
+test.describe('signed out, a folder saved already', () => {
   let server: ServerProcess | undefined;
 
   test.beforeAll(async () => {
+    // D14: the workspace is a saved folder (the default) in the server's database.
+    await seedFolderInDataDir(path.join(tmp, 'data-signed-out'), workspace);
     server = await startServer({
       ...gitEnv,
       SWITCHBOARD_DATA_DIR: path.join(tmp, 'data-signed-out'),
-      SWITCHBOARD_WORKSPACE_ROOT: workspace,
       SWITCHBOARD_SETUP_WIZARD: 'auto',
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),
       FAKE_CLAUDE_SIGNED_OUT: '1',
@@ -340,7 +348,7 @@ test.describe('signed out, root from the environment', () => {
     return context.newPage();
   }
 
-  test('failing checks, the root read-only, Skip and Esc close it for this tab only', async ({ browser }) => {
+  test('failing checks, the saved folder shown, Skip and Esc close it for this tab only', async ({ browser }) => {
     if (!server) throw new Error('no server');
     const page = await openFresh(browser);
     await load(page, `${server.baseUrl}/inbox`);
@@ -358,21 +366,20 @@ test.describe('signed out, root from the environment', () => {
     await expect(checks.nth(1)).toHaveAttribute('data-ok', 'false');
     await expect(checks.nth(1).locator('.sb-wz-check-mark')).toHaveCSS('color', 'oklch(0.68 0.17 25)');
 
-    // The root comes from SWITCHBOARD_WORKSPACE_ROOT: shown, checked, not editable.
+    // The saved (default) folder is shown with its check line.
     await wizard.getByTestId('wz-next').click();
     await expectStep(wizard, 1, 'Workspace root');
     const input = wizard.getByTestId('wz-root-input');
     await expect(input).toHaveValue(workspace);
-    await expect(input).toHaveAttribute('readonly', '');
-    await expect(wizard.getByTestId('wz-browse')).toHaveCount(0);
+    await expect(wizard.getByTestId('wz-browse')).toHaveCount(1);
     await expect(wizard.getByTestId('wz-root-line')).toHaveText(`✓ AGENTS.md (Workspace Router) found · ${routerLines} lines`);
-    await expect(wizard.getByTestId('wz-root-env')).toHaveText('set by SWITCHBOARD_WORKSPACE_ROOT · change it there');
-    const refused = await page.evaluate(async (folder) => {
-      const response = await fetch('/api/setup/root', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: folder }) });
-      return { status: response.status, body: (await response.json()) as { error: string } };
+    // Adding a saved folder again answers the one saved (200), nothing new.
+    const again = await page.evaluate(async (folder) => {
+      const response = await fetch('/api/folders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: folder }) });
+      return { status: response.status, body: (await response.json()) as { path: string } };
     }, workspace);
-    expect(refused).toMatchObject({ status: 409, body: { error: 'root-from-env' } });
-    // Continue does not try to save it.
+    expect(again).toMatchObject({ status: 200, body: { path: workspace } });
+    // Continue does not add it again.
     await wizard.getByTestId('wz-next').click();
     await expectStep(wizard, 2, 'Solutions found');
     await expect(wizard.getByTestId('wz-scan-row')).toHaveCount(6);
@@ -385,7 +392,7 @@ test.describe('signed out, root from the environment', () => {
     // Skip closes it; the setup is not finished; not again in this tab.
     await wizard.getByTestId('wz-skip').click();
     await expect(wizard).toHaveCount(0);
-    expect(await setupState(page)).toMatchObject({ completedAt: null, autoOpen: true, workspaceRoot: { path: workspace, source: 'env' } });
+    expect(await setupState(page)).toMatchObject({ completedAt: null, autoOpen: true, folders: [{ path: workspace }] });
     await loadSkipped(page, `${server.baseUrl}/inbox`);
     await expect(page.getByTestId('modal-setup-wizard')).toHaveCount(0);
 

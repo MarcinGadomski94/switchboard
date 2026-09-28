@@ -38,6 +38,15 @@ export const QA_STACKS = ['web', 'mobile', 'both'] as const;
 /** QA stack under test. */
 export type QaStack = (typeof QA_STACKS)[number];
 
+/**
+ * Folder kind (D14, locked by the decision): a `workspace` is a folder with a
+ * router `AGENTS.md` that is not itself a git main checkout (many solutions,
+ * router rules); a `repo` is a git main checkout (one solution).
+ */
+export const FOLDER_KINDS = ['workspace', 'repo'] as const;
+/** Kind of a saved folder / of a session's folder. */
+export type FolderKind = (typeof FOLDER_KINDS)[number];
+
 /** Event kind (locked). Drives the chat, the timeline and the terminal tail. */
 export const EVENT_KINDS = ['plan', 'impl', 'loop', 'ask', 'ok', 'tool', 'text', 'error'] as const;
 /** Event kind. */

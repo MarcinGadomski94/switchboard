@@ -45,8 +45,9 @@ function commandValue(command: readonly string[]): string {
 
 /**
  * The `SWITCHBOARD_*` variables the installed service starts with, from the
- * running configuration: the workspace root, and the port, data folder and CLI
- * commands when they differ from the defaults. Never the dev-only
+ * running configuration: the port, data folder and CLI commands when they differ
+ * from the defaults (D14: no workspace variable; the saved folders live in the
+ * database of that data folder). Never the dev-only
  * `SWITCHBOARD_CLAUDE_EXTRA_ARGS`, `SWITCHBOARD_DEMO` or the test redirects.
  * `realDataDir` = the per-user default the service would pick without a variable.
  */
@@ -54,7 +55,6 @@ export function carriedEnvironment(config: ServerConfig, realDataDir: string = d
   const env: Record<string, string> = {};
   if (config.port !== DEFAULT_PORT) env['SWITCHBOARD_PORT'] = String(config.port);
   if (path.resolve(config.dataDir) !== path.resolve(realDataDir)) env['SWITCHBOARD_DATA_DIR'] = config.dataDir;
-  if (config.workspaceRoot) env['SWITCHBOARD_WORKSPACE_ROOT'] = config.workspaceRoot;
   if (!(config.claudeCommand.length === 1 && config.claudeCommand[0] === 'claude')) env['SWITCHBOARD_CLAUDE_BIN'] = commandValue(config.claudeCommand);
   if (!(config.ghCommand.length === 1 && config.ghCommand[0] === 'gh')) env['SWITCHBOARD_GH_BIN'] = commandValue(config.ghCommand);
   return env;

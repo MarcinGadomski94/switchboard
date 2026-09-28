@@ -4,6 +4,7 @@ import type { Browser, Page } from '@playwright/test';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type ServerProcess, startServer } from '../../helpers/server-process.ts';
 import { openPrototype } from './offline.ts';
+import { seedFolderInDataDir } from '../../helpers/folders.ts';
 
 /**
  * Visual-oracle harness (D10, LOOP.md → Visual oracle). It opens the real app
@@ -33,10 +34,12 @@ export interface DemoApp {
  * Starts the app with `SWITCHBOARD_DEMO=1` and a temp data folder. The port is
  * `SWITCHBOARD_E2E_PORT` when set (4871–4879), else the first free test port.
  */
-export async function startDemoApp(extraEnv: Record<string, string> = {}): Promise<DemoApp> {
+export async function startDemoApp(extraEnv: Record<string, string> = {}, options: { readonly folder?: string } = {}): Promise<DemoApp> {
   const tmp = await makeTempDir('visual');
   let server: ServerProcess;
   try {
+    // D14: a folder saved (the default) before the demo seed adds its own (D:\acme, then not the default).
+    if (options.folder) await seedFolderInDataDir(path.join(tmp, 'data'), options.folder);
     server = await startServer({ SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'), SWITCHBOARD_DEMO: '1', ...extraEnv });
   } catch (error) {
     await removeTempDir(tmp);

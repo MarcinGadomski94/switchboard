@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ArtifactListItem } from '../../core/api.ts';
 import { matchesArtifactQuery, parseTypeParam } from '../../core/artifacts-view.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { ApiContext } from '../routes.ts';
 import { toArtifact } from '../sessions/wire.ts';
@@ -15,24 +16,28 @@ interface ArtifactQueryString {
   readonly q?: string | string[];
 }
 
-/** A stored artifact as a row of the global list (session name + last update). */
-function toListItem(record: ArtifactRecord, sessionNames: ReadonlyMap<string, string>): ArtifactListItem {
+/** A stored artifact as a row of the global list (session name, its folder (D14), last update). */
+function toListItem(record: ArtifactRecord, sessions: ReadonlyMap<string, SessionRecord>): ArtifactListItem {
+  const session = record.sessionId ? (sessions.get(record.sessionId) ?? null) : null;
   return {
     ...toArtifact(record),
-    sessionName: record.sessionId ? (sessionNames.get(record.sessionId) ?? null) : null,
+    sessionName: session?.name ?? null,
     updatedAt: record.updatedAt,
+    folder: session?.folderId ?? null,
+    folderPath: session?.root ?? null,
   };
 }
 
 /**
  * The global artifact list: every stored artifact (gap #9, derived by the
  * recorder) of the given types, matching `q` over what the view shows (type,
- * name, "Solution · branch", session name, status), most recently updated first.
+ * name, "Solution · branch", session name, status), most recently updated first;
+ * each row tagged with its session's folder (D14).
  */
 export async function listArtifacts(store: Store, query: { readonly types: readonly ArtifactListItem['type'][] | null; readonly q: string }): Promise<ArtifactListItem[]> {
   const records = await store.artifacts.list(query.types ? { types: query.types } : {});
-  const sessionNames = new Map((await store.sessions.list()).map((session) => [session.id, session.name]));
-  return records.map((record) => toListItem(record, sessionNames)).filter((item) => matchesArtifactQuery(item, query.q));
+  const sessions = new Map((await store.sessions.list()).map((session) => [session.id, session]));
+  return records.map((record) => toListItem(record, sessions)).filter((item) => matchesArtifactQuery(item, query.q));
 }
 
 /**

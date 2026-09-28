@@ -4,6 +4,7 @@ import { type LoopProgress, parseLoopProgress } from '../../core/loop-progress.t
 import { solutionCandidates } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
+import { folderOfSession } from '../folders/ref.ts';
 
 /** The progress file of a loop's state (LOOP.md), relative to a working folder. */
 export const PROGRESS_FILE = path.join('.loop', 'progress.md');
@@ -15,34 +16,37 @@ const MAX_PROGRESS_BYTES = 1024 * 1024;
 export interface FoundProgress {
   /** Absolute path. */
   readonly file: string;
-  /** As shown on the card: relative to the workspace root (`/`-separated) when inside it, else absolute. */
+  /** As shown on the card: relative to the session's folder (`/`-separated) when inside it, else absolute. */
   readonly shown: string;
   readonly progress: LoopProgress;
 }
 
 /**
- * The session's working folders (D9): its live worktrees, the folders of its
- * solutions (router layout, `solutionCandidates`) and its process cwd (the
- * workspace root). Only folders inside the configured workspace root or the
- * session's own worktrees are listed; nothing is created.
+ * The session's working folders (D9; D14: in the session's own folder): its
+ * live worktrees, then for a workspace folder the folders of its solutions
+ * (router layout, `solutionCandidates`) and the workspace root, for a repo
+ * folder the repo; then its process cwd. Only folders inside the session's
+ * folder or its own worktrees are listed; nothing is created.
  */
-export async function sessionWorkingFolders(store: Store, session: SessionRecord, workspaceRoot: string | null): Promise<string[]> {
+export async function sessionWorkingFolders(store: Store, session: SessionRecord): Promise<string[]> {
   const folders: string[] = [];
   for (const worktree of await store.worktrees.list({ sessionId: session.id })) folders.push(worktree.path);
-  const root = session.cwd ?? workspaceRoot;
-  if (root) {
-    for (const solution of session.solutions) folders.push(...(solutionCandidates(root, solution) ?? []));
-    folders.push(root);
+  const folder = folderOfSession(session);
+  if (folder) {
+    if (folder.kind === 'workspace') for (const solution of session.solutions) folders.push(...(solutionCandidates(folder.root, solution) ?? []));
+    folders.push(folder.root);
   }
-  return [...new Set(folders.map((folder) => path.resolve(folder)))];
+  if (session.cwd) folders.push(session.cwd);
+  return [...new Set(folders.map((dir) => path.resolve(dir)))];
 }
 
 /**
  * The newest `.loop/progress.md` among `folders` (by modification time), parsed
  * (`src/core/loop-progress.ts`); `null` when none exists or none can be read.
+ * Its shown path is relative to `shownFrom` (the session's folder) when inside it.
  * Read-only and asynchronous.
  */
-export async function findLoopProgress(folders: readonly string[], workspaceRoot: string | null): Promise<FoundProgress | null> {
+export async function findLoopProgress(folders: readonly string[], shownFrom: string | null): Promise<FoundProgress | null> {
   let best: { file: string; mtime: number } | null = null;
   for (const folder of folders) {
     const file = path.join(folder, PROGRESS_FILE);
@@ -61,12 +65,13 @@ export async function findLoopProgress(folders: readonly string[], workspaceRoot
   } catch {
     return null;
   }
-  return { file: best.file, shown: shownPath(best.file, workspaceRoot), progress: parseLoopProgress(text) };
+  return { file: best.file, shown: shownPath(best.file, shownFrom), progress: parseLoopProgress(text) };
 }
 
-function shownPath(file: string, workspaceRoot: string | null): string {
-  if (workspaceRoot) {
-    const relative = path.relative(path.resolve(workspaceRoot), file);
+/** `file` relative to `base` (`/`-separated) when inside it, else absolute. */
+function shownPath(file: string, base: string | null): string {
+  if (base) {
+    const relative = path.relative(path.resolve(base), file);
     if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) return relative.split(path.sep).join('/');
   }
   return file;

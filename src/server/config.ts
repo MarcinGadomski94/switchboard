@@ -13,10 +13,11 @@ export interface ServerConfig {
   readonly host: typeof LOOPBACK_HOST;
   /** `SWITCHBOARD_PORT`, default {@link DEFAULT_PORT}. */
   readonly port: number;
-  /** `SWITCHBOARD_DATA_DIR`, default: the per-user app-data folder (decisions gap #18). Absolute. */
+  /**
+   * `SWITCHBOARD_DATA_DIR`, default: the per-user app-data folder (decisions gap #18). Absolute.
+   * (D14: there is no workspace setting; sessions start in saved folders, `docs/folders.md`.)
+   */
   readonly dataDir: string;
-  /** `SWITCHBOARD_WORKSPACE_ROOT`, absolute; `null` when not configured yet (no default). */
-  readonly workspaceRoot: string | null;
   /** `SWITCHBOARD_CLAUDE_BIN` as an argv prefix, default `["claude"]`. */
   readonly claudeCommand: readonly string[];
   /**
@@ -139,7 +140,6 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     host: LOOPBACK_HOST,
     port: parsePort(env['SWITCHBOARD_PORT']),
     dataDir: parseDir(env['SWITCHBOARD_DATA_DIR'], cwd) ?? defaultDataDir(platform, env, home),
-    workspaceRoot: parseDir(env['SWITCHBOARD_WORKSPACE_ROOT'], cwd),
     claudeCommand: parseCommand('SWITCHBOARD_CLAUDE_BIN', env['SWITCHBOARD_CLAUDE_BIN'], 'claude'),
     claudeExtraArgs: parseArgList('SWITCHBOARD_CLAUDE_EXTRA_ARGS', env['SWITCHBOARD_CLAUDE_EXTRA_ARGS']),
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
