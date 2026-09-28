@@ -6,7 +6,7 @@ Both show the tool unreachable (prototype: its probe of localhost:13000 aborted;
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.45%**, main area (256,0 1184×900) **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **0.16%**, main area (256,0 1184×900) **0.00%**.
 
 Side by side (prototype left, app right): `tools-side-by-side.png`, `tools-main-side-by-side.png`.
 

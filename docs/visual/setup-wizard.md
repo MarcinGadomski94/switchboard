@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of step 1 (advisory, channel threshold 24): wizard panel (239,139 962×622) **0.29%**, full page **0.85%**.
+Pixel diff of step 1 (advisory, channel threshold 24): wizard panel (239,139 962×622) **0.29%**, full page **0.19%**.
 Known data differences: step 1's login row ("Signed in · claude auth status · the login stays with Claude Code" vs the prototype's "Signed in · Max plan · subscription auth · no API key": only the exit code of `claude auth status` is read, so no plan is named; compared by size); step 2's path (a temp folder vs `D:\acme`); step 3's rows (the demo's workspace scan, 7 rows, vs the prototype's hard-coded `scan`, 8 rows; the first row is compared, the table's height is not). Behind the overlay the page differs (the app's Inbox under the demo seed, the prototype's Inbox).
 
 Side by side (prototype left, app right): `setup-wizard-side-by-side.png` (step 1), `setup-wizard-root-side-by-side.png` (step 2), `setup-wizard-scan-side-by-side.png` (step 3), `setup-wizard-usage-side-by-side.png` (step 5), `setup-wizard-page-side-by-side.png` (page, step 1).

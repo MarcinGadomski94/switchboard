@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.35%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.17%**.
 Known data differences: the header meta (see `solutions.md`) and the sidebar's other badges, rows and footer (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-conflict-side-by-side.png` (view), `solutions-conflict-page-side-by-side.png` (page).

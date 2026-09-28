@@ -6,66 +6,66 @@ Result: green; known differences: 3.
 
 | Part | Geometry | Prototype (rel) | App (rel) | Result | Copy |
 |---|---|---|---|---|---|
-| axis | yh | 22,18 760×14 | 22,18 1140×14 | ok | "10:02 – 10:4810:0210:1010:1710:2510:3310:4010:48" |
+| axis | yh | 22,18 760×14 | 22,18 760×14 | ok | "10:02 – 10:4810:0210:1010:1710:2510:3310:4010:48" |
 | range | rel | 22,18 150×14 | 22,18 150×14 | ok | "10:02 – 10:48" |
-| ticks | yh | 184,18 598×14 | 184,18 978×14 | ok | "10:0210:1010:1710:2510:3310:4010:48" |
-| controls | yh | 22,230 760×26 | 22,230 1140×26 | ok | "▶10:48" |
+| ticks | yh | 184,18 598×14 | 184,18 598×14 | ok | "10:0210:1010:1710:2510:3310:4010:48" |
+| controls | yh | 22,230 760×26 | 22,230 760×26 | ok | "▶10:48" |
 | play | rel | 22,230 31.6×26 | 22,230 31.6×26 | ok | "▶" |
 | now | rel | 59.6,236 33×14 | 59.6,236 33×14 | ok | "10:48" |
-| scrubber | yh | 186,235 598×16 | 186,235 978×16 | ok |  |
-| bottom | none | 22,274 760×214 | 22,274 1140×214 | ok |  |
-| log | none | 22,274 372×214 | 22,274 562×214 | ok | "Events up to 10:4810:26mobile · build self-heal ×110:28web  |
-| logHead | xyh | 22,274 372×14 | 22,274 562×14 | ok | "Events up to 10:48" |
-| terminal | none | 410,274 372×214 | 600,274 562×214 | ok |  |
-| lane0 | yh | 22,42 760×36 | 22,42 1140×36 | ok |  |
+| scrubber | yh | 186,235 598×16 | 186,235 598×16 | ok |  |
+| bottom | none | 22,274 760×214 | 22,274 760×214 | ok |  |
+| log | none | 22,274 372×214 | 22,274 372×214 | ok | "Events up to 10:4810:26mobile · build self-heal ×110:28web  |
+| logHead | xyh | 22,274 372×14 | 22,274 372×14 | ok | "Events up to 10:48" |
+| terminal | none | 410,274 372×214 | 410,274 372×214 | ok |  |
+| lane0 | yh | 22,42 760×36 | 22,42 760×36 | ok |  |
 | lane0:label | rel | 22,44.5 150×31 | 22,44.5 150×31 | ok |  |
 | lane0:name | rel | 22,44.5 150×17 | 22,44.5 150×17 | ok | "orchestrator" |
 | lane0:sub | yh | 22,61.5 150×14 | 22,61.5 150×14 | ok | "workspace root" |
-| lane0:track | yh | 184,42 598×36 | 184,42 978×36 | ok |  |
-| lane1 | yh | 22,88 760×36 | 22,88 1140×36 | ok |  |
+| lane0:track | yh | 184,42 598×36 | 184,42 598×36 | ok |  |
+| lane1 | yh | 22,88 760×36 | 22,88 760×36 | ok |  |
 | lane1:label | rel | 22,90.5 150×31 | 22,90.5 150×31 | ok |  |
 | lane1:name | rel | 22,90.5 150×17 | 22,90.5 150×17 | ok | "figma-extractor" |
 | lane1:sub | yh | 22,107.5 150×14 | 22,107.5 150×14 | ok | "read-only" |
-| lane1:track | yh | 184,88 598×36 | 184,88 978×36 | ok |  |
-| lane2 | yh | 22,134 760×36 | 22,134 1140×36 | ok |  |
+| lane1:track | yh | 184,88 598×36 | 184,88 598×36 | ok |  |
+| lane2 | yh | 22,134 760×36 | 22,134 760×36 | ok |  |
 | lane2:label | rel | 22,136.5 150×31 | 22,136.5 150×31 | ok |  |
 | lane2:name | rel | 22,136.5 150×17 | 22,136.5 150×17 | ok | "web" |
 | lane2:sub | yh | 22,153.5 150×14 | 22,153.5 150×14 | known | "microfrontends/acme-app-front" |
-| lane2:track | yh | 184,134 598×36 | 184,134 978×36 | ok |  |
-| lane3 | yh | 22,180 760×36 | 22,180 1140×36 | ok |  |
+| lane2:track | yh | 184,134 598×36 | 184,134 598×36 | ok |  |
+| lane3 | yh | 22,180 760×36 | 22,180 760×36 | ok |  |
 | lane3:label | rel | 22,182.5 150×31 | 22,182.5 150×31 | ok |  |
 | lane3:name | rel | 22,182.5 150×17 | 22,182.5 150×17 | ok | "mobile" |
 | lane3:sub | yh | 22,199.5 150×14 | 22,199.5 150×14 | ok | "mobile/" |
-| lane3:track | yh | 184,180 598×36 | 184,180 978×36 | ok |  |
-| log1 | xyh | 22,296 372×17 | 22,296 562×17 | ok | "10:26mobile · build self-heal ×1" |
+| lane3:track | yh | 184,180 598×36 | 184,180 598×36 | ok |  |
+| log1 | xyh | 22,296 372×17 | 22,296 372×17 | ok | "10:26mobile · build self-heal ×1" |
 | log1:time | rel | 22,298 44×14 | 22,298 44×14 | ok | "10:26" |
 | log1:dot | rel | 74,302 7×7 | 74,302 7×7 | ok |  |
-| log2 | xyh | 22,321 372×17 | 22,321 562×17 | ok | "10:28web · render vs Figma 3/5" |
+| log2 | xyh | 22,321 372×17 | 22,321 372×17 | ok | "10:28web · render vs Figma 3/5" |
 | log2:time | rel | 22,323 44×14 | 22,323 44×14 | ok | "10:28" |
 | log2:dot | rel | 74,327 7×7 | 74,327 7×7 | ok |  |
-| log3 | xyh | 22,346 372×17 | 22,346 562×17 | ok | "10:31mobile · ?" |
+| log3 | xyh | 22,346 372×17 | 22,346 372×17 | ok | "10:31mobile · ?" |
 | log3:time | rel | 22,348 44×14 | 22,348 44×14 | ok | "10:31" |
 | log3:dot | rel | 74,352 7×7 | 74,352 7×7 | ok |  |
-| log4 | xyh | 22,371 372×17 | 22,371 562×17 | ok | "10:32orchestrator · relay 3 Qs" |
+| log4 | xyh | 22,371 372×17 | 22,371 372×17 | ok | "10:32orchestrator · relay 3 Qs" |
 | log4:time | rel | 22,373 44×14 | 22,373 44×14 | ok | "10:32" |
 | log4:dot | rel | 74,377 7×7 | 74,377 7×7 | ok |  |
-| log5 | xyh | 22,396 372×17 | 22,396 562×17 | ok | "10:32web · ?" |
+| log5 | xyh | 22,396 372×17 | 22,396 372×17 | ok | "10:32web · ?" |
 | log5:time | rel | 22,398 44×14 | 22,398 44×14 | ok | "10:32" |
 | log5:dot | rel | 74,402 7×7 | 74,402 7×7 | ok |  |
-| log6 | xyh | 22,421 372×17 | 22,421 562×17 | ok | "10:35web · apply answers" |
+| log6 | xyh | 22,421 372×17 | 22,421 372×17 | ok | "10:35web · apply answers" |
 | log6:time | rel | 22,423 44×14 | 22,423 44×14 | ok | "10:35" |
 | log6:dot | rel | 74,427 7×7 | 74,427 7×7 | ok |  |
-| log7 | xyh | 22,446 372×17 | 22,446 562×17 | ok | "10:35mobile · apply answers" |
+| log7 | xyh | 22,446 372×17 | 22,446 372×17 | ok | "10:35mobile · apply answers" |
 | log7:time | rel | 22,448 44×14 | 22,448 44×14 | ok | "10:35" |
 | log7:dot | rel | 74,452 7×7 | 74,452 7×7 | ok |  |
-| log8 | xyh | 22,471 372×17 | 22,471 562×17 | ok | "10:42orchestrator · reconcile" |
+| log8 | xyh | 22,471 372×17 | 22,471 372×17 | ok | "10:42orchestrator · reconcile" |
 | log8:time | rel | 22,473 44×14 | 22,473 44×14 | ok | "10:42" |
 | log8:dot | rel | 74,477 7×7 | 74,477 7×7 | ok |  |
 
 ## Known differences (not findings of this tab)
 - lane2:sub.text: prototype "acme-app-front" vs app "microfrontends/acme-app-front"
-- terminal lines: prototype 6 vs app 0 (demo terminal payloads are provisional)
-- container width: prototype 804 vs app 1184 (the 1fr | 380px session grid is M4.1)
+- terminal lines: prototype 6 vs app 8 (demo terminal payloads are provisional)
+- container width: prototype 804 vs app 804 (the 1fr | 380px session grid is M4.1)
 
 ## Failures
 - (none)

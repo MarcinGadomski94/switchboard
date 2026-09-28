@@ -209,7 +209,7 @@ const SURFACES: readonly Surface[] = [
     spec: 'Session → Artifacts',
     items: 'M4.6',
     lane: LANE_TABS,
-    detail: 'artifacts.spec.ts (lane w2-tabs)',
+    detail: 'session-artifacts.spec.ts',
     kind: 'view',
     testId: 'session-artifacts',
     placeholder: 'empty',

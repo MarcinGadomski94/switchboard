@@ -6,7 +6,7 @@ Result: green.
 
 Known data differences, not findings: (1) `GET /api/tools` is M8.1 (lane w1-tools, not merged into this lane), so the app lists no tools and its empty-query rows 8–10 are the next sessions where the prototype lists its two tools and the first session; those rows are compared by the row box, the kind label and all styles, their copy is listed below. (2) A session's hint is the sidebar's mode line built from the session's fields (`orch · QA · UI-first`), not the prototype's hand-written status copy (`orch · QA · 14/18 covered`, D13), so qa-free-talk's hint is listed, not gated.
 
-Advisory pixel diff (not a gate): empty 1.3 % · free 0.4 % · down 0.4 %. Side-by-side crops of the panel (prototype left, app right): `palette-empty-side-by-side.png`, `palette-free-side-by-side.png`, `palette-down-side-by-side.png`.
+Advisory pixel diff (not a gate): empty 0 % · free 0.4 % · down 0.4 %. Side-by-side crops of the panel (prototype left, app right): `palette-empty-side-by-side.png`, `palette-free-side-by-side.png`, `palette-down-side-by-side.png`.
 
 | State | Part | Prototype | App | Result | Copy |
 |---|---|---|---|---|---|
@@ -44,16 +44,16 @@ Advisory pixel diff (not a gate): empty 1.3 % · free 0.4 % · down 0.4 %. Side-
 | empty | row6:hint | 1012,403 0×0 | 1012,403 0×0 | ok | "" |
 | empty | row7 | 416,421 608×36 | 416,421 608×36 | ok | (data) |
 | empty | row7:kind | 428,432.5 70×13 | 428,432.5 70×13 | ok | (data) |
-| empty | row7:label | 508,430 116×18 | 508,430 102.9×18 | ok | (data) |
-| empty | row7:hint | 913,432 99×14 | 847,432 165×14 | ok | (data) |
+| empty | row7:label | 508,430 116×18 | 508,430 116×18 | ok | (data) |
+| empty | row7:hint | 913,432 99×14 | 913,432 99×14 | ok | (data) |
 | empty | row8 | 416,457 608×36 | 416,457 608×36 | ok | (data) |
 | empty | row8:kind | 428,468.5 70×13 | 428,468.5 70×13 | ok | (data) |
-| empty | row8:label | 508,466 53.1×18 | 508,466 147.3×18 | ok | (data) |
-| empty | row8:hint | 1012,475 0×0 | 827.2,468 184.8×14 | ok | (data) |
+| empty | row8:label | 508,466 53.1×18 | 508,466 53.1×18 | ok | (data) |
+| empty | row8:hint | 1012,475 0×0 | 1012,475 0×0 | ok | (data) |
 | empty | row9 | 416,493 608×36 | 416,493 608×36 | ok | (data) |
 | empty | row9:kind | 428,504.5 70×13 | 428,504.5 70×13 | ok | (data) |
-| empty | row9:label | 508,502 102.9×18 | 508,502 75.1×18 | ok | (data) |
-| empty | row9:hint | 847,504 165×14 | 880,504 132×14 | ok | (data) |
+| empty | row9:label | 508,502 102.9×18 | 508,502 102.9×18 | ok | (data) |
+| empty | row9:hint | 847,504 165×14 | 847,504 165×14 | ok | (data) |
 | free | overlay | 0,0 1440×900 | 0,0 1440×900 | ok |  |
 | free | panel | 409,110 622×138 | 409,110 622×138 | ok |  |
 | free | input | 410,111 620×52 | 410,111 620×52 | ok | "" |
@@ -83,15 +83,15 @@ Advisory pixel diff (not a gate): empty 1.3 % · free 0.4 % · down 0.4 %. Side-
 
 | State | Row | Prototype | App |
 |---|---|---|---|
-| empty | row7:kind | "tool" | "session" |
-| empty | row7:label | "Codebase Memory" | "free-talk-feature" |
-| empty | row7:hint | "localhost:13000" | "orch · feature · UI-first" |
-| empty | row8:kind | "tool" | "session" |
-| empty | row8:label | "Acme Tool" | "notifications-integration" |
-| empty | row8:hint | "" | "orch · feature · integration" |
+| empty | row7:kind | "tool" | "tool" |
+| empty | row7:label | "Codebase Memory" | "Codebase Memory" |
+| empty | row7:hint | "localhost:13000" | "localhost:13000" |
+| empty | row8:kind | "tool" | "tool" |
+| empty | row8:label | "Acme Tool" | "Acme Tool" |
+| empty | row8:hint | "" | "" |
 | empty | row9:kind | "session" | "session" |
-| empty | row9:label | "free-talk-feature" | "qa-free-talk" |
-| empty | row9:hint | "orch · feature · UI-first" | "orch · QA · UI-first" |
+| empty | row9:label | "free-talk-feature" | "free-talk-feature" |
+| empty | row9:hint | "orch · feature · UI-first" | "orch · feature · UI-first" |
 | free | row1:hint | "orch · QA · 14/18 covered" | "orch · QA · UI-first" |
 | free ↓ | row1:hint | "orch · QA · 14/18 covered" | "orch · QA · UI-first" |
 

@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **1.35%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.17%**.
 Known data differences: the header meta (the prototype hard-codes "18 solutions · 7 active" while its own list has 12 rows, 6 of them not idle; the app counts its rows: "12 solutions · 6 active"), and the sidebar (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-side-by-side.png` (view), `solutions-page-side-by-side.png` (page).

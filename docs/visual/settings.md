@@ -7,13 +7,13 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 **Gate:** green
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
-- Claude Code: **0.10%** / 0.29%
-- Workspace & solutions: **2.34%** / 2.13%
-- Sessions & worktrees: **0.00%** / 0.21%
-- Notifications & usage: **0.00%** / 0.21%
-- Schedules: **0.00%** / 0.21%
-- Embedded tools: **0.43%** / 0.56%
-- GitHub: **0.03%** / 0.23%
+- Claude Code: **0.10%** / 0.26%
+- Workspace & solutions: **2.33%** / 2.10%
+- Sessions & worktrees: **0.00%** / 0.18%
+- Notifications & usage: **0.00%** / 0.18%
+- Schedules: **0.00%** / 0.18%
+- Embedded tools: **0.43%** / 0.53%
+- GitHub: **0.03%** / 0.20%
 
 Side by side (main area, prototype left, app right): `settings-claude-side-by-side.png`, `settings-workspace-side-by-side.png`, `settings-sessions-side-by-side.png`, `settings-notify-side-by-side.png`, `settings-schedules-side-by-side.png`, `settings-tools-side-by-side.png`, `settings-github-side-by-side.png`.
 
@@ -54,7 +54,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | service | box | 520,196 860×64 | 520,196 860×64 | ok |  |
 | serviceLabel | box | 520,210 671.2×18 | 520,210 671.2×18 | ok | "Background service" |
 | serviceDesc | box | 520,228 671.2×17 | 520,228 671.2×17 | ok | "Starts and supervises Claude Code processes" |
-| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4930 · running" |
+| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4970 · running" |
 | bind | box | 520,262 860×64 | 520,262 860×64 | ok |  |
 | bindLabel | box | 520,276 743.2×18 | 520,276 743.2×18 | ok | "Bind address" |
 | bindDesc | box | 520,294 743.2×17 | 520,294 743.2×17 | ok | "The service never listens beyond this PC" |
@@ -87,7 +87,7 @@ Side by side (main area, prototype left, app right): `settings-claude-side-by-si
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | "Workspace & solutions" |
 | root | none | 520,64 860×63 | 520,64 860×79 | ok |  |
 | rootLabel | size | 520,78 781.2×18 | 520,78 781.2×18 | ok | "Workspace root" |
-| rootDesc | none | 520,96 781.2×16 | 520,96 781.2×32 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-PHn8Rf/ws · AGENTS.md (Workspace Router)" |
+| rootDesc | none | 520,96 781.2×16 | 520,96 781.2×32 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-AQiTEX/ws · AGENTS.md (Workspace Router)" |
 | rootValue | size | 1317.2,81 62.8×28 | 1317.2,89 62.8×28 | ok | "Rescan" |
 | scan | size | 520,141 860×290 | 520,157 860×290 | ok |  |
 | scan0 | size | 521,142 858×36 | 521,158 858×36 | ok |  |

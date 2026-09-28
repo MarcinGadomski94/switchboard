@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **1.36%**, sidebar (0,0 256×900) **7.56%**.
+Pixel diff (advisory, channel threshold 24): full page **0.18%**, sidebar (0,0 256×900) **0.91%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.
@@ -34,10 +34,10 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on
 | navHistoryLabel | box | 18,230 42.2×17 | 18,230 42.2×17 | ok | "History" |
 | toolsLabel | box | 0,254 255×36 | 0,254 255×36 | ok | "Tools+ Add" |
 | toolsAdd | box | 202.3,270 34.7×14 | 202.3,270 34.7×14 | ok | "+ Add" |
-| sessionsLabel | size | 0,371 255×36 | 0,290 255×36 | ok |  |
-| settings | size | 10,747 235×31 | 10,761 235×31 | ok | "Settings" |
-| footer | bottom | 0,784 255×116 | 0,798 255×102 | ok |  |
-| footerLabel | none | 27.4,795 45.8×28 | 30,809 72.6×14 | ok | "claude code" |
+| sessionsLabel | size | 0,371 255×36 | 0,371 255×36 | ok |  |
+| settings | size | 10,747 235×31 | 10,747 235×31 | ok | "Settings" |
+| footer | bottom | 0,784 255×116 | 0,784 255×116 | ok |  |
+| footerLabel | none | 27.4,795 45.8×28 | 27.4,795 45.8×28 | ok | "claude code" |
 | cpuLabel | box | 16,830 34×14 | 16,830 34×14 | ok | "CPU" |
 | cpuTrack | box | 58,835 97×4 | 58,835 97×4 | ok |  |
 | ramLabel | box | 16,851 34×14 | 16,851 34×14 | ok | "RAM" |
