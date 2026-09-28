@@ -26,8 +26,6 @@ const HOST = `127.0.0.1:${PORT}`;
 const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['GET', '/api/sessions/s1/diff?file=a.ts', 'M4.5'],
   ['GET', '/api/inbox', 'M3.2'],
-  ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
-  ['POST', '/api/inbox/i1/actions/allow-once', 'M3.1'],
   ['GET', '/api/solutions', 'M6.2'],
   ['GET', '/api/schedules', 'M7.1'],
   ['POST', '/api/schedules', 'M7.1'],
@@ -56,6 +54,8 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/sessions/s1/attach', 'M2.1'],
   ['GET', '/api/sessions/s1/events?since=2026-09-28T00:00:00.000Z', 'M2.1'],
   ['POST', '/api/solutions/mobile/isolate', 'M2.2'],
+  ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
+  ['POST', '/api/inbox/i1/actions/allow-once', 'M3.1'],
 ];
 
 let tmp: string;

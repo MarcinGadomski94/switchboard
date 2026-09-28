@@ -1,0 +1,99 @@
+/*
+ * The shared question batch card (QuestionCard.tsx). Values are the prototype's
+ * inline styles (docs/handoff/prototype/Switchboard App.dc.html: the Inbox card
+ * `ibCard` and the chat card `ssCard`); colors from SPEC → Design tokens.
+ * Two-class selectors so these win over `.sb-button`'s reset.
+ */
+.sb-qcard {
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: var(--radius-question);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb-qcard--inbox {
+  max-width: 760px;
+}
+
+.sb-qcard .sb-qcard__head {
+  display: flex;
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--question-label);
+}
+
+.sb-qcard .sb-qcard__question {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid oklch(0.32 0.04 70);
+}
+
+.sb-qcard .sb-qcard__source {
+  font: 400 11px var(--font-mono);
+  color: oklch(0.78 0.1 250);
+}
+
+.sb-qcard .sb-qcard__quote {
+  color: var(--text-strong);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.sb-qcard--chat .sb-qcard__quote {
+  font-size: 13px;
+  line-height: inherit;
+}
+
+.sb-qcard .sb-qcard__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb-qcard .sb-qcard__option {
+  font-size: 12.5px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border: 1px solid oklch(0.36 0.04 70);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.sb-qcard--chat .sb-qcard__option {
+  padding: 5px 11px;
+}
+
+.sb-qcard .sb-qcard__option[data-selected='true'] {
+  border-color: var(--option-selected-border);
+  background: var(--option-selected-bg);
+  color: #f5f4f0;
+}
+
+.sb-qcard .sb-qcard__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-qcard .sb-qcard__status {
+  font-size: 12px;
+  color: var(--muted-1);
+}
+
+.sb-qcard .sb-qcard__send {
+  margin-left: auto;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}

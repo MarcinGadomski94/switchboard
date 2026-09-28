@@ -8,6 +8,7 @@ import type { SessionStatus } from '../../core/model.ts';
 import { type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, userMessageLine } from '../../core/stdin.ts';
 import { type CanUseToolMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import type { EventRecord } from '../db/repos/events.ts';
+import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { toEvent, toSession } from '../sessions/wire.ts';
@@ -51,6 +52,11 @@ export interface ControlRequestHandler {
   cancelled?(sessionId: string, requestId: string): void | Promise<void>;
   /** The process ended with these requests still open: they are stale. */
   orphaned?(sessionId: string, requestIds: readonly string[]): void | Promise<void>;
+  /**
+   * These outbox messages (`pending_messages`) just went out ahead of a stdin user
+   * message (M3.1: a queued stale batch's answers are delivered now).
+   */
+  pendingDelivered?(sessionId: string, messages: readonly PendingMessageRecord[]): void | Promise<void>;
 }
 
 /** Options of {@link SessionSupervisor.start}. */
@@ -242,6 +248,21 @@ export class SessionSupervisor {
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
     await this.#send(live, text, origin);
     return this.#get(sessionId);
+  }
+
+  /**
+   * Sends a user message only to a live process that is not being stopped (M3.1:
+   * a stale batch's answers go out at once while the session runs). Never spawns:
+   * returns `false` and writes nothing when there is no such process (or the service
+   * is closing), so the caller can queue the message for the session's next run.
+   */
+  async sendToLive(sessionId: string, text: string, origin: UserMessageOrigin = 'service'): Promise<boolean> {
+    await this.#gate;
+    if (this.#closing) return false;
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.running) return false;
+    await this.#send(live, text, origin);
+    return true;
   }
 
   /** D7 Pause: interrupt, EOF, exit (escalating on timeout). The session ends `paused`. */
@@ -515,6 +536,13 @@ export class SessionSupervisor {
       await live.recorder.recordUserMessage(full, origin);
       if (live.proc.write(userMessageLine(full))) {
         for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
+        if (pending.length > 0 && this.#handler.pendingDelivered) {
+          try {
+            await this.#handler.pendingDelivered(live.sessionId, pending);
+          } catch (error) {
+            this.#onError(error);
+          }
+        }
       }
       await this.#refreshStatus(live);
     });

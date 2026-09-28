@@ -13,6 +13,7 @@ import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
 import type { HubBus } from './hub/bus.ts';
 import type { SseHub } from './hub/hub.ts';
+import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { Providers } from './providers.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
@@ -32,6 +33,8 @@ export interface ApiContext {
   readonly bus: HubBus;
   /** The `/hub` SSE fan-out over {@link bus} (M2.3). */
   readonly hub: SseHub;
+  /** Question batches and permission items: the supervisor's control-request handler (M3.1, docs/questions.md). */
+  readonly questions: QuestionPipeline;
 }
 
 /**

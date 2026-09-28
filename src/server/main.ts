@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, createSupervisor, createWorktreeManager } from './app.ts';
+import { buildApp, createSessionServices, createWorktreeManager } from './app.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
@@ -22,16 +22,18 @@ async function main(): Promise<void> {
   const store = await openStore(storeFile(config.dataDir));
   let app: FastifyInstance;
   try {
-    const supervisor = createSupervisor(config, store);
-    const worktrees = createWorktreeManager(config, store, supervisor);
     // `/hub` events (docs/hub.md): services created here that publish take this bus.
     const bus = new HubBus();
+    // The question pipeline (M3.1) is the supervisor's control-request handler, so it
+    // also hears about requests a crash left open (restart recovery below).
+    const { supervisor, questions } = createSessionServices(config, store, bus);
+    const worktrees = createWorktreeManager(config, store, supervisor);
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
     let providers: Providers = { diff: worktrees };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, worktrees, bus, logger: true });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, bus, logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();

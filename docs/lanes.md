@@ -19,8 +19,8 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `POST /api/sessions/{id}/messages`, `GET /api/sessions/{id}/events` | `api/sessions.ts` | served since M2.1 |
 | `GET /api/sessions/{id}/diff` | `api/sessions.ts` | M4.5 (the diff itself is `providers.diff` = the M2.2 `WorktreeManager`) |
 | `GET /api/inbox` | `api/inbox.ts` | M3.2 (items from M3.1 and M3.3) |
-| `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | M3.1 |
-| `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | M3.1 (permission items), M3.3 (system items) |
+| `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | served since M3.1 (`docs/questions.md`) |
+| `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | permission items served since M3.1 (`docs/questions.md`); M3.3 adds system items |
 | `GET /api/solutions` | `api/solutions.ts` | M6.2 (scanner M6.1) |
 | `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
@@ -38,6 +38,7 @@ Unimplemented routes answer `501 {"error":"not-implemented","item":"<item>"}` be
 |---|---|---|
 | `supervisor` (`SessionSupervisor`, M2.1) | claude processes | `on('sessionUpdated' / 'event')` → M2.3 hub; `ControlRequestHandler` + `respond()` → M3.1; the outbox (M2.4): undelivered `store.pendingMessages` rows go first in the session's next stdin message, so M3.1 delivers stale answers with `sendMessage(id, text, 'service')` (or enqueues them) and the restart note rides along (`docs/supervisor.md` → *Restart recovery*); pass the same `ControlRequestHandler` so `orphaned` also hears about requests a crash left open |
 | `worktrees` (`WorktreeManager`, M2.2) | git worktrees, PR state, removal, isolate, diff | `on('worktreeRemovable')` → M2.3 hub + M3.3 "PR merged" item; `remove(id)` → M3.3 "Remove worktree" action; `store.worktrees` + `inspect(id)` → M6.2 branch chips; `isolate` → M6.3; the diff → M4.5 |
+| `questions` (`QuestionPipeline`, M3.1) | question batches + permission items: the supervisor's `ControlRequestHandler`, answers + Allow once / Deny | `questionBatchItem` / `permissionItem` / `inboxCount` in `src/server/inbox/wire.ts` → M3.2's `GET /api/inbox`; the shared `QuestionCard` (`src/web/components/`) → M3.2 Inbox, M4.2 chat (`docs/questions.md`) |
 | `bus` (`HubBus`, M2.3) + `hub` (`SseHub`) | `/hub` events | `bus.publish('questionBatch' / 'inboxChanged')` → M3.1–M3.3, `bus.publish('scheduleRun')` → M7.1; `system` ticks from `providers.system` (M5.3 / M9.2); `hub.clientCount` → M9.2's poller (`docs/hub.md`) |
 
 ## Server: providers (`src/server/providers.ts`)
@@ -87,4 +88,5 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `tests/e2e/shell.spec.ts`: the shell on the real code path (no demo): API calls reach the 501 routes, navigation, deep links, modals.
 - `tests/e2e/visual/shell.spec.ts`: the visual oracle for the shell (`docs/visual/shell.md`).
 - `tests/server/api/routes.test.ts`: every contract route is registered and guarded.
+- Test ports: `SWITCHBOARD_TEST_PORTS` (`<first>-<last>` or a list, never 4870) moves the 4871–4879 range that tests bind (`tests/helpers/net.ts`), so parallel lanes can each run `npm test` on their own range (e.g. `SWITCHBOARD_TEST_PORTS=4910-4919 npm test`).
 - `tests/server/demo/*.test.ts`: demo data verbatim against the prototype, the seed, the demo providers.

@@ -17,7 +17,8 @@ Test-only variables (read by the test helpers, never by the server):
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SWITCHBOARD_E2E_PORT` | none | Pins the port test servers use (`tests/helpers/server-process.ts`); must be one of 4871–4879. Unset: the first free port in that range. |
+| `SWITCHBOARD_E2E_PORT` | none | Pins the port test servers use (`tests/helpers/server-process.ts`); must be one of the test ports. Unset: the first free port in that range. |
+| `SWITCHBOARD_TEST_PORTS` | `4871-4879` | Test-only: the port range (or comma list) tests may bind (`tests/helpers/net.ts`); 4870 is refused. Parallel lanes set their own range. |
 | `SWITCHBOARD_VISUAL_REPORT` | off | `1` makes the visual-oracle specs also write their reports into `docs/visual/` (`docs/visual/README.md`); they always write to `test-results/visual/`. |
 
 ## npm scripts

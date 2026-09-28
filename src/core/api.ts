@@ -177,6 +177,25 @@ export interface InboxItem {
   readonly branches: readonly BranchRef[];
   readonly questions?: readonly Question[];
   readonly actions?: readonly InboxAction[];
+  /** Additive (M3.1): a permission item's request, verbatim (D6). */
+  readonly permission?: PermissionRequest;
+}
+
+/** A permission request as the Inbox shows it (D6: tool + input verbatim). Provisional: M3.1 / M3.2. */
+export interface PermissionRequest {
+  /** The CLI's control `request_id`. */
+  readonly requestId: string;
+  readonly toolName: string;
+  /** The tool input, verbatim. */
+  readonly input: unknown;
+  /** The model's own description of the call. */
+  readonly description: string | null;
+  /** The CLI's reason ("This command requires approval"). */
+  readonly decisionReason: string | null;
+  /** The subagent's task id when a subagent asks. */
+  readonly agentId: string | null;
+  /** The asking agent's name (the subagent through `task_started`, else the main agent). */
+  readonly agent: string | null;
 }
 
 /** `POST /api/questions/batch/{batchId}/answers` body (contract). */
