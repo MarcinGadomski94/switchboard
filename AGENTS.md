@@ -1,6 +1,6 @@
 # AGENTS.md — switchboard
 
-Location: `<workspace>/other/switchboard/`. This is a non-product company tool: the product per-type rules don't apply. These rules do, and so does the workspace router's universal canon where relevant (no inference, reuse-first, no unsolicited refactors, blocked-task behavior, living document).
+Location: `~/RiderProjects/Personal/switchboard` (a standalone repo; it began in the Acme workspace's `other/` folder). This is a non-product company tool: the product per-type rules don't apply. These rules do, and so does the workspace router's universal canon where relevant (no inference, reuse-first, no unsolicited refactors, blocked-task behavior, living document).
 
 ## Scope
 - Work only inside this repo. Never edit other workspace folders, even though the app reads them.

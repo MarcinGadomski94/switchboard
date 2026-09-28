@@ -9,7 +9,7 @@ describe('loadConfig', () => {
     const config = loadConfig({ env: {}, platform: 'darwin', home: HOME, cwd: CWD });
     expect(config).toEqual({
       host: '127.0.0.1',
-      port: 4870,
+      port: 13001,
       dataDir: '/Users/dev/Library/Application Support/Switchboard',
       claudeCommand: ['claude'],
       claudeExtraArgs: [],
@@ -17,7 +17,7 @@ describe('loadConfig', () => {
       demo: false,
       openCommand: null,
     });
-    expect(DEFAULT_PORT).toBe(4870);
+    expect(DEFAULT_PORT).toBe(13001);
     expect(LOOPBACK_HOST).toBe('127.0.0.1');
   });
 

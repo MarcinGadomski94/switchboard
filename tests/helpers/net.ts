@@ -3,14 +3,15 @@ import net from 'node:net';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { DEFAULT_PORT } from '../../src/server/config.ts';
 
 /** The default test ports: 127.0.0.1:4871–4879. */
 const DEFAULT_TEST_PORTS: readonly number[] = [4871, 4872, 4873, 4874, 4875, 4876, 4877, 4878, 4879];
 
 /**
  * `SWITCHBOARD_TEST_PORTS` (`<first>-<last>` or a comma list) moves the range, e.g.
- * for a parallel lane that owns 4910–4919 (docs/lanes.md). Never 4870, which the
- * developer may use for the real app; anything unreadable is an error.
+ * for a parallel lane that owns 4910–4919 (docs/lanes.md). Never the real app's
+ * port ({@link DEFAULT_PORT}); anything unreadable is an error.
  */
 export function testPortsFrom(value: string | undefined): readonly number[] {
   if (value === undefined || value.trim() === '') return DEFAULT_TEST_PORTS;
@@ -18,15 +19,15 @@ export function testPortsFrom(value: string | undefined): readonly number[] {
   const ports = range
     ? Array.from({ length: Math.max(0, Number(range[2]) - Number(range[1]) + 1) }, (_, i) => Number(range[1]) + i)
     : value.split(',').map((part) => Number(part.trim()));
-  if (ports.length === 0 || ports.some((port) => !Number.isInteger(port) || port < 1024 || port > 65535 || port === 4870)) {
-    throw new Error(`SWITCHBOARD_TEST_PORTS must be a port range or list without 4870, got "${value}"`);
+  if (ports.length === 0 || ports.some((port) => !Number.isInteger(port) || port < 1024 || port > 65535 || port === DEFAULT_PORT)) {
+    throw new Error(`SWITCHBOARD_TEST_PORTS must be a port range or list without ${DEFAULT_PORT}, got "${value}"`);
   }
   return ports;
 }
 
 /**
  * Ports tests may bind: 127.0.0.1:4871–4879, or `SWITCHBOARD_TEST_PORTS`. Never
- * 4870, which the developer may use for the real app.
+ * the real app's port ({@link DEFAULT_PORT}).
  */
 export const TEST_PORTS: readonly number[] = testPortsFrom(process.env['SWITCHBOARD_TEST_PORTS']);
 

@@ -36,13 +36,13 @@ macOS is the primary platform. Linux and Windows are supported for the service, 
 ## Install and run
 
 ```sh
-cd other/switchboard
+cd ~/RiderProjects/Personal/switchboard   # this repo
 npm ci          # exact, pinned dependencies
 npm run build   # builds the UI into dist/web
-npm start       # serves http://127.0.0.1:4870
+npm start       # serves http://127.0.0.1:13001
 ```
 
-Open **http://127.0.0.1:4870** by typing it or from a bookmark. That first page load gives your browser its access cookie ([Security model](#security-model)).
+Open **http://127.0.0.1:13001** by typing it or from a bookmark. That first page load gives your browser its access cookie ([Security model](#security-model)).
 
 The first time, a **setup wizard** opens:
 1. It checks the `claude` CLI and its login (plus `gh`).
@@ -82,7 +82,7 @@ Settings are environment variables, read at start. An invalid value makes `npm s
 
 | Variable | Default | What |
 |---|---|---|
-| `SWITCHBOARD_PORT` | `4870` | The port; the address is always `127.0.0.1`. |
+| `SWITCHBOARD_PORT` | `13001` | The port; the address is always `127.0.0.1`. |
 | `SWITCHBOARD_DATA_DIR` | per-user app data (`~/Library/Application Support/Switchboard` on macOS) | The database (`switchboard.db`) and the access token (`sb_token`). |
 | `SWITCHBOARD_CLAUDE_BIN` | `claude` | The Claude Code CLI; a JSON array is used as an argv prefix. |
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI. |
@@ -204,7 +204,7 @@ Switchboard can run in its own app window with a Dock icon (a PWA):
 
 If the service isn't running, the app window shows "Switchboard isn't running" with **Retry**. Nothing else is cached, so after an update just reload the app.
 
-Opening `localhost:4870` takes you to `127.0.0.1:4870`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
+Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
 
 ---
@@ -250,7 +250,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 ### Tests never call the real `claude` or `gh`
 - **`tools/fake-claude`** replays recorded stream-json turns and scenarios. Tokens in a prompt drive it, e.g. `[fake:ask-2q]`, `[fake:say "…"]`, `[fake:background …]`. See [`docs/fake-claude.md`](docs/fake-claude.md).
 - **`tools/fake-gh`** stands in for the GitHub CLI.
-- Tests start their own server on a **test port** (`SWITCHBOARD_TEST_PORTS`, default 4871–4879; 4870 is refused) with a temporary data folder. The E2E UI is built into `.e2e-dist/web`, so a test run never changes the UI you're running from the same checkout.
+- Tests start their own server on a **test port** (`SWITCHBOARD_TEST_PORTS`, default 4871–4879; 13001 is refused) with a temporary data folder. The E2E UI is built into `.e2e-dist/web`, so a test run never changes the UI you're running from the same checkout.
 - The only real-CLI checks are manual and bounded: Haiku, `--max-turns` ≤ 3, in a gitignored sandbox ([`docs/smoke-real-cli.md`](docs/smoke-real-cli.md)).
 
 ### Visual oracle
@@ -277,8 +277,8 @@ docs/         one doc per area, the decisions log, the handoff spec
 | Symptom | Fix |
 |---|---|
 | The UI looks old after an update | `npm run build`, then restart Switchboard. |
-| `401 unauthorized` / blank data | Open `http://127.0.0.1:4870` by typing it (or a bookmark). Links from other sites don't get the cookie. |
-| `listen EADDRINUSE … 127.0.0.1:4870` on start | Another Switchboard (or another app) holds the port: stop it, or set `SWITCHBOARD_PORT`. |
+| `401 unauthorized` / blank data | Open `http://127.0.0.1:13001` by typing it (or a bookmark). Links from other sites don't get the cookie. |
+| `listen EADDRINUSE … 127.0.0.1:13001` on start | Another Switchboard (or another app) holds the port: stop it, or set `SWITCHBOARD_PORT`. |
 | Setup wizard says "Not signed in" | Run `claude` in a terminal and sign in; check `claude auth status`. |
 | Remote toggle is disabled | Its tooltip says why. Usually the process isn't live yet, or the CLI isn't signed in with a claude.ai subscription (no `ANTHROPIC_API_KEY` in Switchboard's environment). |
 | Jira shows "needs the Switchboard frame helper" | Click **Set up frame helper** and follow the steps ([`docs/frame-helper.md`](docs/frame-helper.md)); after an update press reload on it in `chrome://extensions`. |

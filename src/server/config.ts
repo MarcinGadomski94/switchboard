@@ -5,7 +5,7 @@ import path from 'node:path';
 export const LOOPBACK_HOST = '127.0.0.1';
 
 /** Default HTTP port of the real app. Tests use 4871–4879 instead. */
-export const DEFAULT_PORT = 4870;
+export const DEFAULT_PORT = 13001;
 
 /** Runtime configuration, read once at startup from environment variables. */
 export interface ServerConfig {

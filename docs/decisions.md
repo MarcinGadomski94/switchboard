@@ -216,6 +216,9 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The prototype's demo panel shows done subagents, so the visual oracle records this as a developer ruling, like D29.
   - Built together with D36 (same files).
 
+## Default port (added 2026-09-28)
+- **Developer ruling:** Switchboard's default port is **13001** (`DEFAULT_PORT`, was 4870); `SWITCHBOARD_PORT` still overrides it. Tests keep their own ports and refuse the app's port. An app installed from `127.0.0.1:4870` (D34) must be installed again from `127.0.0.1:13001`. The handoff spec, the prototype and the demo seed keep their `4870`, since the visual oracle compares copy verbatim.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

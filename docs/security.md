@@ -4,7 +4,7 @@ Switchboard is a local service with the power to start `claude` processes and ru
 
 ## Bind address
 - The service listens on **127.0.0.1 only**. There is no host setting. `listenLoopback` refuses any other address (`0.0.0.0`, `::`, a LAN address, `localhost` (which can also bind `::1`), `::1`, other `127.x`) before a socket is opened, then checks the address the socket actually bound and closes the server if it is not 127.0.0.1.
-- Port: `SWITCHBOARD_PORT`, default 4870. Tests use 127.0.0.1:4871–4879 only.
+- Port: `SWITCHBOARD_PORT`, default 13001. Tests use 127.0.0.1:4871–4879 only.
 
 ## Request guard (every request, the UI page included)
 Installed as the first `onRequest` hook, so it also covers 404s and every route added later.

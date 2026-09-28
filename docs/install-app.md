@@ -1,10 +1,10 @@
 # Install Switchboard as an app (D34)
 
-Switchboard can be installed from the browser as a local app (a PWA): its own window, its own Dock / taskbar / Start-menu icon, no tabs or address bar. It is the **same page at the same address** (`http://127.0.0.1:<port>`, 4870 by default), so it needs the service running like a tab does: `npm start` in the repo, or **Settings → Claude Code → Start at login** (`docs/service.md`). Nothing about the service changes.
+Switchboard can be installed from the browser as a local app (a PWA): its own window, its own Dock / taskbar / Start-menu icon, no tabs or address bar. It is the **same page at the same address** (`http://127.0.0.1:<port>`, 13001 by default), so it needs the service running like a tab does: `npm start` in the repo, or **Settings → Claude Code → Start at login** (`docs/service.md`). Nothing about the service changes.
 
 ## Install
 **Chrome (and Edge), macOS / Windows / Linux**
-1. Open Switchboard in Chrome at the address you use (`http://127.0.0.1:4870`).
+1. Open Switchboard in Chrome at the address you use (`http://127.0.0.1:13001`).
 2. **Settings → Claude Code → Install as app → Install.** The row appears only while Chrome offers installation (its `beforeinstallprompt` event), and the button opens Chrome's own install dialog. Chrome's install icon in the address bar, or the install item of its ⋮ menu (under *Cast, save and share*), does the same.
 3. Start it from the Dock / Launchpad / Applications (macOS: *Chrome Apps*), the Start menu (Windows) or the app launcher (Linux). Pin it like any app.
 
@@ -23,7 +23,7 @@ Neither the button nor the hint shows inside the installed app itself (`display-
 ## When the service is not running
 The app registers a small service worker (`/sw.js`, scope `/`). When a page load fails because nothing answers at the address (Switchboard stopped, or not started yet after a reboot), it shows Switchboard's own page instead of the browser's error:
 
-> **Switchboard isn't running on 127.0.0.1:4870**
+> **Switchboard isn't running on 127.0.0.1:13001**
 > Start it with `npm start` in the repo, or turn on Settings → Start at login.
 > [Retry]
 

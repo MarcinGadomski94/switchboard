@@ -2,7 +2,7 @@ import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/server/app.ts';
-import { loadConfig } from '../../src/server/config.ts';
+import { DEFAULT_PORT, loadConfig } from '../../src/server/config.ts';
 import { BindRefusedError, assertLoopbackBind, listenLoopback } from '../../src/server/listen.ts';
 import type { Store } from '../../src/server/db/store.ts';
 import { generateToken } from '../../src/server/token.ts';
@@ -71,7 +71,7 @@ describe('bind address', () => {
     const address = app.server.address();
     expect(address).toMatchObject({ address: '127.0.0.1', family: 'IPv4', port });
     expect(TEST_PORTS).toContain(port);
-    expect(port).not.toBe(4870);
+    expect(port).not.toBe(DEFAULT_PORT);
 
     const lan = lanAddress();
     if (lan) {
