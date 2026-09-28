@@ -116,6 +116,38 @@ export function agentCards(
 }
 
 /**
+ * D37: a subagent that finished (`done`) leaves the right panel (its card and its
+ * overview row); failed, running, waiting, idle and paused ones stay, and so does
+ * the main agent, whatever its status.
+ */
+export function isFinishedSubagent(agent: Pick<Agent, 'kind' | 'status'>): boolean {
+  return agent.kind !== 'main' && agent.status === 'done';
+}
+
+/** D37: the agents the right panel shows and how many finished subagents it hides. */
+export interface PanelAgents<A> {
+  /** The agents shown, in creation order: all of them while the finished ones are expanded. */
+  readonly shown: readonly A[];
+  /** How many finished subagents there are (the "✓ N finished" line, shown only when N > 0). */
+  readonly finished: number;
+}
+
+/**
+ * D37: the right panel's agents: without the finished subagents
+ * ({@link isFinishedSubagent}) unless `expanded` (the "✓ N finished" line was
+ * opened; the cards only, the overview never expands), and their count.
+ */
+export function panelAgents<A extends Pick<Agent, 'kind' | 'status'>>(agents: readonly A[], expanded: boolean): PanelAgents<A> {
+  const finished = agents.filter(isFinishedSubagent).length;
+  return { shown: expanded ? agents : agents.filter((agent) => !isFinishedSubagent(agent)), finished };
+}
+
+/** D37: the collapsed line under the agent cards: `✓ 2 finished`. */
+export function finishedLine(count: number): string {
+  return `✓ ${count} finished`;
+}
+
+/**
  * The line next to "Agents & solutions", in the prototype's words (`agentSummary`:
  * `n agents · n solutions · n branches`, never singular): agents, distinct solution
  * folders (not `workspace root` / `read-only`) and distinct branches, e.g.

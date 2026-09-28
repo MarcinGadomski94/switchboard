@@ -52,6 +52,16 @@ import {
  * table an orchestrator printed): drawn as a table under the derived one, with its
  * tokens, the columns' shares, the Status colors and dots, and nothing in the
  * panel wider than the panel, also with the "as printed" popover open.
+ *
+ * D37 developer ruling (not a finding): a finished (`done`) subagent leaves the
+ * panel, its card and its overview row, for one "✓ N finished" line under the
+ * cards (the main agent always stays). The prototype's free-talk-feature shows its
+ * done `figma-extractor` card, so, as with D29, the prototype's parts that still
+ * exist are compared at their boxes: the three other cards exactly, the card list
+ * by x, y and width, and the parts under it with the card list's height difference
+ * taken out of y ({@link cardsDelta}); the ruled layout is checked on its own
+ * ({@link checkFinished}): the done card hidden, the line (copy, place, type),
+ * and, expanded, all four cards at the prototype's boxes with the line under them.
  */
 
 interface PartSpec {
@@ -91,6 +101,24 @@ function unshifted(box: Box, dy: number): Box {
   return { ...box, y: box.y - dy };
 }
 
+/** D37: a prototype path under the agent cards (the Terminal label, the tail, the handoff card and their parts). */
+function belowCards(path: readonly number[]): boolean {
+  const at = PANEL.length;
+  return path.length > at && PANEL.every((index, i) => path[i] === index) && (path[at] ?? 0) > (CARDS[at] ?? 0);
+}
+
+/**
+ * D37: how much taller the app's card list is than the prototype's, its y without
+ * the overview's offset `dy` (finished subagents leave the list for the "✓ N
+ * finished" line); 0 when both list the same cards.
+ */
+async function cardsDelta(protoPage: Page, appPage: Page, dy: number): Promise<number> {
+  const p = (await measure(protoPage, { cards: [...CARDS] }))['cards'];
+  const a = (await measure(appPage, { cards: appPath(CARDS) }))['cards'];
+  if (!p || !a) return 0;
+  return a.box.y - dy + a.box.height - (p.box.y + p.box.height);
+}
+
 function cardParts(index: number, branch: boolean): Record<string, PartSpec> {
   const base = [...CARDS, index];
   return {
@@ -127,6 +155,9 @@ const FRAME_PARTS: Readonly<Record<string, PartSpec>> = {
   handoffText: { path: [...HANDOFF, 1], geometry: 'box', copy: true },
   handoffCommand: { path: [...HANDOFF, 2], geometry: 'box', copy: true },
 };
+
+/** D37: the frame parts when finished subagents left the card list: the list by x, y and width (its height is the ruling's). */
+const FRAME_PARTS_D37: Readonly<Record<string, PartSpec>> = { ...FRAME_PARTS, cards: { path: CARDS, geometry: 'top', copy: false } };
 
 /** D14: the handoff card's cwd line (the app only): its path and its copy (`cwd <the demo's folder>`). */
 const D14_CWD = { path: [...HANDOFF, 3], text: 'cwd D:\\acme' } as const;
@@ -216,9 +247,14 @@ async function compare(protoPage: Page, appPage: Page, label: string, parts: Rea
   const paths = Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, spec.path]));
   const proto = await measure(protoPage, paths);
   const dy = await overviewOffset(appPage);
+  // D37: the parts under the cards also move by the card list's height difference.
+  const dc = await cardsDelta(protoPage, appPage, dy);
   const measured = await measure(appPage, Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, appPath(spec.path)])));
   const shot = Object.fromEntries(
-    Object.entries(measured).map(([name, part]) => [name, part && name !== 'panel' ? { ...part, box: unshifted(part.box, dy) } : part]),
+    Object.entries(measured).map(([name, part]) => [
+      name,
+      part && name !== 'panel' ? { ...part, box: unshifted(part.box, dy + (belowCards(parts[name]?.path ?? []) ? dc : 0)) } : part,
+    ]),
   );
   const rows: string[] = [];
   for (const [name, spec] of Object.entries(parts)) {
@@ -252,7 +288,8 @@ async function compareCopy(protoPage: Page, appPage: Page, label: string, failur
     }
     const p = (await measure(protoPage, { copy: [...COPY_PROTO] }))['copy'];
     const measured = (await measure(appPage, { copy: [...COPY_APP] }))['copy'];
-    const a = measured ? { ...measured, box: unshifted(measured.box, await overviewOffset(appPage)) } : measured;
+    const dy = await overviewOffset(appPage);
+    const a = measured ? { ...measured, box: unshifted(measured.box, dy + (await cardsDelta(protoPage, appPage, dy))) } : measured;
     if (!p || !a) {
       failures.push(`${label} copy (${state}): missing`);
       rows.push(`| ${label} | copy (${state}) | box | missing | missing | FAIL | |`);
@@ -422,7 +459,7 @@ async function checkReported(browser: Browser, failures: string[]): Promise<stri
     const json = (await response.json()) as Record<string, unknown>;
     await route.fulfill({ response, json: { ...json, reportedTable: { text: REPORTED_BOX, format: 'box', at } } });
   });
-  await openAppSession(page, 'free-talk-feature', 4);
+  await openAppSession(page, 'free-talk-feature', 3);
   await expect(page.getByTestId('overview-reported-table')).toBeVisible();
   const [runColor, doneColor] = await canonicalColors(page, ['oklch(0.72 0.12 250)', 'oklch(0.74 0.13 150)']);
   const read = () =>
@@ -519,6 +556,92 @@ async function checkReported(browser: Browser, failures: string[]): Promise<stri
   return rows;
 }
 
+/** D37: the done subagents of the prototype's free-talk-feature (the main agent always stays). */
+const FREE_TALK_FINISHED: readonly string[] = ['figma-extractor'];
+
+/**
+ * D37: the ruled layout on free-talk-feature, on its own. Collapsed: the app's
+ * cards are the prototype's without its done subagents, in order, and so are the
+ * overview's rows; one "✓ 1 finished" line under the last card, inside the card
+ * list, in Geist Mono 11px `--muted-3`, its text at the cards' dot column.
+ * Expanded (a click): all four cards at the prototype's boxes (the parts of
+ * {@link cardParts}, compared like the others) with the line under the fourth; the
+ * overview keeps its three rows (it has no toggle). A second click collapses it.
+ */
+async function checkFinished(protoPage: Page, appPage: Page, failures: string[]): Promise<string[]> {
+  const protoNames = await protoPage.evaluate((p) => {
+    const grid = [...document.querySelectorAll<HTMLElement>('body *')].find((el) => {
+      const style = getComputedStyle(el);
+      return style.display === 'grid' && style.gridTemplateColumns.startsWith('256px');
+    });
+    let el: Element | undefined = grid;
+    for (const i of p) el = el?.children[i];
+    return [...(el?.children ?? [])].map((card) => (card.children[0]?.children[1]?.textContent ?? '').trim());
+  }, [...CARDS]);
+  const read = () =>
+    appPage.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>('[data-testid="session-right-panel"]');
+      const list = panel?.querySelector<HTMLElement>('[data-testid="agent-cards"]');
+      const line = list?.querySelector<HTMLElement>('[data-testid="agents-finished"]');
+      if (!panel || !list || !line) return null;
+      const cards = [...list.querySelectorAll<HTMLElement>('[data-testid="agent-card"]')];
+      const last = cards[cards.length - 1];
+      const lineBox = line.getBoundingClientRect();
+      const listBox = list.getBoundingClientRect();
+      const lastBox = last?.getBoundingClientRect() ?? null;
+      const dot = cards[0]?.querySelector<HTMLElement>('.sb-agent-dot')?.getBoundingClientRect() ?? null;
+      const style = getComputedStyle(line);
+      return {
+        cards: cards.map((card) => (card.querySelector('[data-testid="agent-name"]')?.textContent ?? '').trim()),
+        rows: [...panel.querySelectorAll('[data-testid="overview-agent"]')].map((cell) => (cell.textContent ?? '').trim()),
+        text: (line.textContent ?? '').trim(),
+        expanded: line.getAttribute('aria-expanded'),
+        lastChild: list.lastElementChild === line,
+        under: lastBox !== null && lineBox.y >= lastBox.y + lastBox.height - 0.5 && lineBox.y + lineBox.height <= listBox.y + listBox.height + 0.5,
+        textX: lineBox.x + Number.parseFloat(style.paddingLeft),
+        dotX: dot?.x ?? 0,
+        type: `${style.fontFamily} ${style.fontSize} ${style.fontWeight} ${style.color}`,
+      };
+    });
+  const collapsed = await read();
+  await appPage.getByTestId('agents-finished').click();
+  await expect(appPage.getByTestId('agent-card')).toHaveCount(4);
+  const expanded = await read();
+  const cardRows = await compare(protoPage, appPage, 'free-talk-feature expanded (D37)', { ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...cardParts(3, false) }, failures);
+  await appPage.getByTestId('agents-finished').click();
+  await expect(appPage.getByTestId('agent-card')).toHaveCount(3);
+  if (!collapsed || !expanded) {
+    failures.push('free-talk-feature finished line (D37): missing');
+    return ['| free-talk-feature | "✓ N finished" line (D37) | present | missing | FAIL |'];
+  }
+  const remaining = protoNames.filter((name) => !FREE_TALK_FINISHED.includes(name)).join(',');
+  const checks: Array<[string, string, string, boolean?]> = [
+    ['prototype cards (done: figma-extractor)', 'orchestrator,web,mobile,figma-extractor', protoNames.join(',')],
+    ['collapsed: cards = the prototype\'s without its done subagents, in order', remaining, collapsed.cards.join(',')],
+    ['collapsed: overview rows = those cards', remaining, collapsed.rows.join(',')],
+    ['line copy', '✓ 1 finished', collapsed.text],
+    ['line: collapsed', 'false', collapsed.expanded ?? ''],
+    ['line: the card list\'s last child, under the last card', 'true true', `${collapsed.lastChild} ${collapsed.under}`],
+    ['line type: Geist Mono 11px 400, muted-3', `"Geist Mono", monospace 11px 400 ${hexToRgb('#76756f')}`, collapsed.type],
+    ['line text x = the cards\' dot x (±2)', String(round(collapsed.dotX)), String(round(collapsed.textX)), Math.abs(collapsed.dotX - collapsed.textX) <= BOX_TOLERANCE_PX],
+    ['expanded: the prototype\'s cards, in order', protoNames.join(','), expanded.cards.join(',')],
+    ['expanded: line under the fourth card', 'true true true', `${expanded.expanded} ${expanded.lastChild} ${expanded.under}`],
+    ['expanded: the overview keeps its rows (no toggle there)', remaining, expanded.rows.join(',')],
+  ];
+  const rows: string[] = [];
+  for (const [check, want, got, verdict] of checks) {
+    const ok = verdict ?? want === got;
+    if (!ok) failures.push(`free-talk-feature finished line (D37) ${check}: expected ${want}, got ${got}`);
+    rows.push(`| free-talk-feature | ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
+  }
+  // The four expanded cards at the prototype's boxes (the parts' rows, in the table's shape).
+  for (const row of cardRows) {
+    const cells = row.split(' | ');
+    rows.push(`| free-talk-feature | expanded card part ${cells[1] ?? ''} at the prototype's box | ${cells[3] ?? ''} | ${cells[4] ?? ''} | ${cells[5] ?? ''} |`);
+  }
+  return rows;
+}
+
 test('Right panel matches the prototype (agent cards, summary, terminal tail, handoff card + copy)', async ({ browser }) => {
   const protoPage = await newVisualPage(browser);
   const appPage = await newVisualPage(browser);
@@ -528,16 +651,17 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   await openPrototype(protoPage, { simulateIncoming: false });
   const panelClip = { x: 1060, y: 0, width: 380, height: 900 };
 
-  // 1. free-talk-feature: 4 cards (2 with a branch), 6 lines (✓ / ⚠ / ⏸ tones).
+  // 1. free-talk-feature: 4 cards in the prototype (2 with a branch), 6 lines (✓ / ⚠ / ⏸ tones). D37: the app lists
+  // 3 cards (the done figma-extractor is under "✓ 1 finished"); the three are compared at the prototype's boxes.
   await openProtoSession(protoPage, 'free-talk-feature');
-  await openAppSession(appPage, 'free-talk-feature', 4);
+  await openAppSession(appPage, 'free-talk-feature', 3);
   await expect(appPage.getByTestId('terminal-line')).toHaveCount(6);
   rows.push(
     ...(await compare(
       protoPage,
       appPage,
       'free-talk-feature',
-      { ...FRAME_PARTS, ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...cardParts(3, false), ...lineParts(6) },
+      { ...FRAME_PARTS_D37, ...cardParts(0, false), ...cardParts(1, true), ...cardParts(2, true), ...lineParts(6) },
       failures,
     )),
   );
@@ -547,6 +671,8 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   const protoFree = await protoPage.screenshot({ clip: panelClip });
   const appFree = await appPage.screenshot({ clip: panelClip });
   const freeDiff = await pixelDiff(appPage, protoFree, appFree);
+  // D37: the ruled layout on its own (collapsed, then expanded: all four cards at the prototype's boxes).
+  const finishedRows = await checkFinished(protoPage, appPage, failures);
 
   // 2. calendar-func-fix: 1 card with a branch, `$` / output lines and the cursor (status run).
   await openProtoSession(protoPage, 'calendar-func-fix');
@@ -579,7 +705,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
   }, [...TERM]);
 
   // SPEC tokens as computed styles on the app (free-talk-feature panel).
-  await openAppSession(appPage, 'free-talk-feature', 4);
+  await openAppSession(appPage, 'free-talk-feature', 3);
   const computed = await appPage.evaluate(() => {
     const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
     const panel = style('.sb-sv-panel');
@@ -642,6 +768,7 @@ test('Right panel matches the prototype (agent cards, summary, terminal tail, ha
       computedRows,
       overviewRows,
       reportedRows,
+      finishedRows,
       failures,
       diffs: { free: freeDiff.percent, calendar: calendarDiff.percent },
       rollout: { proto: protoRollout, app: appRollout },
@@ -658,6 +785,7 @@ function report(input: {
   computedRows: string[];
   overviewRows: string[];
   reportedRows: string[];
+  finishedRows: string[];
   failures: string[];
   diffs: { free: number; calendar: number };
   rollout: { proto: string[]; app: string[] };
@@ -698,6 +826,13 @@ ${input.overviewRows.join('\n')}
 | Session | Check | Expected | App | Result |
 |---|---|---|---|---|
 ${input.reportedRows.join('\n')}
+
+## D37 ruling (developer, 2026-09-28; not findings)
+- A finished (\`done\`) subagent leaves the right panel: its card and its overview row. One line, \`✓ N finished\` (Geist Mono 11px, \`--muted-3\`), under the cards expands them in place; the main agent always stays, and the summary still counts every agent. The prototype's free-talk-feature shows its done \`figma-extractor\` card, so the app lists three cards there: those three are compared above at the prototype's boxes, the card list by x, y and width, and the parts under it (Terminal label, tail, handoff card, copy control) with the card list's height difference taken out of y. The ruled layout is checked on its own (the expanded cards are the prototype's four, at its boxes):
+
+| Session | Check | Expected | App | Result |
+|---|---|---|---|---|
+${input.finishedRows.join('\n')}
 
 ## D14 additions (not findings)
 - The handoff card ends with \`cwd <Session.cwd>\`: the folder to run \`claude --resume\` in (a repo session's worktree, D14). The card is compared by x, y and width (geometry \`top\`) and by its prototype copy without that line; the line is checked on its own.

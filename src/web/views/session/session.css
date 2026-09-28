@@ -535,6 +535,19 @@ a.sb-agent--link:focus-visible {
   outline-offset: 1px;
 }
 
+/* D37: finished subagents leave the cards for one collapsed line under them, which expands them in place. */
+.sb-agents .sb-agents-finished {
+  align-self: flex-start;
+  padding: 2px 11px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-agents .sb-agents-finished:hover,
+.sb-agents .sb-agents-finished[aria-expanded='true'] {
+  color: var(--muted-2);
+}
+
 .sb-agent-top {
   display: flex;
   align-items: center;

@@ -76,7 +76,7 @@ A subagent's own conversation opens in the chat tab, and one step brings the dev
 - **Which subagents have a chat:** a subagent started by an Agent / Task call Switchboard saw, i.e. one whose `Agent.toolUseId` is set (`hasSubagentChat`; additive on the wire, `docs/handoff/contracts/local-api.md` → *D36*). The main agent and agents seen without a call (the demo's; a Workflow's never appear, M0.1) have none.
 - **Entry points** (each keyboard-focusable, tooltip "Open this subagent's chat"):
   - the main chat's Agent / Task **step line**: an `<a>` in the step line's own box, color and type (`sb-chat-step--link`: no underline until hovered, a pointer), `data-subagent-id`; the line of a call whose subagent has no chat stays plain text;
-  - the subagent's **agent card** in the right panel (the card itself is the link);
+  - the subagent's **agent card** in the right panel (the card itself is the link; D37: a finished subagent's card shows once its "✓ N finished" line is expanded);
   - its **row in the D21 overview**: the whole row (a pointer) and its name as a link (`overview-open`). The main agent's card and row stay as they are.
 - **What it shows** (`subagentChat(events, questions, agent, agents)`): the session's events are already all loaded by the chat (`GET /api/sessions/{id}/events` does not page), so they are filtered here (no API filter):
   - **top bar** (`subagent-bar`): `← Main chat` (the way back) · the status dot · `<name>: <description>` (the name in `--text`, cut with …, the whole as tooltip), and on the right the agent's live D19 action and time (its card's words: `Thinking…`, `Read: hello.txt  0:03`, …) or its status (`done`, `failed`, its progress text), in its status color;

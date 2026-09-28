@@ -22,6 +22,7 @@ import {
   reportedHeading,
   reportedTableView,
 } from './agent-overview.ts';
+import { isFinishedSubagent } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import './agent-overview.css';
 
@@ -40,11 +41,14 @@ const AGE_TICK_MS = 30_000;
  * box-drawing table as a chat code block, a pipe table through the chat's
  * Markdown renderer, D20); a table that cannot be parsed shows as printed,
  * wrapped. Nothing in the panel scrolls sideways. D36: a subagent's row opens its
- * chat (the whole row, and its name as a keyboard-focusable link).
+ * chat (the whole row, and its name as a keyboard-focusable link). D37: finished
+ * subagents have no row (they are simply gone; the cards below keep a "✓ N
+ * finished" line).
  */
 export function AgentOverview({ session, activity }: { readonly session: SessionDetail; readonly activity: SessionActivity | null }) {
-  const rows = overviewRows(session.agents, session);
-  const chats = new Set(session.agents.filter(hasSubagentChat).map((agent) => agent.id));
+  const shown = session.agents.filter((agent) => !isFinishedSubagent(agent));
+  const rows = overviewRows(shown, session);
+  const chats = new Set(shown.filter(hasSubagentChat).map((agent) => agent.id));
   return (
     <section className="sb-overview" data-testid="agent-overview">
       <div className="sb-sv-panel-label sb-overview-label">{OVERVIEW_LABEL}</div>

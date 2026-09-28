@@ -3,8 +3,8 @@ import type { SessionDetail } from '../../src/core/api.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
- * D36 subagent chats, on the real path (D13, no demo seed): `node
- * src/server/main.ts` with fake-claude as the CLI.
+ * D36 subagent chats and D37 finished subagents, on the real path (D13, no demo
+ * seed): `node src/server/main.ts` with fake-claude as the CLI.
  *
  * D36 (`subagent-forward`: a foreground Agent call whose subagent Reads hello.txt
  * and answers "alpha line one"):
@@ -20,6 +20,11 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  *   unknown agent id shows "This subagent has no chat here" with the back link;
  * - the right panel's card and the overview's row of a subagent that still works
  *   (`subagent-perm`: waiting on a permission) open its chat too.
+ *
+ * D37: once the subagent finished, its card and its overview row are gone and
+ * "✓ 1 finished" shows under the cards (the summary still counts it); expanding
+ * the line shows its card again, which opens its chat; the state is kept while
+ * the session stays open.
  */
 
 let world: QuestionWorld;
@@ -89,7 +94,7 @@ async function expectMainChatAt(page: Page, id: string, top: number): Promise<vo
   await expect.poll(async () => Math.abs((await scrollTop(chat)) - top)).toBeLessThanOrEqual(1);
 }
 
-test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return to the main chat at its scroll; reload; unknown id', async ({ page }) => {
+test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return to the main chat at its scroll; reload; unknown id; D37 finished line', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'subagent-e2e', say(LONG));
   await expect.poll(async () => (await detail(page, id)).status).toBe('done');
@@ -214,6 +219,41 @@ test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return 
   await page.getByTestId('subagent-back').click();
   await expect(page).toHaveURL(`${world.baseUrl}/sessions/${id}`);
   await expect(page.getByTestId('chat-composer')).toBeVisible();
+
+  // D37: the finished subagent left the panel: its card and its overview row; one line under the cards.
+  const panel = page.getByTestId('session-right-panel');
+  await expect(panel.getByTestId('agents-summary')).toHaveText('2 agents · 0 solutions · 0 branches');
+  await expect(panel.getByTestId('agent-card')).toHaveCount(1);
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front']);
+  await expect(panel.getByTestId('overview-row')).toHaveCount(1);
+  await expect(panel.getByTestId('overview-agent')).toHaveText(['acme-app-front']);
+  const finished = panel.getByTestId('agents-finished');
+  await expect(finished).toHaveText('✓ 1 finished');
+  await expect(finished).toHaveAttribute('aria-expanded', 'false');
+  await expect(finished).toHaveCSS('color', 'rgb(118, 117, 111)');
+  await expect(finished).toHaveCSS('font-family', '"Geist Mono", monospace');
+  // Expanding (Enter) shows its card in place; the overview gets no toggle.
+  await finished.focus();
+  await page.keyboard.press('Enter');
+  await expect(finished).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
+  await expect(panel.getByTestId('overview-row')).toHaveCount(1);
+  const card = panel.locator(`[data-testid="agent-card"][data-agent-id="${sub?.id ?? ''}"]`);
+  await expect(card).toHaveAttribute('title', "Open this subagent's chat");
+  await expect(card.getByTestId('agent-status')).toHaveText('done');
+  // A click collapses it again; another expands it.
+  await finished.click();
+  await expect(panel.getByTestId('agent-card')).toHaveCount(1);
+  await finished.click();
+  await expect(panel.getByTestId('agent-card')).toHaveCount(2);
+  // The expanded card opens the subagent's chat; the state is kept (in memory) when the main chat comes back.
+  await card.click();
+  await expect(page).toHaveURL(subUrl);
+  await expect(page.getByTestId('subagent-brief')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(`${world.baseUrl}/sessions/${id}`);
+  await expect(finished).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel.getByTestId('agent-card')).toHaveCount(2);
 });
 
 test('D36: the card and the overview row of a subagent that still works open its chat', async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { AgentActivity, BackgroundTask, SessionDetail } from '../../../core/api.ts';
 import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
@@ -7,9 +7,12 @@ import { statusColor } from '../../shell/format.ts';
 import { AgentOverview } from './AgentOverview.tsx';
 import { hasSubagentChat } from './chat.ts';
 import { HandoffCard } from './HandoffCard.tsx';
-import { type AgentCard, agentCards, agentSummary, terminalLines } from './right-panel.ts';
+import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, terminalLines } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
+
+/** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
+const finishedExpanded = new Map<string, boolean>();
 
 /**
  * Right panel (M4.3, SPEC → Session → Right panel; prototype right column): the
@@ -23,13 +26,21 @@ import { TerminalTail } from './TerminalTail.tsx';
  * agent's background wait too, in the running color). D21: the
  * agent overview (`AgentOverview`) is the panel's first section, above the
  * header; the prototype's parts follow it unchanged. D36: a subagent's card opens
- * its chat.
+ * its chat. D37: finished subagents leave the cards (and the overview) for a
+ * "✓ N finished" line under the cards, which expands them in place; the summary
+ * still counts every agent.
  */
 export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
   const activity = useLiveActivity(sessionId, session);
+  const [expanded, setExpanded] = useState(() => finishedExpanded.get(sessionId) ?? false);
+  const toggle = (): void => {
+    finishedExpanded.set(sessionId, !expanded);
+    setExpanded(!expanded);
+  };
+  const panel = session ? panelAgents(session.agents, expanded) : null;
   return (
     <aside className="sb-sv-panel" data-testid="session-right-panel" data-session-id={sessionId}>
-      {session ? (
+      {session && panel ? (
         <>
           <AgentOverview session={session} activity={activity} />
           <div className="sb-sv-panel-head">
@@ -39,8 +50,8 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
             </span>
           </div>
           <div className="sb-agents" data-testid="agent-cards">
-            {agentCards(session.agents, session).map((card, index) => {
-              const agent = session.agents[index];
+            {agentCards(panel.shown, session).map((card, index) => {
+              const agent = panel.shown[index];
               return (
                 <AgentCardView
                   key={card.id}
@@ -53,6 +64,17 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
                 />
               );
             })}
+            {panel.finished > 0 ? (
+              <button
+                type="button"
+                className="sb-button sb-agents-finished"
+                data-testid="agents-finished"
+                aria-expanded={expanded}
+                onClick={toggle}
+              >
+                {finishedLine(panel.finished)}
+              </button>
+            ) : null}
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />

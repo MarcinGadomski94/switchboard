@@ -3,6 +3,7 @@ import type { Agent, Question, SessionEvent } from '../../src/core/api.ts';
 import { isAsyncAgentLaunch } from '../../src/core/derive/background.ts';
 import { subagentActivityLine } from '../../src/web/activity/activity.ts';
 import { chatItems, hasSubagentChat, subagentChat, subagentChats } from '../../src/web/views/session/chat.ts';
+import { agentCards, finishedLine, isFinishedSubagent, panelAgents } from '../../src/web/views/session/right-panel.ts';
 import {
   OPEN_SUBAGENT_CHAT,
   SUBAGENT_NOTE,
@@ -17,7 +18,8 @@ import {
  * subagent-chat.ts, the router; docs/chat.md → *Subagent chats*): the route, the
  * items built from the session's events (brief, messages and steps, result), the
  * entry points (the Agent step's link, which agents have a chat), Esc, the main
- * chat's remembered place and the subagent's activity line.
+ * chat's remembered place and the subagent's activity line. D37: which agents the
+ * right panel shows and the "✓ N finished" count (right-panel.ts).
  */
 
 const MAIN = 'agent-main';
@@ -240,5 +242,39 @@ describe('D36 way back', () => {
     expect(subagentActivityLine({ ...base, state: 'tool', tool: 'Read', summary: 'hello.txt' }, now)).toMatchObject({ glyph: '●', text: 'Read: hello.txt', time: '0:23' });
     expect(subagentActivityLine({ ...base, state: 'waiting' }, now)).toMatchObject({ glyph: '⏸', text: 'Waiting for you', time: '0:23' });
     expect(subagentActivityLine({ ...base, state: 'writing' }, now)).toMatchObject({ glyph: 'spinner', text: 'Writing…', time: '1m 23s' });
+  });
+});
+
+describe('D37 finished subagents leave the right panel', () => {
+  const done = agent({ id: 'done', kind: 'subagent', name: 'figma-extractor', status: 'done' });
+  const failed = agent({ id: 'fail', kind: 'subagent', name: 'web', status: 'fail' });
+  const running = agent({ id: 'run', kind: 'subagent', name: 'mobile', status: 'run' });
+  const waiting = agent({ id: 'need', kind: 'subagent', name: 'qa', status: 'need' });
+  const idle = agent({ id: 'idle', kind: 'subagent', name: 'nuget', status: 'idle' });
+  const doneMain = agent({ status: 'done' });
+
+  it('only done subagents leave; failed, running, waiting and idle ones stay, and the main agent always stays', () => {
+    expect([done, failed, running, waiting, idle, doneMain].map(isFinishedSubagent)).toEqual([true, false, false, false, false, false]);
+    expect(isFinishedSubagent(agent({ kind: 'workflow', status: 'done' }))).toBe(true);
+  });
+
+  it('collapsed: the others in order and the count; expanded: every agent in order; the line reads ✓ N finished', () => {
+    const list = [doneMain, done, failed, agent({ id: 'done2', kind: 'subagent', status: 'done' }), running];
+    const collapsed = panelAgents(list, false);
+    expect(collapsed.shown.map((a) => a.id)).toEqual([MAIN, 'fail', 'run']);
+    expect(collapsed.finished).toBe(2);
+    const expanded = panelAgents(list, true);
+    expect(expanded.shown.map((a) => a.id)).toEqual([MAIN, 'done', 'fail', 'done2', 'run']);
+    expect(expanded.finished).toBe(2);
+    expect(finishedLine(2)).toBe('✓ 2 finished');
+    expect(panelAgents([doneMain, running], false)).toEqual({ shown: [doneMain, running], finished: 0 });
+  });
+
+  it('a paused session\'s cut-off subagents (idle → paused) stay', () => {
+    const cards = agentCards(panelAgents([doneMain, idle, done], false).shown, { status: 'paused', task: 'Build it.' });
+    expect(cards.map((card) => [card.name, card.statusText])).toEqual([
+      ['orchestrator', 'done'],
+      ['nuget', 'paused'],
+    ]);
   });
 });
