@@ -147,6 +147,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The choice is stored on the session. Every later spawn (resume, restart recovery) passes `--model` / `--effort`.
   - If the CLI refuses a change, its text is shown and the stored choice is left unchanged.
   - Sessions without a choice use the CLI's defaults, exactly as today.
+  - *Implementation note 2026-09-28:* the effort equivalent of `set_model` in CLI 2.1.283 is `apply_flag_settings {"effortLevel": <level | null>}` (there is no `set_effort`; probed once within D11, control requests only). The CLI does not check the level, so Switchboard does. Details and the choices made where D31 is silent: `docs/model-effort.md`, `.loop/questions.md` → *D31*.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.

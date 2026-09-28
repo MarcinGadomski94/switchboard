@@ -196,6 +196,21 @@ TeleportRefusal   { "error": "teleport-failed" | "teleport-timeout", "message": 
 Session           { …, "remoteSource": "session_011CU…" | null }
 ```
 
+## Model and effort (D31, 2026-09-28, additive)
+Developer ruling D31 (`docs/decisions.md` → *Background work and live model choice*): the session header's model and effort pickers. The choices come from the CLI (the models its `initialize` reports, the effort levels the chosen model supports); a change goes to a live process through the control protocol (`set_model`, `apply_flag_settings {effortLevel}`, probed on CLI 2.1.283) and is stored on the session, and every later spawn passes `--model` / `--effort`. Additive; the rows and payloads above keep their meaning. Details: `docs/model-effort.md`, migration `0009_session_model.sql`.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| PUT | /api/sessions/{id}/model | SessionModelInput | 200 Session (`sessionUpdated` is published) · 404 `not-found` · 422 `invalid` `{ errors: [{ field: "model" \| "effort", message }] }` (the body; a model the session's list does not offer; an effort the chosen model does not support; with no list reported: not a model name / not one of `low, medium, high, xhigh, max`) · 502 `model-failed` `{ message }` = the CLI's error text, verbatim (or no reply within 30 s) · 503 `closing` |
+
+```json
+SessionModelInput { "model"?: "opus" | "default" | null, "effort"?: "high" | null }
+Session           { …, "model": { "current": "opus" | null, "effort": "high" | null, "available": [ { "value": "opus", "label": "Opus 5.5", "description"?: "Most capable for ambitious work", "efforts"?: ["low", "medium", "high", "xhigh", "max"] } ] | null } | null }
+```
+- **SessionModelInput:** a field left out keeps the stored value; `null`, blank or (model) `"default"` goes back to the CLI's default. At least one field. A live process gets `set_model` when the model changes and `apply_flag_settings {effortLevel}` when the effort does (each reply awaited); without one the choice is only stored and the next spawn passes it. A choice equal to the stored one does nothing. On a 502 nothing is stored, except a model the CLI took before it refused the effort.
+- **Session.model** (so also SessionDetail and `sessionUpdated`): `current` / `effort` = the stored choice (`null` = the CLI's default; no `--model` / `--effort`); `available` = the models the session's last claude process reported in its `initialize` reply (kept after it ends; `null` until one did; the pickers are disabled then). `null` for a session with no model information at all (Switchboard never ran a process for it and nothing is stored: the demo's seeded sessions show no pickers). Optional in `src/core/api.ts` (like D22's `title`) so older fixtures type-check; the server always sends it.
+- **SessionEvent.payload** gains the type `model` (`{ action: "changed" | "failed", model, effort, live?, request?, error? }`): a change is a `text` event labelled `Model: <the CLI's displayName> · effort: <level | default>`; a refusal an `error` event `Could not change the model: <text>` / `Could not change the effort: <text>` (the CLI's text verbatim in `error` and the label).
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

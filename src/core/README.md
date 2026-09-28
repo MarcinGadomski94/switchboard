@@ -33,3 +33,5 @@ M7.4: `transcript.ts` (streaming parser of a Claude Code transcript into the fac
 M7.2: `derive/loops.ts` (loops observed in a session's events: `/loop`, CronCreate, ScheduleWakeup, CronDelete, Workflow, self-started turns = firings), `derive/cron-next.ts` (5-field cron → next match; M7.1's scheduler may reuse it) and `loop-progress.ts` (cap + breaker from a LOOP.md `.loop/progress.md`), documented in `docs/derivations.md` → *Loop cards*.
 
 D21: `derive/status-table.ts` (which printed tables are agent status tables: box-drawing in or outside code fences, GFM pipe tables outside them, with an Agent and a Status column; the newest wins; D27: `parseStatusTable` splits one into its header and rows, `reportedStatus` colors its Status cells), documented in `docs/derivations.md` → *Agent overview*; the chat is read by `src/server/sessions/reported-table.ts`.
+
+D31: `model-choice.ts` (the `initialize` reply's models list as Switchboard keeps it, the checks of a model / effort choice, the chat step line; shared by the server and the header's picker), documented in `docs/model-effort.md`.
