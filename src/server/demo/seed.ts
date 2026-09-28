@@ -138,6 +138,15 @@ export function demoResult(line: string): Record<string, unknown> {
   };
 }
 
+/**
+ * The stored summary of a demo schedule's last run: the prototype's "last" text
+ * without the prefix the Schedules view adds from the run's result (M7.1,
+ * `docs/schedules.md`): `OK · `, `Failed <age> ago · `, `Asked: `.
+ */
+export function runSummary(last: string): string {
+  return last.replace(/^OK · /, '').replace(/^Failed [^·]* ago · /, '').replace(/^Asked: /, '');
+}
+
 /** Minutes between runs of the demo schedules (for spacing their run history). */
 function periodMinutes(cron: string): number {
   if (cron.startsWith('0 */4')) return 240;
@@ -303,14 +312,16 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     const lastAgo = failedRun && failedRun.schedule === sch.name ? ageMinutes(failedRun.age) : 60;
     const period = periodMinutes(sch.cron);
     for (const [index, result] of sch.runs.entries()) {
+      // M7.1: a run ends `ago` minutes before now (the failed one when its system item was raised) and
+      // started 5 minutes earlier; `running` / `need` runs have no end yet.
       const ago = lastAgo + (sch.runs.length - 1 - index) * period;
       const isLast = index === sch.runs.length - 1;
       const run = await repos.schedules.addRun({
         scheduleId: schedule.id,
-        ts: minutesBefore(now, ago),
-        finishedAt: result === 'running' ? null : minutesBefore(now, Math.max(ago - 5, 0)),
+        ts: minutesBefore(now, ago + 5),
+        finishedAt: result === 'running' || result === 'need' ? null : minutesBefore(now, ago),
         result,
-        summary: isLast ? sch.last : null,
+        summary: isLast ? runSummary(sch.last) : null,
         triggeredBy: 'cron',
       });
       if (isLast) lastRunIds.set(sch.name, run.id);

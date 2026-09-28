@@ -21,6 +21,7 @@ import type {
   QaStack,
   QuestionState,
   ScheduleRunResult,
+  ScheduleRunTrigger,
   SessionMode,
   SessionStatus,
   WorkType,
@@ -370,6 +371,12 @@ export interface ScheduleRun {
   readonly ts: string;
   readonly result: ScheduleRunResult;
   readonly summary: string | null;
+  /** Additive (M7.1): when it got its final result (`ok` / `fail` / `skipped`); `null` while `running` or `need`. */
+  readonly finishedAt?: string | null;
+  /** Additive (M7.1): the session the run started; `null` when none started (refused, skipped) or it was deleted. */
+  readonly sessionId?: string | null;
+  /** Additive (M7.1): `cron` (the schedule fired) or `manual` (Run now, Retry run). */
+  readonly triggeredBy?: ScheduleRunTrigger;
 }
 
 /** `GET /api/schedules` item (data model; D8). Provisional: M7.1. */
@@ -379,11 +386,26 @@ export interface Schedule {
   readonly description: string;
   readonly cron: string;
   readonly paused: boolean;
-  /** Session config (NewSession) + prompt (D8). */
+  /** Session config (NewSession) + prompt (D8): the `task` is the prompt each run starts with. */
   readonly template: unknown;
   /** Oldest first, at most 14. */
   readonly runs: readonly ScheduleRun[];
+  /** The next time the cron fires; `null` while paused or when the expression never fires again. */
   readonly nextRunAt: string | null;
+  /** Additive (M7.1): a run is in progress (its session runs or waits for the developer); Run now is refused (409) and a cron firing is `skipped`. */
+  readonly running?: boolean;
+}
+
+/**
+ * Additive (M7.1, D8): the `POST /api/schedules` body the New-session modal's
+ * "Save schedule" sends. Without `id` it creates a schedule; with the `id` of an
+ * existing one it replaces its cron and template (Edit). The schedule's name is
+ * `template.name`, its description the first line of `template.task` (the prompt).
+ */
+export interface ScheduleInput {
+  readonly id?: string;
+  readonly cron: string;
+  readonly template: NewSession;
 }
 
 /**
@@ -454,10 +476,10 @@ export interface CodebaseMemoryStatus {
  * `GET /api/system` (contract fields) and the `system` hub event. Units, which the
  * contract leaves open: `cpu` and `usagePct` are percentages 0–100, `ramUsed` and
  * `ramTotal` are bytes, `processes` = live supervised `claude` processes (gap #11).
- * Provisional: M5.3 (CLI/gh fields, metrics) and M9.2 (usage).
+ * CLI/gh fields and metrics since M5.3 (`docs/setup.md` → *System*); usage: M9.2.
  */
 export interface SystemInfo {
-  /** CLI path or command when found, `null` when not found. */
+  /** CLI path or command when found (`<cli> --version` exits 0), `null` when not found. */
   readonly cli: string | null;
   readonly cliVersion: string | null;
   readonly signedIn: boolean;
@@ -491,6 +513,43 @@ export interface UsageWarning {
   /** When the window resets (ISO); the warning is in force until then. */
   readonly resetsAt: string;
   readonly firedAt: string;
+}
+
+/** Additive (M5.3): where the workspace root comes from (`docs/setup.md`). */
+export type WorkspaceRootSource = 'env' | 'setup';
+
+/** Additive (M5.3): what a folder offered as the workspace root holds (`GET /api/setup/root`). */
+export interface WorkspaceRootCheck {
+  /** The folder, absolute (`~` expanded); as typed when it is not absolute. */
+  readonly path: string;
+  /** `ok` = a folder with an `AGENTS.md`; `no-router` = a folder without one; `missing` = no such folder. */
+  readonly state: 'ok' | 'no-router' | 'missing' | 'not-absolute';
+  /** `<path>/AGENTS.md`: its first `# ` heading and its line count; `null` unless `state` is `ok`. */
+  readonly router: { readonly title: string | null; readonly lines: number } | null;
+}
+
+/** Additive (M5.3): `GET /api/setup`, the first-run wizard's state (`docs/setup.md`). */
+export interface SetupState {
+  /** When the wizard was finished; `null` = setup not done. */
+  readonly completedAt: string | null;
+  /** Open the wizard when the UI loads: setup not done and `SWITCHBOARD_SETUP_WIZARD` is not `off`. */
+  readonly autoOpen: boolean;
+  readonly workspaceRoot: {
+    /** The root sessions start in; `null` = not configured. */
+    readonly path: string | null;
+    readonly source: WorkspaceRootSource | null;
+    readonly check: WorkspaceRootCheck | null;
+  };
+  /** The usage warning threshold (M8.2's `usage.warnAtPct`, default 90). */
+  readonly warnAtPct: number;
+}
+
+/** Additive (M5.3): `GET /api/setup/folders`, one folder's subfolders for the wizard's Browse…. */
+export interface FolderListing {
+  readonly path: string;
+  /** `null` at the top of the file system. */
+  readonly parent: string | null;
+  readonly folders: ReadonlyArray<{ readonly name: string; readonly path: string }>;
 }
 
 /** `/hub` event names and payloads (contract, locked). */

@@ -25,12 +25,6 @@ const HOST = `127.0.0.1:${PORT}`;
  */
 const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['GET', '/api/sessions/s1/diff?file=a.ts', 'M4.5'],
-  ['GET', '/api/schedules', 'M7.1'],
-  ['POST', '/api/schedules', 'M7.1'],
-  ['POST', '/api/schedules/c1/run', 'M7.1'],
-  ['POST', '/api/schedules/c1/pause', 'M7.1'],
-  ['POST', '/api/schedules/c1/resume', 'M7.1'],
-  ['GET', '/api/system', 'M5.3'],
 ];
 
 /** Contract rows implemented so far (their behavior has its own tests, e.g. tests/server/api/sessions.test.ts). */
@@ -58,6 +52,20 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['PUT', '/api/settings', 'M8.2'], // no body here → 422, nothing stored (tests/server/api/settings.test.ts)
   ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'], // tests/server/api/artifacts.test.ts
   ['GET', '/api/history?q=x', 'M7.4'], // no workspace root here → stored sessions only (tests/server/api/history.test.ts)
+  // M7.1 (docs/schedules.md): the scheduler.
+  ['GET', '/api/schedules', 'M7.1'],
+  ['POST', '/api/schedules', 'M7.1'],
+  ['POST', '/api/schedules/c1/run', 'M7.1'],
+  ['POST', '/api/schedules/c1/pause', 'M7.1'],
+  ['POST', '/api/schedules/c1/resume', 'M7.1'],
+  // M5.3: 503 here (this app has no system provider; main.ts passes the real SystemProbe).
+  ['GET', '/api/system', 'M5.3'],
+  // M5.3, additive to the contract (docs/setup.md): the first-run wizard.
+  ['GET', '/api/setup', 'M5.3'],
+  ['GET', '/api/setup/root?path=/tmp', 'M5.3'],
+  ['PUT', '/api/setup/root', 'M5.3'],
+  ['GET', '/api/setup/folders?path=/tmp', 'M5.3'],
+  ['POST', '/api/setup/complete', 'M5.3'],
 ];
 
 let tmp: string;

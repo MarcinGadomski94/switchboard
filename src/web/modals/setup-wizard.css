@@ -1,0 +1,402 @@
+/*
+ * Setup wizard (M5.3, SPEC → Modals → Setup wizard). Values are the prototype's
+ * inline styles (`mWizard` markup); the panel itself is `.sb-modal-wizard` in
+ * modals.css.
+ */
+
+/* Steps rail: 250px, right divider. */
+.sb-wz-rail {
+  border-right: 1px solid var(--border-divider);
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+}
+
+.sb-wz-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: var(--space-22);
+}
+
+.sb-wz-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-button);
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sb-wz-brand-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sb-wz-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 9px 10px;
+  border-radius: var(--radius-card);
+  background: transparent;
+  cursor: pointer;
+}
+
+.sb-wz-step[data-state='current'] {
+  background: var(--bg-selected-row);
+}
+
+.sb-wz-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 500 11px var(--font-mono);
+  flex: none;
+  background: transparent;
+  color: var(--muted-3);
+  border: 1px solid #33343a;
+}
+
+.sb-wz-step[data-state='current'] .sb-wz-dot {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: transparent;
+}
+
+.sb-wz-step[data-state='done'] .sb-wz-dot {
+  background: oklch(0.3 0.06 150);
+  color: oklch(0.85 0.1 150);
+  border-color: transparent;
+}
+
+.sb-wz-step-label {
+  font-size: var(--fs-body);
+  color: var(--muted-3);
+}
+
+.sb-wz-step[data-state='current'] .sb-wz-step-label {
+  color: var(--text-strong);
+}
+
+.sb-wz-step[data-state='done'] .sb-wz-step-label {
+  color: var(--text-2);
+}
+
+.sb-wz-note {
+  margin-top: auto;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted-4);
+}
+
+/* Main column. */
+.sb-wz-main {
+  padding: 30px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  min-height: 0;
+  overflow: auto;
+}
+
+.sb-wz-pos {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-wz-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sb-wz-text {
+  font-size: var(--fs-body-lg);
+  color: var(--muted-1);
+  line-height: 1.55;
+  max-width: 540px;
+}
+
+/* Step 1: the checks. */
+.sb-wz-checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 560px;
+}
+
+.sb-wz-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 11px 14px;
+  border: 1px solid var(--border-card);
+  border-radius: 9px;
+  background: var(--bg-card-2);
+}
+
+.sb-wz-check-mark {
+  color: oklch(0.76 0.13 150);
+}
+
+.sb-wz-check[data-ok='false'] .sb-wz-check-mark {
+  color: var(--status-fail);
+}
+
+.sb-wz-check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-wz-check-label {
+  font-size: var(--fs-body);
+}
+
+.sb-wz-check-detail {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  overflow-wrap: anywhere;
+}
+
+/* Muted mono lines: loading, notes. */
+.sb-wz-muted {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-wz-error {
+  font: 400 12px var(--font-mono);
+  color: var(--status-fail);
+}
+
+/* Step 2: the root field + Browse…. */
+.sb-wz-root {
+  display: flex;
+  gap: var(--space-8);
+  max-width: 560px;
+}
+
+.sb-wz-field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 9px 12px;
+  font: 400 13px var(--font-mono);
+  background: var(--bg-card-2);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-wz-field::placeholder {
+  color: var(--muted-3);
+}
+
+.sb-wz-field:read-only {
+  color: var(--text-2);
+}
+
+.sb-wz-browse {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 9px 14px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+
+.sb-wz-root-line {
+  font: 400 12px var(--font-mono);
+  color: oklch(0.76 0.13 150);
+}
+
+.sb-wz-root-line[data-ok='false'] {
+  color: var(--status-fail);
+}
+
+/* Browse…: one folder's subfolders. */
+.sb-wz-browser {
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--border-card);
+  border-radius: 9px;
+  background: var(--bg-card-2);
+  padding: 4px;
+}
+
+.sb-wz-browser-path {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+}
+
+.sb-wz-folder {
+  font: 400 12.5px var(--font-mono);
+  color: var(--text-2);
+  padding: 6px 10px;
+  border-radius: var(--radius-button);
+}
+
+.sb-wz-folder:hover {
+  background: var(--bg-selected-row);
+}
+
+/* Step 3: the scan table. */
+.sb-wz-scan {
+  display: flex;
+  flex-direction: column;
+  max-width: 620px;
+  border: 1px solid var(--border-card);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.sb-wz-scan-row {
+  display: grid;
+  grid-template-columns: 150px 36px minmax(0, 1fr) 110px;
+  gap: var(--space-12);
+  align-items: center;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-row);
+  background: var(--bg-card-2);
+}
+
+.sb-wz-scan-folder {
+  font: 400 12.5px var(--font-mono);
+}
+
+.sb-wz-scan-count {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+  text-align: right;
+}
+
+.sb-wz-scan-examples {
+  font-size: 12px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-wz-scan-rule {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  text-align: right;
+}
+
+.sb-wz-scan-rule[data-restricted='true'] {
+  color: oklch(0.72 0.1 70);
+}
+
+/* Step 4: notifications. */
+.sb-wz-notify {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.sb-wz-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-card);
+  padding: 9px 16px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.sb-wz-permission {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-wz-permission[data-tone='done'] {
+  color: var(--status-done);
+}
+
+.sb-wz-permission[data-tone='fail'] {
+  color: var(--status-fail);
+}
+
+/* Step 5: usage warning. */
+.sb-wz-usage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: 480px;
+}
+
+.sb-wz-usage-row {
+  display: flex;
+  font-size: var(--fs-body);
+}
+
+.sb-wz-usage-value {
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+
+.sb-wz-usage-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-card);
+}
+
+.sb-wz-usage-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--status-need);
+}
+
+.sb-wz-usage-note {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+}
+
+/* Back / Skip / Continue → Finish. */
+.sb-wz-actions {
+  margin-top: auto;
+  display: flex;
+  gap: var(--space-8);
+}
+
+.sb-wz-back {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 9px 16px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+
+.sb-wz-skip {
+  border: 0;
+  padding: 9px 6px;
+  font-size: var(--fs-body);
+  color: var(--muted-3);
+}
+
+.sb-wz-next {
+  margin-left: auto;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-card);
+  padding: 9px 18px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.sb-wz-next:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

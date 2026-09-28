@@ -8,8 +8,10 @@ import { QuestionPipeline } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
+import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
 import { claudeAgentsLister } from './supervisor/recovery.ts';
+import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
 import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
@@ -56,6 +58,20 @@ export interface AppOptions {
    * manager and the bus (no background sync) and closes it with the app.
    */
   readonly systemItems?: SystemItemService;
+  /**
+   * First-run setup (M5.3, docs/setup.md). main.ts passes the one whose root its
+   * services started with; without one the app makes its own over `config` and the
+   * store. Either way a root saved by the wizard goes to the app's supervisor and
+   * worktree manager at once.
+   */
+  readonly setup?: SetupService;
+  /**
+   * The scheduler (M7.1, docs/schedules.md). A caller that passes one owns it
+   * (main.ts starts its timer, plugs it into its system items and closes it);
+   * without one the app makes its own (no timer: Run now / Pause / Resume / Save
+   * only) and closes it with the app.
+   */
+  readonly scheduler?: Scheduler;
   /** `/hub` timings (keepalive, `system` interval); tests shorten them (docs/hub.md). */
   readonly hub?: HubTimingOptions;
   /**
@@ -108,7 +124,29 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     stopForwarding();
   });
-  await registerApiRoutes(app, { config: options.config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems });
+  const setup = options.setup ?? (await SetupService.open({ store: options.store, envRoot: options.config.workspaceRoot }));
+  const applyRoot = (root: string | null): void => {
+    supervisor.setWorkspaceRoot(root);
+    worktrees.setWorkspaceRoot(root);
+  };
+  // A root the wizard saved earlier, when the configuration has none (main.ts passes a config that already follows it).
+  if (setup.workspaceRoot !== options.config.workspaceRoot) applyRoot(setup.workspaceRoot);
+  const stopRootUpdates = setup.onRootChange(applyRoot);
+  app.addHook('onClose', async () => {
+    stopRootUpdates();
+  });
+  const config = setup.liveConfig(options.config);
+  let scheduler = options.scheduler;
+  if (!scheduler) {
+    const own = new Scheduler({ store: options.store, sessions: { config, store: options.store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    // "Retry run" of the system items the app made itself (a caller's service gets its runner from the caller).
+    if (!options.systemItems) systemItems.useScheduleRunner(scheduleRunnerFor(own));
+    scheduler = own;
+  }
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, scheduler });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

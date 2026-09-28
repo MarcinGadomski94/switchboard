@@ -1,3 +1,4 @@
+import { FirstRunGate } from '../modals/FirstRunGate.tsx';
 import { ModalHost } from '../modals/ModalHost.tsx';
 import { type Route, useRouter } from '../router.tsx';
 import { ToastHost } from '../toast/ToastHost.tsx';
@@ -47,6 +48,7 @@ export function Shell() {
       </main>
       <ToastHost />
       <ModalHost />
+      <FirstRunGate />
     </div>
   );
 }

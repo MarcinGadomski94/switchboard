@@ -91,10 +91,15 @@ async function listDirs(dir: string): Promise<Dirent[]> {
  * process and never follows a symlink.
  */
 export class WorkspaceScanner implements SolutionsProvider {
-  readonly #root: string | null;
+  #root: string | null;
 
   constructor(options: WorkspaceScannerOptions) {
     this.#root = options.workspaceRoot;
+  }
+
+  /** The workspace root to scan, as the setup wizard changed it (M5.3, `docs/setup.md`). */
+  setWorkspaceRoot(root: string | null): void {
+    this.#root = root;
   }
 
   /** `GET /api/solutions`. @throws {ScanError} without a usable workspace root. */

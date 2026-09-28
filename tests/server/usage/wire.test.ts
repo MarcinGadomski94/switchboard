@@ -121,9 +121,8 @@ describe('usage on /hub `system` (real poller with fake-claude, non-demo)', () =
     expect(withUsagePct).toEqual({ ...BASE_INFO, usagePct: 18, usageResetsAt: '2026-10-01T13:00:00.290Z' });
   });
 
-  // GET /api/system is 501 on main until the w2-newsession merge brings M5.3's route
-  // (it serves providers.system). The merge step must turn this into a plain `it`.
-  it.fails('GET /api/system carries usagePct (needs M5.3’s route from lane w2-newsession)', async () => {
+  // GET /api/system (M5.3's route) serves providers.system, which M9.2 wraps with usage.
+  it('GET /api/system carries usagePct', async () => {
     const response = await requestJson(port, 'GET', '/api/system', cookie);
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ usagePct: 18, usageResetsAt: '2026-10-01T13:00:00.290Z' });

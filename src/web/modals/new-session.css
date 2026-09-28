@@ -1,0 +1,360 @@
+/*
+ * New-session modal (M5.1, SPEC → Modals → New session). Values are the
+ * prototype's inline styles (`mNew` in docs/handoff/prototype/Switchboard App.dc.html)
+ * over the SPEC tokens; the panel itself is `.sb-modal-new` in modals.css.
+ */
+
+/* Left column: sections 1–6. */
+.sb-ns-form {
+  padding: 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-18);
+  min-height: 0;
+  overflow: auto;
+}
+
+.sb-ns-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-12);
+}
+
+.sb-ns-title {
+  font-size: var(--fs-modal-title);
+  font-weight: 600;
+}
+
+.sb-ns-sub {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-ns-recommended {
+  margin-left: auto;
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 4px 12px;
+  color: var(--text-2);
+}
+
+.sb-ns-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sb-ns-section--solutions,
+.sb-ns-section--qa {
+  gap: var(--space-8);
+}
+
+.sb-ns-label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-ns-label--row {
+  display: flex;
+}
+
+.sb-ns-hint {
+  margin-left: auto;
+  color: var(--muted-4);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Section 1: name (220px, mono) + task. */
+.sb-ns-task {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-8);
+}
+
+.sb-ns-input {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 9px 12px;
+  font-size: var(--fs-body);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-ns-input--name {
+  font: 400 13px var(--font-mono);
+}
+
+.sb-ns-input::placeholder {
+  color: var(--muted-3);
+}
+
+/* Pills: selected = #26272c bg, #8d8c87 border (SPEC). */
+.sb-ns-pills {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.sb-ns-pill {
+  font-size: var(--fs-body);
+  border-radius: var(--radius-card);
+  padding: 7px 14px;
+  border: 1px solid var(--border-control);
+  background: transparent;
+  color: var(--muted-1);
+}
+
+.sb-ns-pill[data-selected='true'] {
+  border-color: var(--muted-2);
+  background: var(--border-card);
+  color: var(--text-strong);
+}
+
+/* Section 4: one row per folder group, `120px | 1fr`. */
+.sb-ns-group {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: var(--space-10);
+  align-items: start;
+}
+
+.sb-ns-folder {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  padding-top: 5px;
+}
+
+.sb-ns-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+/* Solution chips: selected = blue; read-only at 40% with a not-allowed cursor (SPEC). */
+.sb-ns-chip {
+  font: 400 12px var(--font-mono);
+  border-radius: var(--radius-button);
+  padding: 4px 10px;
+  border: 1px solid var(--border-control);
+  background: transparent;
+  color: var(--muted-1);
+}
+
+.sb-ns-chip[data-selected='true'] {
+  border-color: oklch(0.55 0.09 250);
+  background: oklch(0.25 0.04 250);
+  color: var(--text);
+}
+
+.sb-ns-chip[data-locked='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sb-ns-note {
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+/* Section 6 · QA contract: the two source fields. */
+.sb-ns-qa-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-8);
+  font: 400 12px var(--font-mono);
+}
+
+.sb-ns-input--qa {
+  font: 400 12px var(--font-mono);
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+/* Right column: Launch toggles, summary, actions. */
+.sb-ns-side {
+  border-left: 1px solid var(--border-divider);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sb-ns-side-label {
+  padding: 20px 20px 10px;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-ns-side-label--summary {
+  padding: 18px 20px 8px;
+}
+
+.sb-ns-toggles {
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.sb-ns-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.sb-ns-toggle-text {
+  flex: 1;
+}
+
+.sb-ns-toggle-title {
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.sb-ns-toggle-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+/* Toggles 32×18 (SPEC): on = #e8e7e3, off = #33343a; the knob 14px. */
+.sb-ns-switch {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: #33343a;
+  position: relative;
+  flex: none;
+}
+
+.sb-ns-switch[data-on='true'] {
+  background: var(--text);
+}
+
+.sb-ns-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-sidebar);
+}
+
+.sb-ns-switch[data-on='true'] .sb-ns-knob {
+  left: 16px;
+}
+
+/* The live mono summary. */
+.sb-ns-summary {
+  margin: 0 16px;
+  background: var(--bg-code);
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  font: 400 11.5px/1.75 var(--font-mono);
+  flex: 1;
+  overflow: auto;
+}
+
+.sb-ns-summary-line {
+  color: #bfbeb8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1em;
+}
+
+.sb-ns-summary-line[data-tone='comment'] {
+  color: var(--muted-4);
+}
+
+.sb-ns-summary-line[data-tone='path'] {
+  color: var(--branch-fg);
+}
+
+.sb-ns-summary-line[data-tone='warn'] {
+  color: var(--status-need);
+}
+
+.sb-ns-summary-line[data-tone='ok'] {
+  color: oklch(0.78 0.12 150);
+}
+
+.sb-ns-error {
+  margin: 10px 16px 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}
+
+.sb-ns-actions {
+  padding: var(--space-16);
+  display: flex;
+  gap: var(--space-8);
+}
+
+.sb-ns-cancel {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 9px 14px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+
+/* Start session: 45% opacity while disabled (no solutions, a taken name). */
+.sb-ns-start {
+  flex: 1;
+  text-align: center;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-card);
+  padding: 9px 14px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.sb-ns-start:disabled {
+  opacity: 0.45;
+}
+
+/* Section 7 · Schedule (M7.1, D8): cron field (220px, mono, as the name) + readable preview, then the next 3 runs. */
+.sb-ns-schedule {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-12);
+  align-items: center;
+}
+
+.sb-ns-cron-preview {
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-cron-preview[data-state='empty'] {
+  color: var(--muted-3);
+}
+
+.sb-ns-cron-preview[data-state='invalid'] {
+  color: var(--status-need);
+}
+
+.sb-ns-cron-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-14);
+  font: 400 11.5px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-ns-cron-runs-label {
+  color: var(--muted-3);
+}

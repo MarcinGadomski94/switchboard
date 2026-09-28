@@ -5,6 +5,7 @@ import type {
   ArtifactListItem,
   CodebaseMemoryStatus,
   FileDiff,
+  FolderListing,
   HistoryItem,
   InboxItem,
   NewSession,
@@ -13,11 +14,13 @@ import type {
   Session,
   SessionDetail,
   SessionEvent,
+  SetupState,
   Settings,
   SolutionGroup,
   SystemInfo,
   Tool,
   ToolProbe,
+  WorkspaceRootCheck,
   Worktree,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
@@ -136,6 +139,15 @@ export const api = {
   /** "Start at login" (M9.1, additive to the contract, `docs/service.md`). */
   loginService: () => request<LoginServiceStatus>('GET', '/api/service'),
   setStartAtLogin: (startAtLogin: boolean) => request<LoginServiceStatus>('PUT', '/api/service', { startAtLogin } satisfies LoginServiceRequest),
+  /** M5.3: `?fresh=1` checks the CLI and gh again (the setup wizard's first step). */
+  systemFresh: () => request<SystemInfo>('GET', '/api/system?fresh=1'),
+
+  // M5.3, additive to the contract: the first-run setup wizard (docs/setup.md).
+  setup: () => request<SetupState>('GET', '/api/setup'),
+  checkRoot: (path: string) => request<WorkspaceRootCheck>('GET', `/api/setup/root${query({ path })}`),
+  saveRoot: (path: string) => request<SetupState>('PUT', '/api/setup/root', { path }),
+  folders: (path?: string) => request<FolderListing>('GET', `/api/setup/folders${query({ path })}`),
+  completeSetup: () => request<SetupState>('POST', '/api/setup/complete'),
 } as const;
 
 /** The client's type (for test doubles). */

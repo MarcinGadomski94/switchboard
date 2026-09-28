@@ -109,6 +109,15 @@ The words are the prototype's for a session started from the New-session form (`
 - **Search** (`q`, trimmed, case-insensitive substring) runs on the service over: name, mode, the whole last text, the solutions/branches line, outcome, the task (stored sessions), every human prompt (up to 8000 chars), the last prompt, titles, the first command, the working folders and the session id. The date is not searched (it is formatted in the browser's time zone).
 - **View.** Rows are not links (the prototype has no click). The search waits 150 ms after typing; the list reloads (trailing, 250 ms) on `/hub` `sessionUpdated`; `aria-busy` is on while the rows belong to an older search. Empty: "No sessions match." with a search, "No sessions yet." without one (the prototype only has the first).
 
+## New-session form (M5.1)
+The modal derives, from `GET /api/solutions`: the summary's `cwd` (the first solution's `path` minus its `relativePath`), one locked chip per read-only top folder (`deprecated/*`, `infrastructure`) and each worktree folder `../<last segment of the solution>-wt-<name>` (gap #1). The router's recommended answers are the form's defaults, and coordination is sent only when its section is shown (`null` otherwise). Details: `docs/new-session.md`.
+
+## First-turn payload (M5.2)
+The first stdin message of a new session = the trimmed task, a blank line, then the confirmed session-start answers in the modal summary's terms, with each solution's workspace folder (from its worktree record, else `WorktreeManager.resolveRepo`, else the name as posted) and the absolute worktree paths + branches. Mobile coordination only for feature + single-solution + a `*-front` and a non-null value. An empty task: no first message; the block waits in the outbox (`pending_messages.kind = 'session-start'`). Details: `docs/new-session.md` → *First-turn payload*.
+
+## Setup wizard (M5.3)
+The step 1 rows from `GET /api/system`, the root line from the router's first `# ` heading and line count, and the scan table (one row per top-level folder, the read-only group split back in its note's order, three names + `, …`, the strictest rule) are in `docs/setup.md` → *The steps*; `cpu` / `ramUsed` / `processes` in `docs/setup.md` → *System*.
+
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.
 
@@ -140,3 +149,5 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 - **Scan table rows** from `GET /api/solutions`: one row per top-level folder under the workspace root (first path segment of each solution; the "read-only" group splits into its folders, ordered as its note names them; without a root the group's folder), count = solutions, examples = first three names + ", …", rule = the strictest of its solutions.
 - **Repositories** = every solution the scan lists (`n repos`). **PR merge detection** = the worktree manager's poll interval. **Workspace router** = the first `# ` heading of `<root>/AGENTS.md`.
 - **Schedule dot**: paused → idle, else the last run's result (ok → done, fail, need, running → run, none/skipped → idle). **Cron label**: `m h * * *` → `HH:MM daily`, `0 */n * * *` → `every nh`, `m h * * 1-5` → `HH:MM weekdays`, `m h * * d` → `Ddd HH:MM`; anything else verbatim.
+
+- `schedule_runs` (M7.1, `docs/schedules.md` → *A run*): a run's `result` follows the status of the session it started (`run` → `running`, `need` → `need`, `done` → `ok`, `fail` → `fail`; `idle` / `paused` change nothing); its `summary` is the first open question verbatim (`need`), else the label of the last turn's result, else of the newest error event; a session that could not start gives `fail` + `Not started: …`.

@@ -21,7 +21,7 @@
     <SWITCHBOARD_CLAUDE_EXTRA_ARGS…>
 ```
 - cwd = the workspace root (`SWITCHBOARD_WORKSPACE_ROOT`, canonicalized with `fs.promises.realpath`, stored as `sessions.cwd`). No workspace root → no session can start (`409 workspace-not-configured`).
-- No prompt argument: the first message (the task text; M5.2 adds the confirmed session-start answers) is the first stdin line. An empty task starts the process idle.
+- No prompt argument: the first message is the first stdin line. `POST /api/sessions` passes the task followed by the confirmed session-start answers (M5.2, `docs/new-session.md` → *First-turn payload*). An empty task starts the process idle; the route then queues the answers in the outbox (kind `session-start`) for the developer's first message.
 - `--permission-mode acceptEdits` on **every** spawn (D6 fallback; the mode is not inherited on `--resume`). The `initialize` → `set_permission_mode auto` switch is documented in the spike and not enabled.
 - No `--settings`: questions and permissions need no hooks (M0.2). D6 still allows a Switchboard-owned settings file if a later need appears; workspace/user settings files are never edited.
 - Child env = the service's env without `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_PID`, `CLAUDE_EFFORT`; `CLAUDE_CONFIG_DIR` and everything else pass through.

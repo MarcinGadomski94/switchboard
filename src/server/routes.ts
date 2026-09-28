@@ -7,6 +7,7 @@ import { registerScheduleRoutes } from './api/schedules.ts';
 import { registerServiceRoutes } from './api/service.ts';
 import { registerSessionRoutes } from './api/sessions.ts';
 import { registerSettingsRoutes } from './api/settings.ts';
+import { registerSetupRoutes } from './api/setup.ts';
 import { registerSolutionRoutes } from './api/solutions.ts';
 import { registerSystemRoutes } from './api/system.ts';
 import { registerToolRoutes } from './api/tools.ts';
@@ -17,6 +18,8 @@ import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
 import type { Providers } from './providers.ts';
+import type { Scheduler } from './schedules/scheduler.ts';
+import type { SetupService } from './setup/service.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
 
@@ -39,6 +42,10 @@ export interface ApiContext {
   readonly questions: QuestionPipeline;
   /** System Inbox items: failed scheduled runs, removable worktrees, and their actions (M3.3, docs/system-items.md). */
   readonly systemItems: SystemItemService;
+  /** First-run setup: wizard state, the workspace root chosen there (M5.3, docs/setup.md). */
+  readonly setup: SetupService;
+  /** Schedules: cron runs from templates, Run now, Pause/Resume (M7.1, docs/schedules.md). */
+  readonly scheduler: Scheduler;
 }
 
 /**
@@ -60,5 +67,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerToolRoutes(app, context);
   await registerSystemRoutes(app, context);
   await registerServiceRoutes(app, context);
+  await registerSetupRoutes(app, context);
   await registerHubRoutes(app, context);
 }

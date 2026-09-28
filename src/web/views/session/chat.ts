@@ -1,3 +1,4 @@
+import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
 import type { Question, SessionEvent } from '../../../core/api.ts';
 import type {
   AssistantPayload,
@@ -41,7 +42,7 @@ export function chatMessages(events: readonly SessionEvent[]): ChatMessage[] {
     const payload = payloadOf(event);
     if (payload?.type === 'user') {
       const user = payload as UserPayload;
-      out.push({ id: event.id, role: 'user', text: user.text, origin: user.origin, ts: event.ts });
+      out.push({ id: event.id, role: 'user', text: withoutSessionStartBlock(user.text), origin: user.origin, ts: event.ts });
     } else if (payload?.type === 'assistant') {
       out.push({ id: event.id, role: 'agent', text: (payload as AssistantPayload).text, origin: null, ts: event.ts });
     }
@@ -170,7 +171,7 @@ export function chatItems(events: readonly SessionEvent[], questions: readonly Q
     const type = payload?.type;
     if (type === 'user') {
       const user = payload as UserPayload;
-      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: user.text, origin: user.origin, delivered: user.delivered });
+      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: withoutSessionStartBlock(user.text), origin: user.origin, delivered: user.delivered });
       block = null;
     } else if (type === 'assistant') {
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, steps: [] };

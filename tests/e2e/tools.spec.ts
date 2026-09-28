@@ -244,7 +244,8 @@ test('Codebase Memory strip: the dirty projects and "Reindex 2 now" start a real
     })
     .toBe(expected);
   const argv = (await readFile(fakeLog, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; argv?: string[] });
-  expect(argv.find((l) => l.kind === 'argv')?.argv).toEqual(expect.arrayContaining(['--name', 'reindex-codebase-memory', '--session-id']));
+  // M5.3's system probe also runs the fake CLI (`--version`, `auth status`): take the session's start.
+  expect(argv.find((l) => l.kind === 'argv' && l.argv?.includes('--session-id'))?.argv).toEqual(expect.arrayContaining(['--name', 'reindex-codebase-memory', '--session-id']));
   await expect
     .poll(async () => ((await (await api.get(`/api/sessions/${session.id}`)).json()) as Session).status, { timeout: 15_000 })
     .toMatch(/^(done|idle)$/);

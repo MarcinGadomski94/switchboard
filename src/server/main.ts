@@ -12,10 +12,13 @@ import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
 import { createLoginService } from './service/login-service.ts';
 import { loadServiceRedirect } from './service/target.ts';
+import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
+import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
 import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
+import { SystemProbe } from './system/probe.ts';
 import { loadOrCreateToken } from './token.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
 
@@ -31,20 +34,27 @@ async function main(): Promise<void> {
   const store = await openStore(storeFile(config.dataDir));
   let app: FastifyInstance;
   try {
+    // M5.3 (docs/setup.md): the workspace root is SWITCHBOARD_WORKSPACE_ROOT, else the one the
+    // setup wizard saved; `live` reads it on every access and the services below get changes.
+    const setup = await SetupService.open({ store, envRoot: config.workspaceRoot, autoOpen: setupWizardAutoOpen() });
+    const live = setup.liveConfig(config);
     // `/hub` events (docs/hub.md): services created here that publish take this bus.
     const bus = new HubBus();
     // The question pipeline (M3.1) is the supervisor's control-request handler, so it
     // also hears about requests a crash left open (restart recovery below).
-    const { supervisor, questions } = createSessionServices(config, store, bus);
-    const worktrees = createWorktreeManager(config, store, supervisor);
+    const { supervisor, questions } = createSessionServices(live, store, bus);
+    const worktrees = createWorktreeManager(live, store, supervisor);
     // System Inbox items (M3.3): "PR merged" from the manager's worktreeRemovable, "Scheduled run failed" from schedule_runs.
     const systemItems = new SystemItemService({ store, bus, worktrees });
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
-    const scanner = new WorkspaceScanner({ workspaceRoot: config.workspaceRoot });
+    const scanner = new WorkspaceScanner({ workspaceRoot: live.workspaceRoot });
+    setup.onRootChange((root) => scanner.setWorkspaceRoot(root));
     const solutions = new LiveSolutions({ scanner, store, diff: worktrees, onError: (error) => console.error('switchboard solutions:', error) });
     // "Start at login" (M9.1): the per-user service definition of this OS (docs/service.md).
     const loginService = createLoginService({ config, settings: store.settings, redirect: serviceRedirect });
-    let providers: Providers = { diff: worktrees, solutions, loginService };
+    // CLI / gh sign-in + machine metrics (M5.3, gap #11) through the configured commands.
+    const system = new SystemProbe({ claudeCommand: config.claudeCommand, ghCommand: config.ghCommand, cwd: config.dataDir, processCount: () => supervisor.liveCount });
+    let providers: Providers = { diff: worktrees, solutions, system, loginService };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();
@@ -55,14 +65,17 @@ async function main(): Promise<void> {
       config.demo || !providers.system
         ? null
         : createUsageMeter({
-            config,
+            config: live,
             store,
             sessions: supervisor,
             onWarning: (warning) => console.warn(`switchboard usage: Max ${USAGE_WINDOW_LABELS[warning.window]} at ${warning.pct}% (warning at ${warning.threshold}%)`),
             onError: (error) => console.error('switchboard usage:', error),
           });
     if (usage) providers = withUsage(providers, usage);
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, ...(usage ? { usage } : {}), logger: true });
+    // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
+    const scheduler = new Scheduler({ store, sessions: { config: live, store, providers, supervisor, worktrees }, updates: supervisor, bus, systemItems });
+    systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
+    app = await buildApp({ config: live, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, setup, scheduler, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -72,6 +85,7 @@ async function main(): Promise<void> {
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await worktrees.stopPolling();
+      await scheduler.close();
       await systemItems.close();
       await usage?.stop();
       await supervisor.shutdown();
@@ -84,9 +98,11 @@ async function main(): Promise<void> {
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.
     if (!config.demo) systemItems.startWatching();
+    // The cron timer (M7.1), only once the port is ours; the demo's schedules never fire.
+    if (!config.demo) scheduler.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
     if (releaseCommands) {
-      recovering = recover(app, config, store, supervisor).finally(releaseCommands);
+      recovering = recover(app, live, store, supervisor).finally(releaseCommands);
       await recovering;
     }
     // Usage readings start once the resumed sessions are back (it reads only while a /hub client is connected).

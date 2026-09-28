@@ -177,7 +177,7 @@ export class SessionSupervisor {
   readonly #store: Store;
   readonly #command: readonly string[];
   readonly #extraArgs: readonly string[];
-  readonly #root: string | null;
+  #root: string | null;
   readonly #env: NodeJS.ProcessEnv;
   readonly #timeouts: StopTimeouts;
   readonly #handler: ControlRequestHandler;
@@ -225,12 +225,21 @@ export class SessionSupervisor {
     return this.#live.get(sessionId)?.proc.pid ?? null;
   }
 
+  /**
+   * The workspace root new sessions start in, as the setup wizard changed it (M5.3,
+   * `docs/setup.md`). Sessions that exist keep their stored cwd.
+   */
+  setWorkspaceRoot(root: string | null): void {
+    this.#root = root;
+  }
+
   // ── commands ───────────────────────────────────────────────────────────
 
   /**
    * Stores a new session and starts its process in the workspace root with a new
-   * `--session-id`. The first stdin message is `firstMessage` (the task text until
-   * M5.2 adds the confirmed session-start answers); an empty one leaves the process idle.
+   * `--session-id`. The first stdin message is `firstMessage` (default: the task text;
+   * `POST /api/sessions` passes the M5.2 first-turn payload, `sessions/first-turn.ts`);
+   * an empty one leaves the process idle.
    * The input must already be validated (sessions/validate.ts). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).

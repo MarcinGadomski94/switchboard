@@ -307,3 +307,10 @@ The BLOCKED W1-merge / M7.3 / M7.4 / M8.1 / M8.2 lines above are resolved by thi
 - ASSUMED W1-tools-merge · Solutions "open Codebase Memory ›" now opens `/tools/cm` because a fresh install has the default Codebase Memory tool (M8.1); test updated · revert: n/a
 - ASSUMED W1-tools-merge · full-pass visual: the Artifacts nav badge is copy-listed, not gated: the prototype hard-codes "14" over its 13 rows, the app counts the API (D13) · revert: `copyNote` in tests/e2e/visual/full-pass.spec.ts
 - Open (follow-up): two readers of `.codebase-memory-dirty` remain (M6.4 `src/core/codebase-memory.ts` for Solutions, M8.1 `src/server/tools/codebase-memory.ts` for the strip). Unified in the mobile-path follow-up.
+
+## Wave 2 · lane w2-newsession · merged 2026-09-28 (developer-approved, main session)
+The BLOCKED lines for M5.1, M5.2, M5.3, M7.1 are resolved by this merge. The lane's own ASSUMED lines are in `.loop/questions-w2-newsession.md`.
+- ASSUMED W2-newsession-merge · main.ts wiring: M9.1's login service + M5.3's `SystemProbe` as providers; M9.2's usage meter now actually runs (it needed `providers.system`) and takes the live config; then M7.1's scheduler; `buildApp` gets setup, scheduler and usage · revert: the providers block in src/server/main.ts
+- ASSUMED W2-newsession-merge · `POST /api/sessions` uses the lane's `sessions/start.ts`; main's now-unused `validateNewSession` / `WorktreeRecord` imports in api/sessions.ts dropped · revert: n/a
+- ASSUMED W2-newsession-merge · the chat bubble (and chat message list) shows the developer's task without the session-start answers block M5.2 appends; the agent still receives the whole message (`withoutSessionStartBlock` in src/core/first-turn.ts) · the prototype's bubble holds only the typed task · revert: drop the two calls in src/web/views/session/chat.ts
+- ASSUMED W2-newsession-merge · `tests/server/usage/wire.test.ts` "GET /api/system carries usagePct" is a normal test now (was `it.fails` until M5.3 merged); the tools reindex E2E picks the session's `--session-id` argv line (M5.3's probe also runs the fake CLI) · revert: n/a

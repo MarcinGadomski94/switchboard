@@ -7,7 +7,7 @@ Every item is built from stored state only (D13); nothing from the prototype's m
 
 | Kind (`system_items.kind`) | Raised by | When |
 |---|---|---|
-| `schedule-run-failed` | `scheduleRunFinished(runId)` (the scheduler's hook, **M7.1 calls it when a run ends**) and `sync()` | a `schedule_runs` row with `result = 'fail'` |
+| `schedule-run-failed` | `scheduleRunFinished(runId)` (the scheduler's hook: M7.1 calls it when a run fails, `docs/schedules.md`) and `sync()` | a `schedule_runs` row with `result = 'fail'` |
 | `worktree-removable` | the M2.2 manager's `worktreeRemovable` event (subscribed in the constructor) and `sync()` | a live worktree flagged `removable` (PR `MERGED` and removal allowed, `docs/worktrees.md`) |
 
 `sync()` raises the items of every failed run and removable worktree that has none yet (runs first, then worktrees, oldest first). `main.ts` runs it once the port is bound and then every 30 s (`startWatching()`, `DEFAULT_SYNC_MS`), so a failed run recorded in the schedule tables by anything, or while the service was down, still produces its item. Demo mode does not watch (the demo seeds its own two items). `inboxChanged { count }` is published whenever an item is raised (once per sync) or closed.
@@ -44,16 +44,16 @@ The route asks the question pipeline first (permission items), then this service
 
 | Action | Server | UI |
 |---|---|---|
-| `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype). Until M5.1 renders the form, the placeholder carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
+| `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype): since M5.1 the form starts from it (`docs/new-session.md`); the dialog still carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
 | `retry-run` | `ScheduleRunner.runNow(scheduleId)`, then closes (a new failure raises a new item) | — |
 | `remove-worktree` | `WorktreeManager.remove(worktreeId)` (gap #3: refused with uncommitted or unpushed work, never `--force`, the branch is kept); a folder already removed counts as done | — |
 | `dismiss`, `keep` | close the item | — |
 
-Refusals: unknown id `404`; an action the item does not list `400 {error:"unknown-action"}`; already closed or a second click while one runs `409 {error:"not-open"|"busy"}`; the schedule or worktree it points at is gone `409 {error:"gone"}`; a worktree refusal as the other worktree routes (`409 {error:"uncommitted"|"unpushed"|"git-failed", message}`); **Retry run before the scheduler exists `501 {error:"not-implemented", item:"M7.1", message:"the scheduler is not available yet"}`**. The Inbox shows the message on its refusal line (`Not sent: …`).
+Refusals: unknown id `404`; an action the item does not list `400 {error:"unknown-action"}`; already closed or a second click while one runs `409 {error:"not-open"|"busy"}`; the schedule or worktree it points at is gone `409 {error:"gone"}`; a worktree refusal as the other worktree routes (`409 {error:"uncommitted"|"unpushed"|"git-failed", message}`); Retry run while a run of the schedule is still in progress `409 {error:"busy", message:"a run of this schedule is still in progress"}`; Retry run on a service with no scheduler plugged in `501 {error:"not-implemented", item:"M7.1", message:"the scheduler is not available yet"}` (only services built without one, e.g. in tests; main.ts and buildApp plug it in). The Inbox shows the message on its refusal line (`Not sent: …`).
 
-## For M7.1 (scheduler)
-- When a run ends, call `systemItems.scheduleRunFinished(run.id)` (the item appears at once; otherwise the 30 s sync picks it up).
-- Give the service the runner: `systemItems.useScheduleRunner({ runNow: (scheduleId) => scheduler.runNow(scheduleId) })` (or the constructor option `scheduleRunner`) in `main.ts` and wherever `buildApp` makes its own service. Then "Retry run" stops answering 501; `tests/server/inbox/system-items.test.ts` covers both paths with a stub runner.
+## The scheduler (M7.1)
+- A run that fails calls `systemItems.scheduleRunFinished(run.id)`, so the item appears at once (the 30 s sync still covers anything else).
+- "Retry run" = `scheduleRunnerFor(scheduler).runNow(scheduleId)` (`src/server/schedules/scheduler.ts`): a manual run now; a run in progress → `busy` (409), a deleted schedule → `gone`. main.ts plugs it into its service; buildApp plugs its own scheduler into the service it makes itself (a service passed in keeps its runner, so `tests/server/inbox/system-items.test.ts` still covers the 501 path with a stub runner). Details: `docs/schedules.md`.
 
 ## Tests
 - `tests/server/inbox/system-items.test.ts`: failed runs inserted into the schedule tables → items via `sync()`, the hook and `startWatching` (shapes, green streak, branches, prefill, idempotence, `inboxChanged`); every action and refusal through the route; "PR merged" from the real manager (temp git repo, fake gh) through `worktreeRemovable`, Remove refused while uncommitted then removed with the branch kept, Keep, sync of a removable worktree without an item, an already removed folder; the pure builders.

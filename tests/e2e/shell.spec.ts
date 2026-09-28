@@ -47,13 +47,14 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.getByTestId('view-inbox')).toBeAttached();
   await expect(page.getByTestId('nav-inbox')).toHaveAttribute('aria-current', 'page');
 
-  // Every sidebar source was asked for and reached the real server: /api/sessions (M2.1) and
-  // /api/inbox (M3.2) answer with the empty list, /api/tools (M8.1) with the default tools,
-  // /api/artifacts (M7.3) with the empty list, the others still with the 501 placeholder.
+  // Every sidebar source was asked for and reached the real server: /api/sessions (M2.1),
+  // /api/inbox (M3.2), /api/schedules (M7.1) and /api/artifacts (M7.3) answer with the empty list,
+  // /api/tools (M8.1) with the default tools, the others still with the 501 placeholder.
   const expected = ['/api/sessions', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
   await expect.poll(() => expected.filter((url) => !apiCalls.some((call) => call.url === url))).toEqual([]);
   for (const call of apiCalls) {
-    if (call.url === '/api/sessions' || call.url === '/api/inbox') {
+    if (call.url === '/api/sessions' || call.url === '/api/inbox' || call.url === '/api/schedules') {
+      // M7.1: no default schedules (gap #6), so /api/schedules is empty too.
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toEqual([]);
     } else if (call.url === '/api/solutions') {
@@ -68,19 +69,28 @@ test('the shell renders from the real API and shows only what the API returns', 
     } else if (call.url === '/api/artifacts') {
       expect(call.status, call.url).toBe(200); // M7.3: nothing produced yet
       expect(call.body, call.url).toEqual([]);
+    } else if (call.url === '/api/system') {
+      // M5.3: the real SystemProbe over the fake CLIs (tests/helpers/server-process.ts); no usage reading yet (M9.2).
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ cliVersion: '2.1.283', signedIn: true, ghSignedIn: true, processes: 0 });
+      expect(call.body, call.url).not.toHaveProperty('usagePct');
+    } else if (call.url === '/api/setup') {
+      // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ completedAt: null, autoOpen: false });
     } else {
       expect(call.status, call.url).toBe(501);
       expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
     }
   }
 
-  // Nothing invented: no rows, no badges, unknown meters, the real address.
+  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3), usage unknown until M9.2, the real address.
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
   await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '']);
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
-  await expect(page.getByTestId('process-count')).toHaveText('');
-  await expect(page.locator('.sb-meter-value')).toHaveText(['—', '—', '—']);
+  await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
+  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/, 'unknown']);
 });
 
 test('the nav switches views client-side and deep links load the right view', async ({ page }) => {

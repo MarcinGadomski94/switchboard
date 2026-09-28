@@ -1,5 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import path from 'node:path';
+import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
+import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
 
 /** A spawned `node src/server/main.ts`. */
@@ -19,13 +21,23 @@ export interface ServerProcess extends SpawnedServer {
   stop(): Promise<number | null>;
 }
 
-/** Environment for a test server: the parent env without any SWITCHBOARD_* plus `env`. */
+/**
+ * Defaults every test server gets unless `env` sets them (M5.3): the fake CLIs, so
+ * `GET /api/system` and the `system` hub event never run the real `claude` or `gh`
+ * (AGENTS.md), and the setup wizard does not open by itself over the page a spec
+ * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on).
+ */
+export function testServerDefaults(): Record<string, string> {
+  return { SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(), SWITCHBOARD_GH_BIN: fakeGhBinEnv(), SWITCHBOARD_SETUP_WIZARD: 'off' };
+}
+
+/** Environment for a test server: the parent env without any SWITCHBOARD_*, the {@link testServerDefaults}, then `env`. */
 export function testServerEnv(env: Record<string, string>): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.startsWith('SWITCHBOARD_')) clean[key] = value;
   }
-  return { ...clean, ...env };
+  return { ...clean, ...testServerDefaults(), ...env };
 }
 
 /** Spawns `node src/server/main.ts` with `env` and `SWITCHBOARD_PORT` = `port` (a raw string tests invalid values). */
