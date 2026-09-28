@@ -4,6 +4,7 @@ import type {
   Artifact,
   ArtifactListItem,
   CodebaseMemoryStatus,
+  ContinueConversation,
   FileDiff,
   Folder,
   FolderCheck,
@@ -127,6 +128,9 @@ export const api = {
 
   artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
   history: (q?: string) => request<HistoryItem[]>('GET', `/api/history${query({ q })}`),
+  /** D16, additive: a terminal conversation continues in Switchboard as the same conversation (201 Session; 409 `ContinueRefusal`s, docs/derivations.md → History). */
+  continueConversation: (claudeSessionId: string, body: ContinueConversation = {}) =>
+    request<Session>('POST', `/api/history/${enc(claudeSessionId)}/continue`, body),
 
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),

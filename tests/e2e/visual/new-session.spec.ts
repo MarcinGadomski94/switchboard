@@ -317,6 +317,45 @@ async function d14Additions(state: string, appPage: Page, rows: string[], failur
   }
 }
 
+/**
+ * The D16 addition of a state, checked on its own (the prototype has none):
+ * **Resume a terminal conversation** sits in section 1 out of the flow (absolute,
+ * so the section's box above is the prototype's), on the label line's right edge,
+ * clear of the label's text and above the name / task row.
+ */
+async function d16Addition(state: string, appPage: Page, rows: string[], failures: string[]): Promise<void> {
+  const facts = await appPage.evaluate(() => {
+    const toggle = document.querySelector<HTMLElement>('[data-testid="ns-resume"]');
+    const section = toggle?.parentElement;
+    const label = section?.children[0];
+    const inputs = section?.children[1];
+    if (!toggle || !section || !label || !inputs) return null;
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    const text = range.getBoundingClientRect();
+    const box = toggle.getBoundingClientRect();
+    return {
+      copy: (toggle.textContent ?? '').trim(),
+      position: getComputedStyle(toggle).position,
+      rightGap: section.getBoundingClientRect().right - box.right,
+      clearOfLabel: box.left - text.right,
+      aboveInputs: inputs.getBoundingClientRect().top - box.bottom,
+      box: `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}`,
+    };
+  });
+  const checks: Array<[string, boolean, string]> = [
+    ['Resume toggle copy', facts?.copy === '↻ Resume a terminal conversation', JSON.stringify(facts?.copy ?? null)],
+    ['Resume toggle out of the flow', facts?.position === 'absolute', facts?.position ?? 'missing'],
+    ['Resume toggle on the right edge', facts !== null && Math.abs(facts.rightGap) <= 2, facts ? `${round(facts.rightGap)} px · ${facts.box}` : 'missing'],
+    ['Resume toggle clear of the label', facts !== null && facts.clearOfLabel > 0, facts ? `${round(facts.clearOfLabel)} px` : 'missing'],
+    ['Resume toggle above the name / task row', facts !== null && facts.aboveInputs >= 0, facts ? `${round(facts.aboveInputs)} px` : 'missing'],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D16 ${what}: ${note}`);
+    rows.push(`| ${state} · D16 ${what} | addition | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
+}
+
 /** Clicks the prototype's pill or chip with exactly this text (its onClick sits on the text's parent span). */
 async function protoClick(page: Page, text: string): Promise<void> {
   await page.getByText(text, { exact: true }).first().click();
@@ -380,6 +419,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   const appRo = await measurePanel(appPage, Object.fromEntries(Object.entries(readOnly).map(([n, s]) => [n, appPathOf(s.app)])));
   compareParts('draft', readOnly, protoRo, appRo, rows, failures);
   await d14Additions('draft', appPage, rows, failures);
+  await d16Addition('draft', appPage, rows, failures);
 
   // SPEC tokens as computed styles of the app (New session: 1080px, `1fr | 360px`, pills, chips, toggles, summary).
   const computed = await appPage.evaluate(() => {
@@ -540,6 +580,9 @@ Side by side (prototype left, app right): \`new-session-side-by-side.png\` (the 
 
 ## D14 additions (not findings)
 The Folder row above section 1 (saved-folder dropdown, Browse…, check line) and the summary's \`folder\` line before \`cwd\` are not in the prototype. The app's form child k + 1 is compared with the prototype's child k (k ≥ 1), with y relative to section 1 (\`y − <offset>\` in the table); the app's summary line i + 1 with the prototype's line i (i ≥ 1), with y less the added line's height. The added parts are checked on their own (\`D14 …\` rows): the row sits between the head and section 1 with the section label's style, the dropdown shows the default folder, the summary names it.
+
+## D16 addition (not a finding)
+**Resume a terminal conversation** (\`↻\` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (\`D16 …\` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. States: \`draft\` (the prototype's draft), \`single\` (Single-solution: section 6 · Mobile coordination), \`qa\` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), \`empty\` (no solutions: the warning line, Start at 45%). Styles compared: ${COMPARED_STYLES.join(', ')}.

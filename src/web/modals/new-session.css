@@ -429,3 +429,152 @@
 .sb-ns-cron-runs-label {
   color: var(--muted-3);
 }
+
+/*
+ * D16 · "Resume a terminal conversation" (not in the prototype): a pill at the
+ * right of section 1's label line (out of the flow, so the prototype's layout is
+ * unchanged), the folder's terminal conversations under the task row, the picked
+ * conversation in the task's place, and the move's warning under the summary
+ * (the Attach warning's question colors).
+ */
+.sb-ns-section--task {
+  position: relative;
+}
+
+.sb-ns-resume-toggle {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 2px 10px;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-ns-resume-toggle:hover:not(:disabled),
+.sb-ns-resume-toggle[aria-expanded='true'] {
+  border-color: var(--muted-2);
+  color: var(--text-strong);
+}
+
+.sb-ns-resume-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-ns-resume-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  background: var(--bg-sidebar);
+}
+
+.sb-ns-resume-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-row);
+  min-width: 0;
+}
+
+.sb-ns-resume-entry:first-child {
+  border-top: none;
+}
+
+.sb-ns-resume-entry:hover,
+.sb-ns-resume-entry[data-selected='true'] {
+  background: var(--bg-selected-row);
+}
+
+.sb-ns-resume-entry-title {
+  font-size: var(--fs-body);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-resume-entry-meta {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-resume-empty {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-ns-resume-picked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.sb-ns-resume-picked-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-resume-picked-meta {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-ns-resume-clear {
+  padding: 0 4px;
+  color: var(--muted-2);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sb-ns-move {
+  margin: 10px 16px 0;
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sb-ns-move-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-strong);
+}
+
+.sb-ns-move-actions {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-ns-move-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 14px;
+  padding: 4px 11px;
+  font-weight: 500;
+}
+
+.sb-ns-move-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: 14px;
+  padding: 3px 11px;
+}

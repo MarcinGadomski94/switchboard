@@ -1,5 +1,6 @@
 import { type MouseEvent, useEffect, useState } from 'react';
-import type { NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import type { HistoryItem, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import { formatHistoryDate } from '../../core/history.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -8,6 +9,8 @@ import { AddFolderPanel } from '../folders/AddFolderPanel.tsx';
 import { defaultFolder, folderById, folderCheckLine } from '../folders/folders.ts';
 import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
+import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWarningText, terminalConversations } from '../views/history-move.ts';
+import { useConversationMoves } from '../views/useConversationMoves.ts';
 import {
   COORDINATION_OPTIONS,
   type FormFolder,
@@ -33,6 +36,15 @@ import {
   toggleSolution,
   workspaceRoot,
 } from './new-session.ts';
+import {
+  RESUME_TERMINAL_CONVERSATION,
+  type ResumePick,
+  canStartResume,
+  resumeEntryMeta,
+  resumeNamePreview,
+  resumePickOf,
+  resumeSummaryLines,
+} from './resume-conversation.ts';
 import { ScheduleSection } from './ScheduleSection.tsx';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
@@ -111,7 +123,11 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * schedule" posts `POST /api/schedules` instead (`docs/schedules.md`). D14: the
  * Folder row at the top (the saved folders, Browse… to add one, the check line);
  * the chips are the chosen folder's scan, and a repo folder keeps only Task,
- * Worktree and Ultracode with the repo as its one locked solution. Details:
+ * Worktree and Ultracode with the repo as its one locked solution. D16: **Resume
+ * a terminal conversation** (next to the task) lists the folder's terminal
+ * conversations not in Switchboard yet; picking one replaces the task, hides the
+ * router sections and the toggles (a moved session has neither), and Start moves
+ * it (`POST /api/history/{id}/continue`) instead of posting a new session. Details:
  * `docs/new-session.md`, `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
@@ -139,6 +155,21 @@ export function NewSessionModal({
   const update = (patch: Partial<NewSessionForm>): void => {
     setForm((current) => ({ ...current, ...patch }));
     setError(null);
+  };
+  // D16: a terminal conversation picked instead of a task (never while scheduling), and its move.
+  const [resume, setResume] = useState<ResumePick | null>(null);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const moves = useConversationMoves((id) => {
+    onClose();
+    navigate({ view: 'session', id, tab: 'chat' });
+  });
+  const resuming = resume !== null && !scheduling;
+  const conversations = useApi((): Promise<HistoryItem[] | null> => (resumeOpen ? api.history() : Promise.resolve(null)), [resumeOpen]);
+  const pickFolder = (id: string): void => {
+    update({ folder: id, solutions: [] });
+    // The conversations belong to the folder: a pick from another folder does not carry over.
+    setResume(null);
+    moves.close();
   };
 
   // D14: once the saved folders are known, the form's folder is a saved one (its own while saved, else the default).
@@ -171,8 +202,16 @@ export function NewSessionModal({
   const preview = cronPreview(cron, new Date());
   const lines = scheduling
     ? scheduleSummaryLines(form, workspaceRoot(scan), preview, takenScheduleNames, folder)
-    : summaryLines(form, workspaceRoot(scan), takenNames, folder);
-  const startable = (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
+    : resume
+      ? resumeSummaryLines(resume, folder, form.name, takenNames)
+      : summaryLines(form, workspaceRoot(scan), takenNames, folder);
+  const move = moves.items?.[0] ?? null;
+  const moveRunning = moves.items !== null && !movesSettled(moves.items);
+  const startable = resuming
+    ? canStartResume(resume, form.name, takenNames) && !moves.busy && !moveRunning
+    : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
+  const hideRouter = repo || resuming;
+  const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
   const title = scheduling ? (schedule.id ? 'Edit scheduled run' : 'New scheduled run') : 'New session';
   const choices = folderChoices(folders.data ?? []);
   const checkLine = folderCheckLine(target?.check ?? null);
@@ -194,6 +233,12 @@ export function NewSessionModal({
   const start = async (): Promise<void> => {
     if (!startable) return;
     if (scheduling) return saveSchedule();
+    if (resume) {
+      // D16: the picked conversation moves into Switchboard as the same conversation.
+      setError(null);
+      moves.start([{ claudeSessionId: resume.claudeSessionId, name: resume.name }], form.name);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -226,7 +271,7 @@ export function NewSessionModal({
               {title}
             </div>
             <div className="sb-ns-sub">Claude Code · background · Max</div>
-            {repo ? null : (
+            {hideRouter ? null : (
               <button type="button" className="sb-button sb-ns-recommended" data-testid="ns-recommended" onClick={() => update(RECOMMENDED)}>
                 Accept recommended
               </button>
@@ -243,7 +288,7 @@ export function NewSessionModal({
                 value={form.folder ?? ''}
                 disabled={choices.length === 0}
                 title={target?.path}
-                onChange={(event) => update({ folder: event.target.value, solutions: [] })}
+                onChange={(event) => pickFolder(event.target.value)}
               >
                 {choices.length === 0 ? <option value="">{folders.data ? 'No folder saved yet' : 'Loading folders…'}</option> : null}
                 {choices.map((choice) => (
@@ -272,14 +317,14 @@ export function NewSessionModal({
                 testId="ns-folder-add"
                 onAdded={(added) => {
                   setAdding(false);
-                  update({ folder: added.id, solutions: [] });
+                  pickFolder(added.id);
                 }}
                 onCancel={() => setAdding(false)}
               />
             ) : null}
           </div>
 
-          <div className="sb-ns-section" data-testid="ns-section" data-section="task">
+          <div className="sb-ns-section sb-ns-section--task" data-testid="ns-section" data-section="task">
             <div className="sb-ns-label">1 · Task definition</div>
             <div className="sb-ns-task">
               <input
@@ -287,112 +332,182 @@ export function NewSessionModal({
                 data-testid="ns-name"
                 aria-label="Session name"
                 value={form.name}
-                placeholder="session-name"
+                placeholder={resuming && resume ? resumeNamePreview(resume, takenNames) : 'session-name'}
                 spellCheck={false}
                 onChange={(event) => update({ name: sanitizeName(event.target.value) })}
               />
-              <input
-                className="sb-ns-input"
-                data-testid="ns-task"
-                aria-label="Task"
-                value={form.task}
-                placeholder="What should be implemented?"
-                onChange={(event) => update({ task: event.target.value })}
-              />
+              {resuming && resume ? (
+                <div className="sb-ns-input sb-ns-resume-picked" data-testid="ns-resume-picked" data-claude-session-id={resume.claudeSessionId} title={resume.firstPrompt ?? undefined}>
+                  <span className="sb-ns-resume-picked-title">{`↻ ${resume.name}`}</span>
+                  <span className="sb-ns-resume-picked-meta">{formatHistoryDate(resume.startedAt)}</span>
+                  <button
+                    type="button"
+                    className="sb-button sb-ns-resume-clear"
+                    data-testid="ns-resume-clear"
+                    aria-label="Type a task instead"
+                    title="Type a task instead"
+                    disabled={moveRunning}
+                    onClick={() => {
+                      setResume(null);
+                      moves.close();
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <input
+                  className="sb-ns-input"
+                  data-testid="ns-task"
+                  aria-label="Task"
+                  value={form.task}
+                  placeholder="What should be implemented?"
+                  onChange={(event) => update({ task: event.target.value })}
+                />
+              )}
             </div>
+            {resumeOpen && !scheduling ? (
+              <div className="sb-ns-resume-list" data-testid="ns-resume-list" role="listbox" aria-label={RESUME_TERMINAL_CONVERSATION}>
+                {conversations.data === null ? (
+                  <div className="sb-ns-resume-empty" data-testid="ns-resume-empty">
+                    {conversations.error ? 'The conversations could not be loaded.' : 'Loading conversations…'}
+                  </div>
+                ) : conversationRows.length === 0 ? (
+                  <div className="sb-ns-resume-empty" data-testid="ns-resume-empty">
+                    {folder ? `No terminal conversations in ${folder.name} that are not in Switchboard yet.` : 'Pick a folder first.'}
+                  </div>
+                ) : (
+                  conversationRows.map((row) => (
+                    <button
+                      key={row.claudeSessionId}
+                      type="button"
+                      role="option"
+                      aria-selected={resume?.claudeSessionId === row.claudeSessionId}
+                      className="sb-button sb-ns-resume-entry"
+                      data-testid="ns-resume-entry"
+                      data-claude-session-id={row.claudeSessionId}
+                      data-selected={resume?.claudeSessionId === row.claudeSessionId ? 'true' : 'false'}
+                      onClick={() => {
+                        setResume(resumePickOf(row));
+                        setResumeOpen(false);
+                        setError(null);
+                        moves.close();
+                      }}
+                    >
+                      <span className="sb-ns-resume-entry-title">{row.name}</span>
+                      <span className="sb-ns-resume-entry-meta">{resumeEntryMeta(row)}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+            {scheduling ? null : (
+              <button
+                type="button"
+                className="sb-button sb-ns-resume-toggle"
+                data-testid="ns-resume"
+                aria-expanded={resumeOpen}
+                disabled={moveRunning}
+                onClick={() => setResumeOpen((open) => !open)}
+              >
+                {`↻ ${RESUME_TERMINAL_CONVERSATION}`}
+              </button>
+            )}
           </div>
 
-          {repo ? null : (
+          {hideRouter ? null : (
             <div className="sb-ns-section" data-testid="ns-section" data-section="work-type">
               <div className="sb-ns-label">2 · Work type</div>
               <Pills group="work-type" label="Work type" options={WORK_TYPE_OPTIONS} value={form.workType} onPick={(workType) => update({ workType })} />
             </div>
           )}
 
-          {repo ? null : (
+          {hideRouter ? null : (
             <div className="sb-ns-section" data-testid="ns-section" data-section="mode">
               <div className="sb-ns-label">3 · Mode</div>
               <Pills group="mode" label="Mode" options={MODE_OPTIONS} value={form.mode} onPick={(mode) => update({ mode })} />
             </div>
           )}
 
-          <div className="sb-ns-section sb-ns-section--solutions" data-testid="ns-section" data-section="solutions">
-            <div className="sb-ns-label sb-ns-label--row">
-              {repo ? '2 · Solution in scope' : '4 · Solutions in scope'}
-              <span className="sb-ns-hint" data-testid="ns-solutions-hint">
-                {repo ? '1 selected · a git repo is one solution' : `${form.solutions.length} selected · read-only folders locked`}
-              </span>
-            </div>
-            {repo && folder ? (
-              <div className="sb-ns-group" data-testid="ns-group" data-folder={`${folder.name}/`}>
-                <span className="sb-ns-folder">{`${folder.name}/`}</span>
-                <div className="sb-ns-chips">
-                  <button
-                    type="button"
-                    className="sb-button sb-ns-chip"
-                    data-testid="ns-chip"
-                    data-solution={folder.name}
-                    data-selected="true"
-                    data-fixed="true"
-                    disabled
-                    title="A git repo folder is its own one solution"
-                  >
-                    {`✓ ${folder.name}`}
-                  </button>
-                </div>
+          {resuming ? null : (
+            <div className="sb-ns-section sb-ns-section--solutions" data-testid="ns-section" data-section="solutions">
+              <div className="sb-ns-label sb-ns-label--row">
+                {repo ? '2 · Solution in scope' : '4 · Solutions in scope'}
+                <span className="sb-ns-hint" data-testid="ns-solutions-hint">
+                  {repo ? '1 selected · a git repo is one solution' : `${form.solutions.length} selected · read-only folders locked`}
+                </span>
               </div>
-            ) : null}
-            {(repo ? [] : groups).map((group) => (
-              <div key={group.folder} className="sb-ns-group" data-testid="ns-group" data-folder={group.folder}>
-                <span className="sb-ns-folder">{group.folder}</span>
-                <div className="sb-ns-chips">
-                  {group.chips.map((chip) => (
+              {repo && folder ? (
+                <div className="sb-ns-group" data-testid="ns-group" data-folder={`${folder.name}/`}>
+                  <span className="sb-ns-folder">{`${folder.name}/`}</span>
+                  <div className="sb-ns-chips">
                     <button
-                      key={chip.value}
                       type="button"
                       className="sb-button sb-ns-chip"
                       data-testid="ns-chip"
-                      data-solution={chip.value}
-                      data-selected={chip.selected ? 'true' : 'false'}
-                      data-locked={chip.locked ? 'true' : undefined}
-                      aria-pressed={chip.locked ? undefined : chip.selected}
-                      disabled={chip.locked}
-                      title={chip.locked ? 'Read-only: never a write target' : undefined}
-                      onClick={() => update({ solutions: toggleSolution(form.solutions, chip.value) })}
+                      data-solution={folder.name}
+                      data-selected="true"
+                      data-fixed="true"
+                      disabled
+                      title="A git repo folder is its own one solution"
                     >
-                      {chip.label}
+                      {`✓ ${folder.name}`}
                     </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {!repo && scanError ? (
-              <div className="sb-ns-note" data-testid="ns-solutions-note">
-                {solutionsErrorText(scanError)}
-              </div>
-            ) : null}
-            {!repo && scan && scan.length === 0 ? (
-              <div className="sb-ns-note" data-testid="ns-solutions-note">
-                No solutions found in the workspace.
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+              {(repo ? [] : groups).map((group) => (
+                <div key={group.folder} className="sb-ns-group" data-testid="ns-group" data-folder={group.folder}>
+                  <span className="sb-ns-folder">{group.folder}</span>
+                  <div className="sb-ns-chips">
+                    {group.chips.map((chip) => (
+                      <button
+                        key={chip.value}
+                        type="button"
+                        className="sb-button sb-ns-chip"
+                        data-testid="ns-chip"
+                        data-solution={chip.value}
+                        data-selected={chip.selected ? 'true' : 'false'}
+                        data-locked={chip.locked ? 'true' : undefined}
+                        aria-pressed={chip.locked ? undefined : chip.selected}
+                        disabled={chip.locked}
+                        title={chip.locked ? 'Read-only: never a write target' : undefined}
+                        onClick={() => update({ solutions: toggleSolution(form.solutions, chip.value) })}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {!repo && scanError ? (
+                <div className="sb-ns-note" data-testid="ns-solutions-note">
+                  {solutionsErrorText(scanError)}
+                </div>
+              ) : null}
+              {!repo && scan && scan.length === 0 ? (
+                <div className="sb-ns-note" data-testid="ns-solutions-note">
+                  No solutions found in the workspace.
+                </div>
+              ) : null}
+            </div>
+          )}
 
-          {repo ? null : (
+          {hideRouter ? null : (
             <div className="sb-ns-section" data-testid="ns-section" data-section="phase">
               <div className="sb-ns-label">5 · Phase</div>
               <Pills group="phase" label="Phase" options={PHASE_OPTIONS} value={form.phase} onPick={(phase) => update({ phase })} />
             </div>
           )}
 
-          {!repo && showsCoordination(form) ? (
+          {!hideRouter && showsCoordination(form) ? (
             <div className="sb-ns-section" data-testid="ns-section" data-section="coordination">
               <div className="sb-ns-label">6 · Mobile coordination</div>
               <Pills group="coordination" label="Mobile coordination" options={COORDINATION_OPTIONS} value={form.coordination} onPick={(coordination) => update({ coordination })} />
             </div>
           ) : null}
 
-          {!repo && showsQa(form) ? (
+          {!hideRouter && showsQa(form) ? (
             <div className="sb-ns-section sb-ns-section--qa" data-testid="ns-section" data-section="qa">
               <div className="sb-ns-label">6 · QA contract</div>
               <Pills group="stack" label="Stack under test" options={STACK_OPTIONS} value={form.stack} onPick={(stack) => update({ stack })} />
@@ -435,14 +550,22 @@ export function NewSessionModal({
         <div className="sb-ns-side">
           <div className="sb-ns-side-label">Launch</div>
           <div className="sb-ns-toggles">
-            <Toggle
-              name="worktrees"
-              title={repo ? 'Worktree' : 'Worktree per solution'}
-              description="Kept until the PR is merged on GitHub"
-              on={form.worktrees}
-              onToggle={() => update({ worktrees: !form.worktrees })}
-            />
-            <Toggle name="ultracode" title="Ultracode (workflows)" description="Dispatch via the Workflow tool" on={form.ultracode} onToggle={() => update({ ultracode: !form.ultracode })} />
+            {resuming ? (
+              <div className="sb-ns-note" data-testid="ns-resume-note">
+                Continues where the conversation started: no worktree, no first message.
+              </div>
+            ) : (
+              <>
+                <Toggle
+                  name="worktrees"
+                  title={repo ? 'Worktree' : 'Worktree per solution'}
+                  description="Kept until the PR is merged on GitHub"
+                  on={form.worktrees}
+                  onToggle={() => update({ worktrees: !form.worktrees })}
+                />
+                <Toggle name="ultracode" title="Ultracode (workflows)" description="Dispatch via the Workflow tool" on={form.ultracode} onToggle={() => update({ ultracode: !form.ultracode })} />
+              </>
+            )}
           </div>
           <div className="sb-ns-side-label sb-ns-side-label--summary">Summary</div>
           <div className="sb-ns-summary" data-testid="ns-summary">
@@ -455,6 +578,32 @@ export function NewSessionModal({
           {error ? (
             <div className="sb-ns-error" data-testid="ns-error" role="alert">
               {error}
+            </div>
+          ) : null}
+          {resuming && move && (move.state.kind === 'needs-folder' || move.state.kind === 'terminal-open') ? (
+            <div className="sb-ns-move" data-testid="ns-move" data-kind={move.state.kind} role="alertdialog" aria-label={RESUME_TERMINAL_CONVERSATION}>
+              <div className="sb-ns-move-text" data-testid="ns-move-text">
+                {move.state.kind === 'needs-folder' ? needsFolderText(move.state.check) : moveWarningText(move.state.reasons)}
+              </div>
+              <div className="sb-ns-move-actions">
+                {move.state.kind === 'needs-folder' ? (
+                  <button type="button" className="sb-button sb-ns-move-primary" data-testid="ns-move-add-folder" onClick={() => moves.addFolder(move.claudeSessionId)}>
+                    {addFolderLabel(move.state.check)}
+                  </button>
+                ) : (
+                  <button type="button" className="sb-button sb-ns-move-primary" data-testid="ns-move-confirm" onClick={() => moves.confirm(move.claudeSessionId)}>
+                    {CONTINUE_ANYWAY}
+                  </button>
+                )}
+                <button type="button" className="sb-button sb-ns-move-outlined" data-testid="ns-move-cancel" onClick={() => moves.close()}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {resuming && move && move.state.kind === 'refused' ? (
+            <div className="sb-ns-error" data-testid="ns-error" role="alert">
+              {`Not moved: ${move.state.reason}`}
             </div>
           ) : null}
           <div className="sb-ns-actions">

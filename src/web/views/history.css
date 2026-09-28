@@ -107,3 +107,180 @@
   color: var(--muted-3);
   font-size: var(--fs-body);
 }
+
+/*
+ * D16 · terminal conversations continue in Switchboard (not in the prototype):
+ * the row's checkbox (date column) and "Continue in Switchboard" pill (under the
+ * outcome), the "Move selected (n)" bar under the list and the move dialog. Mono
+ * labels, pill buttons and the question colors of the Attach warning, over the
+ * SPEC tokens. Rows without these controls (every demo row) are unchanged.
+ */
+.sb-hist-check {
+  width: 12px;
+  height: 12px;
+  margin: 0 7px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--primary-bg);
+  cursor: pointer;
+}
+
+.sb-hist-check:disabled {
+  cursor: default;
+}
+
+.sb-hist-outcol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sb-hist-continue {
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.sb-hist-continue:hover:not(:disabled) {
+  border-color: var(--muted-2);
+  color: var(--text-strong);
+}
+
+.sb-hist-continue:disabled,
+.sb-hist-move-primary:disabled,
+.sb-hist-move-outlined:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-hist-movebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border-divider);
+  background: var(--bg-sidebar);
+}
+
+.sb-hist-movebar-count {
+  margin-right: auto;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-hist-move-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 14px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sb-hist-move-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: 14px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.sb-hist-move-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-hist-move {
+  width: 580px;
+  max-width: calc(100% - 60px);
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.sb-hist-move-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 22px 12px;
+}
+
+.sb-hist-move-title {
+  font-size: var(--fs-modal-title);
+  font-weight: 600;
+}
+
+.sb-hist-move-sub {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-hist-move-items {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 22px;
+}
+
+.sb-hist-move-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-row);
+}
+
+.sb-hist-move-name {
+  font-size: var(--fs-body-lg);
+  font-weight: 500;
+}
+
+.sb-hist-move-state {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  line-height: 1.45;
+}
+
+.sb-hist-move-state[data-kind='moved'] {
+  color: var(--status-done);
+}
+
+.sb-hist-move-state[data-kind='refused'] {
+  color: var(--status-fail);
+}
+
+.sb-hist-move-state[data-kind='needs-folder'],
+.sb-hist-move-state[data-kind='terminal-open'] {
+  font: 400 12.5px var(--font-ui);
+  color: var(--text-strong);
+  border: 1px solid var(--question-border);
+  background: var(--question-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sb-hist-move-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sb-hist-move-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border-divider);
+}
