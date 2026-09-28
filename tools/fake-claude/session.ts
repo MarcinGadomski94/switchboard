@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { CLI_VERSION, type RunArgs } from './args.ts';
-import { type Fixture, type FixtureStore, type Step, requestOf } from './fixtures.ts';
+import { type Fixture, type FixtureStore, type Step, isTaskNotificationResult, requestOf } from './fixtures.ts';
 import { type Json, type JsonObject, asArray, asObject, asString, clone, isObject } from './json.ts';
 import type { Logger } from './log.ts';
 import { IdMap, type RewriteContext, rewriteLine, sortReplacements } from './rewrite.ts';
@@ -12,10 +12,14 @@ import {
   DEFAULT_FIXTURE,
   FIRE_PROMPT,
   KEEP_RECORDED_PERMISSION_MODE,
+  RECORDED_BACKGROUND_COMMAND,
+  RECORDED_BACKGROUND_TASK,
+  WAKEUP_REASON,
   SIBLINGS,
   REMOTE_CONTROL_UNAVAILABLE,
   WRITE_CONTENT,
   applyMaxTurns,
+  backgroundToken,
   fireToken,
   formatAnswers,
   messageText,
@@ -56,12 +60,17 @@ interface OpenRequest {
   input: Json;
 }
 
-/** A queued stdin user message (or, with `fired`, a turn the fake runs on its own: `[fake:fire]`). */
+/**
+ * A queued stdin user message (or, with `fired`, a turn the fake runs on its own:
+ * `[fake:fire]`, `[fake:wakeup]`; or, with `resume`, the rest of an earlier turn's
+ * recording the CLI plays by itself: a background task's end, `[fake:background]`).
+ */
 interface UserMessage {
   content: Json;
   text: string;
   uuid: string;
   fired?: boolean;
+  resume?: { readonly steps: readonly PlayStep[]; readonly turn: TurnState };
 }
 
 /** A `[fake:tool]` call in progress. */
@@ -206,6 +215,8 @@ export class Runner {
   private bridgeEpoch = 0;
   /** D24: pending `[fake:remote-answer]` timers. */
   private readonly remoteTimers = new Set<NodeJS.Timeout>();
+  /** D30: pending `[fake:background]` / `[fake:wakeup]` timers. */
+  private readonly backgroundTimers = new Set<NodeJS.Timeout>();
 
   constructor(options: RunnerOptions) {
     this.o = options;
@@ -538,6 +549,13 @@ export class Runner {
   }
 
   private async runTurn(msg: UserMessage): Promise<Outcome> {
+    if (msg.resume) {
+      // D30: the CLI goes on by itself (a background task ended): the rest of the recording, same ids.
+      this.live?.setStatus('busy');
+      const outcome = await this.play(msg.resume.steps, msg.resume.turn);
+      this.live?.setStatus('idle');
+      return outcome;
+    }
     const extra: Array<readonly [string, string]> = [];
     let steps: readonly Step[];
     let write: WriteSpec | null = null;
@@ -548,7 +566,12 @@ export class Runner {
     const writePath = msg.fired ? null : writeToken(msg.text);
     const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
-    const said = msg.fired || writePath !== null || toolCall !== null ? null : sayToken(msg.text);
+    const background = msg.fired || writePath !== null || toolCall !== null ? null : backgroundToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null || background !== null ? null : sayToken(msg.text);
+    /** D30: the recording's rest after this turn's result, played `delayMs` later. */
+    let later: { readonly steps: readonly Step[]; readonly delayMs: number } | null = null;
+    /** D30: a `[fake:wakeup]` fires a turn of its own this many ms after the turn. */
+    let wakeAfterMs: number | null = null;
     const remoteAnswerMs = msg.fired ? null : remoteAnswerToken(msg.text);
     let say: string | null = null;
     if (msg.fired) {
@@ -577,6 +600,25 @@ export class Runner {
       await writeFile(target, WRITE_CONTENT);
       extra.push([`${txMain.recordedCwd}/notes.txt`, target]);
       steps = txMain.turns[0] ?? [];
+      scenario = 'tx-main';
+      turnIndex = 0;
+    } else if (background !== null && 'error' in background) {
+      await this.crash(`fake-claude: ${background.error}`);
+      return 'crash';
+    } else if (background !== null && background.kind === 'bash') {
+      // D30: the probe's background Bash with this command and a fresh task id; the task's end waits.
+      const recorded = (await this.o.store.fixture('bg-bash')).turns[0] ?? [];
+      const end = recorded.findIndex((s) => s.t === 'line' && s.line['type'] === 'result' && !isTaskNotificationResult(s.line));
+      steps = recorded.slice(0, end + 1);
+      later = { steps: recorded.slice(end + 1), delayMs: background.seconds * 1000 };
+      extra.push([RECORDED_BACKGROUND_COMMAND, background.command], [RECORDED_BACKGROUND_TASK, `b${randomBytes(6).toString('hex').slice(0, 8)}`]);
+      scenario = 'bg-bash';
+      turnIndex = 0;
+    } else if (background !== null) {
+      // D30: a ScheduleWakeup call (the `tx-main` tool turn, like `[fake:tool]`); the wake-up fires a turn later.
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: 'ScheduleWakeup', input: { delaySeconds: background.seconds, reason: WAKEUP_REASON, prompt: FIRE_PROMPT } };
+      wakeAfterMs = background.seconds * 1000;
       scenario = 'tx-main';
       turnIndex = 0;
     } else if (said !== null && 'error' in said) {
@@ -620,7 +662,20 @@ export class Runner {
     const outcome = await this.play(steps, turn);
     this.live?.setStatus('idle');
     if (fire && outcome === 'done') this.scheduleFires(fire.count, fire.everyMs);
+    if (later && outcome === 'done') this.scheduleBackground(later.delayMs, { content: '', text: '', uuid: randomUUID(), resume: { steps: later.steps, turn } });
+    if (wakeAfterMs !== null && outcome === 'done') this.scheduleBackground(wakeAfterMs, { content: FIRE_PROMPT, text: FIRE_PROMPT, uuid: randomUUID(), fired: true });
     return outcome;
+  }
+
+  /** D30: queues `msg` (a background task's end, a wake-up) after `delayMs` (stops at EOF / exit). */
+  private scheduleBackground(delayMs: number, msg: UserMessage): void {
+    const timer = setTimeout(() => {
+      this.backgroundTimers.delete(timer);
+      if (this.finished || this.eof) return;
+      this.queue.push(msg);
+      void this.pump();
+    }, delayMs);
+    this.backgroundTimers.add(timer);
   }
 
   /** `[fake:fire n ms]`: `count` turns of the fake's own, one every `everyMs` (stops at EOF / exit). */
@@ -643,6 +698,8 @@ export class Runner {
     this.fireTimer = null;
     for (const timer of this.remoteTimers) clearTimeout(timer);
     this.remoteTimers.clear();
+    for (const timer of this.backgroundTimers) clearTimeout(timer);
+    this.backgroundTimers.clear();
   }
 
   private async play(steps: readonly PlayStep[], turn: TurnState): Promise<Outcome> {

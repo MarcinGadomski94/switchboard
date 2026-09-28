@@ -287,6 +287,33 @@ describe('background work · the recorder (D30)', () => {
   });
 });
 
+describe('background work · real path (D30)', () => {
+  it('fake-claude: the wait outlives the turn in Session.activity (the status stays the turn\'s); Pause ends it, the last event is null', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const seen: Array<SessionActivity | null> = [];
+    w.supervisor.on('activity', (payload) => seen.push(payload.activity));
+    const session = await w.supervisor.start(newSession({ task: 'Start the dev server. [fake:background 30 npm run dev]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const waiting = w.supervisor.activity(session.id);
+    expect(waiting).toMatchObject({ state: 'background', tool: 'Bash', summary: 'npm run dev', thinkingTokens: null });
+    expect(waiting?.background).toMatchObject([{ kind: 'bash', github: false, summary: 'npm run dev' }]);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('done');
+    // The throttled event follows (the turn arrived in one burst: its trailing value is the wait).
+    const wait = async (check: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 5_000;
+      while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    };
+    await wait(() => seen.at(-1)?.state === 'background');
+    expect(seen.at(-1)?.background).toHaveLength(1);
+    await w.supervisor.pause(session.id);
+    expect((await w.store.sessions.get(session.id))?.status).toBe('paused');
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    await wait(() => seen.at(-1) === null);
+    expect(seen.at(-1)).toBeNull();
+  });
+});
+
 describe('ActivityTracker (pure)', () => {
   it('ignores everything outside a turn; a thinking tick without a delta counts the rise of the estimate', () => {
     let clock = T0;
