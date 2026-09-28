@@ -196,6 +196,15 @@ TeleportRefusal   { "error": "teleport-failed" | "teleport-timeout", "message": 
 Session           { …, "remoteSource": "session_011CU…" | null }
 ```
 
+## Signed-in sites in a frame (D28, 2026-09-28, additive)
+Developer ruling D28 (`docs/decisions.md`): a tool whose URL is a non-loopback `https:` site (e.g. Jira) is framed directly with the Switchboard frame helper extension, not through a D15 proxy. Additive; the rows above keep their meaning. Details: `docs/frame-helper.md`, `docs/tools.md` → *Signed-in sites*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | /api/frame-helper/check | – | 200 `text/html`: a page with `X-Frame-Options: DENY` and `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (its `<html>` has `data-sb-frame-check="ok"`); the UI frames it to learn whether the frame helper removes those headers in this browser |
+
+- **Tool.frameUrl** is also `null` for a signed-in site (no proxy runs for it). The probe is unchanged.
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
