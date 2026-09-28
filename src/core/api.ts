@@ -537,7 +537,47 @@ export interface HistoryItem {
   readonly folder: string | null;
   /** Additive (D14): that folder's path (a stored session's root, else the folder the transcript started in); `null` when unknown. */
   readonly folderPath: string | null;
+  /**
+   * Additive (D16): `true` for a conversation started in a terminal that is not in
+   * Switchboard yet: it can continue there as the same conversation
+   * (`POST /api/history/{claudeSessionId}/continue`). Absent otherwise.
+   */
+  readonly terminal?: boolean;
+  /** Additive (D16): a terminal conversation's first prompt (else its first command), collapsed and cut at 240 characters. */
+  readonly firstPrompt?: string | null;
+  /** Additive (D16): the folder a terminal conversation started in (where it continues). */
+  readonly cwd?: string | null;
 }
+
+/**
+ * Additive (D16): body of `POST /api/history/{claudeSessionId}/continue`, which
+ * moves a terminal conversation into Switchboard as the same conversation
+ * (`docs/derivations.md` → *History*, `docs/supervisor.md` → *Continue in Switchboard*).
+ * Every field is optional; the answer is `201 Session`.
+ */
+export interface ContinueConversation {
+  /** The session's name (kebab-case, unique); omitted = from the conversation's title, else its first prompt. */
+  readonly name?: string;
+  /** Add the workspace or repo the conversation sits in to the saved folders (after `409 folder-not-saved`). */
+  readonly addFolder?: boolean;
+  /** Move it although a terminal may still have it open (after `409 terminal-open`). */
+  readonly confirm?: boolean;
+}
+
+/**
+ * Additive (D16): the refusals of `POST /api/history/{claudeSessionId}/continue`
+ * that the UI acts on. Others are `{ error, message }` (404 `not-found`, 409
+ * `folder-missing`, 422 `not-a-terminal-conversation`, 422 `invalid` with `errors`).
+ */
+export type ContinueRefusal =
+  /** 409: a Switchboard session already has this conversation. */
+  | { readonly error: 'already-in-switchboard'; readonly message: string; readonly sessionId: string }
+  /** 409: no saved folder holds the conversation; `check` is the workspace or repo it sits in (send `addFolder: true`). */
+  | { readonly error: 'folder-not-saved'; readonly message: string; readonly check: FolderCheck }
+  /** 409: a terminal may still have it open (the Attach-here reasons; send `confirm: true`). */
+  | { readonly error: 'terminal-open'; readonly message: string; readonly reasons: readonly AttachWarningReason[] }
+  /** 422: it started outside every workspace and git repository. */
+  | { readonly error: 'not-in-a-folder'; readonly message: string; readonly cwd: string };
 
 /** `GET/PUT /api/settings`: key → JSON value. Provisional: M8.2. */
 export type Settings = Readonly<Record<string, unknown>>;

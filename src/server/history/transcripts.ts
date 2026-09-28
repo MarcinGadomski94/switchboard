@@ -33,6 +33,23 @@ export function claudeConfigDir(env: NodeJS.ProcessEnv = process.env, home: stri
   return dir.normalize('NFC');
 }
 
+/**
+ * The facts of one transcript file (`<id>.jsonl`, the id from its name), streamed
+ * line by line (files reach tens of MB). Read only.
+ */
+export async function readTranscriptFacts(file: string): Promise<TranscriptFacts> {
+  const parser = new TranscriptParser(path.basename(file, '.jsonl'));
+  const stream = createReadStream(file, { encoding: 'utf8' });
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) parser.pushLine(line);
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+  return parser.finish();
+}
+
 /** Options of {@link TranscriptHistory}. */
 export interface TranscriptHistoryOptions {
   /** Sessions and saved folders (D14: History reads under every saved folder and every session's folder). */
@@ -223,17 +240,8 @@ export class TranscriptHistory implements HistoryProvider {
 
   async #parse(found: Found): Promise<Parsed> {
     const sessionId = path.basename(found.file, '.jsonl');
-    const parser = new TranscriptParser(sessionId);
-    const stream = createReadStream(found.file, { encoding: 'utf8' });
-    const lines = createInterface({ input: stream, crlfDelay: Infinity });
-    try {
-      for await (const line of lines) parser.pushLine(line);
-    } finally {
-      lines.close();
-      stream.destroy();
-    }
+    const facts = await readTranscriptFacts(found.file);
     this.#parseCount += 1;
-    const facts = parser.finish();
     // The cache is keyed by the (size, mtime) the scan saw; a file that grew while it was
     // read is simply parsed again on the next request.
     const parsed = { size: found.size, mtimeMs: found.mtimeMs, facts };

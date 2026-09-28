@@ -275,18 +275,28 @@ function solutionAt(where: Located): string | null {
 }
 
 /**
+ * A transcript of a conversation typed in an interactive terminal (gap #5): it
+ * knows where it started, its first prompt (else its first command) has
+ * `entrypoint: "cli"`, and it has a prompt or a command (not a stub). D16 moves
+ * only these into Switchboard.
+ */
+export function isTerminalConversation(facts: Pick<TranscriptFacts, 'startCwd' | 'entrypoint' | 'firstPrompt' | 'firstCommand'>): boolean {
+  return facts.startCwd !== null && facts.entrypoint === 'cli' && (facts.firstPrompt !== null || facts.firstCommand !== null);
+}
+
+/**
  * A terminal-started session (gap #5): not in the database, started in one of
  * the folders (D14) or below it, its first prompt (or command) typed in an
  * interactive terminal (`entrypoint: "cli"`), and not a stub. Else `null`. The
- * row belongs to the most specific folder its start `cwd` is in.
+ * row belongs to the most specific folder its start `cwd` is in. D16: it is
+ * marked `terminal` (it can continue in Switchboard) and carries its first prompt
+ * and its start `cwd`.
  */
 function terminalRow(transcript: HistoryTranscript, input: HistoryInput): HistoryRow | null {
   const { facts, mtimeMs } = transcript;
-  if (facts.startCwd === null) return null;
+  if (!isTerminalConversation(facts) || facts.startCwd === null) return null;
   const start = locate(facts.startCwd, input);
   if (start === null) return null;
-  if (facts.entrypoint !== 'cli') return null;
-  if (facts.firstPrompt === null && facts.firstCommand === null) return null;
 
   const branches: BranchRef[] = [];
   if (facts.gitBranch && facts.gitBranch !== 'HEAD') {
@@ -313,6 +323,10 @@ function terminalRow(transcript: HistoryTranscript, input: HistoryInput): Histor
     status: active ? 'run' : 'idle',
     folder: start.root.folder,
     folderPath: start.root.folderPath,
+    // D16: it can continue in Switchboard as the same conversation.
+    terminal: true,
+    firstPrompt: clip(facts.firstPrompt ?? facts.firstCommand ?? '', SUMMARY_MAX) || null,
+    cwd: facts.startCwd,
   };
   return {
     item,

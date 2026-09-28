@@ -90,6 +90,22 @@ export type SessionStartInput = Omit<NewSession, 'workType' | 'mode' | 'phase'> 
   readonly phase: NewSession['phase'] | null;
 };
 
+/**
+ * What {@link SessionSupervisor.adopt} stores for a terminal conversation moved
+ * into Switchboard (D16): no session-start answers, no worktrees, no ultracode.
+ */
+export interface AdoptInput {
+  /** Kebab-case and unique (the caller checked it). */
+  readonly name: string;
+  /** Stored as the session's task (its first prompt); never sent. */
+  readonly task: string;
+  /** The conversation's CLI session id: the session is bound to it, never to a new one. */
+  readonly claudeSessionId: string;
+  readonly solutions: readonly string[];
+  /** The conversation's transcript, imported as the session's events before the spawn. */
+  readonly transcript: string;
+}
+
 /** Notifications for the `/hub` (M2.3), same names and payloads as the contract. */
 export interface SupervisorEvents {
   readonly sessionUpdated: Session;
@@ -396,6 +412,73 @@ export class SessionSupervisor {
     const live = await this.#spawn(attached, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'attached');
     await this.#enqueue(live, () => this.#refreshStatus(live));
     return command;
+  }
+
+  // ── terminal conversations moved in (D16, docs/supervisor.md → Continue in Switchboard) ─
+
+  /**
+   * The transcript of a CLI session id, `<configDir>/projects/*\/<id>.jsonl` with
+   * the children's `CLAUDE_CONFIG_DIR` (else `~/.claude`); `null` when there is none.
+   */
+  findTranscript(claudeSessionId: string): Promise<string | null> {
+    return findTranscriptFile(claudeConfigDir(this.#env), claudeSessionId);
+  }
+
+  /**
+   * Why moving a terminal conversation now might split it (D16): the Attach-here
+   * check (M4.1) for an id no session has yet: its transcript changed less than 2
+   * minutes ago, `claude agents --json` (run in `cwd`) lists it, or that list
+   * cannot be read. Empty = no terminal seems to hold it.
+   */
+  conversationWarnings(claudeSessionId: string, transcript: string | null, cwd: string): Promise<AttachWarningReason[]> {
+    const lister = this.#listLive;
+    return attachWarnings({ transcript, claudeSessionId, listLive: lister ? () => lister(cwd) : null, now: Date.now() });
+  }
+
+  /**
+   * D16: stores a session bound to an existing conversation (`input.claudeSessionId`,
+   * never a new id) in `place` (its saved folder; cwd = where the conversation
+   * started), imports the transcript's turns as its events (the Attach-here import:
+   * the whole chain, since the session has no sync point yet), then spawns
+   * `--resume <id>` with the baseline flags and **no** message: the process stays
+   * idle (lifecycle `moved`) until the developer writes. The caller has checked
+   * that no session has the id and that no terminal holds it (or the developer
+   * confirmed). No work type, mode or phase; no worktrees; no first message.
+   */
+  async adopt(input: AdoptInput, place: SessionPlace): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const cwd = await canonicalFolder(place.cwd);
+    const session = await this.#store.sessions.create({
+      name: input.name,
+      task: input.task,
+      claudeSessionId: input.claudeSessionId,
+      status: 'idle',
+      workType: null,
+      mode: null,
+      phase: null,
+      coordination: null,
+      qaStack: null,
+      qaConfluenceUrl: null,
+      qaFigmaUrls: [],
+      solutions: [...input.solutions],
+      worktrees: false,
+      ultracode: false,
+      attached: true,
+      cwd,
+      folderId: place.folder.id,
+      root: place.folder.root,
+      rootKind: place.folder.kind,
+      requestedPermissionMode: DEFAULT_PERMISSION_MODE,
+    });
+    await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });
+    await this.#importTranscript(session, input.transcript);
+    this.#assertOpen();
+    const live = await this.#spawn(await this.#get(session.id), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'moved');
+    await this.#enqueue(live, () => this.#refreshStatus(live));
+    // The session is new to every client: announce it even when its status did not change.
+    await this.#emitSession(session.id);
+    return this.#get(session.id);
   }
 
   /** Sync back (M4.1): the terminal's turns from the transcript become events; a failure is recorded, never fatal. */
@@ -897,4 +980,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   recovered: 'Resumed after a Switchboard restart',
   'leftover-stopped': 'Stopped the claude process left from before the restart',
   'not-resumed': 'Not resumed after the restart',
+  moved: 'Moved from a terminal',
 };

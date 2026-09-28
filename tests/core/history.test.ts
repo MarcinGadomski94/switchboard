@@ -10,6 +10,7 @@ import {
   filterHistory,
   formatHistoryDate,
   historyBranchLine,
+  isTerminalConversation,
   relativeToRoot,
   sessionModeLine,
   solutionOfPath,
@@ -326,6 +327,26 @@ describe('History rows (M7.4, gap #5)', () => {
     ];
     expect(filterHistory(rows([], transcripts), '').map((i) => i.claudeSessionId)).toEqual(['kept']);
     expect(filterHistory(rows([], transcripts, []), '')).toEqual([]);
+  });
+
+  it('D16: a terminal row is marked terminal and carries its first prompt (else command) and start cwd; stored rows are not', () => {
+    const items = filterHistory(
+      rows([session({ claudeSessionId: 'stored' })], [
+        { facts: baseFacts({ sessionId: 'p1', firstPrompt: `Fix   the\nlogin ${'y'.repeat(300)}`, startCwd: `${ROOT}/mobile` }), mtimeMs: OLD },
+        { facts: baseFacts({ sessionId: 'c1', firstPrompt: null, firstCommand: '/loop 1h Watch', startedWithCommand: true }), mtimeMs: OLD },
+      ]),
+      '',
+    );
+    const byId = Object.fromEntries(items.map((item) => [item.claudeSessionId, item]));
+    expect(byId['p1']).toMatchObject({ terminal: true, cwd: `${ROOT}/mobile` });
+    expect(byId['p1']?.firstPrompt).toBe(`Fix the login ${'y'.repeat(225)}…`);
+    expect(byId['c1']).toMatchObject({ terminal: true, firstPrompt: '/loop 1h Watch', cwd: ROOT });
+    expect(byId['claude-1']).toBeUndefined();
+    expect(byId['stored']?.terminal).toBeUndefined();
+    expect(isTerminalConversation(baseFacts({}))).toBe(true);
+    expect(isTerminalConversation(baseFacts({ entrypoint: 'sdk-cli' }))).toBe(false);
+    expect(isTerminalConversation(baseFacts({ firstPrompt: null }))).toBe(false);
+    expect(isTerminalConversation(baseFacts({ startCwd: null }))).toBe(false);
   });
 
   it('a stored session keeps one row even when its file mixes sdk-cli and cli, and a newer duplicate file wins', () => {

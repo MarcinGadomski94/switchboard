@@ -127,7 +127,9 @@ export type LifecycleAction =
   /** M2.4: a process left running by a crashed service was stopped before the resume. */
   | 'leftover-stopped'
   /** M2.4: the session was not resumed after the restart (`message` says why). */
-  | 'not-resumed';
+  | 'not-resumed'
+  /** D16: a terminal conversation continued in Switchboard (`--resume` of its id, no message). */
+  | 'moved';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

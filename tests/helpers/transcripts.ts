@@ -58,6 +58,25 @@ export function asTerminal(lines: readonly Line[]): Line[] {
   });
 }
 
+/**
+ * The conversation chain as the CLI wrote it (D16 tests): the recordings dropped
+ * the private `attachment` lines (`docs/spike-m0.md` → M0.3), so some `parentUuid`
+ * links dangle and the Attach-here import (`newestChain`) would stop at the first
+ * gap. Each dangling link is pointed at the previous chain entry in file order.
+ */
+export function withChainRepaired(lines: readonly Line[]): Line[] {
+  const known = new Set(lines.map((line) => line['uuid']).filter((uuid): uuid is string => typeof uuid === 'string'));
+  let previous: string | null = null;
+  return lines.map((line) => {
+    const uuid = line['uuid'];
+    if (typeof uuid !== 'string' || line['isSidechain'] === true) return line;
+    const parent = line['parentUuid'];
+    const next = typeof parent === 'string' && !known.has(parent) ? { ...line, parentUuid: previous } : line;
+    previous = uuid;
+    return next;
+  });
+}
+
 /** Without the entries of `types` (e.g. `custom-title`, `agent-name`). */
 export function withoutTypes(lines: readonly Line[], ...types: string[]): Line[] {
   return lines.filter((line) => !types.includes(String(line['type'])));
