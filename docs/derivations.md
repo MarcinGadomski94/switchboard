@@ -62,6 +62,9 @@ Labels are one line (first line, at most 120 characters): the text, `Write · fi
 - **BRANCH**: branches a Bash command creates: `git checkout -b|-B`, `git switch -c|-C|--create`, `git worktree add … -b|-B`, `git branch <name>` (no options). The solution comes from a preceding `cd <dir>` or `git -C <dir>` in the same command, else none. Worktrees Switchboard creates itself are registered by M2.2.
 - **TICKET**: not auto-detected in v1.
 
+## Solutions rows (M6.2)
+The live fields of `GET /api/solutions` (which sessions work on a solution, its branches, status, phase, changes, phase ledger, artifacts & follow-ups and codebase-memory freshness) are derived by `LiveSolutions`; the rules are in `docs/solutions.md` → *Live fields* and `src/core/solutions-live.ts`.
+
 ## Session status
 `src/core/derive/status.ts`, re-derived after every stdout line.
 

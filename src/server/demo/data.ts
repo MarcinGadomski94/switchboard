@@ -156,6 +156,8 @@ export interface DemoSolution {
 
 /** `solutions.json` (SG, LED, ARTS, the dirty list, the New-session groups and draft). */
 export interface DemoSolutions {
+  /** The workspace root the prototype shows (`D:\acme`: its solution paths and the Solutions header). */
+  readonly root: string;
   readonly groups: ReadonlyArray<{ readonly folder: string; readonly note: string; readonly solutions: readonly DemoSolution[] }>;
   /** The branch as it looks after "Move … to worktree". */
   readonly conflictFixedBranch: { readonly solution: string; readonly branch: string; readonly worktree: string };

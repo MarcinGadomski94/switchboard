@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { SolutionGroup, Worktree } from '../../core/api.ts';
 import type { ApiContext } from '../routes.ts';
+import { LiveSolutions } from '../solutions/live.ts';
 import { ScanError, WorkspaceScanner } from '../solutions/scanner.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
 import { toWorktree } from '../worktrees/wire.ts';
@@ -16,14 +17,21 @@ interface IsolateParams {
 
 /**
  * Registers the Solutions routes. `GET /api/solutions` is the workspace scan
- * (M6.1, `docs/solutions.md`) from `providers.solutions`, or a scanner over the
- * configured workspace root when none is passed; M6.2 fills the live fields.
+ * (M6.1, `docs/solutions.md`) with its live fields (M6.2, `LiveSolutions`) from
+ * `providers.solutions`, or live solutions over the configured workspace root,
+ * the store and the session diff when none is passed.
  * `POST /api/solutions/{repo}/isolate` is the gap #2 "Move … to worktree"
  * operation of the worktree manager (M2.2); M6.3 decides when the UI offers it.
  */
 export async function registerSolutionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { worktrees } = context;
-  const solutions = context.providers.solutions ?? new WorkspaceScanner({ workspaceRoot: context.config.workspaceRoot });
+  const solutions =
+    context.providers.solutions ??
+    new LiveSolutions({
+      scanner: new WorkspaceScanner({ workspaceRoot: context.config.workspaceRoot }),
+      store: context.store,
+      diff: context.providers.diff ?? worktrees,
+    });
 
   app.get('/api/solutions', async (_request, reply): Promise<SolutionGroup[] | FastifyReply> => {
     try {

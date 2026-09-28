@@ -1,4 +1,5 @@
 {
+  "root": "D:\\acme",
   "groups": [
     {
       "folder": "microfrontends/",

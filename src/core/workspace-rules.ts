@@ -255,8 +255,9 @@ function toSolution(solution: ScannedSolution, folder: ScannedFolder): Solution 
   return {
     name: solution.name,
     path: solution.path,
+    relativePath: solution.relativePath,
     type: folder.type,
-    // M6.2 fills the live fields (sessions, worktrees, phase-ledger, changes, conflicts).
+    // Neutral live fields: `LiveSolutions` (M6.2, src/server/solutions/live.ts) fills them.
     status: 'idle',
     rule: folder.rule,
     phase: '—',
@@ -264,6 +265,9 @@ function toSolution(solution: ScannedSolution, folder: ScannedFolder): Solution 
     flag: '',
     conflict: false,
     branches: [],
+    ledger: null,
+    artifacts: [],
+    codebaseMemory: 'unknown',
   };
 }
 
@@ -274,7 +278,8 @@ function toSolution(solution: ScannedSolution, folder: ScannedFolder): Solution 
  * solutions with the note `deprecated/ · infrastructure/ · never edited` (built
  * from the folders that have solutions). Groups without solutions are left out.
  * Solutions are sorted by name. The live fields (status, branches, phase,
- * changes, flag, conflict) are neutral here; M6.2 fills them.
+ * changes, flag, conflict, ledger, artifacts, codebase-memory freshness) are
+ * neutral here; `LiveSolutions` (M6.2) fills them.
  */
 export function toSolutionGroups(scan: WorkspaceScan): SolutionGroup[] {
   const groups: SolutionGroup[] = [];

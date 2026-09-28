@@ -230,6 +230,7 @@ describe('toSolutionGroups', () => {
     expect(web?.solutions[1]).toEqual({
       name: 'acme-app-front',
       path: path.join(root, 'microfrontends', 'acme-app-front'),
+      relativePath: 'microfrontends/acme-app-front',
       type: 'Web',
       status: 'idle',
       rule: 'editable',
@@ -238,6 +239,10 @@ describe('toSolutionGroups', () => {
       flag: '',
       conflict: false,
       branches: [],
+      // Neutral until LiveSolutions (M6.2) fills them.
+      ledger: null,
+      artifacts: [],
+      codebaseMemory: 'unknown',
     });
     expect(other?.solutions[0]).toMatchObject({ type: 'Other', rule: 'on-request' });
     expect(readOnly?.solutions.map((s) => [s.path, s.type, s.rule, s.changes])).toEqual([

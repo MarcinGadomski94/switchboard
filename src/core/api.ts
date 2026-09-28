@@ -210,10 +210,36 @@ export interface SolutionBranch {
   readonly status: SessionStatus;
 }
 
+/** One interface of a solution's `phase-ledger.md` (gap #12; the detail panel's phase ledger). */
+export interface PhaseLedgerEntry {
+  readonly interface: string;
+  /** `UI-first` or `integration`. */
+  readonly phase: string;
+  /** Where the seam is (`seam TODO · FreeTalkViewModel.cs:41`); empty when the ledger names none. */
+  readonly seam: string;
+}
+
+/** An artifact or follow-up of a solution (the detail panel's "Artifacts & follow-ups"). */
+export interface SolutionArtifact {
+  /** Artifact type tag (`CONTRACT`, `QA`, `FOLLOWUP`, …). */
+  readonly type: string;
+  /** Path inside the solution (`contracts/free-talk.md`) or the artifact's name. */
+  readonly name: string;
+  /** Short state (`locked`, `2 pending`); empty when none. */
+  readonly meta: string;
+  /** The session that produced it, `null` for a file found in the solution. */
+  readonly sessionId: string | null;
+}
+
+/** codebase-memory freshness of a solution (`.claude/.codebase-memory-dirty`, M6.2 / M6.4). */
+export type CodebaseMemoryFreshness = 'fresh' | 'dirty' | 'unknown';
+
 /** A solution row. Provisional: M6.2. */
 export interface Solution {
   readonly name: string;
   readonly path: string;
+  /** Path from the workspace root, `/`-separated (`microfrontends/acme-app-front`, `mobile`). M6.2. */
+  readonly relativePath: string;
   /** Filter pill: Web, Mobile, NuGet, Backend, Read-only (or Other for `other/`). */
   readonly type: string;
   readonly status: SessionStatus;
@@ -224,6 +250,12 @@ export interface Solution {
   readonly flag: string;
   readonly conflict: boolean;
   readonly branches: readonly SolutionBranch[];
+  /** The solution's `phase-ledger.md` entries (gap #12); `null` when it has no such file. M6.2. */
+  readonly ledger: readonly PhaseLedgerEntry[] | null;
+  /** Artifacts of its sessions + its `mobile-followups/*.md` files, newest first. M6.2. */
+  readonly artifacts: readonly SolutionArtifact[];
+  /** Whether agents edited it since codebase-memory last indexed it. M6.2 (M6.4 refines). */
+  readonly codebaseMemory: CodebaseMemoryFreshness;
 }
 
 /** `GET /api/solutions` item: one folder group. Provisional: M6.2. */
