@@ -206,6 +206,8 @@ test('the new name shows in the New-session dropdown, the Solutions switcher and
   await expect(modal.getByTestId('ns-chip')).toHaveText(['✓ tool-repo']);
   await modal.getByTestId('ns-name').fill('named-fix');
   await modal.getByTestId('ns-task').fill('Tidy the README.');
+  // D32: the repo folder's worktree is on a ticket branch.
+  await modal.getByTestId('ns-branch').fill('TOOL-3-named-fix');
   const worktree = path.join(tmp, 'tool-repo-wt-named-fix');
   expect((await modal.getByTestId('ns-summary-line').allTextContents()).slice(1, 3)).toEqual(['folder    Handy tools · git repo', `cwd       ${worktree}`]);
   await modal.getByTestId('ns-start').click();

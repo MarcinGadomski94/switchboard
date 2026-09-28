@@ -11,6 +11,7 @@ import type {
   FolderListing,
   HistoryItem,
   InboxItem,
+  IsolateRequest,
   NewRepoSession,
   NewSession,
   ResumeCommand,
@@ -130,7 +131,9 @@ export const api = {
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
-  isolate: (repo: string, sessionId: string) => request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, { sessionId }),
+  /** "Move … to worktree" (gap #2); D32: `branch` names the new worktree's branch after the ticket (required). */
+  isolate: (repo: string, sessionId: string, branch: string) =>
+    request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, { sessionId, branch } satisfies IsolateRequest),
 
   schedules: () => request<Schedule[]>('GET', '/api/schedules'),
   createSchedule: (body: unknown) => request<Schedule>('POST', '/api/schedules', body),

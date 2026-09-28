@@ -7,7 +7,7 @@ import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
-import { type ValidNewSession, validateNewSession } from './validate.ts';
+import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
 
 /** What {@link startNewSession} needs (a subset of the route context). */
 export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supervisor' | 'worktrees' | 'folders'>;
@@ -16,6 +16,12 @@ export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supe
 export interface StartNewSessionOptions {
   /** Runs once the session is stored and its worktrees are linked, before its process starts (M7.1 links the scheduled run here). */
   readonly beforeSpawn?: (session: SessionRecord) => Promise<void>;
+  /**
+   * D32: how the worktree branch is named. Default `ticket`: the developer's
+   * `branch` (required with worktrees). The scheduler passes `session`: its runs
+   * keep `session/{name}`.
+   */
+  readonly worktreeBranch?: WorktreeBranchRule;
 }
 
 /** Result of {@link startNewSession}: the started session, or a refusal to send as it is. */
@@ -55,8 +61,10 @@ export async function resolveSessionFolder(
  * The `POST /api/sessions` flow (M2.1 / M2.2 / M5.2 / M6.1; D14), shared with the
  * scheduler (M7.1): resolve the session's folder (default when omitted),
  * validate the NewSession for it (422 with `{errors}`; read-only solutions
- * through the workspace scan; a repo folder allows only its own solution),
- * create its worktrees first (gap #1; refusals as {@link worktreeRefusal}), pick
+ * through the workspace scan; a repo folder allows only its own solution; D32:
+ * a ticket `branch` with worktrees, unless {@link StartNewSessionOptions.worktreeBranch}
+ * says `session`), create its worktrees first (gap #1, on that branch; refusals
+ * as {@link worktreeRefusal}, e.g. 409 `branch-exists`), pick
  * the process's cwd (the workspace root; the repo, or its worktree), build the
  * first stdin message (M5.2: task + the confirmed answers for a workspace, only
  * the worktree note for a repo; with no task the block waits in the outbox) and
@@ -81,15 +89,17 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   const result = await validateNewSession(body, {
     nameTaken: async (name) => (await store.sessions.getByName(name)) !== null,
     folder: { kind: folder.kind, repoName: repoSolutionName(folder) },
+    worktreeBranch: options.worktreeBranch ?? 'ticket',
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
   const input = result.value;
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
+  // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
   let created: WorktreeRecord[] = [];
   if (input.worktrees) {
     try {
-      created = await worktrees.createForSession(input.name, input.solutions, folder);
+      created = await worktrees.createForSession(input.name, input.solutions, folder, null, input.branch ? { branch: input.branch } : {});
     } catch (error) {
       if (!(error instanceof WorktreeError)) throw error;
       return { ok: false, ...worktreeRefusal(error, 'solutions') };

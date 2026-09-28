@@ -14,7 +14,8 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
  * gh, a temp data folder, a fixture workspace with git repos; no demo seed):
  * 1. The New-session form takes "JIRA Ticket handling" as the title: the summary
  *    shows the derived short name, Start posts both, the sidebar and the header
- *    show the title, and the worktree's branch is `session/jira-ticket-handling`.
+ *    show the title, and the worktree folder is named after the short name (D32:
+ *    on the ticket branch the developer typed, never `session/…`).
  * 2. Rename from the header (click; Enter saves, Esc cancels, leaving the field
  *    saves) and from the sidebar (double-click); both places follow.
  * 3. An 81-character title is refused: in the form (warning, Start disabled) and
@@ -28,6 +29,8 @@ let gitEnv: Record<string, string>;
 
 const TITLE = 'JIRA Ticket handling';
 const NAME = 'jira-ticket-handling';
+/** D32: the worktree's ticket branch the form is given. */
+const BRANCH = 'JIRA-12-ticket-handling';
 const LONG = 'L'.repeat(81);
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -107,15 +110,16 @@ test.afterAll(async () => {
   if (tmp) await removeTempDir(tmp);
 });
 
-test('create "JIRA Ticket handling": the summary shows the short name; sidebar and header show the title; the branch is session/jira-ticket-handling', async ({ page }) => {
+test('create "JIRA Ticket handling": the summary shows the short name; sidebar and header show the title; the worktree follows the short name', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openModal(page);
   await modal.getByTestId('ns-name').fill(TITLE);
-  // The field keeps the free text; the summary names the branch and the worktree after the short name.
+  // The field keeps the free text; the summary names the worktree after the short name (D32: the branch is typed).
   await expect(modal.getByTestId('ns-name')).toHaveValue(TITLE);
   await modal.getByTestId('ns-task').fill('Handle the JIRA ticket.');
   await modal.locator('[data-testid="ns-chip"][data-solution="web-front"]').click();
-  expect(await summary(modal)).toEqual(expect.arrayContaining([`branch    session/${NAME}`, `../web-front-wt-${NAME}`]));
+  await modal.getByTestId('ns-branch').fill(BRANCH);
+  expect(await summary(modal)).toEqual(expect.arrayContaining([`branch    ${BRANCH}`, `../web-front-wt-${NAME}`]));
 
   await modal.getByTestId('ns-start').click();
   await expect(modal).toHaveCount(0);
@@ -130,15 +134,15 @@ test('create "JIRA Ticket handling": the summary shows the short name; sidebar a
   await expect(page.getByTestId('session-name')).toHaveAttribute('title', `${TITLE} (${NAME}) · click to rename`);
   await expect(sidebarRow(page, session!.id).locator('.sb-session-name')).toHaveAttribute('title', `${TITLE} (${NAME}) · double-click to rename`);
 
-  // The worktree and its branch are built from the short name, never from the title.
+  // The worktree is built from the short name, never from the title; D32: it is on the typed ticket branch.
   const worktree = path.join(workspace, 'microfrontends', `web-front-wt-${NAME}`);
-  expect(await git(worktree, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(`session/${NAME}`);
+  expect(await git(worktree, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(BRANCH);
 
   // The same title again: the short name gets -2.
   const again = await openModal(page);
   await again.getByTestId('ns-name').fill(TITLE);
   await again.locator('[data-testid="ns-chip"][data-solution="mobile"]').click();
-  expect(await summary(again)).toEqual(expect.arrayContaining([`branch    session/${NAME}-2`, `../mobile-wt-${NAME}-2`]));
+  expect(await summary(again)).toEqual(expect.arrayContaining(['branch    —', `../mobile-wt-${NAME}-2`]));
   await page.keyboard.press('Escape');
 });
 
@@ -212,6 +216,7 @@ test('an 81-character title is refused: in the form, and by the server on a rena
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openModal(page);
   await modal.locator('[data-testid="ns-chip"][data-solution="mobile"]').click();
+  await modal.getByTestId('ns-branch').fill('LONG-1-title');
   await modal.getByTestId('ns-name').fill(LONG);
   await expect(modal.getByTestId('ns-start')).toBeDisabled();
   expect(await summary(modal)).toContain('⚠ the title must be at most 80 characters');

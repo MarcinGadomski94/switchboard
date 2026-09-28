@@ -66,7 +66,7 @@ test('agent cards, terminal tail and the handoff copy from a real session', asyn
   // A write into the session's worktree places the main agent there (path + ⎇ branch), live over /hub.
   await send(page, id, `Now the panel. [fake:write ${worktreeFile}]`);
   await expect(panel.getByTestId('agent-path')).toHaveText(['microfrontends/acme-app-front']);
-  await expect(panel.getByTestId('agent-branch')).toHaveText(['⎇ session/panel-e2e']);
+  await expect(panel.getByTestId('agent-branch')).toHaveText(['⎇ PROJ-1-panel-e2e']);
   // Developer ruling 2026-09-28: the panel never scrolls sideways (long temp paths and the branch are cut with …).
   expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(panel).toHaveCSS('overflow-x', 'hidden');

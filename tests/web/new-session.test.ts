@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Folder, FolderCheck, Solution, SolutionGroup } from '../../src/core/api.ts';
+import { BRANCH_REQUIRED, BRANCH_RULE } from '../../src/core/ticket-branch.ts';
+import { toScheduleInput } from '../../src/web/modals/schedule-form.ts';
 import {
   DEFAULT_FORM,
   type NewSessionForm,
   RECOMMENDED,
   UNKNOWN_FOLDER,
+  branchBlocks,
+  branchCheck,
   canStart,
   chipGroups,
   figmaUrlList,
   folderChoices,
+  formBranch,
   formFromPrefill,
   isRepoFolder,
   repoSummaryLines,
@@ -19,11 +24,13 @@ import {
   readOnlyChipLabel,
   sanitizeName,
   sessionName,
+  showsBranch,
   showsCoordination,
   showsQa,
   startErrorText,
   summaryLines,
   toNewSession,
+  toStartBody,
   toggleSolution,
   workspaceRoot,
   worktreeFolder,
@@ -85,6 +92,7 @@ describe('defaults and prefill', () => {
       worktrees: true,
       ultracode: false,
       folder: null,
+      branch: null,
     });
     expect(RECOMMENDED).toEqual({ workType: 'feature', mode: 'single', phase: 'ui-first', coordination: 'sequential' });
     expect(formFromPrefill(null)).toBe(DEFAULT_FORM);
@@ -197,8 +205,8 @@ describe('chip groups', () => {
 });
 
 describe('summary', () => {
-  it('is the prototype nsSummary for an orchestrator feature session with worktrees', () => {
-    const lines = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'] }), 'D:\\acme', []);
+  it('is the prototype nsSummary for an orchestrator feature session with worktrees (D32: plus the branch line)', () => {
+    const lines = summaryLines(form({ name: 'free-talk-640', mode: 'orchestrator', solutions: ['acme-app-front', 'mobile'], branch: 'PROJ-0640-free-talk' }), 'D:\\acme', []);
     expect(lines).toEqual([
       { text: '# claude code · background · Max', tone: 'comment' },
       { text: 'cwd       D:\\acme', tone: 'value' },
@@ -208,6 +216,7 @@ describe('summary', () => {
       { text: 'ultracode off', tone: 'value' },
       { text: ' ', tone: 'value' },
       { text: '# worktrees', tone: 'comment' },
+      { text: 'branch    PROJ-0640-free-talk', tone: 'value' },
       { text: '../acme-app-front-wt-free-talk-640', tone: 'path' },
       { text: '../mobile-wt-free-talk-640', tone: 'path' },
       { text: ' ', tone: 'value' },
@@ -223,13 +232,17 @@ describe('summary', () => {
     expect(single).toContain('# no worktrees · edits in place');
     expect(single.some((t) => t.startsWith('../'))).toBe(false);
 
-    // D22: a taken name is no warning any more: the short name gets -2 (and the summary says so).
+    // D22: a taken name is no warning any more: the short name gets -2 (and the summary says so, without worktrees).
+    expect(summaryLines(form({ solutions: ['mobile'], worktrees: false }), '/ws', ['session']).map((l) => l.text)).toContain('name      session-2');
+    // D32: with worktrees, the branch line (— until the Branch field is a ticket branch) and its warning.
     const qa = summaryLines(form({ workType: 'qa', solutions: [] }), '/ws', ['session']).map((l) => l.text);
     expect(qa).toContain('work      test-authoring (QA)');
     expect(qa).toContain('stack     —');
-    expect(qa).toContain('branch    session/session-2');
+    expect(qa).toContain('branch    —');
+    expect(qa).not.toContain('name      session-2');
     expect(qa.filter((t) => t.startsWith('⚠'))).toEqual([
       '⚠ pick at least one solution',
+      '⚠ name the branch after its ticket',
       '⚠ pick the stack under test',
       '⚠ add the Confluence page URL',
       '⚠ add the Figma frame URLs',
@@ -246,13 +259,14 @@ describe('summary', () => {
 
 describe('start', () => {
   it('is disabled without solutions, with a title over 80 characters, or with an incomplete QA contract (D22: a taken name gets -2)', () => {
-    expect(canStart(form({ solutions: [] }), [])).toBe(false);
-    expect(canStart(form({ solutions: ['mobile'] }), [])).toBe(true);
-    expect(canStart(form({ name: 'taken', solutions: ['mobile'] }), ['taken'])).toBe(true);
-    expect(canStart(form({ solutions: ['mobile'] }), ['session'])).toBe(true);
-    expect(canStart(form({ name: 'T'.repeat(80), solutions: ['mobile'] }), [])).toBe(true);
-    expect(canStart(form({ name: 'T'.repeat(81), solutions: ['mobile'] }), [])).toBe(false);
-    const qa = form({ workType: 'qa', solutions: ['mobile'] });
+    const branch = 'PROJ-1-work';
+    expect(canStart(form({ solutions: [], branch }), [])).toBe(false);
+    expect(canStart(form({ solutions: ['mobile'], branch }), [])).toBe(true);
+    expect(canStart(form({ name: 'taken', solutions: ['mobile'], branch }), ['taken'])).toBe(true);
+    expect(canStart(form({ solutions: ['mobile'], branch }), ['session'])).toBe(true);
+    expect(canStart(form({ name: 'T'.repeat(80), solutions: ['mobile'], branch }), [])).toBe(true);
+    expect(canStart(form({ name: 'T'.repeat(81), solutions: ['mobile'], branch }), [])).toBe(false);
+    const qa = form({ workType: 'qa', solutions: ['mobile'], branch });
     expect(missingQa(qa)).toEqual(['stack', 'confluence', 'figma']);
     expect(canStart(qa, [])).toBe(false);
     expect(canStart({ ...qa, stack: 'both', confluenceUrl: 'https://c/1', figmaUrls: 'https://f/1' }, [])).toBe(true);
@@ -354,26 +368,37 @@ describe('folders (D14)', () => {
   });
 
   it('a repo folder starts with a free name alone (no solutions, no QA contract; D22: a taken name gets -2, a title over 80 characters blocks)', () => {
-    expect(canStart(form({ name: 'fix', workType: 'qa' }), [], repoFolder)).toBe(true);
-    expect(canStart(form({ name: 'fix' }), ['fix'], repoFolder)).toBe(true);
-    expect(canStart(form({ name: 'Fix it '.repeat(12) }), [], repoFolder)).toBe(false);
-    expect(canStart(form({ name: 'fix' }), [], wsFolder)).toBe(false);
+    // D32: with its worktree (the default) it also needs a ticket branch; without one the name alone.
+    expect(canStart(form({ name: 'fix', workType: 'qa', branch: 'PROJ-1-fix' }), [], repoFolder)).toBe(true);
+    expect(canStart(form({ name: 'fix', branch: 'PROJ-1-fix' }), ['fix'], repoFolder)).toBe(true);
+    expect(canStart(form({ name: 'fix' }), [], repoFolder)).toBe(false);
+    expect(canStart(form({ name: 'fix', worktrees: false }), ['fix'], repoFolder)).toBe(true);
+    expect(canStart(form({ name: 'Fix it '.repeat(12), branch: 'PROJ-1-fix' }), [], repoFolder)).toBe(false);
+    expect(canStart(form({ name: 'fix', branch: 'PROJ-1-fix' }), [], wsFolder)).toBe(false);
   });
 
   it('the summary names the folder; a repo shows its cwd (the worktree with Worktree on) and no router lines', () => {
     const lines = summaryLines(form({ name: 'n', solutions: ['mobile'], folder: 'f-ws' }), '/derived', [], wsFolder).map((l) => l.text);
     expect(lines.slice(0, 4)).toEqual(['# claude code · background · Max', 'folder    workspace · workspace', 'cwd       /src/workspace', 'work      feature-building']);
     expect(summaryLines(form({ name: 'n', solutions: ['mobile'] }), '/derived', []).map((l) => l.text)[1]).toBe('cwd       /derived');
-    expect(repoSummaryLines(form({ name: 'fix', worktrees: true }), repoFolder, []).map((l) => [l.text, l.tone])).toEqual([
+    expect(repoSummaryLines(form({ name: 'fix', worktrees: true, branch: 'PROJ-7-fix-the-build' }), repoFolder, []).map((l) => [l.text, l.tone])).toEqual([
       ['# claude code · background · Max', 'comment'],
       ['folder    switchboard · git repo', 'value'],
       ['cwd       /src/switchboard-wt-fix', 'value'],
       ['ultracode off', 'value'],
       [' ', 'value'],
       ['# worktree', 'comment'],
+      ['branch    PROJ-7-fix-the-build', 'value'],
       ['../switchboard-wt-fix', 'path'],
       [' ', 'value'],
       ['✓ task + worktree note · no router answers', 'ok'],
+    ]);
+    // D32: without a ticket branch yet: `—` and the warning.
+    expect(repoSummaryLines(form({ name: 'fix', worktrees: true, branch: 'fix' }), repoFolder, []).map((l) => l.text).slice(5, 9)).toEqual([
+      '# worktree',
+      'branch    —',
+      '../switchboard-wt-fix',
+      '⚠ name the branch after its ticket',
     ]);
     const inPlace = summaryLines(form({ name: 'fix', worktrees: false }), null, ['fix'], repoFolder).map((l) => l.text);
     expect(inPlace).toEqual([
@@ -388,5 +413,51 @@ describe('folders (D14)', () => {
       ' ',
       '✓ task only · no router answers',
     ]);
+  });
+});
+
+describe('Branch field (D32)', () => {
+  const repoFolder = { id: 'f-repo', path: '/src/switchboard', name: 'switchboard', displayName: 'switchboard', kind: 'repo' as const };
+
+  it('shows only while a worktree is made; follows a ticket title until the developer types in it', () => {
+    expect(showsBranch(form())).toBe(true);
+    expect(showsBranch(form({ worktrees: false }))).toBe(false);
+    expect(formBranch(form({ name: 'PROJ-1984 Purchase complete' }))).toBe('PROJ-1984-purchase-complete');
+    expect(formBranch(form({ name: 'JIRA Ticket handling' }))).toBe('');
+    expect(formBranch(form({ name: 'PROJ-1984 Purchase complete', branch: 'PROJ-2-other' }))).toBe('PROJ-2-other');
+    // Cleared by the developer: stays empty (no longer follows the title).
+    expect(formBranch(form({ name: 'PROJ-1984 Purchase complete', branch: '' }))).toBe('');
+  });
+
+  it('checks the branch: a message under the field and Start disabled until it is a ticket branch', () => {
+    expect(branchCheck(form())).toEqual({ ok: false, message: BRANCH_REQUIRED });
+    expect(branchCheck(form({ branch: 'proj-1-x' }))).toEqual({ ok: false, message: BRANCH_RULE });
+    expect(branchCheck(form({ name: 'PROJ-1984' }))).toEqual({ ok: false, message: BRANCH_RULE });
+    expect(branchCheck(form({ name: 'PROJD-0001 Test ticket name' }))).toEqual({ ok: true, name: 'PROJD-0001-test-ticket-name' });
+    expect(branchBlocks(form({ solutions: ['mobile'] }))).toBe(true);
+    expect(branchBlocks(form({ solutions: ['mobile'], worktrees: false }))).toBe(false);
+    expect(canStart(form({ solutions: ['mobile'] }), [])).toBe(false);
+    expect(canStart(form({ solutions: ['mobile'], worktrees: false }), [])).toBe(true);
+    expect(canStart(form({ name: 'PROJ-1984 Purchase complete', solutions: ['mobile'] }), [])).toBe(true);
+    expect(canStart(form({ name: 'PROJ-1984 Purchase complete', solutions: ['mobile'], branch: 'nope' }), [])).toBe(false);
+  });
+
+  it('Start posts the branch only with a worktree (workspace: one branch for every solution; repo folder); a schedule never', () => {
+    expect(toStartBody(form({ name: 'PROJ-1984 Purchase complete', solutions: ['acme-app-front', 'mobile'] }), null, [])).toMatchObject({
+      name: 'proj-1984-purchase-complete',
+      title: 'PROJ-1984 Purchase complete',
+      solutions: ['acme-app-front', 'mobile'],
+      worktrees: true,
+      branch: 'PROJ-1984-purchase-complete',
+    });
+    expect(toStartBody(form({ name: 'x', branch: ' PROJ-5-x ' }), repoFolder, [])).toMatchObject({ worktrees: true, branch: 'PROJ-5-x' });
+    expect('branch' in toStartBody(form({ name: 'x', solutions: ['mobile'], worktrees: false, branch: 'PROJ-5-x' }), null, [])).toBe(false);
+    expect('branch' in toSessionBody(form({ name: 'x', solutions: ['mobile'], branch: 'PROJ-5-x' }), null)).toBe(false);
+    expect(toScheduleInput(form({ name: 'nightly', task: 'Check.', solutions: ['mobile'], branch: 'PROJ-5-x' }), '0 2 * * *', undefined).template).not.toHaveProperty('branch');
+  });
+
+  it('a prefilled branch counts as typed', () => {
+    expect(formFromPrefill({ name: 'PROJ-1 a', branch: ' PROJ-2-b ' }).branch).toBe('PROJ-2-b');
+    expect(formFromPrefill({ branch: '  ' }).branch).toBeNull();
   });
 });

@@ -220,6 +220,24 @@ Session           { …, "model": { "current": "opus" | null, "effort": "high" |
 - **Session.model** (so also SessionDetail and `sessionUpdated`): `current` / `effort` = the stored choice (`null` = the CLI's default; no `--model` / `--effort`); `available` = the models the session's last claude process reported in its `initialize` reply (kept after it ends; `null` until one did; the pickers are disabled then). `null` for a session with no model information at all (Switchboard never ran a process for it and nothing is stored: the demo's seeded sessions show no pickers). Optional in `src/core/api.ts` (like D22's `title`) so older fixtures type-check; the server always sends it.
 - **SessionEvent.payload** gains the type `model` (`{ action: "changed" | "failed", model, effort, live?, request?, error? }`): a change is a `text` event labelled `Model: <the CLI's displayName> · effort: <level | default>`; a refusal an `error` event `Could not change the model: <text>` / `Could not change the effort: <text>` (the CLI's text verbatim in `error` and the label).
 
+## Ticket branches (D32, 2026-09-28, additive)
+Developer ruling D32 (`docs/decisions.md` → *Ticket branches and closing sessions*): whenever the developer creates a git worktree, its branch is named after the ticket instead of `session/{name}`: the Jira-style key, its number and a kebab-case description, `^[A-Z][A-Z0-9]*-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$` (e.g. `PROJ-0001-test-branch-name`), no prefix. Additive fields; the rows above keep their meaning. Details: `docs/worktrees.md` → *Ticket branches (D32)*, `docs/new-session.md` → *Ticket branch (D32)*, `docs/solutions.md` → *Conflicts*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/sessions | NewSession (+ `branch`) | 201 Session · 422 `invalid` `{ errors: [{ field: "branch" }] }` (with `worktrees: true`: missing, or not a ticket branch) · 409 `branch-exists` `{ message: "<repo> already has a branch <branch>" }` |
+| POST | /api/solutions/{repo}/isolate | IsolateRequest `{ sessionId, branch }` | 201 / 200 Worktree · 422 `invalid` `{ errors: [{ field: "sessionId" \| "branch" }] }` · 409 `branch-exists` (nothing is created or paused) · the other refusals as before |
+
+- **NewSession** (and the repo folder's `NewRepoSession`) gains `branch`: **required with `worktrees: true`**, a ticket branch once trimmed (never tidied by the server); the 422 messages: `name the branch after its ticket: the key, its number and a short description, e.g. PROJ-0001-short-description` (missing or blank) and `the branch must be a ticket key, its number and a short kebab-case description, e.g. PROJ-0001-short-description`. The worktree of every solution in scope is created on it (a workspace session: the same branch in each repo); a repo that has it already is 409 `branch-exists` and nothing is created. Without a worktree `branch` is not read. The worktree folders keep `../{repo}-wt-{name}`.
+- **IsolateRequest** (`POST /api/solutions/{repo}/isolate`, "Move … to worktree"): the contract's `{ sessionId }` gains the required `branch`, same rule and messages. A session that already has a worktree for the repo still gets it back unchanged (200).
+- **Unchanged:** scheduled runs (a schedule's template carries no `branch`; one sent is dropped when it is saved) keep `session/{run name}`; teleports (`POST /api/sessions/teleport`, D25) keep `session/{name}` before the CLI checks out the remote branch.
+- **Worktree.branch**, `SolutionBranch.branch`, `FileDiff.branch`, the answers block and the repo worktree note of the first message, and the "PR merged" item name the worktree's real branch (the stored one), so they show the ticket branch without new fields.
+
+```json
+NewSession     { …, "worktrees": true, "branch": "PROJ-0001-test-branch-name" }
+IsolateRequest { "sessionId": "…", "branch": "PROJ-0001-test-branch-name" }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

@@ -384,6 +384,65 @@
   cursor: progress;
 }
 
+/* D32: "Move … to worktree" asks for the new worktree's branch (the New-session Branch field's style, mono). */
+.sb-sol-move-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-sol-move-confirm-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.sb-sol-move-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-sol-move-branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 5px 9px;
+  font: 400 12px var(--font-mono);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-sol-move-branch::placeholder {
+  color: var(--muted-3);
+}
+
+.sb-sol-move-cancel {
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  padding: 4px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-sol-move-cancel:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-sol-move-branch-note {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  line-height: 1.4;
+  color: var(--muted-3);
+}
+
+.sb-sol-move-branch-note[data-ok='false'] {
+  color: var(--status-need);
+}
+
 .sb-sol-conflict-error {
   font-size: 12px;
   line-height: 1.45;

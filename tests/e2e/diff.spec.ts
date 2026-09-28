@@ -114,6 +114,8 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
     task: '[fake:write microfrontends/web-front-wt-diff-e2e/notes/plan.md]',
     solutions: ['web-front'],
     worktrees: true,
+    // D32: the worktree's branch is named after its ticket.
+    branch: 'PROJ-42-diff-e2e',
   });
   await expect.poll(() => sessionStatus(page, id), { timeout: 20_000 }).toBe('done');
   // The approved change is committed on the session branch; the README edit is not.
@@ -139,7 +141,7 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   const note = page.getByTestId('diff-note');
   const lines = page.getByTestId('diff-line');
   await expect(name).toHaveText('web-front / README.md');
-  await expect(branch).toHaveText('⎇ session/diff-e2e');
+  await expect(branch).toHaveText('⎇ PROJ-42-diff-e2e');
   await expect(note).toHaveText('Not committed. Commit only when you approve.');
   await expect(lines).toHaveText(['-hello', '+hello from the session']);
   await expect(lines.nth(0)).toHaveAttribute('data-tone', 'del');
@@ -225,7 +227,7 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await expect(lines).toHaveText(['+written by fake-claude']);
 
   // A session without changes: the prototype's empty state.
-  const clean = await startSession(page, { name: 'diff-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true });
+  const clean = await startSession(page, { name: 'diff-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true, branch: 'PROJ-43-diff-clean' });
   await expect.poll(() => sessionStatus(page, clean), { timeout: 20_000 }).toBe('done');
   await openWithHub(page, `${server.baseUrl}/sessions/${clean}/diff`);
   await expect(page.getByTestId('session-diff')).toHaveAttribute('data-state', 'empty');

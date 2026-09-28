@@ -87,6 +87,8 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
     const result = await validateNewSession(template, {
       // Runs get their own names (<schedule>-<MMDD>-<HHMM>); the schedule's name is checked among schedules below.
       nameTaken: async () => false,
+      // D32 *Unchanged*: runs keep `session/{name}`, so a template names no branch (one would clash from the second run on).
+      worktreeBranch: 'session',
       ...(checks.readOnly ? { readOnly: checks.readOnly } : {}),
       ...(checks.folder ? { folder: checks.folder } : {}),
     });

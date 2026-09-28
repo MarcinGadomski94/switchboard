@@ -9,5 +9,5 @@ Take them as the answers to the session-start questions: confirm them back in on
 - Phase: integration
 - Ultracode: on
 - Worktrees (one per solution; make every change there, not in the main checkout):
-  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-orchestrator-run (branch session/orchestrator-run)
-  - mobile: <workspace>/mobile-wt-orchestrator-run (branch session/orchestrator-run)
+  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-orchestrator-run (branch PROJ-0641-free-talk-gateway)
+  - mobile: <workspace>/mobile-wt-orchestrator-run (branch PROJ-0641-free-talk-gateway)

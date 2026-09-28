@@ -1,6 +1,7 @@
-import { type MouseEvent, useEffect, useState } from 'react';
+import { type MouseEvent, useEffect, useId, useState } from 'react';
 import type { HistoryItem, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
 import { formatHistoryDate } from '../../core/history.ts';
+import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -21,13 +22,16 @@ import {
   RECOMMENDED,
   STACK_OPTIONS,
   WORK_TYPE_OPTIONS,
+  branchCheck,
   canStart,
   chipGroups,
   folderChoices,
+  formBranch,
   formFromPrefill,
   isRepoFolder,
   resolveFormFolder,
   sanitizeName,
+  showsBranch,
   showsCoordination,
   showsQa,
   startErrorText,
@@ -146,8 +150,11 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * claude.ai/code URL or id field, offers only git repo folders, hides the router
  * sections and the toggles, and Start posts `POST /api/sessions/teleport`. D22:
  * the name field takes free text as the session's title; the summary's worktree
- * and branch lines show the short name derived from it, and Start posts both
- * (`startNames` in new-session.ts). Details: `docs/new-session.md`,
+ * lines show the short name derived from it, and Start posts both
+ * (`startNames` in new-session.ts). D32: while Start will create a worktree, a
+ * **Branch** row under the name names its branch after the ticket (pre-filled
+ * from a title that starts with a ticket key, tidied on blur, its check under
+ * it; Start waits for a valid one). Details: `docs/new-session.md`,
  * `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
@@ -243,6 +250,10 @@ export function NewSessionModal({
       ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
       : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
   const hideRouter = repo || resuming || remoting;
+  // D32: the Branch row, while Start will create a worktree on the developer's branch (not a schedule, move or teleport).
+  const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting;
+  const branchNoteId = useId();
+  const branchState = branchCheck(form);
   const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
   const title = scheduling ? (schedule.id ? 'Edit scheduled run' : 'New scheduled run') : 'New session';
   // D25: from a remote session, only git repo folders.
@@ -461,6 +472,32 @@ export function NewSessionModal({
                 />
               )}
             </div>
+            {branchShown ? (
+              <div className="sb-ns-branch" data-testid="ns-branch-row">
+                <input
+                  className="sb-ns-input sb-ns-input--name"
+                  data-testid="ns-branch"
+                  aria-label="Branch"
+                  aria-invalid={!branchState.ok}
+                  aria-describedby={branchNoteId}
+                  data-prefilled={form.branch === null ? 'true' : 'false'}
+                  value={formBranch(form)}
+                  placeholder={TICKET_BRANCH_EXAMPLE}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => update({ branch: event.target.value })}
+                  onBlur={() => {
+                    // Typed text is tidied on blur (the key upper case, the description kebab-case); a pre-filled name already is.
+                    if (form.branch === null) return;
+                    const tidy = tidyTicketBranch(form.branch);
+                    if (tidy !== form.branch) setForm((current) => ({ ...current, branch: tidy }));
+                  }}
+                />
+                <span id={branchNoteId} className="sb-ns-branch-note" data-testid="ns-branch-note" data-ok={branchState.ok ? 'true' : 'false'}>
+                  {branchState.ok ? (repo ? '⎇ the branch of the worktree' : '⎇ the branch of every worktree') : branchState.message}
+                </span>
+              </div>
+            ) : null}
             {remoting ? (
               <input
                 className="sb-ns-input"

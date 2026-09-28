@@ -40,12 +40,12 @@ const PARTS: Readonly<Record<string, PartSpec>> = {
 /**
  * Known differences, not findings. The prototype's toast carries hand-written mock
  * copy: a branch the demo made up and a one-line summary of its question. The app
- * shows real data (D13): the session's worktree branch (gap #1: `session/<name>`)
+ * shows real data (D13): the session's worktree branch (D32: its ticket branch, `PROJ-1-<name>` in the question world)
  * and the question verbatim (SPEC → Copy rules), which is one line shorter here, so
  * the toast and its text are shorter and the actions sit that much higher.
  */
 const KNOWN_COPY: Readonly<Record<string, { readonly prototype: string; readonly app: string }>> = {
-  branch: { prototype: 'acme-app-front ⎇ qa/free-talk-e2e', app: 'acme-app-front ⎇ session/qa-free-talk' },
+  branch: { prototype: 'acme-app-front ⎇ qa/free-talk-e2e', app: 'acme-app-front ⎇ PROJ-1-qa-free-talk' },
   text: { prototype: 'Confluence AC-7 and Figma disagree on the empty-state copy. Which one is the contract?', app: 'Which environment should I target?' },
 };
 
@@ -136,7 +136,7 @@ test('the toast matches the prototype (boxes ±2 px, copy, computed styles)', as
   });
   await world.startSession(appPage, 'qa-free-talk', '[fake:ask-delay] Ask me where to deploy.', true);
   await appPage.getByTestId('toast').waitFor();
-  await expect(appPage.getByTestId('toast').locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ session/qa-free-talk');
+  await expect(appPage.getByTestId('toast').locator('.sb-toast-branch')).toHaveText('acme-app-front ⎇ PROJ-1-qa-free-talk');
 
   const proto = await measureToast(protoPage);
   const app = await measureToast(appPage);
@@ -211,7 +211,7 @@ Every part also compares these computed styles: ${COMPARED_STYLES.join(', ')}.
 ${rows.join('\n')}
 
 ## Known differences (not findings)
-- \`branch\`: the prototype's mock branch \`qa/free-talk-e2e\`; the app shows the session's real worktree branch (\`session/qa-free-talk\`, gap #1).
+- \`branch\`: the prototype's mock branch \`qa/free-talk-e2e\`; the app shows the session's real worktree branch (\`PROJ-1-qa-free-talk\`, D32: the ticket branch the test names).
 - \`text\`: the prototype shows a hand-written summary of its question; the app shows the question verbatim (SPEC → Copy rules, D13), one line here, so the toast is ${round(shift)} px shorter.
 
 ## Findings

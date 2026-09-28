@@ -129,6 +129,8 @@ const FEATURE_SINGLE: NewSession = {
   qa: null,
   worktrees: true,
   ultracode: false,
+  // D32: the developer's ticket branch, which the worktree line names.
+  branch: 'PROJ-0640-free-talk-web',
 };
 
 const ORCHESTRATOR: NewSession = {
@@ -142,6 +144,8 @@ const ORCHESTRATOR: NewSession = {
   qa: null,
   worktrees: true,
   ultracode: true,
+  // D32: one ticket branch in every solution's repo.
+  branch: 'PROJ-0641-free-talk-gateway',
 };
 
 const QA: NewSession = {
@@ -183,14 +187,14 @@ describe('first-turn payload (M5.2) through POST /api/sessions + fake-claude', (
       expect((first?.payload as UserPayload).origin, file).toBe('task');
       expect((await s.store.sessions.get(session.id))?.task, file).toBe(body.task);
     }
-    // The worktrees named in the payloads exist on disk, on their session branches.
-    for (const [repo, name] of [
-      [g.web, 'feature-single'],
-      [g.web, 'orchestrator-run'],
-      [g.mobile, 'orchestrator-run'],
+    // The worktrees named in the payloads exist on disk, on the ticket branches (D32).
+    for (const [repo, name, branch] of [
+      [g.web, 'feature-single', 'PROJ-0640-free-talk-web'],
+      [g.web, 'orchestrator-run', 'PROJ-0641-free-talk-gateway'],
+      [g.mobile, 'orchestrator-run', 'PROJ-0641-free-talk-gateway'],
     ] as const) {
       const folder = path.join(path.dirname(repo), `${path.basename(repo)}-wt-${name}`);
-      expect(await g.git(folder, 'symbolic-ref', '--short', 'HEAD')).toBe(`session/${name}`);
+      expect(await g.git(folder, 'symbolic-ref', '--short', 'HEAD')).toBe(branch);
     }
     expect(await s.store.worktrees.list({ sessionId: (await s.store.sessions.getByName('qa-free-talk'))?.id ?? '' })).toEqual([]);
   });

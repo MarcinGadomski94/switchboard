@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import type { Folder, Schedule, Session } from '../../src/core/api.ts';
+import { BRANCH_REQUIRED } from '../../src/core/ticket-branch.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
@@ -259,8 +260,20 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   await expect(chip(modal, 'tool-repo')).toBeDisabled();
   await expect(chip(modal, 'tool-repo')).toHaveAttribute('data-fixed', 'true');
   await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree', 'Ultracode (workflows)']);
+  // D32: the worktree's branch is named after its ticket. A title that starts with a ticket key pre-fills it.
+  const branch = modal.getByTestId('ns-branch');
+  const start = modal.getByTestId('ns-start');
+  await modal.getByTestId('ns-name').fill('TOOL-7 Fix the tool');
+  await expect(branch).toHaveValue('TOOL-7-fix-the-tool');
+  await expect(branch).toHaveAttribute('data-prefilled', 'true');
+  await expect(modal.getByTestId('ns-branch-note')).toHaveText('⎇ the branch of the worktree');
+  await expect(start).toBeEnabled();
+  // It follows the title while the developer has not typed in it: a plain name leaves it empty, and Start waits.
   await modal.getByTestId('ns-name').fill('repo-fix');
   await modal.getByTestId('ns-task').fill('[fake:ask-2q] Fix the tool.');
+  await expect(branch).toHaveValue('');
+  await expect(modal.getByTestId('ns-branch-note')).toHaveText(BRANCH_REQUIRED);
+  await expect(start).toBeDisabled();
   expect(await summary(modal)).toEqual([
     '# claude code · background · Max',
     'folder    tool-repo · git repo',
@@ -268,29 +281,59 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     'ultracode off',
     ' ',
     '# worktree',
+    'branch    —',
+    '../tool-repo-wt-repo-fix',
+    '⚠ name the branch after its ticket',
+    ' ',
+    '✓ task + worktree note · no router answers',
+  ]);
+  // Typed text is tidied on blur into a ticket branch; Start is enabled.
+  await branch.fill('tool-7 Fix the tool');
+  await branch.blur();
+  await expect(branch).toHaveValue('TOOL-7-fix-the-tool');
+  await expect(start).toBeEnabled();
+  expect(await summary(modal)).toEqual([
+    '# claude code · background · Max',
+    'folder    tool-repo · git repo',
+    `cwd       ${path.join(tmp, 'tool-repo-wt-repo-fix')}`,
+    'ultracode off',
+    ' ',
+    '# worktree',
+    'branch    TOOL-7-fix-the-tool',
     '../tool-repo-wt-repo-fix',
     ' ',
     '✓ task + worktree note · no router answers',
   ]);
-  // Worktree off: the session would run in the repo itself.
+  // Worktree off: the session would run in the repo itself, and no branch is asked for.
   await modal.getByTestId('ns-switch-worktrees').click();
   expect((await summary(modal)).slice(2, 6)).toEqual([`cwd       ${repo}`, 'ultracode off', ' ', '# no worktree · edits in place']);
+  await expect(modal.getByTestId('ns-branch-row')).toHaveCount(0);
   await modal.getByTestId('ns-switch-worktrees').click();
 
   const posted = page.waitForRequest((request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions');
-  await modal.getByTestId('ns-start').click();
+  await start.click();
   const repoId = await folderId(page, 'tool-repo');
-  // D22, developer ruling: kebab-case text is posted as the title too.
-  expect((await posted).postDataJSON()).toEqual({ name: 'repo-fix', title: 'repo-fix', task: '[fake:ask-2q] Fix the tool.', folder: repoId, solutions: ['tool-repo'], worktrees: true, ultracode: false });
+  // D22, developer ruling: kebab-case text is posted as the title too. D32: the branch.
+  expect((await posted).postDataJSON()).toEqual({
+    name: 'repo-fix',
+    title: 'repo-fix',
+    task: '[fake:ask-2q] Fix the tool.',
+    folder: repoId,
+    solutions: ['tool-repo'],
+    worktrees: true,
+    ultracode: false,
+    branch: 'TOOL-7-fix-the-tool',
+  });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();
 
-  // The session runs in the repo's worktree (gap #1: ../{repo}-wt-{name}, branch session/{name}).
+  // The session runs in the repo's worktree (gap #1: ../{repo}-wt-{name}; D32: on the ticket branch, no session/{name}).
   const worktree = path.join(tmp, 'tool-repo-wt-repo-fix');
   const created = (await listSessions(page)).find((s) => s.name === 'repo-fix');
   expect(created).toMatchObject({ folder: repoId, folderPath: repo, folderKind: 'repo', cwd: worktree, solutions: ['tool-repo'], workType: null, mode: null, phase: null });
   expect(await exists(path.join(worktree, 'README.md'))).toBe(true);
-  expect(await git(repo, 'branch', '--list', 'session/repo-fix')).not.toBe('');
+  expect(await git(worktree, 'branch', '--show-current')).toBe('TOOL-7-fix-the-tool');
+  expect(await git(repo, 'branch', '--list', 'session/*')).toBe('');
   await expect.poll(fakeCwds).toEqual([worktree]);
   await expect(page.getByTestId('session-root')).toHaveText(`${worktree} · worktree of tool-repo`);
   await expect(page.getByTestId('handoff-cwd')).toHaveText(`cwd ${worktree}`);
@@ -299,6 +342,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   const first = events.find((event) => event.payload.type === 'user')?.payload.text ?? '';
   expect(first.split('\n')[0]).toBe('[fake:ask-2q] Fix the tool.');
   expect(first).toContain('Worktree note from Switchboard: this session runs in a git worktree, not in the main checkout of the repository.');
+  expect(first).toContain(`- Worktree: ${worktree} (branch TOOL-7-fix-the-tool, from main)`);
   expect(first).not.toContain('Session-start answers');
 
   // Tags: the session belongs to another folder than the default one.

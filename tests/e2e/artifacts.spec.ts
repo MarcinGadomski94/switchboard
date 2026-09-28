@@ -44,8 +44,21 @@ async function git(cwd: string, env: Record<string, string>, ...args: string[]):
   if (!succeeded(result)) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
 }
 
+/** D32: a session with worktrees names their branch after its ticket (`PAY-1-<name>`). */
 function newSession(name: string, task: string, worktrees: boolean): NewSession {
-  return { name, task, workType: 'feature', mode: 'single', solutions: ['alpha-front'], phase: 'ui-first', coordination: 'none', qa: null, worktrees, ultracode: false };
+  return {
+    name,
+    task,
+    workType: 'feature',
+    mode: 'single',
+    solutions: ['alpha-front'],
+    phase: 'ui-first',
+    coordination: 'none',
+    qa: null,
+    worktrees,
+    ultracode: false,
+    ...(worktrees ? { branch: `PAY-1-${name}` } : {}),
+  };
 }
 
 async function start(body: NewSession): Promise<Session> {
@@ -164,9 +177,9 @@ test.describe('real path (fake-claude, temp workspace + git worktree)', () => {
     await expect(page.getByTestId('artifact-row')).toHaveCount(6);
     expect(await rowLines(page)).toEqual([
       'CONTRACT | contracts/pay.md | root | pay-flow | ',
-      'DIFF | 2 files | alpha-front ⎇ session/pay-flow | pay-flow | ',
+      'DIFF | 2 files | alpha-front ⎇ PAY-1-pay-flow | pay-flow | ',
       'DIFF | mobile-followups · 1 file | mobile | docs-pay | ',
-      'DOC | docs/pay-notes.md | alpha-front ⎇ session/pay-flow | pay-flow | ',
+      'DOC | docs/pay-notes.md | alpha-front ⎇ PAY-1-pay-flow | pay-flow | ',
       'FOLLOWUP | mobile-followups/from-alpha-front.md | mobile | docs-pay | ',
       'QA | coverage-matrix.md | root | docs-pay | ',
     ]);
@@ -231,7 +244,8 @@ test.describe('real path (fake-claude, temp workspace + git worktree)', () => {
     await expect(page.getByTestId('artifacts-count')).toHaveText('1 of 6');
     await expect(page.locator('.sb-art-name')).toHaveText(['docs/pay-notes.md']);
 
-    await searchFor(page, 'SESSION/PAY-FLOW');
+    // D32: the worktree's ticket branch, matched case-insensitively.
+    await searchFor(page, 'pay-1-PAY-FLOW');
     await expect(page.getByTestId('artifacts-count')).toHaveText('2 of 6');
     expect((await page.locator('.sb-art-type').allTextContents()).sort()).toEqual(['DIFF', 'DOC']);
 
@@ -251,7 +265,7 @@ test.describe('real path (fake-claude, temp workspace + git worktree)', () => {
     await expect(page.getByTestId('artifacts-empty')).toHaveText('No artifacts match.');
     await searchFor(page, '');
     await expect(page.getByTestId('artifacts-count')).toHaveText('6 of 6');
-    expect(searches).toContain('SESSION/PAY-FLOW');
+    expect(searches).toContain('pay-1-PAY-FLOW');
     expect(searches).toContain('docs-pay');
   });
 

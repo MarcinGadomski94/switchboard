@@ -109,6 +109,16 @@ export interface PullRequestCheck {
   readonly error: string | null;
 }
 
+/** Options of {@link WorktreeManager.createForSession} and {@link WorktreeManager.isolate}. */
+export interface WorktreeBranchOptions {
+  /**
+   * D32: the branch the worktree(s) get, the same in every repo (a ticket branch
+   * the caller validated, `checkTicketBranch`). Omitted: `session/{name}` (gap #1;
+   * scheduled runs and teleports, D32 *Unchanged*).
+   */
+  readonly branch?: string;
+}
+
 /** Result of {@link WorktreeManager.isolate}. */
 export interface IsolateResult {
   readonly worktree: WorktreeRecord;
@@ -250,15 +260,23 @@ export class WorktreeManager implements DiffProvider {
 
   /**
    * Creates one worktree per solution of `folder` (gap #1: branch
-   * `session/{name}` from the repo's current HEAD, folder `../{repo}-wt-{name}`)
-   * and registers it. All or nothing: every precondition is checked first, and a
-   * failure part-way removes the worktrees this call made. `sessionId` may be set
-   * later with {@link assign}.
+   * `session/{name}` from the repo's current HEAD, folder `../{repo}-wt-{name}`;
+   * D32: the branch in `options`, the same in every repo, instead of
+   * `session/{name}`) and registers it. All or nothing: every precondition is
+   * checked first (a branch a repo has already is `branch-exists`, naming the
+   * repo), and a failure part-way removes the worktrees this call made.
+   * `sessionId` may be set later with {@link assign}.
    */
-  async createForSession(sessionName: string, solutions: readonly string[], folder: FolderRef, sessionId: string | null = null): Promise<WorktreeRecord[]> {
+  async createForSession(
+    sessionName: string,
+    solutions: readonly string[],
+    folder: FolderRef,
+    sessionId: string | null = null,
+    options: WorktreeBranchOptions = {},
+  ): Promise<WorktreeRecord[]> {
     const plans: Plan[] = [];
     for (const solution of solutions) {
-      const plan = await this.#plan(solution, sessionName, folder);
+      const plan = await this.#plan(solution, sessionName, folder, options.branch ?? worktreeBranch(sessionName));
       if (plans.some((other) => other.path === plan.path)) {
         throw new WorktreeError('path-exists', `"${solution}" names the same repository as another solution in scope`);
       }
@@ -307,9 +325,8 @@ export class WorktreeManager implements DiffProvider {
     return succeeded(result) && branch !== '' && branch !== 'HEAD' ? branch : null;
   }
 
-  async #plan(solution: string, sessionName: string, folder: FolderRef): Promise<Plan> {
+  async #plan(solution: string, sessionName: string, folder: FolderRef, branch: string): Promise<Plan> {
     const { repoPath } = await this.resolveRepo(solution, folder);
-    const branch = worktreeBranch(sessionName);
     const target = worktreePath(repoPath, sessionName);
     if ((await pathExists(target)) || (await this.#store.worktrees.getLiveByPath(target))) {
       throw new WorktreeError('path-exists', `${target} already exists`);
@@ -351,9 +368,10 @@ export class WorktreeManager implements DiffProvider {
    * telling it to move its work there. The developer's working tree is never
    * stashed, reset or checked out. A session that already has a worktree for `repo`
    * gets nothing new (`created: false`). Refused while the session is detached.
-   * `repo` resolves in the session's own folder (D14).
+   * `repo` resolves in the session's own folder (D14). D32: the worktree is on
+   * `options.branch` (the route requires it), else `session/{name}`.
    */
-  async isolate(repo: string, sessionId: string): Promise<IsolateResult> {
+  async isolate(repo: string, sessionId: string, options: WorktreeBranchOptions = {}): Promise<IsolateResult> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) throw new WorktreeError('session-not-found', `no session ${sessionId}`);
     const existing = (await this.#store.worktrees.list({ sessionId, repo }))[0];
@@ -363,7 +381,7 @@ export class WorktreeManager implements DiffProvider {
     if (!control) throw new Error('isolate needs the session supervisor');
     const folder = folderOfSession(session);
     if (!folder) throw new WorktreeError('folder-missing', `the session ${session.name} has no folder`);
-    const [worktree] = await this.createForSession(session.name, [repo], folder, session.id);
+    const [worktree] = await this.createForSession(session.name, [repo], folder, session.id, options);
     if (!worktree) throw new Error('no worktree was created');
     if (control.isLive(sessionId)) await control.pause(sessionId);
     await control.sendMessage(

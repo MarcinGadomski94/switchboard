@@ -11,7 +11,11 @@ import { GROUP_FOLDERS } from './derive/artifacts.ts';
 /** Prefix of the branch every Switchboard worktree gets (gap #1). */
 export const WORKTREE_BRANCH_PREFIX = 'session/';
 
-/** Gap #1: the branch of a session's worktree, `session/{name}`. */
+/**
+ * Gap #1: the branch of a session's worktree, `session/{name}`. D32: only where
+ * the developer names no branch (scheduled runs, teleports); a developer-created
+ * worktree is on its ticket branch (`src/core/ticket-branch.ts`).
+ */
 export function worktreeBranch(sessionName: string): string {
   return `${WORKTREE_BRANCH_PREFIX}${sessionName}`;
 }

@@ -68,6 +68,16 @@ export interface NewSession {
    * title (the name is shown).
    */
   readonly title?: string | null;
+  /**
+   * Additive (D32): the branch of the session's worktree(s), named after its
+   * ticket (`PROJ-0001-short-description`, `TICKET_BRANCH` in
+   * `src/core/ticket-branch.ts`). **Required** with `worktrees: true` (422 on
+   * field `branch` when it is missing or not a ticket branch); a workspace
+   * session uses it in every solution's repo; 409 `branch-exists` when a repo has
+   * it already. Not read without a worktree. Scheduled runs keep
+   * `session/{name}`.
+   */
+  readonly branch?: string | null;
 }
 
 /**
@@ -87,6 +97,8 @@ export interface NewRepoSession {
   readonly ultracode: boolean;
   /** Additive (D22): as {@link NewSession.title}. */
   readonly title?: string | null;
+  /** Additive (D32): as {@link NewSession.branch} (required with `worktrees: true`). */
+  readonly branch?: string | null;
 }
 
 /**
@@ -625,6 +637,20 @@ export interface ConflictSession {
   readonly repo: string;
   /** `false` while it continues in a terminal: isolating it is refused (409 `detached`) until it is attached again. */
   readonly attached: boolean;
+}
+
+/**
+ * `POST /api/solutions/{repo}/isolate` body ("Move … to worktree", gap #2 / M6.3):
+ * the contract's `{ sessionId }`, plus D32's `branch`.
+ */
+export interface IsolateRequest {
+  readonly sessionId: string;
+  /**
+   * Additive, required (D32): the new worktree's branch, named after the ticket
+   * (`PROJ-0001-short-description`); missing or not a ticket branch is 422 on
+   * field `branch`, a branch the repo has already is 409 `branch-exists`.
+   */
+  readonly branch: string;
 }
 
 /** codebase-memory freshness of a solution (`.claude/.codebase-memory-dirty`, M6.2 / M6.4). */

@@ -3,7 +3,7 @@ import type { ConflictSession, Solution } from '../../src/core/api.ts';
 import { createDemoProviders } from '../../src/server/demo/providers.ts';
 import { loadDemoData } from '../../src/server/demo/data.ts';
 import { ApiError } from '../../src/web/api/client.ts';
-import { conflictCard, isolateErrorText } from '../../src/web/views/solutions-conflict.ts';
+import { MOVE_CONFIRM, conflictCard, isolateErrorText, moveConfirmText } from '../../src/web/views/solutions-conflict.ts';
 
 function session(name: string, isolated: boolean, attached = true, title: string | null = null): ConflictSession {
   return { sessionId: `id-${name}`, name, title, isolated, repo: 'web-front', attached };
@@ -26,8 +26,16 @@ describe('conflictCard (M6.3)', () => {
     expect(conflictCard(input)).toEqual({
       text: "with-wt, in-place and away all write to microfrontends/web-front/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
       actions: [
-        { sessionId: 'id-in-place', repo: 'web-front', label: 'Move in-place to worktree', disabled: false, title: '' },
-        { sessionId: 'id-away', repo: 'web-front', label: 'Move away to worktree', disabled: true, title: 'away continues in a terminal; attach it here first' },
+        { sessionId: 'id-in-place', repo: 'web-front', label: 'Move in-place to worktree', disabled: false, title: '', sessionTitle: 'in-place', suggestedBranch: '' },
+        {
+          sessionId: 'id-away',
+          repo: 'web-front',
+          label: 'Move away to worktree',
+          disabled: true,
+          title: 'away continues in a terminal; attach it here first',
+          sessionTitle: 'away',
+          suggestedBranch: '',
+        },
       ],
     });
   });
@@ -41,8 +49,24 @@ describe('conflictCard (M6.3)', () => {
     expect(conflictCard(input)).toEqual({
       text: "with-wt, JIRA Ticket handling and Billing fixes all write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
       actions: [
-        { sessionId: 'id-jira-ticket-handling', repo: 'web-front', label: 'Move JIRA Ticket handling to worktree', disabled: false, title: '' },
-        { sessionId: 'id-away', repo: 'web-front', label: 'Move Billing fixes to worktree', disabled: true, title: 'Billing fixes continues in a terminal; attach it here first' },
+        {
+          sessionId: 'id-jira-ticket-handling',
+          repo: 'web-front',
+          label: 'Move JIRA Ticket handling to worktree',
+          disabled: false,
+          title: '',
+          sessionTitle: 'JIRA Ticket handling',
+          suggestedBranch: '',
+        },
+        {
+          sessionId: 'id-away',
+          repo: 'web-front',
+          label: 'Move Billing fixes to worktree',
+          disabled: true,
+          title: 'Billing fixes continues in a terminal; attach it here first',
+          sessionTitle: 'Billing fixes',
+          suggestedBranch: '',
+        },
       ],
     });
   });
@@ -53,8 +77,20 @@ describe('conflictCard (M6.3)', () => {
     expect(mobile).toBeDefined();
     expect(conflictCard(mobile as Solution)).toEqual({
       text: "free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
-      actions: [{ sessionId: 'button-rollout', repo: 'mobile', label: 'Move button-rollout to worktree', disabled: false, title: '' }],
+      actions: [{ sessionId: 'button-rollout', repo: 'mobile', label: 'Move button-rollout to worktree', disabled: false, title: '', sessionTitle: 'button-rollout', suggestedBranch: '' }],
     });
+  });
+
+  it('D32: the confirm step suggests the branch a ticket title gives, else nothing, and names the session and repo', () => {
+    const input: CardInput = {
+      conflict: true,
+      conflictSessions: [session('proj-1984', false, true, 'PROJ-1984 Purchase complete'), session('plain', false, true, 'Plain work'), session('untitled', false)],
+      relativePath: 'mobile',
+    };
+    const actions = conflictCard(input)?.actions ?? [];
+    expect(actions.map((a) => a.suggestedBranch)).toEqual(['PROJ-1984-purchase-complete', '', '']);
+    expect(moveConfirmText(actions[0] as (typeof actions)[number])).toBe('PROJ-1984 Purchase complete gets a new worktree of web-front. Name its branch after the ticket:');
+    expect(MOVE_CONFIRM).toBe('Move to worktree');
   });
 });
 

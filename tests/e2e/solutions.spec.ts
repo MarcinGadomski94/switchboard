@@ -104,6 +104,8 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
       solutions: ['web-front'],
       phase: 'integration',
       worktrees: true,
+      // D32: the worktree's branch is named after its ticket.
+      branch: 'PROJ-11-live-worktree',
     }),
   ).toBe(201);
   expect(
@@ -117,8 +119,8 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   ).toBe(201);
 
   // The view follows through /hub (sessionUpdated), without a reload.
-  // D22: the chip names the owner by its title (the short name as the tooltip); the branch and worktree keep the short name.
-  await expect(row(page, 'web-front').getByTestId('branch-chip')).toHaveText(['⎇ session/wt-liveweb-front-wt-wt-liveLive worktree'], { timeout: 15_000 });
+  // D22: the chip names the owner by its title (the short name as the tooltip); the worktree keeps the short name (D32: the branch is the ticket's).
+  await expect(row(page, 'web-front').getByTestId('branch-chip')).toHaveText(['⎇ PROJ-11-live-worktreeweb-front-wt-wt-liveLive worktree'], { timeout: 15_000 });
   await expect(row(page, 'web-front').locator('.sb-sol-chip-who')).toHaveAttribute('title', 'wt-live');
   await expect(row(page, 'web-front').locator('.sb-sol-changes')).toHaveText('+1', { timeout: 15_000 });
   await expect(row(page, 'web-front').locator('.sb-sol-phase')).toHaveText('integration');
@@ -130,7 +132,7 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   await expect(page.getByTestId('solutions-meta')).toHaveText(`${ws} · 5 solutions · 2 active`);
 
   // Detail of web-front: the worktree card, the session's contract artifact.
-  await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ session/wt-live../web-front-wt-wt-liveLive worktree']);
+  await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ PROJ-11-live-worktree../web-front-wt-wt-liveLive worktree']);
   await expect(detail.getByTestId('branch-card').locator('.sb-sol-card-owner span[title]')).toHaveAttribute('title', 'wt-live');
   await expect(detail.getByTestId('solution-artifact').filter({ has: page.locator('.sb-sol-art-tag', { hasText: /^CONTRACT$/ }) })).toHaveText('CONTRACTcontracts/free-talk.md');
 

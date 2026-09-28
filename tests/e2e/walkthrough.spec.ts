@@ -54,6 +54,8 @@ test('the whole product on the real path: session → question → answer → pa
   await modal.getByTestId('ns-name').fill(NAME);
   await modal.getByTestId('ns-task').fill('[fake:ask-2q] Ask me two questions.');
   await chip(modal, 'acme-app-front').click();
+  // D32: the worktree's branch is named after its ticket.
+  await modal.getByTestId('ns-branch').fill('PROJ-100-walkthrough');
   await expect(modal.getByTestId('ns-summary-line').filter({ hasText: `../acme-app-front-wt-${NAME}` })).toHaveCount(1);
   await modal.getByTestId('ns-start').click();
   await expect(modal).toHaveCount(0);

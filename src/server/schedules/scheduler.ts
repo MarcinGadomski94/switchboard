@@ -428,6 +428,8 @@ export class Scheduler {
         // D22: the run's title is the schedule's name (its short name stays `<schedule>-<MMDD>-<HHMM>`).
         const body = { ...template, folder, name: await this.#freeName(schedule.name, now), title: schedule.name };
         const outcome = await startNewSession(this.#sessions, body, {
+          // D32 *Unchanged*: a scheduled run's worktrees keep `session/{name}` (each run has its own name).
+          worktreeBranch: 'session',
           beforeSpawn: async (session) => {
             await this.#store.sessions.update(session.id, { scheduleId: schedule.id });
             await this.#store.schedules.updateRun(run.id, { sessionId: session.id });
