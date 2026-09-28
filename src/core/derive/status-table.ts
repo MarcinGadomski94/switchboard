@@ -16,7 +16,13 @@
  * trimmed). Anything else is not one. The table is kept as printed: its lines
  * verbatim, only their common indentation removed (a fenced box table without
  * its fence lines).
+ *
+ * D27: the overview draws the table as a readable table, so the kept text is also
+ * parsed into its header and rows ({@link parseStatusTable}), and each Status cell
+ * gets a status color ({@link reportedStatus}).
  */
+import type { SessionStatus } from '../model.ts';
+
 
 /** How a printed status table is drawn: box-drawing characters, or a GitHub-flavored pipe table. */
 export type StatusTableFormat = 'box' | 'gfm';
@@ -189,4 +195,259 @@ export function newestStatusTable(messages: Iterable<StatusTableMessage>): Newes
     if (table) return { ...table, at: message.at };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// D27: the printed table parsed into its header and rows, and the Status colors.
+// ---------------------------------------------------------------------------
+
+/** A printed status table split into cells (D27): the header's cells and each row's, as plain text, trimmed. */
+export interface ParsedStatusTable {
+  readonly header: string[];
+  /** Every row has as many cells as the header. */
+  readonly rows: string[][];
+}
+
+/** The lines that split a box table into row blocks: its top and bottom borders and its `├…┤` separators. */
+const BOX_RULES = new Set(['┌', '├', '┼', '└']);
+
+/**
+ * A box-drawing content line's cells (`│ a │ b │` → `a`, `b`, trimmed); `null`
+ * when the line does not start and end with `│` (e.g. a line cut short).
+ */
+function boxLineCells(line: string): string[] | null {
+  const body = line.trim();
+  if (body.length < 2 || !body.startsWith('│') || !body.endsWith('│')) return null;
+  return body
+    .slice(1, -1)
+    .split('│')
+    .map((cell) => cell.trim());
+}
+
+/** One row from several text lines: each column's non-blank pieces joined with a single space. */
+function joinLines(lines: readonly (readonly string[])[]): string[] {
+  const width = lines[0]?.length ?? 0;
+  const row: string[] = [];
+  for (let column = 0; column < width; column += 1) {
+    row.push(
+      lines
+        .map((line) => line[column] ?? '')
+        .filter((piece) => piece !== '')
+        .join(' '),
+    );
+  }
+  return row;
+}
+
+/** The index of the header's `Status` cell (trimmed, case-insensitive), `-1` without one. */
+export function statusColumnIndex(header: readonly string[]): number {
+  return header.findIndex((cell) => cell.trim().toLowerCase() === 'status');
+}
+
+/**
+ * The rows of a body without separator rows between its data rows: one row per
+ * line, except that a line whose first cell or Status cell is blank continues the
+ * row before it (a cell wrapped onto the next line).
+ */
+function rowsByLine(lines: readonly (readonly string[])[], status: number): string[][] {
+  const groups: Array<Array<readonly string[]>> = [];
+  for (const line of lines) {
+    const last = groups.at(-1);
+    const continues = last !== undefined && (line[0] === '' || (status >= 0 && line[status] === ''));
+    if (continues) last.push(line);
+    else groups.push([line]);
+  }
+  return groups.map(joinLines);
+}
+
+/**
+ * A box-drawing table's header and rows. The columns are the header line's
+ * `│`-separated cells (split on the `│` characters, so wide characters such as
+ * emoji never shift a column); the `┌` / `├…┤` / `└` lines split the table into
+ * blocks. The first block is the header; with separator rows between the data
+ * rows every further block is one row, its lines (a cell wrapped over lines)
+ * joined per column; without them ({@link rowsByLine}) every line is a row.
+ */
+function parseBoxTable(text: string): ParsedStatusTable | null {
+  const blocks: string[][][] = [];
+  let open = false;
+  for (const line of text.split(/\r?\n/)) {
+    const first = lead(line);
+    if (first === '') continue;
+    if (BOX_RULES.has(first)) {
+      open = false;
+      continue;
+    }
+    if (first !== '│') return null;
+    const cells = boxLineCells(line);
+    if (!cells) return null;
+    if (open) blocks.at(-1)?.push(cells);
+    else blocks.push([cells]);
+    open = true;
+  }
+  const width = blocks[0]?.[0]?.length ?? 0;
+  if (width === 0 || blocks.some((block) => block.some((cells) => cells.length !== width))) return null;
+  // A table without a rule under its header: the header is its first line.
+  const [head, ...body] = blocks.length === 1 ? [[blocks[0]?.[0] ?? []], blocks[0]?.slice(1) ?? []] : blocks;
+  const header = joinLines(head ?? []);
+  const nonEmpty = body.filter((block) => block.length > 0);
+  if (nonEmpty.length === 0) return null;
+  const rows = nonEmpty.length === 1 ? rowsByLine(nonEmpty[0] ?? [], statusColumnIndex(header)) : nonEmpty.map(joinLines);
+  return { header, rows };
+}
+
+/** Code spans: a run of backticks, the code, the same run again. */
+const CODE_SPAN = /(?<!`)(`+)(.+?)(?<!`)\1(?!`)/g;
+/** An ASCII punctuation character escaped with a backslash (CommonMark). */
+const ESCAPED = /\\([!-/:-@[-`{-~])/g;
+/** Escaped characters are parked in the Private Use Area while emphasis is removed, so `\*` stays a star. */
+const PARKED_BASE = 0xe000;
+const PARKED = /[-]/g;
+
+/** Inline Markdown outside code spans reduced to its text (links, images, emphasis, strikethrough, escapes). */
+function plainMarkdownText(text: string): string {
+  return text
+    .replace(ESCAPED, (_, char: string) => String.fromCharCode(PARKED_BASE + char.charCodeAt(0)))
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/g, '$1')
+    .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '$1')
+    .replace(/(^|[^\p{L}\p{N}_])__(?=\S)(.+?)(?<=\S)__(?![\p{L}\p{N}_])/gu, '$1$2')
+    .replace(/~~(?=\S)(.+?)(?<=\S)~~/g, '$1')
+    .replace(/\*(?=[^\s*])([^*]*?)(?<=[^\s*])\*/g, '$1')
+    .replace(/(^|[^\p{L}\p{N}_])_(?=[^\s_])([^_]*?)(?<=[^\s_])_(?![\p{L}\p{N}_])/gu, '$1$2')
+    .replace(PARKED, (char) => String.fromCharCode(char.charCodeAt(0) - PARKED_BASE));
+}
+
+/**
+ * A pipe-table cell as plain text: trimmed, `\|` unescaped, and inline Markdown
+ * reduced to its text (`**x**`, `__x__`, `*x*`, `_x_`, `~~x~~`, `` `x` ``,
+ * `[text](url)`, `![alt](url)` and `<url>` → their text; `\*` → `*`). A code
+ * span's content is kept verbatim.
+ */
+export function plainCellText(cell: string): string {
+  const text = cell.trim().replace(/\\\|/g, '|');
+  let out = '';
+  let from = 0;
+  for (const match of text.matchAll(CODE_SPAN)) {
+    out += plainMarkdownText(text.slice(from, match.index));
+    const code = match[2] ?? '';
+    out += code.length > 2 && code.startsWith(' ') && code.endsWith(' ') && code.trim() !== '' ? code.slice(1, -1) : code;
+    from = match.index + match[0].length;
+  }
+  return (out + plainMarkdownText(text.slice(from))).trim();
+}
+
+/** A GFM pipe table's header and rows (the delimiter row dropped), each cell through {@link plainCellText}. */
+function parsePipeTable(text: string): ParsedStatusTable | null {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
+  const [headLine, delimiter, ...body] = lines;
+  if (headLine === undefined || delimiter === undefined || body.length === 0) return null;
+  const header = pipeCells(headLine).map(plainCellText);
+  if (!isDelimiterRow(delimiter, header.length)) return null;
+  const rows = body.map((line) => pipeCells(line).map(plainCellText));
+  if (rows.some((row) => row.length !== header.length)) return null;
+  return { header, rows };
+}
+
+/**
+ * A printed status table (D27) split into its header and rows, every cell as plain
+ * text:
+ * - **box-drawing**: columns from the `│` separators of the header line; rows
+ *   split by the `├…┤` lines (and the `┌` / `└` borders); a row printed over
+ *   several lines (its cells wrapped) has each column's lines joined with a single
+ *   space, blank continuation pieces ignored; a table without separator rows
+ *   between its data rows has one row per line (a line whose first or Status cell
+ *   is blank continues the row before it);
+ * - **GFM pipe table**: the header and the rows under the delimiter row, `\|`
+ *   unescaped and inline Markdown reduced to text ({@link plainCellText}).
+ *
+ * `null` when the table has no header or no row, or when its lines do not all
+ * have the header's number of cells (a line cut short, a stray `│`): the overview
+ * then shows the table as printed.
+ */
+export function parseStatusTable(table: PrintedStatusTable): ParsedStatusTable | null {
+  return table.format === 'box' ? parseBoxTable(table.text) : parsePipeTable(table.text);
+}
+
+/** The status colors a reported Status cell can have: the SPEC status keys but `paused`. */
+export type ReportedStatus = Exclude<SessionStatus, 'paused'>;
+
+/** A reported Status cell: its color key and the text shown (its leading status glyphs removed). */
+export interface ReportedStatusCell {
+  readonly status: ReportedStatus;
+  readonly text: string;
+}
+
+/**
+ * The status emoji and glyphs (D27), checked before the words: the first one
+ * found in the cell decides. `️` (the emoji presentation selector) may follow.
+ */
+export const STATUS_GLYPHS: Readonly<Record<string, ReportedStatus>> = {
+  '🟢': 'run',
+  '✅': 'done',
+  '✓': 'done',
+  '🟡': 'need',
+  '⏳': 'need',
+  '⏸': 'need',
+  '❌': 'fail',
+  '✕': 'fail',
+  '🔴': 'fail',
+};
+
+/** The status words (D27), whole words and case-insensitive, checked when no glyph decided: the first one in the cell decides. */
+export const STATUS_WORDS: Readonly<Record<string, ReportedStatus>> = {
+  running: 'run',
+  testing: 'run',
+  'in progress': 'run',
+  done: 'done',
+  merged: 'done',
+  green: 'done',
+  queued: 'need',
+  waiting: 'need',
+  blocked: 'need',
+  needs: 'need',
+  failed: 'fail',
+};
+
+/** What a Status cell that holds only a status glyph reads (the derived table's words: `● running`, `✓ done`, `⏸ waiting`, `✕ failed`). */
+export const STATUS_GLYPH_WORDS: Readonly<Record<Exclude<ReportedStatus, 'idle'>, string>> = {
+  run: 'running',
+  done: 'done',
+  need: 'waiting',
+  fail: 'failed',
+};
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const GLYPH_ALTERNATIVES = Object.keys(STATUS_GLYPHS).map(escapeRegExp).join('|');
+const GLYPH = new RegExp(`(${GLYPH_ALTERNATIVES})`, 'u');
+const LEADING_GLYPHS = new RegExp(`^(?:(?:${GLYPH_ALTERNATIVES})\\uFE0F?\\s*)+`, 'u');
+const WORD = new RegExp(
+  `(?<![\\p{L}\\p{N}_])(${Object.keys(STATUS_WORDS)
+    .map((word) => escapeRegExp(word).replace(/ /g, '[\\s-]+'))
+    .join('|')})(?![\\p{L}\\p{N}_])`,
+  'iu',
+);
+
+/**
+ * A reported Status cell's color and text (D27). The color: the first status
+ * glyph in the cell ({@link STATUS_GLYPHS}), else the first status word
+ * ({@link STATUS_WORDS}, whole words, case-insensitive; `in progress` also with a
+ * hyphen), else `idle`. The text: the cell without its leading status glyphs; a
+ * cell that was only a glyph reads {@link STATUS_GLYPH_WORDS} (`🟢` → `running`).
+ */
+export function reportedStatus(cell: string): ReportedStatusCell {
+  const text = cell.trim();
+  const glyph = GLYPH.exec(text)?.[1];
+  const word = glyph === undefined ? WORD.exec(text)?.[1] : undefined;
+  const status: ReportedStatus =
+    (glyph !== undefined ? STATUS_GLYPHS[glyph] : undefined) ??
+    (word !== undefined ? STATUS_WORDS[word.toLowerCase().replace(/[\s-]+/g, ' ')] : undefined) ??
+    'idle';
+  const shown = text.replace(LEADING_GLYPHS, '').trim();
+  if (shown === '' && text !== '' && status !== 'idle') return { status, text: STATUS_GLYPH_WORDS[status] };
+  return { status, text: shown };
 }

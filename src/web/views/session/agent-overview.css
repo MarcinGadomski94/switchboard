@@ -5,6 +5,11 @@
  * description and solution muted; fixed columns that cut their text with … so the
  * table always fits the panel (the full text is each cell's tooltip). The printed
  * table reuses the chat's code block (box-drawing) or Markdown table (pipe).
+ * D27: the printed table is drawn with the derived table's classes (its column
+ * widths come inline from the view model), the Status with a status dot; the "as
+ * printed" text button opens the original in a popover over the main area.
+ * Nothing in the panel scrolls sideways: a table that cannot be parsed shows as
+ * printed but wrapped to the panel's width.
  */
 .sb-overview {
   display: flex;
@@ -79,15 +84,130 @@
   min-width: 0;
 }
 
-.sb-overview-reported-head {
+/* D27: the heading on the left, the "as printed" toggle on the right, both in the heading's muted mono. */
+.sb-overview-reported-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
   padding: 0 4px;
+}
+
+.sb-overview-reported-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 400 11px var(--font-mono);
   color: var(--muted-2);
 }
 
-/* A pipe table through the chat's renderer: mono meta type, scrolling sideways when wide (D20's table rules). */
+.sb-overview-printed-toggle {
+  flex: none;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-overview-printed-toggle:hover,
+.sb-overview-printed-toggle[aria-expanded='true'] {
+  color: var(--text-2);
+}
+
+/* D27: the reported Status cell's SPEC status dot (the agent card's 7 px dot), in the cell's status color. */
+.sb-overview-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 0;
+}
+
+/* The printed table: a pipe table through the chat's renderer in mono meta type (D20's table rules). */
 .sb-overview-printed {
   min-width: 0;
   font: 400 12px/1.5 var(--font-mono);
   color: var(--text-2);
 }
+
+/*
+ * D27: a table that cannot be parsed shows as printed in the panel, wrapped to its
+ * width instead of scrolling sideways (the unwrapped original is in the popover):
+ * the code block's lines wrap, a pipe table fills the width and wraps its cells.
+ */
+.sb-overview-printed-wrapped .sb-md pre {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sb-overview-printed-wrapped .sb-md pre code {
+  width: auto;
+  min-width: 0;
+}
+
+.sb-overview-printed-wrapped .sb-md table {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  overflow: visible;
+}
+
+.sb-overview-printed-wrapped .sb-md :where(th, td) {
+  overflow-wrap: anywhere;
+}
+
+/*
+ * D27: the "as printed" popover, over the main area left of the panel (placed by
+ * `printedPopoverPlace`, hidden until placed), like the header's Remote popover:
+ * bg-card, border-card, a large card radius, a shadow; the original table
+ * unwrapped, as wide as it is printed: a code block wider than the popover
+ * scrolls sideways inside itself (D20), a long one scrolls the popover's body.
+ */
+.sb-overview-pop {
+  position: fixed;
+  z-index: 20;
+  box-sizing: border-box;
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  visibility: hidden;
+}
+
+.sb-overview-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sb-overview-pop-label {
+  font: 500 10.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-overview-pop-close {
+  margin-left: auto;
+  padding: 0 2px;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-overview-pop-close:hover {
+  color: var(--text-2);
+}
+
+.sb-overview-pop-body {
+  min-height: 0;
+  overflow: auto;
+}
+

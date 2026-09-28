@@ -9,9 +9,15 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  *   per Agent / Task subagent in start order (`subagent-forward`), Agent ·
  *   Description · Solution · Status, with `—` for an agent without a solution;
  * - the newest status table the agent printed (`[fake:say]`) under "As reported by
- *   the agent · now": a box-drawing table in a code fence shown as printed in
- *   monospace (never wrapped), replaced by a newer box table, then by a GFM pipe
- *   table rendered as a table, kept when a later message has no table;
+ *   the agent · now", D27: drawn as table rows (every printed column, the Status
+ *   with its status dot and color, the leading emoji removed), with an "as printed"
+ *   toggle that opens and closes the original in a popover over the main area (a
+ *   box-drawing table in monospace, never wrapped); replaced by a newer box table,
+ *   then by a GFM pipe table drawn as rows too (inline Markdown as text; the
+ *   original through the chat's renderer), kept when a later message has no table;
+ *   a table that does not parse (a row with an extra cell; box or pipe) shows as
+ *   printed, wrapped to the panel; nothing in the panel scrolls sideways, with the
+ *   wide table shown and with the popover open;
  * - D19's live action and time in the main agent's Status cell while a tool runs
  *   (`interrupt-tool`'s slow Bash call), gone after Pause (`paused`).
  */
@@ -29,17 +35,31 @@ test.afterAll(async () => {
 const TASK = 'Build the agent overview.\nKeep it compact.';
 const SLOW_COMMAND = 'node -e "setTimeout(()=>console.log(1),20000)"';
 
+/** A wide box table (122 columns, wider than the panel) as an orchestrator prints it. */
 const BOX = [
-  '┌─────────────┬──────────────────────────┬──────────────────┬────────────┐',
-  '│ Agent       │ Description              │ Solution         │ Status     │',
-  '├─────────────┼──────────────────────────┼──────────────────┼────────────┤',
-  '│ 1. web      │ Free talk at 360         │ acme-app-front/  │ 🟢 running │',
-  '├─────────────┼──────────────────────────┼──────────────────┼────────────┤',
-  '│ 2. mobile   │ Free talk at 360         │ mobile/          │ 🟢 running │',
-  '└─────────────┴──────────────────────────┴──────────────────┴────────────┘',
+  '┌───────────┬──────────────────────────────────────────────────────────────┬────────────────────────────────┬────────────┐',
+  '│ Agent     │ Description                                                  │ Solution                       │ Status     │',
+  '├───────────┼──────────────────────────────────────────────────────────────┼────────────────────────────────┼────────────┤',
+  '│ 1. web    │ Free talk at 360: layout, tokens and the empty state (Figma) │ microfrontends/acme-app-front/ │ 🟢 running │',
+  '├───────────┼──────────────────────────────────────────────────────────────┼────────────────────────────────┼────────────┤',
+  '│ 2. mobile │ Free talk at 360: the same screen in MAUI                    │ mobile/                        │ 🟢 running │',
+  '└───────────┴──────────────────────────────────────────────────────────────┴────────────────────────────────┴────────────┘',
 ];
 const BOX_NEWER = BOX.map((line) => line.replace('🟢 running', '✅ done   '));
-const PIPE = ['| Agent | Description | Status |', '|:--|---|--:|', '| web | Free talk at 360 | done |', '| mobile | Free talk at 360 | done |'];
+const PIPE = [
+  '| Agent | Description | Status |',
+  '|:--|---|--:|',
+  '| **web** | Free talk at [360](https://example.com/360) | done |',
+  '| mobile | Free talk at 360 | ⏳ queued |',
+];
+/** D27: a pipe status table whose row has an extra cell, and a description far wider than the panel. */
+const PIPE_MALFORMED = [
+  '| Agent | Description | Status |',
+  '|---|---|---|',
+  '| web | Free talk at 360, then 640, 768 and 1024, each against its Figma frame, with the empty state and the loading skeleton | done | extra |',
+];
+/** D27: a status table whose second row has an extra cell (a stray │): it cannot be parsed, so it shows as printed. */
+const BOX_MALFORMED = BOX.map((line, i) => (i === 5 ? line.replace('│ 🟢 running │', '│ 🟢 running │ x │') : line));
 
 async function detail(page: Page, id: string): Promise<SessionDetail> {
   return page.evaluate(async (sessionId) => {
@@ -74,6 +94,23 @@ async function turn(page: Page, id: string, text: string): Promise<void> {
 
 function say(reply: string): string {
   return `Report the status. [fake:say ${JSON.stringify(reply)}]`;
+}
+
+/** A CSS color (e.g. `var(--status-run)`) as the page computes it. */
+async function computedColor(page: Page, value: string): Promise<string> {
+  return page.evaluate((color) => {
+    const probe = document.createElement('span');
+    probe.style.color = color;
+    document.body.append(probe);
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+    return computed;
+  }, value);
+}
+
+/** D27 (developer: the right panel never scrolls sideways): nothing in it is wider than the panel. */
+async function expectNoSidewaysScroll(panel: Locator): Promise<void> {
+  expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 }
 
 /** Every line of a box table is one rendered line: the block is exactly as tall as its lines (never wrapped). */
@@ -113,14 +150,9 @@ test('derived table (main agent, a subagent), the printed status table as report
   await expect(overview.getByTestId('overview-status')).toHaveText(['✓ done']);
   await expect(overview.getByTestId('overview-reported')).toHaveCount(0);
   // In the SPEC status color (done), like the agent card's status slot.
-  const doneColor = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    probe.style.color = 'var(--status-done)';
-    document.body.append(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  });
+  const doneColor = await computedColor(page, 'var(--status-done)');
+  const runColor = await computedColor(page, 'var(--status-run)');
+  const needColor = await computedColor(page, 'var(--status-need)');
   await expect(overview.getByTestId('overview-status').first()).toHaveCSS('color', doneColor);
 
   // An Agent call adds the subagent's row, after the main agent's.
@@ -133,42 +165,133 @@ test('derived table (main agent, a subagent), the printed status table as report
   // The rows follow the agent cards (same agents, same order).
   await expect(panel.getByTestId('agent-name')).toHaveText(['acme-app-front', 'general-purpose']);
 
-  // The agent prints a box-drawing status table in a code fence: repeated as printed, in monospace, never wrapped.
+  // The agent prints a wide box-drawing status table in a code fence. D27: drawn as table rows, like the derived table.
   await turn(page, id, say(['Status:', '', '```', ...BOX, '```', '', 'Waiting on web.'].join('\n')));
   const reported = overview.getByTestId('overview-reported');
   await expect(reported).toHaveAttribute('data-format', 'box');
+  await expect(reported).toHaveAttribute('data-parsed', 'true');
   await expect(overview.getByTestId('overview-reported-head')).toHaveText('As reported by the agent · now');
-  const printed = overview.getByTestId('overview-printed');
-  const code = printed.locator('pre code');
+  const table = overview.getByTestId('overview-reported-table');
+  await expect(table.getByTestId('overview-reported-column')).toHaveText(['Agent', 'Description', 'Solution', 'Status']);
+  const reportedRows = table.getByTestId('overview-reported-row');
+  await expect(reportedRows).toHaveCount(2);
+  await expect(reportedRows.nth(0).getByTestId('overview-reported-cell')).toHaveText([
+    '1. web',
+    'Free talk at 360: layout, tokens and the empty state (Figma)',
+    'microfrontends/acme-app-front/',
+    'running',
+  ]);
+  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['2. mobile', 'Free talk at 360: the same screen in MAUI', 'mobile/', 'running']);
+  expect(await reportedRows.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-status')))).toEqual(['run', 'run']);
+  const statusCells = table.locator('[data-kind="status"]');
+  await expect(statusCells).toHaveCount(2);
+  await expect(statusCells.first()).toHaveAttribute('data-status', 'run');
+  await expect(statusCells.first()).toHaveCSS('color', runColor);
+  await expect(statusCells.first().getByTestId('overview-reported-dot')).toHaveCSS('background-color', runColor);
+  // Cut with …, the full text as the tooltip; the derived table's classes; nothing wider than the panel.
+  const description = reportedRows.nth(0).getByTestId('overview-reported-cell').nth(1);
+  await expect(description).toHaveAttribute('title', 'Free talk at 360: layout, tokens and the empty state (Figma)');
+  await expect(description).toHaveCSS('text-overflow', 'ellipsis');
+  await expect(table).toHaveClass(/sb-overview-table/);
+  await expect(table).toHaveCSS('table-layout', 'fixed');
+  expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expectNoSidewaysScroll(panel);
+  await expect(overview.getByTestId('overview-printed')).toHaveCount(0);
+
+  // "as printed" opens the original in a popover over the main area, as D21 showed it: monospace, never wrapped.
+  const toggle = overview.getByTestId('overview-printed-toggle');
+  const popover = page.getByTestId('overview-printed-popover');
+  await expect(toggle).toHaveText('as printed');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(popover).toHaveCount(0);
+  await toggle.click();
+  await expect(popover).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(popover).toHaveAttribute('role', 'dialog');
+  const code = popover.locator('pre code');
   expect(await code.evaluate((el) => el.textContent)).toBe(BOX.join('\n'));
-  await expect(printed.locator('pre')).toHaveCSS('white-space', 'pre');
-  await expect(printed.locator('pre')).toHaveCSS('overflow-x', 'auto');
-  await expect(printed.locator('pre')).toHaveCSS('font-family', /Geist Mono/);
+  await expect(popover.locator('pre')).toHaveCSS('white-space', 'pre');
+  await expect(popover.locator('pre')).toHaveCSS('font-family', /Geist Mono/);
   await expectUnwrapped(code, BOX.length);
   // The same block the chat shows for that message (D20).
   const chatBlock = page.getByTestId('session-chat').locator('pre code').last();
   expect(await chatBlock.evaluate((el) => el.textContent?.replace(/\n$/, ''))).toBe(BOX.join('\n'));
-  // The panel does not scroll sideways: the wide table scrolls inside its block.
-  expect(await panel.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  // Left of the panel, inside the window; the whole table fits in it at 1440 px; the panel still does not scroll sideways.
+  const [popBox, panelBox] = [await popover.boundingBox(), await panel.boundingBox()];
+  expect(popBox && panelBox && popBox.x >= 0 && popBox.x + popBox.width <= panelBox.x).toBe(true);
+  expect(await popover.locator('pre').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expectNoSidewaysScroll(panel);
+  // Esc closes it; the toggle opens and closes it.
+  await page.keyboard.press('Escape');
+  await expect(popover).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(popover).toBeVisible();
+  await toggle.click();
+  await expect(popover).toHaveCount(0);
+  await toggle.click();
 
-  // A newer printed table replaces it.
+  // A newer printed table replaces it: the rows and the open popover follow.
   await turn(page, id, say(['```', ...BOX_NEWER, '```'].join('\n')));
+  await expect(statusCells).toHaveText(['done', 'done']);
+  await expect(statusCells.first()).toHaveAttribute('data-status', 'done');
+  await expect(statusCells.first()).toHaveCSS('color', doneColor);
   await expect.poll(async () => code.evaluate((el) => el.textContent)).toBe(BOX_NEWER.join('\n'));
   await expect(overview.getByTestId('overview-reported')).toHaveCount(1);
+  // A click outside it closes it.
+  await overview.locator('.sb-overview-label').click();
+  await expect(popover).toHaveCount(0);
 
-  // A GFM pipe table replaces it too and renders as a table (D20 renderer).
+  // A GFM pipe table replaces it too and is drawn as rows: inline Markdown as text, the Status colored.
   await turn(page, id, say(['All agents:', '', ...PIPE].join('\n')));
   await expect(reported).toHaveAttribute('data-format', 'gfm');
-  await expect(printed.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
-  await expect(printed.locator('tbody tr')).toHaveCount(2);
-  await expect(printed.locator('tbody tr').first().locator('td')).toHaveText(['web', 'Free talk at 360', 'done']);
-  await expect(printed.locator('pre')).toHaveCount(0);
+  await expect(table.getByTestId('overview-reported-column')).toHaveText(['Agent', 'Description', 'Status']);
+  await expect(reportedRows).toHaveCount(2);
+  await expect(reportedRows.nth(0).getByTestId('overview-reported-cell')).toHaveText(['web', 'Free talk at 360', 'done']);
+  await expect(reportedRows.nth(1).getByTestId('overview-reported-cell')).toHaveText(['mobile', 'Free talk at 360', 'queued']);
+  await expect(statusCells.nth(0)).toHaveCSS('color', doneColor);
+  await expect(statusCells.nth(1)).toHaveAttribute('data-status', 'need');
+  await expect(statusCells.nth(1)).toHaveCSS('color', needColor);
+  // Its original goes through the chat's renderer (D20), as D21 showed it.
+  await toggle.click();
+  await expect(popover).toHaveAttribute('data-format', 'gfm');
+  await expect(popover.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
+  await expect(popover.locator('tbody tr')).toHaveCount(2);
+  await expect(popover.locator('tbody tr').first().locator('td')).toHaveText(['web', 'Free talk at 360', 'done']);
+  await expect(popover.locator('tbody tr').first().locator('strong')).toHaveText('web');
+  await expect(popover.locator('pre')).toHaveCount(0);
+  await popover.getByTestId('overview-printed-close').click();
+  await expect(popover).toHaveCount(0);
 
   // A later message without a status table (or with a table that is not one) keeps it.
   await turn(page, id, say(['Nothing new.', '', '| File | Lines |', '|---|---|', '| a.ts | 12 |'].join('\n')));
   await expect(reported).toHaveAttribute('data-format', 'gfm');
-  await expect(printed.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
+  await expect(table.getByTestId('overview-reported-column')).toHaveText(['Agent', 'Description', 'Status']);
   expect((await detail(page, id)).reportedTable).toMatchObject({ format: 'gfm', text: PIPE.join('\n') });
+
+  // A status table that does not parse (a row with an extra cell) shows as printed in the panel, wrapped to its width.
+  await turn(page, id, say(['```', ...BOX_MALFORMED, '```'].join('\n')));
+  await expect(reported).toHaveAttribute('data-format', 'box');
+  await expect(reported).toHaveAttribute('data-parsed', 'false');
+  await expect(table).toHaveCount(0);
+  const printed = overview.getByTestId('overview-printed');
+  await expect.poll(async () => printed.locator('pre code').evaluate((el) => el.textContent)).toBe(BOX_MALFORMED.join('\n'));
+  await expect(printed.locator('pre')).toHaveCSS('white-space', 'pre-wrap');
+  expect(await printed.locator('pre').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expectNoSidewaysScroll(panel);
+  // "as printed" still opens the unwrapped original.
+  await toggle.click();
+  await expectUnwrapped(popover.locator('pre code'), BOX_MALFORMED.length);
+  await expectNoSidewaysScroll(panel);
+  await page.keyboard.press('Escape');
+  await expect(popover).toHaveCount(0);
+  // A pipe table that does not parse shows through the chat's renderer, its table as wide as the panel, its cells wrapped.
+  await turn(page, id, say(PIPE_MALFORMED.join('\n')));
+  await expect(reported).toHaveAttribute('data-format', 'gfm');
+  await expect(reported).toHaveAttribute('data-parsed', 'false');
+  await expect(printed.locator('th')).toHaveText(['Agent', 'Description', 'Status']);
+  expect(await printed.locator('table').evaluate((el) => el.getBoundingClientRect().right <= (el.parentElement?.getBoundingClientRect().right ?? 0) + 0.5)).toBe(true);
+  await expectNoSidewaysScroll(panel);
 
   // D19: while a tool runs, the main agent's Status cell shows its live action and time (the running blue).
   await send(page, id, '[fake:interrupt-tool] Run the slow command.');
