@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HistoryItem } from '../../core/api.ts';
-import { formatHistoryDate, historyBranchLine } from '../../core/history.ts';
+import { REMOTE_CONTROL_BADGE, formatHistoryDate, historyBranchLine } from '../../core/history.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
@@ -219,6 +219,12 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
         <span className="sb-hist-mode">
           <FolderTag name={folderTag} title={item.folderPath} />
           {item.mode}
+          {/* D24: the conversation had Remote Control on (a `bridge-session` line in its transcript). */}
+          {item.remoteControl ? (
+            <span className="sb-hist-badge" data-testid="history-remote-badge" title="This conversation had Remote Control on (claude.ai / the Claude app)">
+              {REMOTE_CONTROL_BADGE}
+            </span>
+          ) : null}
         </span>
       </div>
       <div className="sb-hist-sumcol">

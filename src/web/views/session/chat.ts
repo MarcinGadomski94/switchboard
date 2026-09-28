@@ -2,6 +2,7 @@ import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
 import type { Question, SessionEvent } from '../../../core/api.ts';
 import type {
   AssistantPayload,
+  RemotePayload,
   RequestPayload,
   ResultPayload,
   ToolPayload,
@@ -105,8 +106,13 @@ export function stepMark(event: SessionEvent): StepMark | null {
     case 'request': {
       const request = payload as RequestPayload;
       if (request.state === 'open') return '⏸';
+      // D24: the phone answered it first (Remote Control).
+      if (request.answeredOn) return '✓';
       return request.state === 'responded' && request.behavior === 'allow' ? '✓' : '✕';
     }
+    case 'remote':
+      // D24: Remote Control turned on / off, or a remote_control request failed.
+      return (payload as RemotePayload).action === 'failed' ? '✕' : '✓';
     case 'denied':
       return '✕';
     case 'mode-mismatch':
@@ -119,9 +125,27 @@ export function stepMark(event: SessionEvent): StepMark | null {
   }
 }
 
-/** `true` while a batch waits for the developer: some question has no answer yet (open or stale; M3.1). */
-export function batchWaiting(questions: readonly Pick<Question, 'answeredAt'>[]): boolean {
+/**
+ * `true` while a batch waits for the developer: some question has no answer yet
+ * (open or stale; M3.1). D24: a batch answered on claude.ai (`answeredOn`) waits no more.
+ */
+export function batchWaiting(questions: readonly Pick<Question, 'answeredAt' | 'answeredOn'>[]): boolean {
+  if (questions.some((question) => question.answeredOn)) return false;
   return questions.some((question) => question.answeredAt === null);
+}
+
+/** D24: what the answers bubble says for a batch the phone answered first (Remote Control). */
+export function answeredOnText(answeredOn: string): string {
+  return `Answered on ${answeredOn}`;
+}
+
+/**
+ * A step line's label: the event's, plus ` · answered on claude.ai` for a
+ * permission request the phone answered first (D24).
+ */
+export function stepLabel(event: SessionEvent): string {
+  const payload = payloadOf(event) as Partial<RequestPayload> | null;
+  return payload?.type === 'request' && payload.answeredOn ? `${event.label} · answered on ${payload.answeredOn}` : event.label;
 }
 
 /** Questions grouped by batch, in the order the batches first appear. */
@@ -164,7 +188,7 @@ export function chatItems(events: readonly SessionEvent[], questions: readonly Q
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: '', steps: [] };
       out.push(block);
     }
-    block.steps.push({ id: event.id, mark, label: event.label });
+    block.steps.push({ id: event.id, mark, label: stepLabel(event) });
   };
 
   const main = [...events].filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);

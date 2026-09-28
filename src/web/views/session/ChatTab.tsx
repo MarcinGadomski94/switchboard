@@ -14,6 +14,7 @@ import {
   type ChatItem,
   QUICK_REPLIES,
   QUICK_REPLIES_LABEL,
+  answeredOnText,
   chatItems,
   composerPlaceholder,
   draftToSend,
@@ -173,6 +174,17 @@ function ChatItemView({
         error={mine?.error ?? null}
         onSend={(body) => onAnswer(item.batchId, body)}
       />
+    );
+  }
+  // D24: the phone answered it first (Remote Control): the CLI withdrew it, so Switchboard holds no answers.
+  const answeredOn = item.questions.find((question) => question.answeredOn)?.answeredOn ?? null;
+  if (answeredOn) {
+    return (
+      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId} data-answered-on={answeredOn}>
+        <div className="sb-chat-answers-bubble">
+          <div data-testid="chat-answer">{answeredOnText(answeredOn)}</div>
+        </div>
+      </div>
     );
   }
   return (

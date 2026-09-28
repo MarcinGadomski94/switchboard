@@ -264,6 +264,14 @@
   white-space: nowrap;
 }
 
+/* D24: the phone glyph of a running session with Remote Control on (not in the prototype; no row changes otherwise). */
+.sb-session-remote {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--status-done);
+}
+
 .sb-session-age {
   margin-left: auto;
   font: 400 11px var(--font-mono);

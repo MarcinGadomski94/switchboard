@@ -26,8 +26,12 @@ export interface QuestionWorld {
   stop(): Promise<void>;
 }
 
-/** Starts the world (the server is stopped and the temp folder removed by `stop()`). */
-export async function startQuestionWorld(label: string): Promise<QuestionWorld> {
+/**
+ * Starts the world (the server is stopped and the temp folder removed by `stop()`).
+ * `options.env` adds variables to the server's env, which its fake-claude children
+ * inherit (additive, D24: e.g. `FAKE_CLAUDE_REMOTE_CONTROL=unavailable`).
+ */
+export async function startQuestionWorld(label: string, options: { readonly env?: Record<string, string> } = {}): Promise<QuestionWorld> {
   const tmp = await realpath(await makeTempDir(label));
   try {
     const workspace = path.join(tmp, 'work space');
@@ -64,6 +68,7 @@ export async function startQuestionWorld(label: string): Promise<QuestionWorld> 
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),
       FAKE_GH_PRS: prsFile,
+      ...options.env,
     });
     return {
       server,

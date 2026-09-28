@@ -126,6 +126,55 @@ export function attachWarningText(reasons: readonly AttachWarningReason[], now: 
 export const ATTACH_ANYWAY = 'Attach anyway';
 export const CANCEL = 'Cancel';
 
+/** D24: the Remote toggle's label. */
+export const REMOTE_LABEL = 'Remote';
+
+/** D24: the button that opens the link and QR popover while Remote is on. */
+export const REMOTE_LINK_LABEL = 'Link & QR';
+
+/** D24: the popover's note, verbatim from the ruling. */
+export const REMOTE_NOTE = "While Remote is on, the transcript is stored on Anthropic's servers.";
+
+/** What the header's Remote toggle shows (D24, `docs/remote-control.md`). */
+export interface RemoteToggle {
+  /** Remote is on for the session (a paused session stays on and reconnects on resume). */
+  readonly on: boolean;
+  /** Off-limits right now; {@link reason} says why (the tooltip). */
+  readonly disabled: boolean;
+  /** Why the toggle is disabled, `null` while it can be clicked. */
+  readonly reason: string | null;
+  /** The tooltip: the reason, else what a click does. */
+  readonly title: string;
+  /** The claude.ai link of the bridge while Remote is on, else `null`. */
+  readonly url: string | null;
+}
+
+/**
+ * The Remote toggle for `session` (D24), or `null` when the session has no Remote
+ * state (`remote: null`: a session Switchboard never ran a process for, i.e. the
+ * demo's; no toggle). It is enabled only while the session has a live process
+ * whose `initialize` reported Remote Control available; otherwise it is disabled
+ * with the reason as its tooltip. Remote stays on while paused (the next process
+ * reconnects), so a paused session can show it on and disabled.
+ */
+export function remoteToggle(session: Pick<Session, 'remote' | 'live' | 'attached'>): RemoteToggle | null {
+  const remote = session.remote;
+  if (!remote) return null;
+  const on = remote.enabled;
+  const url = on ? remote.url : null;
+  let reason: string | null = null;
+  if (!session.attached) reason = 'The session continues in a terminal: attach it here first.';
+  else if (!session.live) {
+    reason = on
+      ? 'Remote is on and reconnects when the session resumes: it needs a running claude process.'
+      : 'Remote needs a running claude process: resume the session first.';
+  } else if (!remote.available) {
+    reason = "Remote Control is not available here: claude's initialize did not report remote_control_available (it needs a claude.ai subscription login).";
+  }
+  const title = reason ?? (on ? 'Turn Remote Control off' : 'Reachable from phone: turn Remote Control on (claude.ai and the Claude app)');
+  return { on, disabled: reason !== null, reason, title, url };
+}
+
 /** A refused header action, in words (the server's `message` when it has one). */
 export function actionErrorText(status: number, body: unknown): string {
   const message = body && typeof body === 'object' && typeof (body as { message?: unknown }).message === 'string' ? (body as { message: string }).message : null;

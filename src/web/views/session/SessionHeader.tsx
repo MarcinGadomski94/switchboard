@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { InlineTitle } from '../../components/InlineTitle.tsx';
+import { PhoneGlyph } from '../../components/PhoneGlyph.tsx';
 import { Link, type SessionTab } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
@@ -9,12 +10,16 @@ import {
   ATTACH_HERE,
   CANCEL,
   CONTINUE_IN_TERMINAL,
+  REMOTE_LABEL,
+  REMOTE_LINK_LABEL,
   actionErrorText,
   attachWarningText,
   pauseButton,
+  remoteToggle,
   rootLine,
   tabLabels,
 } from './session-header.ts';
+import { RemotePopover } from './RemotePopover.tsx';
 
 /** Props of {@link SessionHeader}. */
 export interface SessionHeaderProps {
@@ -48,11 +53,19 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  * shows the command). "⇄ Attach here" = `POST /attach`; when a terminal may still
  * hold the session (gap #5) the service answers 409 `attach-warning`, the warning
  * shows here, and "Attach anyway" repeats it with `{ confirm: true }`.
+ *
+ * D24: a **Remote** toggle before Pause (`PUT /api/sessions/{id}/remote`), off by
+ * default, disabled with the reason as its tooltip unless the process is live and
+ * Remote Control is available; while it is on, "Link & QR" opens the popover (the
+ * claude.ai link, its QR code, the transcript note), which also opens by itself
+ * once Remote is turned on. A refusal shows the server's text (the CLI's, verbatim).
+ * Sessions without Remote state (`remote: null`, the demo's) show no toggle.
  */
 export function SessionHeader({ sessionId, session, missing, tab, files, artifacts, onChanged }: SessionHeaderProps) {
-  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | null>(null);
+  const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | null>(null);
   const [warning, setWarning] = useState<readonly AttachWarningReason[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [popover, setPopover] = useState(false);
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -73,6 +86,32 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
 
   const pause = session ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
+  const remote = session ? remoteToggle(session) : null;
+
+  // D24: on → off (or on and back) never leaves the popover of an old link open.
+  const remoteUrl = remote?.url ?? null;
+  useEffect(() => {
+    if (remoteUrl === null) setPopover(false);
+  }, [remoteUrl]);
+  // …nor the popover of another session when the view switches sessions.
+  useEffect(() => setPopover(false), [sessionId]);
+
+  const toggleRemote = async (): Promise<void> => {
+    if (!remote || remote.disabled || busy) return;
+    const enabled = !remote.on;
+    setBusy('remote');
+    setError(null);
+    try {
+      const updated = await api.setRemote(sessionId, enabled);
+      // Turned on: show the link and the QR code at once.
+      setPopover(enabled && (updated.remote?.url ?? null) !== null);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? actionErrorText(caught.status, caught.body) : actionErrorText(0, null));
+    } finally {
+      setBusy(null);
+      onChanged();
+    }
+  };
 
   return (
     <div className="sb-sv-header" data-testid="session-header" data-session-id={sessionId}>
@@ -89,6 +128,39 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
           {missing ? 'no such session' : session ? rootLine(session) : ''}
         </div>
         <div className="sb-sv-actions">
+          {remote ? (
+            <div className="sb-sv-remote" data-testid="session-remote">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={remote.on}
+                className="sb-button sb-sv-action sb-sv-remote-toggle"
+                data-testid="session-remote-toggle"
+                data-state={remote.on ? 'on' : 'off'}
+                data-reason={remote.reason ?? undefined}
+                disabled={remote.disabled || busy !== null}
+                aria-busy={busy === 'remote' || undefined}
+                title={remote.title}
+                onClick={() => void toggleRemote()}
+              >
+                <PhoneGlyph className="sb-sv-remote-glyph" />
+                {REMOTE_LABEL}
+              </button>
+              {remote.url ? (
+                <button
+                  type="button"
+                  className="sb-button sb-sv-action"
+                  data-testid="session-remote-link"
+                  aria-expanded={popover}
+                  aria-haspopup="dialog"
+                  onClick={() => setPopover((open) => !open)}
+                >
+                  {REMOTE_LINK_LABEL}
+                </button>
+              ) : null}
+              {popover && remote.url ? <RemotePopover url={remote.url} onClose={() => setPopover(false)} /> : null}
+            </div>
+          ) : null}
           <button
             type="button"
             className="sb-button sb-sv-action"

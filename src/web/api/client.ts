@@ -18,6 +18,7 @@ import type {
   Session,
   SessionTitleInput,
   SessionDetail,
+  SessionRemoteInput,
   SessionEvent,
   SetupState,
   Settings,
@@ -106,6 +107,8 @@ export const api = {
   sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
   /** D22, additive: rename (`null` or an empty title clears it; 422 on field `title` beyond 80 characters). */
   renameSession: (id: string, title: string | null) => request<Session>('PUT', `/api/sessions/${enc(id)}/title`, { title } satisfies SessionTitleInput),
+  /** D24: Remote Control on / off for the session's live process. */
+  setRemote: (id: string, enabled: boolean) => request<Session>('PUT', `/api/sessions/${enc(id)}/remote`, { enabled } satisfies SessionRemoteInput),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),
