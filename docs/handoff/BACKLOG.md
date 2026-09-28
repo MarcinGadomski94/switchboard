@@ -32,7 +32,7 @@ Order matters. Each item: **AC** = acceptance criteria, **Oracle** = how it's ve
 - [ ] **M4.3** Agents & solutions panel, terminal tail, handoff card with copy. **Oracle:** visual.
 - [x] **M4.4** Timeline tab: lanes per agent, playhead, scrub/play, event log. **Oracle:** E2E.
 - [x] **M4.5** Diff tab: files per solution/branch, unified diff. Shows "Not committed" until the developer approves. **Oracle:** E2E on a temp repo.
-- [ ] **M4.6** Artifacts tab. **Oracle:** E2E.
+- [x] **M4.6** Artifacts tab. **Oracle:** E2E.
 
 ## M5 · New session & setup
 - [ ] **M5.1** New-session modal (SPEC §New session): task first, then work type, mode, solutions (read-only folders locked), phase, coordination or QA contract, worktree toggle, ultracode toggle, live summary. **Oracle:** E2E.

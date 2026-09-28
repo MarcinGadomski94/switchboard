@@ -317,7 +317,9 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     });
   }
 
-  for (const a of data.artifacts) {
+  // Inserted last-to-first: rows of the same age tie on `updated_at`, and the list's
+  // `rowid DESC` tie-break then keeps the prototype's order (M4.6, docs/demo.md).
+  for (const a of [...data.artifacts].reverse()) {
     const repos = at(store, minutesBefore(now, ageMinutes(a.age)));
     await repos.artifacts.create({
       type: a.type,

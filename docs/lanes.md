@@ -64,7 +64,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/RightPanel.tsx` | Agent cards, terminal tail, handoff card | M4.3 |
 | `views/session/TimelineTab.tsx` | Timeline: done in M4.4 (+ `timeline.ts` model, `terminal-tail.ts` terminal tail for M4.3's right panel too, `timeline.css`; `docs/derivations.md` → *Timeline tab*, *Terminal tail*) | M4.4 |
 | `views/session/DiffTab.tsx` | Diff: done in M4.5 (+ `diff.ts` model, `diff.css`; `docs/derivations.md` → *Diff tab*) | M4.5 |
-| `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
+| `views/session/ArtifactsTab.tsx` | Session artifacts: done in M4.6 (+ `artifacts.ts` model, `artifacts.css`, `useSessionRefresh.ts` shared with the Diff tab; `docs/derivations.md` → *Artifacts tab*) | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
 | `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |

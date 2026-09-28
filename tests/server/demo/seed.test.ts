@@ -129,6 +129,13 @@ describe('seedDemo (gap #21)', () => {
       meta: '+284 −12',
       createdAt: minutesAgo(4),
     });
+    // Same-age rows keep the prototype's order (M4.6: the session tab lists them newest first).
+    expect((await store.artifacts.list({ sessionId: 'free-talk-feature' })).map((a) => a.name)).toEqual([
+      'contracts/free-talk.md',
+      'Pages/FreeTalk · 6 files',
+      'Views/FreeTalkView · 5 files',
+      'mobile-followups/from-acme-app-front.md',
+    ]);
 
     expect((await store.tools.list()).map((t) => [t.id, t.name, t.url, t.position])).toEqual([
       ['cm', 'Codebase Memory', 'http://localhost:13000', 0],

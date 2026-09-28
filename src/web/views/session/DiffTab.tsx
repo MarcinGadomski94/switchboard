@@ -1,13 +1,9 @@
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useMemo, useState } from 'react';
 import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
-import { useHubEvent, useHubStatus } from '../../api/useHub.ts';
-import { useThrottled } from '../../api/useThrottled.ts';
-import { NOT_COMMITTED_NOTE, NO_CHANGES, diffModel, refreshesDiff } from './diff.ts';
+import { NOT_COMMITTED_NOTE, NO_CHANGES, diffModel } from './diff.ts';
+import { useSessionRefresh } from './useSessionRefresh.ts';
 import './diff.css';
-
-/** Bursts of `/hub` events fold into one diff fetch per this many ms. */
-const REFRESH_MS = 500;
 
 /**
  * Diff tab (SPEC → Session → Diff; M4.5): a 300px file list (file, +/−,
@@ -25,32 +21,8 @@ export function DiffTab({ sessionId }: { readonly sessionId: string }) {
 
 function SessionDiff({ sessionId }: { readonly sessionId: string }) {
   const diff = useApi(() => api.sessionDiff(sessionId), [sessionId]);
-  const reload = diff.reload;
-  const refresh = useThrottled(reload, REFRESH_MS);
-
-  useHubEvent('event', (payload) => {
-    if (payload.sessionId === sessionId && refreshesDiff(payload.event.kind)) refresh();
-  });
-  useHubEvent('sessionUpdated', (session) => {
-    if (session.id === sessionId) refresh();
-  });
-
   // Changes made while the stream was down (or outside Switchboard) show up on reconnect / focus.
-  const hub = useHubStatus();
-  const wasOpen = useRef<boolean | null>(null);
-  useEffect(() => {
-    if (hub === 'open') {
-      if (wasOpen.current === false) refresh();
-      wasOpen.current = true;
-    } else if (wasOpen.current === true) {
-      wasOpen.current = false;
-    }
-  }, [hub, refresh]);
-  useEffect(() => {
-    const onFocus = (): void => refresh();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [refresh]);
+  useSessionRefresh(sessionId, diff.reload);
 
   const [selected, setSelected] = useState<string | null>(null);
   const files = diff.data;
