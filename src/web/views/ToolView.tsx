@@ -4,7 +4,7 @@ import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { Link, useRouter } from '../router.tsx';
 import { urlHost } from '../shell/format.ts';
-import { TOOLBAR_STATE, TOOL_DOT, probeTool, useToolState } from '../tools/probe.ts';
+import { TOOLBAR_STATE, TOOL_DOT, probeTool, useToolFramingRefused, useToolState } from '../tools/probe.ts';
 import { CodebaseMemoryStrip } from './tool/CodebaseMemoryStrip.tsx';
 import './tool.css';
 
@@ -14,12 +14,15 @@ export const TOOL_FRAME_SANDBOX = 'allow-scripts allow-same-origin allow-forms a
 /** The built-in Codebase Memory tool (0002_default_tools.sql); it gets the dirty-projects strip. */
 export const CODEBASE_MEMORY_TOOL_ID = 'cm';
 
-/** The overlay over the frame area: not configured, or not reachable (prototype `tool.ov*`). */
+/** The overlay over the frame area: not configured, not reachable (prototype `tool.ov*`), or refuses framing (D15 fallback). */
 interface Overlay {
   readonly title: string;
   readonly text: string;
   readonly label: string;
-  readonly action: () => void;
+  /** The button's action; an overlay with {@link href} is a link instead. */
+  readonly action?: () => void;
+  /** Opens this URL in a new tab (D15: the tool's own URL). */
+  readonly href?: string;
 }
 
 /**
@@ -29,12 +32,16 @@ interface Overlay {
  * overlays, and for Codebase Memory the `.codebase-memory-dirty` strip with
  * "Reindex n now". Opening the view probes the tool through the service; Reload
  * and Retry reload the frame and probe again (prototype `frameN` + `probe`).
+ * D15: the iframe loads the tool's framing proxy (`Tool.frameUrl`), so a tool that
+ * refuses framing still shows; New tab opens the tool's own URL. Only when no proxy
+ * runs and the probe says the tool refuses framing, the overlay offers New tab.
  */
 export function ToolView({ toolId }: { readonly toolId: string }) {
   const { navigate } = useRouter();
   const tools = useApi(api.tools);
   const tool: Tool | null = tools.data?.find((candidate) => candidate.id === toolId) ?? null;
   const state = useToolState(tool);
+  const framingRefused = useToolFramingRefused(tool);
   const [frameN, setFrameN] = useState(0);
 
   useEffect(() => {
@@ -84,7 +91,14 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
           label: 'Retry',
           action: retry,
         }
-      : null;
+      : framingRefused
+        ? {
+            title: `${urlHost(url)} refuses to load in a frame`,
+            text: `${tool.name} runs but refuses to load in a frame (X-Frame-Options / frame-ancestors), use New tab.`,
+            label: '↗ New tab',
+            href: url,
+          }
+        : null;
 
   return (
     <section className="sb-view sb-tool-view" data-view="tool" data-testid="view-tool" data-tool-id={toolId} data-tool-state={state}>
@@ -117,10 +131,11 @@ export function ToolView({ toolId }: { readonly toolId: string }) {
         </div>
       </div>
       <div className="sb-tool-frame">
-        {url && state !== 'down' ? (
+        {url && state !== 'down' && !framingRefused ? (
           <iframe
             key={`${tool.id}:${frameN}`}
-            src={url}
+            // D15: through the tool's loopback framing proxy; the tool's own URL only when none runs.
+            src={tool.frameUrl ?? url}
             title={tool.name}
             // The tool keeps its own origin, scripts, forms, popups and downloads, but cannot navigate Switchboard's tab.
             sandbox={TOOL_FRAME_SANDBOX}
@@ -147,9 +162,15 @@ function OverlayCard({ dot, overlay }: { readonly dot: string; readonly overlay:
           {overlay.text}
         </div>
         <div className="sb-tool-overlay-actions">
-          <button type="button" className="sb-button sb-tool-overlay-button" data-testid="tool-overlay-action" onClick={overlay.action}>
-            {overlay.label}
-          </button>
+          {overlay.href ? (
+            <a className="sb-button sb-tool-overlay-button" data-testid="tool-overlay-action" href={overlay.href} target="_blank" rel="noopener">
+              {overlay.label}
+            </a>
+          ) : (
+            <button type="button" className="sb-button sb-tool-overlay-button" data-testid="tool-overlay-action" onClick={overlay.action}>
+              {overlay.label}
+            </button>
+          )}
         </div>
       </div>
     </div>

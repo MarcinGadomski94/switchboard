@@ -33,6 +33,8 @@ export const TOOLBAR_STATE: Readonly<Record<ToolState, string>> = {
 type ProbeTarget = Pick<Tool, 'id' | 'url'>;
 
 const states = new Map<string, ToolState>();
+/** D15: keys whose last probe said the tool refuses to be framed and no framing proxy runs for it. */
+const refused = new Set<string>();
 const latest = new Map<string, number>();
 const listeners = new Set<() => void>();
 let sequence = 0;
@@ -79,13 +81,35 @@ export async function probeTool(tool: ProbeTarget): Promise<ToolState> {
   latest.set(key, mine);
   set(key, 'checking');
   let result: ToolState;
+  let framingRefused = false;
   try {
-    result = (await api.probeTool(tool.id)).state === 'up' ? 'up' : 'down';
+    const probe = await api.probeTool(tool.id);
+    result = probe.state === 'up' ? 'up' : 'down';
+    framingRefused = probe.framing === 'refused';
   } catch {
     result = 'down';
   }
-  if (latest.get(key) === mine) set(key, result);
+  if (latest.get(key) === mine) {
+    if (framingRefused) refused.add(key);
+    else refused.delete(key);
+    set(key, result);
+  }
   return toolState(tool);
+}
+
+/**
+ * D15: `true` when the last probe of `tool` found it up but refusing to be framed
+ * (`X-Frame-Options` / `frame-ancestors`) with no framing proxy running for it, so
+ * the tool view offers New tab instead of a blank frame. Only a fallback: with its
+ * proxy running the service never reports it.
+ */
+export function toolFramingRefused(tool: ProbeTarget | null | undefined): boolean {
+  return !!tool?.url && toolState(tool) === 'up' && refused.has(keyOf(tool));
+}
+
+/** Re-renders on every probe change and returns {@link toolFramingRefused} of `tool`. */
+export function useToolFramingRefused(tool: ProbeTarget | null | undefined): boolean {
+  return useSyncExternalStore(subscribe, () => toolFramingRefused(tool));
 }
 
 /** Re-renders on every probe change and returns the state of `tool`. */
