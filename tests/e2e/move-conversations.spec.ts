@@ -238,7 +238,8 @@ test('History: "Continue in Switchboard" moves one conversation; its session ope
   const resumed = async () => (await fakeLog()).find((line) => line.kind === 'argv' && line.argv?.includes('--resume') && line.argv.includes(ID.single));
   await expect.poll(async () => (await resumed())?.argv ?? []).toEqual(expect.arrayContaining(['--resume', ID.single, '--name', 'sb-handoff']));
   const spawn = await resumed();
-  expect((await fakeLog()).filter((line) => line.kind === 'stdin' && line.pid === spawn?.pid)).toEqual([]);
+  // No user message (D24: only the `initialize` handshake).
+  expect((await fakeLog()).filter((line) => line.kind === 'stdin' && line.pid === spawn?.pid && !String(line.line).includes('"subtype":"initialize"'))).toEqual([]);
 
   await openHistory(page);
   const moved = row(page, ID.single);

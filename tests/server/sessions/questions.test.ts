@@ -45,7 +45,7 @@ describe('sessionQuestions / SessionDetail.questions', () => {
       ['b1', 'Second?', 'answered', 1, false],
       ['b2', 'Third?', 'open', null, true],
     ]);
-    expect(Object.keys(questions[0] ?? {}).sort()).toEqual(['answerIndex', 'answeredAt', 'batchId', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text']);
+    expect(Object.keys(questions[0] ?? {}).sort()).toEqual(['answerIndex', 'answeredAt', 'answeredOn', 'batchId', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text']);
 
     const detail = await toSessionDetail(store, {}, session);
     expect(detail.questions).toEqual(questions);

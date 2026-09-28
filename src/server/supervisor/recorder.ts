@@ -34,6 +34,7 @@ import {
   userMessageKind,
 } from '../../core/derive/event-kind.ts';
 import type { LiveStatusInput, TurnOutcome } from '../../core/derive/status.ts';
+import type { AnsweredOn } from '../../core/remote-control.ts';
 import type { StreamMessage } from '../../core/stream-json.ts';
 import { readingFromRateLimit } from '../../core/usage.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -56,6 +57,12 @@ export interface RecorderOptions {
   readonly onPermissionFallback?: (mode: string) => void;
   /** D19: called whenever the live activity ({@link StreamRecorder.activity}) changes, with the new value. */
   readonly onActivity?: (activity: SessionActivity | null) => void;
+  /**
+   * D24: where a request the CLI withdraws (`control_cancel_request`) was answered:
+   * `claude.ai` while Remote Control is on (the phone answered first), else `null`.
+   * The request's event then carries `answeredOn`.
+   */
+  readonly answeredOn?: () => AnsweredOn | null;
   /** Clock of the live activity's timestamps (tests pass a fake one). */
   readonly now?: () => Date;
 }
@@ -96,6 +103,7 @@ export class StreamRecorder {
   readonly #onEvent: (event: EventRecord) => void;
   readonly #onPermissionFallback: ((mode: string) => void) | undefined;
   readonly #onActivity: ((activity: SessionActivity | null) => void) | undefined;
+  readonly #answeredOn: (() => AnsweredOn | null) | undefined;
   /** D19: what the running turn does now (in memory only). */
   readonly #activity: ActivityTracker;
   /** The last activity reported to `onActivity`, as JSON. */
@@ -132,6 +140,7 @@ export class StreamRecorder {
     this.#onEvent = options.onEvent;
     this.#onPermissionFallback = options.onPermissionFallback;
     this.#onActivity = options.onActivity;
+    this.#answeredOn = options.answeredOn;
     this.#activity = new ActivityTracker({ mainAgentId: options.mainAgentId, ...(options.now ? { now: options.now } : {}) });
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
@@ -275,14 +284,16 @@ export class StreamRecorder {
     this.#syncActivity();
   }
 
-  async #setRequestState(open: OpenRequest, state: RequestState, behavior?: string): Promise<void> {
+  async #setRequestState(open: OpenRequest, state: RequestState, behavior?: string, answeredOn?: AnsweredOn | null): Promise<void> {
+    const where = answeredOn ? { answeredOn } : {};
     if (open.onToolEvent) {
-      await this.#patchPayload<ToolPayload>(open.eventId, (payload) => ({ ...payload, requestState: state }));
+      await this.#patchPayload<ToolPayload>(open.eventId, (payload) => ({ ...payload, requestState: state, ...where }));
     } else {
       await this.#patchPayload<RequestPayload>(open.eventId, (payload) => ({
         ...payload,
         state,
         ...(behavior ? { behavior } : {}),
+        ...where,
       }));
     }
   }
@@ -580,7 +591,8 @@ export class StreamRecorder {
     if (!open) return;
     this.#openRequests.delete(requestId);
     this.#activity.requestClosed(requestId);
-    await this.#setRequestState(open, 'cancelled');
+    // D24: withdrawn because the phone answered first (Remote Control on), not by an interrupt.
+    await this.#setRequestState(open, 'cancelled', undefined, this.#answeredOn?.() ?? null);
   }
 
   async #onTaskStarted(message: Extract<StreamMessage, { kind: 'task-started' }>): Promise<void> {

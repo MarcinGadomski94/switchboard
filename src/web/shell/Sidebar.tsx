@@ -7,6 +7,7 @@ import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { InlineTitle } from '../components/InlineTitle.tsx';
+import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
@@ -206,6 +207,12 @@ export function Sidebar() {
               <div className="sb-session-head">
                 {/* D22: the display title; a double-click renames it in place. */}
                 <InlineTitle session={session} gesture="double-click" className="sb-session-name" />
+                {/* D24: reachable from the phone (Remote Control on a live process). */}
+                {session.remote?.enabled && session.live ? (
+                  <span className="sb-session-remote" data-testid="session-remote-glyph" title="Remote Control on: reachable from claude.ai and the Claude app">
+                    <PhoneGlyph title="Remote Control on" />
+                  </span>
+                ) : null}
                 <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
               </div>
               <div className="sb-session-mode">

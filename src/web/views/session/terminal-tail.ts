@@ -70,7 +70,12 @@ export function eventLines(event: SessionEvent): string[] {
     case 'request':
       if (payload.state === 'open') return [`⏸ ${event.label}`];
       if (payload.state === 'responded') return [`${payload.behavior === 'deny' ? '✕' : '✓'} ${event.label}`];
+      // D24: the phone answered it first (Remote Control).
+      if (payload.answeredOn) return [`✓ ${event.label} · answered on ${payload.answeredOn}`];
       return [`⚠ ${event.label} · ${payload.state}`];
+    case 'remote':
+      // D24: Remote Control on / off / a failed remote_control request (the CLI's text is in the label).
+      return [`${payload.action === 'failed' ? '✕' : '✓'} ${event.label}`];
     case 'denied':
       return [`✕ ${event.label}`];
     case 'result':

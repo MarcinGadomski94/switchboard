@@ -1,4 +1,4 @@
-import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent, SessionRemote } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -77,7 +77,7 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * (M7.2, the Schedules & loops cards). `activity` (D19) is the live activity the
  * supervisor holds in memory (`SessionSupervisor.activity`); `null` when not given.
  * D22: its `title` (`null` when none) and `displayTitle` (the title, else the name),
- * what the UI shows.
+ * what the UI shows. D24: its `remote` state ({@link toSessionRemote}).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -112,6 +112,23 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     loops: loops.map(toLoop),
     title: record.title,
     displayTitle: record.title ?? record.name,
+    remote: toSessionRemote(record),
+  };
+}
+
+/**
+ * D24 (`docs/remote-control.md`): `Session.remote`. `null` when Switchboard never
+ * ran a process for the session (`remoteAvailable` is `null`: the demo seed);
+ * else `available` = a live process (a recorded pid) whose `initialize` reported
+ * `remote_control_available: true`, `enabled` = the stored flag (on across a
+ * pause: the next process reattaches), `url` = the last bridge's link.
+ */
+export function toSessionRemote(record: Pick<SessionRecord, 'pid' | 'remoteAvailable' | 'remoteEnabled' | 'remoteSessionUrl'>): SessionRemote | null {
+  if (record.remoteAvailable === null) return null;
+  return {
+    available: record.remoteAvailable && record.pid !== null,
+    enabled: record.remoteEnabled,
+    url: record.remoteSessionUrl,
   };
 }
 

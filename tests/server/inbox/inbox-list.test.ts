@@ -23,7 +23,7 @@ const HOST = `127.0.0.1:${PORT}`;
 
 /** The exact keys of an InboxItem per kind (src/core/api.ts). */
 const BASE_KEYS = ['branches', 'createdAt', 'detail', 'id', 'kind', 'label', 'sessionId', 'source', 'status', 'title'];
-const QUESTION_KEYS = ['answerIndex', 'answeredAt', 'batchId', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
+const QUESTION_KEYS = ['answerIndex', 'answeredAt', 'answeredOn', 'batchId', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
 
 interface Rig {
   readonly w: SupervisorWorld;

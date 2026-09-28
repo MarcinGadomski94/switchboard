@@ -69,6 +69,11 @@ describe('sessions', () => {
       lastActivityAt: null,
       detachedAt: null,
       endedAt: null,
+      // D24 (0007): no process run yet (null), Remote off, no bridge yet.
+      remoteAvailable: null,
+      remoteEnabled: false,
+      remoteSessionUrl: null,
+      remoteBridgeId: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });
@@ -273,6 +278,8 @@ describe('questions', () => {
       staleAt: null,
       deliveredVia: null,
       deliveredAt: null,
+      // D24 (0007): answered on the phone first.
+      answeredOn: null,
     });
     expect(questions.map((q) => [q.position, q.text, q.header, q.options, q.multiSelect, q.answerIndex])).toEqual([
       [0, 'Wrap or scroll?', 'Chips', input.questions[0]?.options, false, null],

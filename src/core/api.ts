@@ -13,6 +13,7 @@
  */
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
+import type { AnsweredOn } from './remote-control.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -201,6 +202,35 @@ export interface Session {
   readonly title?: string | null;
   /** Additive (D22): what the UI shows for the session: {@link title}, else {@link name}. Always sent by the server. */
   readonly displayTitle?: string;
+  /**
+   * Additive (D24, migration 0007): Remote Control on the session's process
+   * (`docs/remote-control.md`); `null` for a session Switchboard never ran a
+   * process for (the demo's seeded sessions: the header shows no Remote toggle).
+   * The server always sends it; optional here so older payloads and fixtures
+   * still type-check.
+   */
+  readonly remote?: SessionRemote | null;
+}
+
+/**
+ * Additive (D24): a session's Remote Control state (`Session.remote`).
+ * - `available`: the session has a live process whose `initialize` reported
+ *   `remote_control_available: true` (the toggle is enabled only then);
+ * - `enabled`: Remote is on for the session: its live process has (or is
+ *   reconnecting) the bridge, and a paused session reconnects on resume (D7);
+ * - `url`: the claude.ai link (`https://claude.ai/code/session_…`) of the last
+ *   bridge, kept after Remote is turned off (for a later reattach); `null` before
+ *   the first one.
+ */
+export interface SessionRemote {
+  readonly available: boolean;
+  readonly enabled: boolean;
+  readonly url: string | null;
+}
+
+/** Additive (D24): body of `PUT /api/sessions/{id}/remote`. */
+export interface SessionRemoteInput {
+  readonly enabled: boolean;
 }
 
 /** Additive (D22): body of `PUT /api/sessions/{id}/title`; `null` or an empty title clears it (the name is shown again). */
@@ -394,6 +424,13 @@ export interface Question {
   readonly state: QuestionState;
   readonly answerIndex: number | null;
   readonly answeredAt: string | null;
+  /**
+   * Additive (D24): where the batch was answered when that was not Switchboard:
+   * `claude.ai` when the phone (Remote Control) answered first and the CLI withdrew
+   * the request (`control_cancel_request`); the batch is then closed (`answered`,
+   * no `answerIndex`). `null` / absent otherwise.
+   */
+  readonly answeredOn?: AnsweredOn | null;
 }
 
 /** A solution + branch pair (branch chips). */
@@ -669,6 +706,12 @@ export interface HistoryItem {
   readonly firstPrompt?: string | null;
   /** Additive (D16): the folder a terminal conversation started in (where it continues). */
   readonly cwd?: string | null;
+  /**
+   * Additive (D24): `true` on a terminal conversation whose transcript has a
+   * `bridge-session` line (it had Remote Control on): the row's "Remote Control"
+   * badge. Absent otherwise.
+   */
+  readonly remoteControl?: boolean;
 }
 
 /**

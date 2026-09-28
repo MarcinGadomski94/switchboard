@@ -314,7 +314,8 @@ test('Codebase Memory strip: the dirty projects and "Reindex 2 now" start a real
     .poll(async () => {
       const log = await readFile(fakeLog, 'utf8').catch(() => '');
       const lines = log.split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; line?: string; argv?: string[] });
-      const stdin = lines.find((l) => l.kind === 'stdin');
+      // D24: the `initialize` handshake goes first; the first user message follows it.
+      const stdin = lines.find((l) => l.kind === 'stdin' && !(l.line ?? '').includes('"subtype":"initialize"'));
       return stdin?.line ? (JSON.parse(stdin.line) as { message: { content: string } }).message.content : null;
     })
     .toBe(expected);

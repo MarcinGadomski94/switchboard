@@ -202,6 +202,38 @@ describe('0006 session title (D22)', () => {
   });
 });
 
+describe('0007 session remote (D24)', () => {
+  it('adds the Remote Control columns: existing sessions get remote_available 0 and Remote off, batches no answered_on', async () => {
+    const file = path.join(tmp, 'existing.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 7)).toMatchObject({ name: 'session_remote' });
+    // A database as the build before D24 left it (0007 does not depend on D25's 0008).
+    migrate(database, shipped.filter((m) => m.version <= 6));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    database.prepare('INSERT INTO question_batches (id, session_id, input, created_at) VALUES (?, ?, ?, ?)').run('b-old', 's-old', '{}', ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 6).map((m) => m.version));
+    expect(database.prepare('SELECT remote_available, remote_enabled, remote_session_url, remote_bridge_id FROM sessions').all()).toEqual([
+      { remote_available: 0, remote_enabled: 0, remote_session_url: null, remote_bridge_id: null },
+    ]);
+    expect(database.prepare('SELECT answered_on FROM question_batches').all()).toEqual([{ answered_on: null }]);
+    expect(() => database.prepare("UPDATE sessions SET remote_enabled = 2 WHERE id = 's-old'").run()).toThrow(/CHECK/);
+    expect(() => database.prepare("UPDATE sessions SET remote_available = 5 WHERE id = 's-old'").run()).toThrow(/CHECK/);
+    database.close();
+
+    // The store reads it: the old session shows Remote off (not null: it had a process before); a new row starts with null.
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ remoteAvailable: false, remoteEnabled: false, remoteSessionUrl: null, remoteBridgeId: null });
+      expect(await store.sessions.create({ name: 'fresh', claudeSessionId: 'c-fresh' })).toMatchObject({ remoteAvailable: null, remoteEnabled: false });
+      expect(await store.questions.getBatch('b-old')).toMatchObject({ answeredOn: null });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

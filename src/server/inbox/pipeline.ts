@@ -2,6 +2,7 @@ import type { AnswerBatch, SessionActivity } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
+import type { AnsweredOn } from '../../core/remote-control.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
@@ -138,8 +139,21 @@ export class QuestionPipeline implements ControlRequestHandler {
     await this.#publishInbox();
   }
 
-  /** The CLI withdrew the request (`control_cancel_request`): stale, never answered over the control protocol. */
-  async cancelled(sessionId: string, requestId: string): Promise<void> {
+  /**
+   * The CLI withdrew the request (`control_cancel_request`): stale, never answered
+   * over the control protocol. D24: with `answeredOn` (`claude.ai`: the phone
+   * answered first while Remote Control was on) a question batch is closed as
+   * answered there instead (it leaves the Inbox and can no longer be answered
+   * here); a permission item closes as stale, as before.
+   */
+  async cancelled(sessionId: string, requestId: string, answeredOn?: AnsweredOn | null): Promise<void> {
+    const batch = answeredOn ? await this.#store.questions.getBatch(requestId) : null;
+    if (answeredOn && batch && batch.sessionId === sessionId) {
+      await this.#store.questions.closeAnsweredElsewhere(requestId, answeredOn);
+      await this.#publishInbox();
+      await this.#publishSession(sessionId);
+      return;
+    }
     await this.#markStale(sessionId, requestId);
     await this.#publishInbox();
   }
@@ -172,7 +186,11 @@ export class QuestionPipeline implements ControlRequestHandler {
   async answerBatch(batchId: string, body: unknown): Promise<AnswerOutcome> {
     const found = await this.#store.questions.getBatchWithQuestions(batchId);
     if (!found) throw new InboxError('not-found', `no question batch ${batchId}`);
-    if (found.batch.answeredAt !== null) throw new InboxError('already-answered', `question batch ${batchId} is already answered`);
+    if (found.batch.answeredAt !== null) {
+      // D24: the phone answered it first (Remote Control).
+      const where = found.batch.answeredOn ? ` on ${found.batch.answeredOn}` : '';
+      throw new InboxError('already-answered', `question batch ${batchId} is already answered${where}`);
+    }
     const answers = validateAnswers(body, found.questions);
     if (this.#busy.has(batchId)) throw new InboxError('busy', `question batch ${batchId} is being answered`);
     this.#busy.add(batchId);

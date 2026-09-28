@@ -50,6 +50,43 @@ export function setPermissionModeLine(requestId: string, mode: string): ControlR
   return { type: 'control_request', request_id: requestId, request: { subtype: 'set_permission_mode', mode } };
 }
 
+/**
+ * The `initialize` control request (`docs/spike-m0.md` → `ctl-init`,
+ * `docs/spike-remote.md` → *Control-protocol probe*): no model call; its reply
+ * carries `remote_control_available` (D24). Sent once per process, at spawn.
+ */
+export function initializeLine(requestId: string): ControlRequestLine {
+  return { type: 'control_request', request_id: requestId, request: { subtype: 'initialize', hooks: null } };
+}
+
+/** What a `remote_control` control request asks (D24; `docs/spike-remote.md` → R.6). */
+export interface RemoteControlRequest {
+  /** `true` starts (or reattaches) the bridge, `false` ends it. */
+  readonly enabled: boolean;
+  /** The claude.ai entry's name (the session's display title). Only with `enabled: true`. */
+  readonly name?: string;
+  /** A stored `cse_…` id: reconnect that claude.ai entry instead of creating one. Only with `enabled: true`. */
+  readonly reattachSessionId?: string;
+  /** Keep the claude.ai entry when the process ends (pause / restart), so a later reattach finds it. */
+  readonly keepSessionOnExit?: boolean;
+}
+
+/**
+ * The `remote_control` control request, in the shape the Agent SDK's
+ * `enableRemoteControl` sends (`docs/spike-remote.md` → R.6, code-read, never run):
+ * `{"subtype":"remote_control","enabled":true,"name":…,"reattach_session_id":…,"keep_session_on_exit":…}`,
+ * or `{"subtype":"remote_control","enabled":false}`.
+ */
+export function remoteControlLine(requestId: string, request: RemoteControlRequest): ControlRequestLine {
+  const body: Record<string, unknown> = { subtype: 'remote_control', enabled: request.enabled };
+  if (request.enabled) {
+    if (request.name !== undefined) body['name'] = request.name;
+    if (request.reattachSessionId !== undefined) body['reattach_session_id'] = request.reattachSessionId;
+    if (request.keepSessionOnExit !== undefined) body['keep_session_on_exit'] = request.keepSessionOnExit;
+  }
+  return { type: 'control_request', request_id: requestId, request: body as ControlRequestLine['request'] };
+}
+
 /** A success reply to a CLI control request. */
 export function controlSuccessLine(requestId: string, response: unknown): ControlResponseLine {
   return { type: 'control_response', response: { subtype: 'success', request_id: requestId, response } };

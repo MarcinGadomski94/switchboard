@@ -71,6 +71,8 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D22 (session titles)
   'title',
   'displayTitle',
+  // additive, D24 (Remote Control)
+  'remote',
 ]);
 const AGENT_KEYS = keys<Agent>()(['id', 'kind', 'name', 'description', 'solutionPath', 'branch', 'status', 'statusText']);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);
@@ -88,6 +90,8 @@ const QUESTION_KEYS = keys<Question>()([
   'state',
   'answerIndex',
   'answeredAt',
+  // additive, D24 (answered on claude.ai)
+  'answeredOn',
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
@@ -347,6 +351,7 @@ describe('/hub · events (contract, field by field)', () => {
         state: 'open',
         answerIndex: null,
         answeredAt: null,
+        answeredOn: null,
       },
       {
         id: 'q2',
@@ -360,6 +365,7 @@ describe('/hub · events (contract, field by field)', () => {
         state: 'open',
         answerIndex: null,
         answeredAt: null,
+        answeredOn: null,
       },
     ];
     const batch: HubEvents['questionBatch'] = { sessionId: 's1', batchId: 'req_1', questions };

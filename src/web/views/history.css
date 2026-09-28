@@ -108,6 +108,17 @@
   font-size: var(--fs-body);
 }
 
+/* D24 · "Remote Control" badge of a terminal conversation that had Remote Control on (not in the prototype). */
+.sb-hist-badge {
+  margin-left: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-chip-lg);
+  padding: 0 5px;
+  font: 400 10.5px var(--font-mono);
+  color: var(--status-done);
+  white-space: nowrap;
+}
+
 /*
  * D16 · terminal conversations continue in Switchboard (not in the prototype):
  * the row's checkbox (date column) and "Continue in Switchboard" pill (under the

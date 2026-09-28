@@ -48,6 +48,8 @@ Body `{ answers: [{ questionId, answerIndex }] }`.
 
 ## Stale requests
 A `control_cancel_request` (after an interrupt, e.g. Pause with a question open) or the process ending with a request open makes it **stale**. Nothing is ever written to a stale request.
+
+**Answered on claude.ai (D24).** While Remote Control is on for the process and Switchboard is not stopping it, a `control_cancel_request` means the phone answered first (`docs/remote-control.md`). The supervisor passes `answeredOn: "claude.ai"` to `cancelled`, and the pipeline closes a question batch as answered there (`closeAnsweredElsewhere`: state `answered`, `answeredAt`, `answered_on`, no answers): it leaves the Inbox, no longer counts in `openQuestionCount`, and `POST …/answers` answers 409 `already-answered` ("… already answered on claude.ai"). The chat shows the answers bubble **Answered on claude.ai**. A permission item closes as stale, as below; its step line reads `… · answered on claude.ai`.
 - A stale **batch** stays answerable (above) and stays in the Inbox until answered.
 - A stale **permission item** closes without a decision and leaves the Inbox.
 - Session status is not changed by this: a paused session stays `paused`, a `need` session resumed idle after a restart is `idle` (the process is not waiting for anything). The unanswered stale batch still counts in the session's `openQuestionCount` and in the Inbox.

@@ -66,6 +66,7 @@ function baseFacts(fields: Partial<TranscriptFacts>): TranscriptFacts {
     prNumber: null,
     prompts: 'Fix the login page',
     badLines: 0,
+    remoteControl: false,
     ...fields,
   };
 }

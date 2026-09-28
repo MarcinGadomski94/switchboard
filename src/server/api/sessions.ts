@@ -19,6 +19,10 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'request-not-open': 409,
   closing: 503,
   'attach-warning': 409,
+  'not-live': 409,
+  'remote-unavailable': 409,
+  // D24: the CLI refused or failed the `remote_control` request; `message` is its text, verbatim.
+  'remote-failed': 502,
 };
 
 interface IdParams {
@@ -44,7 +48,8 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
 /**
  * Registers the session routes (M2.1: the supervisor's layer; M4.x / M5.x add to
  * the UI side, M4.5 the diff; D22 the additive rename, `PUT /api/sessions/{id}/title`,
- * which publishes `sessionUpdated`). Every route sits behind the security guard.
+ * which publishes `sessionUpdated`; D24 the additive Remote toggle, `PUT
+ * /api/sessions/{id}/remote`). Every route sits behind the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
@@ -81,6 +86,20 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const session = await toSession(store, updated);
     context.bus.publish('sessionUpdated', session);
     return session;
+  });
+
+  // D24 (additive): Remote Control on the session's live process. The supervisor publishes `sessionUpdated`.
+  app.put<{ Params: IdParams }>('/api/sessions/:id/remote', async (request, reply): Promise<Session | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    const enabled = parseRemoteInput(request.body);
+    if (enabled === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'enabled', message: 'the body must be { enabled: true | false }' }] });
+    try {
+      const updated = await supervisor.setRemote(record.id, enabled);
+      return await toSession(store, updated, supervisor.activity(updated.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/messages', async (request, reply) => {
@@ -180,6 +199,13 @@ export function parseTitleInput(body: unknown): { readonly ok: true; readonly ti
   if (raw === null || (typeof raw === 'string' && raw.trim() === '')) return { ok: true, title: null };
   const check = checkTitle(raw);
   return check.ok ? { ok: true, title: check.title } : { ok: false, message: check.message };
+}
+
+/** The body of `PUT /api/sessions/{id}/remote` (D24, `SessionRemoteInput`): `{ enabled: boolean }`, else `null`. */
+export function parseRemoteInput(body: unknown): boolean | null {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
+  const enabled = (body as { enabled?: unknown }).enabled;
+  return typeof enabled === 'boolean' ? enabled : null;
 }
 
 /**

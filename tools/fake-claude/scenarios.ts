@@ -110,6 +110,45 @@ export function fireToken(text: string): { count: number; everyMs: number } | nu
   return { count: Math.min(Number(match[1]), 100), everyMs: Math.max(Number(match[2]), 10) };
 }
 
+/**
+ * `[fake:remote-answer <ms>]` in a stdin user message (D24): when this message's
+ * turn opens a question or permission request, "the phone" answers it `ms`
+ * milliseconds later if Remote Control is on (a `remote_control` `enabled: true`
+ * came before): the fake writes `control_cancel_request` for it, as the CLI does
+ * when claude.ai answers first (`docs/spike-remote.md` → R.6), and the turn goes on
+ * with that answer (each question's first option; any other tool allowed). The
+ * milliseconds are required (`[fake:remote-answer]` alone would be a scenario name).
+ */
+export function remoteAnswerToken(text: string): number | null {
+  const match = /\[fake:remote-answer\s+(\d+)\]/.exec(text);
+  return match ? Math.min(Number(match[1]), 600_000) : null;
+}
+
+/**
+ * The fake's Remote Control (D24), from `FAKE_CLAUDE_REMOTE_CONTROL`:
+ * - unset / anything else: `initialize` reports `remote_control_available: true`
+ *   and `remote_control` succeeds (`on`);
+ * - `unavailable`: `initialize` reports `remote_control_available: false` and
+ *   `remote_control` `enabled: true` answers an error;
+ * - `no-url`: `remote_control` `enabled: true` succeeds without a `session_url`.
+ */
+export type RemoteControlMode = 'on' | 'unavailable' | 'no-url';
+
+/** {@link RemoteControlMode} of `env`. */
+export function remoteControlMode(env: NodeJS.ProcessEnv = process.env): RemoteControlMode {
+  const value = env['FAKE_CLAUDE_REMOTE_CONTROL'];
+  return value === 'unavailable' || value === 'no-url' ? value : 'on';
+}
+
+/** `FAKE_CLAUDE_REMOTE_CONTROL_ERROR`: every `remote_control` request answers an error with this text (unset / empty: none). */
+export function remoteControlError(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = env['FAKE_CLAUDE_REMOTE_CONTROL_ERROR'];
+  return value !== undefined && value !== '' ? value : null;
+}
+
+/** The error text `remote_control` `enabled: true` answers with `FAKE_CLAUDE_REMOTE_CONTROL=unavailable`. */
+export const REMOTE_CONTROL_UNAVAILABLE = 'fake-claude: Remote Control is not available (FAKE_CLAUDE_REMOTE_CONTROL=unavailable)';
+
 /** The prompt text a `[fake:fire]` turn writes to the transcript. */
 export const FIRE_PROMPT = 'fake-claude: scheduled firing';
 

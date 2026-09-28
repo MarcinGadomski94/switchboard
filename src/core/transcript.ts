@@ -16,8 +16,8 @@
  *   not have falls back to the previous chain entry in file order.
  */
 
-/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed. */
-export const TRANSCRIPT_FACTS_VERSION = 1;
+/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed (2: D24 `remoteControl`). */
+export const TRANSCRIPT_FACTS_VERSION = 2;
 
 /** Longest stored first / last prompt and command (characters). */
 const PROMPT_CAP = 500;
@@ -66,6 +66,11 @@ export interface TranscriptFacts {
   readonly prompts: string;
   /** Lines that were not a JSON object. */
   readonly badLines: number;
+  /**
+   * D24: the file has a `{type:"bridge-session", …}` line: the conversation had
+   * Remote Control on (`docs/spike-remote.md` → R.8), History's "Remote Control" badge.
+   */
+  readonly remoteControl: boolean;
 }
 
 type Entry = Record<string, unknown>;
@@ -160,6 +165,7 @@ export class TranscriptParser {
   #prNumber: number | null = null;
   #prompts = '';
   #badLines = 0;
+  #remoteControl = false;
 
   /** @param sessionId the file name without `.jsonl`. */
   constructor(sessionId: string) {
@@ -227,6 +233,10 @@ export class TranscriptParser {
         break;
       case 'pr-link':
         if (typeof entry['prNumber'] === 'number' && Number.isFinite(entry['prNumber'])) this.#prNumber = entry['prNumber'];
+        break;
+      case 'bridge-session':
+        // D24: `{type:"bridge-session", sessionId, bridgeSessionId:"cse_…", …}` (R.8): Remote Control was on.
+        this.#remoteControl = true;
         break;
       default:
         break;
@@ -306,6 +316,7 @@ export class TranscriptParser {
       prNumber: this.#prNumber,
       prompts: this.#prompts,
       badLines: this.#badLines,
+      remoteControl: this.#remoteControl,
     };
   }
 }
