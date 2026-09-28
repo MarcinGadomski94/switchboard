@@ -141,8 +141,8 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
             {sessionId}
           </div>
         )}
-        <div className="sb-sv-root" data-testid="session-root">
-          {missing ? 'no such session' : session ? rootLine(session) : ''}
+        <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
+          <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>
         </div>
         <div className="sb-sv-actions">
           {session ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}

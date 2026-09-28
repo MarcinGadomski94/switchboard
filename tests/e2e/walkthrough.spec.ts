@@ -68,12 +68,11 @@ test('the whole product on the real path: session → question → answer → pa
   // 2. Streamed chat: the task the developer typed (without the appended answers block, M5.2).
   await expect(page.getByTestId('chat-message').first()).toHaveText('[fake:ask-2q] Ask me two questions.');
 
-  // 3. The question batch: a toast, and the Inbox item.
-  const toast = page.getByTestId('toast');
-  await expect(toast).toBeVisible();
-  await expect(toast.locator('.sb-toast-title')).toHaveText(NAME);
-  await expect(toast.locator('.sb-toast-sub')).toHaveText('2 questions · now');
+  // 3. The question batch: the card in the chat of the session on screen (no toast for it:
+  // developer request 2026-09-28, docs/notifications.md), and the Inbox item.
+  await expect(page.getByTestId('session-chat').getByTestId('question-card')).toHaveCount(1);
   await expect.poll(() => status(page, NAME)).toBe('need');
+  await expect(page.getByTestId('toast')).toHaveCount(0);
   await page.getByTestId('nav-inbox').click();
   await expect(page.getByTestId('inbox-item')).toHaveCount(1);
   await expect(page.getByTestId('inbox-title')).toHaveText('2 questions from acme-app-front');

@@ -47,13 +47,26 @@
 .sb-sv-root {
   font: 400 11.5px var(--font-mono);
   color: var(--muted-2);
-  /* D24: a long path wraps anywhere instead of pushing the header actions (now with Remote) under the right panel. */
+  /* Developer ruling 2026-09-28 (replaces D24's wrap): one line; a long path is cut from the LEFT with …, so its
+     end (the folder, "worktree of …") stays readable and the header's buttons never wrap; the full line is the tooltip. */
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* The line itself reads left to right inside the right-to-left box (only the cut side is swapped). */
+.sb-sv-root-text {
+  direction: ltr;
+  unicode-bidi: embed;
 }
 
 .sb-sv-actions {
   margin-left: auto;
+  /* Developer ruling 2026-09-28: the actions keep their size and one line; the root path gives way. */
+  flex: none;
   display: flex;
   gap: 6px;
   font-size: 12px;
@@ -65,6 +78,7 @@
   border-radius: 6px;
   padding: 5px 10px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .sb-sv-action:disabled {

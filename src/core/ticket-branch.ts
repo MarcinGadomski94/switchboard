@@ -65,16 +65,20 @@ export function tidyTicketBranch(text: string): string {
   return `${key.toUpperCase()}-${number}${description ? `-${description.toLowerCase()}` : ''}`;
 }
 
-/** A title that starts with an upper-case ticket key and its number (leading brackets or spaces allowed). */
-const TITLE_KEY = /^[^A-Za-z0-9]*[A-Z][A-Z0-9]*-[0-9]+(?![A-Za-z0-9])/;
+/**
+ * A title that starts with a ticket key and its number, in any case (developer
+ * ruling 2026-09-28: `proj-1984 …` counts too; leading brackets or spaces allowed).
+ */
+const TITLE_KEY = /^[^A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*-[0-9]+(?![A-Za-z0-9])/;
 
 /**
  * The branch a session title suggests (D32): the title tidied
  * ({@link tidyTicketBranch}) when it starts with a ticket key, else `null`.
  * `PROJ-1984 Purchase complete` → `PROJ-1984-purchase-complete`;
  * `[PROJ-1984] Purchase` → `PROJ-1984-purchase`; `PROJ-1984` → `PROJ-1984`
- * (no description yet: the field says what is missing). Only an upper-case key
- * counts, as Jira writes it, so `mobile-360 layout` suggests nothing.
+ * (no description yet: the field says what is missing). A lower-case key counts
+ * too (`proj-1984 purchase` → `PROJ-1984-purchase`), so `mobile-360 layout`
+ * suggests `MOBILE-360-layout`: only a suggestion the developer can edit.
  */
 export function branchFromTitle(title: string): string | null {
   return TITLE_KEY.test(title.trim()) ? tidyTicketBranch(title) : null;

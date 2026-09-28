@@ -169,6 +169,13 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **History:** lists closed sessions with a "Closed" tag and a **Reopen** action. Reopen puts the session back in the sidebar as paused/idle; sending a message resumes it.
   - Stored as `sessions.closed_at` (null = open).
 
+## Rulings after the D30–D33 merge (added 2026-09-28)
+- **D30:** every background command counts as work in progress, dev servers started in the background included, as built.
+- **Session header:** the actions never wrap. The root path is cut from the **left** with …, so its end stays readable, and the full line is the tooltip. This replaces D24's wrapping path. The header order is: model picker (D31), Close (D33), Remote (D24), Pause, Continue in terminal.
+- **D32:** a title starting with a lower-case ticket key also pre-fills the Branch field, upper-cased (`proj-1984 purchase` → `PROJ-1984-purchase`).
+- **D33:** after closing the session on screen, the Inbox opens, as built.
+- **Notifications:** a question toast and its OS notification close once the developer opens their session, or once their batch leaves the Inbox. A batch of the session on screen raises no toast (`docs/notifications.md`).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

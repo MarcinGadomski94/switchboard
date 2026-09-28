@@ -127,7 +127,7 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   await page.getByTestId('remote-close').click();
   await expect(page.getByTestId('remote-popover')).toHaveCount(0);
   // With Remote on (its widest: Close + Remote + Link & QR, D33) and this long temp path, every header action stays left of the right panel,
-  // on one line, right of the root path (which wraps instead).
+  // on one line, right of the root path (cut from the left with … instead: developer ruling 2026-09-28).
   const lastAction = await page.getByTestId('session-handoff').boundingBox();
   const panel = await page.getByTestId('session-right-panel').boundingBox();
   expect((lastAction?.x ?? 0) + (lastAction?.width ?? 0)).toBeLessThanOrEqual(panel?.x ?? 0);
@@ -135,6 +135,14 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   const rootBox = await page.getByTestId('session-root').boundingBox();
   expect(closeBox?.x ?? 0).toBeGreaterThanOrEqual((rootBox?.x ?? 0) + (rootBox?.width ?? 0));
   expect(closeBox?.y).toBe(lastAction?.y);
+  const root = page.getByTestId('session-root');
+  await expect(root).toHaveCSS('white-space', 'nowrap');
+  await expect(root).toHaveCSS('text-overflow', 'ellipsis');
+  expect(await root.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  expect(await root.getAttribute('title')).toContain(' · ');
+  // Every action is one line tall (no wrapped label).
+  const heights = await page.locator('.sb-sv-actions > .sb-sv-action, .sb-sv-actions .sb-sv-remote > .sb-sv-action').evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
 
   // The sidebar row: the phone glyph while the session runs with Remote on.
   const glyph = sidebarRow(page, 'remote-e2e').getByTestId('session-remote-glyph');

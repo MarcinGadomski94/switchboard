@@ -89,8 +89,16 @@ describe('branchFromTitle (D32)', () => {
     expect(checkTicketBranch(branchFromTitle('PROJ-1984')).ok).toBe(false);
   });
 
-  it('suggests nothing without an upper-case ticket key at the start', () => {
-    for (const title of ['proj-1984 purchase complete', 'Proj-1984 purchase', 'mobile-360 layout', 'free-talk-640', 'Fix PROJ-1984', 'PROJ-1984purchase', 'PROJ purchase', '', 'JIRA Ticket handling']) {
+  it('a lower-case key counts too, upper-cased (developer ruling 2026-09-28)', () => {
+    expect(branchFromTitle('proj-1984 purchase complete')).toBe('PROJ-1984-purchase-complete');
+    expect(branchFromTitle('Proj-1984 purchase')).toBe('PROJ-1984-purchase');
+    expect(branchFromTitle('projd-0001 Test ticket name')).toBe('PROJD-0001-test-ticket-name');
+    // Only a suggestion: a title that merely looks like a key suggests one too.
+    expect(branchFromTitle('mobile-360 layout')).toBe('MOBILE-360-layout');
+  });
+
+  it('suggests nothing without a ticket key at the start', () => {
+    for (const title of ['free-talk-640', 'Fix PROJ-1984', 'PROJ-1984purchase', 'PROJ purchase', '', 'JIRA Ticket handling']) {
       expect(branchFromTitle(title), title).toBeNull();
     }
   });
