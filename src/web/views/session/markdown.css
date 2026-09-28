@@ -1,0 +1,271 @@
+/*
+ * D20: Markdown in chat messages (ChatMarkdown, docs/chat.md → Markdown). The
+ * bubble's own rules (13.5px / 1.55, `--text-2b`, `white-space: pre-wrap`) stay as
+ * they are, so a message without Markdown (one or more paragraphs) looks exactly as
+ * the plain text did: no margins inside a paragraph, a blank line (1.55em) between
+ * two. Markdown elements get compact styles from the SPEC tokens.
+ */
+.sb-md :where(p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, table, hr) {
+  margin: 0;
+}
+
+/* Blocks are one blank line of chat text apart, as the same source looked before D20. */
+.sb-md :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr, section) + :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr, section) {
+  margin-top: 1.55em;
+}
+
+/* Headings: modest sizes (a chat, not a document); what follows sits close under them. */
+.sb-md :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.sb-md h1 {
+  font-size: 16px;
+}
+
+.sb-md h2 {
+  font-size: 15px;
+}
+
+.sb-md h3 {
+  font-size: 14px;
+}
+
+.sb-md :where(h4, h5, h6) {
+  font-size: 13.5px;
+}
+
+.sb-md :where(h1, h2, h3, h4, h5, h6) + * {
+  margin-top: 4px;
+}
+
+.sb-md :where(strong, b) {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Lists (task lists: read-only checkboxes, no bullet). */
+.sb-md :where(ul, ol) {
+  padding-left: 20px;
+}
+
+.sb-md li + li {
+  margin-top: 2px;
+}
+
+.sb-md li > :where(ul, ol) {
+  margin-top: 2px;
+}
+
+.sb-md ul.contains-task-list {
+  list-style: none;
+  padding-left: 2px;
+}
+
+.sb-md li.task-list-item input[type='checkbox'] {
+  appearance: none;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+  border: 1px solid var(--muted-3);
+  border-radius: 3px;
+  background: transparent;
+  cursor: default;
+}
+
+.sb-md li.task-list-item input[type='checkbox']:checked {
+  border-color: var(--status-done);
+  background: var(--status-done)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.5l4.5-5' fill='none' stroke='%23111214' stroke-width='1.6'/%3E%3C/svg%3E")
+    center / 10px no-repeat;
+}
+
+.sb-md blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--border-control);
+  color: var(--muted-1);
+}
+
+.sb-md hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid var(--border-divider);
+}
+
+/* Links (new tab); a long URL wraps instead of widening the bubble. */
+.sb-md a {
+  overflow-wrap: anywhere;
+}
+
+/* Inline code. */
+.sb-md code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-code);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-chip);
+  padding: 0 4px;
+}
+
+/*
+ * Fenced code blocks (bg-code, mono): never wrapped, so box-drawing tables keep
+ * their columns; a wide block scrolls inside itself. At 12px Geist Mono's
+ * box-drawing glyphs are ~15.7px tall, so a 1.35 line height (16.2px) lets the
+ * vertical lines of a status table join.
+ */
+.sb-md pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
+  padding: 10px 12px;
+  overflow-x: auto;
+  font: 400 12px/1.35 var(--font-mono);
+  font-variant-ligatures: none;
+  color: var(--text-2);
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 4;
+}
+
+.sb-md pre code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  font: inherit;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  white-space: inherit;
+}
+
+/* Tables: header row in the text color, row lines from the SPEC borders; a wide table scrolls. */
+.sb-md table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.sb-md :where(th, td) {
+  padding: 4px 10px;
+  border: 1px solid var(--border-control);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+
+.sb-md th {
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-card);
+}
+
+/* Footnotes' hidden label (GFM): read by screen readers only. */
+.sb-md .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * Syntax colors (highlight.js classes from rehype-highlight): the SPEC's hues in
+ * their muted variants on bg-code: blue = branch chip text, green = diff +, red =
+ * diff −, amber = the question label's hue at the diff colors' chroma; comments in
+ * muted gray, names in the bright text color.
+ */
+.sb-md .hljs-comment,
+.sb-md .hljs-quote {
+  color: var(--muted-3);
+}
+
+.sb-md .hljs-keyword,
+.sb-md .hljs-selector-tag,
+.sb-md .hljs-meta .hljs-keyword,
+.sb-md .hljs-doctag,
+.sb-md .hljs-name,
+.sb-md .hljs-tag {
+  color: var(--branch-fg);
+}
+
+.sb-md .hljs-string,
+.sb-md .hljs-regexp,
+.sb-md .hljs-addition,
+.sb-md .hljs-meta .hljs-string,
+.sb-md .hljs-char.escape_ {
+  color: var(--diff-add-fg);
+}
+
+.sb-md .hljs-number,
+.sb-md .hljs-literal,
+.sb-md .hljs-symbol,
+.sb-md .hljs-bullet,
+.sb-md .hljs-variable.constant_,
+.sb-md .hljs-type,
+.sb-md .hljs-built_in,
+.sb-md .hljs-selector-attr,
+.sb-md .hljs-selector-pseudo {
+  color: oklch(0.8 0.1 70);
+}
+
+.sb-md .hljs-deletion,
+.sb-md .hljs-variable,
+.sb-md .hljs-template-variable,
+.sb-md .hljs-selector-id,
+.sb-md .hljs-selector-class {
+  color: var(--diff-del-fg);
+}
+
+.sb-md .hljs-title,
+.sb-md .hljs-section {
+  color: var(--text-strong);
+}
+
+.sb-md .hljs-attr,
+.sb-md .hljs-attribute,
+.sb-md .hljs-property,
+.sb-md .hljs-params {
+  color: var(--text-2b);
+}
+
+.sb-md .hljs-meta,
+.sb-md .hljs-meta.prompt_,
+.sb-md .hljs-punctuation,
+.sb-md .hljs-operator {
+  color: var(--muted-2);
+}
+
+.sb-md .hljs-addition,
+.sb-md .hljs-deletion {
+  display: inline-block;
+  width: 100%;
+}
+
+.sb-md .hljs-addition {
+  background: var(--diff-add-bg);
+}
+
+.sb-md .hljs-deletion {
+  background: var(--diff-del-bg);
+}
+
+.sb-md .hljs-emphasis {
+  font-style: italic;
+}
+
+.sb-md .hljs-strong {
+  font-weight: 600;
+}
+
+.sb-md .hljs-link {
+  text-decoration: underline;
+}

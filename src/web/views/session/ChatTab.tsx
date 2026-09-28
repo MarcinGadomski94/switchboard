@@ -5,6 +5,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { QuestionCard } from '../../components/QuestionCard.tsx';
 import { answeredLines } from '../../components/question-card.ts';
 import { refusalText } from '../inbox.ts';
+import { ChatMarkdown } from './ChatMarkdown.tsx';
 import {
   ANSWERS_WRITTEN,
   type ChatItem,
@@ -130,7 +131,7 @@ function ChatItemView({
     return (
       <div className="sb-chat-message" data-testid="chat-message" data-role="user" data-origin={item.origin} data-delivered={item.delivered ? 'true' : 'false'}>
         <div className="sb-chat-bubble" data-testid="chat-text">
-          {item.text}
+          <ChatMarkdown text={item.text} />
         </div>
       </div>
     );
@@ -140,7 +141,7 @@ function ChatItemView({
       <div className="sb-chat-message" data-testid="chat-message" data-role="agent">
         {item.text ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
-            {item.text}
+            <ChatMarkdown text={item.text} />
           </div>
         ) : null}
         {item.steps.length > 0 ? (
