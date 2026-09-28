@@ -9,6 +9,8 @@ import { HubBus } from './hub/bus.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
+import { LiveSolutions } from './solutions/live.ts';
+import { WorkspaceScanner } from './solutions/scanner.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { loadOrCreateToken } from './token.ts';
@@ -32,7 +34,9 @@ async function main(): Promise<void> {
     // System Inbox items (M3.3): "PR merged" from the manager's worktreeRemovable, "Scheduled run failed" from schedule_runs.
     const systemItems = new SystemItemService({ store, bus, worktrees });
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
-    let providers: Providers = { diff: worktrees };
+    const scanner = new WorkspaceScanner({ workspaceRoot: config.workspaceRoot });
+    const solutions = new LiveSolutions({ scanner, store, diff: worktrees, onError: (error) => console.error('switchboard solutions:', error) });
+    let providers: Providers = { diff: worktrees, solutions };
     if (config.demo) providers = (await startDemo(store, config.dataDir)).providers;
     // PR state of the registered worktrees (gh pr view); the demo's worktrees are not real.
     else worktrees.startPolling();

@@ -25,7 +25,7 @@ The data files are the prototype's arrays with positional entries turned into na
 |---|---|
 | `sessions.json` | `S` (sessions with chips, agents, messages, questions, terminal lines, files, per-session artifacts, timeline lanes) |
 | `inbox.json` | `INQ` + the toast and OS notification of `arrive()` (`incoming`), `SYS` (system items, with links to the failed schedule and the removable worktree) |
-| `solutions.json` | `SG` (groups), the "moved to worktree" branch, `LED` (phase ledgers), `ARTS` (artifacts per solution), the dirty list with its times, `G` + `ns` (New-session groups and draft) |
+| `solutions.json` | the workspace root the prototype shows (`D:\acme`), `SG` (groups), the "moved to worktree" branch, `LED` (phase ledgers), `ARTS` (artifacts per solution), the dirty list with its times, `G` + `ns` (New-session groups and draft) |
 | `schedules.json` | `SCH` (with cron for `02:00 daily` → `0 2 * * *`, `every 4h` → `0 */4 * * *`, `08:30 weekdays` → `30 8 * * 1-5`, `Mon 07:00` → `0 7 * * 1`) |
 | `loops.json` | `loops` (+ iteration, cap, breaker read from their facts) |
 | `artifacts.json` | `ART.slice(1)` (the 13 rows the prototype shows), location split into solution + branch |
@@ -45,6 +45,6 @@ The data files are the prototype's arrays with positional entries turned into na
 - Schedules with their 14 runs, oldest first, one cron period apart; the failed schedule's last run is the system item's age ago, the others ran an hour ago; the last run's summary is the prototype's "last" text.
 - Loops, artifacts (at now − age), tools (`cm` with `http://localhost:13000`, `sw` without a URL).
 
-**Into demo providers** (not in the database): git diffs (`sessions.json` files), the solutions scan (`solutions.json`), system metrics (`system.json`, as contract units: percentages, bytes), History rows (`history.json`).
+**Into demo providers** (not in the database): git diffs (`sessions.json` files), the solutions scan (`solutions.json`: rows with the prototype's detail paths under `D:\acme` (`sd.path`), phase ledgers, per-solution artifacts and the dirty list as `codebaseMemory`, M6.2; the `mobile` row's `conflictSessions`, the names in the prototype's `sd.warn`, M6.3), system metrics (`system.json`, as contract units: percentages, bytes), History rows (`history.json`).
 
-**Kept in the data files for later lanes**, not loaded yet: the per-session artifact rows (`sessions.json` → `artifacts`; the database holds the global `ART` list, whose names differ), the incoming question + toast (M3.4 raises toasts only from real `questionBatch` events, so the demo never simulates an arrival; its toast visual runs on the real path, `docs/visual/toast.md`), phase ledgers, per-solution artifacts, the dirty list (M6.x), the New-session groups and draft (M5.1), wizard checks and scan rows (M5.3), the prototype's readable schedule texts (`last`, `next`, `cronLabel`) and loop facts (M7.x).
+**Kept in the data files for later lanes**, not loaded yet: the per-session artifact rows (`sessions.json` → `artifacts`; the database holds the global `ART` list, whose names differ), the incoming question + toast (M3.4 raises toasts only from real `questionBatch` events, so the demo never simulates an arrival; its toast visual runs on the real path, `docs/visual/toast.md`), the dirty list's times (M6.4), the New-session groups and draft (M5.1), wizard checks and scan rows (M5.3), the prototype's readable schedule texts (`last`, `next`, `cronLabel`) and loop facts (M7.x).

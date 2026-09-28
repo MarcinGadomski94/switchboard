@@ -1,0 +1,2 @@
+# Byte-exact fixtures (CRLF, BOM, lone CR): never normalized by git.
+* -text

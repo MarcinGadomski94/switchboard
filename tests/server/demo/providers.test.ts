@@ -35,7 +35,29 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
       ['read-only', 'read-only'],
     ]);
     const mobile = groups[1]?.solutions[0];
-    expect(mobile).toMatchObject({ name: 'mobile', path: 'mobile/', conflict: true, flag: '⚠ shared working tree' });
+    expect(mobile).toMatchObject({
+      name: 'mobile',
+      path: 'D:\\acme\\mobile',
+      relativePath: 'mobile',
+      conflict: true,
+      flag: '⚠ shared working tree',
+      codebaseMemory: 'dirty',
+      ledger: [
+        { interface: 'FreeTalkService', phase: 'UI-first', seam: 'seam TODO · FreeTalkViewModel.cs:41' },
+        { interface: 'PushPreferencesClient', phase: 'integration', seam: 'Tier A pending on BFF route' },
+      ],
+    });
+    expect(mobile?.artifacts.map((a) => [a.type, a.name, a.meta])).toEqual([
+      ['CONTRACT', 'contracts/free-talk.md', 'locked'],
+      ['FOLLOWUP', 'mobile-followups/from-acme-app-front.md', '2 pending'],
+      ['QA', 'coverage-matrix.md', '12/18'],
+    ]);
+    // The prototype's detail paths (sd.path), verbatim.
+    const byName = new Map(groups.flatMap((g) => g.solutions).map((s) => [s.name, s]));
+    expect(byName.get('acme-app-front')?.path).toBe('D:\\acme\\microfrontends\\acme-app-front');
+    expect(byName.get('infrastructure')?.path).toBe('D:\\acme\\infrastructure');
+    expect(byName.get('old-chat-front')).toMatchObject({ path: 'D:\\acme\\deprecated\\microfrontends\\old-chat-front', ledger: null, artifacts: [] });
+    expect(byName.get('typography-nuget')?.codebaseMemory).toBe('fresh');
     expect(mobile?.branches[1]).toEqual({ branch: 'feature/button-variants', worktree: null, sessionId: 'button-rollout', owner: 'button-rollout', status: 'need' });
     expect(groups.flatMap((g) => g.solutions).filter((s) => s.conflict).map((s) => s.name)).toEqual(['mobile']);
     expect(groups[5]?.solutions.every((s) => s.rule === 'read-only')).toBe(true);

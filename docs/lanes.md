@@ -21,8 +21,8 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/inbox` | `api/inbox.ts` | served since M3.2 (`listInbox` in `inbox/wire.ts`, `docs/inbox.md`); items from M3.1 and M3.3 |
 | `POST /api/questions/batch/{batchId}/answers` | `api/inbox.ts` | served since M3.1 (`docs/questions.md`) |
 | `POST /api/inbox/{id}/actions/{action}` | `api/inbox.ts` | permission items served since M3.1 (`docs/questions.md`); system items since M3.3 (`docs/system-items.md`) |
-| `GET /api/solutions` | `api/solutions.ts` | M6.2 (scanner M6.1) |
-| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); M6.3 adds conflict detection and the UI action |
+| `GET /api/solutions` | `api/solutions.ts` | served since M6.1 (the workspace scan, `docs/solutions.md`); live fields since M6.2 (`LiveSolutions`: branches, status, phase, changes, ledger, artifacts, codebase-memory freshness); `flag` / `conflict` / `conflictSessions` since M6.3 (`docs/solutions.md` → *Conflicts*) |
+| `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); the UI action since M6.3 (the conflict card) |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
 | `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
 | `GET /api/history` | `api/history.ts` | M7.4 |
@@ -48,7 +48,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | Provider | Real implementation | Demo implementation |
 |---|---|---|
 | `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
-| `SolutionsProvider` (workspace scan) | M6.1 / M6.2 | same |
+| `SolutionsProvider` (workspace scan + live fields) | `LiveSolutions` (M6.2, `src/server/solutions/live.ts`) over the `WorkspaceScanner` (M6.1, `src/server/solutions/scanner.ts`, `docs/solutions.md`), wired in `main.ts`; its optional `isReadOnly` (the scanner's) feeds the NewSession read-only check | same (no `isReadOnly`: matched by row name) |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3, M9.2 | same |
 | `HistoryProvider` (transcripts) | M7.4 | same |
 
@@ -67,7 +67,7 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `views/session/ArtifactsTab.tsx` | Session artifacts | M4.6 |
 | `modals/NewSessionModal.tsx` | New session (sections 1–6) + D8 Schedule section | M5.1, M7.1 |
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
-| `views/SolutionsView.tsx` | Solutions | M6.2 (M6.3 conflict action, M6.4 freshness) |
+| `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
 | `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
 | `views/HistoryView.tsx` | History | M7.4 |
@@ -86,8 +86,8 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `modals/ModalHost.tsx`: `useModals().open('new-session' | 'setup-wizard' | 'palette', { prefill? })` (M3.3: `prefill` = the New-session values, passed to `NewSessionModal`; M5.1 fills the form from it), Esc closes, ⌘K / Ctrl+K opens the palette. `toast/ToastHost.tsx`: `useToasts().show({ id, title, sub, branch, text, sessionId })`; `toast/notify.ts`: `playChime()` / `notifyOs()` for M8.2's "Send test" (`docs/notifications.md`).
 
 ## Tests
+- **Lane runs:** a lane worktree runs its servers on its own ports with `SWITCHBOARD_TEST_PORTS=<first>-<last>` or a comma list (e.g. `4920-4929`; `tests/helpers/net.ts`, default 4871–4879, never 4870; anything unreadable is an error), e.g. `SWITCHBOARD_TEST_PORTS=4920-4929 npm test` / `npx playwright test`. `playwright.config.ts` anchors its ignore patterns at the repo, because a lane's own path contains `.worktrees/`.
 - `tests/e2e/shell.spec.ts`: the shell on the real code path (no demo): API calls reach the 501 routes, navigation, deep links, modals.
 - `tests/e2e/visual/shell.spec.ts`: the visual oracle for the shell (`docs/visual/shell.md`).
 - `tests/server/api/routes.test.ts`: every contract route is registered and guarded.
-- Test ports: `SWITCHBOARD_TEST_PORTS` (`<first>-<last>` or a list, never 4870) moves the 4871–4879 range that tests bind (`tests/helpers/net.ts`), so parallel lanes can each run `npm test` on their own range (e.g. `SWITCHBOARD_TEST_PORTS=4910-4919 npm test`).
 - `tests/server/demo/*.test.ts`: demo data verbatim against the prototype, the seed, the demo providers.

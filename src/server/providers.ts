@@ -14,9 +14,16 @@ export interface DiffProvider {
   diff(sessionId: string, file?: string): Promise<FileDiff[]>;
 }
 
-/** The workspace scan grouped by folder (M6.1 / M6.2). Real implementation: M6.1. */
+/** The workspace scan grouped by folder (M6.1 / M6.2). Real implementation: `WorkspaceScanner` (M6.1, `solutions/scanner.ts`). */
 export interface SolutionsProvider {
   solutions(): Promise<SolutionGroup[]>;
+  /**
+   * `true` when the router's folder rules make a NewSession solution (a bare name
+   * or a workspace-relative path) read-only (`docs/solutions.md`). Optional:
+   * without it the session validation matches read-only rows of
+   * {@link solutions} by name.
+   */
+  isReadOnly?(solution: string): Promise<boolean>;
 }
 
 /** CLI / gh status + machine metrics (gap #11) + usage (M9.2). Real implementation: M5.3, M9.2. */

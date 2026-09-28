@@ -51,10 +51,13 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   });
 
   app.post('/api/sessions', async (request, reply) => {
-    const readOnly = providers.solutions
+    const scan = providers.solutions;
+    const readOnly = scan
       ? async (solution: string): Promise<boolean> => {
-          const groups = await providers.solutions?.solutions();
-          return (groups ?? []).some((group) => group.solutions.some((s) => s.name === solution && s.rule === 'read-only'));
+          // The scanner's own rule (M6.1, docs/solutions.md) resolves the name like the worktree manager does.
+          if (scan.isReadOnly) return scan.isReadOnly(solution);
+          const groups = await scan.solutions();
+          return groups.some((group) => group.solutions.some((s) => s.name === solution && s.rule === 'read-only'));
         }
       : undefined;
     const result = await validateNewSession(request.body, {

@@ -70,7 +70,7 @@ Oracle: `tests/server/supervisor/restart.test.ts` runs `src/server/main.ts` as a
 
 Unknown ids answer `404 {error:"not-found"}`; supervisor refusals `409 {error:<code>, message}`. `GET /api/sessions/{id}/diff` stays 501 until M4.5.
 
-Read-only solutions are refused with `422` when a name is a `deprecated/…` or `infrastructure` path, and, once the workspace scan exists (M6.1, `providers.solutions`), when the scan marks it read-only.
+Read-only solutions are refused with `422` when a name is a `deprecated/…` or `infrastructure` path, and, with the workspace scan (M6.1, `providers.solutions`), when the router's folder rules make it read-only (`docs/solutions.md` → *Read-only sessions*).
 
 ## Notifications
 `supervisor.on('sessionUpdated' | 'event', listener)` delivers the contract's `/hub` payloads (`Session`, `{ sessionId, event }`) on every status/attachment change and every event insert or update (a merged assistant text or a closed tool call re-sends the event with the same `id`). M2.3 forwards them over SSE (`forwardServiceEvents`, `docs/hub.md`).

@@ -3,6 +3,7 @@ import type { SystemInfo } from '../../core/api.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
+import { useThrottled } from '../api/useThrottled.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
 import {
@@ -17,6 +18,9 @@ import {
   statusColor,
   urlHost,
 } from './format.ts';
+
+/** `sessionUpdated` comes in bursts; the Solutions badge source reloads at most this often (M6.3). */
+const SOLUTIONS_RELOAD_MS = 1_000;
 
 /** Badge style of a nav item (prototype navDef kinds). */
 type BadgeKind = 'need' | 'warn' | 'fail' | null;
@@ -85,6 +89,8 @@ export function Sidebar() {
   useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());
   useHubEvent('worktreeRemovable', () => solutions.reload());
+  // The conflict badge (M6.3) follows sessions starting, ending and moving to worktrees.
+  useHubEvent('sessionUpdated', useThrottled(solutions.reload, SOLUTIONS_RELOAD_MS));
   useHubEvent('scheduleRun', () => schedules.reload());
   useHubEvent('system', (payload) => setLiveSystem(payload));
 

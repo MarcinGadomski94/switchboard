@@ -1,4 +1,5 @@
-import type { BranchRef, FileDiff, FolderRule, HistoryItem, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import path from 'node:path';
+import type { BranchRef, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo } from '../../core/api.ts';
 import type { DiffProvider, HistoryProvider, Providers, SolutionsProvider, SystemProvider } from '../providers.ts';
 import type { DemoData, DemoFile } from './data.ts';
 
@@ -25,6 +26,18 @@ function toFileDiff(file: DemoFile): FileDiff {
     ...parseDelta(file.delta),
     lines: [...file.lines],
   };
+}
+
+/**
+ * A demo solution's path from the workspace root, by the prototype's own rule for
+ * the detail path (`sd.path`): `mobile` and `infrastructure` are whole folders,
+ * the other read-only rows sit in `deprecated/microfrontends/`, the rest in their
+ * group folder.
+ */
+export function demoRelativePath(folder: string, name: string, readOnly: boolean): string {
+  if (readOnly) return name === 'infrastructure' ? name : `deprecated/microfrontends/${name}`;
+  if (folder === 'mobile/') return name;
+  return `${folder}${name}`;
 }
 
 function folderRule(folder: string): FolderRule {
@@ -54,30 +67,48 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
     },
   };
 
+  const dirty = new Set(data.solutions.codebaseMemoryDirty.map((d) => d.project));
   const solutions: SolutionsProvider = {
     async solutions(): Promise<SolutionGroup[]> {
       return data.solutions.groups.map((group) => ({
         folder: group.folder,
         note: group.note,
         rule: folderRule(group.folder),
-        solutions: group.solutions.map((sol) => ({
-          name: sol.name,
-          path: sol.name === 'mobile' ? group.folder : `${group.folder}${sol.name}`,
-          type: sol.type,
-          status: sol.status,
-          rule: sol.readOnly ? 'read-only' : folderRule(group.folder),
-          phase: sol.phase,
-          changes: sol.changes,
-          flag: sol.flag,
-          conflict: sol.flagKind === 'warn',
-          branches: sol.branches.map((b) => ({
-            branch: b.branch,
-            worktree: b.worktree ? `../${b.worktree}` : null,
-            sessionId: sessionNames.has(b.owner) ? b.owner : null,
-            owner: b.owner,
-            status: b.status,
-          })),
-        })),
+        solutions: group.solutions.map((sol) => {
+          const relativePath = demoRelativePath(group.folder, sol.name, sol.readOnly);
+          const ledger = data.solutions.phaseLedgers[sol.name];
+          return {
+            name: sol.name,
+            // The prototype's Windows paths, verbatim (its root is `D:\acme`).
+            path: path.win32.join(data.solutions.root, ...relativePath.split('/')),
+            relativePath,
+            type: sol.type,
+            status: sol.status,
+            rule: sol.readOnly ? 'read-only' : folderRule(group.folder),
+            phase: sol.phase,
+            changes: sol.changes,
+            flag: sol.flag,
+            conflict: sol.flagKind === 'warn',
+            // The card's sessions (prototype `sd.warn`); isolated = its branch here has a worktree folder.
+            conflictSessions: (sol.conflictSessions ?? []).map((name) => ({
+              sessionId: name,
+              name,
+              isolated: sol.branches.some((b) => b.owner === name && b.worktree !== null),
+              repo: sol.name,
+              attached: true,
+            })),
+            branches: sol.branches.map((b) => ({
+              branch: b.branch,
+              worktree: b.worktree ? `../${b.worktree}` : null,
+              sessionId: sessionNames.has(b.owner) ? b.owner : null,
+              owner: b.owner,
+              status: b.status,
+            })),
+            ledger: ledger ? ledger.map((entry) => ({ interface: entry.interface, phase: entry.phase, seam: entry.seam })) : null,
+            artifacts: (data.solutions.artifacts[sol.name] ?? []).map((a) => ({ type: a.type, name: a.name, meta: a.meta, sessionId: null })),
+            codebaseMemory: dirty.has(sol.name) ? 'dirty' : 'fresh',
+          } satisfies Solution;
+        }),
       }));
     },
   };

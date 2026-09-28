@@ -153,11 +153,15 @@ export interface DemoSolution {
   readonly flag: string;
   /** `warn` = conflict (need color), `muted` = informational. */
   readonly flagKind: 'warn' | 'muted' | null;
+  /** The sessions the conflict card names (prototype `sd.warn`), for a `warn` row (M6.3). */
+  readonly conflictSessions?: readonly string[];
   readonly branches: readonly DemoSolutionBranch[];
 }
 
 /** `solutions.json` (SG, LED, ARTS, the dirty list, the New-session groups and draft). */
 export interface DemoSolutions {
+  /** The workspace root the prototype shows (`D:\acme`: its solution paths and the Solutions header). */
+  readonly root: string;
   readonly groups: ReadonlyArray<{ readonly folder: string; readonly note: string; readonly solutions: readonly DemoSolution[] }>;
   /** The branch as it looks after "Move … to worktree". */
   readonly conflictFixedBranch: { readonly solution: string; readonly branch: string; readonly worktree: string };

@@ -237,10 +237,52 @@ export interface SolutionBranch {
   readonly status: SessionStatus;
 }
 
+/** One interface of a solution's `phase-ledger.md` (gap #12; the detail panel's phase ledger). */
+export interface PhaseLedgerEntry {
+  readonly interface: string;
+  /** `UI-first` or `integration`. */
+  readonly phase: string;
+  /** Where the seam is (`seam TODO · FreeTalkViewModel.cs:41`); empty when the ledger names none. */
+  readonly seam: string;
+}
+
+/** An artifact or follow-up of a solution (the detail panel's "Artifacts & follow-ups"). */
+export interface SolutionArtifact {
+  /** Artifact type tag (`CONTRACT`, `QA`, `FOLLOWUP`, …). */
+  readonly type: string;
+  /** Path inside the solution (`contracts/free-talk.md`) or the artifact's name. */
+  readonly name: string;
+  /** Short state (`locked`, `2 pending`); empty when none. */
+  readonly meta: string;
+  /** The session that produced it, `null` for a file found in the solution. */
+  readonly sessionId: string | null;
+}
+
+/**
+ * A session in a solution's conflict (M6.3, `docs/solutions.md` → *Conflicts*):
+ * one of the open sessions writing the repo while at least one of them has no
+ * worktree of its own.
+ */
+export interface ConflictSession {
+  readonly sessionId: string;
+  readonly name: string;
+  /** `true` when it writes in its own worktree; `false` = in the main checkout (the card offers "Move … to worktree"). */
+  readonly isolated: boolean;
+  /** The `{repo}` of `POST /api/solutions/{repo}/isolate`: the solution as the session lists it (or its worktree's repo). */
+  readonly repo: string;
+  /** `false` while it continues in a terminal: isolating it is refused (409 `detached`) until it is attached again. */
+  readonly attached: boolean;
+}
+
+/** codebase-memory freshness of a solution (`.claude/.codebase-memory-dirty`, M6.2 / M6.4). */
+export type CodebaseMemoryFreshness = 'fresh' | 'dirty' | 'unknown';
+
 /** A solution row. Provisional: M6.2. */
 export interface Solution {
   readonly name: string;
   readonly path: string;
+  /** Path from the workspace root, `/`-separated (`microfrontends/acme-app-front`, `mobile`). M6.2. */
+  readonly relativePath: string;
   /** Filter pill: Web, Mobile, NuGet, Backend, Read-only (or Other for `other/`). */
   readonly type: string;
   readonly status: SessionStatus;
@@ -249,8 +291,17 @@ export interface Solution {
   readonly changes: string;
   /** Second-line flag ("⚠ shared working tree", "contract source"); empty when none. */
   readonly flag: string;
+  /** Two or more open sessions write the repo and at least one has no worktree of its own (M6.3). */
   readonly conflict: boolean;
+  /** The sessions in the conflict, oldest first; empty without one (M6.3). */
+  readonly conflictSessions: readonly ConflictSession[];
   readonly branches: readonly SolutionBranch[];
+  /** The solution's `phase-ledger.md` entries (gap #12); `null` when it has no such file. M6.2. */
+  readonly ledger: readonly PhaseLedgerEntry[] | null;
+  /** Artifacts of its sessions + its `mobile-followups/*.md` files, newest first. M6.2. */
+  readonly artifacts: readonly SolutionArtifact[];
+  /** Whether agents edited it since codebase-memory last indexed it. M6.2 (M6.4 refines). */
+  readonly codebaseMemory: CodebaseMemoryFreshness;
 }
 
 /** `GET /api/solutions` item: one folder group. Provisional: M6.2. */
