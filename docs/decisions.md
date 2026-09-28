@@ -60,6 +60,10 @@ Rulings made by the developer at kickoff, on top of `docs/handoff/`. **Where thi
   - **New-session form:** the name field takes free text as the title; the short name is derived from it (lower-case, runs of anything but letters and digits → `-`, trimmed, at most 64 characters) and shown in the live summary (branch and worktree lines); when that short name is taken, `-2`, `-3`, … is added. The contract's `NewSession` gains optional `title` (additive); `name` keeps its rules.
   - **Rename:** click the name in the session header (inline edit; Enter saves, Esc cancels) or double-click it in the sidebar; `PUT /api/sessions/{id}/title { title }` (additive). Only the title changes; the name, branch and worktree stay. The next process spawn passes the title as `--name` (the CLI's display name).
   - **Moved sessions (D16)** take the conversation's title as their title (their short name is still derived from it). **Scheduled runs** get the schedule's name as their title.
+  - **Developer rulings (2026-09-28)**, on the questions the implementation raised:
+    1. *Conflict card: show the title.* `ConflictSession` gains `title` (string | null, additive); the Solutions conflict card and its "Move … to worktree" button name the session by its display title. Worktree paths and branches stay derived from the short name.
+    2. *Kebab-case text: store it as a title too.* Text in the New-session name field that already is a valid short name (e.g. `free-talk-640`) is posted as the title as well, so every session created from the form gets a title, even when it equals the name.
+    3. *Move with a typed title: accept free text.* With a terminal conversation picked (D16), free text in the name field is accepted: it becomes the moved session's title and its short name is derived from it by the new-session rules (slug, `-2` / `-3` on collisions). With the field empty the move keeps D16 (the conversation's title). The continue route gains an additive `title`.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.

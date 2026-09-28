@@ -83,29 +83,30 @@ The server remains the authority: it validates the name (unique, kebab-case), th
 ## Name and title (D22)
 The name field takes free text: the session's **title** (`startNames` / `toStartBody` in `new-session.ts`, rules in `src/core/session-title.ts`, `docs/derivations.md` → *Session titles*).
 - **Short name**: lower-case, accents dropped, every run of anything but a letter or a digit → `-`, trimmed, at most 64 characters; `session` for an empty field (or one without a letter or digit); when it is taken by a listed session, `-2`, `-3`, … is added. `JIRA Ticket handling` → `jira-ticket-handling`. The worktree folders and the branch are built from it, and the summary shows it (`branch    session/<name>`, the `../<repo>-wt-<name>` lines).
-- **Title**: the field trimmed, posted as `title` next to `name`, unless the field already is its own short name (`free-talk-640`): then no title is posted and the session shows its name, exactly as before titles. More than 80 characters: the `⚠` line and Start stays disabled.
-- Not for a **schedule** (its name keeps the kebab-case rules and must be free among schedules; each run's title is the schedule's name, `docs/schedules.md`) nor for a **moved** terminal conversation (its title comes from the conversation, D16; a typed name must still be kebab-case and free).
+- **Title**: the field trimmed, posted as `title` next to `name`. Developer ruling 2026-09-28: text that already is its own short name (`free-talk-640`) is posted as the title too, so every session started from the form has one (it reads the same as its name, and the summary shows no `branch` line for it); only an empty field posts none (`session`). More than 80 characters: the `⚠` line and Start stays disabled.
+- **Moved** terminal conversation (*Resume a terminal conversation* below, developer ruling 2026-09-28): free text too; it becomes the moved session's title and the service derives the short name from it the same way. An empty field keeps D16: the conversation's own title.
+- Not for a **schedule**: its name keeps the kebab-case rules and must be free among schedules; each run's title is the schedule's name (`docs/schedules.md`).
 - A session is renamed later in the session header or the sidebar (`docs/derivations.md` → *Session titles* → *In the UI*).
 
 ## Resume a terminal conversation (D16)
 Next to the task (a `↻ Resume a terminal conversation` pill at the right of section 1's label line, out of the flow, so the prototype's layout is unchanged; not while scheduling) the form lists the chosen folder's terminal conversations that are not in Switchboard yet: the `GET /api/history` rows with `terminal: true` whose `folder` is the form's folder, newest first, each with its title (the History name) and `<date> · <first prompt>` (`src/web/modals/resume-conversation.ts`). Picking one:
 - replaces the task field with the picked conversation (`↻ <title>`, its date, `×` to type a task again) and closes the list; changing the folder drops the pick;
 - hides sections 2–6, "Accept recommended" and the Launch toggles (a moved session has no session-start answers, no worktree and no first message; the toggles' place reads "Continues where the conversation started: no worktree, no first message.");
-- the name field's placeholder is the name the service will give it (the title in kebab-case, made unique, `src/core/terminal-move.ts`); a typed name must be kebab-case and free;
+- the name field's placeholder is the name the service will give it when the field stays empty (the title in kebab-case, made unique, `src/core/terminal-move.ts`); D22 (developer ruling 2026-09-28): typed free text is the moved session's title and its short name is derived from it (`resumeNames`: the New-session rule, `-2`, `-3`, … when taken); only a title over 80 characters is refused;
 - the summary reads:
   ```
   # claude code · background · Max
   folder    <folder> · workspace | git repo
   cwd       <where the conversation started>
   resume    claude --resume <claudeSessionId>
-  name      <typed name, else the preview>
+  name      <the short name of the typed title, else the preview>
 
   # moves the terminal conversation · no first message
-  ⚠ a session with this name exists | ⚠ the name must be kebab-case (a-z, 0-9, single dashes)
+  ⚠ the title must be at most 80 characters                (D22)
 
   ✓ same conversation · history imported · idle
   ```
-- **Start session** calls `POST /api/history/{claudeSessionId}/continue` (`{ name }` when one is typed) instead of `POST /api/sessions`; on `201` the modal closes and the session opens. A terminal that may still have the conversation (409 `terminal-open`) or no saved folder holding it (409 `folder-not-saved`) shows the warning under the summary with **Continue anyway** / **Add <folder> and continue** and Cancel; any other refusal reads `Not moved: <reason>`. The server side is `docs/supervisor.md` → *Continue in Switchboard*.
+- **Start session** calls `POST /api/history/{claudeSessionId}/continue` (D22: `{ title }` when text is typed; the service derives the short name from it) instead of `POST /api/sessions`; on `201` the modal closes and the session opens. A terminal that may still have the conversation (409 `terminal-open`) or no saved folder holding it (409 `folder-not-saved`) shows the warning under the summary with **Continue anyway** / **Add <folder> and continue** and Cancel; any other refusal reads `Not moved: <reason>`. The server side is `docs/supervisor.md` → *Continue in Switchboard*.
 
 ## First-turn payload (M5.2)
 The CLI takes no prompt argument (M0.1), so the task and the answers the developer confirmed in this form go into the session's **first stdin user message**: `{"type":"user","message":{"role":"user","content":<payload>}}`. The agent is told they are confirmed, so it confirms them back instead of asking the router's session-start questions again. If it asks anyway, the question batch reaches the Inbox like any other; Switchboard never answers it for the developer. `--append-system-prompt` is not used (not probed in M0).
@@ -156,5 +157,5 @@ Take them as the answers to the session-start questions: confirm them back in on
 - `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, D22: a title's derived short name and a taken name getting `-2`), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a refusal shown in the modal (D22: the short name's branch exists already), the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
 - `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`); D14: the sections are compared relative to section 1 and the Folder row and the summary's `folder` line are recorded as additions.
 - D14: `tests/e2e/folders.spec.ts` (the Folder row switching chips, a repo folder's form and session in its worktree), `tests/e2e/walkthrough-repo.spec.ts`.
-- D16: `tests/web/resume-conversation.test.ts` (entries, name preview and checks, Start rule, summary), `tests/e2e/move-conversations.spec.ts` (Resume a terminal conversation → pick → Start moves it, on the real path), and the visual spec's `D16 …` rows (the pill out of the flow).
+- D16: `tests/web/resume-conversation.test.ts` (entries, name preview, D22: a typed title and its short name, the 80-character rule, Start rule, summary), `tests/e2e/move-conversations.spec.ts` (Resume a terminal conversation → pick → a typed title → Start moves it, on the real path), and the visual spec's `D16 …` rows (the pill out of the flow).
 - D22: `tests/core/session-title.test.ts` (short name, collisions, the title check), `tests/web/session-titles.test.ts` (the form's short name, title and body, the summary lines, the 80-character rule, schedules unchanged) and `tests/e2e/session-titles.spec.ts` ("JIRA Ticket handling" → `session/jira-ticket-handling`, on the real path).
