@@ -191,8 +191,16 @@ The sidebar footer shows RAM in use and two **Max usage** bars:
 ### Restarts and recovery
 When Switchboard starts, sessions that were live are resumed with `claude --resume` and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
 
+### Install as an app
+Switchboard can run in its own app window with a Dock icon (a PWA):
+- **Chrome:** Settings → Claude Code → **Install as app**, or the install icon in the address bar.
+- **Safari:** **File → Add to Dock…**.
+
+If the service isn't running, the app window shows "Switchboard isn't running" with **Retry**. Nothing else is cached, so after an update just reload the app.
+
+Install it from the address you normally use: `127.0.0.1:4870` and `localhost:4870` count as two different apps. [`docs/install-app.md`](docs/install-app.md)
+
 ### Coming (being built)
-- An installable app window: Chrome "Install", Safari "Add to Dock".
 - A guided one-click frame helper setup.
 - Opening a **subagent's own chat** from the main chat, and hiding finished subagents from the right panel.
 
@@ -231,9 +239,10 @@ docs/         one doc per area, the decisions log, the handoff spec
 | Script | What |
 |---|---|
 | `npm run dev` | Rebuilds the UI on change and restarts the server (`node --watch`). No HMR: reload the browser. |
-| `npm run typecheck` | `tsc` over the server, web and e2e configs. |
+| `npm run typecheck` | `tsc` over the server, web, e2e and service-worker configs. |
 | `npm test` | Vitest: unit and integration. |
 | `npm run e2e` | Playwright (Chromium, 1440×900) on the real code path, including the visual oracle. |
+| `npm run icons` | Re-renders the app icons (`src/web/public/icons/`) from their SVGs with Playwright's Chromium. |
 
 ### Tests never call the real `claude` or `gh`
 - **`tools/fake-claude`** replays recorded stream-json turns and scenarios. Tokens in a prompt drive it, e.g. `[fake:ask-2q]`, `[fake:say "…"]`, `[fake:background …]`. See [`docs/fake-claude.md`](docs/fake-claude.md).
