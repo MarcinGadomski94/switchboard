@@ -19,7 +19,14 @@ export type ClaudeStart =
   /** A new session: `--session-id <uuid>` (the uuid becomes the claudeSessionId). */
   | { readonly kind: 'new'; readonly claudeSessionId: string }
   /** Resume, attach, restart: `--resume <claudeSessionId>`; the id never changes. */
-  | { readonly kind: 'resume'; readonly claudeSessionId: string };
+  | { readonly kind: 'resume'; readonly claudeSessionId: string }
+  /**
+   * D25: a local copy of a remote session, `--teleport <session_X>`, **without**
+   * `--session-id` (the CLI picks the local copy's id; Switchboard learns it from
+   * `system/init`, `docs/supervisor.md` → *Teleport*). Only the first spawn: every
+   * later one resumes the local id.
+   */
+  | { readonly kind: 'teleport'; readonly remoteSession: string };
 
 /** Input of {@link buildClaudeArgs}. */
 export interface ClaudeArgsInput {
@@ -31,10 +38,23 @@ export interface ClaudeArgsInput {
   readonly extraArgs?: readonly string[];
 }
 
+/** The flag pair that says which conversation the process runs (see {@link ClaudeStart}). */
+function startArgs(start: ClaudeStart): [string, string] {
+  switch (start.kind) {
+    case 'new':
+      return ['--session-id', start.claudeSessionId];
+    case 'resume':
+      return ['--resume', start.claudeSessionId];
+    case 'teleport':
+      return ['--teleport', start.remoteSession];
+  }
+}
+
 /**
  * The baseline argv (without the CLI command itself): stream-json in and out,
  * `--permission-prompt-tool stdio` (questions and permission requests over stdin,
- * M0.2), the permission mode (not inherited on `--resume`, M0.4), the session id,
+ * M0.2), the permission mode (not inherited on `--resume`, M0.4), the session id
+ * (D25: or `--teleport <session_X>` for a local copy of a remote session),
  * `--name`, `--forward-subagent-text`, `--replay-user-messages`. No prompt argument:
  * every message, the first one included, goes through stdin. No `--settings`: no
  * hooks are needed (D6 allows a Switchboard-owned file if that changes).
@@ -51,8 +71,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     'stdio',
     '--permission-mode',
     input.permissionMode,
-    input.start.kind === 'new' ? '--session-id' : '--resume',
-    input.start.claudeSessionId,
+    ...startArgs(input.start),
     '--name',
     input.name,
     '--forward-subagent-text',

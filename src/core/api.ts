@@ -210,6 +210,13 @@ export interface Session {
    * still type-check.
    */
   readonly remote?: SessionRemote | null;
+  /**
+   * Additive (D25, migration 0008): the remote session this one is a local copy of
+   * (`session_<X>`, "From a remote session" / `POST /api/sessions/teleport`);
+   * `null` for every other session. The server always sends it; optional here so
+   * older payloads and fixtures still type-check.
+   */
+  readonly remoteSource?: string | null;
 }
 
 /**
@@ -736,6 +743,45 @@ export interface ContinueConversation {
   readonly addFolder?: boolean;
   /** Move it although a terminal may still have it open (after `409 terminal-open`). */
   readonly confirm?: boolean;
+}
+
+/**
+ * Additive (D25): body of `POST /api/sessions/teleport`, which continues a remote
+ * session (claude.ai/code, or Remote Control on another machine) locally: a new
+ * worktree of a **repo** folder, `claude -p --teleport <session_X>` there, then a
+ * normal supervised session (`docs/supervisor.md` → *Teleport*). The answer is
+ * `201 Session` with {@link Session.remoteSource} set.
+ */
+export interface TeleportSession {
+  /** A claude.ai/code session URL (query string ignored), `session_<X>` or `cse_<X>`; else 422 on field `remote`. */
+  readonly remote: string;
+  /** The saved **repo** folder's id; a workspace folder or an unknown id is 422 on field `folder`. */
+  readonly folder: string;
+  /**
+   * The session's title (D22: trimmed, 1–80 characters, else 422 on field `title`);
+   * its short name is derived from it (`-2`, `-3`, … when taken). Omitted, `null`
+   * or blank = title `Remote <first 8 characters of X>`, name `remote-<the same, lower-cased>`.
+   */
+  readonly title?: string | null;
+  /**
+   * Optional first message, written to the local copy right after the spawn (the
+   * CLI may report its session only once it takes a message, `docs/supervisor.md`
+   * → *Teleport*). Omitted or blank = none: the local copy stays idle.
+   */
+  readonly task?: string;
+}
+
+/**
+ * Additive (D25): a teleport the CLI refused or never finished. Nothing is left
+ * behind: the worktree and branch Switchboard created are removed and no session
+ * is stored. `message` is the CLI's own text, verbatim (its stderr, else what it
+ * printed on stdout) when it has one.
+ * - 502 `teleport-failed`: `claude` exited before it reported the local session (`system/init`);
+ * - 504 `teleport-timeout`: it did not report the local session in time and was stopped.
+ */
+export interface TeleportRefusal {
+  readonly error: 'teleport-failed' | 'teleport-timeout';
+  readonly message: string;
 }
 
 /**

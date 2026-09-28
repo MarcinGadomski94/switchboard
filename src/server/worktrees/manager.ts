@@ -296,6 +296,17 @@ export class WorktreeManager implements DiffProvider {
     }
   }
 
+  /**
+   * The branch checked out in `dir` (`git rev-parse --abbrev-ref HEAD`); `null`
+   * when HEAD is detached or git cannot tell. D25 reads what a teleport checked
+   * out in the worktree Switchboard made for it.
+   */
+  async checkedOutBranch(dir: string): Promise<string | null> {
+    const result = await this.#runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const branch = result.stdout.trim();
+    return succeeded(result) && branch !== '' && branch !== 'HEAD' ? branch : null;
+  }
+
   async #plan(solution: string, sessionName: string, folder: FolderRef): Promise<Plan> {
     const { repoPath } = await this.resolveRepo(solution, folder);
     const branch = worktreeBranch(sessionName);

@@ -4,7 +4,7 @@ The form behind "+ New session" (SPEC → Modals → New session; prototype `mNe
 
 ## Layout
 1080px, `1fr | 360px` (`.sb-modal-new` in `modals.css`). Left, in order:
-0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row, with its optional Name, D18) and the folder's check line (`docs/folders.md` → *UI*). D18: each option shows the folder's display name (its custom name, else its own name; a name two folders share, ignoring case, gets `· <path>`), the path as the option's and the dropdown's tooltip. A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip.
+0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row, with its optional Name, D18) and the folder's check line (`docs/folders.md` → *UI*). D18: each option shows the folder's display name (its custom name, else its own name; a name two folders share, ignoring case, gets `· <path>`), the path as the option's and the dropdown's tooltip. A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip. D25: the `⇣ From a remote session` pill sits on its label line, on the right (*From a remote session* below).
 1. **Task definition**: the name (220px, Geist Mono, placeholder `session-name`; D22: it takes the session's title, *Name and title* below) and the task (`What should be implemented?`). The task comes first, as the router wants the developer to define the task before any questions.
 2. **Work type**: Feature-building · Test-authoring (QA).
 3. **Mode**: Single-solution · Workspace orchestrator.
@@ -108,6 +108,30 @@ Next to the task (a `↻ Resume a terminal conversation` pill at the right of se
   ```
 - **Start session** calls `POST /api/history/{claudeSessionId}/continue` (D22: `{ title }` when text is typed; the service derives the short name from it) instead of `POST /api/sessions`; on `201` the modal closes and the session opens. A terminal that may still have the conversation (409 `terminal-open`) or no saved folder holding it (409 `folder-not-saved`) shows the warning under the summary with **Continue anyway** / **Add <folder> and continue** and Cancel; any other refusal reads `Not moved: <reason>`. The server side is `docs/supervisor.md` → *Continue in Switchboard*.
 
+## From a remote session (D25)
+A **`⇣ From a remote session`** pill sits on the Folder label line, on the right, out of the flow (like D16's pill on section 1's label line; not while scheduling). It is a toggle (`aria-pressed`); while it is on (`src/web/modals/remote-session.ts`):
+- the **Folder** dropdown lists only the saved git repo folders (the form's folder stays when it is one, else the first repo folder is picked), and a mono hint under the row says why: `Only git repo folders: a remote session continues in a checkout of its GitHub repository.` (`No git repo folder is saved yet: …` when there is none; Browse… adds one);
+- the task field becomes the **remote session** field (mono, placeholder `https://claude.ai/code/session_…, session_… or cse_…`), and under the row an optional **first message** (`First message (optional): sent once the local copy is ready`);
+- the name field is the session's title (D22) with the default name as its placeholder (`remote-<first 8 characters of X, lower-cased>`, made unique);
+- sections 2–6, the solutions and "Accept recommended" are hidden, and the Launch toggles are replaced by: "A new worktree of the repo: claude checks out the remote session's branch there and loads its history. New work stays local." A picked terminal conversation (D16) is dropped, and the Resume pill is disabled meanwhile;
+- the summary reads:
+  ```
+  # claude code · background · Max
+  folder    <repo> · git repo
+  remote    session_<X>                      (— until a valid URL or id is pasted)
+  cwd       <parent>/<repo>-wt-<name>        (the new worktree)
+  name      <name>
+  
+  # worktree · claude checks out its branch
+  ../<repo>-wt-<name>
+  ⚠ paste the remote session: a claude.ai/code URL, session_… or cse_…   (or ⚠ not a claude.ai/code session URL, …)
+  ⚠ pick a git repo folder: the checkout of the session's repository
+  ⚠ the title must be at most 80 characters                              (D22)
+  
+  ✓ local copy · history · idle | ✓ local copy · history · first message
+  ```
+- **Start session** is enabled once a URL or id parses, a repo folder is picked and the title is at most 80 characters. It posts `POST /api/sessions/teleport` `{ remote, folder, title? (only when typed), task? (only when typed) }` and reads `Pulling…` while the CLI works; on `201` the modal closes and the local copy opens. A refusal stays in the modal as `Not started: <message>`, the message being the CLI's text verbatim for `502 teleport-failed` / `504 teleport-timeout` (its line breaks kept). The server side is `docs/supervisor.md` → *Teleport*.
+
 ## First-turn payload (M5.2)
 The CLI takes no prompt argument (M0.1), so the task and the answers the developer confirmed in this form go into the session's **first stdin user message**: `{"type":"user","message":{"role":"user","content":<payload>}}`. The agent is told they are confirmed, so it confirms them back instead of asking the router's session-start questions again. If it asks anyway, the question batch reaches the Inbox like any other; Switchboard never answers it for the developer. `--append-system-prompt` is not used (not probed in M0).
 
@@ -158,4 +182,5 @@ Take them as the answers to the session-start questions: confirm them back in on
 - `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`); D14: the sections are compared relative to section 1 and the Folder row and the summary's `folder` line are recorded as additions.
 - D14: `tests/e2e/folders.spec.ts` (the Folder row switching chips, a repo folder's form and session in its worktree), `tests/e2e/walkthrough-repo.spec.ts`.
 - D16: `tests/web/resume-conversation.test.ts` (entries, name preview, D22: a typed title and its short name, the 80-character rule, Start rule, summary), `tests/e2e/move-conversations.spec.ts` (Resume a terminal conversation → pick → a typed title → Start moves it, on the real path), and the visual spec's `D16 …` rows (the pill out of the flow).
+- D25: `tests/web/remote-session.test.ts` (the repo folders offered, names, Start rule, body, summary, the refusal line), `tests/e2e/teleport.spec.ts` (From a remote session → Start → the local copy, on the real path; a refusal shown verbatim, nothing left), and the visual spec's `D25 …` rows (the pill out of the flow on the Folder label line).
 - D22: `tests/core/session-title.test.ts` (short name, collisions, the title check), `tests/web/session-titles.test.ts` (the form's short name, title and body, the summary lines, the 80-character rule, schedules unchanged) and `tests/e2e/session-titles.spec.ts` ("JIRA Ticket handling" → `session/jira-ticket-handling`, on the real path).

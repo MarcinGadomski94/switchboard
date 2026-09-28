@@ -77,7 +77,9 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * (M7.2, the Schedules & loops cards). `activity` (D19) is the live activity the
  * supervisor holds in memory (`SessionSupervisor.activity`); `null` when not given.
  * D22: its `title` (`null` when none) and `displayTitle` (the title, else the name),
- * what the UI shows. D24: its `remote` state ({@link toSessionRemote}).
+ * what the UI shows. D24: its `remote` state ({@link toSessionRemote}). D25:
+ * `remoteSource`, the remote session a teleported session is a local copy of
+ * (`null` otherwise).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -112,6 +114,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     loops: loops.map(toLoop),
     title: record.title,
     displayTitle: record.title ?? record.name,
+    remoteSource: record.remoteSource,
     remote: toSessionRemote(record),
   };
 }

@@ -26,6 +26,8 @@ export interface RunArgs {
   resume: string | null;
   forkSession: boolean;
   name: string | null;
+  /** `--teleport <id>` (D25): a local copy of a remote session (`teleport.ts`); `null` otherwise. */
+  teleport: string | null;
 }
 
 /** What one invocation of the fake does. */
@@ -60,6 +62,7 @@ function defaults(): RunArgs {
     resume: null,
     forkSession: false,
     name: null,
+    teleport: null,
   };
 }
 
@@ -185,11 +188,18 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
       case '--name':
         args.name = value();
         break;
+      case '--teleport':
+        args.teleport = value();
+        break;
       default:
         if (flag.startsWith('-') && flag !== '-') throw new UsageError(`error: unknown option '${flag}'`);
         if (args.prompt !== null) throw new UsageError('error: too many arguments. Expected 1 argument but got 2.');
         args.prompt = flag;
     }
+  }
+  if (args.teleport !== null && (args.resume !== null || args.sessionId !== null || args.forkSession)) {
+    // The fake's own guard (D25): the local copy always gets a fresh id; the real CLI's answer to the mix was never probed.
+    throw new UsageError('error: --teleport cannot be combined with --resume, --session-id or --fork-session (fake-claude)');
   }
   return { kind: 'run', args };
 }

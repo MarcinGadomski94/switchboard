@@ -73,6 +73,8 @@ const SESSION_KEYS = keys<Session>()([
   'displayTitle',
   // additive, D24 (Remote Control)
   'remote',
+  // additive, D25 (a local copy of a remote session)
+  'remoteSource',
 ]);
 const AGENT_KEYS = keys<Agent>()(['id', 'kind', 'name', 'description', 'solutionPath', 'branch', 'status', 'statusText']);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);

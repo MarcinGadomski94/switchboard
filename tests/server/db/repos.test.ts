@@ -57,6 +57,8 @@ describe('sessions', () => {
       root: null,
       rootKind: null,
       origin: 'switchboard',
+      // D25 (0008): not a local copy of a remote session.
+      remoteSource: null,
       pid: null,
       requestedPermissionMode: null,
       observedPermissionMode: null,

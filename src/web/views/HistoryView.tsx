@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HistoryItem } from '../../core/api.ts';
 import { REMOTE_CONTROL_BADGE, formatHistoryDate, historyBranchLine } from '../../core/history.ts';
+import { REMOTE_COPY_NOTE, REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
@@ -216,7 +217,8 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
         <span className="sb-hist-name" title={item.displayTitle && item.displayTitle !== item.name ? item.name : undefined}>
           {item.displayTitle ?? item.name}
         </span>
-        <span className="sb-hist-mode">
+        {/* D25: a local copy of a remote session is tagged `remote · local copy`; its tooltip says what that means. */}
+        <span className="sb-hist-mode" title={item.mode === REMOTE_MODE_LINE ? REMOTE_COPY_NOTE : undefined}>
           <FolderTag name={folderTag} title={item.folderPath} />
           {item.mode}
           {/* D24: the conversation had Remote Control on (a `bridge-session` line in its transcript). */}

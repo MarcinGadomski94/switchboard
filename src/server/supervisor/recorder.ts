@@ -65,6 +65,13 @@ export interface RecorderOptions {
   readonly answeredOn?: () => AnsweredOn | null;
   /** Clock of the live activity's timestamps (tests pass a fake one). */
   readonly now?: () => Date;
+  /**
+   * D25: the process may report `system/init` at startup, before it takes any
+   * message (a `--teleport` spawn, `docs/supervisor.md` → *Teleport*). The first
+   * `init` that arrives while no stdin message is pending then opens no turn (the
+   * session stays idle); every later `init` opens one as usual.
+   */
+  readonly startupInit?: boolean;
 }
 
 interface ToolEntry {
@@ -128,6 +135,8 @@ export class StreamRecorder {
   #observedMode: string | null;
   #cliVersion: string | null;
   #lastTranscriptUuid: string | null;
+  /** D25: the next `init` may be the startup one ({@link RecorderOptions.startupInit}). */
+  #startupInit: boolean;
 
   constructor(options: RecorderOptions) {
     this.#store = options.store;
@@ -145,6 +154,7 @@ export class StreamRecorder {
     this.#observedMode = options.session.observedPermissionMode;
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
+    this.#startupInit = options.startupInit ?? false;
   }
 
   /** The inputs of the live status derivation. */
@@ -370,9 +380,14 @@ export class StreamRecorder {
   }
 
   async #onInit(message: Extract<StreamMessage, { kind: 'init' }>): Promise<void> {
-    if (this.#pendingTurns === 0 && !this.#cliTurn) this.#cliTurn = true;
-    // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
-    this.#activity.startTurn();
+    // D25: a `--teleport` process may report `init` at startup, before any message: that one is no turn.
+    const startup = this.#startupInit && this.#pendingTurns === 0 && !this.#cliTurn;
+    this.#startupInit = false;
+    if (!startup) {
+      if (this.#pendingTurns === 0 && !this.#cliTurn) this.#cliTurn = true;
+      // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
+      this.#activity.startTurn();
+    }
     const patch: { observedPermissionMode?: string | null; cliVersion?: string | null } = {};
     if (message.permissionMode !== this.#observedMode) {
       this.#observedMode = message.permissionMode;

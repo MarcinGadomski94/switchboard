@@ -6,7 +6,7 @@ import { type StopReason, deriveSessionStatus } from '../../core/derive/status.t
 import type { LifecycleAction, LifecyclePayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { type ControlRequestLine, type ToolDecision, controlErrorLine, controlSuccessLine, interruptLine, setPermissionModeLine, userMessageLine } from '../../core/stdin.ts';
-import { type CanUseToolMessage, type ControlResponseMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
+import { type CanUseToolMessage, type ControlResponseMessage, type InitMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
@@ -115,6 +115,32 @@ export interface AdoptInput {
   readonly transcript: string;
 }
 
+/**
+ * What {@link SessionSupervisor.teleport} stores for a local copy of a remote
+ * session (D25): no session-start answers, the repo's one solution, its worktree.
+ */
+export interface TeleportInput {
+  /** Kebab-case and unique (the caller derived it, D22). */
+  readonly name: string;
+  /** D22: the typed title, else `Remote <short id>`. */
+  readonly title: string | null;
+  /** The remote session, `session_<X>` (`src/core/remote-session.ts`): passed as `--teleport` and stored as `remoteSource`. */
+  readonly remoteSource: string;
+  /** The repo folder's one solution. */
+  readonly solutions: readonly string[];
+  /** Optional first message, written right after the spawn (stored as the task); empty = none (idle). */
+  readonly task: string;
+}
+
+/** Options of {@link SessionSupervisor.teleport}. */
+export interface TeleportOptions {
+  /** Runs after the session is stored, before its process is spawned (link its worktree). */
+  readonly beforeSpawn?: (session: SessionRecord) => Promise<void>;
+}
+
+/** How long a `--teleport` process may take to report `system/init` before it is stopped (ms; see {@link SupervisorOptions.teleportInitTimeoutMs}). */
+export const DEFAULT_TELEPORT_INIT_TIMEOUT_MS = 120_000;
+
 /** Notifications for the `/hub` (M2.3), same names and payloads as the contract. */
 export interface SupervisorEvents {
   readonly sessionUpdated: Session;
@@ -144,6 +170,12 @@ export interface SupervisorOptions {
   readonly onError?: (error: unknown) => void;
   /** D19: the minimum gap between two `activity` notifications of one session (default {@link ACTIVITY_INTERVAL_MS}). */
   readonly activityIntervalMs?: number;
+  /**
+   * D25: how long a `--teleport` process may take to report `system/init` (the
+   * git fetch + checkout and the history download happen before it) before it is
+   * stopped and the teleport refused (default {@link DEFAULT_TELEPORT_INIT_TIMEOUT_MS}).
+   */
+  readonly teleportInitTimeoutMs?: number;
 }
 
 /** Options of {@link SessionSupervisor.attach}. */
@@ -166,7 +198,11 @@ export type SupervisorErrorCode =
   /** D24: the process's `initialize` did not report `remote_control_available: true`. */
   | 'remote-unavailable'
   /** D24: the `remote_control` request failed; the message is the CLI's text, verbatim. */
-  | 'remote-failed';
+  | 'remote-failed'
+  /** D25: the CLI refused the teleport; the message is its text, verbatim. */
+  | 'teleport-failed'
+  /** D25: the teleport never reported `system/init`. */
+  | 'teleport-timeout';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -188,9 +224,35 @@ export class AttachWarningError extends SupervisorError {
   }
 }
 
+/**
+ * D25: a teleport the CLI refused or never finished (`docs/supervisor.md` →
+ * *Teleport*). Nothing is left of the session: its process is stopped and its
+ * row deleted. `message` is the CLI's own text when it printed one (verbatim).
+ */
+export class TeleportError extends SupervisorError {
+  override name = 'TeleportError';
+  constructor(code: 'teleport-failed' | 'teleport-timeout', message: string) {
+    super(code, message);
+  }
+}
+
 interface Waiter {
   readonly match: (message: StreamMessage) => boolean;
   readonly resolve: (matched: boolean) => void;
+}
+
+/** D25: what a `--teleport` process tracks until (and after) its first `system/init`. */
+interface TeleportState {
+  /** Resolves with the first `system/init` once it is handled, or `null` when the process ended first. */
+  readonly init: Promise<InitMessage | null>;
+  readonly resolveInit: (message: InitMessage | null) => void;
+  initSeen: boolean;
+  /** Why the init cannot be used (no session id, an id another session has); `null` = fine. */
+  initError: string | null;
+  /** Lines before `init` that were not JSON, and error results: the CLI's refusal when stderr has none. */
+  readonly output: string[];
+  /** The remote history still has to be imported from the local copy's transcript. */
+  importPending: boolean;
 }
 
 /** One live `claude` process of a session. */
@@ -211,6 +273,8 @@ interface Live {
   status: SessionStatus;
   /** D24: Remote Control on this process (`initialize`, the bridge; remote.ts). */
   readonly remote: LiveRemote;
+  /** D25: set on a `--teleport` process (its first spawn only). */
+  readonly teleport: TeleportState | null;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -240,6 +304,9 @@ export class SessionSupervisor {
     activity: new Set<Listener<'activity'>>(),
   };
   readonly #activityIntervalMs: number;
+  readonly #teleportInitTimeoutMs: number;
+  /** D25: sessions whose teleport has not reported `init` yet: stored, but not announced (they may be deleted again). */
+  readonly #starting = new Set<string>();
   #closing = false;
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
   #gate: Promise<void> = Promise.resolve();
@@ -254,6 +321,7 @@ export class SessionSupervisor {
     this.#onError = options.onError ?? ((error) => console.error('switchboard supervisor:', error));
     this.#listLive = options.listLive ?? null;
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
+    this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -271,6 +339,15 @@ export class SessionSupervisor {
   /** `true` while the session has a live process. */
   isLive(sessionId: string): boolean {
     return this.#live.has(sessionId);
+  }
+
+  /**
+   * D25: `true` while the session's teleport has not reported `system/init` yet.
+   * Such a session is stored but not announced: the lists leave it out until it
+   * has started, since a refused teleport deletes it again.
+   */
+  isStarting(sessionId: string): boolean {
+    return this.#starting.has(sessionId);
   }
 
   /** The live process's pid, or `null`. */
@@ -524,6 +601,158 @@ export class SessionSupervisor {
     return this.#get(session.id);
   }
 
+  // ── remote sessions continued locally (D25, docs/supervisor.md → Teleport) ─
+
+  /**
+   * D25: stores a session that is a local copy of the remote session
+   * `input.remoteSource` and spawns `claude -p --teleport <session_X>` with the
+   * baseline flags (no `--session-id`) in `place.cwd` (the caller made it a new,
+   * clean worktree of a repo folder). The CLI checks the tree and the repo, fetches
+   * and checks out the remote session's branch there and loads its history. The
+   * optional first message (`input.task`) goes out right after the spawn.
+   *
+   * The session is not announced (and the lists leave it out, {@link isStarting})
+   * until the process reports `system/init`. That `init` gives the local copy's
+   * session id, stored as the session's `claudeSessionId` (later spawns
+   * `--resume` it); then the remote history is imported from the local copy's
+   * transcript (origin `remote`; once no message is pending, else after the first
+   * turn's `result`). Resolves with the stored session.
+   *
+   * @throws {TeleportError} `teleport-failed` when the process ends before `init`
+   * (its stderr, else its non-JSON stdout, verbatim) or reports an unusable one;
+   * `teleport-timeout` when no `init` came within the timeout (the process is
+   * stopped). Either way the session row is deleted again; the caller removes the
+   * worktree. Nothing is retried.
+   */
+  async teleport(input: TeleportInput, place: SessionPlace, options: TeleportOptions = {}): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const cwd = await canonicalFolder(place.cwd);
+    const session = await this.#store.sessions.create({
+      name: input.name,
+      title: input.title,
+      task: input.task.trim(),
+      // Provisional until `system/init` names the local copy (never passed to the CLI).
+      claudeSessionId: `teleport-pending-${randomUUID()}`,
+      status: 'idle',
+      workType: null,
+      mode: null,
+      phase: null,
+      coordination: null,
+      qaStack: null,
+      qaConfluenceUrl: null,
+      qaFigmaUrls: [],
+      solutions: [...input.solutions],
+      worktrees: true,
+      ultracode: false,
+      attached: true,
+      cwd,
+      folderId: place.folder.id,
+      root: place.folder.root,
+      rootKind: place.folder.kind,
+      remoteSource: input.remoteSource,
+      requestedPermissionMode: DEFAULT_PERMISSION_MODE,
+    });
+    this.#starting.add(session.id);
+    try {
+      await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });
+      if (options.beforeSpawn) await options.beforeSpawn(session);
+      const live = await this.#spawn(session, { kind: 'teleport', remoteSession: input.remoteSource }, 'teleported', input.remoteSource);
+      const state = live.teleport as TeleportState;
+      if (input.task.trim() !== '') await this.#send(live, input.task.trim(), 'task');
+      else await this.#enqueue(live, () => this.#refreshStatus(live));
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), this.#teleportInitTimeoutMs);
+      });
+      const outcome = await Promise.race([state.init, timeout]);
+      clearTimeout(timer);
+      if (outcome === 'timeout') {
+        const seconds = Math.round(this.#teleportInitTimeoutMs / 1000);
+        await this.#stop(live, 'pause');
+        const said = teleportOutput(live.proc.stderrTail(), state.output);
+        throw new TeleportError(
+          'teleport-timeout',
+          `claude did not report the local copy's session (no system/init) within ${seconds} s and was stopped. ` +
+            'The CLI may report it only once it takes a message: try again with a first message.' +
+            (said ? `\n${said}` : ''),
+        );
+      }
+      if (outcome === null) {
+        const exit = await live.proc.exited;
+        await live.finished;
+        throw new TeleportError('teleport-failed', teleportOutput(live.proc.stderrTail(), state.output) || exitText(exit));
+      }
+      if (state.initError !== null) {
+        await this.#stop(live, 'pause');
+        throw new TeleportError('teleport-failed', state.initError);
+      }
+      this.#starting.delete(session.id);
+      // The session is new to every client: announce it now that it has started.
+      await this.#emitSession(session.id);
+      return this.#get(session.id);
+    } catch (error) {
+      const live = this.#live.get(session.id);
+      if (live) await this.#stop(live, 'pause');
+      await this.#store.sessions.delete(session.id);
+      this.#starting.delete(session.id);
+      throw error;
+    }
+  }
+
+  /**
+   * D25: the first `system/init` of a `--teleport` process (inside its line
+   * queue): its `session_id` becomes the session's `claudeSessionId`, then the
+   * remote history is imported when no message is pending.
+   */
+  async #teleportInit(live: Live, state: TeleportState, message: InitMessage): Promise<void> {
+    state.initSeen = true;
+    const id = message.sessionId;
+    if (!id) {
+      state.initError = 'claude reported system/init without a session_id, so the local copy cannot be resumed.';
+      return;
+    }
+    const clash = await this.#store.sessions.getByClaudeSessionId(id);
+    if (clash && clash.id !== live.sessionId) {
+      state.initError = `claude reported the local copy's session id ${id}, which the session ${clash.title ?? clash.name} already has.`;
+      return;
+    }
+    await this.#store.sessions.update(live.sessionId, { claudeSessionId: id });
+    if (!live.recorder.turnBusy()) await this.#importRemoteHistory(live, state);
+  }
+
+  /**
+   * D25: the remote history (the chain the teleport put in front of the local
+   * copy's turns) from the local copy's transcript, as events (the Attach import
+   * from the start of the chain, prompts with origin `remote`; entries already
+   * stored are skipped). No transcript yet: it stays pending for the next turn's
+   * end. A failure is recorded, never fatal.
+   */
+  async #importRemoteHistory(live: Live, state: TeleportState): Promise<void> {
+    const session = await this.#get(live.sessionId);
+    const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
+    if (!transcript) return;
+    state.importPending = false;
+    try {
+      await importTerminalTurns({
+        store: this.#store,
+        session,
+        mainAgentId: await this.#mainAgentId(session),
+        transcript,
+        onEvent: (event) => this.#emitEvent(event),
+        origin: 'remote',
+        fromStart: true,
+      });
+    } catch (error) {
+      this.#onError(error);
+      await this.recordServiceEvent(session.id, 'error', 'Could not read the remote history', {
+        type: 'lifecycle',
+        action: 'teleported',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   /** Sync back (M4.1): the terminal's turns from the transcript become events; a failure is recorded, never fatal. */
   async #importTranscript(session: SessionRecord, transcript: string): Promise<void> {
     try {
@@ -760,7 +989,7 @@ export class SessionSupervisor {
     return created.id;
   }
 
-  async #spawn(session: SessionRecord, start: ClaudeStart, action: LifecycleAction): Promise<Live> {
+  async #spawn(session: SessionRecord, start: ClaudeStart, action: LifecycleAction, message?: string): Promise<Live> {
     // D14: a session always runs in its own stored cwd (its folder or its repo worktree), never a global root.
     const cwd = session.cwd;
     if (!cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
@@ -790,7 +1019,17 @@ export class SessionSupervisor {
       onPermissionFallback: (mode) => void holder.live?.proc.write(setPermissionModeLine(`sb-mode-${randomUUID()}`, mode)),
       // D24: a withdrawn request was answered on claude.ai while Remote Control is on.
       answeredOn: () => holder.live?.remote.answeredOn() ?? null,
+      // D25: a `--teleport` process may report `init` before it takes a message.
+      startupInit: start.kind === 'teleport',
     });
+    let teleport: TeleportState | null = null;
+    if (start.kind === 'teleport') {
+      let resolveInit: (value: InitMessage | null) => void = () => undefined;
+      const init = new Promise<InitMessage | null>((resolve) => {
+        resolveInit = resolve;
+      });
+      teleport = { init, resolveInit, initSeen: false, initError: null, output: [], importPending: true };
+    }
     // D22: the CLI's display name is the session's title (as it is now: a rename applies from the next spawn), else its name.
     const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, extraArgs: this.#extraArgs });
     const proc = new ClaudeProcess({
@@ -826,6 +1065,7 @@ export class SessionSupervisor {
         publish: () => this.#emitSession(session.id),
         current: () => this.#live.get(session.id) === live && !live.stopping && live.proc.running,
       }),
+      teleport,
     };
     holder.live = live;
     this.#live.set(session.id, live);
@@ -834,7 +1074,7 @@ export class SessionSupervisor {
     live.finished = proc.exited.then((exit) => this.#enqueue(live, () => this.#onExit(live, exit)));
     await this.#store.sessions.update(session.id, { pid: proc.pid });
     await this.#enqueue(live, async () => {
-      await recorder.recordLifecycle('text', LIFECYCLE_LABELS[action], { type: 'lifecycle', action, pid: proc.pid });
+      await recorder.recordLifecycle('text', LIFECYCLE_LABELS[action], { type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
     });
     return live;
   }
@@ -876,7 +1116,18 @@ export class SessionSupervisor {
     if (message.kind === 'control-request') {
       live.proc.write(controlErrorLine(message.requestId, `Switchboard does not handle control request subtype "${message.subtype}"`));
     }
+    const teleport = live.teleport;
+    if (teleport && !teleport.initSeen) {
+      // D25: what the CLI printed before `init` is its refusal when stderr has none.
+      if (message.kind === 'invalid' && line.trim() !== '') teleport.output.push(line.trim());
+      if (message.kind === 'result' && message.isError) teleport.output.push(...(message.errors.length > 0 ? message.errors : [message.text ?? message.subtype]));
+      if (message.kind === 'init') await this.#teleportInit(live, teleport, message);
+    }
     await live.recorder.handle(message);
+    if (teleport && message.kind === 'init' && teleport.initSeen) teleport.resolveInit(message);
+    if (teleport?.importPending && teleport.initSeen && teleport.initError === null && message.kind === 'result' && !message.taskNotification) {
+      await this.#importRemoteHistory(live, teleport);
+    }
     if (message.kind === 'can-use-tool' && this.#handler.canUseTool) {
       try {
         await this.#handler.canUseTool({ session: await this.#get(live.sessionId), request: message });
@@ -954,6 +1205,8 @@ export class SessionSupervisor {
   async #onExit(live: Live, exit: ProcessExit): Promise<void> {
     for (const waiter of live.waiters) waiter.resolve(false);
     live.waiters.clear();
+    // D25: a `--teleport` process that ended before `init` (a no-op once `init` resolved it).
+    live.teleport?.resolveInit(null);
     const orphaned = await live.recorder.closeOpenRequests();
     if (orphaned.length > 0 && this.#handler.orphaned) {
       try {
@@ -1035,6 +1288,7 @@ export class SessionSupervisor {
   }
 
   #emitActivity(sessionId: string, activity: SessionActivity | null): void {
+    if (this.#starting.has(sessionId)) return;
     for (const listener of this.#listeners.activity) {
       try {
         listener({ sessionId, activity });
@@ -1046,7 +1300,7 @@ export class SessionSupervisor {
 
   #emitEvent(record: EventRecord): void {
     const listeners = this.#listeners.event;
-    if (listeners.size === 0) return;
+    if (listeners.size === 0 || this.#starting.has(record.sessionId)) return;
     const payload = { sessionId: record.sessionId, event: toEvent(record) };
     for (const listener of listeners) {
       try {
@@ -1059,7 +1313,7 @@ export class SessionSupervisor {
 
   async #emitSession(sessionId: string): Promise<void> {
     const listeners = this.#listeners.sessionUpdated;
-    if (listeners.size === 0) return;
+    if (listeners.size === 0 || this.#starting.has(sessionId)) return;
     const record = await this.#store.sessions.get(sessionId);
     if (!record) return;
     const session = await toSession(this.#store, record, this.activity(sessionId));
@@ -1071,6 +1325,17 @@ export class SessionSupervisor {
       }
     }
   }
+}
+
+/** D25: what a `--teleport` process said before `init`: its stderr, else its non-JSON stdout lines and error results (verbatim, trimmed). */
+function teleportOutput(stderr: string, output: readonly string[]): string {
+  return stderr.trim() || output.join('\n').trim();
+}
+
+/** How a process ended, in words (when it printed nothing). */
+function exitText(exit: ProcessExit): string {
+  if (exit.spawnError) return `Could not start claude: ${exit.spawnError.message}`;
+  return `claude exited (${exit.signal ? `signal ${exit.signal}` : `code ${String(exit.code)}`}) before it reported the local copy's session`;
 }
 
 /** `folder` resolved on disk. @throws {SupervisorError} `folder-missing` when it is not there. */
@@ -1095,4 +1360,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'leftover-stopped': 'Stopped the claude process left from before the restart',
   'not-resumed': 'Not resumed after the restart',
   moved: 'Moved from a terminal',
+  teleported: 'Continued from a remote session',
 };

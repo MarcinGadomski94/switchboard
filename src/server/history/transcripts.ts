@@ -147,6 +147,7 @@ export class TranscriptHistory implements HistoryProvider {
       folder: record.folderId,
       folderPath: record.root,
       origin: record.origin,
+      remoteSource: record.remoteSource,
     }));
   }
 

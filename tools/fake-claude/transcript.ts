@@ -225,6 +225,15 @@ export class Transcript {
     ];
   }
 
+  /**
+   * D25 (`--teleport`): the remote history as the conversation's start, written at
+   * once (before any message): each entry gets the envelope and joins the chain.
+   * The first message then continues from its tip.
+   */
+  seed(entries: readonly JsonObject[]): void {
+    this.append(entries.map((entry) => this.chain(this.envelope({ ...entry }))));
+  }
+
   /** A user message starts a turn: title (first message of a named new session), queue ops, synthetic line, the prompt. */
   beginTurn(content: Json, promptUuid: string, permissionMode: string): void {
     const now = this.options.now();

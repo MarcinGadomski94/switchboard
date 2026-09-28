@@ -44,6 +44,8 @@ export interface SessionRecord {
   readonly rootKind: FolderKind | null;
   /** Where the session came from (0004, D16): started in Switchboard, or moved in from a terminal. */
   readonly origin: SessionOrigin;
+  /** D25 (0008): the remote session (`session_<X>`) this one is a local copy of (`--teleport`); `null` otherwise. */
+  readonly remoteSource: string | null;
   /** Pid of the live claude process, `null` when none. */
   readonly pid: number | null;
   readonly requestedPermissionMode: string | null;
@@ -113,6 +115,7 @@ const SPEC: TableSpec<SessionRecord> = {
     root: ['root', 'text'],
     rootKind: ['root_kind', 'text'],
     origin: ['origin', 'text'],
+    remoteSource: ['remote_source', 'text'],
     pid: ['pid', 'int'],
     requestedPermissionMode: ['requested_permission_mode', 'text'],
     observedPermissionMode: ['observed_permission_mode', 'text'],

@@ -234,6 +234,30 @@ describe('0007 session remote (D24)', () => {
   });
 });
 
+describe('0008 session remote source (D25)', () => {
+  it('adds a nullable remote_source to an existing database: its sessions are no local copies; a new one can be', async () => {
+    const file = path.join(tmp, 'existing-remote.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 8)).toMatchObject({ name: 'session_remote_source' });
+    // 0007 belongs to another change (D24): the runner takes the gap, and 0008 needs nothing after 0006.
+    migrate(database, shipped.filter((m) => m.version <= 6));
+    const ts = '2026-09-28T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 6).map((m) => m.version));
+    expect(database.prepare('SELECT id, remote_source FROM sessions').all()).toEqual([{ id: 's-old', remote_source: null }]);
+    database.close();
+
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ remoteSource: null });
+      expect(await store.sessions.create({ name: 'copy', claudeSessionId: 'c-copy', remoteSource: 'session_01ABCdef' })).toMatchObject({ remoteSource: 'session_01ABCdef' });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **6.28%**, full page **4.47%**.
+Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **6.37%**, full page **4.53%**.
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `new-session-side-by-side.png` (the panel), `new-session-page-side-by-side.png` (page).
@@ -15,6 +15,9 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 
 ## D16 addition (not a finding)
 **Resume a terminal conversation** (`↻` pill) is not in the prototype. It sits in section 1 out of the flow (absolute), on the right of the label line, so section 1 and everything below keep the prototype's boxes; it is checked on its own (`D16 …` rows): copy, out of the flow, on the section's right edge, clear of the label's text, above the name / task row.
+
+## D25 addition (not a finding)
+**From a remote session** (`⇣` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (`D25 …` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
 ## Boxes (±2 px), copy and computed styles
 Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the warning line, Start at 45%). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
@@ -99,6 +102,12 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · D16 Resume toggle on the right edge | addition | — | 0 px · 639,191 233×20 | ok | |
 | draft · D16 Resume toggle clear of the label | addition | — | 299.1 px | ok | |
 | draft · D16 Resume toggle above the name / task row | addition | — | 5 px | ok | |
+| draft · D25 Remote toggle copy | addition | — | "⇣ From a remote session" | ok | |
+| draft · D25 Remote toggle off | addition | — | "false" | ok | |
+| draft · D25 Remote toggle out of the flow | addition | — | absolute | ok | |
+| draft · D25 Remote toggle on the right edge | addition | — | 0 px · 698,115 174×20 | ok | |
+| draft · D25 Remote toggle clear of the label | addition | — | 448.6 px | ok | |
+| draft · D25 Remote toggle above the folder row | addition | — | 5 px | ok | |
 | single · six | size (y − 76) | 208,745 664×54 | 208,679 664×54 | ok |  |
 | single · sixLabel | size (y − 76) | 208,745 664×14 | 208,679 664×14 | ok | "6 · Mobile coordination" |
 | single · sixPills | size (y − 76) | 208,766 664×33 | 208,700 664×33 | ok |  |
