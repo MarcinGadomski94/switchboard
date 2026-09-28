@@ -16,6 +16,7 @@ import {
   warnAtOptions,
 } from './model.ts';
 import { notificationPermission, notifyOS, playChime, requestNotifications } from './notify.ts';
+import { InstallAppRow } from './InstallApp.tsx';
 import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
 import { StartAtLoginToggle } from './StartAtLogin.tsx';
 
@@ -30,7 +31,7 @@ import { StartAtLoginToggle } from './StartAtLogin.tsx';
 /** Saves a subset of the editable settings (`PUT /api/settings`). */
 export type SaveSettings = (patch: Partial<KnownSettings>) => Promise<void>;
 
-/** Claude Code: CLI, account, service, bind address, start at login, permissions + Run setup again. */
+/** Claude Code: CLI, account, service, bind address, start at login, install as app (D34, when offered), permissions + Run setup again. */
 export function ClaudeSection({ settings }: { readonly settings: KnownSettings }) {
   const system = useApi(api.system);
   const { open } = useModals();
@@ -53,6 +54,7 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
       <Row id="start-at-login" label="Start at login" description="Launch the service when you sign in (Windows / macOS)">
         <StartAtLoginToggle />
       </Row>
+      <InstallAppRow />
       <Row
         id="permissions"
         label="Permissions"

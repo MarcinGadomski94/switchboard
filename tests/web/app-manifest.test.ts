@@ -120,7 +120,7 @@ describe('offline.html', () => {
   it('says where Switchboard is not running, how to start it, and offers Retry (a reload)', async () => {
     const html = await readFile(path.join(PUBLIC_DIR, 'offline.html'), 'utf8');
     expect(html).toContain(`Switchboard isn't running on <span id="host">`);
-    expect(html).toContain("document.getElementById('host').textContent = location.host;");
+    expect(html).toContain("document.getElementById('host').textContent = location.host || 'this address';");
     expect(html).toContain('Start it with <code>npm start</code> in the repo, or turn on Settings → Start at login.');
     expect(html).toMatch(/<button type="button" id="retry"[^>]*>Retry<\/button>/);
     expect(html).toContain('location.reload()');

@@ -20,7 +20,7 @@ const ORIGIN = 'http://127.0.0.1:4870';
  * CACHE_VERSION in sw.js (installed apps re-cache the page only for a new worker),
  * then put the new version and hash here.
  */
-const OFFLINE_PAGE_PIN = { version: 1, sha256: '760b91e984a4a2205cf728bcd73362406b9226c23bf5e128c7038a8d3beb2d28' };
+const OFFLINE_PAGE_PIN = { version: 1, sha256: 'beeef13b77c417b92fe37c4e0d590a992e3bde5ea1d3f6899897535eb6e544ab' };
 
 type Listener = (event: unknown) => void;
 

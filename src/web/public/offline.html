@@ -37,7 +37,7 @@
 </main>
 <script>
   // The page answers the navigation that failed, so location is the address the app was opened at.
-  document.getElementById('host').textContent = location.host;
+  document.getElementById('host').textContent = location.host || 'this address';
   document.getElementById('retry').addEventListener('click', function () { location.reload(); });
 </script>
 </body>
