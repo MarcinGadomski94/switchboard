@@ -25,8 +25,14 @@ import { createUsageMeter, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
 import { demoFolderChecks } from './demo/folders.ts';
 
-/** `<repo>/dist/web`, the Vite build output served as the UI. */
-const WEB_ROOT = path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
+/**
+ * The built UI served: `<repo>/dist/web` (the Vite build output). Tests set
+ * `SWITCHBOARD_WEB_ROOT` to their own build (`.e2e-dist/web`), so a test run never
+ * swaps the UI of a Switchboard the developer is running from the same checkout.
+ */
+const WEB_ROOT = process.env['SWITCHBOARD_WEB_ROOT']?.trim()
+  ? path.resolve(process.env['SWITCHBOARD_WEB_ROOT'].trim())
+  : path.resolve(import.meta.dirname, '..', '..', 'dist', 'web');
 
 async function main(): Promise<void> {
   const config = loadConfig();

@@ -21,6 +21,7 @@ Test-only variables (read by the test helpers, never by the server):
 | Variable | Default | Notes |
 |---|---|---|
 | `SWITCHBOARD_E2E_PORT` | none | Pins the port test servers use (`tests/helpers/server-process.ts`); must be one of the test ports. Unset: the first free port in that range. |
+| `SWITCHBOARD_WEB_ROOT` | `<repo>/dist/web` | Test/dev only: the built UI to serve. The E2E global setup builds into `.e2e-dist/web` and test servers serve that, so a test run never changes the UI of a Switchboard running from the same checkout. |
 | `SWITCHBOARD_TEST_PORTS` | `4871-4879` | Test-only: the port range (or comma list) tests may bind (`tests/helpers/net.ts`); 4870 is refused. Parallel lanes set their own range. |
 | (defaults of every test server) | fake CLIs, wizard off | `testServerDefaults()` in `tests/helpers/server-process.ts` (M5.3): `SWITCHBOARD_CLAUDE_BIN` = fake-claude, `SWITCHBOARD_GH_BIN` = fake gh, `SWITCHBOARD_SETUP_WIZARD=off`, so `GET /api/system` never runs the real CLIs; a spec overrides them by passing its own. |
 | `SWITCHBOARD_VISUAL_REPORT` | off | `1` makes the visual-oracle specs also write their reports into `docs/visual/` (`docs/visual/README.md`); they always write to `test-results/visual/`. |
