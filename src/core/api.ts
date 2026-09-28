@@ -12,6 +12,7 @@
  * step because both import this file.
  */
 import type { SessionChip } from './derive/chips.ts';
+import type { StatusTableFormat } from './derive/status-table.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -30,6 +31,7 @@ import type {
 } from './model.ts';
 
 export type { SessionChip } from './derive/chips.ts';
+export type { StatusTableFormat } from './derive/status-table.ts';
 
 /**
  * `POST /api/sessions` body (contract, locked; `folder` additive, D14).
@@ -296,6 +298,27 @@ export interface SessionDetail extends Session {
    * answered one as the answers bubble (`docs/chat.md`).
    */
   readonly questions: readonly Question[];
+  /**
+   * Additive (D21): the newest status table the agent printed in the chat (the main
+   * conversation's agent messages), which the right panel's agent overview repeats
+   * under its derived table; `null` when it printed none. Found anywhere in the
+   * session's messages, not only in the recent {@link events}.
+   */
+  readonly reportedTable: ReportedTable | null;
+}
+
+/**
+ * Additive (D21): a status table the agent printed, as printed (`docs/derivations.md`
+ * → *Agent overview*): a box-drawing or GitHub-flavored pipe table whose header has
+ * an Agent and a Status column.
+ */
+export interface ReportedTable {
+  /** The table's lines as printed (common indentation removed; a fenced box table without its fence lines). */
+  readonly text: string;
+  /** `box`: shown in monospace like a chat code block; `gfm`: shown through the chat's Markdown renderer. */
+  readonly format: StatusTableFormat;
+  /** When the message that holds it arrived (ISO, the message event's `ts`). */
+  readonly at: string;
 }
 
 /** `{ resumeCommand }` of `/detach` and `/attach` (contract). */
