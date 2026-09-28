@@ -1,4 +1,5 @@
 import type { Session, SolutionGroup, Tool } from '../../core/api.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { modeLine, urlHost } from '../shell/format.ts';
 
 /**
@@ -40,6 +41,8 @@ export interface PaletteEntry {
   readonly label: string;
   readonly hint: string;
   readonly target: PaletteTarget;
+  /** Extra text the filter matches but the row does not show (D22: a titled session's short name). */
+  readonly also?: string;
 }
 
 /** At most this many results are shown (prototype `.slice(0, 10)`). */
@@ -67,7 +70,9 @@ export interface PaletteData {
 
 /**
  * Every palette entry, unfiltered: views · New session · tools (hint = the URL's
- * host, empty when not configured) · sessions (hint = the sidebar's mode line) ·
+ * host, empty when not configured) · sessions (label = the display title, D22: the
+ * title, else the name; a titled session's name is searched too; hint = the
+ * sidebar's mode line) ·
  * solutions (hint = the folder group, e.g. `microfrontends/`). Lists that are not
  * available yet add nothing.
  */
@@ -84,12 +89,14 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
     entries.push({ key: `tool:${tool.id}`, kind: 'tool', label: tool.name, hint: urlHost(tool.url), target: { type: 'route', route: { view: 'tool', id: tool.id } } });
   }
   for (const session of data.sessions ?? []) {
+    const label = displayTitle(session);
     entries.push({
       key: `session:${session.id}`,
       kind: 'session',
-      label: session.name,
+      label,
       hint: modeLine(session),
       target: { type: 'route', route: { view: 'session', id: session.id, tab: 'chat' } },
+      ...(label !== session.name ? { also: session.name } : {}),
     });
   }
   for (const group of data.solutions ?? []) {
@@ -102,12 +109,14 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
 
 /**
  * The results for `query`: entries whose `label kind hint` contains the query
- * (case-insensitive; an empty query keeps all), in list order, at most
- * {@link PALETTE_MAX_RESULTS}.
+ * (case-insensitive; an empty query keeps all), or (D22) whose hidden `also` text
+ * does, in list order, at most {@link PALETTE_MAX_RESULTS}.
  */
 export function filterPalette(entries: readonly PaletteEntry[], query: string): PaletteEntry[] {
   const q = query.toLowerCase();
-  const matches = q ? entries.filter((entry) => `${entry.label} ${entry.kind} ${entry.hint}`.toLowerCase().includes(q)) : [...entries];
+  const matches = q
+    ? entries.filter((entry) => `${entry.label} ${entry.kind} ${entry.hint}`.toLowerCase().includes(q) || (entry.also?.toLowerCase().includes(q) ?? false))
+    : [...entries];
   return matches.slice(0, PALETTE_MAX_RESULTS);
 }
 

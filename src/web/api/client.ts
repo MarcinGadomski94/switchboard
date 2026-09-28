@@ -16,6 +16,7 @@ import type {
   ResumeCommand,
   Schedule,
   Session,
+  SessionTitleInput,
   SessionDetail,
   SessionEvent,
   SetupState,
@@ -103,6 +104,8 @@ export const api = {
   createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
   getSession: (id: string) => request<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
+  /** D22, additive: rename (`null` or an empty title clears it; 422 on field `title` beyond 80 characters). */
+  renameSession: (id: string, title: string | null) => request<Session>('PUT', `/api/sessions/${enc(id)}/title`, { title } satisfies SessionTitleInput),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),

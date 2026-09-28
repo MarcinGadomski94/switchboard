@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryItem } from '../../src/core/api.ts';
 import type { FormFolder } from '../../src/web/modals/new-session.ts';
-import { canStartResume, resumeEntryMeta, resumeNamePreview, resumeNameProblem, resumePickOf, resumeSummaryLines } from '../../src/web/modals/resume-conversation.ts';
+import { TITLE_TOO_LONG } from '../../src/web/modals/new-session.ts';
+import { canStartResume, resumeEntryMeta, resumeNamePreview, resumeNameProblem, resumeNames, resumePickOf, resumeSummaryLines } from '../../src/web/modals/resume-conversation.ts';
 
 /** D16: "Resume a terminal conversation" in the New-session form (`src/web/modals/resume-conversation.ts`). */
 
@@ -32,15 +33,23 @@ describe('resume a terminal conversation (D16)', () => {
     expect(resumeEntryMeta({ ...ROW, firstPrompt: null })).toMatch(/^\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 
-  it('names: the preview from the title (unique), a typed name must be kebab-case and free', () => {
+  it('names: the preview from the title (unique); D22: typed free text is the title, its short name derived (-2 when taken)', () => {
     expect(resumeNamePreview(ROW, [])).toBe('code-word-check');
     expect(resumeNamePreview(ROW, ['code-word-check'])).toBe('code-word-check-2');
-    expect(resumeNameProblem('', ['x'])).toBeNull();
-    expect(resumeNameProblem('Bad Name', [])).toBe('⚠ the name must be kebab-case (a-z, 0-9, single dashes)');
-    expect(resumeNameProblem('taken', ['taken'])).toBe('⚠ a session with this name exists');
-    expect(canStartResume(resumePickOf(ROW), '', [])).toBe(true);
-    expect(canStartResume(resumePickOf(ROW), 'taken', ['taken'])).toBe(false);
-    expect(canStartResume(null, '', [])).toBe(false);
+    // An empty field: the D16 name, no title of its own (the service keeps the conversation's title).
+    expect(resumeNames(ROW, ' ', [])).toEqual({ name: 'code-word-check', title: null });
+    expect(resumeNames(ROW, 'Lantern follow-up', [])).toEqual({ name: 'lantern-follow-up', title: 'Lantern follow-up' });
+    expect(resumeNames(ROW, 'Lantern follow-up', ['lantern-follow-up'])).toEqual({ name: 'lantern-follow-up-2', title: 'Lantern follow-up' });
+    expect(resumeNames(ROW, 'taken', ['taken'])).toEqual({ name: 'taken-2', title: 'taken' });
+    // Free text is fine (no kebab-case rule, a taken name gets -2); only a title over 80 characters is refused.
+    expect(resumeNameProblem('')).toBeNull();
+    expect(resumeNameProblem('Bad Name')).toBeNull();
+    expect(resumeNameProblem('x'.repeat(80))).toBeNull();
+    expect(resumeNameProblem('x'.repeat(81))).toBe(TITLE_TOO_LONG);
+    expect(canStartResume(resumePickOf(ROW), '')).toBe(true);
+    expect(canStartResume(resumePickOf(ROW), 'Bad Name')).toBe(true);
+    expect(canStartResume(resumePickOf(ROW), 'x'.repeat(81))).toBe(false);
+    expect(canStartResume(null, '')).toBe(false);
   });
 
   it('the summary: folder, cwd, resume command, name, what happens', () => {
@@ -55,8 +64,10 @@ describe('resume a terminal conversation (D16)', () => {
       ['value', ' '],
       ['ok', '✓ same conversation · history imported · idle'],
     ]);
-    const taken = resumeSummaryLines(resumePickOf(ROW), null, 'mine', ['mine']);
-    expect(taken.map((line) => line.text)).toContain('⚠ a session with this name exists');
-    expect(taken.map((line) => line.text)).toContain('name      mine');
+    // D22: typed text names the session by its derived short name; no kebab-case or taken-name warning.
+    const typed = resumeSummaryLines(resumePickOf(ROW), null, 'Mine, please', ['mine-please']).map((line) => line.text);
+    expect(typed).toContain('name      mine-please-2');
+    expect(typed.filter((text) => text.startsWith('⚠'))).toEqual([]);
+    expect(resumeSummaryLines(resumePickOf(ROW), null, 'x'.repeat(81), []).map((line) => line.text)).toContain(TITLE_TOO_LONG);
   });
 });

@@ -65,7 +65,7 @@ function ListCard({ item, selected, now, onPick }: { readonly item: InboxItem; r
     >
       <div className="sb-inbox__card-head">
         <span className="sb-inbox__dot" style={{ background: statusColor(item.status) }} />
-        <span className="sb-inbox__card-source">{item.source}</span>
+        <span className="sb-inbox__card-source">{item.sourceTitle ?? item.source}</span>
         <span className="sb-inbox__card-age">{formatAge(item.createdAt, now)}</span>
       </div>
       <div className="sb-inbox__card-title">{item.title}</div>
@@ -121,7 +121,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
     <>
       <div className="sb-inbox__meta" data-testid="inbox-meta">
         <span className="sb-inbox__dot sb-inbox__dot--lg" style={{ background: statusColor(item.status) }} />
-        <span className="sb-inbox__meta-source">{item.source}</span>
+        <span className="sb-inbox__meta-source">{item.sourceTitle ?? item.source}</span>
         <span>·</span>
         <span>{item.label}</span>
         <span>·</span>

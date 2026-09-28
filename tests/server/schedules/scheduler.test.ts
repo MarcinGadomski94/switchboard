@@ -209,6 +209,22 @@ describe('Scheduler · cron with a fake clock', () => {
     expect(r.errors).toEqual([]);
   });
 
+  it("D22: a run's session has the schedule's name as its title (and as --name); its short name stays <schedule>-<MMDD>-<HHMM>", async () => {
+    const r = await setup(at(9, 30));
+    const schedule = await save(r, { cron: '0 2 * * *', template: template() });
+    const run = await r.scheduler.runNow(schedule.id);
+    const session = await r.w.store.sessions.get(run.sessionId!);
+    expect(session).toMatchObject({ name: 'nightly-check-0928-0930', title: 'nightly-check', scheduleId: schedule.id });
+    const [spawn] = await until(async () => {
+      const logged = await spawnedArgv(r.w.logFile);
+      return logged.length > 0 ? logged : undefined;
+    }, 'the run spawn');
+    const argv = spawn?.argv ?? [];
+    expect(argv[argv.indexOf('--name') + 1]).toBe('nightly-check');
+    await waitForRun(r, schedule.id, 'ok');
+    expect(r.errors).toEqual([]);
+  });
+
   it('a clock jump fires once, never a burst; a restart does not catch up; paused schedules do not fire but Run now does; Resume looks from now', async () => {
     const r = await setup(at(1, 0));
     const schedule = await save(r, { cron: '0 * * * *', template: template({ name: 'hourly-check' }) });

@@ -36,6 +36,8 @@ describe('sessions', () => {
     expect(created).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       name: 'free-talk',
+      // D22 (0006): no title until one is given.
+      title: null,
       task: '',
       claudeSessionId: 'claude-free-talk',
       status: 'idle',

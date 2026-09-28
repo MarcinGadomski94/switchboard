@@ -28,7 +28,7 @@ interface ContinueParams {
  * {@link TranscriptHistory}); each row carries its folder.
  *
  * D16 (additive): `POST /api/history/{claudeSessionId}/continue` `{ name?,
- * addFolder?, confirm? }` moves a terminal conversation into Switchboard as the
+ * title? (D22), addFolder?, confirm? }` moves a terminal conversation into Switchboard as the
  * same conversation ({@link ConversationMover}): `201 Session`, or 404 / 409
  * (`already-in-switchboard`, `folder-not-saved`, `terminal-open`,
  * `folder-missing`) / 422 (`not-in-a-folder`, `not-a-terminal-conversation`,

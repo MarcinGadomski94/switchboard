@@ -16,12 +16,13 @@ interface ArtifactQueryString {
   readonly q?: string | string[];
 }
 
-/** A stored artifact as a row of the global list (session name, its folder (D14), last update). */
+/** A stored artifact as a row of the global list (session name and D22 display title, its folder (D14), last update). */
 function toListItem(record: ArtifactRecord, sessions: ReadonlyMap<string, SessionRecord>): ArtifactListItem {
   const session = record.sessionId ? (sessions.get(record.sessionId) ?? null) : null;
   return {
     ...toArtifact(record),
     sessionName: session?.name ?? null,
+    sessionTitle: session ? (session.title ?? session.name) : null,
     updatedAt: record.updatedAt,
     folder: session?.folderId ?? null,
     folderPath: session?.root ?? null,

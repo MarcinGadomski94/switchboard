@@ -61,7 +61,7 @@ While a turn runs, one line sits between the conversation and the composer, Clau
   | Match Figma exactly | `Match the Figma frame exactly; don't add variants.` |
   | Stop and ask designer | `Stop and park this until the designer confirms.` |
   | Commit when green | `Commit once all checks are green. Stage only this feature's files.` |
-- **Field + Send**: placeholder `Message <session name>…`. Enter (not while an IME composes) or Send posts the trimmed draft to `POST /api/sessions/{id}/messages`; an empty draft sends nothing. On `202` the draft clears (unless it was edited meanwhile); the message shows once the service records it (the `/hub` `event`), so what the chat shows is what the process got. The service resumes a paused session to deliver it (`SessionSupervisor.sendMessage`).
+- **Field + Send**: placeholder `Message <session name>…` (D22: the session's title, else its name). Enter (not while an IME composes) or Send posts the trimmed draft to `POST /api/sessions/{id}/messages`; an empty draft sends nothing. On `202` the draft clears (unless it was edited meanwhile); the message shows once the service records it (the `/hub` `event`), so what the chat shows is what the process got. The service resumes a paused session to deliver it (`SessionSupervisor.sendMessage`).
 - A refusal shows `Not sent: <server message>` under the field and keeps the draft, e.g. `Not sent: the session continues in a terminal; attach it first` while detached (M4.1). Picking a quick reply clears it.
 
 ## Data

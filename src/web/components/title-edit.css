@@ -1,0 +1,54 @@
+/*
+ * Rename in place (D22, InlineTitle.tsx). The name as shown is unchanged (the
+ * prototype's look); the header's (a click edits it) takes a text cursor, a
+ * sidebar row's keeps the link's (a click opens the session, a double-click
+ * edits the name). While editing, the wrapper keeps the
+ * name's class (its font and size) and the field inherits them; the field adds
+ * a control border (the New-session inputs' colors) placed so its text starts
+ * where the name's did, and the refusal gets a line of its own under it.
+ */
+[data-renamable='click'] {
+  cursor: text;
+}
+
+/* Doubled class: wins over the name's own overflow / nowrap rules whatever the stylesheet order. */
+.sb-title-edit.sb-title-edit {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.sb-title-input {
+  box-sizing: border-box;
+  width: calc(100% + 12px);
+  min-width: 0;
+  margin: -3px -6px;
+  padding: 2px 5px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-chip);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+  font: inherit;
+}
+
+.sb-title-input:focus {
+  border-color: var(--muted-3);
+}
+
+.sb-title-input[aria-invalid='true'] {
+  border-color: var(--status-fail);
+}
+
+.sb-title-error {
+  margin-top: 3px;
+  font: 400 11px var(--font-ui);
+  line-height: 1.4;
+  color: var(--status-fail);
+}

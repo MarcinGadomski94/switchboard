@@ -1,5 +1,6 @@
 import { Fragment, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AnswerBatch, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
@@ -114,7 +115,8 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
       <ChatActivityLine activity={activity} />
       <Composer
         sessionId={sessionId}
-        placeholder={composerPlaceholder(session?.name ?? '')}
+        // D22: the session's display title (its title, else its name).
+        placeholder={composerPlaceholder(session ? displayTitle(session) : '')}
         onSent={() => {
           stick.current = true;
         }}

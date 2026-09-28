@@ -93,7 +93,8 @@ async function exists(file: string): Promise<boolean> {
 describe('GET /api/solutions · conflicts (M6.3)', () => {
   it('two sessions in one checkout → conflict; moving each to a worktree clears it; the developer tree is untouched', async () => {
     const { s, g } = await setup();
-    const first = await start(s, { name: 'first-writer', solutions: ['mobile'] });
+    // D22: a titled writer; its worktree and branch still come from its short name.
+    const first = await start(s, { name: 'first-writer', title: 'First writer', solutions: ['mobile'] });
     const second = await start(s, { name: 'second-writer', solutions: ['mobile'] });
     await start(s, { name: 'web-alone', solutions: ['web-front'] });
     const statusBefore = await g.git(g.mobile, 'status', '--porcelain');
@@ -103,8 +104,8 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
       conflict: true,
       flag: '⚠ shared working tree',
       conflictSessions: [
-        { sessionId: first.id, name: 'first-writer', isolated: false, repo: 'mobile', attached: true },
-        { sessionId: second.id, name: 'second-writer', isolated: false, repo: 'mobile', attached: true },
+        { sessionId: first.id, name: 'first-writer', title: 'First writer', isolated: false, repo: 'mobile', attached: true },
+        { sessionId: second.id, name: 'second-writer', title: null, isolated: false, repo: 'mobile', attached: true },
       ],
     });
     // One session alone in a checkout, and read-only rows, have no conflict.
@@ -130,7 +131,10 @@ describe('GET /api/solutions · conflicts (M6.3)', () => {
     ]);
 
     // Move the other one: every writer has its own worktree → no conflict.
-    expect((await call('POST', '/api/solutions/mobile/isolate', { sessionId: first.id })).statusCode).toBe(201);
+    const movedFirst = await call('POST', '/api/solutions/mobile/isolate', { sessionId: first.id });
+    expect(movedFirst.statusCode).toBe(201);
+    // D22: the titled session's worktree and branch are named after its short name, never its title.
+    expect(movedFirst.json()).toMatchObject({ branch: 'session/first-writer', path: path.join(g.workspace, 'mobile-wt-first-writer') });
     await until(async () => (await spawnedArgv(s.logFile)).length >= 5, 'first-writer resumed with the move message');
     await waitForStatus(s.store, first.id, ['done']);
     byName = await rows();

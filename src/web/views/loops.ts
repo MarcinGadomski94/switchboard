@@ -7,6 +7,7 @@
  */
 import type { Loop, LoopIterationResult, Session } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
+import { displayTitle } from '../../core/session-title.ts';
 
 /** At most this many strip cells (the newest iterations); the prototype shows 12–17. */
 export const MAX_STRIP_CELLS = 30;
@@ -27,6 +28,7 @@ export interface LoopFact {
 export interface LoopCardModel {
   readonly id: string;
   readonly sessionId: string;
+  /** What the card names the session by (D22: its title, else its name). */
   readonly sessionName: string;
   readonly status: SessionStatus;
   /** Session status dot color (CSS). */
@@ -137,7 +139,7 @@ export function loopCards(sessions: readonly Session[], now: Date): LoopCardMode
         sessionCreatedAt: session.createdAt,
         id: loop.id,
         sessionId: session.id,
-        sessionName: session.name,
+        sessionName: displayTitle(session),
         status: session.status,
         dot: STATUS_VAR[session.status],
         border: session.status === 'need' ? NEED_BORDER : 'var(--border-card)',

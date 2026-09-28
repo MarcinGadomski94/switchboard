@@ -91,12 +91,14 @@ describe('GET /api/artifacts (M7.3)', () => {
       meta: null,
       createdAt: stored!.createdAt,
       sessionName: 'pay-flow',
+      // D22: the session's display title (no title here: its name).
+      sessionTitle: 'pay-flow',
       updatedAt: stored!.updatedAt,
       // D14: the session's folder (these fixture sessions have none).
       folder: null,
       folderPath: null,
     });
-    expect(Object.keys(diff).sort()).toEqual(['branch', 'createdAt', 'folder', 'folderPath', 'id', 'meta', 'name', 'sessionId', 'sessionName', 'solution', 'type', 'updatedAt']);
+    expect(Object.keys(diff).sort()).toEqual(['branch', 'createdAt', 'folder', 'folderPath', 'id', 'meta', 'name', 'sessionId', 'sessionName', 'sessionTitle', 'solution', 'type', 'updatedAt']);
     const bySession = Object.fromEntries(items.map((a) => [a.name, [a.sessionId, a.sessionName]]));
     expect(bySession['coverage-matrix.md']).toEqual([ids['qa'], 'qa-pay']);
     expect(bySession['notes.md']).toEqual([null, null]);

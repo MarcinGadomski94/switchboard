@@ -131,6 +131,7 @@ export class TranscriptHistory implements HistoryProvider {
     return records.map((record) => ({
       id: record.id,
       name: record.name,
+      title: record.title,
       claudeSessionId: record.claudeSessionId,
       status: record.status,
       task: record.task,

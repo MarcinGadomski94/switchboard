@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
@@ -42,7 +43,8 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
 
 /**
  * Registers the session routes (M2.1: the supervisor's layer; M4.x / M5.x add to
- * the UI side, M4.5 the diff). Every route sits behind the security guard.
+ * the UI side, M4.5 the diff; D22 the additive rename, `PUT /api/sessions/{id}/title`,
+ * which publishes `sessionUpdated`). Every route sits behind the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
@@ -67,6 +69,18 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
     return toSessionDetail(store, providers, record, supervisor.activity(record.id));
+  });
+
+  // D22 (additive): rename. Only the title changes (the name, branch and worktree stay); the next spawn passes it as `--name`.
+  app.put<{ Params: IdParams }>('/api/sessions/:id/title', async (request, reply): Promise<Session | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    const parsed = parseTitleInput(request.body);
+    if (!parsed.ok) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'title', message: parsed.message }] });
+    const updated = (await store.sessions.update(record.id, { title: parsed.title })) ?? record;
+    const session = await toSession(store, updated);
+    context.bus.publish('sessionUpdated', session);
+    return session;
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/messages', async (request, reply) => {
@@ -150,6 +164,22 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   );
 
   registerPending(app, SESSION_ROUTES_PENDING);
+}
+
+/**
+ * The body of `PUT /api/sessions/{id}/title` (D22, `SessionTitleInput`):
+ * `{ title }` where a `null`, empty or blank title clears it (`title: null`: the
+ * name is shown again) and any other text must be 1–80 characters once trimmed
+ * (the create path's rule, `checkTitle`). A body without a `title` field is refused.
+ */
+export function parseTitleInput(body: unknown): { readonly ok: true; readonly title: string | null } | { readonly ok: false; readonly message: string } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body) || !('title' in body)) {
+    return { ok: false, message: 'the body must be { title }: text, or null to clear it' };
+  }
+  const raw = (body as { title?: unknown }).title;
+  if (raw === null || (typeof raw === 'string' && raw.trim() === '')) return { ok: true, title: null };
+  const check = checkTitle(raw);
+  return check.ok ? { ok: true, title: check.title } : { ok: false, message: check.message };
 }
 
 /**

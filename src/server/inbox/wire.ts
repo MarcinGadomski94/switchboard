@@ -96,6 +96,8 @@ export async function questionBatchItem(store: Store, batch: QuestionBatchRecord
     kind: 'questions',
     sessionId: batch.sessionId,
     source: session?.name ?? batch.sessionId,
+    // D22: the Inbox shows the session's title (else its name).
+    sourceTitle: session ? (session.title ?? session.name) : batch.sessionId,
     status: 'need',
     title: many ? `${rows.length} questions from ${sources.join(', ')}` : (rows[0]?.text ?? ''),
     label: many ? `${rows.length} questions` : 'Question',
@@ -124,6 +126,7 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
     kind: 'permission',
     sessionId: record.sessionId,
     source: session?.name ?? record.sessionId,
+    sourceTitle: session ? (session.title ?? session.name) : record.sessionId,
     status: 'need',
     title: toolLabel(record.toolName, input),
     label: 'Permission',

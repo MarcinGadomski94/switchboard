@@ -203,7 +203,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
             type="checkbox"
             className="sb-hist-check"
             data-testid="history-select"
-            aria-label={`Select ${item.name}`}
+            aria-label={`Select ${item.displayTitle ?? item.name}`}
             checked={selected}
             disabled={moving}
             onChange={onToggle}
@@ -212,7 +212,10 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue }:
         {formatHistoryDate(item.startedAt)}
       </span>
       <div className="sb-hist-namecol">
-        <span className="sb-hist-name">{item.name}</span>
+        {/* D22: a stored session's title, else its name; a terminal conversation's name. */}
+        <span className="sb-hist-name" title={item.displayTitle && item.displayTitle !== item.name ? item.name : undefined}>
+          {item.displayTitle ?? item.name}
+        </span>
         <span className="sb-hist-mode">
           <FolderTag name={folderTag} title={item.folderPath} />
           {item.mode}

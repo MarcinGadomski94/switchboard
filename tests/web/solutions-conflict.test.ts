@@ -5,8 +5,8 @@ import { loadDemoData } from '../../src/server/demo/data.ts';
 import { ApiError } from '../../src/web/api/client.ts';
 import { conflictCard, isolateErrorText } from '../../src/web/views/solutions-conflict.ts';
 
-function session(name: string, isolated: boolean, attached = true): ConflictSession {
-  return { sessionId: `id-${name}`, name, isolated, repo: 'web-front', attached };
+function session(name: string, isolated: boolean, attached = true, title: string | null = null): ConflictSession {
+  return { sessionId: `id-${name}`, name, title, isolated, repo: 'web-front', attached };
 }
 
 type CardInput = Pick<Solution, 'conflict' | 'conflictSessions' | 'relativePath'>;
@@ -28,6 +28,21 @@ describe('conflictCard (M6.3)', () => {
       actions: [
         { sessionId: 'id-in-place', repo: 'web-front', label: 'Move in-place to worktree', disabled: false, title: '' },
         { sessionId: 'id-away', repo: 'web-front', label: 'Move away to worktree', disabled: true, title: 'away continues in a terminal; attach it here first' },
+      ],
+    });
+  });
+
+  it('D22: the card and its buttons name a session by its title (else its name); the action still isolates by id', () => {
+    const input: CardInput = {
+      conflict: true,
+      conflictSessions: [session('with-wt', true), session('jira-ticket-handling', false, true, 'JIRA Ticket handling'), session('away', false, false, 'Billing fixes')],
+      relativePath: 'mobile',
+    };
+    expect(conflictCard(input)).toEqual({
+      text: "with-wt, JIRA Ticket handling and Billing fixes all write to mobile/ in one working tree. Your AGENTS.md requires isolation: 'worktree' for parallel writers in the same repo.",
+      actions: [
+        { sessionId: 'id-jira-ticket-handling', repo: 'web-front', label: 'Move JIRA Ticket handling to worktree', disabled: false, title: '' },
+        { sessionId: 'id-away', repo: 'web-front', label: 'Move Billing fixes to worktree', disabled: true, title: 'Billing fixes continues in a terminal; attach it here first' },
       ],
     });
   });

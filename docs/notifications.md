@@ -16,7 +16,7 @@ Per page and per batch, once: the handler reads the batch's Inbox item (`GET /ap
 
 ## Toast
 Prototype layout and copy (`arrive()`), with real data (D13):
-- **title** = the session name; **sub** = `question · now`, or `n questions · now`;
+- **title** = the session name (D22: its title, else its name: the Inbox item's `sourceTitle`, else the session list's display title); **sub** = `question · now`, or `n questions · now`;
 - **branch line** = the Inbox item's branch chips as `<solution> ⎇ <branch>`, joined with ` · `; no line when the session has none;
 - **text** = the first question, verbatim (SPEC → Copy rules). The prototype shows a hand-written summary of its mock question; a real batch has no summary to show.
 - **Jump to session** → `/sessions/<id>` (chat tab) and the toast closes; **Later** and ✕ close it and the view stays. A newer toast shows over older ones; closing it shows the previous one (M1.4 behavior). No auto-dismiss (the prototype has none).

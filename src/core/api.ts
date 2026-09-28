@@ -58,6 +58,13 @@ export interface NewSession {
    * saved); an unknown id is refused (422, field `folder`).
    */
   readonly folder?: string | null;
+  /**
+   * Additive (D22): the session's free-text title, shown wherever the session is
+   * named (`name` stays the kebab-case short name its worktree and branch use).
+   * Trimmed, 1–80 characters, else 422 on field `title`; omitted or `null` = no
+   * title (the name is shown).
+   */
+  readonly title?: string | null;
 }
 
 /**
@@ -75,6 +82,8 @@ export interface NewRepoSession {
   readonly solutions?: readonly string[];
   readonly worktrees: boolean;
   readonly ultracode: boolean;
+  /** Additive (D22): as {@link NewSession.title}. */
+  readonly title?: string | null;
 }
 
 /**
@@ -182,6 +191,19 @@ export interface Session {
   readonly chips: readonly SessionChip[];
   /** Additive (M7.2, D9): the loops observed in the session, oldest first (the Schedules & loops cards). */
   readonly loops: readonly Loop[];
+  /**
+   * Additive (D22, migration 0006): the session's free-text title (trimmed, 1–80
+   * characters); `null` when it has none. The server always sends it; optional
+   * here so older payloads and fixtures still type-check.
+   */
+  readonly title?: string | null;
+  /** Additive (D22): what the UI shows for the session: {@link title}, else {@link name}. Always sent by the server. */
+  readonly displayTitle?: string;
+}
+
+/** Additive (D22): body of `PUT /api/sessions/{id}/title`; `null` or an empty title clears it (the name is shown again). */
+export interface SessionTitleInput {
+  readonly title: string | null;
 }
 
 /** Result of one loop iteration (a strip cell): `none` = not finished / not run. M7.2. */
@@ -276,6 +298,8 @@ export interface Artifact {
  */
 export interface ArtifactListItem extends Artifact {
   readonly sessionName: string | null;
+  /** Additive (D22): the source session's display title (its title, else its name); `null` without a session. */
+  readonly sessionTitle?: string | null;
   readonly updatedAt: string;
   /** Additive (D14): the source session's saved folder (`null` without a session, or once the folder left the list). */
   readonly folder: string | null;
@@ -369,6 +393,12 @@ export interface InboxItem {
   readonly sessionId: string | null;
   /** Session name, schedule name or `worktrees`. */
   readonly source: string;
+  /**
+   * Additive (D22): how the UI shows {@link source}: a session's display title
+   * (its title, else its name) for a question or permission item; absent for a
+   * system item (its `source` is shown as it is).
+   */
+  readonly sourceTitle?: string;
   readonly status: SessionStatus;
   readonly title: string;
   /** Kind label ("3 questions", "Scheduled run failed"). */
@@ -461,6 +491,14 @@ export interface SolutionArtifact {
 export interface ConflictSession {
   readonly sessionId: string;
   readonly name: string;
+  /**
+   * Additive (D22, developer ruling 2026-09-28): the session's title, `null` when it
+   * has none. The card and its "Move … to worktree" button name the session by its
+   * display title (this, else {@link name}); the worktree and branch it gets are
+   * still built from {@link name}. Always sent by the server; optional here like
+   * `Session.title`.
+   */
+  readonly title?: string | null;
   /** `true` when it writes in its own worktree; `false` = in the main checkout (the card offers "Move … to worktree"). */
   readonly isolated: boolean;
   /** The `{repo}` of `POST /api/solutions/{repo}/isolate`: the solution as the session lists it (or its worktree's repo). */
@@ -569,6 +607,11 @@ export interface HistoryItem {
   /** DB `createdAt`, else the transcript's first timestamp. */
   readonly startedAt: string;
   readonly name: string;
+  /**
+   * Additive (D22): what a stored session's row shows: its title, else its name
+   * ({@link name}). Absent on a terminal conversation's row, which shows {@link name}.
+   */
+  readonly displayTitle?: string;
   /** `orch · feature · UI-first` for a stored session; `terminal` (+ ` · /loop 1h` when it started with a command) otherwise. */
   readonly mode: string;
   /** The last main-chain assistant text (collapsed, at most 240 characters). */
@@ -603,8 +646,17 @@ export interface HistoryItem {
  * Every field is optional; the answer is `201 Session`.
  */
 export interface ContinueConversation {
-  /** The session's name (kebab-case, unique); omitted = from the conversation's title, else its first prompt. */
+  /**
+   * The session's name (kebab-case, unique); omitted = derived from {@link title}
+   * when one is given (D22), else from the conversation's title, else its first prompt.
+   */
   readonly name?: string;
+  /**
+   * Additive (D22, developer ruling 2026-09-28): the moved session's title (trimmed,
+   * 1–80 characters, else 422 on field `title`); omitted or `null` = the
+   * conversation's own title (custom, else AI), none without one.
+   */
+  readonly title?: string | null;
   /** Add the workspace or repo the conversation sits in to the saved folders (after `409 folder-not-saved`). */
   readonly addFolder?: boolean;
   /** Move it although a terminal may still have it open (after `409 terminal-open`). */

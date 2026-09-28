@@ -75,6 +75,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * answers + the session's observed loops, `src/core/derive/chips.ts`), and its loops
  * (M7.2, the Schedules & loops cards). `activity` (D19) is the live activity the
  * supervisor holds in memory (`SessionSupervisor.activity`); `null` when not given.
+ * D22: its `title` (`null` when none) and `displayTitle` (the title, else the name),
+ * what the UI shows.
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -107,6 +109,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),
     loops: loops.map(toLoop),
+    title: record.title,
+    displayTitle: record.title ?? record.name,
   };
 }
 

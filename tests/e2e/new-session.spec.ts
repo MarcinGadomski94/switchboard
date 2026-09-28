@@ -22,7 +22,9 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * 1. The form: sections 1–6 in order, pills, chips from the scanner (read-only
  *    locked at 40%), coordination only for feature + single + a *-front, the QA
  *    contract for test-authoring, the toggles, the live summary with the worktree
- *    folders (gap #1), Start disabled without solutions or with a taken name.
+ *    folders (gap #1), Start disabled without solutions. D22: the name field takes
+ *    free text as the title; the summary shows the short name derived from it,
+ *    and a taken one gets -2 instead of disabling Start.
  * 2. Start session → `POST /api/sessions` → the session view; the stored session
  *    and the worktrees on disk match the form.
  * 3. A server refusal (422) stays in the modal as one line.
@@ -257,10 +259,10 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   expect(await summary(modal)).toContain('mobile    sequential');
   expect(await summary(modal)).toContain('../web-front-wt-session');
 
-  // The name: whitespace → dashes, lower case; the worktree folder follows it.
+  // D22: the name field keeps free text (the title); the short name is derived from it and the worktree folder follows it.
   await modal.getByTestId('ns-name').fill('Free Talk 640');
-  await expect(modal.getByTestId('ns-name')).toHaveValue('free-talk-640');
-  expect(await summary(modal)).toContain('../web-front-wt-free-talk-640');
+  await expect(modal.getByTestId('ns-name')).toHaveValue('Free Talk 640');
+  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    session/free-talk-640', '../web-front-wt-free-talk-640']));
 
   // Orchestrator hides the coordination section; back to single shows it again.
   await pill(modal, 'mode', 'orchestrator').click();
@@ -321,10 +323,11 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   await expect(pill(modal, 'phase', 'ui-first')).toHaveAttribute('aria-checked', 'true');
   await expect(pill(modal, 'coordination', 'sequential')).toHaveAttribute('aria-checked', 'true');
 
-  // A taken name disables Start.
+  // D22: a taken name no longer disables Start: the short name gets -2, and the summary says so.
   await modal.getByTestId('ns-name').fill('existing-one');
-  await expect(start).toBeDisabled();
-  expect(await summary(modal)).toContain('⚠ a session with this name exists');
+  await expect(start).toBeEnabled();
+  expect(await summary(modal)).toEqual(expect.arrayContaining(['branch    session/existing-one-2', '../web-front-wt-existing-one-2']));
+  expect(await summary(modal)).not.toContain('⚠ a session with this name exists');
   await modal.getByTestId('ns-name').fill('');
   expect(await summary(modal)).toContain('../web-front-wt-session');
   await expect(start).toBeEnabled();
@@ -351,6 +354,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
   await modal.getByTestId('ns-start').click();
   expect((await posted).postDataJSON()).toEqual({
     name: 'free-talk-640',
+    // D22, developer ruling: kebab-case text is posted as the title too.
+    title: 'free-talk-640',
     task: 'Free talk screen at 640, web and mobile.',
     workType: 'feature',
     mode: 'single',
@@ -368,6 +373,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
 
   const created = (await listSessions(page)).find((s) => s.name === 'free-talk-640');
   expect(created).toMatchObject({
+    title: 'free-talk-640',
+    displayTitle: 'free-talk-640',
     workType: 'feature',
     mode: 'single',
     phase: 'ui-first',
@@ -398,28 +405,30 @@ test('Start session posts the form, opens the session, and creates the worktrees
   expect(lines).toContain(`  - microfrontends/web-front: ${path.join(workspace, 'microfrontends', 'web-front-wt-free-talk-640')} (branch session/free-talk-640)`);
   expect(lines).toContain(`  - mobile: ${path.join(workspace, 'mobile-wt-free-talk-640')} (branch session/free-talk-640)`);
 
-  // The name is now taken.
+  // The name is now taken: D22 derives free-talk-640-2 instead of blocking Start.
   const again = await openModal(page);
   await chip(again, 'billing-front').click();
   await again.getByTestId('ns-name').fill('free-talk-640');
-  await expect(again.getByTestId('ns-start')).toBeDisabled();
+  await expect(again.getByTestId('ns-start')).toBeEnabled();
+  expect(await summary(again)).toEqual(expect.arrayContaining(['branch    session/free-talk-640-2', '../billing-front-wt-free-talk-640-2']));
   await page.keyboard.press('Escape');
 });
 
 test('a refusal from POST /api/sessions stays in the modal as one line', async ({ page }) => {
+  // D22: the form always derives a valid short name, so the refusal here is the worktree's: the branch exists already.
+  await git(path.join(workspace, 'microfrontends', 'billing-front'), 'branch', 'session/taken-branch');
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openModal(page);
-  await modal.getByTestId('ns-name').fill('bad-name-');
+  await modal.getByTestId('ns-name').fill('Taken branch');
   await chip(modal, 'billing-front').click();
-  await modal.getByTestId('ns-switch-worktrees').click();
   await modal.getByTestId('ns-start').click();
-  await expect(modal.getByTestId('ns-error')).toHaveText('Not started: the name must be kebab-case (a-z, 0-9, single dashes), at most 64 characters');
+  await expect(modal.getByTestId('ns-error')).toHaveText('Not started: billing-front already has a branch session/taken-branch');
   await expect(modal).toBeVisible();
   // Editing the form clears the line.
   await modal.getByTestId('ns-name').fill('good-name');
   await expect(modal.getByTestId('ns-error')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  expect((await listSessions(page)).some((s) => s.name.startsWith('bad-name'))).toBe(false);
+  expect((await listSessions(page)).some((s) => s.name.startsWith('taken-branch'))).toBe(false);
 });
 
 test('POST /api/sessions validates the contract: read-only paths 422, duplicate name, no solutions, qa for QA', async ({ page }) => {

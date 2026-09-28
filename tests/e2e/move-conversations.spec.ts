@@ -197,13 +197,25 @@ test('New session → "Resume a terminal conversation": the folder\'s conversati
   expect(summary).toContain(`cwd       ${path.join(workspace, 'other', 'handoff-conc')}`);
   expect(summary).toContain('✓ same conversation · history imported · idle');
 
-  await modal.getByTestId('ns-name').fill('resumed-lantern');
+  // D22 (developer ruling): free text is the moved session's title; its short name is derived from it.
+  await modal.getByTestId('ns-name').fill('Lantern follow-up');
+  await expect(modal.getByTestId('ns-name')).toHaveValue('Lantern follow-up');
+  const typed = await modal.getByTestId('ns-summary-line').allTextContents();
+  expect(typed).toContain('name      lantern-follow-up');
+  expect(typed.filter((line) => line.startsWith('⚠'))).toEqual([]);
   await modal.getByTestId('ns-start').click();
   await expect(page.getByTestId('view-session')).toBeVisible();
   const session = await sessionByClaudeId(ID.form);
-  expect(session).toMatchObject({ name: 'resumed-lantern', workType: null, mode: null, phase: null, cwd: path.join(workspace, 'other', 'handoff-conc') });
+  expect(session).toMatchObject({
+    name: 'lantern-follow-up',
+    title: 'Lantern follow-up',
+    workType: null,
+    mode: null,
+    phase: null,
+    cwd: path.join(workspace, 'other', 'handoff-conc'),
+  });
   await expect(page).toHaveURL(new RegExp(`/sessions/${session.id}`));
-  await expect(page.getByTestId('session-name')).toContainText('resumed-lantern');
+  await expect(page.getByTestId('session-name')).toHaveText('Lantern follow-up');
   await expect(page.locator('[data-testid="chat-message"][data-origin="terminal"]').first()).toContainText('Remember the code word: lantern.');
 });
 

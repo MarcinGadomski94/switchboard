@@ -13,6 +13,7 @@ import {
   type WorkType,
   isOneOf,
 } from '../../core/model.ts';
+import { TITLE_MAX, shortNameFromTitle } from '../../core/session-title.ts';
 import { FOLDER_KIND_LABEL, distinctFolderNames, sessionCwd } from '../folders/folders.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
@@ -24,7 +25,8 @@ import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
  * (`docs/handoff/contracts/local-api.md`). Rules that are not in the prototype are
  * listed in `docs/new-session.md`. D14 adds the Folder row: the form targets a
  * saved folder, and a **repo** folder keeps only Task, Worktree and Ultracode
- * (`docs/folders.md` → *UI*).
+ * (`docs/folders.md` → *UI*). D22: the name field takes free text as the
+ * session's title; Start posts the short name derived from it ({@link startNames}).
  */
 
 /** The form's state. `figmaUrls` is the raw text of its field (URLs separated by spaces, commas or new lines). */
@@ -120,14 +122,45 @@ export const STACK_OPTIONS: ReadonlyArray<PillOption<QaStack>> = [
   ['both', 'Both'],
 ];
 
-/** The name field as typed: whitespace becomes `-`, letters lower case (prototype `onNsName`). */
+/**
+ * The name field as typed where a kebab-case name is expected (a schedule's name,
+ * the name of a moved conversation): whitespace becomes `-`, letters lower case
+ * (prototype `onNsName`). A new session's field takes free text instead (D22).
+ */
 export function sanitizeName(value: string): string {
   return value.replace(/\s+/g, '-').toLowerCase();
 }
 
-/** The session name the form starts: the field, or `session` while it is empty (prototype `sname`). */
+/** The name field as it is, or `session` while it is empty (prototype `sname`): a schedule's name. */
 export function sessionName(form: Pick<NewSessionForm, 'name'>): string {
   return (form.name || 'session').trim();
+}
+
+/** What "Start session" names the session (D22). */
+export interface StartNames {
+  /** The short name: kebab-case, unique among `takenNames`; its worktree and branch are built from it. */
+  readonly name: string;
+  /** The title: the field trimmed; `null` only for an empty field. */
+  readonly title: string | null;
+}
+
+/**
+ * D22 (`docs/derivations.md` → *Session titles*): the field's free text is the
+ * title and the short name is derived from it (`shortNameFromTitle`: `JIRA
+ * Ticket handling` → `jira-ticket-handling`, `-2`, `-3`, … when taken; `session`
+ * for an empty field). Developer ruling 2026-09-28: text that already is its own
+ * short name (`free-talk-640`) is a title too, so every session started from the
+ * form has one; only an empty field has none.
+ */
+export function startNames(form: Pick<NewSessionForm, 'name'>, takenNames: readonly string[]): StartNames {
+  const text = form.name.trim();
+  return { name: shortNameFromTitle(text, takenNames), title: text !== '' ? text : null };
+}
+
+/** D22: the field's title is longer than a title may be (80 characters once trimmed). */
+export function titleTooLong(form: Pick<NewSessionForm, 'name'>): boolean {
+  const { title } = startNames(form, []);
+  return title !== null && title.length > TITLE_MAX;
 }
 
 /** `true` for a `*-front` solution (a microfrontend: the web half with a mobile counterpart). */
@@ -163,20 +196,28 @@ export function missingQa(form: Pick<NewSessionForm, 'workType' | 'stack' | 'con
   return missing;
 }
 
-/** `true` when a session with the form's name is already listed. */
+/** `true` when the form's name, as typed, is already taken (a schedule's name among the schedules). */
 export function nameTaken(form: Pick<NewSessionForm, 'name'>, takenNames: readonly string[]): boolean {
   return takenNames.includes(sessionName(form));
 }
 
 /**
- * "Start session" is enabled: at least one solution, a name that is not taken
- * (SPEC), and for QA the stack + both sources the fields mark "(required)". For a
- * repo folder (D14) only the name counts: the repo is the one solution and the
- * router sections do not apply.
+ * Everything but the name is ready: at least one solution and, for QA, the stack
+ * + both sources the fields mark "(required)". A repo folder (D14) has nothing
+ * else to pick: the repo is the one solution and the router sections do not apply.
  */
-export function canStart(form: NewSessionForm, takenNames: readonly string[], folder: Pick<FormFolder, 'kind'> | null = null): boolean {
-  if (isRepoFolder(folder)) return sessionName(form) !== '' && !nameTaken(form, takenNames);
-  return form.solutions.length > 0 && sessionName(form) !== '' && !nameTaken(form, takenNames) && missingQa(form).length === 0;
+export function formComplete(form: NewSessionForm, folder: Pick<FormFolder, 'kind'> | null = null): boolean {
+  if (isRepoFolder(folder)) return true;
+  return form.solutions.length > 0 && missingQa(form).length === 0;
+}
+
+/**
+ * "Start session" is enabled: {@link formComplete} and a title of at most 80
+ * characters. D22: a taken name no longer blocks it, the short name gets `-2`,
+ * `-3`, … instead ({@link startNames}).
+ */
+export function canStart(form: NewSessionForm, _takenNames: readonly string[] = [], folder: Pick<FormFolder, 'kind'> | null = null): boolean {
+  return formComplete(form, folder) && !titleTooLong(form);
 }
 
 /** Toggles `solution` in the selection (order of picking kept). */
@@ -214,9 +255,18 @@ export function toNewRepoSession(form: NewSessionForm, folder: Pick<FormFolder, 
   };
 }
 
-/** What "Start session" posts: a {@link NewRepoSession} for a repo folder, else a {@link NewSession}. */
+/** The body with the name field as typed: a {@link NewRepoSession} for a repo folder, else a {@link NewSession} (a schedule's template). */
 export function toSessionBody(form: NewSessionForm, folder: FormFolder | null): NewSession | NewRepoSession {
   return folder && isRepoFolder(folder) ? toNewRepoSession(form, folder) : toNewSession(form);
+}
+
+/**
+ * What "Start session" posts (D22): {@link toSessionBody} with the short name
+ * derived from the field and the field as `title` (none for an empty field).
+ */
+export function toStartBody(form: NewSessionForm, folder: FormFolder | null, takenNames: readonly string[]): NewSession | NewRepoSession {
+  const { name, title } = startNames(form, takenNames);
+  return { ...toSessionBody(form, folder), name, ...(title !== null ? { title } : {}) };
 }
 
 /**
@@ -376,15 +426,49 @@ const COORDINATION_SUMMARY: Readonly<Record<Coordination, string>> = {
 };
 
 /**
+ * How the summary reads the name field: `start` (a new session, D22: the short
+ * name derived from the field, {@link startNames}) or `as-typed` (a scheduled
+ * run's session name, which the Schedule section builds from the schedule's name).
+ */
+export type SummaryNaming = 'start' | 'as-typed';
+
+/** The warning when the field's title is too long (D22). */
+export const TITLE_TOO_LONG = `⚠ the title must be at most ${TITLE_MAX} characters`;
+
+/** The session name the summary shows, and the line naming it when it differs from the field (D22). */
+function summaryName(form: NewSessionForm, takenNames: readonly string[], naming: SummaryNaming): { readonly name: string; readonly line: SummaryLine | null } {
+  if (naming === 'as-typed') return { name: sessionName(form), line: null };
+  const { name } = startNames(form, takenNames);
+  if (name === (form.name.trim() || 'session')) return { name, line: null };
+  // The field is a title (or its name is taken): say which short name the worktree and branch get.
+  return { name, line: { text: form.worktrees ? `branch    session/${name}` : `name      ${name}`, tone: 'value' } };
+}
+
+/** The name warnings: a taken name as typed (a schedule's) or a title that is too long (a new session's, D22). */
+function nameWarnings(form: NewSessionForm, takenNames: readonly string[], naming: SummaryNaming): SummaryLine[] {
+  if (naming === 'as-typed') return nameTaken(form, takenNames) ? [{ text: '⚠ a session with this name exists', tone: 'warn' }] : [];
+  return titleTooLong(form) ? [{ text: TITLE_TOO_LONG, tone: 'warn' }] : [];
+}
+
+/**
  * The live summary (prototype `nsSummary`): what the session will start with,
  * in the router's terms, the worktree folders, and why Start is disabled. D14:
  * a `folder` line (its display name, D18, and kind) before `cwd` once the folder is known,
  * and `cwd` is the folder's; a repo folder has only the folder, the cwd (the repo,
- * or its worktree with Worktree on) and ultracode ({@link repoSummaryLines}).
+ * or its worktree with Worktree on) and ultracode ({@link repoSummaryLines}). D22:
+ * the worktree folders use the short name derived from the field; when it is not
+ * the field as typed, a `branch    session/<name>` line (Worktree on) or a
+ * `name      <name>` line (off) says so under the worktree comment.
  */
-export function summaryLines(form: NewSessionForm, root: string | null, takenNames: readonly string[], folder: FormFolder | null = null): SummaryLine[] {
-  if (folder && isRepoFolder(folder)) return repoSummaryLines(form, folder, takenNames);
-  const name = sessionName(form);
+export function summaryLines(
+  form: NewSessionForm,
+  root: string | null,
+  takenNames: readonly string[],
+  folder: FormFolder | null = null,
+  naming: SummaryNaming = 'start',
+): SummaryLine[] {
+  if (folder && isRepoFolder(folder)) return repoSummaryLines(form, folder, takenNames, naming);
+  const { name, line } = summaryName(form, takenNames, naming);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [{ text: '# claude code · background · Max', tone: 'comment' }];
   if (folder) lines.push(value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`));
@@ -398,9 +482,10 @@ export function summaryLines(form: NewSessionForm, root: string | null, takenNam
   else if (showsCoordination(form)) lines.push(value(`mobile    ${COORDINATION_SUMMARY[form.coordination]}`));
   lines.push(value(`ultracode ${form.ultracode ? 'on' : 'off'}`), value(' '));
   lines.push({ text: form.worktrees ? '# worktrees' : '# no worktrees · edits in place', tone: 'comment' });
+  if (line) lines.push(line);
   if (form.worktrees) for (const solution of form.solutions) lines.push({ text: worktreeFolder(solution, name), tone: 'path' });
   if (form.solutions.length === 0) lines.push({ text: '⚠ pick at least one solution', tone: 'warn' });
-  if (nameTaken(form, takenNames)) lines.push({ text: '⚠ a session with this name exists', tone: 'warn' });
+  lines.push(...nameWarnings(form, takenNames, naming));
   const missing = missingQa(form);
   if (missing.includes('stack')) lines.push({ text: '⚠ pick the stack under test', tone: 'warn' });
   if (missing.includes('confluence')) lines.push({ text: '⚠ add the Confluence page URL', tone: 'warn' });
@@ -413,10 +498,11 @@ export function summaryLines(form: NewSessionForm, root: string | null, takenNam
  * The summary for a repo folder (D14): the folder, the cwd the session gets (the
  * repo, or `<parent>/<repo>-wt-<name>` with Worktree on), ultracode, the worktree,
  * and the first message: the task alone, plus the worktree note with a worktree
- * (no router answers: a single repo has no router).
+ * (no router answers: a single repo has no router). D22: the short name as in
+ * {@link summaryLines}.
  */
-export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, takenNames: readonly string[]): SummaryLine[] {
-  const name = sessionName(form);
+export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, takenNames: readonly string[], naming: SummaryNaming = 'start'): SummaryLine[] {
+  const { name, line } = summaryName(form, takenNames, naming);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [
     { text: '# claude code · background · Max', tone: 'comment' },
@@ -426,8 +512,9 @@ export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, taken
     value(' '),
     { text: form.worktrees ? '# worktree' : '# no worktree · edits in place', tone: 'comment' },
   ];
+  if (line) lines.push(line);
   if (form.worktrees) lines.push({ text: worktreeFolder(folder.name, name), tone: 'path' });
-  if (nameTaken(form, takenNames)) lines.push({ text: '⚠ a session with this name exists', tone: 'warn' });
+  lines.push(...nameWarnings(form, takenNames, naming));
   lines.push(value(' '), { text: form.worktrees ? '✓ task + worktree note · no router answers' : '✓ task only · no router answers', tone: 'ok' });
   return lines;
 }

@@ -1,4 +1,5 @@
 import type { AttachWarningReason, ContinueConversation, FolderCheck, HistoryItem, Session } from '../../core/api.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { folderName } from '../folders/folders.ts';
 
 /**
@@ -53,10 +54,14 @@ export function startMoves(rows: ReadonlyArray<Pick<HistoryItem, 'claudeSessionI
   return rows.map((row) => ({ claudeSessionId: row.claudeSessionId, title: row.name, addFolder: false, confirm: false, state: { kind: 'waiting' } }));
 }
 
-/** The body of the next call for this conversation: only what the developer chose (and a typed name). */
-export function continueBody(item: Pick<MoveItem, 'addFolder' | 'confirm'>, name?: string): ContinueConversation {
+/**
+ * The body of the next call for this conversation: only what the developer chose
+ * (and, D22, the title typed in the New-session form: the service derives the
+ * short name from it).
+ */
+export function continueBody(item: Pick<MoveItem, 'addFolder' | 'confirm'>, title?: string): ContinueConversation {
   return {
-    ...(name ? { name } : {}),
+    ...(title ? { title } : {}),
     ...(item.addFolder ? { addFolder: true } : {}),
     ...(item.confirm ? { confirm: true } : {}),
   };
@@ -90,9 +95,9 @@ export function refusalText(status: number, body: unknown): string {
   return status === 0 ? 'Switchboard is not reachable.' : `The move failed (HTTP ${status}).`;
 }
 
-/** The state after a successful call. */
-export function movedState(session: Pick<Session, 'id' | 'name'>): MoveState {
-  return { kind: 'moved', sessionId: session.id, name: session.name };
+/** The state after a successful call: the session and what it is shown as (D22: its title, else its name). */
+export function movedState(session: Pick<Session, 'id' | 'name'> & Partial<Pick<Session, 'title' | 'displayTitle'>>): MoveState {
+  return { kind: 'moved', sessionId: session.id, name: displayTitle(session) };
 }
 
 /** `items` with the one conversation changed. */

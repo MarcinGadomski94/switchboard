@@ -48,6 +48,8 @@ export interface HistoryWorktree {
 export interface HistorySession {
   readonly id: string;
   readonly name: string;
+  /** D22: the session's title (`null` / absent = none); the row shows it, and the search matches it. */
+  readonly title?: string | null;
   readonly claudeSessionId: string;
   readonly status: SessionStatus;
   readonly task: string;
@@ -232,6 +234,7 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     sessionId: session.id,
     startedAt: session.createdAt,
     name: session.name,
+    displayTitle: session.title ?? session.name,
     mode: sessionModeLine(session),
     summary: clip(fullSummary, SUMMARY_MAX),
     branches,
@@ -245,6 +248,7 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     item,
     search: searchText([
       item.name,
+      session.title,
       item.mode,
       fullSummary,
       historyBranchLine(item),

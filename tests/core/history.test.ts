@@ -236,6 +236,7 @@ describe('History rows (M7.4, gap #5)', () => {
       sessionId: 'sb-1',
       startedAt: '2026-09-26T16:40:00.000Z',
       name: 'pay-flow',
+      displayTitle: 'pay-flow',
       mode: 'orch · feature · UI-first',
       summary: 'All done. PR opened.',
       branches: [

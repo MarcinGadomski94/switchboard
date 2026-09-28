@@ -19,7 +19,7 @@ Item shapes (`src/core/api.ts` → `InboxItem`):
 - Status dot: `need` for session items, the stored status for system items.
 
 ## The view
-- Two columns `340px | 1fr` (`.sb-inbox`). List column: `Inbox` + `n waiting on you`, then one card per item (status dot, source, age via `formatAge`, title, kind label). The selected card has border `#3a3b41` and background `#1c1d21`; the others `#1f2024` and transparent. Cards are `role="button"` (click, Enter, Space).
+- Two columns `340px | 1fr` (`.sb-inbox`). List column: `Inbox` + `n waiting on you`, then one card per item (status dot, source, age via `formatAge`, title, kind label). D22: a question or permission item's source is its session's display title (`sourceTitle`: the title, else the name); a system item's `source` is shown as it is. The selected card has border `#3a3b41` and background `#1c1d21`; the others `#1f2024` and transparent. Cards are `role="button"` (click, Enter, Space).
 - **Selection:** the picked item while it is still listed, else the first (prototype `selId`). Not kept in the URL.
 - **Detail:** meta line (dot, source, `·`, kind label, `·`, age, D14: the folder tag when the item's session belongs to a folder other than the default one (its session is read with `GET /api/sessions` once the selection names it), and `Open session →` for question and permission items), the 24px title, the branch chips (the row is always there, empty when there are none), the detail text when there is one, then:
   - question batch → `QuestionCard variant="inbox"`: `k of n answered`, Send disabled at 45% opacity until every question has an answer; Send posts `POST /api/questions/batch/{batchId}/answers`.
