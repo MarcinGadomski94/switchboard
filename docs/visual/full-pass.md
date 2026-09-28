@@ -27,7 +27,7 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 | Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.30% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
 | History | History | M7.4 | gated | green (72) | green (3) | 0.59% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
 | Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.59% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.73% | 0.17% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.73% | 0.16% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
 | New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 5.57% | 7.85% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
 | Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.55% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
 | Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.47% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |

@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **4.02%**, session view (256,0 1184×900) **11.29%**.
+Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **4.02%**, session view (256,0 1184×900) **11.19%**.
 The view below the header differs by design in this item: the Chat tab (M4.2) and the right panel's agent cards and terminal tail (M4.3) are later items; M4.1's handoff card sits at the top of the panel until then.
 
 Side by side (prototype left, app right): `session-header-side-by-side.png` (header strip), `session-view-side-by-side.png` (view).

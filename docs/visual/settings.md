@@ -7,7 +7,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 **Gate:** green
 
 Pixel diff (advisory, channel threshold 24), main area (256,0 1184×900) / full page:
-- Claude Code: **0.17%** / 1.64%
+- Claude Code: **0.16%** / 1.63%
 - Workspace & solutions: **3.76%** / 4.59%
 - Sessions & worktrees: **0.38%** / 1.81%
 - Notifications & usage: **0.06%** / 1.55%
@@ -65,7 +65,7 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | service | box | 520,196 860×64 | 520,196 860×64 | ok |  |
 | serviceLabel | box | 520,210 671.2×18 | 520,210 671.2×18 | ok | "Background service" |
 | serviceDesc | box | 520,228 671.2×17 | 520,228 671.2×17 | ok | "Starts and supervises Claude Code processes" |
-| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4930 · running" |
+| serviceValue | box | 1207.2,219.5 172.8×16 | 1207.2,219.5 172.8×16 | ok | exempt: "127.0.0.1:4870 · running" → "127.0.0.1:4970 · running" |
 | bind | box | 520,262 860×64 | 520,262 860×64 | ok |  |
 | bindLabel | box | 520,276 743.2×18 | 520,276 743.2×18 | ok | "Bind address" |
 | bindDesc | box | 520,294 743.2×17 | 520,294 743.2×17 | ok | "The service never listens beyond this PC" |
@@ -98,7 +98,7 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | title | box | 520,26 860×26 | 520,26 860×26 | ok | exempt: "Workspace & solutions" → "Folders" |
 | root | none | 520,64 860×63 | 520,320 860×63 | ok |  |
 | rootLabel | none | 520,78 781.2×18 | 520,334 781.2×18 | ok | exempt: "Workspace root" → "Solutions in ws" |
-| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-wuodub/ws" |
+| rootDesc | none | 520,96 781.2×16 | 520,352 781.2×16 | ok | exempt: "D:\\acme · AGENTS.md (Workspace Router)" → "/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-P2SlEr/ws" |
 | rootValue | size | 1317.2,81 62.8×28 | 1317.2,337 62.8×28 | ok | "Rescan" |
 | scan | size | 520,141 860×290 | 520,397 860×290 | ok |  |
 | scan0 | size | 521,142 858×36 | 521,398 858×36 | ok |  |
@@ -141,7 +141,7 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | scan7Count | size | 717,403.5 40×16 | 717,659.5 40×16 | ok | "1" |
 | scan7Examples | size | 769,403.5 464×16 | 769,659.5 464×16 | ok | exempt: "platform Terraform" → "infrastructure" |
 | scan7Rule | size | 1245,404.5 120×14 | 1245,660.5 120×14 | ok | "read-only" |
-| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-w |
+| D14 two saved folders, the temp root the default | addition | — | — | ok | ["/var/folders/gl/774ny90n05bfx1xf3br1gxrc0000gn/T/switchboard-visual-settings-P |
 | D14 the temp root: a workspace with its router | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 0 solutions" |
 | D14 the demo folder: not the default, its check line | addition | — | — | ok | "✓ AGENTS.md (Workspace Router) · 12 solutions" |
 | D14 Add… | addition | — | — | ok | Add… |
@@ -295,7 +295,7 @@ Embedded tools ends with a **Frame helper** row (the helper's status and **Set u
 | D35 a settings row: label "Frame helper" (13.5px), description (12.5px #8d8c87), #1f2024 divider | addition | — | — | ok | {"label":"Frame helper","labelStyle":"400 13.5px Geist, system-ui, sans-serif"," |
 | D35 status "Not detected yet" in the value style (Geist Mono 12px, #8d8c87) | addition | — | — | ok | "Not detected yet" |
 | D35 Set up in the small outlined action style (.sb-set-action) | addition | — | — | ok | {"color":"rgb(201, 200, 195)","font":"400 12px Geist, system-ui, sans-serif","bg |
-| D35 Set up opens the panel inline, under the row, as wide | addition | — | — | ok | {"x":520,"y":473,"width":860,"height":278} |
+| D35 Set up opens the panel inline, under the row, as wide | addition | — | — | ok | {"x":520,"y":473,"width":860,"height":262} |
 | D35 the panel in the tool cards' style (#16171a, 1px #26272c, 10px) | addition | — | — | ok | {"color":"rgb(232, 231, 227)","font":"400 16px Geist, system-ui, sans-serif","bg |
 | D35 four steps; every button in the small outlined action style | addition | — | — | ok | 4 steps, 4 buttons |
 | D35 the folder path in Geist Mono 12px | addition | — | — | ok | "400 12px \"Geist Mono\", monospace" |
