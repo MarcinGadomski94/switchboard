@@ -49,7 +49,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
 
   app.get('/api/sessions', async (): Promise<Session[]> => {
     const records = await store.sessions.list();
-    return Promise.all(records.map((record) => toSession(store, record)));
+    return Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
   });
 
   app.post('/api/sessions', async (request, reply) => {
@@ -57,7 +57,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       // Validation, worktrees (M2.2), the first-turn payload (M5.2) and the start: sessions/start.ts (shared with the M7.1 scheduler).
       const outcome = await startNewSession(context, request.body);
       if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
-      return reply.code(201).send(await toSession(store, outcome.record));
+      return reply.code(201).send(await toSession(store, outcome.record, supervisor.activity(outcome.record.id)));
     } catch (error) {
       return sendError(reply, error);
     }
@@ -66,7 +66,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   app.get<{ Params: IdParams }>('/api/sessions/:id', async (request, reply): Promise<SessionDetail | FastifyReply> => {
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
-    return toSessionDetail(store, providers, record);
+    return toSessionDetail(store, providers, record, supervisor.activity(record.id));
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/messages', async (request, reply) => {
@@ -85,7 +85,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/pause', async (request, reply) => {
     try {
-      return await toSession(store, await supervisor.pause(request.params.id));
+      const record = await supervisor.pause(request.params.id);
+      return await toSession(store, record, supervisor.activity(record.id));
     } catch (error) {
       return sendError(reply, error);
     }
@@ -93,7 +94,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/resume', async (request, reply) => {
     try {
-      return await toSession(store, await supervisor.resume(request.params.id));
+      const record = await supervisor.resume(request.params.id);
+      return await toSession(store, record, supervisor.activity(record.id));
     } catch (error) {
       return sendError(reply, error);
     }

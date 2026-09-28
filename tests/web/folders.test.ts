@@ -54,6 +54,7 @@ function session(fields: Partial<Session>): Session {
     folderPath: null,
     folderKind: null,
     live: false,
+    activity: null,
     resumeCommand: 'claude --resume c',
     chips: [],
     loops: [],

@@ -1,4 +1,4 @@
-import type { Agent, Artifact, FileDiff, Question, Session, SessionDetail, SessionEvent } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
@@ -73,9 +73,10 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * id, `folderPath`, `folderKind`), `live` (a supervised process is
  * running: its pid is recorded), the handoff command and the chips (session-start
  * answers + the session's observed loops, `src/core/derive/chips.ts`), and its loops
- * (M7.2, the Schedules & loops cards).
+ * (M7.2, the Schedules & loops cards). `activity` (D19) is the live activity the
+ * supervisor holds in memory (`SessionSupervisor.activity`); `null` when not given.
  */
-export async function toSession(store: Store, record: SessionRecord): Promise<Session> {
+export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
   const loops = await store.loops.list(record.id);
   return {
@@ -102,6 +103,7 @@ export async function toSession(store: Store, record: SessionRecord): Promise<Se
     folderKind: record.rootKind,
     origin: record.origin,
     live: record.pid !== null,
+    activity,
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),
     loops: loops.map(toLoop),
@@ -122,8 +124,13 @@ export async function sessionQuestions(store: Store, sessionId: string): Promise
 }
 
 /** `GET /api/sessions/{id}`: the session plus its task, recent events, changed files, artifacts and (M4.2) questions. */
-export async function toSessionDetail(store: Store, providers: Providers, record: SessionRecord): Promise<SessionDetail> {
-  const session = await toSession(store, record);
+export async function toSessionDetail(
+  store: Store,
+  providers: Providers,
+  record: SessionRecord,
+  activity: SessionActivity | null = null,
+): Promise<SessionDetail> {
+  const session = await toSession(store, record, activity);
   const events = await store.events.latest(record.id, DETAIL_EVENT_LIMIT);
   const artifacts = await store.artifacts.list({ sessionId: record.id });
   let files: FileDiff[] = [];

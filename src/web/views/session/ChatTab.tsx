@@ -1,5 +1,7 @@
 import { Fragment, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AnswerBatch, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
+import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { QuestionCard } from '../../components/QuestionCard.tsx';
@@ -48,7 +50,8 @@ export interface ChatTabProps {
  * through `POST /api/questions/batch/{batchId}/answers`; the answers bubble once
  * answered), then the composer: quick-reply pills fill the draft, Enter or Send
  * posts it to `POST /api/sessions/{id}/messages`. It stays scrolled to the newest
- * item unless the developer scrolled up.
+ * item unless the developer scrolled up. D19: while a turn runs, the live activity
+ * line sits above the composer (`ChatActivityLine`).
  */
 export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
   const [events, setEvents] = useState<readonly SessionEvent[]>([]);
@@ -75,6 +78,7 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
     if (payload.sessionId === sessionId) setEvents((current) => upsertEvent(current, payload.event));
   });
 
+  const activity = useLiveActivity(sessionId, session);
   const mainAgentId = session?.agents.find((agent) => agent.kind === 'main')?.id ?? null;
   const items = session ? chatItems(events, session.questions, mainAgentId) : [];
 
@@ -107,6 +111,7 @@ export function ChatTab({ sessionId, session, onChanged }: ChatTabProps) {
           <ChatItemView key={item.key} item={item} answering={answering} onAnswer={answer} />
         ))}
       </div>
+      <ChatActivityLine activity={activity} />
       <Composer
         sessionId={sessionId}
         placeholder={composerPlaceholder(session?.name ?? '')}

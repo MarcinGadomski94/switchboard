@@ -135,7 +135,7 @@ export async function registerToolRoutes(app: FastifyInstance, context: ApiConte
         prompt,
       );
       await folders.markUsed(folder.id);
-      return reply.code(201).send(await toSession(store, record));
+      return reply.code(201).send(await toSession(store, record, supervisor.activity(record.id)));
     } catch (error) {
       const status = error instanceof SupervisorError ? START_ERROR_STATUS[error.code] : undefined;
       if (error instanceof SupervisorError && status) return reply.code(status).send({ error: error.code, message: error.message });

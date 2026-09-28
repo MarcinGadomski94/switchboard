@@ -37,6 +37,21 @@ The text of every user bubble and agent block renders as GitHub-flavored Markdow
 - **Plain text looks exactly as before.** The bubble keeps its pre-D20 rules (13.5px/1.55, `--text-2b`, `white-space: pre-wrap`), and the text of a message without Markdown becomes paragraphs without margins, a blank line (1.55em) apart, with soft line breaks kept as line breaks, so it takes exactly the room the plain text took. `rehypeChatText` makes that hold under pre-wrap: it drops the newline nodes that `mdast-util-to-hast` puts between blocks (and after a hard break), which pre-wrap would show as empty lines. Markdown blocks follow the same rhythm: one blank line between blocks, 4px under a heading, 2px between list items. Headings stay modest (16 / 15 / 14 / 13.5px, 600).
 - **Performance:** the chat re-renders on every event, so `ChatMarkdown` is memoized on the text; a streamed message re-parses only itself.
 
+## Live activity line (D19)
+While a turn runs, one line sits between the conversation and the composer, Claude-Code style; it is not rendered at all when no turn runs, so an idle chat is unchanged. Source: `Session.activity` from the session detail, replaced by each `/hub` `activity` event for the session until the next reload (`useLiveActivity`, `src/web/activity/useActivity.ts`; server side `docs/derivations.md` → *Live activity*). Code: `src/web/activity/activity.ts` (pure copy and formats), `ActivityViews.tsx` (`ChatActivityLine`), `activity.css`. The times are the server's timestamps; the line ticks locally once a second.
+
+| State | Line |
+|---|---|
+| thinking | spinner glyph, a **playful verb** from Switchboard's own list of 20 (`Pondering…`, `Noodling…`, `Cogitating…`, `Patching through…`, …; `THINKING_VERBS`), the time since the turn started (`12s`, `1m 23s`), then `· ↓ 1.2k tokens` once a thinking-token tick arrived (`formatTokens`: `850`, `1.2k`, `12k`, rounded down) |
+| tool | `●` (blinking) and `<Tool>: <summary>` literally (`Bash: npm test`; just the name when the summary is the name), then the time since that tool started (`0:42`, `1:02:03`) |
+| writing | spinner, `Writing…`, the time since the turn started |
+| waiting | `⏸` (amber, still), `Waiting for you`, the time since the question or permission request opened (`0:42`) |
+
+- The verb changes every 4 s (`VERB_ROTATE_MS`): the turn's start time picks the first verb, then it steps through the list, so the same turn shows the same verb in every tab at the same moment (`thinkingVerb`, deterministic for a given clock).
+- The spinner is `·✢✳✶✻✽` stepping in place (a CSS `content` animation on the glyph's `::before`), in the running blue (`--status-run`); `prefers-reduced-motion` stops it.
+- Type and colors are the prototype's: mono 12px, `#8d8c87` (the step lines' muted color) with the action in `#c9c8c3`, the tokens in `#76756f`; padding 8px 26px like the conversation. A long action is cut with `…`; the time and tokens always show.
+- Test ids: `chat-activity` (`data-state`), `chat-activity-glyph` (`data-glyph`: `spinner` / `●` / `⏸`), `chat-activity-text`, `chat-activity-time`, `chat-activity-tokens`.
+
 ## Composer
 - **Quick replies** (label `QUICK REPLIES`, pills): the prototype's four labels and texts verbatim. A pill **fills the draft** and focuses the field; it never sends by itself (prototype `quick`).
 
@@ -60,3 +75,4 @@ The text of every user bubble and agent block renders as GitHub-flavored Markdow
 - `tests/e2e/visual/session-chat.spec.ts` (D10): the demo app against the prototype (`docs/visual/chat.md`).
 - `tests/web/chat-markdown.test.ts` (D20): the Markdown mapping (plain text as paragraphs, raw HTML as text, link and image rules, bare URLs, a table, a task list, highlight classes, a box-drawing table kept character for character, `rehypeChatText` on its own).
 - `tests/e2e/chat-markdown.spec.ts` (D20 oracle, real path, fake-claude `[fake:say]`): an agent reply with a heading, a list, a table, a highlighted TypeScript block and a box-drawing table (every line equally wide); raw HTML in the developer's message and in the reply shows as text and runs nothing; a pasted URL becomes a link that opens in a new tab (answered by a route, never the network); plain text takes exactly the room it took before D20; no Markdown outside the chat.
+- D19: `tests/web/activity.test.ts` (formats, the verb rotation with an injected clock, the lines and labels, the summaries from real tool inputs); `tests/e2e/live-activity.spec.ts` (real path: a slow Bash call's line with a growing clock, a thinking turn's verb + time + tokens, the sidebar action and pulsing dot, the agent card's action; all gone after Pause; an idle session unchanged).

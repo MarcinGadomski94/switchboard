@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { Agent, HubEvents, Question, Session, SessionEvent, SystemInfo, Worktree } from '../../../src/core/api.ts';
+import type { Agent, AgentActivity, HubEvents, Question, Session, SessionActivity, SessionEvent, SystemInfo, Worktree } from '../../../src/core/api.ts';
 import { HUB_EVENT_NAMES } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -62,6 +62,8 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D16 (moved in from a terminal)
   'origin',
   'live',
+  // additive, D19 (live activity)
+  'activity',
   'resumeCommand',
   'chips',
   // additive, M7.2 (loop cards)
@@ -85,6 +87,9 @@ const QUESTION_KEYS = keys<Question>()([
   'answeredAt',
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
+const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
+const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()(['turnStartedAt', 'state', 'since', 'tool', 'summary', 'thinkingTokens', 'agents']);
+const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
@@ -266,6 +271,44 @@ describe('/hub · events (contract, field by field)', () => {
     expectWellFormed(stream.parser);
   });
 
+  it('activity (D19, additive): a real turn streams { sessionId, activity }, at most one per second, ending with null like Session.activity', async () => {
+    const stream = await connect();
+    const created = await requestJson(port, 'POST', '/api/sessions', cookie, newSession({ name: 'hub-activity' }));
+    expect(created.status).toBe(201);
+    const session = created.body as Session;
+    await waitForStatus(sw.store, session.id, ['done']);
+    // The turn arrives in one burst: the leading value at once, the trailing one (idle) about a second later.
+    await stream.waitFor(
+      () => {
+        const mine = stream.payloads<HubEvents['activity']>('activity').filter((a) => a.sessionId === session.id);
+        return mine.length >= 2 && mine.at(-1)?.activity === null;
+      },
+      'the idle activity',
+    );
+    const messages = stream.parser.messages.filter((m) => m.event === 'activity' && (JSON.parse(m.data) as HubEvents['activity']).sessionId === session.id);
+    for (let i = 1; i < messages.length; i += 1) expect(messages[i]!.at - messages[i - 1]!.at).toBeGreaterThanOrEqual(900);
+    const payloads = messages.map((m) => JSON.parse(m.data) as HubEvents['activity']);
+    for (const payload of payloads) {
+      expect(keysOf(payload)).toEqual(ACTIVITY_EVENT_KEYS);
+      if (payload.activity === null) continue;
+      expect(keysOf(payload.activity)).toEqual(SESSION_ACTIVITY_KEYS);
+      expect(Object.keys(payload.activity.agents).length).toBeGreaterThan(0);
+      for (const agent of Object.values(payload.activity.agents)) expect(keysOf(agent)).toEqual(AGENT_ACTIVITY_KEYS);
+    }
+    const first = payloads[0]?.activity;
+    expect(first).toMatchObject({ state: 'thinking', tool: null, summary: null });
+    expect(Date.parse(first?.turnStartedAt ?? '')).not.toBeNaN();
+    const main = (await sw.store.agents.listBySession(session.id)).find((a) => a.kind === 'main');
+    expect(Object.keys(first?.agents ?? {})).toEqual([main?.id]);
+    // Idle now: the event's last value, the REST Session and the last sessionUpdated agree.
+    const listed = ((await requestJson(port, 'GET', '/api/sessions', cookie)).body as Session[]).find((s) => s.id === session.id);
+    expect(listed?.activity).toBeNull();
+    const detail = (await requestJson(port, 'GET', `/api/sessions/${session.id}`, cookie)).body as Session;
+    expect(detail.activity).toBeNull();
+    expect(stream.payloads<Session>('sessionUpdated').filter((s) => s.id === session.id).at(-1)?.activity).toBeNull();
+    expectWellFormed(stream.parser);
+  });
+
   it('worktreeRemovable: a real worktree whose PR merged (temp git repo + fake gh) streams the Worktree', async () => {
     const stream = await connect();
     const [record] = await manager.createForSession('hub-pr', ['web-front'], gw.folder);
@@ -323,7 +366,8 @@ describe('/hub · events (contract, field by field)', () => {
 
     for (const stream of [first, second]) {
       await stream.waitFor((p) => p.messages.some((m) => m.event === 'scheduleRun'), 'scheduleRun');
-      const names = stream.parser.messages.map((m) => m.event).filter((n) => n !== 'system');
+      // `system` runs on its timer; a trailing `activity` of the earlier tests' session may still arrive (D19, ≤ 1 s later).
+      const names = stream.parser.messages.map((m) => m.event).filter((n) => n !== 'system' && n !== 'activity');
       expect(names).toEqual(['questionBatch', 'inboxChanged', 'scheduleRun']);
 
       const [sentBatch] = stream.payloads<HubEvents['questionBatch']>('questionBatch');

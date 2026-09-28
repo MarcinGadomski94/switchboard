@@ -96,6 +96,48 @@ export interface Agent {
   readonly statusText: string | null;
 }
 
+/**
+ * Additive (D19): what a session's running turn (or one of its agents) is doing
+ * now: `thinking` (the model is working, `system/thinking_tokens` ticks), `tool` (a
+ * `tool_use` waits for its `tool_result`), `writing` (after a text block), `waiting`
+ * (a question or permission request is open). `docs/derivations.md` → *Live activity*.
+ */
+export type ActivityState = 'thinking' | 'tool' | 'writing' | 'waiting';
+
+/** Additive (D19): one agent's current action while the session's turn runs. */
+export interface AgentActivity {
+  readonly state: ActivityState;
+  /** When this state began (ISO); for `tool`, when that tool call started. */
+  readonly since: string;
+  /** When the agent became active in this turn (ISO): the turn's start for the main agent, the subagent's own start otherwise. */
+  readonly startedAt: string;
+  /** `tool`: the tool's name; otherwise `null`. */
+  readonly tool: string | null;
+  /** `tool`: the short literal summary (D19: Bash → the command's first line, Read / Edit / Write → the file name, …); otherwise `null`. */
+  readonly summary: string | null;
+}
+
+/**
+ * Additive (D19): the live activity of a session while a turn runs, derived in
+ * memory from the process's stream-json (never stored, never guessed). The
+ * top-level state is `waiting` while any request is open, else the main agent's.
+ */
+export interface SessionActivity {
+  /** When the running turn started (ISO): the user message was taken up, or the CLI started a turn by itself. */
+  readonly turnStartedAt: string;
+  readonly state: ActivityState;
+  /** When the top-level state began (ISO); for `tool`, when that tool call started. */
+  readonly since: string;
+  /** `tool`: the main agent's running tool; otherwise `null`. */
+  readonly tool: string | null;
+  /** `tool`: its short summary; otherwise `null`. */
+  readonly summary: string | null;
+  /** Estimated thinking tokens so far this turn (the sum of the `system/thinking_tokens` deltas); `null` before the first tick. */
+  readonly thinkingTokens: number | null;
+  /** Each active agent's own action, keyed by agent id (`Agent.id`): the main agent and the subagents working now. */
+  readonly agents: Readonly<Record<string, AgentActivity>>;
+}
+
 /** `GET /api/sessions` item: a session with its agents and open question count. Provisional: M4.1. */
 export interface Session {
   readonly id: string;
@@ -132,6 +174,8 @@ export interface Session {
   readonly origin: SessionOrigin;
   /** Additive (M4.1): the session has a live supervised `claude` process (Pause applies; else Resume). */
   readonly live: boolean;
+  /** Additive (D19): what the running turn is doing now; `null` when no turn runs (always for a session without a live process). */
+  readonly activity: SessionActivity | null;
   /** Additive (M4.1): `claude --resume <claudeSessionId>`, the handoff card's command (prototype copy, M0.4). */
   readonly resumeCommand: string;
   /** Additive (M4.1): the header chips (`src/core/derive/chips.ts`). */
@@ -841,6 +885,8 @@ export interface HubEvents {
   readonly worktreeRemovable: Worktree;
   readonly scheduleRun: { readonly scheduleId: string; readonly result: ScheduleRunResult };
   readonly system: SystemInfo;
+  /** Additive (D19): a session's live activity changed (at most one per second per session; `null` = the turn ended). */
+  readonly activity: { readonly sessionId: string; readonly activity: SessionActivity | null };
 }
 
 /** A `/hub` event name. */
@@ -855,6 +901,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'worktreeRemovable',
   'scheduleRun',
   'system',
+  'activity',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

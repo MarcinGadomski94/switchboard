@@ -1,4 +1,6 @@
-import type { SessionDetail } from '../../../core/api.ts';
+import type { AgentActivity, SessionDetail } from '../../../core/api.ts';
+import { AgentActivityText } from '../../activity/ActivityViews.tsx';
+import { useLiveActivity } from '../../activity/useActivity.ts';
 import { statusColor } from '../../shell/format.ts';
 import { HandoffCard } from './HandoffCard.tsx';
 import { type AgentCard, agentCards, agentSummary, terminalLines } from './right-panel.ts';
@@ -11,9 +13,11 @@ import { TerminalTail } from './TerminalTail.tsx';
  * handoff card (M4.1) with `claude --resume <id>` + copy. Everything comes from
  * `GET /api/sessions/{id}` (agents, recent events, status), which SessionView
  * reloads on the session's `/hub` events. Rules: `right-panel.ts`,
- * `docs/session-panel.md`.
+ * `docs/session-panel.md`. D19: an active agent's card shows its current action
+ * and time in the status slot (the live activity, `activity` events).
  */
 export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
+  const activity = useLiveActivity(sessionId, session);
   return (
     <aside className="sb-sv-panel" data-testid="session-right-panel" data-session-id={sessionId}>
       {session ? (
@@ -26,7 +30,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
           </div>
           <div className="sb-agents" data-testid="agent-cards">
             {agentCards(session.agents, session).map((card) => (
-              <AgentCardView key={card.id} card={card} />
+              <AgentCardView key={card.id} card={card} activity={activity?.agents[card.id] ?? null} />
             ))}
           </div>
           <div className="sb-sv-panel-label sb-term-label">Terminal</div>
@@ -38,7 +42,7 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
   );
 }
 
-function AgentCardView({ card }: { readonly card: AgentCard }) {
+function AgentCardView({ card, activity }: { readonly card: AgentCard; readonly activity: AgentActivity | null }) {
   const color = statusColor(card.status);
   return (
     <div className="sb-agent" data-testid="agent-card" data-agent-id={card.id} data-status={card.status}>
@@ -51,7 +55,7 @@ function AgentCardView({ card }: { readonly card: AgentCard }) {
           {card.description}
         </span>
         <span className="sb-agent-status" data-testid="agent-status" style={{ color }}>
-          {card.statusText}
+          {activity ? <AgentActivityText entry={activity} /> : card.statusText}
         </span>
       </div>
       <div className="sb-agent-where">

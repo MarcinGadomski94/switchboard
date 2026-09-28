@@ -1,4 +1,4 @@
-import type { Loop, SessionEvent } from '../../core/api.ts';
+import type { Loop, SessionActivity, SessionEvent } from '../../core/api.ts';
 import { LOOP_SOURCE_TOOLS, type ObservedLoop, deriveLoops, isLoopCommand } from '../../core/derive/loops.ts';
 import type { LoopRecord } from '../db/repos/loops.ts';
 import type { Store } from '../db/store.ts';
@@ -12,6 +12,8 @@ import { toLoop } from './wire.ts';
 /** Where the tracker hears about session events (the SessionSupervisor). */
 export interface LoopEventSource {
   on(name: 'event', listener: (payload: SupervisorEvents['event']) => void): () => void;
+  /** D19: the session's live activity, carried by the `sessionUpdated` the tracker publishes (none = `null`). */
+  activity?(sessionId: string): SessionActivity | null;
 }
 
 /** Options for {@link LoopTracker}. */
@@ -71,6 +73,7 @@ export class LoopTracker {
   readonly #now: () => Date;
   readonly #onError: (error: unknown) => void;
   readonly #off: () => void;
+  readonly #events: LoopEventSource;
   /** Sessions known to have loops (`true`) or not (`false`); unknown ones are looked up once. */
   readonly #tracked = new Map<string, boolean>();
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -83,6 +86,7 @@ export class LoopTracker {
     this.#debounceMs = options.debounceMs ?? 150;
     this.#now = options.now ?? (() => new Date());
     this.#onError = options.onError ?? ((error) => console.error('switchboard loops:', error));
+    this.#events = options.events;
     this.#off = options.events.on('event', ({ sessionId, event }) => {
       void this.#onEvent(sessionId, event).catch(this.#onError);
     });
@@ -196,7 +200,7 @@ export class LoopTracker {
     }
     if (changed && this.#bus && !this.#closed) {
       const record = await this.#store.sessions.get(sessionId);
-      if (record) this.#bus.publish('sessionUpdated', await toSession(this.#store, record));
+      if (record) this.#bus.publish('sessionUpdated', await toSession(this.#store, record, this.#events.activity?.(sessionId) ?? null));
     }
     return (await this.#store.loops.list(sessionId)).map(toLoop);
   }

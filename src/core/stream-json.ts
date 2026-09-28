@@ -207,7 +207,22 @@ export interface PermissionDeniedMessage extends Base {
   readonly decisionReason: string | null;
 }
 
-/** Any JSON object the parser does not lift (`system/thinking_tokens`, `system/commands_changed`, …). */
+/**
+ * `system/thinking_tokens`: a progress tick while the model thinks (D19). The CLI
+ * counts per model message (`estimated_tokens` restarts with each message), so a
+ * turn's total is the sum of the deltas.
+ */
+export interface ThinkingTokensMessage extends Base {
+  readonly kind: 'thinking-tokens';
+  /** The estimate so far for the current model message. */
+  readonly estimatedTokens: number | null;
+  /** The increase since the previous tick. */
+  readonly estimatedTokensDelta: number | null;
+  /** A subagent's Agent `tool_use` id when the line carries one (not observed on CLI 2.1.283), else `null`. */
+  readonly parentToolUseId: string | null;
+}
+
+/** Any JSON object the parser does not lift (`system/commands_changed`, …). */
 export interface OtherMessage extends Base {
   readonly kind: 'other';
   readonly type: string;
@@ -242,6 +257,7 @@ export type StreamMessage =
   | TaskUpdatedMessage
   | TaskNotificationMessage
   | PermissionDeniedMessage
+  | ThinkingTokensMessage
   | OtherMessage
   | InvalidLine;
 
@@ -371,6 +387,14 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         toolUseId: str(obj['tool_use_id']),
         message: str(obj['message']),
         decisionReason: str(obj['decision_reason']),
+      };
+    case 'thinking_tokens':
+      return {
+        ...base,
+        kind: 'thinking-tokens',
+        estimatedTokens: num(obj['estimated_tokens']),
+        estimatedTokensDelta: num(obj['estimated_tokens_delta']),
+        parentToolUseId: str(obj['parent_tool_use_id']),
       };
     default:
       return { ...base, kind: 'other', type: 'system', subtype };

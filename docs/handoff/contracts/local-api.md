@@ -107,6 +107,19 @@ Folder { …D14 fields, "label": "Side project" | null, "displayName": "Side pro
 - `label`: trimmed, at most 40 characters (Unicode code points), unique among saved folders ignoring case; `null` = none.
 - `displayName` = `label`, else `name`: what the UI shows for the folder (the New-session Folder dropdown, Settings → Folders, the Solutions and Codebase Memory folder switchers, the folder tags), always with the path next to it (second line or tooltip).
 
+## Live activity (D19, 2026-09-28, additive)
+Developer ruling D19 (`docs/decisions.md`): while a session's turn runs, the service reports what it is doing now, derived in memory from the CLI's stream-json. Additive; nothing above or below changes meaning. Details: `docs/derivations.md` → *Live activity*, `docs/hub.md`.
+
+- **Session** (so also SessionDetail and the `sessionUpdated` payload) gains `activity: SessionActivity | null` (`null` when no turn runs, always for a session without a live process).
+- New `/hub` event **`activity`** `{ sessionId, activity: SessionActivity | null }`, sent when a session's activity changes, **at most one per second per session** (the newest value always goes out).
+
+```json
+SessionActivity { "turnStartedAt": "ISO", "state": "thinking|tool|writing|waiting", "since": "ISO", "tool": "<name>|null", "summary": "<short text>|null",
+                  "thinkingTokens": 1234|null, "agents": { "<agent id>": AgentActivity } }
+AgentActivity   { "state": "thinking|tool|writing|waiting", "since": "ISO", "startedAt": "ISO", "tool": "<name>|null", "summary": "<short text>|null" }
+```
+`state` is `waiting` while any question or permission request is open, else the main agent's; `since` is when that state (for `tool`, that tool call) began; `thinkingTokens` is the turn's estimated thinking tokens (`null` before the first tick); `agents` holds the main agent and each subagent working now, keyed by `Agent.id` (`startedAt` = when that agent became active in the turn).
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -126,3 +139,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | worktreeRemovable | Worktree |
 | scheduleRun | { scheduleId, result } |
 | system | same shape as GET /api/system, every 5 s |
+| activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session) |

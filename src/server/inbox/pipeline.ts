@@ -1,4 +1,4 @@
-import type { AnswerBatch } from '../../core/api.ts';
+import type { AnswerBatch, SessionActivity } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
@@ -35,6 +35,8 @@ export interface QuestionSessions {
   respond(sessionId: string, requestId: string, decision: ToolDecision): Promise<void>;
   /** Sends a user message to a live process that is not being stopped; `false` = nothing written. */
   sendToLive(sessionId: string, text: string, origin?: UserMessageOrigin): Promise<boolean>;
+  /** D19: the session's live activity, carried by the `sessionUpdated` the pipeline publishes (none = `null`). */
+  activity?(sessionId: string): SessionActivity | null;
 }
 
 /** Why the pipeline refused a call; `code` maps to an HTTP status in the routes. */
@@ -289,7 +291,7 @@ export class QuestionPipeline implements ControlRequestHandler {
   async #publishSession(sessionId: string): Promise<void> {
     if (!this.#bus) return;
     const record = await this.#store.sessions.get(sessionId);
-    if (record) this.#bus.publish('sessionUpdated', await toSession(this.#store, record));
+    if (record) this.#bus.publish('sessionUpdated', await toSession(this.#store, record, this.#sessions?.activity?.(sessionId) ?? null));
   }
 }
 
