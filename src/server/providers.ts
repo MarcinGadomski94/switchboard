@@ -1,4 +1,4 @@
-import type { FileDiff, HistoryItem, SolutionGroup, SystemInfo } from '../core/api.ts';
+import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
 
 /**
@@ -49,6 +49,22 @@ export interface LoginServiceProvider {
   setStartAtLogin(enabled: boolean): Promise<LoginServiceStatus>;
 }
 
+/**
+ * Reachability of an embedded tool's URL (M8.1). Real implementation: a
+ * server-side GET with a 3 s timeout (`tools/probe.ts`), used when none is given.
+ */
+export interface ToolProbeProvider {
+  probe(url: string): Promise<ToolProbe['state']>;
+}
+
+/**
+ * The Codebase Memory strip (M8.1, gap #4): the projects in `.codebase-memory-dirty`.
+ * Real implementation: `tools/codebase-memory.ts` over the workspace root, used when none is given.
+ */
+export interface CodebaseMemoryProvider {
+  status(): Promise<CodebaseMemoryStatus>;
+}
+
 /** The providers a running service has. A missing one means its item has not landed yet. */
 export interface Providers {
   readonly diff?: DiffProvider;
@@ -56,4 +72,6 @@ export interface Providers {
   readonly system?: SystemProvider;
   readonly history?: HistoryProvider;
   readonly loginService?: LoginServiceProvider;
+  readonly toolProbe?: ToolProbeProvider;
+  readonly codebaseMemory?: CodebaseMemoryProvider;
 }

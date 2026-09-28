@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { SystemInfo } from '../../core/api.ts';
+import type { SystemInfo, Tool } from '../../core/api.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
+import { useToolsChanged } from '../tools/events.ts';
+import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import {
   type Meter,
   conflictCount,
@@ -65,6 +67,18 @@ function MeterRow({ label, meter, name }: { readonly label: string; readonly met
   );
 }
 
+/** A TOOLS row: dot = reachability (M8.1, `tools/probe.ts`), name, host or "set URL". */
+function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: boolean }) {
+  const state = useToolState(tool);
+  return (
+    <Link to={{ view: 'tool', id: tool.id }} className="sb-tool" data-tool-state={state} aria-current={active ? 'page' : undefined}>
+      <span className="sb-tool-dot" style={{ background: TOOL_DOT[state] }} />
+      <span className="sb-tool-name">{tool.name}</span>
+      <span className="sb-tool-host">{urlHost(tool.url) || 'set URL'}</span>
+    </Link>
+  );
+}
+
 /**
  * The sidebar (SPEC → Shell), top to bottom: logo + ⌘K badge · "+ New session" ·
  * nav with badges · TOOLS · SESSIONS · Settings · machine footer. Everything it
@@ -93,6 +107,7 @@ export function Sidebar() {
   useHubEvent('sessionUpdated', useThrottled(solutions.reload, SOLUTIONS_RELOAD_MS));
   useHubEvent('scheduleRun', () => schedules.reload());
   useHubEvent('system', (payload) => setLiveSystem(payload));
+  useToolsChanged(() => tools.reload()); // Settings → Embedded tools saved (M8.2)
 
   const info = liveSystem ?? system.data;
   const inboxCount = inbox.data?.length ?? 0;
@@ -108,6 +123,7 @@ export function Sidebar() {
   ];
 
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);
+  useProbeOnLoad(tools.data);
   const sessionList = sessions.data ?? [];
   const reachable = system.reachable ?? sessions.reachable;
 
@@ -152,16 +168,7 @@ export function Sidebar() {
       </div>
       <div className="sb-tools" data-testid="sidebar-tools">
         {sidebarTools.map((tool) => (
-          <Link
-            key={tool.id}
-            to={{ view: 'tool', id: tool.id }}
-            className="sb-tool"
-            aria-current={isActive(route, 'tool', tool.id) ? 'page' : undefined}
-          >
-            <span className="sb-tool-dot" style={{ background: tool.url ? 'var(--muted-2)' : 'var(--status-idle)' }} />
-            <span className="sb-tool-name">{tool.name}</span>
-            <span className="sb-tool-host">{urlHost(tool.url) || 'set URL'}</span>
-          </Link>
+          <SidebarTool key={tool.id} tool={tool} active={isActive(route, 'tool', tool.id)} />
         ))}
       </div>
 

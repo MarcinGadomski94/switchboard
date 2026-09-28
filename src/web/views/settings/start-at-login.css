@@ -39,6 +39,9 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+  /* The prototype's value style, also on the wrapper: M8.2's Claude Code row measures it. */
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
 }
 
 .sb-login-toggle {

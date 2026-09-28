@@ -479,7 +479,9 @@ function sidebarChecks(served: Served): PartCheck[] {
     out.push({ name: `nav:${label}:label`, path: [...NAV, i, 0], geometry: 'box', copy: true, styles: text });
     const area = NAV_BADGE_AREA[i];
     const pending = area && !served[area] ? `${AREAS[area].url} answers 501 (${AREAS[area].item})` : undefined;
-    out.push({ name: `nav:${label}:badge`, path: [...NAV, i, 1], geometry: 'box', copy: true, styles: text, pending });
+    // The prototype hard-codes the Artifacts badge "14" over its 13 `ART.slice(1)` rows; the app counts the API (D13).
+    const copyNote = label === 'Artifacts' ? 'the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13)' : undefined;
+    out.push({ name: `nav:${label}:badge`, path: [...NAV, i, 1], geometry: 'box', copy: copyNote === undefined, styles: text, pending, copyNote });
   });
   out.push({ name: 'toolsLabel', path: [...SIDEBAR, 3], geometry: 'box', copy: true, styles: text });
   const toolsPending = served.tools ? undefined : `${AREAS.tools.url} answers 501 (${AREAS.tools.item})`;

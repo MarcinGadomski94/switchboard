@@ -110,12 +110,16 @@ describe('openStore on a temp file', () => {
   it('creates the file (and its folder), applies the migrations and uses WAL + foreign keys', async () => {
     const file = storeFile(path.join(tmp, 'nested', 'data'));
     const store = await openStore(file, { now: () => new Date('2026-09-28T01:02:03.004Z') });
+    const shipped = await loadMigrations();
     try {
-      expect(store.migrations.applied).toEqual([1]);
-      expect(store.migrations.version).toBe(1);
-      expect(appliedMigrations(store.db)).toEqual([
+      expect(store.migrations.applied).toEqual(shipped.map((m) => m.version));
+      expect(store.migrations.version).toBe(shipped[shipped.length - 1]?.version);
+      expect(appliedMigrations(store.db)[0]).toEqual(
         { version: 1, name: 'initial', checksum: checksumOf(await readFile(path.join(MIGRATIONS_DIR, '0001_initial.sql'), 'utf8')), appliedAt: '2026-09-28T01:02:03.004Z' },
-      ]);
+      );
+      expect(appliedMigrations(store.db)).toEqual(
+        shipped.map((m) => ({ version: m.version, name: m.name, checksum: m.checksum, appliedAt: '2026-09-28T01:02:03.004Z' })),
+      );
       expect(store.db.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
       expect(store.db.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
     } finally {
@@ -131,12 +135,13 @@ describe('openStore on a temp file', () => {
     const schema = schemaDump(first.db);
     const applied = appliedMigrations(first.db);
     // Same connection, second run.
-    expect(migrate(first.db, await loadMigrations())).toEqual({ applied: [], version: 1 });
+    const latest = (await loadMigrations()).at(-1)?.version;
+    expect(migrate(first.db, await loadMigrations())).toEqual({ applied: [], version: latest });
     await first.close();
 
     const second = await openStore(file, { now: () => new Date('2027-01-01T00:00:00.000Z') });
     try {
-      expect(second.migrations).toEqual({ applied: [], version: 1 });
+      expect(second.migrations).toEqual({ applied: [], version: latest });
       expect(schemaDump(second.db)).toEqual(schema);
       expect(appliedMigrations(second.db)).toEqual(applied);
       expect(await second.sessions.get(session.id)).toEqual(session);

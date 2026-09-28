@@ -17,3 +17,9 @@ M6.4: `codebase-memory.ts` (`.claude/.codebase-memory-dirty` lines named after t
 M9.1: `service-files.ts` (the launchd agent, systemd `--user` unit and Task Scheduler task + env file of the per-user background service, their escaping, and the install / uninstall step plans; pure) and `login-service.ts` (the wire types of `GET/PUT /api/service`), documented in `docs/service.md`; the I/O is `src/server/service/`.
 
 M9.2: `usage.ts` (the Max usage meter's rules: `get_usage` / `rate_limit_event` readings, the max rule, every "unknown" case, the warnings due once per window until its reset, the `/api/system` fields; pure), documented in `docs/usage.md`; the I/O is `src/server/usage/`.
+
+M8.2: `settings.ts` (the keys of `GET/PUT /api/settings`, defaults, which are editable; `docs/settings.md`) and `cron-label.ts` (readable cron labels in the prototype's wording).
+
+M7.3: `artifacts-view.ts` (the global Artifacts view: type filters, `type=` parsing, the "Solution · branch" label and the search match, shared by `GET /api/artifacts` and the UI; `docs/derivations.md` → *Artifacts view*).
+
+M7.4: `transcript.ts` (streaming parser of a Claude Code transcript into the facts History needs: prompts, commands, titles, the newest leaf's last text, slugs) and `history.ts` (which sessions History lists and what each row shows, the search match, the date format; shared by `GET /api/history` and the UI; `docs/derivations.md` → *History*).

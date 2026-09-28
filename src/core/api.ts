@@ -131,6 +131,16 @@ export interface Artifact {
   readonly createdAt: string;
 }
 
+/**
+ * A row of `GET /api/artifacts` (M7.3, global Artifacts view): an {@link Artifact}
+ * plus the source session's name (`null` without a session) and the last update,
+ * which the view's Age column reads (a DIFF grows with every write).
+ */
+export interface ArtifactListItem extends Artifact {
+  readonly sessionName: string | null;
+  readonly updatedAt: string;
+}
+
 /** `GET /api/sessions/{id}`. Provisional: M4.1. */
 export interface SessionDetail extends Session {
   readonly task: string;
@@ -376,17 +386,27 @@ export interface Schedule {
   readonly nextRunAt: string | null;
 }
 
-/** `GET /api/history` item (M7.4, docs/spike-m0.md → What History needs). Provisional: M7.4. */
+/**
+ * `GET /api/history` item (M7.4, docs/spike-m0.md → What History needs;
+ * `docs/derivations.md` → *History*, rules in `src/core/history.ts`).
+ */
 export interface HistoryItem {
   readonly claudeSessionId: string;
-  /** Switchboard's id when the session is in the DB. */
+  /** Switchboard's id when the session is in the DB; `null` for a terminal-started session. */
   readonly sessionId: string | null;
+  /** DB `createdAt`, else the transcript's first timestamp. */
   readonly startedAt: string;
   readonly name: string;
+  /** `orch · feature · UI-first` for a stored session; `terminal` (+ ` · /loop 1h` when it started with a command) otherwise. */
   readonly mode: string;
+  /** The last main-chain assistant text (collapsed, at most 240 characters). */
   readonly summary: string;
   readonly branches: readonly BranchRef[];
+  /** Additive (M7.4): solutions in the session without a branch in {@link branches} (in-place sessions, terminal folders). */
+  readonly solutions: readonly string[];
+  /** `PR #n merged`, a status word (`running`, `done`, …), or `active` / `ended` for a terminal session. */
   readonly outcome: string;
+  /** The outcome's color (terminal sessions: `run` while active, else `idle`). */
   readonly status: SessionStatus;
 }
 
@@ -406,6 +426,28 @@ export interface Tool {
 /** `POST /api/tools/{id}/probe` (contract). */
 export interface ToolProbe {
   readonly state: 'up' | 'down';
+}
+
+/**
+ * One project listed in the workspace's `.claude/.codebase-memory-dirty` (M8.1
+ * strip, gap #4; the file M6.4 reads for freshness). Additive, not in the contract.
+ */
+export interface CodebaseMemoryProject {
+  /** The line of the file verbatim: codebase-memory's project id. */
+  readonly id: string;
+  /** The repo folder name (`acme-app-front`, `mobile`), else the id. */
+  readonly name: string;
+  /** Absolute repo path when the id belongs to the workspace root, else `null`. */
+  readonly path: string | null;
+  /** When the project was marked dirty; `null` when unknown (the file keeps no times). */
+  readonly markedAt: string | null;
+}
+
+/** `GET /api/codebase-memory` (additive, M8.1): the Codebase Memory tool's strip. */
+export interface CodebaseMemoryStatus {
+  readonly projects: readonly CodebaseMemoryProject[];
+  /** Indexed-project count and index mode; `null` when unknown (never invented). */
+  readonly indexed: { readonly projects: number; readonly mode: string } | null;
 }
 
 /**

@@ -420,4 +420,7 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
       position,
     })),
   );
+
+  // Settings the prototype shows as stored (M8.2, `docs/settings.md`).
+  await store.settings.setMany(data.setup.settings);
 }

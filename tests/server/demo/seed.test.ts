@@ -154,6 +154,8 @@ describe('seedDemo (gap #21)', () => {
       ['sw', 'Acme Tool', null, 1],
     ]);
     expect(await store.settings.get(DEMO_SEED_KEY)).toEqual({ version: DEMO_SEED_VERSION, seededAt: NOW.toISOString() });
+    // Settings → Claude Code shows "Start at login · on" in the prototype (M8.2).
+    expect(await store.settings.get('service.startAtLogin')).toBe(true);
   });
 
   it('is a no-op on a database that already holds the seed', async () => {
@@ -183,7 +185,7 @@ describe('seedDemo (gap #21)', () => {
     expect(() => assertDemoDataDir(path.join(tmp, 'data'), '/home/u/.local/share/switchboard')).not.toThrow();
     const started = await startDemo(store, path.join(tmp, 'data'));
     expect(started.seed).toEqual({ seeded: true, sessions: 6 });
-    expect(Object.keys(started.providers).sort()).toEqual(['diff', 'history', 'loginService', 'solutions', 'system']);
+    expect(Object.keys(started.providers).sort()).toEqual(['codebaseMemory', 'diff', 'history', 'loginService', 'solutions', 'system', 'toolProbe']);
   });
 
   it('maps the prototype chat tool lines to step events with the same mark (M4.2)', () => {

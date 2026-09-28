@@ -158,9 +158,9 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   await page.keyboard.press('Enter');
   await expect(detail).toHaveAttribute('data-solution', 'idle-nuget');
 
-  // "open Codebase Memory ›": no Codebase Memory tool is configured here, so it leads to Settings → Embedded tools.
+  // "open Codebase Memory ›": a fresh install has the default Codebase Memory tool (M8.1), so it opens it.
   await page.getByTestId('open-codebase-memory').click();
-  await expect(page).toHaveURL(`${server.baseUrl}/settings/tools`);
+  await expect(page).toHaveURL(`${server.baseUrl}/tools/cm`);
 });
 
 test('Solutions without a workspace root says so', async ({ page }) => {

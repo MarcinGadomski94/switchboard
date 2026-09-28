@@ -103,7 +103,9 @@ describe('npm start entry point (src/server/main.ts)', () => {
     const db = new DatabaseSync(path.join(dataDir, DB_FILE), { readOnly: true });
     try {
       expect(db.prepare('SELECT count(*) AS n FROM sessions').get()).toEqual({ n: 0 });
-      expect(db.prepare('SELECT count(*) AS n FROM tools').get()).toEqual({ n: 0 });
+      // Only the default tools of a fresh install (0002_default_tools.sql, M8.1), and no demo seed marker.
+      expect(db.prepare('SELECT id FROM tools ORDER BY position').all()).toEqual([{ id: 'cm' }, { id: 'sw' }]);
+      expect(db.prepare(`SELECT count(*) AS n FROM settings WHERE key = 'demo.seed'`).get()).toEqual({ n: 0 });
     } finally {
       db.close();
     }

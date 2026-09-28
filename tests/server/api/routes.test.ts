@@ -30,13 +30,6 @@ const CONTRACT: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/schedules/c1/run', 'M7.1'],
   ['POST', '/api/schedules/c1/pause', 'M7.1'],
   ['POST', '/api/schedules/c1/resume', 'M7.1'],
-  ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'],
-  ['GET', '/api/history?q=x', 'M7.4'],
-  ['GET', '/api/settings', 'M8.2'],
-  ['PUT', '/api/settings', 'M8.2'],
-  ['GET', '/api/tools', 'M8.1'],
-  ['PUT', '/api/tools', 'M8.1'],
-  ['POST', '/api/tools/cm/probe', 'M8.1'],
   ['GET', '/api/system', 'M5.3'],
 ];
 
@@ -56,6 +49,15 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT', string, string]> = [
   ['POST', '/api/questions/batch/b1/answers', 'M3.1'],
   ['POST', '/api/inbox/i1/actions/allow-once', 'M3.1'],
   ['GET', '/api/solutions', 'M6.1'],
+  ['GET', '/api/tools', 'M8.1'],
+  ['PUT', '/api/tools', 'M8.1'],
+  ['POST', '/api/tools/nope/probe', 'M8.1'], // an unknown tool: nothing is fetched (tests/server/api/tools.test.ts)
+  ['GET', '/api/codebase-memory', 'M8.1'], // additive (docs/tools.md)
+  ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no workspace root here → 409, nothing starts
+  ['GET', '/api/settings', 'M8.2'],
+  ['PUT', '/api/settings', 'M8.2'], // no body here → 422, nothing stored (tests/server/api/settings.test.ts)
+  ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'], // tests/server/api/artifacts.test.ts
+  ['GET', '/api/history?q=x', 'M7.4'], // no workspace root here → stored sessions only (tests/server/api/history.test.ts)
 ];
 
 let tmp: string;

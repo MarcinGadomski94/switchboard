@@ -24,10 +24,10 @@ M1.4 laid out one file per view, tab, modal and API area so the parallel lanes o
 | `GET /api/solutions` | `api/solutions.ts` | served since M6.1 (the workspace scan, `docs/solutions.md`); live fields since M6.2 (`LiveSolutions`: branches, status, phase, changes, ledger, artifacts, codebase-memory freshness); `flag` / `conflict` / `conflictSessions` since M6.3 (`docs/solutions.md` → *Conflicts*) |
 | `POST /api/solutions/{repo}/isolate` | `api/solutions.ts` | served since M2.2 (gap #2, `docs/worktrees.md`); the UI action since M6.3 (the conflict card) |
 | `GET/POST /api/schedules`, `POST /api/schedules/{id}/run · /pause · /resume` | `api/schedules.ts` | M7.1 |
-| `GET /api/artifacts` | `api/artifacts.ts` | M7.3 (session artifacts M4.6) |
-| `GET /api/history` | `api/history.ts` | M7.4 |
-| `GET/PUT /api/settings` | `api/settings.ts` | M8.2 |
-| `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | M8.1 |
+| `GET /api/artifacts` | `api/artifacts.ts` | served since M7.3 (`docs/derivations.md` → *Artifacts view*): `ArtifactListItem[]` (+ `sessionName`, `updatedAt`), `type=` comma list, `q=` search; session artifacts M4.6 |
+| `GET /api/history` | `api/history.ts` | served since M7.4 (`docs/derivations.md` → *History*): `providers.history`, else `history/transcripts.ts` (`TranscriptHistory`: stored sessions + transcripts under `$CLAUDE_CONFIG_DIR`/`~/.claude`); `HistoryItem` + additive `solutions` |
+| `GET/PUT /api/settings` | `api/settings.ts` | served since M8.2 (`docs/settings.md`): editable preferences + read-only values the service reports; keys in `src/core/settings.ts` (M5.1 reads the New-session defaults, M9.1 writes `service.startAtLogin`, M9.2 reads `usage.warnAtPct`) |
+| `GET/PUT /api/tools`, `POST /api/tools/{id}/probe` | `api/tools.ts` | served since M8.1 (`docs/tools.md`); additive `GET /api/codebase-memory` + `POST /api/codebase-memory/reindex` (gap #4) in the same module |
 | `GET /api/system` | `api/system.ts` | M5.3 (CLI/gh, metrics per gap #11); M9.2's `usagePct` / `usageResetsAt` / `usageWarnings` come from `withUsage` around `providers.system` (`docs/usage.md`; served once M5.3's route is merged) |
 | `GET/PUT /api/service` (additive, not in the contract table) | `api/service.ts` | served since M9.1: "Start at login" through `providers.loginService` (`docs/service.md`); 501 without the provider |
 | `GET /hub` (SSE) | `api/hub.ts` + `hub/*` | served since M2.3 (`docs/hub.md`); later items publish on `ApiContext.bus` |
@@ -51,8 +51,10 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `DiffProvider` (git diff per session, gap #10) | `WorktreeManager` (M2.2, `src/server/worktrees/manager.ts`), wired in `main.ts` | `src/server/demo/providers.ts` |
 | `SolutionsProvider` (workspace scan + live fields) | `LiveSolutions` (M6.2, `src/server/solutions/live.ts`) over the `WorkspaceScanner` (M6.1, `src/server/solutions/scanner.ts`, `docs/solutions.md`), wired in `main.ts`; its optional `isReadOnly` (the scanner's) feeds the NewSession read-only check | same (no `isReadOnly`: matched by row name) |
 | `SystemProvider` (CLI/gh, CPU/RAM/processes, usage) | M5.3; M9.2 wraps it with `withUsage` (`src/server/usage/wire.ts`, `docs/usage.md`) in `main.ts` | same (not wrapped: the demo's usage is prototype data) |
-| `HistoryProvider` (transcripts) | M7.4 | same |
+| `HistoryProvider` (transcripts) | `history/transcripts.ts` (`TranscriptHistory`, M7.4), the route's default | the prototype's `HIST` rows (`various` as the solutions line) |
 | `LoginServiceProvider` ("Start at login": the per-user service definition) | `LoginService` (M9.1, `src/server/service/login-service.ts`), wired in `main.ts` | `src/server/demo/login-service.ts` (in-memory, starts on, never touches the OS) |
+| `ToolProbeProvider` (tool reachability, M8.1) | `tools/probe.ts` (server-side GET, 3 s), the route's default | always `down`, no network |
+| `CodebaseMemoryProvider` (`.codebase-memory-dirty`, M8.1 strip) | `tools/codebase-memory.ts` over the workspace root, the route's default | the prototype's dirty list + indexed count |
 
 ## UI: views and parts (`src/web/…`)
 | File | What | Item |
@@ -71,10 +73,10 @@ Computed data sits behind interfaces so the demo can swap implementations (D13).
 | `modals/SetupWizard.tsx` | First-run wizard | M5.3 |
 | `views/SolutionsView.tsx` | Solutions (+ `solutions-format.ts`, `solutions.css`) | done in M6.2 (`docs/solutions.md` → *The view*); the conflict card and action since M6.3 (`SolutionConflictCard.tsx`, `solutions-conflict.ts`); freshness rules since M6.4 (`src/core/codebase-memory.ts`, `docs/solutions.md` → *Codebase-memory freshness*, also the strip's list for M8.1) |
 | `views/SchedulesView.tsx` | Schedules & loops | M7.1, M7.2 |
-| `views/ArtifactsView.tsx` | Global artifacts | M7.3 |
-| `views/HistoryView.tsx` | History | M7.4 |
-| `views/ToolView.tsx` | Embedded tool | M8.1 |
-| `views/SettingsView.tsx` | Settings | M8.2; M9.1's "Start at login" is `views/settings/StartAtLogin.tsx` (`StartAtLoginToggle` for M8.2's Claude Code row; the placeholder shows `StartAtLoginRow` until then, `docs/service.md`) |
+| `views/ArtifactsView.tsx` | Global artifacts (+ `views/artifacts.css`; filters, search and the location label in `src/core/artifacts-view.ts`) | M7.3 |
+| `views/HistoryView.tsx` | History (+ `views/history.css`; rows, dates and the solutions/branches line in `src/core/history.ts`) | M7.4 |
+| `views/ToolView.tsx` | Embedded tool (+ `views/tool.css`, `views/tool/CodebaseMemoryStrip.tsx`, shared probe state `tools/probe.ts` also used by the sidebar's TOOLS rows) | M8.1 |
+| `views/SettingsView.tsx` | Settings (+ `views/settings.css`, `views/settings/*`; the sidebar reloads its tools on `tools/events.ts`) | M8.2; its Claude Code row holds M9.1's `StartAtLoginToggle` (`views/settings/StartAtLogin.tsx`, `docs/service.md`) |
 | `modals/Palette.tsx` | ⌘K palette (the shortcut and Esc already work in `ModalHost.tsx`) | M8.3 |
 
 Each lane adds its view's CSS next to its component (`views/<view>.css`), using the variables in `styles/tokens.css`.
@@ -93,3 +95,5 @@ Each lane adds its view's CSS next to its component (`views/<view>.css`), using 
 - `tests/e2e/visual/shell.spec.ts`: the visual oracle for the shell (`docs/visual/shell.md`).
 - `tests/server/api/routes.test.ts`: every contract route is registered and guarded.
 - `tests/server/demo/*.test.ts`: demo data verbatim against the prototype, the seed, the demo providers.
+- Test ports: each lane runs its suites on its own pool, `SWITCHBOARD_TEST_PORTS=<first>-<last>` (`docs/configuration.md`); stub HTTP servers come from `tests/helpers/stub-http.ts`.
+- Specs that load the UI and are not about tools call `stubToolProbes(page)` (`tests/e2e/probes.ts`, M8.1): the sidebar probes configured tools on load, and the default Codebase Memory URL is the developer's `http://localhost:13000`.

@@ -2,6 +2,8 @@ import type {
   AnswerBatch,
   AttachRequest,
   Artifact,
+  ArtifactListItem,
+  CodebaseMemoryStatus,
   FileDiff,
   HistoryItem,
   InboxItem,
@@ -116,7 +118,7 @@ export const api = {
   pauseSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/pause`),
   resumeSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/resume`),
 
-  artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<Artifact[]>('GET', `/api/artifacts${query(params)}`),
+  artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
   history: (q?: string) => request<HistoryItem[]>('GET', `/api/history${query({ q })}`),
 
   settings: () => request<Settings>('GET', '/api/settings'),
@@ -125,6 +127,9 @@ export const api = {
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),
   probeTool: (id: string) => request<ToolProbe>('POST', `/api/tools/${enc(id)}/probe`),
+  /** Additive (M8.1, docs/tools.md): the Codebase Memory strip and its "Reindex n now" (gap #4). */
+  codebaseMemory: () => request<CodebaseMemoryStatus>('GET', '/api/codebase-memory'),
+  reindexCodebaseMemory: () => request<Session>('POST', '/api/codebase-memory/reindex'),
 
   system: () => request<SystemInfo>('GET', '/api/system'),
 

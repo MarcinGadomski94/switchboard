@@ -1,0 +1,109 @@
+/* History (SPEC → History, M7.4). Values are the prototype's (vHistory markup). */
+.sb-hist-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-hist-head {
+  padding: 18px 22px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-hist-title {
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+}
+
+.sb-hist-sub {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-hist-search {
+  margin-left: auto;
+  width: 320px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  padding: 7px 11px;
+  font-size: 12.5px;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-hist-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 22px;
+}
+
+.sb-hist-row {
+  display: grid;
+  grid-template-columns: 110px 220px minmax(0, 1fr) 200px;
+  gap: 16px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-hist-date {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-hist-namecol,
+.sb-hist-sumcol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sb-hist-namecol {
+  gap: 2px;
+}
+
+.sb-hist-sumcol {
+  gap: 4px;
+}
+
+.sb-hist-name {
+  font-size: var(--fs-body-lg);
+  font-weight: 500;
+}
+
+.sb-hist-mode {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-4);
+}
+
+.sb-hist-summary {
+  font-size: var(--fs-body);
+  color: var(--text-2b);
+  line-height: 1.45;
+}
+
+.sb-hist-sols {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: oklch(0.72 0.08 250);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-hist-outcome {
+  font: 400 11.5px var(--font-mono);
+  text-align: right;
+}
+
+.sb-hist-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted-3);
+  font-size: var(--fs-body);
+}

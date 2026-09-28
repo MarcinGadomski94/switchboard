@@ -170,6 +170,8 @@ export interface DemoSolutions {
   >;
   readonly artifacts: Readonly<Record<string, ReadonlyArray<{ readonly type: string; readonly name: string; readonly meta: string }>>>;
   readonly codebaseMemoryDirty: ReadonlyArray<{ readonly project: string; readonly ts: string }>;
+  /** The strip's "16 projects indexed · full mode" (M8.1). */
+  readonly codebaseMemoryIndexed: { readonly projects: number; readonly mode: string };
   readonly newSessionGroups: ReadonlyArray<{ readonly folder: string; readonly solutions: readonly string[] }>;
   readonly newSessionDraft: Readonly<Record<string, unknown>>;
 }
@@ -232,10 +234,11 @@ export interface DemoTool {
   readonly url: string | null;
 }
 
-/** `setup.json`: wizard checks + scan rows. */
+/** `setup.json`: wizard checks + scan rows + stored settings the prototype shows (M8.2: "Start at login · on"). */
 export interface DemoSetup {
   readonly wizardChecks: ReadonlyArray<{ readonly label: string; readonly detail: string }>;
   readonly scan: ReadonlyArray<{ readonly folder: string; readonly count: number; readonly examples: string; readonly rule: string }>;
+  readonly settings: Readonly<Record<string, unknown>>;
 }
 
 /**

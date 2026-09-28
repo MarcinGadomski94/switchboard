@@ -1,0 +1,381 @@
+/* Settings (SPEC → Settings, M8.2). Values are the prototype's (vSettings markup). */
+.sb-settings-view {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* Nav: 230px */
+.sb-set-nav {
+  border-right: 1px solid var(--border-divider);
+  background: var(--bg-list);
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-set-nav-title {
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+  padding: 0 8px 14px;
+}
+
+.sb-set-nav-item,
+.sb-set-nav-item:hover {
+  display: block;
+  padding: 8px 10px;
+  border-radius: var(--radius-button-lg);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  background: transparent;
+  color: var(--muted-1);
+}
+
+.sb-set-nav-item[aria-current='page'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+/* Content: max 860px */
+.sb-set-content {
+  padding: 26px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+  max-width: 860px;
+}
+
+.sb-set-title {
+  font-size: var(--fs-modal-title);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.sb-set-title[data-with-lede] {
+  margin-bottom: 4px;
+}
+
+.sb-set-lede {
+  font-size: 12.5px;
+  color: var(--muted-2);
+  margin-bottom: 12px;
+}
+
+/* Rows: label + description left, value/control right, 1px #1f2024 divider */
+.sb-set-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-set-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sb-set-row-label {
+  font-size: var(--fs-body-lg);
+}
+
+.sb-set-row-desc {
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-set-row-desc[data-mono] {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-set-value {
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+}
+
+/* An editable value that looks like the prototype's value text. */
+.sb-set-value-button {
+  all: unset;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-set-value-button:hover,
+.sb-set-select:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.sb-set-select {
+  appearance: none;
+  field-sizing: content;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  cursor: pointer;
+  outline: none;
+}
+
+.sb-set-select option {
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
+
+.sb-set-value-button:focus-visible,
+.sb-set-select:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 2px;
+}
+
+.sb-set-action {
+  all: unset;
+  font-size: 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-set-actions {
+  padding-top: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.sb-set-button {
+  all: unset;
+  font-size: 12.5px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  padding: 7px 14px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-set-note {
+  padding: 14px 0;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-set-error {
+  color: var(--status-fail);
+}
+
+/* Workspace & solutions: the scan table */
+.sb-set-scan {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  border: 1px solid var(--border-card);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.sb-set-scan-row {
+  display: grid;
+  grid-template-columns: 170px 40px minmax(0, 1fr) 120px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border-row);
+  background: var(--bg-card-2);
+}
+
+.sb-set-scan-folder {
+  font: 400 12.5px var(--font-mono);
+}
+
+.sb-set-scan-count {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+  text-align: right;
+}
+
+.sb-set-scan-examples {
+  font-size: 12px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-set-scan-rule {
+  font: 400 11px var(--font-mono);
+  text-align: right;
+  /* editable (prototype `ed`); on request / read-only override it (prototype `ro`). */
+  color: var(--muted-2);
+}
+
+.sb-set-scan-rule:not([data-rule='editable']) {
+  color: oklch(0.72 0.1 70);
+}
+
+/* Schedules */
+.sb-set-sched {
+  display: grid;
+  grid-template-columns: 10px 200px 160px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-set-sched-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.sb-set-sched-name {
+  font-size: var(--fs-body-lg);
+}
+
+.sb-set-sched-cron {
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 8px;
+  background: var(--bg-sidebar);
+}
+
+.sb-set-sched-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+/* Embedded tools */
+.sb-set-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sb-set-tool {
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-card-2);
+}
+
+.sb-set-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-set-tool-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sb-set-tool-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.sb-set-tool-desc {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-set-tool-state {
+  margin-left: auto;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-set-tool-remove {
+  all: unset;
+  font-size: 12px;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-set-tool-remove:hover {
+  color: var(--status-fail);
+}
+
+.sb-set-tool-row {
+  display: flex;
+  gap: 8px;
+}
+
+.sb-set-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #3a3b41;
+  border-radius: var(--radius-button-lg);
+  padding: 8px 12px;
+  font: 400 12.5px var(--font-mono);
+  background: var(--bg-sidebar);
+  color: var(--text);
+  outline: none;
+}
+
+.sb-set-input[data-kind='name'] {
+  flex: 0 0 200px;
+  font-family: var(--font-ui);
+}
+
+.sb-set-input[aria-invalid='true'] {
+  border-color: var(--status-fail);
+}
+
+.sb-set-tool-test {
+  all: unset;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  padding: 8px 14px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-set-tool-open {
+  all: unset;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-button-lg);
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-set-tool-open[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-set-tool-error {
+  font-size: 12px;
+  color: var(--status-fail);
+}
+
+.sb-set-tool[data-kind='add'] {
+  background: transparent;
+  border-style: dashed;
+}
+
+.sb-set-tool-add-title {
+  font-size: 13px;
+  color: var(--text-2);
+}

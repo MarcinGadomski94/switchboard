@@ -2,6 +2,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { stubToolProbes } from './probes.ts';
 
 /**
  * The app shell on the real code path (no demo seed, D13): the built UI served by
@@ -20,6 +21,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server?.stop();
   await removeTempDir(tmp);
+});
+
+// The sidebar probes the default tools on load; answered in the browser (tests/e2e/probes.ts).
+test.beforeEach(async ({ page }) => {
+  await stubToolProbes(page);
 });
 
 test('the shell renders from the real API and shows only what the API returns', async ({ page }) => {
@@ -42,7 +48,8 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.getByTestId('nav-inbox')).toHaveAttribute('aria-current', 'page');
 
   // Every sidebar source was asked for and reached the real server: /api/sessions (M2.1) and
-  // /api/inbox (M3.2) answer with the empty list, the others still with the 501 placeholder.
+  // /api/inbox (M3.2) answer with the empty list, /api/tools (M8.1) with the default tools,
+  // /api/artifacts (M7.3) with the empty list, the others still with the 501 placeholder.
   const expected = ['/api/sessions', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
   await expect.poll(() => expected.filter((url) => !apiCalls.some((call) => call.url === url))).toEqual([]);
   for (const call of apiCalls) {
@@ -53,6 +60,14 @@ test('the shell renders from the real API and shows only what the API returns', 
       // M6.1: the real scanner; this server has no workspace root configured.
       expect(call.status, call.url).toBe(409);
       expect(call.body, call.url).toMatchObject({ error: 'workspace-not-configured' });
+    } else if (call.url === '/api/tools') {
+      expect(call.status, call.url).toBe(200);
+      expect((call.body as Array<{ id: string }>).map((tool) => tool.id), call.url).toEqual(['cm', 'sw']);
+    } else if (call.url.startsWith('/api/tools/')) {
+      continue; // the probes (stubbed in the browser)
+    } else if (call.url === '/api/artifacts') {
+      expect(call.status, call.url).toBe(200); // M7.3: nothing produced yet
+      expect(call.body, call.url).toEqual([]);
     } else {
       expect(call.status, call.url).toBe(501);
       expect(call.body, call.url).toMatchObject({ error: 'not-implemented' });
@@ -61,7 +76,7 @@ test('the shell renders from the real API and shows only what the API returns', 
 
   // Nothing invented: no rows, no badges, unknown meters, the real address.
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
-  await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveCount(0);
+  await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
   await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '']);
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('');

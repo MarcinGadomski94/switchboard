@@ -1,0 +1,43 @@
+# Embedded tools (M8.1)
+
+SPEC → Tools: local web apps shown under TOOLS in the sidebar and opened in the main area in an iframe. Switchboard stores their URLs (gap #13: "saved in Switchboard", not in the browser) and checks that they answer.
+
+## Data
+- Table `tools` (`docs/database.md`). A fresh database gets two rows from `src/server/db/migrations/0002_default_tools.sql`: **Codebase Memory** (`cm`, `http://localhost:13000`, "code graph for your indexed solutions") and **Acme Tool** (`sw`, no URL, "AI chat connected to other tools"). The migration runs once per database, so a tool the developer removes or edits later stays that way (gap #14).
+- Wire type `Tool` = `{ id, name, url, description, showInSidebar }` (`src/core/api.ts`); `url: null` = not configured.
+
+## API (`src/server/api/tools.ts`)
+| Route | Behavior |
+|---|---|
+| `GET /api/tools` | `Tool[]` in display order. |
+| `PUT /api/tools` | Replaces the whole list (add, edit, remove, reorder; gap #14), one transaction, `position` = list index. Each item: `name` 1–80 chars (required), `url` blank/`null` = not configured, else an absolute `http:`/`https:` URL without credentials, `description` (blank → `null`), `showInSidebar` (default `true`), `id` (`[A-Za-z0-9_-]{1,64}`, generated for a new tool, unique). Anything else → `422 {error:"invalid", errors:[{field, message}]}` with fields like `[1].url`; nothing changes. Returns the stored list. Settings → Embedded tools (M8.2, `docs/settings.md`) edits, adds and removes tools through it. |
+| `POST /api/tools/{id}/probe` | `{ state: "up" \| "down" }`. `404 not-found` for an unknown id, `409 not-configured` for a tool without a URL; neither fetches anything. |
+| `GET /api/codebase-memory` | Additive (not in the contract): `{ projects: CodebaseMemoryProject[], indexed: {projects, mode} \| null }` for the Codebase Memory strip. |
+| `POST /api/codebase-memory/reindex` | Additive: starts the reindex session (below) → `201` Session; `409 nothing-to-reindex` when the list is empty (also when no workspace root is configured); `409 workspace-*` / `503 closing` from the supervisor. |
+
+## The probe (`src/server/tools/probe.ts`)
+The service, not the page, probes: one `GET` of the saved URL with a **3 s** timeout (`AbortSignal.timeout`), redirects not followed. **Any** HTTP response counts as `up` (like the prototype's `fetch(url, {mode:'no-cors'})`, which resolves on every status); a refused connection, DNS/TLS failure or no response in time is `down`. The body is never read. Only saved URLs are probed (the route looks the URL up by tool id), so the endpoint cannot be pointed at arbitrary hosts. The provider is `providers.toolProbe` (`src/server/providers.ts`); without one the route uses the real one. Demo mode answers `down` for every tool and never touches the network (the prototype's screenshots show Codebase Memory unreachable).
+
+## The UI
+- **Probe state** (`src/web/tools/probe.ts`), shared by the sidebar and the tool view, as the prototype's `tstate`: `idle` (not probed yet), `checking`, `up`, `down`, `unset` (probed without a URL, i.e. its view was opened). Dot colors: up = status done, down = status fail, checking = status need, idle `#8d8c87`, unset `#5a5955`. Toolbar text: connected / offline / checking… / (none) / not configured. States last for the page's lifetime, keyed by id + URL.
+- **Sidebar TOOLS rows**: every configured tool is probed once per page load (the prototype probes its tools on mount); the row shows the dot, the name and the host (`urlHost`: the URL without `http(s)://`) or "set URL".
+- **Tool view** (`src/web/views/ToolView.tsx`, `views/tool.css`): opening it probes the tool. Toolbar = dot, name, description, URL field (URL or "no URL set" + state text), **↻ Reload** (new iframe + probe), **↗ New tab** (`<a target="_blank" rel="noopener">` to the URL; no `href` without a URL), **Edit** (→ `/settings/tools`). The iframe fills the area while the tool has a URL and is not `down`. Overlays:
+  - no URL: "{name} isn't configured" · "Add the URL where {name} runs on this PC. It is saved in Switchboard." (gap #13) · **Set URL in Settings** → `/settings/tools`;
+  - `down`: "{host} is not reachable" · "Start {name} on this PC and retry. If it runs but refuses to load in a frame (X-Frame-Options / frame-ancestors), use New tab." · **Retry** (new iframe + probe).
+  - An id that is not in the list: "Unknown tool" + Open Settings.
+- **Codebase Memory strip** (`views/tool/CodebaseMemoryStrip.tsx`, only for the tool with id `cm`): `.codebase-memory-dirty`, one chip per listed project (dot, repo name, the time when known; the path as tooltip), the indexed note when known, and **Reindex n now**. After a successful start the button becomes "✓ Reindex started", a link to the session. The list is read again on every `sessionUpdated` (the reindex session removes lines as it goes). With nothing listed the strip says "nothing to reindex" and has no button.
+
+## `.codebase-memory-dirty` (`src/server/tools/codebase-memory.ts`)
+The workspace's PostToolUse hook (`.claude/hooks/cm-mark-dirty.js` in the workspace, read-only to Switchboard) writes `<workspaceRoot>/.claude/.codebase-memory-dirty`: one codebase-memory **project id** per line, sorted, no times. A project id is the repo's absolute path with backslashes as `/`, trailing slashes dropped, every run of `:` `/` `\` replaced by one `-`, leading/trailing `-` trimmed (`/Users/me/ws/nugets/auth-nuget` → `Users-me-ws-nugets-auth-nuget`). Switchboard reads the file asynchronously (missing file or no workspace root = nothing listed) and names each line:
+- an id that starts (case-insensitively) with the id of the workspace root — as configured or as its real path, since the hook sees the path Claude Code runs in — followed by `-<category>-<repo>` with a router category (`microfrontends`, `microservices`, `functions`, `nugets`, `mobile`, `other`, `infrastructure`) is that repo: name = the repo folder, path = `<root>/<category>/<repo>`; `mobile/` is itself the repo in the router layout, so `…-mobile-…` is `mobile` at `<root>/mobile`;
+- anything else keeps the id as its name, with no path.
+Blank lines and duplicates are dropped. `markedAt` is `null` (the file keeps no times) and `indexed` is `null` (only codebase-memory itself knows its project count, and gap #4 rules out calling it from the service). Demo mode feeds the prototype's list with its times and "16 projects indexed · full mode". M6.4 reads the same file for the Solutions view; the lane merge keeps one reader.
+
+## Reindex (gap #4)
+`POST /api/codebase-memory/reindex` re-reads the list and starts a background session through the SessionSupervisor (real `claude`, baseline argv, cwd = workspace root), named `reindex-codebase-memory` (then `-2`, `-3`, … while taken), with no work type, mode or phase (`SessionStartInput`, `docs/database.md`), no solutions and no worktrees. Its first stdin message is the built-in prompt (`reindexPrompt`): re-index each listed project through the codebase-memory MCP tool `index_repository` in `full` mode, one at a time; remove the project's line from the dirty file once it succeeded (delete the file when empty); never run the codebase-memory binary directly; change nothing else; leave a line in place and say why when a project fails. Switchboard itself never runs the binary and never writes the file. Like any session, questions it asks reach the Inbox.
+
+## Tests
+- `tests/server/api/tools.test.ts`: routes, validation, the probe (200 / 404 / redirect = up, refused / 3 s timeout = down) against stub servers, the dirty-file parsing, the reindex session through fake-claude (argv, the first stdin message = the prompt, name suffixes, 409s).
+- `tests/e2e/tools.spec.ts` (oracle, real code path): the real server with fake-claude, a temp workspace with a dirty file and stub HTTP servers standing in for the tools: toolbar, server-side probe (the page loads the tool's origin only as the iframe document), iframe content, Reload, New tab (popup), Edit, both overlays, Retry once the tool starts, and "Reindex 2 now" starting the session.
+- `tests/e2e/visual/tools.spec.ts`: D10 against the prototype's tool view (`docs/visual/tools.md`).
+- Specs that load the UI but are not about tools call `stubToolProbes(page)` (`tests/e2e/probes.ts`), so the sidebar's load-time probe never makes the service fetch the default `http://localhost:13000` on the developer's machine.

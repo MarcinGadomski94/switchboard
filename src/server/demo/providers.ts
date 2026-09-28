@@ -1,6 +1,14 @@
 import path from 'node:path';
-import type { BranchRef, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo } from '../../core/api.ts';
-import type { DiffProvider, HistoryProvider, Providers, SolutionsProvider, SystemProvider } from '../providers.ts';
+import type { BranchRef, CodebaseMemoryStatus, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo } from '../../core/api.ts';
+import type {
+  CodebaseMemoryProvider,
+  DiffProvider,
+  HistoryProvider,
+  Providers,
+  SolutionsProvider,
+  SystemProvider,
+  ToolProbeProvider,
+} from '../providers.ts';
 import type { DemoData, DemoFile } from './data.ts';
 import { createDemoLoginService } from './login-service.ts';
 
@@ -153,6 +161,8 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
             mode: row.mode,
             summary: row.summary,
             branches: parseBranchRefs(row.branches),
+            // `various` (the prototype's prod-monitoring row) has no branch refs; it stays readable as the solutions line.
+            solutions: parseBranchRefs(row.branches).length === 0 ? [row.branches] : [],
             outcome: row.outcome,
             status: row.status,
           };
@@ -160,5 +170,29 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
     },
   };
 
-  return { diff, solutions, system, history, loginService: createDemoLoginService() };
+  // The prototype's screenshots show the tools unreachable (its live probe of
+  // localhost:13000 fails); the demo never touches the network.
+  const toolProbe: ToolProbeProvider = {
+    async probe() {
+      return 'down';
+    },
+  };
+
+  // The prototype's dirty list (`dirtyIds` with their times, today) and its
+  // "16 projects indexed · full mode".
+  const codebaseMemory: CodebaseMemoryProvider = {
+    async status(): Promise<CodebaseMemoryStatus> {
+      const today = now();
+      return {
+        projects: data.solutions.codebaseMemoryDirty.map((entry) => {
+          const [hour = 0, minute = 0] = entry.ts.split(':').map(Number);
+          const markedAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour, minute).toISOString();
+          return { id: entry.project, name: entry.project, path: null, markedAt };
+        }),
+        indexed: { ...data.solutions.codebaseMemoryIndexed },
+      };
+    },
+  };
+
+  return { diff, solutions, system, history, loginService: createDemoLoginService(), toolProbe, codebaseMemory };
 }
