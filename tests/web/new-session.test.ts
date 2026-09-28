@@ -223,12 +223,13 @@ describe('summary', () => {
     expect(single).toContain('# no worktrees · edits in place');
     expect(single.some((t) => t.startsWith('../'))).toBe(false);
 
+    // D22: a taken name is no warning any more: the short name gets -2 (and the summary says so).
     const qa = summaryLines(form({ workType: 'qa', solutions: [] }), '/ws', ['session']).map((l) => l.text);
     expect(qa).toContain('work      test-authoring (QA)');
     expect(qa).toContain('stack     —');
+    expect(qa).toContain('branch    session/session-2');
     expect(qa.filter((t) => t.startsWith('⚠'))).toEqual([
       '⚠ pick at least one solution',
-      '⚠ a session with this name exists',
       '⚠ pick the stack under test',
       '⚠ add the Confluence page URL',
       '⚠ add the Figma frame URLs',
@@ -244,11 +245,13 @@ describe('summary', () => {
 });
 
 describe('start', () => {
-  it('is disabled without solutions, with a taken name, or with an incomplete QA contract', () => {
+  it('is disabled without solutions, with a title over 80 characters, or with an incomplete QA contract (D22: a taken name gets -2)', () => {
     expect(canStart(form({ solutions: [] }), [])).toBe(false);
     expect(canStart(form({ solutions: ['mobile'] }), [])).toBe(true);
-    expect(canStart(form({ name: 'taken', solutions: ['mobile'] }), ['taken'])).toBe(false);
-    expect(canStart(form({ solutions: ['mobile'] }), ['session'])).toBe(false);
+    expect(canStart(form({ name: 'taken', solutions: ['mobile'] }), ['taken'])).toBe(true);
+    expect(canStart(form({ solutions: ['mobile'] }), ['session'])).toBe(true);
+    expect(canStart(form({ name: 'T'.repeat(80), solutions: ['mobile'] }), [])).toBe(true);
+    expect(canStart(form({ name: 'T'.repeat(81), solutions: ['mobile'] }), [])).toBe(false);
     const qa = form({ workType: 'qa', solutions: ['mobile'] });
     expect(missingQa(qa)).toEqual(['stack', 'confluence', 'figma']);
     expect(canStart(qa, [])).toBe(false);
@@ -329,9 +332,10 @@ describe('folders (D14)', () => {
     expect(isRepoFolder(null)).toBe(false);
   });
 
-  it('a repo folder starts with a free name alone (no solutions, no QA contract)', () => {
+  it('a repo folder starts with a free name alone (no solutions, no QA contract; D22: a taken name gets -2, a title over 80 characters blocks)', () => {
     expect(canStart(form({ name: 'fix', workType: 'qa' }), [], repoFolder)).toBe(true);
-    expect(canStart(form({ name: 'fix' }), ['fix'], repoFolder)).toBe(false);
+    expect(canStart(form({ name: 'fix' }), ['fix'], repoFolder)).toBe(true);
+    expect(canStart(form({ name: 'Fix it '.repeat(12) }), [], repoFolder)).toBe(false);
     expect(canStart(form({ name: 'fix' }), [], wsFolder)).toBe(false);
   });
 
@@ -358,7 +362,8 @@ describe('folders (D14)', () => {
       'ultracode off',
       ' ',
       '# no worktree · edits in place',
-      '⚠ a session with this name exists',
+      // D22: "fix" is taken, so the session is fix-2.
+      'name      fix-2',
       ' ',
       '✓ task only · no router answers',
     ]);

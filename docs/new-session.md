@@ -5,7 +5,7 @@ The form behind "+ New session" (SPEC → Modals → New session; prototype `mNe
 ## Layout
 1080px, `1fr | 360px` (`.sb-modal-new` in `modals.css`). Left, in order:
 0. **Folder** (D14, not numbered, not in the prototype): the saved-folder dropdown (260px, mono), **Browse…** (the add-a-folder panel opens under the row) and the folder's check line (`docs/folders.md` → *UI*). A **repo** folder hides sections 2, 3, 5 and 6 and "Accept recommended"; section 4 becomes `2 · Solution in scope` with the repo as its one fixed chip.
-1. **Task definition**: the name (220px, Geist Mono, placeholder `session-name`) and the task (`What should be implemented?`). The task comes first, as the router wants the developer to define the task before any questions.
+1. **Task definition**: the name (220px, Geist Mono, placeholder `session-name`; D22: it takes the session's title, *Name and title* below) and the task (`What should be implemented?`). The task comes first, as the router wants the developer to define the task before any questions.
 2. **Work type**: Feature-building · Test-authoring (QA).
 3. **Mode**: Single-solution · Workspace orchestrator.
 4. **Solutions in scope** with the hint `<n> selected · read-only folders locked`: one row per folder group of `GET /api/solutions` (the workspace scan, M6.1), then the read-only row.
@@ -19,7 +19,7 @@ Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solut
 ## Values
 | Field | Default | Sent as (`NewSession`, contract) |
 |---|---|---|
-| name | empty; typing turns whitespace into `-` and lower-cases (prototype `onNsName`) | the field, or `session` while it is empty (prototype `sname`) |
+| name | empty; D22: free text, kept as typed (a schedule's name and a moved conversation's name still turn whitespace into `-` and lower-case, prototype `onNsName`) | D22: `name` = the short name derived from the field, `title` = the field trimmed when it is not already its own short name (*Name and title* below); `session` while it is empty (prototype `sname`) |
 | task | empty | trimmed |
 | work type, mode, phase, coordination | the router's recommended answers: feature-building, single-solution, UI-first, sequential. "Accept recommended" sets these four again | `workType`, `mode`, `phase`; `coordination` only while section 6 · Mobile coordination is shown, else `null` |
 | solutions | none | in the order picked: each chip's solution name (its `relativePath` when two writable rows share a name, so the server can resolve it) |
@@ -49,8 +49,10 @@ mobile    sequential | parallel-twin | no counterpart   (feature + single + *-fr
 ultracode on | off
 
 # worktrees | # no worktrees · edits in place
+branch    session/<name> | name      <name>   (D22: when <name> is not the field as typed; `name` with worktrees off)
 ../<repo>-wt-<name>                           (one per solution, gap #1, while worktrees are on)
 ⚠ pick at least one solution                  (no solutions)
+⚠ the title must be at most 80 characters     (D22)
 
 ✓ answers pre-filled → agent confirms, no re-ask
 ```
@@ -63,19 +65,27 @@ ultracode on | off
   ultracode on | off
 
   # worktree | # no worktree · edits in place
+  branch    session/<name> | name      <name>           (D22: when <name> is not the field as typed)
   ../<repo>-wt-<name>                                  (Worktree on)
-  ⚠ a session with this name exists                    (when taken)
+  ⚠ the title must be at most 80 characters            (D22)
 
   ✓ task + worktree note · no router answers | ✓ task only · no router answers
   ```
-- `<repo>` is the solution's last path segment, `<name>` the name that will be sent, so the folders are exactly the ones the worktree manager creates (`../{repo}-wt-{name}` next to the repo).
-- Lines the prototype does not have, shown only when they apply (they say why Start is disabled): `⚠ a session with this name exists`, and for QA `⚠ pick the stack under test`, `⚠ add the Confluence page URL`, `⚠ add the Figma frame URLs`.
+- `<repo>` is the solution's last path segment, `<name>` the short name that will be sent (D22: derived from the field, `-2`, `-3`, … when taken), so the folders are exactly the ones the worktree manager creates (`../{repo}-wt-{name}` next to the repo) and the branch is `session/<name>`.
+- Lines the prototype does not have, shown only when they apply (the `⚠` ones say why Start is disabled): D22's `branch    session/<name>` (or `name      <name>` with worktrees off) when the short name is not the field as typed (a title, or a taken name that got `-2`), `⚠ the title must be at most 80 characters`, and for QA `⚠ pick the stack under test`, `⚠ add the Confluence page URL`, `⚠ add the Figma frame URLs`. A schedule's summary keeps `⚠ a session with this name exists` for a taken schedule name (`docs/schedules.md`).
 - Lines do not wrap (`nowrap`, runs of spaces collapse as in the prototype) and end in an ellipsis.
 
 ## Start session
-For a repo folder (D14) only a free name is needed (the repo is the one solution, no QA contract). Otherwise disabled (45% opacity) when no solution is picked, when the name is taken by a session in `GET /api/sessions` (reloaded on `sessionUpdated`, at most once a second), for QA while the stack, the Confluence URL or the Figma URLs are missing, and while a start is running. A click posts `POST /api/sessions`; on `201` the modal closes and the app opens `/sessions/<id>`. A refusal stays in the modal as one line under the summary: `Not started: ` + the validation messages (`422 {errors:[{field, message}]}`, e.g. a name that is not kebab-case, a read-only solution), the server's `message` (`409` worktree / workspace refusals, `docs/worktrees.md`), or the HTTP status. Editing the form clears it. Cancel, Esc and a click on the overlay close the modal without starting anything.
+For a repo folder (D14) nothing else is needed (the repo is the one solution, no QA contract). Otherwise disabled (45% opacity) when no solution is picked, for QA while the stack, the Confluence URL or the Figma URLs are missing, and while a start is running; in both, D22, while the title is longer than 80 characters. A taken name no longer disables it: the short name gets `-2`, `-3`, … among the sessions in `GET /api/sessions` (reloaded on `sessionUpdated`, at most once a second). A click posts `POST /api/sessions`; on `201` the modal closes and the app opens `/sessions/<id>`. A refusal stays in the modal as one line under the summary: `Not started: ` + the validation messages (`422 {errors:[{field, message}]}`, e.g. a name that is not kebab-case, a read-only solution), the server's `message` (`409` worktree / workspace refusals, `docs/worktrees.md`), or the HTTP status. Editing the form clears it. Cancel, Esc and a click on the overlay close the modal without starting anything.
 
-The server remains the authority: it validates the name (unique, kebab-case), the solutions (not empty, never read-only: 422) and `qa` for QA sessions (`src/server/sessions/validate.ts`); the form's checks only keep the button honest.
+The server remains the authority: it validates the name (unique, kebab-case), the title (D22: 1–80 characters), the solutions (not empty, never read-only: 422) and `qa` for QA sessions (`src/server/sessions/validate.ts`); the form's checks only keep the button honest. A short name that became taken after the list was read, or whose branch already exists in a repo, comes back as the refusal line.
+
+## Name and title (D22)
+The name field takes free text: the session's **title** (`startNames` / `toStartBody` in `new-session.ts`, rules in `src/core/session-title.ts`, `docs/derivations.md` → *Session titles*).
+- **Short name**: lower-case, accents dropped, every run of anything but a letter or a digit → `-`, trimmed, at most 64 characters; `session` for an empty field (or one without a letter or digit); when it is taken by a listed session, `-2`, `-3`, … is added. `JIRA Ticket handling` → `jira-ticket-handling`. The worktree folders and the branch are built from it, and the summary shows it (`branch    session/<name>`, the `../<repo>-wt-<name>` lines).
+- **Title**: the field trimmed, posted as `title` next to `name`, unless the field already is its own short name (`free-talk-640`): then no title is posted and the session shows its name, exactly as before titles. More than 80 characters: the `⚠` line and Start stays disabled.
+- Not for a **schedule** (its name keeps the kebab-case rules and must be free among schedules; each run's title is the schedule's name, `docs/schedules.md`) nor for a **moved** terminal conversation (its title comes from the conversation, D16; a typed name must still be kebab-case and free).
+- A session is renamed later in the session header or the sidebar (`docs/derivations.md` → *Session titles* → *In the UI*).
 
 ## Resume a terminal conversation (D16)
 Next to the task (a `↻ Resume a terminal conversation` pill at the right of section 1's label line, out of the flow, so the prototype's layout is unchanged; not while scheduling) the form lists the chosen folder's terminal conversations that are not in Switchboard yet: the `GET /api/history` rows with `terminal: true` whose `folder` is the form's folder, newest first, each with its title (the History name) and `<date> · <first prompt>` (`src/web/modals/resume-conversation.ts`). Picking one:
@@ -143,7 +153,8 @@ Take them as the answers to the session-start questions: confirm them back in on
 ## Tests
 - `tests/server/api/first-turn.test.ts` (M5.2 oracle, real path): `POST /api/sessions` with fake-claude (`FAKE_CLAUDE_LOG`), temp git repos and the real worktree manager; a feature/single session with worktrees, an orchestrator session and a QA session: the exact argv (no prompt argument), exactly one stdin line equal to `{"type":"user","message":{"role":"user","content":<payload>}}` with the payload equal to `tests/fixtures/first-turn/<case>.txt` (`<workspace>` = the temp root); the empty-task outbox case. `tests/core/first-turn.test.ts`: the block's rules, the folder resolution and the repo-folder note (D14). `tests/server/folders/folders.test.ts`: a repo folder's first message on the real path, with and without a worktree.
 - `tests/web/new-session.test.ts`: defaults, prefill, name rules, section visibility, chip groups (read-only folders, shared names, `not found`), summary lines, Start rules, the request body, refusal text; D14: the form's folder, the dropdown's labels, the NewRepoSession body, the repo Start rule and summary.
-- `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, a taken name), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a 422 shown in the modal, the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
+- `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, D22: a title's derived short name and a taken name getting `-2`), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a refusal shown in the modal (D22: the short name's branch exists already), the contract's 422s through the API (read-only paths, duplicate name, no solutions, QA without `qa`), and "Open fix session" → the prefilled form → a started session.
 - `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`); D14: the sections are compared relative to section 1 and the Folder row and the summary's `folder` line are recorded as additions.
 - D14: `tests/e2e/folders.spec.ts` (the Folder row switching chips, a repo folder's form and session in its worktree), `tests/e2e/walkthrough-repo.spec.ts`.
 - D16: `tests/web/resume-conversation.test.ts` (entries, name preview and checks, Start rule, summary), `tests/e2e/move-conversations.spec.ts` (Resume a terminal conversation → pick → Start moves it, on the real path), and the visual spec's `D16 …` rows (the pill out of the flow).
+- D22: `tests/core/session-title.test.ts` (short name, collisions, the title check), `tests/web/session-titles.test.ts` (the form's short name, title and body, the summary lines, the 80-character rule, schedules unchanged) and `tests/e2e/session-titles.spec.ts` ("JIRA Ticket handling" → `session/jira-ticket-handling`, on the real path).

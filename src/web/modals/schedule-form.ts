@@ -1,7 +1,7 @@
 import type { ScheduleInput } from '../../core/api.ts';
 import { MONTH_LABELS, WEEKDAY_LABELS, cronLabel, nextRuns, parseCron } from '../../core/cron.ts';
 import { runSessionName } from '../../core/schedules.ts';
-import { type FormFolder, type NewSessionForm, type SummaryLine, canStart, sessionName, summaryLines, toSessionBody } from './new-session.ts';
+import { type FormFolder, type NewSessionForm, type SummaryLine, formComplete, nameTaken, sessionName, summaryLines, toSessionBody } from './new-session.ts';
 
 /**
  * Pure logic of the New-session modal's Schedule section (M7.1, D8): the modal
@@ -50,12 +50,13 @@ export function cronPreview(text: string, now: Date): CronPreview {
 }
 
 /**
- * "Save schedule" is enabled: what "Start session" needs (solutions, a name no
- * other schedule has, the QA sources; for a repo folder only the name, D14) plus
- * a task — the prompt of every run — and a valid cron expression.
+ * "Save schedule" is enabled: what "Start session" needs (solutions, the QA
+ * sources; nothing more for a repo folder, D14), a name no other schedule has
+ * (the schedule's name keeps its rules: it is not a D22 title), plus a task — the
+ * prompt of every run — and a valid cron expression.
  */
 export function canSaveSchedule(form: NewSessionForm, preview: CronPreview, takenScheduleNames: readonly string[], folder: FormFolder | null = null): boolean {
-  return canStart(form, takenScheduleNames, folder) && form.task.trim() !== '' && preview.ok;
+  return formComplete(form, folder) && !nameTaken(form, takenScheduleNames) && form.task.trim() !== '' && preview.ok;
 }
 
 /**
@@ -73,7 +74,7 @@ export function scheduleSummaryLines(
 ): SummaryLine[] {
   const name = sessionName(form);
   const runName = preview.first ? runSessionName(name, preview.first) : `${name}-<MMDD>-<HHMM>`;
-  const lines = summaryLines({ ...form, name: runName }, root, [], folder);
+  const lines = summaryLines({ ...form, name: runName }, root, [], folder, 'as-typed');
   const at = lines.findIndex((line) => line.text.startsWith('ultracode'));
   lines.splice(at + 1, 0, { text: `schedule  ${preview.ok ? preview.label : '—'}`, tone: 'value' });
   const warnings: SummaryLine[] = [];

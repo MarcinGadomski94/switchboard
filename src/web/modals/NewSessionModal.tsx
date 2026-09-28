@@ -32,7 +32,7 @@ import {
   showsQa,
   startErrorText,
   summaryLines,
-  toSessionBody,
+  toStartBody,
   toggleSolution,
   workspaceRoot,
 } from './new-session.ts';
@@ -127,8 +127,11 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * a terminal conversation** (next to the task) lists the folder's terminal
  * conversations not in Switchboard yet; picking one replaces the task, hides the
  * router sections and the toggles (a moved session has neither), and Start moves
- * it (`POST /api/history/{id}/continue`) instead of posting a new session. Details:
- * `docs/new-session.md`, `docs/folders.md` → *UI*.
+ * it (`POST /api/history/{id}/continue`) instead of posting a new session. D22:
+ * the name field takes free text as the session's title; the summary's worktree
+ * and branch lines show the short name derived from it, and Start posts both
+ * (`startNames` in new-session.ts). Details: `docs/new-session.md`,
+ * `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
   onClose,
@@ -242,7 +245,8 @@ export function NewSessionModal({
     setBusy(true);
     setError(null);
     try {
-      const session = await api.createSession(toSessionBody(form, folder));
+      // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
+      const session = await api.createSession(toStartBody(form, folder, takenNames));
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -334,7 +338,8 @@ export function NewSessionModal({
                 value={form.name}
                 placeholder={resuming && resume ? resumeNamePreview(resume, takenNames) : 'session-name'}
                 spellCheck={false}
-                onChange={(event) => update({ name: sanitizeName(event.target.value) })}
+                // D22: a new session's field takes free text (its title); a schedule's name and a moved conversation's name stay kebab-case.
+                onChange={(event) => update({ name: scheduling || resuming ? sanitizeName(event.target.value) : event.target.value })}
               />
               {resuming && resume ? (
                 <div className="sb-ns-input sb-ns-resume-picked" data-testid="ns-resume-picked" data-claude-session-id={resume.claudeSessionId} title={resume.firstPrompt ?? undefined}>
