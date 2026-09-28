@@ -62,7 +62,15 @@ describe('demo providers (D13: alternate implementations, demo mode only)', () =
     expect(byName.get('infrastructure')?.path).toBe('D:\\acme\\infrastructure');
     expect(byName.get('old-chat-front')).toMatchObject({ path: 'D:\\acme\\deprecated\\microfrontends\\old-chat-front', ledger: null, artifacts: [] });
     expect(byName.get('typography-nuget')?.codebaseMemory).toBe('fresh');
-    expect(mobile?.branches[1]).toEqual({ branch: 'feature/button-variants', worktree: null, sessionId: 'button-rollout', owner: 'button-rollout', status: 'need' });
+    // D22: the demo sessions have no titles, so an owner's title is its name.
+    expect(mobile?.branches[1]).toEqual({
+      branch: 'feature/button-variants',
+      worktree: null,
+      sessionId: 'button-rollout',
+      owner: 'button-rollout',
+      ownerTitle: 'button-rollout',
+      status: 'need',
+    });
     expect(groups.flatMap((g) => g.solutions).filter((s) => s.conflict).map((s) => s.name)).toEqual(['mobile']);
     expect(groups[5]?.solutions.every((s) => s.rule === 'read-only')).toBe(true);
   });

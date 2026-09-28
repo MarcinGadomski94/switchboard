@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { BranchRef, CodebaseMemoryStatus, FileDiff, FolderRule, HistoryItem, Solution, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
+import { branchOwnerTitle } from '../../core/solutions-live.ts';
 import { USAGE_ROW_LABELS } from '../../core/usage.ts';
 import type {
   CodebaseMemoryProvider,
@@ -125,6 +126,8 @@ export function createDemoProviders(data: DemoData, now: () => Date = () => new 
               worktree: b.worktree ? `../${b.worktree}` : null,
               sessionId: sessionNames.has(b.owner) ? b.owner : null,
               owner: b.owner,
+              // D22: the demo sessions have no titles, so a session's owner title is its name (a note such as `idle`: null).
+              ownerTitle: branchOwnerTitle(data.sessions.find((s) => s.name === b.owner)),
               status: b.status,
             })),
             ledger: ledger ? ledger.map((entry) => ({ interface: entry.interface, phase: entry.phase, seam: entry.seam })) : null,

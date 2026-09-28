@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Solution, SolutionGroup } from '../../src/core/api.ts';
+import { createDemoProviders } from '../../src/server/demo/providers.ts';
+import { loadDemoData } from '../../src/server/demo/data.ts';
 import {
   artifactRows,
+  branchOwnerLabel,
   codebaseMemoryToolId,
   filterGroups,
   freshnessLine,
@@ -91,6 +94,26 @@ describe('Solutions view logic (M6.2)', () => {
     expect(worktreeLine('D:\\ws\\mobile-wt-s1', 'D:\\ws\\mobile')).toBe('../mobile-wt-s1');
     expect(worktreeLine('../mobile-wt-s1', 'D:\\ws\\mobile')).toBe('../mobile-wt-s1');
     expect(worktreeLine('/elsewhere/web-front-wt-s1', '/ws/microfrontends/web-front')).toBe('/elsewhere/web-front-wt-s1');
+  });
+
+  it('D22: a branch owner is named by its title with the short name as the tooltip; else by owner, without one', () => {
+    expect(branchOwnerLabel({ owner: 'jira-ticket-handling', ownerTitle: 'JIRA Ticket handling' })).toEqual({ text: 'JIRA Ticket handling', tooltip: 'jira-ticket-handling' });
+    // An untitled session (its display title is its name), a title equal to the name, a note without a session.
+    expect(branchOwnerLabel({ owner: 'button-rollout', ownerTitle: 'button-rollout' })).toEqual({ text: 'button-rollout', tooltip: undefined });
+    expect(branchOwnerLabel({ owner: 'idle', ownerTitle: null })).toEqual({ text: 'idle', tooltip: undefined });
+    expect(branchOwnerLabel({ owner: 'read by notifications-integration' })).toEqual({ text: 'read by notifications-integration', tooltip: undefined });
+  });
+
+  it('D22: the demo branches (no titles) read exactly as before: every owner by `owner`, no tooltip', async () => {
+    const { solutions } = createDemoProviders(await loadDemoData());
+    const branches = (await solutions.solutions({ id: 'demo', path: 'D:\\acme', root: 'D:\\acme', kind: 'workspace' }))
+      .flatMap((g) => g.solutions)
+      .flatMap((s) => s.branches);
+    expect(branches.length).toBeGreaterThan(0);
+    for (const branch of branches) {
+      expect(branch.ownerTitle).toBe(branch.sessionId === null ? null : branch.owner);
+      expect(branchOwnerLabel(branch)).toEqual({ text: branch.owner, tooltip: undefined });
+    }
   });
 
   it('phase ledger rows colored by phase, with the gap #12 fallback rows', () => {

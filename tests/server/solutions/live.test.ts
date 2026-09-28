@@ -123,7 +123,7 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
       flag: '',
       conflict: false,
       conflictSessions: [],
-      branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', status: 'idle' }],
+      branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }],
       ledger: [
         { interface: 'FreeTalkService', phase: 'UI-first', seam: 'mock-DI · fixtures/free-talk.json' },
         { interface: 'ProfileConnector', phase: 'integration', seam: 'Tier B green 09-24' },
@@ -138,21 +138,29 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
       status: 'idle',
       phase: '—',
       changes: 'locked',
-      branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', status: 'idle' }],
+      branches: [{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }],
     });
     // A detached HEAD shows the short commit.
     const head = await g.git(path.join(g.workspace, 'nugets', 'idle-nuget'), 'rev-parse', 'HEAD');
     await g.git(path.join(g.workspace, 'nugets', 'idle-nuget'), 'checkout', '-q', '--detach');
-    expect((await solutionsByName()).get('idle-nuget')?.branches).toEqual([{ branch: head.slice(0, 7), worktree: null, sessionId: null, owner: 'idle', status: 'idle' }]);
+    expect((await solutionsByName()).get('idle-nuget')?.branches).toEqual([{ branch: head.slice(0, 7), worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }]);
     expect(errors).toEqual([]);
   });
 
   it('sessions: a worktree branch and an in-place branch with their owners, status, phase, changes and artifacts', async () => {
     const { s, g } = await setup();
+    // D22 (ruling 4): the worktree session has a title, which its branch's `ownerTitle` carries.
     const worktreeSession = await call(
       'POST',
       '/api/sessions',
-      newSession({ name: 'wt-session', solutions: ['web-front'], worktrees: true, phase: 'integration', task: '[fake:write microfrontends/web-front-wt-wt-session/contracts/free-talk.md]' }),
+      newSession({
+        name: 'wt-session',
+        title: 'Free talk contract',
+        solutions: ['web-front'],
+        worktrees: true,
+        phase: 'integration',
+        task: '[fake:write microfrontends/web-front-wt-wt-session/contracts/free-talk.md]',
+      }),
     );
     expect(worktreeSession.statusCode).toBe(201);
     const wt = worktreeSession.json() as Session;
@@ -171,7 +179,15 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     const rows = await solutionsByName();
     const web = rows.get('web-front');
     expect(web?.branches).toEqual([
-      { branch: 'session/wt-session', worktree: path.join(g.workspace, 'microfrontends', 'web-front-wt-wt-session'), sessionId: wt.id, owner: 'wt-session', status: 'done' },
+      // The branch and worktree keep the short name; the owner's title is the session's.
+      {
+        branch: 'session/wt-session',
+        worktree: path.join(g.workspace, 'microfrontends', 'web-front-wt-wt-session'),
+        sessionId: wt.id,
+        owner: 'wt-session',
+        ownerTitle: 'Free talk contract',
+        status: 'done',
+      },
     ]);
     expect(web?.status).toBe('done');
     // The ledger's phases win over the session's.
@@ -181,7 +197,8 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(web?.artifacts).toContainEqual({ type: 'CONTRACT', name: 'contracts/free-talk.md', meta: '', sessionId: wt.id });
 
     const mobile = rows.get('mobile');
-    expect(mobile?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: inPlace.id, owner: 'in-place', status: 'done' }]);
+    // An untitled session: its owner title is its name.
+    expect(mobile?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: inPlace.id, owner: 'in-place', ownerTitle: 'in-place', status: 'done' }]);
     expect(mobile?.status).toBe('done');
     // In place against HEAD: the session's file (1 line) + the untracked follow-up (2 lines).
     expect(mobile?.changes).toBe('+3');
@@ -199,10 +216,10 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     await s.store.sessions.update(inPlace.id, { status: 'done', endedAt: new Date().toISOString() });
     await s.store.sessions.update(wt.id, { status: 'done', endedAt: new Date().toISOString() });
     const after = await solutionsByName();
-    expect(after.get('mobile')?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', status: 'idle' }]);
+    expect(after.get('mobile')?.branches).toEqual([{ branch: 'main', worktree: null, sessionId: null, owner: 'idle', ownerTitle: null, status: 'idle' }]);
     expect(after.get('mobile')?.status).toBe('idle');
     expect(after.get('mobile')?.changes).toBe('—');
-    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.status])).toEqual([['session/wt-session', 'wt-session', 'done']]);
+    expect(after.get('web-front')?.branches.map((b) => [b.branch, b.owner, b.ownerTitle, b.status])).toEqual([['session/wt-session', 'wt-session', 'Free talk contract', 'done']]);
     expect(after.get('web-front')?.changes).toBe('+1');
 
     // Reading the solutions never changes a tree.

@@ -5,7 +5,7 @@ import type { FileDiff, Solution, SolutionArtifact, SolutionBranch, SolutionGrou
 import type { Phase, SessionStatus } from '../../core/model.ts';
 import { solutionFreshness } from '../../core/codebase-memory.ts';
 import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
-import { branchFromHead, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
+import { branchFromHead, branchOwnerTitle, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
 import { type WorkspaceScan, repoFolderScan, toSolutionGroups } from '../../core/workspace-rules.ts';
 import { solutionCandidates } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
@@ -72,7 +72,8 @@ function isGone(error: unknown): boolean {
  * solution folders hold:
  * - **branches**: each live worktree of the repo (its branch, path and session),
  *   then each open session working in place (the checkout's branch); a row
- *   nobody works on shows its checkout's branch, owner `idle`;
+ *   nobody works on shows its checkout's branch, owner `idle`; D22: each
+ *   branch's `ownerTitle` is its session's display title, `null` without one;
  * - **status**: the most urgent status of those sessions; **phase**: the phase
  *   ledger's, else the sessions'; **changes**: lines added by those sessions'
  *   diffs (gap #10);
@@ -203,6 +204,8 @@ export class LiveSolutions implements SolutionsProvider {
             worktree: displayWorktreePath(row, worktree.path),
             sessionId: session?.id ?? null,
             owner: session?.name ?? NO_SESSION_OWNER,
+            // D22 (developer ruling 2026-09-28): the chip and card name the owner by its display title.
+            ownerTitle: branchOwnerTitle(session),
             status: session?.status ?? 'idle',
           });
           if (session) {
@@ -212,13 +215,20 @@ export class LiveSolutions implements SolutionsProvider {
           }
         }
         for (const session of inPlaceByRow.get(row) ?? []) {
-          branches.push({ branch: head ?? '—', worktree: null, sessionId: session.id, owner: session.name, status: session.status });
+          branches.push({
+            branch: head ?? '—',
+            worktree: null,
+            sessionId: session.id,
+            owner: session.name,
+            ownerTitle: branchOwnerTitle(session),
+            status: session.status,
+          });
           statuses.push(session.status);
           if (session.phase) phases.push(session.phase);
           writers.push(writer(session, false, inPlaceRepo.get(row)?.get(session.id) ?? row.solution.name));
         }
         const conflict = row.readOnly ? NO_CONFLICT : repoConflict(writers);
-        if (branches.length === 0 && head) branches.push({ branch: head, worktree: null, sessionId: null, owner: IDLE_OWNER, status: 'idle' });
+        if (branches.length === 0 && head) branches.push({ branch: head, worktree: null, sessionId: null, owner: IDLE_OWNER, ownerTitle: null, status: 'idle' });
 
         const ledger = await this.#ledger(row.repo);
         const delta = changes.get(row) ?? { added: 0, removed: 0 };

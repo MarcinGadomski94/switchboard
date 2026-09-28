@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchFromHead,
+  branchOwnerTitle,
   changesText,
   parsePhaseLedger,
   phaseLabel,
@@ -94,5 +95,14 @@ describe('row summaries', () => {
     expect(branchFromHead('ref: refs/heads/feature/free-talk-360\n')).toBe('feature/free-talk-360');
     expect(branchFromHead('0123456789abcdef0123456789abcdef01234567\n')).toBe('0123456');
     expect(branchFromHead('garbage')).toBeNull();
+  });
+
+  it("D22: a branch owner's title is its session's display title (title, else name); null without a session", () => {
+    expect(branchOwnerTitle({ name: 'jira-ticket-handling', title: 'JIRA Ticket handling' })).toBe('JIRA Ticket handling');
+    expect(branchOwnerTitle({ name: 'button-rollout', title: null })).toBe('button-rollout');
+    expect(branchOwnerTitle({ name: 'button-rollout' })).toBe('button-rollout');
+    expect(branchOwnerTitle({ name: 'free-talk-640', title: 'free-talk-640' })).toBe('free-talk-640');
+    expect(branchOwnerTitle(null)).toBeNull();
+    expect(branchOwnerTitle(undefined)).toBeNull();
   });
 });

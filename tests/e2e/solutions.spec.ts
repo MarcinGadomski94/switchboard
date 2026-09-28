@@ -15,6 +15,8 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * started through the API from the page; the view follows them through `/hub`
  * (`sessionUpdated`) without a reload and shows their branches, worktrees,
  * changes, phase ledger, artifacts & follow-ups and codebase-memory freshness.
+ * D22 (ruling 4): a titled session's chip and card name their owner by its
+ * title, with the short name as the tooltip; branch and worktree keep the short name.
  */
 let world: GitWorld;
 let server: ServerProcess;
@@ -93,10 +95,11 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   await expect(page.getByTestId('codebase-memory')).toHaveAttribute('data-state', 'dirty');
   await expect(page.getByTestId('codebase-memory')).toContainText('codebase-memory · edited by agents since last index');
 
-  // Two sessions through the API: one with a worktree on web-front, one in place on mobile.
+  // Two sessions through the API: one with a worktree on web-front (titled, D22), one in place on mobile.
   expect(
     await startSession(page, {
       name: 'wt-live',
+      title: 'Live worktree',
       task: '[fake:write microfrontends/web-front-wt-wt-live/contracts/free-talk.md]',
       solutions: ['web-front'],
       phase: 'integration',
@@ -114,16 +117,21 @@ test('Solutions: groups, filters, live branch chips and the detail panel from th
   ).toBe(201);
 
   // The view follows through /hub (sessionUpdated), without a reload.
-  await expect(row(page, 'web-front').getByTestId('branch-chip')).toHaveText(['⎇ session/wt-liveweb-front-wt-wt-livewt-live'], { timeout: 15_000 });
+  // D22: the chip names the owner by its title (the short name as the tooltip); the branch and worktree keep the short name.
+  await expect(row(page, 'web-front').getByTestId('branch-chip')).toHaveText(['⎇ session/wt-liveweb-front-wt-wt-liveLive worktree'], { timeout: 15_000 });
+  await expect(row(page, 'web-front').locator('.sb-sol-chip-who')).toHaveAttribute('title', 'wt-live');
   await expect(row(page, 'web-front').locator('.sb-sol-changes')).toHaveText('+1', { timeout: 15_000 });
   await expect(row(page, 'web-front').locator('.sb-sol-phase')).toHaveText('integration');
   await expect(row(page, 'mobile').getByTestId('branch-chip')).toHaveText(['⎇ mainin-place-live'], { timeout: 15_000 });
+  // An untitled owner: its name, no tooltip.
+  await expect(row(page, 'mobile').locator('.sb-sol-chip-who')).not.toHaveAttribute('title');
   await expect(row(page, 'mobile').locator('.sb-sol-changes')).toHaveText('+1', { timeout: 15_000 });
   await expect(row(page, 'mobile').locator('.sb-sol-phase')).toHaveText('UI-first');
   await expect(page.getByTestId('solutions-meta')).toHaveText(`${ws} · 5 solutions · 2 active`);
 
   // Detail of web-front: the worktree card, the session's contract artifact.
-  await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ session/wt-live../web-front-wt-wt-livewt-live']);
+  await expect(detail.getByTestId('branch-card')).toHaveText(['⎇ session/wt-live../web-front-wt-wt-liveLive worktree']);
+  await expect(detail.getByTestId('branch-card').locator('.sb-sol-card-owner span[title]')).toHaveAttribute('title', 'wt-live');
   await expect(detail.getByTestId('solution-artifact').filter({ has: page.locator('.sb-sol-art-tag', { hasText: /^CONTRACT$/ }) })).toHaveText('CONTRACTcontracts/free-talk.md');
 
   // Select mobile: in-place card, the ledger from phase-ledger.md, the follow-up, fresh index.

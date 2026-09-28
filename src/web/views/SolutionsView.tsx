@@ -14,6 +14,7 @@ import {
   type SolutionFilter,
   allSolutions,
   artifactRows,
+  branchOwnerLabel,
   codebaseMemoryToolId,
   filterGroups,
   freshnessLine,
@@ -69,14 +70,17 @@ function SolutionRow({ solution, selected, onSelect }: { readonly solution: Solu
         </div>
       </div>
       <div className="sb-sol-chips">
-        {solution.branches.map((branch, index) => (
-          <span className="sb-sol-chip" key={`${branch.branch}\u0000${branch.worktree ?? ''}\u0000${branch.sessionId ?? index}`} data-testid="branch-chip">
-            <span className="sb-sol-chip-branch">⎇ {branch.branch}</span>
-            <span className="sb-sol-chip-wt">{worktreeLabel(branch.worktree)}</span>
-            <span className="sb-sol-chip-dot" style={{ background: statusColor(branch.status) }} />
-            <span className="sb-sol-chip-who">{branch.owner}</span>
-          </span>
-        ))}
+        {solution.branches.map((branch, index) => {
+          const owner = branchOwnerLabel(branch);
+          return (
+            <span className="sb-sol-chip" key={`${branch.branch}\u0000${branch.worktree ?? ''}\u0000${branch.sessionId ?? index}`} data-testid="branch-chip">
+              <span className="sb-sol-chip-branch">⎇ {branch.branch}</span>
+              <span className="sb-sol-chip-wt">{worktreeLabel(branch.worktree)}</span>
+              <span className="sb-sol-chip-dot" style={{ background: statusColor(branch.status) }} />
+              <span className="sb-sol-chip-who" title={owner.tooltip}>{owner.text}</span>
+            </span>
+          );
+        })}
       </div>
       <span className="sb-sol-phase">{solution.phase}</span>
       <span className="sb-sol-changes">{solution.changes}</span>
@@ -97,16 +101,19 @@ function SolutionDetail({ solution, toolId, onMoved }: { readonly solution: Solu
       <SolutionConflictCard key={solution.path} solution={solution} onMoved={onMoved} />
       <div className="sb-sol-section">
         <div className="sb-sol-label">Branches &amp; worktrees</div>
-        {solution.branches.map((branch, index) => (
-          <div className="sb-sol-card" key={`${branch.branch}\u0000${branch.worktree ?? ''}\u0000${branch.sessionId ?? index}`} data-testid="branch-card">
-            <div className="sb-sol-card-branch">⎇ {branch.branch}</div>
-            <div className="sb-sol-card-wt">{worktreeLine(branch.worktree, solution.path)}</div>
-            <div className="sb-sol-card-owner">
-              <span className="sb-sol-card-dot" style={{ background: statusColor(branch.status) }} />
-              <span>{branch.owner}</span>
+        {solution.branches.map((branch, index) => {
+          const owner = branchOwnerLabel(branch);
+          return (
+            <div className="sb-sol-card" key={`${branch.branch}\u0000${branch.worktree ?? ''}\u0000${branch.sessionId ?? index}`} data-testid="branch-card">
+              <div className="sb-sol-card-branch">⎇ {branch.branch}</div>
+              <div className="sb-sol-card-wt">{worktreeLine(branch.worktree, solution.path)}</div>
+              <div className="sb-sol-card-owner">
+                <span className="sb-sol-card-dot" style={{ background: statusColor(branch.status) }} />
+                <span title={owner.tooltip}>{owner.text}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div className="sb-sol-section">
         <div className="sb-sol-label">Phase ledger</div>
