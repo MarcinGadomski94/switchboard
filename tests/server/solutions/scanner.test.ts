@@ -219,6 +219,17 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     expect(scan.folders[2]).toMatchObject({ folder: 'nugets', exists: false, solutions: [] });
   });
 
+  it('mobile/ holding one nested checkout (mobile/acme-app-mobile/) is the mobile solution with that repo', async () => {
+    const workspace = await tempWorkspace();
+    await repo(workspace, 'mobile/acme-app-mobile');
+    await writeFile(path.join(workspace, 'mobile', 'AGENTS.md'), 'rules\n');
+    const scan = await new WorkspaceScanner({ workspaceRoot: workspace }).scan();
+    const mobile = scan.folders.find((folder) => folder.folder === 'mobile')?.solutions;
+    expect(mobile).toEqual([
+      { name: 'mobile', relativePath: 'mobile', path: path.join(workspace, 'mobile'), git: true, repoPath: path.join(workspace, 'mobile', 'acme-app-mobile') },
+    ]);
+  });
+
   it('refuses to scan without a configured or existing workspace root (ScanError codes)', async () => {
     await expect(new WorkspaceScanner({ workspaceRoot: null }).solutions()).rejects.toMatchObject({ name: 'ScanError', code: 'workspace-not-configured' });
     const ws = await tempWorkspace();

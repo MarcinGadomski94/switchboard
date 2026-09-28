@@ -23,6 +23,7 @@ import { type RunOptions, type RunResult, failureText, runCommand, succeeded } f
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { toWorktree } from './wire.ts';
+import { checkoutOf } from '../solutions/checkout.ts';
 
 /** Why the worktree manager refused a call. `code` maps to an HTTP status in the routes. */
 export type WorktreeErrorCode =
@@ -169,14 +170,6 @@ async function pathExists(file: string): Promise<boolean> {
 }
 
 /** A main checkout: `.git` is a folder (a worktree or submodule has a `.git` file, gap #16). */
-async function isMainCheckout(dir: string): Promise<boolean> {
-  try {
-    return (await lstat(path.join(dir, '.git'))).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -242,7 +235,11 @@ export class WorktreeManager implements DiffProvider {
     const candidates = solutionCandidates(root, solution);
     if (candidates === null) throw new WorktreeError('solution-not-found', `"${solution}" is not a workspace solution`);
     const found: string[] = [];
-    for (const candidate of candidates) if (await isMainCheckout(candidate)) found.push(candidate);
+    // A candidate that is not a checkout itself may hold exactly one (the nested mobile clone, `checkoutOf`).
+    for (const candidate of candidates) {
+      const checkout = await checkoutOf(candidate);
+      if (checkout && !found.includes(checkout)) found.push(checkout);
+    }
     if (found.length === 0) throw new WorktreeError('solution-not-found', `no git repository for "${solution}" in the workspace`);
     if (found.length > 1) {
       throw new WorktreeError('solution-ambiguous', `"${solution}" matches several repositories: ${found.map((f) => path.relative(root, f)).join(', ')}`);

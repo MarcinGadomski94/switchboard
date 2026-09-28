@@ -14,6 +14,7 @@ import {
   toSolutionGroups,
 } from '../../core/workspace-rules.ts';
 import type { SolutionsProvider } from '../providers.ts';
+import { checkoutOf } from './checkout.ts';
 
 /** The router file at the workspace root. */
 export const ROUTER_FILE = 'AGENTS.md';
@@ -181,7 +182,7 @@ export class WorkspaceScanner implements SolutionsProvider {
     const solutions: ScannedSolution[] = [];
     if (spec.depth === 0) {
       const git = await gitKind(dir);
-      if (git !== 'file') solutions.push(this.#solution(root, [spec.folder], git));
+      if (git !== 'file') solutions.push(await this.#solution(root, [spec.folder], git));
     } else {
       await this.#walk(root, [spec.folder], spec.depth, solutions);
     }
@@ -202,19 +203,23 @@ export class WorkspaceScanner implements SolutionsProvider {
       const git = await gitKind(path.join(root, ...childParts));
       if (git === 'file') continue;
       if (git === 'dir' || remaining <= 1) {
-        into.push(this.#solution(root, childParts, git));
+        into.push(await this.#solution(root, childParts, git));
         continue;
       }
       await this.#walk(root, childParts, remaining - 1, into);
     }
   }
 
-  #solution(root: string, parts: readonly string[], git: GitKind): ScannedSolution {
+  async #solution(root: string, parts: readonly string[], git: GitKind): Promise<ScannedSolution> {
+    const dir = path.join(root, ...parts);
+    // Not a checkout itself: it may hold exactly one (the nested mobile clone, `checkoutOf`).
+    const repoPath = git === 'dir' ? dir : await checkoutOf(dir);
     return {
       name: parts.at(-1) as string,
       relativePath: parts.join('/'),
-      path: path.join(root, ...parts),
-      git: git === 'dir',
+      path: dir,
+      git: repoPath !== null,
+      repoPath,
     };
   }
 }

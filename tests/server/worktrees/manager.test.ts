@@ -90,6 +90,16 @@ describe('WorktreeManager · create (gap #1)', () => {
     await expect(m.resolveRepo('web-front-wt-wt')).rejects.toMatchObject({ code: 'solution-not-found' });
   });
 
+  it('a solution folder that is not a repo but holds exactly one resolves to it; its worktree sits next to the nested repo', async () => {
+    const { w, m } = await setup();
+    const inner = await w.makeRepo(path.join(w.workspace, 'other', 'nest', 'inner'));
+    expect(await m.resolveRepo('nest')).toEqual({ solution: 'nest', repoPath: inner });
+    const [record] = await m.createForSession('n1', ['nest']);
+    expect(record?.path).toBe(path.join(w.workspace, 'other', 'nest', 'inner-wt-n1'));
+    // The worktree beside it (`.git` is a file) does not make the folder ambiguous.
+    expect(await m.resolveRepo('nest')).toEqual({ solution: 'nest', repoPath: inner });
+  });
+
   it('refusals leave nothing behind', async () => {
     const { w, m } = await setup();
     await w.git(w.mobile, 'branch', 'session/taken');

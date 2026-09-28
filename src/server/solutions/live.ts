@@ -39,9 +39,11 @@ export interface LiveSolutionsOptions {
 interface Row {
   readonly solution: Solution;
   readonly readOnly: boolean;
-  /** `.git` is a directory. */
+  /** `.git` is a directory, here or in the one nested checkout (`repo`). */
   readonly git: boolean;
-  /** Canonical path (worktree rows store canonical repo paths), or the configured one when it cannot be resolved. */
+  /** The git checkout the row stands for (`ScannedSolution.repoPath`), else the solution folder. */
+  readonly repo: string;
+  /** Canonical repo path (worktree rows store canonical repo paths), or `repo` when it cannot be resolved. */
   readonly canonical: string;
 }
 
@@ -97,15 +99,18 @@ export class LiveSolutions implements SolutionsProvider {
   async solutions(): Promise<SolutionGroup[]> {
     const scan = await this.#scanner.scan();
     const groups = toSolutionGroups(scan);
-    const gitByPath = new Map(scan.folders.flatMap((folder) => folder.solutions.map((s) => [s.path, s.git] as const)));
+    const repoByPath = new Map(scan.folders.flatMap((folder) => folder.solutions.map((s) => [s.path, s.repoPath] as const)));
     const rows: Row[] = await Promise.all(
       groups.flatMap((group) =>
         group.solutions.map(async (solution): Promise<Row> => {
+          const repoPath = repoByPath.get(solution.path) ?? null;
+          const repo = repoPath ?? solution.path;
           return {
             solution,
             readOnly: solution.rule === 'read-only',
-            git: gitByPath.get(solution.path) ?? false,
-            canonical: await realpath(solution.path).catch(() => solution.path),
+            git: repoPath !== null,
+            repo,
+            canonical: await realpath(repo).catch(() => repo),
           };
         }),
       ),
@@ -126,7 +131,7 @@ export class LiveSolutions implements SolutionsProvider {
     const resolve = (solution: string): Row | null => {
       if (!resolved.has(solution)) {
         const candidates = new Set(solutionCandidates(scan.root, solution) ?? []);
-        const matches = writable.filter((row) => row.git && candidates.has(row.solution.path));
+        const matches = writable.filter((row) => row.git && (candidates.has(row.solution.path) || candidates.has(row.repo)));
         resolved.set(solution, matches.length === 1 ? (matches[0] as Row) : null);
       }
       return resolved.get(solution) ?? null;
@@ -164,7 +169,7 @@ export class LiveSolutions implements SolutionsProvider {
     const enriched = new Map<Solution, Solution>();
     await Promise.all(
       rows.map(async (row) => {
-        const head = row.git ? await this.#branch(row.solution.path) : null;
+        const head = row.git ? await this.#branch(row.repo) : null;
         const branches: SolutionBranch[] = [];
         const statuses: SessionStatus[] = [];
         const phases: Phase[] = [];
@@ -195,7 +200,7 @@ export class LiveSolutions implements SolutionsProvider {
         const conflict = row.readOnly ? NO_CONFLICT : repoConflict(writers);
         if (branches.length === 0 && head) branches.push({ branch: head, worktree: null, sessionId: null, owner: IDLE_OWNER, status: 'idle' });
 
-        const ledger = await this.#ledger(row.solution.path);
+        const ledger = await this.#ledger(row.repo);
         const delta = changes.get(row) ?? { added: 0, removed: 0 };
         enriched.set(row.solution, {
           ...row.solution,
@@ -274,7 +279,7 @@ export class LiveSolutions implements SolutionsProvider {
     }
     let entries: Dirent[] = [];
     try {
-      entries = await readdir(path.join(row.solution.path, FOLLOWUPS_FOLDER), { withFileTypes: true });
+      entries = await readdir(path.join(row.repo, FOLLOWUPS_FOLDER), { withFileTypes: true });
     } catch (error) {
       if (!isGone(error)) this.#onError(error);
     }
@@ -303,7 +308,7 @@ function writer(session: SessionRecord, isolated: boolean, repo: string): RepoWr
  */
 function displayWorktreePath(row: Row, worktreePath: string): string {
   if (path.dirname(worktreePath) === path.dirname(row.canonical)) {
-    return path.join(path.dirname(row.solution.path), path.basename(worktreePath));
+    return path.join(path.dirname(row.repo), path.basename(worktreePath));
   }
   return worktreePath;
 }

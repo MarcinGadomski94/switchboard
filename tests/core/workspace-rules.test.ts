@@ -203,6 +203,7 @@ describe('toSolutionGroups', () => {
         relativePath,
         path: path.join(root, ...relativePath.split('/')),
         git: true,
+        repoPath: path.join(root, ...relativePath.split('/')),
       })),
     };
   };

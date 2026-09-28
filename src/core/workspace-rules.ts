@@ -226,8 +226,14 @@ export interface ScannedSolution {
   readonly relativePath: string;
   /** Absolute path in the current OS's form (gap #17). */
   readonly path: string;
-  /** `true` when the folder is a git main checkout (`.git` is a directory). */
+  /** `true` when the folder is a git main checkout (`.git` is a directory), or holds exactly one (`repoPath`). */
   readonly git: boolean;
+  /**
+   * The git main checkout the solution stands for: `path` itself, or its only
+   * nested checkout (`mobile/` → `mobile/acme-app-mobile/`, developer ruling
+   * 2026-09-28); `null` without one.
+   */
+  readonly repoPath: string | null;
 }
 
 /** One top-level folder of the scan. */

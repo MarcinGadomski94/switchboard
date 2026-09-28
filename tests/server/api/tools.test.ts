@@ -224,7 +224,7 @@ describe('.codebase-memory-dirty (gap #4; the hook project ids)', () => {
         path: path.join(root, 'nugets', 'components-library-nuget'),
         markedAt: null,
       },
-      { id: `${rootId}-mobile-src`, name: 'mobile', path: path.join(root, 'mobile'), markedAt: null },
+      { id: `${rootId}-mobile-src`, name: 'mobile', path: path.join(root, 'mobile', 'src'), markedAt: null },
       { id: 'D-other-ws-nugets-auth-nuget', name: 'D-other-ws-nugets-auth-nuget', path: null, markedAt: null },
       { id: `${rootId}-unknowncat-x`, name: `${rootId}-unknowncat-x`, path: null, markedAt: null },
     ]);
