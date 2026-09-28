@@ -1,26 +1,21 @@
 # Switchboard delivery report
 
-Unattended overnight run, 2026-09-27 to 2026-09-28, on `main` under `docs/decisions.md` (D1–D13) and `docs/handoff/LOOP.md`. Final verification ran on `main` at 1e2a9a1 (M9.3) plus the audit fix 414c1ca. Nothing was pushed, and no PR was opened.
+Built by an unattended overnight run (2026-09-27 → 28) and finished in a developer-approved morning session on 2026-09-28, on `main` under `docs/decisions.md` (D1–D13) and `docs/handoff/LOOP.md`. Local commits only: nothing was pushed and no PR was opened.
 
 ## Summary
-- The backlog has 39 items. **26 are on `main` and green.** **13 were built and went green in their lanes but are not on `main`.** The wave merge step tried to merge three lanes (`lane/w1-tools`, `lane/w2-newsession`, `lane/w2-tabs`), hit conflicts, and the tool permission check refused the conflict resolution ("Merge Without Review" / "Modify Shared Resources"). The merges were aborted cleanly. The lanes and their worktrees are intact and wait for your merge approval (LOOP.md gate 4).
-- Final suites on `main` after a clean install: typecheck green; `npm test` 662 passed + 1 expected failure (64 files); build ok; `npm run e2e` 32/32, including the 10 visual specs.
-- Audit: no security findings. One mechanical fix: a test that left folders in the repo root (414c1ca). Contract: every REST route and every `/hub` event name in `contracts/local-api.md` exists. On `main`, 7 route areas answer `501` and 2 hub events are never sent, because their items sit in the unmerged lanes.
-- Read-only smoke against the real workspace passed: 38 solutions scanned, the guard enforced on the real process, nothing written under the workspace. One finding: the mobile clone's folder layout (see *Read-only smoke*).
+- **All 39 backlog items are on `main` and green.** Overnight, 26 landed on `main`. Three lanes (13 items) passed in their worktrees, but the merge step's conflict resolution was refused by the permission check ("Merge Without Review"). In the morning session, with the developer's approval, the three lanes were merged in the main session (9432139, b72a192, fca998c). The integration fixes are listed under *Morning session*.
+- **Final suites on a clean install** (`rm -rf node_modules dist && npm ci`): typecheck green; `npm test` **913/913** (94 files); build ok; `npm run e2e` **84/84**, including the D13 walkthrough and every visual spec. The full visual pass gates all 14 SPEC surfaces with nothing pending. Nothing was left listening on the test ports, and the working tree is clean.
+- **D13 checks all ran:** (1) the real-path walkthrough E2E (no demo seed) is green and stable over repeats; (2) the **real-CLI smoke on Haiku passed** end to end (`docs/smoke-real-cli.md`); (3) the prototype-string audit is clean.
+- **Developer follow-ups done:** sessions start in **auto** permission mode with an `acceptEdits` fallback (D6; one approved probe on the default model); the **nested mobile clone** (`mobile/acme-app-mobile/`) is recognized; the embedded-tool iframe is **sandboxed**; one `.codebase-memory-dirty` parser.
 
-## What works on `main` today
-- **Runtime:** the SessionSupervisor (one `claude` process per session over stream-json, pause/resume per D7, detach/attach with the terminal-handoff warning), worktrees (create, isolate, "PR merged" → removable, diff provider), the `/hub` SSE stream, crash recovery on restart, the question and permission pipeline over the stdio control protocol.
-- **UI:** the app shell and sidebar; the Inbox (question batches with "Send" disabled until every question is answered, permission items with *Allow once / Deny*, system items); toast + chime + OS notification with "Jump to session"; the session view (header chips, Pause/Resume, Continue in terminal / Attach here, the Chat tab with inline question cards and quick replies, the agents & solutions panel, terminal tail, handoff card); Solutions (groups, filters, branch chips, detail panel, conflict card with "Move … to worktree", codebase-memory freshness); Settings → "Start at login".
-- **Packaging:** per-user service files for launchd, systemd --user and Task Scheduler (generated and dry-run tested, never installed here), and the Max usage meter.
-
-What does **not** work on `main` yet, because it sits in the unmerged lanes:
-- Creating a session from the UI (the New-session modal is a placeholder; `POST /api/sessions` works).
-- The Timeline, Diff and Artifacts tabs.
-- Schedules, loop cards, the global Artifacts view, History, embedded tools, the Settings sections, the ⌘K palette content and the first-run wizard.
-- The footer's CPU / RAM / Max figures: `GET /api/system` answers `501`, so they show "—". For the same reason the usage meter is not started in normal runs.
+## What works
+Everything in `SPEC.md` and the contract, on the real path (D13):
+- **Runtime:** one supervised `claude` process per session over stream-json (M0/M2.1). Auto permission mode with the `acceptEdits` fallback, and automatic denials shown with their reason. Pause/Resume (D7), Continue in terminal / Attach here with the recent-transcript warning, crash recovery. Worktrees per session (gap #1): isolate, PR-merged → removable, and diffs. The `/hub` SSE stream (all 7 events). Questions and permissions over the stdio control protocol. The first-turn payload with the confirmed session-start answers (M5.2). The cron scheduler.
+- **UI:** shell + sidebar (live badges, TOOLS, SESSIONS, CPU/RAM/Max footer); Inbox (question batches, permission Allow once / Deny, system items); toast + chime + OS notification; session view (header chips, Chat with inline question cards, Timeline, Diff, Artifacts, right panel, handoff card); New-session modal (+ D8 schedule section); first-run wizard; Solutions (groups, filters, branch chips, conflict card + "Move … to worktree", codebase-memory freshness); Schedules & loops; global Artifacts; History (stored sessions + terminal transcripts); embedded tools (Codebase Memory strip + "Reindex n now"); Settings (7 sections, persisted); ⌘K palette.
+- **Packaging:** per-user service files for launchd, systemd --user and Task Scheduler (generated and dry-run tested, never installed here). "Start at login" toggle; Max usage meter (real reading from the CLI).
 
 ## What was built
-Status: **main** = merged and green on `main`; **lane** = green in its lane, not merged (see *Blocked and skipped*). Attempts are out of 5 (LOOP.md).
+Attempts are out of 5 (LOOP.md). Commits are the item commits on their lanes; merge commits are shown in the status column.
 
 ### M0 · Spike
 | Item | Title | Status | Commit | Attempts |
@@ -61,16 +56,16 @@ Status: **main** = merged and green on `main`; **lane** = green in its lane, not
 | M4.1 | Session header | main (lane w2-session, merged 06fc930) | cd59a81 | 3 |
 | M4.2 | Chat tab | main (lane w2-session, merged 06fc930) | 7bd2c51 | 1 |
 | M4.3 | Right panel | main (lane w2-session, merged 06fc930) | 6de0f91 | 4 |
-| M4.4 | Timeline tab | lane/w2-tabs | fe5b0cb | 2 |
-| M4.5 | Diff tab | lane/w2-tabs | 7568837 | 2 |
-| M4.6 | Artifacts tab | lane/w2-tabs | e546b9d | 2 |
+| M4.4 | Timeline tab | main (lane w2-tabs, merged fca998c) | fe5b0cb | 2 |
+| M4.5 | Diff tab | main (lane w2-tabs, merged fca998c) | 7568837 | 2 |
+| M4.6 | Artifacts tab | main (lane w2-tabs, merged fca998c) | e546b9d | 2 |
 
 ### M5 · New session & setup
 | Item | Title | Status | Commit | Attempts |
 |---|---|---|---|---|
-| M5.1 | New-session modal | lane/w2-newsession | 103bc05 | not recorded |
-| M5.2 | First-turn payload | lane/w2-newsession | 5972877 | not recorded |
-| M5.3 | First-run wizard | lane/w2-newsession | babdb02 | not recorded |
+| M5.1 | New-session modal | main (lane w2-newsession, merged b72a192) | 103bc05 | not recorded |
+| M5.2 | First-turn payload | main (lane w2-newsession, merged b72a192) | 5972877 | not recorded |
+| M5.3 | First-run wizard | main (lane w2-newsession, merged b72a192) | babdb02 | not recorded |
 
 ### M6 · Solutions (lane w1-solutions, merged a292f6f)
 | Item | Title | Status | Commit | Attempts |
@@ -83,17 +78,17 @@ Status: **main** = merged and green on `main`; **lane** = green in its lane, not
 ### M7 · Schedules, loops, artifacts, history
 | Item | Title | Status | Commit | Attempts |
 |---|---|---|---|---|
-| M7.1 | Scheduler + New scheduled run | lane/w2-newsession | dd3b191 | 4 |
-| M7.2 | Loop cards | lane/w2-tabs | 0c4aa07 | 2 |
-| M7.3 | Global artifacts view | lane/w1-tools | f41d2c6 | 3 |
-| M7.4 | History | lane/w1-tools | 314aabc | 2 |
+| M7.1 | Scheduler + New scheduled run | main (lane w2-newsession, merged b72a192) | dd3b191 | 4 |
+| M7.2 | Loop cards | main (lane w2-tabs, merged fca998c) | 0c4aa07 | 2 |
+| M7.3 | Global artifacts view | main (lane w1-tools, merged 9432139) | f41d2c6 | 3 |
+| M7.4 | History | main (lane w1-tools, merged 9432139) | 314aabc | 2 |
 
 ### M8 · Tools & settings
 | Item | Title | Status | Commit | Attempts |
 |---|---|---|---|---|
-| M8.1 | Embedded tools | lane/w1-tools | 5719578 | 4 |
-| M8.2 | Settings | lane/w1-tools | b2cd0f7 | 3 |
-| M8.3 | ⌘K / Ctrl+K palette | lane/w2-tabs | 09fd1ea | 3 |
+| M8.1 | Embedded tools | main (lane w1-tools, merged 9432139) | 5719578 | 4 |
+| M8.2 | Settings | main (lane w1-tools, merged 9432139) | b2cd0f7 | 3 |
+| M8.3 | ⌘K / Ctrl+K palette | main (lane w2-tabs, merged fca998c) | 09fd1ea | 3 |
 
 ### M9 · Packaging (ran last, on merged `main`)
 | Item | Title | Status | Commit | Attempts |
@@ -102,43 +97,44 @@ Status: **main** = merged and green on `main`; **lane** = green in its lane, not
 | M9.2 | Usage meter | main | 460517c | 2 |
 | M9.3 | Full visual pass | main | 1e2a9a1 | 3 |
 
-Other commits on `main`: 6b8c9fe *Wave 1: merge lanes*, 34a1f54 *Wave 2: merge lanes*, 414c1ca *Final: audit fixes*, and the *Delivery report* commit that adds this file.
+Other commits on `main`: 6b8c9fe *Wave 1: merge lanes*, 34a1f54 *Wave 2: merge lanes*, 414c1ca *Final: audit fixes*, ded494c *Delivery report* (overnight), then the morning session's commits below.
+
+## Morning session (2026-09-28, developer-approved)
+| Commit | What |
+|---|---|
+| 9432139 | Merge `lane/w1-tools`: one test-port helper; providers for the login service + tool probe + Codebase Memory; M8.2's Settings with M9.1's real Start-at-login toggle in the Claude Code row; the scan-table E2E runs on the real scanner |
+| b72a192 | Merge `lane/w2-newsession`: main.ts wires the login service, M5.3's `SystemProbe` (so the M9.2 usage meter now runs) and M7.1's scheduler; the chat shows the typed task without the appended session-start answers block |
+| fca998c | Merge `lane/w2-tabs`: session Artifacts tab specs renamed `session-artifacts.*`; `Session` carries M4.1's header fields + M7.2's loops; demo terminal lines stored as `text` so the Timeline does not draw them |
+| 84fb3a1 | D6: `--permission-mode auto` with a one-time `set_permission_mode acceptEdits` fallback for models without auto; denial reasons in labels (`Denied · Bash (Classifier unavailable)`); fake-claude simulates a model with auto by default |
+| 4368cdc | Embedded tools iframe `sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"` (no top navigation) |
+| 032992d | Nested checkout: a solution folder that holds exactly one repo stands for it (the real `mobile/acme-app-mobile/`); the Codebase Memory strip parses the dirty file with M6.4's rules |
+| 8176e7f | D13 check 1: `tests/e2e/walkthrough.spec.ts` |
+| c055847 | D13 check 2: `tools/smoke/real-cli.ts` + `docs/smoke-real-cli.md`; the chat marks the D6 fallback notice with ⚠ |
+| 05fb890 | Visual reports regenerated on the merged main |
+
+Each merge and fix records its resolutions as `ASSUMED` lines in `.loop/questions.md` (sections *Wave 1 · lane w1-tools · merged*, *Wave 2 · …*, *Follow-ups after the merges*).
 
 ## Blocked and skipped
-No item failed its oracle. The 13 items below are **blocked by the merge step, not by failed attempts**, so the breaker counter stayed at 0. Each lane is green on its own branch, and its worktree under `.worktrees/` is clean.
-
-| Lane | Head | Items | Why it is not on `main` | Lane-local result (from its progress file) |
-|---|---|---|---|---|
-| `lane/w1-tools` | 314aabc | M7.3, M7.4, M8.1, M8.2 | `git merge --no-ff` conflicted in 13 files (docs, `playwright.config.ts`, `src/core/README.md`, `src/server/demo/providers.ts`, test helpers and tests). The permission check refused the resolution ("Merge Without Review"); the merge was aborted. | typecheck green, `npm test` 444/444, Playwright 33/33 (the settings scan-table test is an expected failure until M6.1 is present), visual 5/5 |
-| `lane/w2-newsession` | dd3b191 | M5.1, M5.2, M5.3, M7.1 | Conflicted in 7 files; resolving `src/server/app.ts` was refused ("Modify Shared Resources"); aborted. | typecheck green, vitest 574/574, Playwright 34/34, visual 8/8 |
-| `lane/w2-tabs` | 09fd1ea | M4.4, M4.5, M4.6, M7.2, M8.3 | Conflicted in 7 files (`src/core/api.ts`, `src/server/api/sessions.ts`, `src/server/sessions/wire.ts`, a hub test, docs); the resolution was refused ("Merge Without Review"); aborted. | typecheck green, `npm test` 562/562, Playwright 33/33 (the palette's tools test is an expected failure while `/api/tools` is 501), visual 10/10 |
-
-The file-by-file merge notes (which side to keep, duplicate helpers to fold into one, tests that flip from expected-failure to normal) are in `.loop/questions.md` → *Wave 1 · merge step* and *Wave 2 · merge step*. After merging, re-run the full visual pass: `tests/e2e/visual/full-pass.spec.ts` already gates the merged views and needs no edits. Known merge-time items:
-- Both `lane/w1-tools` and `lane/w2-tabs` add `tests/e2e/visual/artifacts.spec.ts` + `docs/visual/artifacts.md`. One pair needs a rename.
-- `lane/w2-tabs` gated its Timeline / Diff / Artifacts tabs without M4.3's right panel. Re-run those specs on the merged session view.
-- One test on `main` is an intentional expected failure (`it.fails`): `GET /api/system` returns data only after `lane/w2-newsession` (M5.3) merges. It must be flipped to a normal test then.
-- M9.1's "Start at login" row sits in the placeholder Settings view. It moves into M8.2's Settings when `lane/w1-tools` merges.
+None. No item failed its oracle; the overnight "blocked by the merge step" items were merged in the morning session.
 
 ## Verification results
 
 ### Clean install and suites (on `main`, ports 127.0.0.1:4970–4979)
 | Step | Result |
 |---|---|
-| `rm -rf node_modules dist && npm ci` | ok: 129 packages, 0 vulnerabilities |
+| `rm -rf node_modules dist && npm ci` | ok |
 | `npm run typecheck` (3 tsconfigs) | green |
-| `npm test` (Vitest) | 64 files; 662 passed + 1 expected failure (663). The expected failure is the `it.fails` `GET /api/system` test described above. |
+| `npm test` (Vitest) | 94 files, **913/913** |
 | `npm run build` | ok (`dist/web`) |
-| `npm run e2e` (Playwright, 1 worker) | 32/32 passed, including 10 visual specs |
-| After the audit fix | typecheck green; `npm test` 662 passed + 1 expected failure again; no folders left in the repo root |
+| `npm run e2e` (Playwright, 1 worker) | **84/84**: functional specs, the D13 walkthrough, and 22 visual specs |
 
-Nothing was listening on 4970–4979 after each run, and no fake-claude process was left behind.
+### Visual (D10)
+`SWITCHBOARD_VISUAL_REPORT=1 npx playwright test tests/e2e/visual` on the merged main: 22/22 green. `docs/visual/full-pass.md` gates all 14 surfaces (Inbox, Session · Chat / Timeline / Diff / Artifacts, Solutions, Schedules & loops, Artifacts, History, Tool, Settings, New session, Setup wizard, Palette): sidebar 71 parts each, content and modal chrome, nothing pending. Pixel diffs are advisory. Known data differences, listed and not gated: the prototype's hand-written chips / mode lines / the Artifacts badge "14" over 13 rows (D13 derives them).
 
-### Visual
-M9.3's screenshot suite (`tests/e2e/visual`, 10 specs, D10 gate: SPEC token styles, boxes ±2 px, exact copy) passed inside the E2E run:
-- **Gated green:** the empty shell, Inbox, the toast, Solutions, the Solutions conflict card, the session header, Chat tab and right panel, the Start-at-login row, and `full-pass.spec.ts` (the sidebar on 13 surfaces plus the content of Inbox, Session · Chat and Solutions).
-- **Pending merge (not gateable on `main`):** Timeline, Diff, Artifacts tab, Schedules & loops, the global Artifacts view, History, Tools, Settings, the New-session content, the Setup wizard and the Palette content. Each is gated green in its lane.
-
-Per-view results and advisory pixel diffs are in `docs/visual/full-pass.md` and `docs/visual/README.md`. The committed reports were not regenerated in this step.
+### D13 checks
+- **Walkthrough (check 1):** New session with a worktree → streamed chat → question batch → toast + Inbox → answer → the process continues → a written file → Pause/Resume → Continue in terminal / Attach here → the Diff tab ("Not committed…") → a schedule's Run now → History lists both sessions. Real server, fake-claude, fake gh, temp git repo; green and stable over 3 repeats.
+- **Real-CLI smoke (check 2):** Haiku, `--max-turns 3`, sandbox workspace. The question reached the Inbox verbatim, the answer went back, and the reply was correct; the D6 fallback (auto → acceptEdits) triggered on the real CLI. `docs/smoke-real-cli.md`.
+- **Prototype-string audit (check 3):** no mock strings in `src/` outside `src/server/demo/` except doc comments.
 
 ### Audit
 **Security (all pass):**
@@ -149,7 +145,7 @@ Per-view results and advisory pixel diffs are in `docs/visual/full-pass.md` and 
   - a foreign `Origin` (another host, another port, `null`, `https:`) → `403 forbidden-origin`, even with a valid cookie.
 - **Guard on the real process:** `/api/solutions` and `/hub` without a cookie → `401`; a foreign Host → `403`; `/hub` with a foreign Origin → `403`; `/hub` with the cookie → `200 text/event-stream`. The page issued `sb_token` as `HttpOnly; SameSite=Strict; Path=/` only on a browser load, and gave no cookie to a request without `Sec-Fetch-Site`. Static-file path traversal (`/..%2f..%2fpackage.json`) → `403`.
 - **No shell:** no `shell: true`, `exec(`, `execSync`, `execFile*`, `spawnSync` or string commands anywhere in `src/`, `tools/` or `tests/`. Every `spawn` takes an argv array with `shell: false`. There is also no sync filesystem call in `src/`.
-- **Iframes:** `main` renders no iframe (the tool view is still the M1.4 placeholder). In `lane/w1-tools`, the iframe `src` is the saved tool URL only, validated as absolute `http:`/`https:` with no credentials. It has no `sandbox` attribute, which is worth a look at merge time.
+- **Iframes:** the tool iframe loads only the saved tool URL (absolute `http:`/`https:`, no credentials) and is sandboxed without top navigation (4368cdc).
 
 **Contract (`contracts/local-api.md`), checked field by field against `src/core/api.ts` and at runtime:**
 - **Every REST route exists** with the documented method and path, including the HEAD mirrors of the GET routes.
@@ -182,62 +178,20 @@ Per-view results and advisory pixel diffs are in `docs/visual/full-pass.md` and 
 
 **D13 prototype-string audit:** the distinctive prototype mock strings (session names such as `free-talk-feature`, `button-rollout`, `qa-free-talk`, branches, PR numbers, artifact names, `Acme Tool`, `localhost:13000`) do not occur in `src/` outside `src/server/demo/`, except in doc comments that cite the prototype.
 
+Update after the merges: every contract route is implemented (no `501` left) and all seven `/hub` events are sent, including `scheduleRun` (M7.1) and `system` (M5.3).
+
 ### Read-only smoke (D12)
-The built app (`node src/server/main.ts`) ran with:
-- a temp data folder;
-- `SWITCHBOARD_WORKSPACE_ROOT` = the real workspace root (`~/RiderProjects/Acme Corp/workspace`);
-- no demo seed;
-- port 4971.
-
-As a guard, `SWITCHBOARD_CLAUDE_BIN` and `SWITCHBOARD_GH_BIN` were set to `["/usr/bin/false"]` and `CLAUDE_CONFIG_DIR` pointed into the temp folder, so no CLI could start.
-
-Playwright loaded the UI, which issued the cookie, and opened Solutions from the nav. The screenshot is `docs/visual/smoke-solutions.png`. It shows the absolute workspace path, which includes your user name. The loop kept the user name out of committed fixtures (M0.1), so drop the picture before sharing the repo if that matters.
-
-| Check | Result |
-|---|---|
-| UI | Solutions view at `/solutions`, nav marked current. The header reads `<workspace root> · 38 solutions · 0 active`. The detail panel shows `admin-front` (branch `dev`, in place, idle, "no phase-ledger.md", "No artifacts"), and codebase-memory is `dirty`. No page errors. The console shows 6 × `501` resource errors: the sidebar reads `/api/tools`, `/api/schedules`, `/api/artifacts` and `/api/system` (unmerged lanes). |
-| `GET /api/solutions` (with the cookie) | `200`, 38 solutions in 7 groups: `microfrontends/` 8, `mobile/` 1, `nugets/` 12, `microservices/` 8, `functions/` 3, `other/` 5 (on request), read-only 1 (`infrastructure`). `deprecated/` holds no solutions. |
-| `GET /api/system` (with the cookie) | `501 {"error":"not-implemented","item":"M5.3"}`, as expected on `main` |
-| Requests the page made | GET only (`/api/sessions`, `/api/inbox`, `/api/solutions`, `/api/tools`, `/api/schedules`, `/api/artifacts`, `/api/system`, `/hub`). No POST/PUT. |
-| Sessions started | none |
-| Written under the workspace | nothing: `find` over 85,639 files (the switchboard repo excluded) found no file newer than a marker created before the start |
-| Server stop | SIGINT → exit 0. Nothing listening on 4970–4979 afterwards; the temp folder was deleted. |
-
-**Finding:** in the real workspace, the mobile clone sits at `mobile/acme-app-mobile/`, one level below the router's layout (which says `mobile/` is the cloned repo). The scanner therefore lists `mobile` as a non-git folder with no branch chip and never finds the repo inside it, and a worktree for `mobile` would be refused (`solution-not-found`). This needs your decision (see *Open for the developer*).
+The overnight run scanned the real workspace read-only (38 solutions in 7 groups, nothing written, guard enforced on the real process). It found that the mobile clone sits at `mobile/acme-app-mobile/`. After the nested-checkout fix (032992d), a second read-only run (temp data folder, fake gh, no runnable `claude`, no sessions) lists `mobile` with its branch `master` from the nested repo. The overnight `docs/visual/smoke-solutions.png` shows the absolute workspace path, which includes your user name; drop it before sharing the repo if that matters.
 
 ## Assumptions to review
-The loop assumes, flags and continues (D2). Every `ASSUMED` line from `.loop/questions.md` is reproduced verbatim, grouped by item, in the appendix at the end of this report. That appendix is your review list.
-
-| Group | ASSUMED lines |
-|---|---|
-| M0 spike + adapt (M0.1–M0.4, M0-adapt) | 27 |
-| M1 skeleton | 36 |
-| M2 session runtime | 42 |
-| M3 inbox (lane w1-inbox) | 46 |
-| M4.1–M4.3 session view (lane w2-session) | 27 |
-| M6 solutions (lane w1-solutions) | 29 |
-| Wave merges (W1-merge, W2-merge) | 8 |
-| M9 packaging | 26 |
-| Final verification (this step) | 5 |
-| **On `main`, total** | **246** |
-| lane/w1-tools (on its branch) | 51 |
-| lane/w2-newsession (on its branch) | 30 |
-| lane/w2-tabs (on its branch) | 40 |
-
-The ones with the widest effect, in the order to read them:
-- **M0.1 / M0.2 / M0-adapt:** sessions run in `acceptEdits`, not auto. Auto could not be proven headless on Haiku (D6 fallback).
+The loop assumes, flags and continues (D2). Every `ASSUMED` line is in `.loop/questions.md` (main + merges + morning follow-ups) and `.loop/questions-<lane>.md` (the three late lanes). The overnight part is reproduced in the appendix. The ones with the widest effect:
+- **D6 (84fb3a1):** sessions start in `auto`. When the auto-mode classifier has an outage, the CLI **denies** a tool call instead of asking the host; Switchboard shows it as `Denied · <tool> (Classifier unavailable)`.
 - **M0-adapt / M3.1:** a `multiSelect` question takes one option, because the contract carries one `answerIndex`.
-- **M1.1:** the Host/Origin allowlist is `127.0.0.1` / `localhost` with the exact port. The cookie is issued only on `Sec-Fetch-Site` none/same-origin. There is no default workspace root.
-- **M2.1:** stop timeouts, session status rules, and `SWITCHBOARD_CLAUDE_EXTRA_ARGS` as a JSON array.
+- **M1.1:** the Host/Origin allowlist is `127.0.0.1` / `localhost` with the exact port; the cookie is issued only on `Sec-Fetch-Site` none/same-origin; there is no default workspace root.
 - **M2.4:** restart recovery stops a leftover process first; `need` sessions resume idle.
-- **M6.1:** the folder rules parsed from the router `AGENTS.md`; non-git folders are still listed (the cause of the smoke finding).
-- **M9.1:** there is no automatic restart on any OS, and on Windows the service is a Task Scheduler logon task.
-- **M9.2:** `usagePct` = the higher of the 5-hour and weekly windows, and it is read only while a `/hub` client is connected.
-
-Other notes from the run (`.loop/questions.md`, lines starting with `NOTE`):
-- **M9.2:** the footer's reset text for a weekly binding window reads e.g. `75h00`; a day form (`3d03`) would be a small change.
-- **M9.2:** the repo-root test litter is fixed in 414c1ca.
-- **M9.3:** three merge-time notes: the `artifacts.spec.ts` name clash, re-running the tab specs on the merged session view, and the Setup wizard having no trigger until M8.2 + M5.3 merge.
+- **Nested checkout (032992d):** a solution folder with exactly one nested repo stands for it; with two or more nothing is picked.
+- **M9.1:** there is no automatic restart on any OS; on Windows the service is a Task Scheduler logon task.
+- **M9.2:** `usagePct` = the higher of the 5-hour and weekly windows, read only while a `/hub` client is connected.
 
 ## How to run
 Requires Node ≥ 24 on PATH, plus `claude` (and `gh` for PR state) signed in for real sessions.
@@ -265,7 +219,7 @@ SWITCHBOARD_WORKSPACE_ROOT="$HOME/RiderProjects/Acme Corp/workspace" npm start
 Start at login: Settings → Claude Code → "Start at login", or `npm run service:install -- --dry-run` to see the files first (`docs/service.md`). More detail is in `docs/configuration.md`.
 
 ## Five-minute demo (`SWITCHBOARD_DEMO=1`)
-Demo mode loads the prototype's data through the normal API. It must use a throwaway data folder (it refuses the real one), and it starts no `claude` process. Checked on `main` on port 4972 while writing this report.
+Demo mode loads the prototype's data through the normal API, in a throwaway data folder, and starts no `claude` process.
 
 ```sh
 npm ci && npm run build
@@ -273,36 +227,24 @@ SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm
 # open http://127.0.0.1:4871
 ```
 
-1. **Shell (0:30).** The sidebar shows Inbox with the badge `5`, Solutions with `1 conflict`, and the six sessions with their status dots, ages and mode lines. Press ⌘K (Ctrl K elsewhere) to open the palette. On `main` it shows only its frame; the content arrives with M8.3. Press Esc to close it.
-2. **Inbox (1:00).** Open Inbox. The newest item is `free-talk-feature` with 3 questions from web, mobile and the orchestrator. Pick options: the footer counts "k of 3 answered", and Send stays disabled (dimmed) until all three are answered. Don't send: demo sessions have no `claude` process behind them. Then open the system item "Android build failed at XamlC" (*Scheduled run failed*) to show its actions. "Retry run" is refused on `main` until the scheduler (M7.1) merges.
-3. **A session (1:30).** Click `free-talk-feature` in the sidebar:
-   - The header chips read work feature-building, mode orchestrator, phase UI-first, scope acme-app-front + mobile. The header also has Pause and "⇄ Continue in terminal".
-   - The Chat tab shows the task bubble, the agent's summary with ✓ step lines, and the inline card of 3 relayed questions.
-   - The quick replies fill the composer.
-   - The right panel shows 4 agents with their branches, the terminal tail, and the handoff card with `claude --resume …` and copy.
-   - The Timeline, Diff · 5 and Artifacts · 4 tabs are placeholders on `main` (lane `w2-tabs`).
-4. **Solutions (1:00).** Open Solutions: 12 solutions and 6 active, with worktree branch chips per session. Select `mobile` to see the conflict card: two sessions write to `mobile/` in one working tree, with a "Move … to worktree" button (refused in the demo, since there is no real repo). Use the filters (Web, Mobile, NuGet, Backend, Read-only) and the detail panel (phase ledger, artifacts, codebase-memory freshness).
-5. **Settings (0:30).** Settings shows the "Start at login" row (on in the demo, in memory only; nothing is installed).
-6. **Close (0:30).** Stop with Ctrl+C. The temp folder can be deleted.
+1. **Shell + palette (0:30).** Sidebar badges, TOOLS, the six sessions. ⌘K (Ctrl K) opens the palette: type, ↑↓, Enter.
+2. **Inbox (1:00).** `free-talk-feature`'s 3 relayed questions: Send stays dimmed until all are answered. Open the "Scheduled run failed" system item and its actions.
+3. **A session (1:30).** `free-talk-feature`: header chips, Chat with the inline card and quick replies, then Timeline (lanes, scrubber, ▶), Diff (files, "Not committed…"), Artifacts, and the right panel's agents, terminal tail and handoff card.
+4. **Solutions + New session (1:00).** The `mobile` conflict card; then "+ New session": task first, pills, read-only chips locked, the live summary with worktree paths.
+5. **Schedules, Artifacts, History, Tools, Settings (1:00).** The 14-run strips and loop cards; filters and search; the Codebase Memory strip; the seven Settings sections.
 
-Once the three lanes are merged, the same demo also covers the New-session modal, Timeline / Diff / Artifacts, Schedules & loops, Artifacts, History, the embedded tools, all Settings sections and the palette.
+For the real thing, see *How to run*, or run `node tools/smoke/real-cli.ts` for a 10-second end-to-end on Haiku.
 
 ## Open for the developer
-From `docs/decisions.md` → *Open for the developer*:
-- Whether driving Claude Code from a local tool fits the Max subscription terms (handoff README open decision).
-- The router `AGENTS.md` asks agents to always confirm session-start answers via AskUserQuestion; Switchboard pre-fills them from its form (M5.2). If agents keep re-asking, the router may need a Living-document amendment. Outside this repo, so not touched.
-
-Added by this run:
-- **Approve and do the three lane merges.** Merge `lane/w1-tools`, `lane/w2-newsession` and `lane/w2-tabs`, following the notes in `.loop/questions.md`. Then run `npm test`, `npm run e2e` and the full visual pass, fold the lanes' `.loop/*-<lane>.md` files, and tick the 13 BACKLOG boxes. The worktrees under `.worktrees/` can be removed after that.
-- **The D13 final-verify checks 1 and 2 were not run.**
-  - Check 1 is the real-path E2E scenario: New-session modal → chat → Inbox → Pause/Resume → Detach/Attach → Diff → schedule "Run now" → History. It needs the unmerged items.
-  - Check 2 is the real-CLI smoke on Haiku. It was outside this step's read-only brief.
-  - Run both after the merges.
-- **The mobile clone's location** (smoke finding): scan one level deeper under `mobile/`, or move the clone to match the router.
-- **The permission mode:** auto instead of `acceptEdits` once it is verified on a model that supports it (M0.1 / M0.2 assumptions; a documented zero-cost switch exists in `docs/spike-m0.md`).
-- **The embedded-tool iframe** in `lane/w1-tools` has no `sandbox` attribute: decide at merge time whether to add one.
+- **Max subscription terms:** whether driving Claude Code from a local tool fits your plan (handoff README open decision).
+- **Router `AGENTS.md`:** Switchboard pre-fills the session-start answers (M5.2), and in the real-CLI smoke the agent confirmed them in one line instead of asking. If agents still re-ask, the router may need a Living-document amendment. That's outside this repo, so it wasn't touched.
+- **Two terminal-tail renderers** remain: M4.3's `right-panel.ts` and M4.4's `session/terminal-tail.ts`. The Timeline's version renders a successful result as `✓ <label>`, while the right panel shows its text verbatim. Pick one canonical rendering; they weren't merged into one because the behaviour differs.
+- **The lane branches** (`lane/w1-*`, `lane/w2-*`) are kept for reference and can be deleted: `git branch -D lane/w1-inbox lane/w1-solutions lane/w1-tools lane/w2-session lane/w2-newsession lane/w2-tabs`.
+- **"1 agents"** in the right panel's summary copies the prototype's wording; say if you want a singular.
 
 ## Appendix: every ASSUMED line, grouped by item
+
+This is the overnight record. The morning session's lines (merges, D6, nested checkout, iframe, smoke) are at the end of `.loop/questions.md`, and the three late lanes' own lines are in `.loop/questions-w1-tools.md`, `-w2-newsession.md` and `-w2-tabs.md`.
 Format of each line: decision · why · how to revert (verbatim from the loop files, with the `- ASSUMED <item> ·` prefix moved into the heading).
 
 <!-- generated from .loop/questions.md: 246 ASSUMED lines -->

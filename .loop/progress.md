@@ -1,7 +1,7 @@
 ## Current
-item: (none) · run finished. Final verification done on main (docs/delivery-report.md). 26 of 39 backlog items on main; 13 Blocked by the lane merge step (lane/w1-tools, lane/w2-newsession, lane/w2-tabs), waiting for the developer's merge approval (LOOP.md gate 4). Next (developer): approve + do the three merges, then run the full suites, the full visual pass and the D13 final-verify checks 1 (real-path E2E) and 2 (real-CLI smoke), which were not run (.loop/questions.md → Final verification)
-attempt: 1/5 (final verification; 1 fix/verify round)
-last oracle: PASS · clean install `rm -rf node_modules dist && npm ci` ok (129 packages, 0 vulnerabilities) · `npm run typecheck` green · `SWITCHBOARD_TEST_PORTS=4970-4979 npm test` 64 files, 662 passed + 1 expected fail (it.fails GET /api/system until M5.3 merges) · `npm run build` ok · `npm run e2e` 32/32 (incl. the 10 visual specs, D10 gate green) · audit: 127.0.0.1-only bind, guard sweep 561 checks / 0 failures over every registered route incl. /hub, no shell:true / exec / execSync / string commands, no iframe on main; contract: every route + hub event name present, 7 route areas 501 on main (M4.5, M5.3, M7.1, M7.3, M7.4, M8.1, M8.2), scheduleRun + system events not emitted on main · fix 414c1ca (win32 test litter) → typecheck + npm test green again, no litter · read-only smoke on 127.0.0.1:4971 with the real workspace: 38 solutions, GET /api/solutions 200, GET /api/system 501 (M5.3), GETs only, no sessions, nothing written under the workspace, docs/visual/smoke-solutions.png · nothing listening on 4970–4979 afterwards
+item: (none) · delivery complete 2026-09-28. All 39 backlog items on main (the three late lanes merged in the developer-approved morning session: 9432139, b72a192, fca998c). Follow-ups done: D6 auto + acceptEdits fallback (84fb3a1), iframe sandbox (4368cdc), nested mobile checkout + one dirty-file parser (032992d), D13 walkthrough E2E (8176e7f), D13 real-CLI smoke pass (c055847), visual reports regenerated (05fb890). See docs/delivery-report.md.
+attempt: n/a
+last oracle: PASS · clean install · typecheck green · npm test 913/913 (94 files) · build ok · npm run e2e 84/84 (walkthrough + 22 visual specs; full pass gates all 14 surfaces) · real-CLI smoke on Haiku pass · nothing listening on 4970–4979
 ## Done
 - M0.1 ✓ 2026-09-27 (commit 4131f06) · plan: read --help; ~23 Haiku probes in .spike/sandbox/<scenario>; fixtures + manifest in tools/fake-claude/fixtures; docs/spike-m0.md; oracle = node -e NDJSON parse
 - M0.2 ✓ 2026-09-27 (commit: see git log "M0.2: Questions & permissions") · attempts 1/5 · plan: probe2.mjs control host in .spike; (a) native `--permission-prompt-tool stdio` worked first time → (b)/(c) skipped; 14 Haiku processes (ask-2q, perm-allow, perm-deny, noflag, multiselect, 240 s + 20 min waits, interrupt/cancel, resume, subagent perm/ask, initialize + set_permission_mode); 11 fixtures + manifest entries; verdict: M3.1 uses the stdio control protocol
@@ -33,19 +33,8 @@ last oracle: PASS · clean install `rm -rf node_modules dist && npm ci` ok (129 
 - M9.3 ✓ 2026-09-28 (commit: see git log "M9.3: Full visual pass") · attempts 3/5 (1 red: my own Solutions landmark expected the conflict card while the app opened on its first row → the pass selects `mobile` like the prototype; 1 red: the D10 gate found the drift, prod-monitoring's sidebar row 35 px vs 49 px, empty mode line) · plan: run every visual spec on merged main; new tests/e2e/visual/full-pass.spec.ts (every SPEC view + modal: sidebar with data + selected state on each, main column / view box / landmarks of implemented views, modal chrome, pending merge / pending 501 data listed, advisory pixel diffs + side-by-side); fix drifts on main only (`.sb-session-mode:empty::before`); lanes' own visual suites re-run read-only; per-view results in docs/visual/full-pass.md + README → Full pass; existing reports regenerated on main
 - Final verification ✓ 2026-09-28 (audit fix 414c1ca "Final: audit fixes"; report commit "Delivery report") · attempts 1/5 (one fix/verify round) · plan: clean install + typecheck / unit / build / e2e + visual on ports 4970–4979; security audit (bind, guard sweep over every registered route incl. /hub, shell/exec grep, iframes) + contract audit against contracts/local-api.md (routes, codes, payload fields, hub events); fix mechanical findings only (win32 LoginService tests littered the repo root → run from their temp dir; 33 empty folders removed); D13 prototype-string grep; read-only smoke (D12) on 4971 with the real workspace root, temp data dir, no demo, CLIs pointed at /usr/bin/false, GETs only, screenshot docs/visual/smoke-solutions.png, find check that nothing under the workspace changed; demo walk-through on 4972 for the demo script; docs/delivery-report.md (+ every ASSUMED line grouped by item)
 ## Blocked
-- M7.3 · lane/w1-tools not merged: the merge step's conflict resolution was refused by the tool permission check ("Merge Without Review"), merge aborted; lane intact at 314aabc, worktree .worktrees/w1-tools kept · needs the developer's merge approval (.loop/questions.md → Wave 1 · merge step)
-- M7.4 · same (lane/w1-tools not merged)
-- M8.1 · same (lane/w1-tools not merged)
-- M8.2 · same (lane/w1-tools not merged)
-- M5.1 · lane/w2-newsession not merged: the Wave 2 merge step's conflict resolution (src/server/app.ts) was refused by the tool permission check ("Modify Shared Resources"), merge aborted; lane intact at dd3b191, worktree .worktrees/w2-newsession kept · needs the developer's merge approval (.loop/questions.md → Wave 2 · merge step)
-- M5.2 · same (lane/w2-newsession not merged)
-- M5.3 · same (lane/w2-newsession not merged)
-- M7.1 · same (lane/w2-newsession not merged)
-- M4.4 · lane/w2-tabs not merged: the Wave 2 merge step's conflict resolution was refused by the tool permission check ("Merge Without Review"), merge aborted; lane intact at 09fd1ea, worktree .worktrees/w2-tabs kept · needs the developer's merge approval (.loop/questions.md → Wave 2 · merge step)
-- M4.5 · same (lane/w2-tabs not merged)
-- M4.6 · same (lane/w2-tabs not merged)
-- M7.2 · same (lane/w2-tabs not merged)
-- M8.3 · same (lane/w2-tabs not merged)
+- (none) · the 13 items blocked by the overnight merge step were merged on 2026-09-28 (9432139, b72a192, fca998c)
+
 ## Breaker
 consecutive_blocked: 0
 note: all thirteen Blocked items are blocked by the Wave 1 / Wave 2 merge steps (tool permission check on conflict resolution), not by failed attempts
