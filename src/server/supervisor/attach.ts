@@ -20,7 +20,8 @@ import path from 'node:path';
 import type { AttachWarningReason } from '../../core/api.ts';
 import { textLabel, toolEventKind, toolLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { type ToolPayload, type UserPayload, clip, clipInput } from '../../core/event-payload.ts';
-import { entriesSince, parseTranscript, transcriptItems } from '../../core/transcript-sync.ts';
+import { type ContextState, contextFromTranscript, readContextState } from '../../core/context-meter.ts';
+import { entriesSince, newestChain, parseTranscript, transcriptItems } from '../../core/transcript-sync.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -245,7 +246,11 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     }
   }
 
-  const patch: { lastTranscriptUuid?: string; lastActivityAt?: string } = {};
+  const patch: { lastTranscriptUuid?: string; lastActivityAt?: string; context?: ContextState } = {};
+  // D49: the context meter from the whole main chain (what the terminal did included): its last usage and compaction.
+  const stored = readContextState(session.context);
+  const context = contextFromTranscript(stored, newestChain(entries));
+  if (context !== stored && JSON.stringify(context) !== JSON.stringify(stored)) patch.context = context;
   if (slice.tip) patch.lastTranscriptUuid = slice.tip;
   const lastTs = counts.lastTs;
   if (lastTs !== null && (!session.lastActivityAt || lastTs > session.lastActivityAt)) patch.lastActivityAt = lastTs;

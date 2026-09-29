@@ -40,6 +40,10 @@ import {
   startupDelayMs,
   holdToken,
   absorbable,
+  usageToken,
+  compactToken,
+  type UsageSpec,
+  type CompactSpec,
   writeToken, autoModeSupported } from './scenarios.ts';
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
@@ -130,6 +134,10 @@ interface TurnState {
   readonly remoteAnswerMs: number | null;
   /** D43 `[fake:workflow]` / `[fake:bg-task]`: the reshaped `bg-bash` recording (its end included). */
   readonly launch: LaunchSpec | null;
+  /** D49 `[fake:usage]`: the main agent's context tokens (and the reported window). */
+  readonly usage?: UsageSpec | null;
+  /** D49 `[fake:compact]`: a compaction written right after the turn's `init` (once). */
+  compact?: CompactSpec | null;
   open: OpenRequest | null;
 }
 
@@ -802,7 +810,18 @@ export class Runner {
       if (template) steps = applyMaxTurns(steps, this.args.maxTurns, template);
     }
 
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, open: null };
+    // D49: orthogonal tokens (any turn): the context size and a compaction.
+    const usage = msg.fired ? null : usageToken(msg.text);
+    if (usage !== null && 'error' in usage) {
+      await this.crash(`fake-claude: [fake:usage]: ${usage.error}`);
+      return 'crash';
+    }
+    const compact = msg.fired ? null : compactToken(msg.text);
+    if (compact !== null && 'error' in compact) {
+      await this.crash(`fake-claude: [fake:compact]: ${compact.error}`);
+      return 'crash';
+    }
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, usage, compact, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
@@ -1185,10 +1204,25 @@ export class Runner {
     if (turn.tool) this.patchTool(line, turn.tool);
     if (turn.launch) this.patchLaunch(line, turn.launch);
     if (turn.say !== null) this.patchSay(line, turn.say);
+    if (turn.usage) this.patchUsage(line, turn.usage);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
     this.writeJson(line);
     this.transcript?.onStdout(line);
+    if (turn.compact && line['type'] === 'system' && line['subtype'] === 'init') {
+      // D49: the compaction comes right after the turn's start, once.
+      const spec = turn.compact;
+      turn.compact = null;
+      const boundary: JsonObject = {
+        type: 'system',
+        subtype: 'compact_boundary',
+        session_id: this.sessionId,
+        uuid: randomUUID(),
+        compact_metadata: { trigger: spec.trigger, pre_tokens: spec.preTokens, ...(spec.postTokens !== null ? { post_tokens: spec.postTokens } : {}) },
+      };
+      this.writeJson(boundary);
+      this.transcript?.onCompact(boundary, spec);
+    }
     if (line['type'] === 'result') this.onResult(line);
     return line;
   }
@@ -1309,6 +1343,29 @@ export class Runner {
           transcriptDir,
           scriptPath,
         };
+      }
+    }
+  }
+
+  /**
+   * D49 `[fake:usage]`: every main-agent assistant line's usage sums to `tokens`
+   * (input 3, the rest split between cache read and cache creation; `iterations`
+   * dropped); with a window, the result's `modelUsage` entries report it.
+   */
+  private patchUsage(line: JsonObject, spec: UsageSpec): void {
+    if (line['type'] === 'assistant' && line['parent_tool_use_id'] === null) {
+      const message = asObject(line['message']);
+      const usage = asObject(message?.['usage']);
+      if (!usage) return;
+      const input = Math.min(3, spec.tokens);
+      const read = Math.floor((spec.tokens - input) / 2);
+      usage['input_tokens'] = input;
+      usage['cache_read_input_tokens'] = read;
+      usage['cache_creation_input_tokens'] = spec.tokens - input - read;
+      delete usage['iterations'];
+    } else if (line['type'] === 'result' && spec.window !== null) {
+      for (const entry of Object.values(asObject(line['modelUsage']) ?? {})) {
+        if (isObject(entry)) entry['contextWindow'] = spec.window;
       }
     }
   }

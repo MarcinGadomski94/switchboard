@@ -87,6 +87,7 @@ describe('sessions', () => {
       branch: null,
       // D40 (0012): no branching.
       branching: null,
+      context: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

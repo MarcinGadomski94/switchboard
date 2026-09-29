@@ -852,6 +852,53 @@ a.sb-agent--link:focus-visible {
   gap: 8px;
 }
 
+/*
+ * D49 · the context bar (docs/chat.md → Context bar; not in the prototype): a 4 px
+ * track like the machine footer's meters, filled green (status done) below 60 %,
+ * yellow (status need) from 60 %, red (status fail) from 80 %, empty while unknown;
+ * the text in the footer's mono 11 px.
+ */
+.sb-chat-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-chat-context-track {
+  flex: 1;
+  min-width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-card);
+  overflow: hidden;
+}
+
+.sb-chat-context-fill {
+  height: 100%;
+  background: var(--status-done);
+}
+
+.sb-chat-context[data-band='warn'] .sb-chat-context-fill {
+  background: var(--status-need);
+}
+
+.sb-chat-context[data-band='high'] .sb-chat-context-fill {
+  background: var(--status-fail);
+}
+
+.sb-chat-context-text {
+  flex: none;
+  white-space: nowrap;
+}
+
+.sb-chat-context-compacted {
+  flex: none;
+  white-space: nowrap;
+  color: var(--muted-3);
+}
+
 .sb-chat-quick {
   display: flex;
   gap: 6px;

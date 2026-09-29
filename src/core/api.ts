@@ -14,6 +14,7 @@
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { AnsweredOn } from './remote-control.ts';
+import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { SessionMachine } from './peers.ts';
 import type {
@@ -454,6 +455,16 @@ export interface Session {
    */
   readonly closedAt?: string | null;
   /**
+   * Additive (D49, migration 0015): how full the main agent's context window is
+   * and when the CLI last compacted it (`docs/chat.md` → *Context bar*). `null`
+   * for a session Switchboard never ran a process for and has no reading of (the
+   * demo seed: no bar). A session with a process but no reading yet has
+   * `tokens: null` ("Context —"). The window follows the session's model choice.
+   * The server always sends it; optional here so older payloads and fixtures
+   * still type-check.
+   */
+  readonly context?: SessionContext | null;
+  /**
    * Additive (D48, `docs/peers.md`): the paired machine the session runs on, only
    * on a peer's session (its `id` is then a remote id, `r~<machine>~<id>`); absent
    * for this machine's own sessions. `state` other than `online` = unreachable now
@@ -461,6 +472,16 @@ export interface Session {
    */
   readonly machine?: SessionMachine | null;
 }
+
+/**
+ * Additive (D49): `Session.context` (`resolveContext` in `src/core/context-meter.ts`):
+ * `tokens` (`null` = unknown), `window`, `windowSource` (`reported` by the CLI's
+ * `modelUsage` or derived from the `model` name), `model`, `percent`, `band`
+ * (`ok` < 60 % ≤ `warn` < 80 % ≤ `high`, `unknown`), `updatedAt`, `compaction`
+ * (`{at, trigger, preTokens, postTokens}` of the last one, or `null`) and
+ * `compactedRecently` (from a compaction until the next turn starts).
+ */
+export type SessionContext = ResolvedContext;
 
 /**
  * Additive (D31): a session's model and effort (`Session.model`).

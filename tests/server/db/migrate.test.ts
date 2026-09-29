@@ -13,6 +13,7 @@ import {
   migrate,
 } from '../../../src/server/db/migrate.ts';
 import { openStore, storeFile } from '../../../src/server/db/store.ts';
+import { EMPTY_CONTEXT } from '../../../src/core/context-meter.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 
 let tmp: string;
@@ -387,6 +388,29 @@ describe('0014 worktree parent closed (D47 ruling)', () => {
     const store = await openStore(file);
     try {
       expect(await store.worktrees.update('w-old', { parentClosedAt: ts })).toMatchObject({ parentClosedAt: ts });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0015 session context (D49)', () => {
+  it('adds a nullable sessions.context: existing rows have none; the store round-trips the JSON', async () => {
+    const file = path.join(tmp, 'existing-context.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 15)).toMatchObject({ name: 'session_context' });
+    migrate(database, shipped.filter((m) => m.version <= 14));
+    const ts = '2026-09-29T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'old', 'c-old', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 14).map((m) => m.version));
+    expect(database.prepare('SELECT context FROM sessions').all()).toEqual([{ context: null }]);
+    database.close();
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ context: null });
+      const context = { ...EMPTY_CONTEXT, tokens: 124_000, model: 'claude-opus-4-7', windows: { 'claude-opus-4-7': 200_000 }, updatedAt: ts };
+      expect(await store.sessions.update('s-old', { context })).toMatchObject({ context });
     } finally {
       await store.close();
     }

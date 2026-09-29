@@ -41,3 +41,5 @@ D38: `session-solutions.ts` (which solution a written file puts in a workspace s
 D40: `branching.ts` (the epic/task branching model: `epicBranchName`, branch-name checks after `git check-ref-format`, the cut point, the answers block's Branching lines; shared by the server and the form's Branching section), documented in `docs/worktrees.md` → *Epic/task branching (D40)* and `docs/new-session.md` → *Branching (D40)*.
 
 D47: `stacking.ts` (stacked task branches: the typed parent, a key or a branch name; its per-repo matches, resolved base and PR target; the parent's PR from gh; the pre-fill from the task text; the stacked Branching lines; the parent-merged message), documented in `docs/worktrees.md` → *Stacked task branches (D47)* and `docs/new-session.md` → *Parent (D47)*.
+
+D49: `context-meter.ts` (the context window meter: the CLI's context-token formula, the reported / derived window, percent and color band, compaction state, the transcript replay), documented in `docs/chat.md` → *Context bar*.

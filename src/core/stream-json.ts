@@ -233,6 +233,24 @@ export interface ThinkingTokensMessage extends Base {
   readonly parentToolUseId: string | null;
 }
 
+/**
+ * D49: `system/compact_boundary`, the CLI compacted the conversation (read in the
+ * CLI 2.1.284 binary, not recorded: `{type:"system", subtype:"compact_boundary",
+ * session_id, uuid, compact_metadata: {trigger, pre_tokens, post_tokens?, …},
+ * logical_parent_uuid?}`; `docs/chat.md` → *Context bar*).
+ */
+export interface CompactBoundaryMessage extends Base {
+  readonly kind: 'compact-boundary';
+  /** `auto` or `manual` (`compact_metadata.trigger`); `null` when absent. */
+  readonly trigger: string | null;
+  /** The context size before the compaction (`compact_metadata.pre_tokens`). */
+  readonly preTokens: number | null;
+  /** The CLI's estimate of the context after it (`compact_metadata.post_tokens`, optional). */
+  readonly postTokens: number | null;
+  /** A subagent's Agent `tool_use` id when the line carries one (not seen in the binary), else `null`. */
+  readonly parentToolUseId: string | null;
+}
+
 /** Any JSON object the parser does not lift (`system/commands_changed`, …). */
 export interface OtherMessage extends Base {
   readonly kind: 'other';
@@ -269,6 +287,7 @@ export type StreamMessage =
   | TaskNotificationMessage
   | PermissionDeniedMessage
   | ThinkingTokensMessage
+  | CompactBoundaryMessage
   | OtherMessage
   | InvalidLine;
 
@@ -415,6 +434,17 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         estimatedTokensDelta: num(obj['estimated_tokens_delta']),
         parentToolUseId: str(obj['parent_tool_use_id']),
       };
+    case 'compact_boundary': {
+      const metadata = rec(obj['compact_metadata']);
+      return {
+        ...base,
+        kind: 'compact-boundary',
+        trigger: str(metadata?.['trigger']),
+        preTokens: num(metadata?.['pre_tokens']),
+        postTokens: num(metadata?.['post_tokens']),
+        parentToolUseId: str(obj['parent_tool_use_id']),
+      };
+    }
     default:
       return { ...base, kind: 'other', type: 'system', subtype };
   }
