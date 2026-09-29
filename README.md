@@ -139,10 +139,11 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 **Right panel**
 - **Agent overview:** a table of Agent · Description · Solution · Status for every agent. The newest status table the agent printed appears under it as a readable table ("as printed" shows the original).
 - **Agent cards** with each agent's current action. Finished subagents fold into a "✓ N finished" line, which you click to show them again.
+- **Workflow agents:** the agents a Workflow runs (orchestrator mode) are listed too: a row per workflow (its progress, e.g. "3/7 done · phase Review") with its agents under it, cards for the running ones, and "⏳ Running a workflow: … · 3/7 agents done · phase Review" in the chat. Click one to open its chat. They survive a reload and a restart (read from Claude Code's own files).
 - **The terminal tail** and the **handoff** command.
 
 **Subagent chats**
-- **Open one:** click a subagent's **Agent** step in the chat, its card, or its overview row. You see its own conversation: the brief from the main agent, its messages and tool steps, and its result.
+- **Open one:** click a subagent's **Agent** step in the chat, its card, or its overview row (a workflow agent's too). You see its own conversation: the brief from the main agent (or the workflow), its messages and tool steps, and its result.
 - **Get back:** **← Main chat**, **Esc** or the browser's Back returns you to the same spot.
 - **No composer:** subagents take no messages; reply in the main chat.
 
@@ -287,7 +288,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 `SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. [`docs/demo.md`](docs/demo.md)
 
 ### How changes are made
-- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D50). The developer's rulings win where the two differ.
+- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D51). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
 - **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `main` with the full suites green.
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.

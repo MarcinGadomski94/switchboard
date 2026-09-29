@@ -115,7 +115,7 @@ How full the main agent's context window is, directly above the quick replies (`
 A subagent's own conversation opens in the chat tab, and one step brings the developer back (`docs/decisions.md` → D36). Code: `SubagentChat.tsx` (view), `subagent-chat.ts` (copy, Esc, the main chat's remembered place), `subagentChat` / `hasSubagentChat` in `chat.ts`, `session.css` (`sb-subchat-*`); the route in `src/web/router.tsx`.
 
 - **Address:** `/sessions/{id}/agents/{agentId}` (the chat tab; the session header keeps Chat as the current tab), parsed and printed by the router; the main chat stays `/sessions/{id}`. It can be linked and reloaded.
-- **Which subagents have a chat:** a subagent started by an Agent / Task call Switchboard saw, i.e. one whose `Agent.toolUseId` is set (`hasSubagentChat`; additive on the wire, `docs/handoff/contracts/local-api.md` → *D36*). The main agent and agents seen without a call (the demo's; a Workflow's never appear, M0.1) have none.
+- **Which subagents have a chat:** a subagent started by an Agent / Task call Switchboard saw, i.e. one whose `Agent.toolUseId` is set (`hasSubagentChat`; additive on the wire, `docs/handoff/contracts/local-api.md` → *D36*). The main agent and agents seen without a call (the demo's) have none. D51: a Workflow's agent once it has a transcript (`Agent.workflow.agentId`; a queued one has none yet), see *Workflow agents' chats (D51)* below.
 - **Entry points** (each keyboard-focusable, tooltip "Open this subagent's chat"):
   - the main chat's Agent / Task **step line**: an `<a>` in the step line's own box, color and type (`sb-chat-step--link`: no underline until hovered, a pointer), `data-subagent-id`; the line of a call whose subagent has no chat stays plain text;
   - the subagent's **agent card** in the right panel (the card itself is the link; D37: a finished subagent's card shows once its "✓ N finished" line is expanded);
@@ -133,6 +133,15 @@ A subagent's own conversation opens in the chat tab, and one step brings the dev
 - **The main chat's place:** the main chat remembers its scroll position (and whether it follows new items) per session in memory for the page's life (`rememberMainChat` on every scroll), and restores it when it comes back, so returning from a subagent's chat shows it where it was left; a fresh page starts at the bottom as before. The chat tab keeps the loaded events while switching between the two, so nothing is fetched again.
 - **Live:** the subagent chat follows the same `/hub` `event` stream and the session detail's reloads (its status, its activity).
 - Test ids: `subagent-bar` (`data-agent-id`, `data-status`), `subagent-back`, `subagent-dot`, `subagent-title`, `subagent-status`, `subagent-chat` (`data-state`: `loading` / `missing`), `subagent-brief`, `subagent-brief-label`, `subagent-result` (`data-error`), `subagent-result-label`, `subagent-note`, `subagent-note-back`, `subagent-missing`, `subagent-question-link`, `question-note`; the step line's `data-subagent-id`.
+
+### Workflow agents' chats (D51)
+A Workflow's agent (`kind: 'workflow'`, `docs/derivations.md` → *Workflow agents (D51)*) opens in the same view, from its overview row or card. Its messages are not events of the session, so the view reads them from its transcript: `GET /api/sessions/{id}/workflow-agents/{agentId}/chat` (`useWorkflowChat` in `SubagentChat.tsx`), again whenever its `workflow.version` (its transcript's size) or status changes in the session detail (which follows `sessionUpdated`), so it updates while the agent runs. `subagentChat` builds the items from that answer's events, and:
+- the first bubble is labelled **`Brief from the workflow`**: the agent's first prompt without the CLI's "[Workflow harness …]" frame;
+- its **result** is the answer's `result`: its return value (the journal's `result`: a JSON code block, or the text), or its error; none while it runs;
+- the top bar reads `<label>: <phase>`, with its live action (its last tool) or status; its live line likewise;
+- the note reads `Workflow agents take no messages · reply in the main chat`;
+- `subagent-chat` has `data-state="loading"` until the first answer (`failed` when it could not be read; the view keeps what it had).
+The way back (link, Esc, Back) is D36's.
 
 ## Data
 - D45: the session view loads the detail and the events and hands them to the tab (`useSessionData`, held per session id and cached in memory per browser tab, so a revisit renders at once); while they are late, bubble placeholders stand in for the conversation (`docs/session-panel.md` → *Loading a session*). A failed events load leaves the conversation empty, as before.

@@ -476,6 +476,28 @@ Event { …, "payload": { "type": "user", "text": "Also: keep it short.", "origi
 Event { …, "kind": "text", "label": "Stopped", "payload": { "type": "result", "subtype": "error_during_execution", "isError": true, "terminalReason": "aborted_streaming", …, "stopped": true } }
 ```
 
+## Workflow agents (D51, 2026-09-29, additive)
+Developer report D51 (`docs/decisions.md` → *Workflow agents are visible*): a Workflow's agents show like subagents. Additive; nothing above changes meaning. One new route, no new event name, no migration (nothing is stored: the CLI's files are read). Details: `docs/derivations.md` → *Workflow agents (D51)*.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | /api/sessions/{id}/workflow-agents/{agentId}/chat | — | 200 WorkflowAgentChat · 404 `not-found` (no such session, or no such workflow agent with a transcript) |
+
+- **Session** gains `workflows`: the session's Workflow runs, oldest first (`WorkflowRun`: `runId`, `taskId`, `name`, `summary`, `status` (`run` / `done` / `fail` / `idle` = stopped), `phase`, `phases`, `agentCount`, `doneCount`, `failedCount`, `startedAt`, `endedAt`); `[]` when none. In `GET /api/sessions`, the detail and `sessionUpdated`.
+- **Session.agents** gains the runs' agents, after the stored agents, with `kind: "workflow"`: `id` = `<runId>--<index>` (else `<runId>--<agentId>`), `name` = the label, `description` = the phase, `solutionPath` = the solution of its cwd (else `null`), `branch: null`, `status` (`idle` + `statusText: "queued"` while queued), `toolUseId: null`.
+- **Agent** gains `workflow`: `AgentWorkflow` for a workflow agent (`runId`, `index`, `agentId` (`null` while queued), `phase`, `model`, `startedAt`, `endedAt`, `action` (`{ tool, summary, since }` while it runs, else `null`), `cwd`, `version` (grows with its transcript; reload its chat when it changes)), `null` for every other agent. The server always sends it.
+- **BackgroundTask** (`Session.activity.background`) gains `workflow` on a `workflow` task whose run is known: `{ runId, doneCount, agentCount, phase }`; absent otherwise. The UI's line then reads "Running a workflow: <summary> · 3/7 agents done · phase Review" (once `agentCount` > 0).
+- **WorkflowAgentChat:** `events` (the agent's conversation in the event shapes of *Events*: `agent-prompt` (the first is its brief), `assistant`, `tool` with its result; `agentId` = the agent's id; ids local to the answer), `result` (`{ text, isError }`: its return value, a string or a JSON code block, or its error; `null` while it runs), `version`.
+- **Changes** are published as `sessionUpdated` (and, for a live session, `activity`): the run's files are re-read at once on the stream's progress lines and every 1.5 s while a run runs.
+- **Peers (D48):** the chat route is in the peer API's allow list; through the proxy its `events` carry the remote session id like every other event (answer kind `workflow-chat`).
+
+```json
+WorkflowRun { "runId": "wf_5bf13727-e69", "taskId": "wk2etiaas", "name": "proj-3015-gtm", "summary": "GTM + Consent Mode v2 …", "status": "run", "phase": "Review", "phases": ["Implement", "Review"], "agentCount": 14, "doneCount": 9, "failedCount": 0, "startedAt": "2026-09-29T12:12:03.000Z", "endedAt": null }
+Agent { "id": "wf_5bf13727-e69--12", "kind": "workflow", "name": "review:quizzes-front", "description": "Review", "solutionPath": null, "branch": null, "status": "run", "statusText": null, "toolUseId": null,
+        "workflow": { "runId": "wf_5bf13727-e69", "index": 12, "agentId": "a66193aea95b903b2", "phase": "Review", "model": "claude-opus-5-5", "startedAt": "…", "endedAt": null, "action": { "tool": "Bash", "summary": "dotnet build", "since": "…" }, "cwd": "/…/workspace", "version": 457272 } }
+WorkflowAgentChat { "events": [Event, …], "result": null, "version": 457272 }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
