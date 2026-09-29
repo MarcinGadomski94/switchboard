@@ -144,3 +144,45 @@ test('messages queued while the turn ran come back into the composer (in order, 
   await expect(userMessage(page, 'Typed meanwhile')).toHaveAttribute('data-delivered', 'true');
   await expect(page.getByTestId('session-chat').getByTestId('chat-text').last()).toHaveText('OK');
 });
+
+test('only background work: "Stop background tasks" beside Send, with a confirmation; Esc never does it', async ({ page }) => {
+  const stops: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/background/stop')) stops.push(request.url());
+  });
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'stop-background', 'Start the dev server. [fake:background 60 npm run dev]');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  await expect(page.getByTestId('chat-activity')).toHaveAttribute('data-state', 'background', { timeout: 15_000 });
+  const offer = page.getByTestId('chat-stop-background');
+  await expect(offer).toHaveText('■ Stop background tasks');
+  // No turn runs: Send stays, and there is no Stop.
+  await expect(page.getByTestId('chat-send')).toBeVisible();
+  await expect(page.getByTestId('chat-stop')).toHaveCount(0);
+
+  // Esc does nothing here.
+  await page.getByTestId('chat-input').focus();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId('stop-background-confirm')).toHaveCount(0);
+  expect(stops).toHaveLength(0);
+
+  // The confirmation lists the task; Cancel (or Esc) closes it without stopping anything.
+  await offer.click();
+  const dialog = page.getByTestId('stop-background-confirm');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('stop-background-task')).toHaveText(['Waiting for a background task: npm run dev']);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(stops).toHaveLength(0);
+
+  await offer.click();
+  await page.getByTestId('stop-background-yes').click();
+  await expect(page.getByTestId('stop-background-confirm')).toHaveCount(0);
+  expect(stops).toHaveLength(1);
+  await expect(page.getByTestId('chat-activity')).toHaveCount(0, { timeout: 10_000 });
+  await expect(offer).toHaveCount(0);
+  const after = await detail(page, id);
+  expect(after.activity).toBeNull();
+  expect(after.live).toBe(true);
+});
