@@ -5,6 +5,7 @@ import { type Route, routePath, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import { ChatItemView } from './ChatItems.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
+import { ChatSkeleton } from './SessionSkeletons.tsx';
 import { hasSubagentChat, subagentChat } from './chat.ts';
 import { agentCards } from './right-panel.ts';
 import {
@@ -36,6 +37,8 @@ export interface SubagentChatViewProps {
   readonly activity: SessionActivity | null;
   /** The subagent's id from the address (`/sessions/{id}/agents/{agentId}`). */
   readonly agentId: string;
+  /** D45: the session's data is late: bubble placeholders stand in for the conversation. */
+  readonly placeholder?: boolean;
 }
 
 /** `true` while focus is in a text field, where Esc belongs to the field. */
@@ -87,7 +90,7 @@ function BackLink({ href, onBack, className, testId, children }: { readonly href
  * activity line; and, in the composer's place, a note that subagents take no
  * messages. The bar's link, Esc and the browser's Back return to the main chat.
  */
-export function SubagentChatView({ sessionId, session, events, activity, agentId }: SubagentChatViewProps) {
+export function SubagentChatView({ sessionId, session, events, activity, agentId, placeholder = false }: SubagentChatViewProps) {
   const { backTo } = useRouter();
   const main: Route = { view: 'session', id: sessionId, tab: 'chat' };
   const mainHref = routePath(main);
@@ -106,7 +109,13 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
   };
 
-  if (!session) return <div className="sb-chat" data-testid="subagent-chat" data-state="loading" />;
+  if (!session) {
+    return (
+      <div className="sb-chat" data-testid="subagent-chat" data-state="loading">
+        {placeholder ? <ChatSkeleton /> : null}
+      </div>
+    );
+  }
   const agent = session.agents.find((candidate) => candidate.id === agentId) ?? null;
   if (!agent || !hasSubagentChat(agent)) {
     return (
@@ -168,6 +177,7 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
         </span>
       </div>
       <div className="sb-chat" data-testid="subagent-chat" data-agent-id={agent.id} ref={scroller} onScroll={onScroll}>
+        {placeholder ? <ChatSkeleton /> : null}
         {chat.brief !== null ? (
           <div className="sb-chat-message sb-subchat-brief" data-role="user" data-testid="subagent-brief">
             <div className="sb-subchat-label" data-testid="subagent-brief-label">

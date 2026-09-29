@@ -24,6 +24,7 @@ import {
 } from './session-header.ts';
 import { ModelPicker } from './ModelPicker.tsx';
 import { RemotePopover } from './RemotePopover.tsx';
+import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
 
 /** Props of {@link SessionHeader}. */
 export interface SessionHeaderProps {
@@ -32,10 +33,14 @@ export interface SessionHeaderProps {
   readonly session: Session | null;
   /** `true` when the service answered 404 for the id. */
   readonly missing: boolean;
+  /** D45: why the session could not be loaded (any failure but a 404), shown in the error line; `null` otherwise. */
+  readonly loadError?: string | null;
+  /** D45: the session's data is late: the title bar and root line placeholders show. */
+  readonly placeholder?: boolean;
   readonly tab: SessionTab;
-  /** Changed files (`SessionDetail.files`) and session artifacts, for the tab counts. */
-  readonly files: number;
-  readonly artifacts: number;
+  /** Changed files (`SessionDetail.files`) and session artifacts, for the tab counts; D45: `null` while the detail loads (no count). */
+  readonly files: number | null;
+  readonly artifacts: number | null;
   /** A header action changed the session: reload it. */
   readonly onChanged: () => void;
 }
@@ -73,7 +78,7 @@ function isAttachWarning(error: unknown): AttachWarning | null {
  * waits (`useCloseSession`), then the Inbox opens. A closed session (reached by
  * its address) shows **Reopen** there instead.
  */
-export function SessionHeader({ sessionId, session, missing, tab, files, artifacts, onChanged }: SessionHeaderProps) {
+export function SessionHeader({ sessionId, session, missing, loadError = null, placeholder = false, tab, files, artifacts, onChanged }: SessionHeaderProps) {
   const { navigate } = useRouter();
   const [busy, setBusy] = useState<'pause' | 'resume' | 'detach' | 'attach' | 'remote' | 'reopen' | null>(null);
   // D33: closed from the session view: the Inbox opens (the sidebar follows `sessionUpdated`).
@@ -82,7 +87,7 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
   const [warning, setWarning] = useState<readonly AttachWarningReason[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [popover, setPopover] = useState(false);
-  const shownError = error ?? closer.error?.text ?? null;
+  const shownError = error ?? closer.error?.text ?? loadError;
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -137,12 +142,13 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
         {session ? (
           <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
         ) : (
+          // D45: nothing while the session loads (its placeholder once it is late); the id when it could not be loaded.
           <div className="sb-sv-name" data-testid="session-name">
-            {sessionId}
+            {placeholder ? <TitleSkeleton /> : missing || loadError ? sessionId : null}
           </div>
         )}
         <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
-          <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>
+          {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
         <div className="sb-sv-actions">
           {session ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
@@ -263,6 +269,8 @@ export function SessionHeader({ sessionId, session, missing, tab, files, artifac
       ) : null}
       {closer.dialog}
       <div className="sb-sv-chips" data-testid="session-chips">
+        {/* D45 (developer ruling): chip-shaped blocks hold the row while the session loads, so the tabs do not jump. */}
+        {placeholder ? <ChipSkeletons /> : null}
         {(session?.chips ?? []).map((chip) => (
           <span key={`${chip.k} ${chip.v}`} className="sb-sv-chip" data-testid="session-chip" data-loop={chip.loop ? 'true' : 'false'}>
             <span className="sb-sv-chip-k">{chip.k} </span>

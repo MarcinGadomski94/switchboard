@@ -1,0 +1,133 @@
+/*
+ * D45 · the session view's loading placeholders (docs/session-panel.md → Loading a
+ * session). Not in the prototype: skeleton shapes on the SPEC tokens (a --bg-card
+ * fill with a 1px --border-row line) and a light shimmer (a --bg-selected-nav
+ * band sweeping across), static with prefers-reduced-motion. They show only while
+ * a session's data is late, in the places the loaded parts take, so the loaded
+ * views are unchanged.
+ */
+.sb-skel {
+  display: block;
+  box-sizing: border-box;
+  flex: none;
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius-chip);
+  background-color: var(--bg-card);
+  background-image: linear-gradient(90deg, transparent 0%, transparent 35%, var(--bg-selected-nav) 50%, transparent 65%, transparent 100%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 100% 0;
+  animation: sb-skel-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes sb-skel-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-skel {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* Header: the title bar in the name's place, the root line in the root path's place. */
+.sb-skel-title {
+  width: 180px;
+  height: 16px;
+}
+
+.sb-skel-root {
+  width: 240px;
+  height: 11px;
+}
+
+/* Header chips (D45 developer ruling): the loaded chip's height (11.5px mono line + 2px paddings + 1px lines) and 5px radius, so the row keeps its height. */
+.sb-skel-chip {
+  height: 21px;
+  border-radius: var(--radius-chip-lg);
+}
+
+/* Chat: bubble shapes in the conversation (its padding and gap), the developer's on the right, the agent's on the left. */
+.sb-skel-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sb-skel-bubble {
+  border-radius: var(--radius-question);
+}
+
+.sb-skel-bubble[data-side='user'] {
+  align-self: flex-end;
+  height: 42px;
+}
+
+.sb-skel-bubble[data-side='agent'] {
+  align-self: flex-start;
+}
+
+.sb-skel-bubble[data-index='0'] {
+  width: 44%;
+}
+
+.sb-skel-bubble[data-index='1'] {
+  width: 72%;
+  height: 84px;
+}
+
+.sb-skel-bubble[data-index='2'] {
+  width: 30%;
+}
+
+.sb-skel-bubble[data-index='3'] {
+  width: 56%;
+  height: 62px;
+}
+
+/*
+ * Right panel: the overview's block (the overview's padding and table width) and two
+ * agent cards where the loaded cards start (under the 50px "Agents & solutions" row),
+ * with the card list's padding and gap, a one-line card's height and the card radius.
+ */
+.sb-skel-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-skel-overview {
+  padding: 14px 12px 0;
+}
+
+.sb-skel-overview-block {
+  height: 96px;
+  border-radius: var(--radius-card);
+}
+
+.sb-skel-cards {
+  padding: 50px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-skel-card {
+  height: 56px;
+  border-radius: var(--radius-card);
+}
+
+/* "Loading session…": for screen readers only. */
+.sb-skel-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

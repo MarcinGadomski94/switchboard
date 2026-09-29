@@ -8,6 +8,7 @@ import { PANE_ID, PaneHideButton } from '../../shell/Panes.tsx';
 import { AgentOverview } from './AgentOverview.tsx';
 import { hasSubagentChat } from './chat.ts';
 import { HandoffCard } from './HandoffCard.tsx';
+import { PanelSkeleton } from './SessionSkeletons.tsx';
 import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, terminalLines } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
@@ -31,9 +32,21 @@ const finishedExpanded = new Map<string, boolean>();
  * "✓ N finished" line under the cards, which expands them in place; the summary
  * still counts every agent. D41: the overview's label row holds the panel's hide
  * button; while `hidden` the panel stays mounted but is inert and hidden from
- * assistive technology (and the "as printed" popover closes).
+ * assistive technology (and the "as printed" popover closes). D45: while the
+ * detail is late (`placeholder`), the overview's block and two card blocks stand
+ * in (`PanelSkeleton`).
  */
-export function RightPanel({ sessionId, session, hidden = false }: { readonly sessionId: string; readonly session: SessionDetail | null; readonly hidden?: boolean }) {
+export function RightPanel({
+  sessionId,
+  session,
+  hidden = false,
+  placeholder = false,
+}: {
+  readonly sessionId: string;
+  readonly session: SessionDetail | null;
+  readonly hidden?: boolean;
+  readonly placeholder?: boolean;
+}) {
   const activity = useLiveActivity(sessionId, session);
   const [expanded, setExpanded] = useState(() => finishedExpanded.get(sessionId) ?? false);
   const toggle = (): void => {
@@ -90,6 +103,8 @@ export function RightPanel({ sessionId, session, hidden = false }: { readonly se
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
           <HandoffCard attached={session.attached} command={session.resumeCommand} cwd={session.cwd} />
         </>
+      ) : placeholder ? (
+        <PanelSkeleton />
       ) : null}
     </aside>
   );
