@@ -9,6 +9,7 @@ Every item is built from stored state only (D13); nothing from the prototype's m
 |---|---|---|
 | `schedule-run-failed` | `scheduleRunFinished(runId)` (the scheduler's hook: M7.1 calls it when a run fails, `docs/schedules.md`) and `sync()` | a `schedule_runs` row with `result = 'fail'` |
 | `worktree-removable` | the M2.2 manager's `worktreeRemovable` event (subscribed in the constructor) and `sync()` | a live worktree flagged `removable` (PR `MERGED` and removal allowed, `docs/worktrees.md`) |
+| `parent-merged` (D47) | the manager's `onParentMerged` (subscribed in the constructor) and `sync()` | a live stacked worktree whose parent's PR was seen `MERGED` (`parent_merged_at`, `docs/worktrees.md` → *Stacked task branches (D47)*) |
 
 `sync()` raises the items of every failed run and removable worktree that has none yet (runs first, then worktrees, oldest first). `main.ts` runs it once the port is bound and then every 30 s (`startWatching()`, `DEFAULT_SYNC_MS`), so a failed run recorded in the schedule tables by anything, or while the service was down, still produces its item. Demo mode does not watch (the demo seeds its own two items). `inboxChanged { count }` is published whenever an item is raised (once per sync) or closed.
 
@@ -39,6 +40,13 @@ The Inbox shows them through `systemItem()` (`src/server/inbox/wire.ts`): kind l
 - chip `<repo> ⎇ <branch>`; `sessionId` = the worktree's session.
 - actions: `remove-worktree` Remove worktree · `keep` Keep.
 
+**Parent merged** (D47, `parentMergedItem`):
+- label `Parent merged`; source `worktrees`; status `need`; dated when the merge was seen (`parent_merged_at`).
+- title `Parent <parent> merged — retarget and rebase <task>`.
+- detail `<repo> · PR #<n> <parent> was merged into <parent's base>[ (squash-merged) | (merge kind unknown)]. The session was asked to retarget the PR to <base> (gh pr edit <task> --base <base>) and rebase: <git rebase …>, then report.`; for a closed session `… The session is closed, so nothing was sent to it: retarget the PR …`.
+- chip `<repo> ⎇ <task>`; `sessionId` = the worktree's session; action `dismiss` Dismiss.
+- **The session message** (`parentMergedMessage`, origin `service`) goes out only from the call that raised the item (so once per worktree), through the supervisor (`SystemItemServiceOptions.sessions`; a paused session is resumed by it); refused (a terminal owns the session, the service is closing) → the session's outbox (`pending_messages` kind `parent-merged`); a closed session gets nothing.
+
 ## Actions (`POST /api/inbox/{id}/actions/{action}` → 204)
 The route asks the question pipeline first (permission items), then this service. An action runs, then the item closes with `closed_action` = the action and `inboxChanged` goes out; a refused action leaves it open.
 
@@ -47,7 +55,7 @@ The route asks the question pipeline first (permission items), then this service
 | `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype): since M5.1 the form starts from it (`docs/new-session.md`); the dialog still carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
 | `retry-run` | `ScheduleRunner.runNow(scheduleId)`, then closes (a new failure raises a new item) | — |
 | `remove-worktree` | `WorktreeManager.remove(worktreeId)` (gap #3: refused with uncommitted or unpushed work, never `--force`, the branch is kept); a folder already removed counts as done | — |
-| `dismiss`, `keep` | close the item | — |
+| `dismiss`, `keep` | close the item (D47's parent-merged item has only `dismiss`) | — |
 
 Refusals: unknown id `404`; an action the item does not list `400 {error:"unknown-action"}`; already closed or a second click while one runs `409 {error:"not-open"|"busy"}`; the schedule or worktree it points at is gone `409 {error:"gone"}`; a worktree refusal as the other worktree routes (`409 {error:"uncommitted"|"unpushed"|"git-failed", message}`); Retry run while a run of the schedule is still in progress `409 {error:"busy", message:"a run of this schedule is still in progress"}`; Retry run on a service with no scheduler plugged in `501 {error:"not-implemented", item:"M7.1", message:"the scheduler is not available yet"}` (only services built without one, e.g. in tests; main.ts and buildApp plug it in). The Inbox shows the message on its refusal line (`Not sent: …`).
 
@@ -57,5 +65,6 @@ Refusals: unknown id `404`; an action the item does not list `400 {error:"unknow
 
 ## Tests
 - `tests/server/inbox/system-items.test.ts`: failed runs inserted into the schedule tables → items via `sync()`, the hook and `startWatching` (shapes, green streak, branches, prefill, idempotence, `inboxChanged`); every action and refusal through the route; "PR merged" from the real manager (temp git repo, fake gh) through `worktreeRemovable`, Remove refused while uncommitted then removed with the branch kept, Keep, sync of a removable worktree without an item, an already removed folder; the pure builders.
+- D47: `tests/server/inbox/parent-merged.test.ts` (sync raises the parent-merged item and the message once, the outbox fallback, a closed session) and `tests/server/worktrees/stacking.test.ts` (the real poll: squash and merge-commit merges, the item and the message once, a closed session).
 - `tests/e2e/inbox-system.spec.ts` (oracle, real server, no demo): failed runs inserted before start → the items in the Inbox; Retry run refused (501 line); Dismiss; Open fix session → the modal with the prefill; a session started with a worktree whose PR the fake gh reports merged → the item arrives live after the first PR check; Remove worktree refused while a file is uncommitted, then the folder is removed and the branch kept.
 - Visual: the system item detail is part of the M3.2 visual gate (`tests/e2e/visual/inbox.spec.ts`, the demo's `nightly-build-verify` item against the prototype); M3.3 adds no new markup.

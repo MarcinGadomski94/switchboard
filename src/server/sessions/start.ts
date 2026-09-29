@@ -79,7 +79,10 @@ export async function resolveSessionFolder(
  * cut from `origin/<epic>` / `origin/<base>` / the origin default branch, reuse an
  * existing task branch; 409 `fetch-failed` / `base-missing` /
  * `branch-checked-out`), dropped repos leave `solutions`, the branching is
- * stored and the first message carries the Branching lines. D42: its `model` /
+ * stored and the first message carries the Branching lines. D47: a stacked
+ * task (`branching.parent`) is cut from `origin/<parent>` in each repo that has
+ * it (409 `parent-ambiguous` for a key naming several branches) and its first
+ * message carries the stacked lines. D42: its `model` /
  * `effort` are checked against the latest reported model list and stored on the
  * session, so its first spawn passes `--model` / `--effort`.
  */

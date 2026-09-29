@@ -174,6 +174,8 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
 export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'schedule-run-failed': 'Scheduled run failed',
   'worktree-removable': 'PR merged',
+  // D47: a stacked task's parent PR merged.
+  'parent-merged': 'Parent merged',
 };
 
 /**

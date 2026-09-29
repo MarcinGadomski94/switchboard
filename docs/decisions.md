@@ -337,6 +337,43 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - An existing task branch is reused (replacing D32's refusal).
 - **D44:** a chat message to a paused session resumes it at once, as before; its bubble shows the clock until the new process takes it up.
 
+## Stacked task branches (added 2026-09-29)
+- **D47 A task branch can be stacked on an earlier, still unmerged task branch.** Developer spec, 2026-09-29, extends D40.
+  - **The model:** D40's `origin/dev → feature/<EPIC-KEY>-<Epic-Summary-Slug> → <TASK-KEY>-<task-summary-slug>`, lazy, same names locally and on origin. While an earlier task's PR is unmerged, the next task that needs its code is **stacked** on it: cut from the earlier task branch, its PR into that branch instead of the epic.
+    ```
+    origin/dev
+    └── feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development
+        └── PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains   (PR → epic)
+            └── PROJ-3014-<slug>                                                   (PR → PROJ-3013)
+    ```
+  - **Rules:**
+    1. **Parent branch:** each task has a parent: the epic branch (default) or an unmerged task branch (stacking), chosen per task by the developer.
+    2. **Per-repo resolution:** the parent task branch on origin in this repo → base `origin/<parent>`; else `origin/<epic branch>` when it exists, else `origin/<epic base>` (usually `origin/dev`), the commit the epic will be cut from.
+    3. **Lazy creation unchanged:** nothing is pushed or created on origin at session start; only local worktrees on the resolved base.
+    4. **PR target** = the parent as resolved for that repo (the parent task branch, or the epic branch when falling back, created lazily).
+    5. **When a parent merges:** the child PR is retargeted to the parent's own base and the child rebased (`--onto` if the parent was squash-merged).
+  - **Preflight table:** per selected repo, **Resolved base** (`origin/PROJ-3013-…` / `origin/feature/PROJ-3010-…` / `origin/dev (epic not created yet)`), **PR target**, **Parent status** (parent PR open / merged / closed; merged or closed warns "parent merged — base on its target instead").
+  - **Worktree creation:** `git fetch origin --prune`, each task worktree from the repo's resolved base; never a local master; no pushes at session start.
+  - **Hand-off:** a stacked session's Branching lines become:
+    ```
+    - Branching model: epic/task (lazy), stacked
+      - Epic: PROJ-3010 — feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development (base: origin/dev)
+      - Task branch: PROJ-3014-<slug>
+      - Parent: PROJ-3013-configure-hubspot-opt-in-cookie-banner-across-both-domains (stacked; PR #306/#1080/#1204 open)
+      - Per-repo base / PR target:
+        - acme-app-front: origin/PROJ-3013-… → PR into PROJ-3013-…
+        - static-front: origin/PROJ-3013-… → PR into PROJ-3013-…
+        - quizzes-front: origin/dev (epic missing; parent not in repo) → PR into feature/PROJ-3010-… (epic, created lazily)
+    ```
+    (The developer's text ended at "→ PR into"; they confirmed that was the end, so the completion is ours: when falling back the PR goes into the epic branch, created lazily.) A session whose parent is the epic keeps D40's lines unchanged; a stacked one also gets rule 5 as an instruction.
+  - **Developer rulings (2026-09-29, override the spec where they differ):**
+    - **Parent field = typed, no listing.** The Branching section gets a **Parent** input defaulting to "Epic branch (independent)" (empty). The developer types a branch name or a task key (`PROJ-3013`); Switchboard never searches for or lists sibling branches. A bare key resolves per repo to the origin branch whose name starts with `<KEY>-` (0 matches = parent not in that repo; more than one = an error row asking for the full name). A task text that mentions stacking ("create it from PROJ-3013", "stack on PROJ-3013", "based on PROJ-3013") pre-fills the field with the key, never overwriting what the developer typed. The preflight checks the typed parent per repo.
+    - **Parent status** from `gh pr view <parent branch> --json number,state,url,baseRefName` per repo; no PR = "no PR"; merged / closed = a warning row, Start still allowed.
+    - **Rule 5 = tell the agent.** The 5-minute PR poll also watches a stacked session's parent PR per repo (the parent and its PR target stored with the worktree, migration 0013). When it turns MERGED: an Inbox item ("Parent PROJ-3013-… merged — retarget and rebase PROJ-3014-…") and a message asking the agent to retarget its PR to the parent's base (`gh pr edit --base <parent's base>`) if it exists and rebase onto that base (`git rebase --onto origin/<parent base> <old parent tip> <branch>` after a squash merge, else a normal rebase), then report. Once per parent per repo; a closed session gets only the Inbox item. Switchboard itself never runs `gh pr edit`, a rebase or a push.
+    - **Also for bug fixes (no epic).** The Parent field shows without an epic too: the parent on origin in this repo → `origin/<parent>`, PR into it; else `origin/master` (the origin default branch after a fetch), PR into it. The hand-off has no Epic line.
+    - **Branch-name hygiene:** a typed full parent name is checked with `isValidBranchName` (git's check-ref-format rules).
+  - Built on master `5a6c2df` (after D40–D46). Details: `docs/worktrees.md` → *Stacked task branches (D47)*, `docs/new-session.md` → *Parent (D47)*; choices where the spec is silent: `.loop/questions.md` → *D47 · Stacked task branches*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

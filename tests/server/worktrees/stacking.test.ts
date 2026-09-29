@@ -278,6 +278,26 @@ describe('POST /api/sessions · D47 stacked task worktrees', () => {
   });
 });
 
+describe('D38 · no solutions picked, stacked', () => {
+  it('the per-repo rule line; an agent-made worktree is adopted with origin/<parent> and watches it', async () => {
+    const { s, g, worktrees, alpha } = await setup();
+    const session = await started(body({ solutions: [] }));
+    const message = await firstMessage(s);
+    expect(message).toContain('  - Parent: PROJ-3013 (stacked; resolved per repo)');
+    expect(message).toContain('  - Per-repo base / PR target: in each repo you change, after git fetch origin --prune: origin/<parent> when the origin branch whose name starts with PROJ-3013- (ask if there are several) is on origin there');
+    expect(message).toContain('cut from the base the Per-repo line above names for that repo');
+    // The agent's own worktree, as the instruction says.
+    const wt = path.join(g.workspace, 'microfrontends', 'alpha-front-wt-kpi-events');
+    await g.git(alpha.repo, 'worktree', 'add', '--no-track', '-b', TASK, wt, `origin/${PARENT}`);
+    const record = await s.store.sessions.get(session.id);
+    const [adopted] = await worktrees.adopt(
+      { id: session.id, name: session.name, branch: record?.branch ?? null, branching: record?.branching ?? null },
+      [{ solution: 'alpha-front', repoPath: alpha.repo }],
+    );
+    expect(adopted).toMatchObject({ repo: 'alpha-front', branch: TASK, baseRef: `origin/${PARENT}`, parentBranch: PARENT, parentHeadOid: await g.git(alpha.repo, 'rev-parse', `refs/remotes/origin/${PARENT}`) });
+  });
+});
+
 describe('rule 5 · the parent merges', () => {
   it('squash-merged: the row, one Inbox item and one message to the session (retarget + rebase --onto)', async () => {
     const { s, g, worktrees, alpha } = await setup();
