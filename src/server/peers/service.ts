@@ -78,6 +78,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff)$/],
+  // D51: a Workflow agent's conversation (its transcript on that machine).
+  ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
   // D50: Stop (interrupt) and the background-task stop work on a peer's session too.
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],

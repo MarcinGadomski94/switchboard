@@ -221,3 +221,12 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* D51: a Workflow run's row (its agents follow, indented; the name cell keeps the column's width). */
+.sb-overview-workflow .sb-overview-agent {
+  font-weight: 500;
+}
+
+.sb-overview-row--nested .sb-overview-agent {
+  padding-left: 16px;
+}

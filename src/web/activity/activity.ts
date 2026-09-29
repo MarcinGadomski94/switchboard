@@ -1,4 +1,5 @@
 import type { ActivityState, AgentActivity, BackgroundTask, SessionActivity } from '../../core/api.ts';
+import { workflowBackgroundProgress } from '../views/session/workflow-agents.ts';
 
 /**
  * The live activity's copy (D19, `docs/chat.md` → *Live activity line*): the
@@ -131,12 +132,17 @@ export function oldestBackgroundTask(tasks: readonly BackgroundTask[]): Backgrou
 /**
  * D30: one background task's words: a wake-up → `Waking up at 18:40`; a GitHub wait
  * → `Waiting for GitHub Actions: <summary>`; D43: a workflow → `Running a workflow:
- * <summary>`; anything else (D43: a `task` the CLI reported included) → `Waiting for
- * a background task: <summary>`.
+ * <summary>` (D51: `… · 3/7 agents done · phase Review` once its agents are known);
+ * anything else (D43: a `task` the CLI reported included) → `Waiting for a
+ * background task: <summary>`.
  */
-export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'>): string {
+export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'> & { readonly workflow?: BackgroundTask['workflow'] }): string {
   if (task.kind === 'wakeup' && task.wakeAt) return `${WAKING_UP} ${formatClockTime(task.wakeAt)}`;
-  if (task.kind === 'workflow') return `${RUNNING_WORKFLOW}: ${task.summary}`;
+  if (task.kind === 'workflow') {
+    // D51: with its agents' progress once any agent is known: `… · 3/7 agents done · phase Review`.
+    const progress = workflowBackgroundProgress(task.workflow);
+    return progress ? `${RUNNING_WORKFLOW}: ${task.summary} · ${progress}` : `${RUNNING_WORKFLOW}: ${task.summary}`;
+  }
   return `${task.github ? WAITING_GITHUB : WAITING_BACKGROUND}: ${task.summary}`;
 }
 

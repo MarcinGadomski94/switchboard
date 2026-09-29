@@ -217,9 +217,11 @@ interface ConversationOptions {
 /**
  * D36: `true` when a subagent has a chat to open: a subagent started by an
  * Agent / Task call Switchboard saw (its `toolUseId`); the main agent and agents
- * seen without one (the demo's; a Workflow's never appear) have none.
+ * seen without one (the demo's) have none. D51: a Workflow's agent once it has a
+ * transcript (its `workflow.agentId`; a queued one has none yet).
  */
-export function hasSubagentChat(agent: Pick<Agent, 'kind' | 'toolUseId'>): boolean {
+export function hasSubagentChat(agent: Pick<Agent, 'kind' | 'toolUseId'> & { readonly workflow?: Agent['workflow'] }): boolean {
+  if (agent.kind === 'workflow') return typeof agent.workflow?.agentId === 'string' && agent.workflow.agentId !== '';
   return agent.kind === 'subagent' && typeof agent.toolUseId === 'string' && agent.toolUseId !== '';
 }
 

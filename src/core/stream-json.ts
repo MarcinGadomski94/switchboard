@@ -188,6 +188,12 @@ export interface TaskProgressMessage extends Base {
   readonly toolUseId: string | null;
   readonly description: string | null;
   readonly lastToolName: string | null;
+  /**
+   * D51: a workflow task's `workflow_progress`: the whole list of its phases and
+   * agents (`src/core/derive/workflows.ts`), as given; `null` when the line has none
+   * (the CLI sends it at most every few seconds while agents only progress).
+   */
+  readonly workflowProgress: readonly unknown[] | null;
 }
 
 /** `system/task_updated` (`patch.status`: `completed`, `killed`, …). */
@@ -403,6 +409,7 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         toolUseId: str(obj['tool_use_id']),
         description: str(obj['description']),
         lastToolName: str(obj['last_tool_name']),
+        workflowProgress: Array.isArray(obj['workflow_progress']) ? (obj['workflow_progress'] as unknown[]) : null,
       };
     case 'task_updated': {
       const patch = rec(obj['patch']);

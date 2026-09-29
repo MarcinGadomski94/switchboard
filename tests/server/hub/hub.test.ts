@@ -97,6 +97,8 @@ const SESSION_KEYS = keys<Session>()([
   'machine',
   // additive, D48 P4 (a hooked terminal session)
   'hooked',
+  // additive, D51 (workflow runs)
+  'workflows',
 ]);
 const AGENT_KEYS = keys<Agent>()([
   'id',
@@ -109,6 +111,8 @@ const AGENT_KEYS = keys<Agent>()([
   'statusText',
   // additive, D36 (the call that started a subagent: its chat)
   'toolUseId',
+  // additive, D51 (a workflow agent's facts; null for the others)
+  'workflow',
 ]);
 const EVENT_WRAPPER_KEYS = keys<HubEvents['event']>()(['sessionId', 'event']);
 const SESSION_EVENT_KEYS = keys<SessionEvent>()(['id', 'sessionId', 'agentId', 'ts', 'endTs', 'kind', 'label', 'payload']);
@@ -148,8 +152,8 @@ const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()([
   'background',
 ]);
 const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
-/** D30: `wakeAt` only on a wake-up. */
-const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github']).filter((key) => key !== 'wakeAt');
+/** D30: `wakeAt` only on a wake-up; D51: `workflow` only on a workflow whose run is known. */
+const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github', 'workflow']).filter((key) => key !== 'wakeAt' && key !== 'workflow');
 const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'sessionId', 'prNumber', 'prState', 'removable']);
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */

@@ -49,6 +49,7 @@ import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, m
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts';
+import { FakeWorkflow, type WorkflowGrid } from './workflow.ts';
 
 /** How a turn playback ended. */
 type Outcome = 'done' | 'sigint' | 'crash';
@@ -105,7 +106,7 @@ interface ToolSpec {
  * tool call (the recording's Bash call and its result are left out).
  */
 type LaunchSpec =
-  | { readonly kind: 'workflow'; readonly taskId: string; readonly runId: string }
+  | { readonly kind: 'workflow'; readonly taskId: string; readonly runId: string; readonly grid: WorkflowGrid | null; readonly seconds: number }
   | { readonly kind: 'task'; readonly taskId: string; readonly taskType: string };
 
 /** A `[fake:write]` in progress. */
@@ -296,8 +297,12 @@ export class Runner {
   private models: JsonObject[] = [];
   /** D31: the model the recordings ran on (the default `system/init.model`). */
   private recordedModel = '';
-  /** D30: pending `[fake:background]` / `[fake:wakeup]` timers. */
+  /** D30: pending `[fake:background]` / `[fake:wakeup]` timers (D51: and a grid workflow's steps). */
   private readonly backgroundTimers = new Set<NodeJS.Timeout>();
+  /** D51: the `tool_use_id` of each workflow task's `task_started` (its progress lines carry it). */
+  private readonly workflowToolUse = new Map<string, string>();
+  /** D51 × D50: the running grid workflows by task id (`stop_task` stops their steps). */
+  private readonly workflows = new Map<string, FakeWorkflow>();
   /** D44: when the process started, and how long it takes to start (`FAKE_CLAUDE_STARTUP_MS`) before it takes up messages. */
   private readonly startedAt = Date.now();
   private startupMs = 0;
@@ -764,7 +769,7 @@ export class Runner {
       const end = recorded.findIndex((s) => s.t === 'line' && s.line['type'] === 'result' && !isTaskNotificationResult(s.line));
       const suffix = randomBytes(6).toString('hex').slice(0, 8);
       launch = background.kind === 'workflow'
-        ? { kind: 'workflow', taskId: `w${suffix}`, runId: `wf_${randomBytes(6).toString('hex')}` }
+        ? { kind: 'workflow', taskId: `w${suffix}`, runId: `wf_${randomBytes(6).toString('hex')}`, grid: background.grid, seconds: background.seconds }
         : { kind: 'task', taskId: `k${suffix}`, taskType: background.taskType };
       const first = recorded.slice(0, end + 1);
       steps = launch.kind === 'task' ? first.filter((s) => !isCallStep(s)) : first;
@@ -839,6 +844,8 @@ export class Runner {
     const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
     this.live?.setStatus('idle');
     if (fire && outcome === 'done') this.scheduleFires(fire.count, fire.everyMs);
+    // D51 `[fake:workflow <s> <P>x<A>]`: its agents run while the turn's task waits for its end.
+    if (launch?.kind === 'workflow' && launch.grid !== null && outcome === 'done') this.runWorkflow(launch, launch.grid);
     if (later && outcome === 'done') {
       const timer = this.scheduleBackground(later.delayMs, { content: '', text: '', uuid: randomUUID(), resume: { steps: later.steps, turn } });
       // D50: the task can be stopped (`stop_task`) until its end plays.
@@ -847,6 +854,34 @@ export class Runner {
     }
     if (wakeAfterMs !== null && outcome === 'done') this.scheduleBackground(wakeAfterMs, { content: FIRE_PROMPT, text: FIRE_PROMPT, uuid: randomUUID(), fired: true });
     return outcome;
+  }
+
+  /** D51: the session folder next to the transcript (`<projects>/<slug>/<sessionId>`), `null` without one. */
+  private sessionDir(): string | null {
+    return this.transcript ? path.join(path.dirname(this.transcript.file), this.sessionId) : null;
+  }
+
+  /** D51: runs a grid workflow's agents (`workflow.ts`): progress lines on stdout, their files under the session folder. */
+  private runWorkflow(launch: Extract<LaunchSpec, { kind: 'workflow' }>, grid: WorkflowGrid): void {
+    const workflow = new FakeWorkflow({
+      runId: launch.runId,
+      taskId: launch.taskId,
+      toolUseId: this.workflowToolUse.get(launch.taskId) ?? null,
+      name: FAKE_WORKFLOW_NAME,
+      summary: FAKE_WORKFLOW_SUMMARY,
+      grid,
+      seconds: launch.seconds,
+      sessionDir: this.sessionDir(),
+      sessionId: this.sessionId,
+      cwd: this.o.cwd,
+      version: CLI_VERSION,
+      model: this.modelState.resolved(this.models) ?? this.recordedModel,
+      writeJson: (line) => this.writeJson(line as JsonObject),
+      timers: this.backgroundTimers,
+      alive: () => !this.finished && !this.eof,
+    });
+    this.workflows.set(launch.taskId, workflow);
+    workflow.start();
   }
 
   /** D30: queues `msg` (a background task's end, a wake-up) after `delayMs` (stops at EOF / exit). */
@@ -877,6 +912,8 @@ export class Runner {
     }
     const task = this.stoppable.get(taskId);
     this.writeControlReply(requestId, { ok: true });
+    this.workflows.get(taskId)?.stop();
+    this.workflows.delete(taskId);
     if (!task) return;
     this.stoppable.delete(taskId);
     clearTimeout(task.timer);
@@ -1368,6 +1405,7 @@ export class Runner {
         if (workflow) {
           line['workflow_name'] = FAKE_WORKFLOW_NAME;
           line['prompt'] = FAKE_WORKFLOW_SCRIPT;
+          if (typeof line['tool_use_id'] === 'string') this.workflowToolUse.set(launch.taskId, line['tool_use_id']);
         } else {
           delete line['tool_use_id'];
         }
@@ -1379,9 +1417,11 @@ export class Runner {
     }
     if (line['type'] === 'user' && launch.kind === 'workflow') {
       // Text only (nothing is written there): the real CLI's paths are under the session's folder.
+      // D51: a grid workflow's are real (its files are written there).
       const dir = path.posix.join('/tmp/fake-claude/workflows', launch.runId);
-      const scriptPath = path.posix.join(dir, `${FAKE_WORKFLOW_NAME}.js`);
-      const transcriptDir = path.posix.join(dir, 'transcripts');
+      const sessionDir = launch.grid !== null ? this.sessionDir() : null;
+      const scriptPath = sessionDir !== null ? path.join(sessionDir, 'workflows', 'scripts', `${FAKE_WORKFLOW_NAME}-${launch.runId}.js`) : path.posix.join(dir, `${FAKE_WORKFLOW_NAME}.js`);
+      const transcriptDir = sessionDir !== null ? path.join(sessionDir, 'subagents', 'workflows', launch.runId) : path.posix.join(dir, 'transcripts');
       const text = workflowLaunchText(launch.taskId, launch.runId, scriptPath, transcriptDir);
       for (const block of asArray(asObject(line['message'])?.['content'])) {
         if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;

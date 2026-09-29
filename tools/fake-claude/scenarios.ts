@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { WorkflowGrid } from './workflow.ts';
 import type { Step } from './fixtures.ts';
 import { type Json, type JsonObject, asObject, clone, isObject } from './json.ts';
 
@@ -195,7 +196,8 @@ const MAX_BACKGROUND_SECONDS = 3_600;
 export type BackgroundSpec =
   | { readonly kind: 'bash'; readonly seconds: number; readonly command: string }
   | { readonly kind: 'wakeup'; readonly seconds: number }
-  | { readonly kind: 'workflow'; readonly seconds: number }
+  /** D51: `grid` (`<P>x<A>`): its agents run and write their files; `null`: D43's launch alone. */
+  | { readonly kind: 'workflow'; readonly seconds: number; readonly grid: WorkflowGrid | null }
   | { readonly kind: 'task'; readonly seconds: number; readonly taskType: string };
 
 function seconds(value: string | undefined): number {
@@ -212,7 +214,8 @@ function seconds(value: string | undefined): number {
  *   not clamped as the real tool is), then `<seconds>` later a turn of its own;
  * - D43 `[fake:workflow <seconds>]`: the same recording as a background `Workflow`
  *   ({@link FAKE_WORKFLOW_SCRIPT}, the launch text {@link workflowLaunchText}, a
- *   `local_workflow` `task_started`);
+ *   `local_workflow` `task_started`); D51 `[fake:workflow <seconds> <P>x<A>]`: its
+ *   `P` phases × `A` agents run meanwhile (`workflow.ts`), 1 to 9 each;
  * - D43 `[fake:bg-task <seconds> [<type>]]`: the same recording without its tool call:
  *   only a `task_started` of `<type>` (default {@link FAKE_TASK_TYPE}) without a
  *   `tool_use_id`, then its end.
@@ -227,14 +230,17 @@ export function backgroundToken(text: string): BackgroundSpec | { error: string 
   if (bash && command) return { kind: 'bash', seconds: seconds(bash[1]), command };
   const wake = /\[fake:wakeup\s+(\d+(?:\.\d+)?)\]/.exec(text);
   if (wake) return { kind: 'wakeup', seconds: seconds(wake[1]) };
-  const workflow = /\[fake:workflow\s+(\d+(?:\.\d+)?)\]/.exec(text);
-  if (workflow) return { kind: 'workflow', seconds: seconds(workflow[1]) };
+  const workflow = /\[fake:workflow\s+(\d+(?:\.\d+)?)(?:\s+([1-9])x([1-9]))?\]/.exec(text);
+  if (workflow) {
+    const grid = workflow[2] && workflow[3] ? { phases: Number(workflow[2]), agents: Number(workflow[3]) } : null;
+    return { kind: 'workflow', seconds: seconds(workflow[1]), grid };
+  }
   const task = /\[fake:bg-task\s+(\d+(?:\.\d+)?)(?:\s+([A-Za-z0-9_-]+))?\s*\]/.exec(text);
   if (task) return { kind: 'task', seconds: seconds(task[1]), taskType: task[2] ?? FAKE_TASK_TYPE };
   if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task)(?:\s|\])/.test(text)) {
     return {
       error:
-        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds>] or [fake:bg-task <seconds> [<type>]]',
+        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds> [<P>x<A>]] or [fake:bg-task <seconds> [<type>]]',
     };
   }
   return null;

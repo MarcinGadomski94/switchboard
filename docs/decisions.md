@@ -441,6 +441,27 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 - **D50-other-tabs: keep as built.** Only the tab that pressed Stop gets the withdrawn texts.
 - **With D48 (found at the merge):** Stop and the background stop work on a peer's session through the proxy (both routes on the peer API's allow-list). A hooked terminal session cannot be interrupted through hooks: both routes answer 409 `hooked-unavailable` with the reason, and the composer offers neither (Esc does nothing there).
 
+## Workflow agents are visible (added 2026-09-29)
+- **D51 A Workflow's agents show like subagents: in the overview, as cards, in the counts, and with their own chat.** Developer report, 2026-09-29: "In orchestrator mode I cannot see or access the list of subagents running."
+  - **Why:** orchestrator sessions run their subagents through the **Workflow** tool. D43 showed a workflow only as "⏳ Running a workflow: <summary>"; the agents inside it never reached the agent overview, the cards or the counts, and their chats could not be opened. Plain `Agent` subagents (background ones too) already worked. Gap #8 had left workflow agents out because M0.1 did not see them in stream-json.
+  - **Evidence (CLI 2.1.284, its binary and real session folders read-only; never run):**
+    - A background `Workflow` call's result names the run: `Run ID: wf_…`, `Transcript dir: <projects>/<slug>/<session>/subagents/workflows/<runId>`, and `tool_use_result.runId`.
+    - **Live on stdout:** `system/task_progress` of the workflow's task carries `workflow_progress`, the whole list of phases (`workflow_phase`) and agents (`workflow_agent`: `index`, `label`, `phaseTitle`, `agentId`, `model`, `state` `start` / `progress` / `done` / `error`, `startedAt`, `lastToolName`, `lastToolSummary`, …), sent when an agent starts or ends and at most every few seconds while agents only progress.
+    - **Live in files:** `subagents/workflows/<runId>/journal.jsonl` (`started` / `result` / `failed` per agent) and per agent `agent-<id>.jsonl` (its transcript; the first user line is its brief inside the CLI's "[Workflow harness …]" frame) + `agent-<id>.meta.json` (label and phase).
+    - **At the end only:** the run file `workflows/<runId>.json` (status, phases, the final `workflowProgress`, model, times). A running run has no run file yet (seen on a live run of the developer's session).
+    - The run folder and run file sit under the **session's** project folder (the transcript's); only the script (`workflows/scripts/<name>-<runId>.js`) may land under the project folder of another cwd the session moved to.
+  - **What was built:**
+    - **The model (no migration, nothing stored):** each run is a group, `Session.workflows` (name, summary, status, phase, phases, agent / done / failed counts, times); its agents join `Session.agents` as `kind: 'workflow'` with `Agent.workflow` (run, index, agent id, phase, model, start / end, current action, cwd, a version that grows with its transcript). States map to Switchboard's: queued → `idle` "queued", start / progress → `run`, done → `done`, error / failed → `fail`; agents still running when the run ends were cut off → `idle`. The run is `run` while its process is alive and has not reported its end (or, for a terminal's run, while its files changed in the last 2 minutes), then `done` / `fail` / `idle` (stopped).
+    - **Sources:** this process's stream (the launch, every `task_progress` snapshot, the task's end) and the CLI's files, read by the server (`src/server/workflows/service.ts`): the journal, metas and transcripts as they grow (only what was appended; a transcript's head once), the run file once. Files are polled every 1.5 s only while a run runs. The files make it correct after a reload, a Switchboard restart, for History (closed and reopened sessions), attached, hooked (D48 P4) and peer (D48) sessions alike.
+    - **Agent overview:** a row per run (name · summary · `—` · `● 3/7 done · phase Review`) with its agents indented under it (label · phase · solution from the agent's cwd, else `—` · its live action). D37's fold applies: done agents leave the table (counted in "✓ N finished"), a done run's row goes once none of its agents is left; running and queued ones always show.
+    - **Agent cards:** running workflow agents get cards with their current action; at most 6 per run, the rest one line "+N more in <workflow>" (the overview lists them all).
+    - **Chat:** a workflow agent's row or card opens its conversation at `/sessions/{id}/agents/{agentId}` (D36's view): "Brief from the workflow" (without the CLI's frame), its messages and tool steps, its result (its return value from the journal); it reloads while it runs. "← Main chat" / Esc / Back as for subagents; the note reads "Workflow agents take no messages".
+    - **D43's line** gains the counts: "⏳ Running a workflow: <summary> · 3/7 agents done · phase Review".
+    - **Counts:** the panel summary counts workflow agents like subagents.
+    - **API (additive):** `Session.workflows`, `Agent.workflow`, `BackgroundTask.workflow`, `GET /api/sessions/{id}/workflow-agents/{agentId}/chat` (also through the D48 peer proxy).
+    - **Security:** only files under `<configDir>/projects/*/<the session's CLI session id>/` are read; run and agent ids are checked before they become path parts; symlinks are not followed; no path is taken from a file's contents (the launch's `Transcript dir:` gives only the run id).
+  - Details: `docs/derivations.md` → *Workflow agents (D51)*, `docs/session-panel.md` → *Workflow agents (D51)*, `docs/chat.md` → *Subagent chats*; choices where the report is silent: `.loop/questions.md` → *D51 · Workflow agents are visible*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
@@ -449,7 +470,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 5. Terminal-started sessions: listed in History; "Attach here" warns if the transcript changed less than 2 minutes ago.
 6. No default schedules. The prototype's four schedules are demo data only.
 7. Timeline kinds: Read/Grep/Glob/search → plan; Edit/Write/Bash → impl; `/loop`, ScheduleWakeup, rebuild/self-heal → loop; question/permission → ask; successful result → ok. Documented in `docs/derivations.md`.
-8. Agents = the main session + one per Agent/Task tool call (plus workflow agents if visible in stream-json).
+8. Agents = the main session + one per Agent/Task tool call (plus workflow agents if visible in stream-json). D51: they are, through `task_progress` and the CLI's run files.
 9. Artifacts: PR (from gh output / PR URLs), BRANCH, DIFF per solution+branch, CONTRACT `contracts/*.md`, QA `coverage-matrix.md`, FOLLOWUP `mobile-followups/*`, DOC other written `.md`; TICKET not auto-detected in v1.
 10. Diff = worktree vs merge-base with its base branch, including uncommitted changes; in-place sessions diff against HEAD.
 11. Machine footer: machine-wide CPU/RAM; process count = live supervised `claude` processes.

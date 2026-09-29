@@ -113,8 +113,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 }
 
 /** Which mapping a forwarded answer gets, by the local API path it came from (method + path without the query). */
-/** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'inbox' | 'wrapped' | 'none';
+/** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). D51: `workflow-chat`. */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'inbox' | 'wrapped' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -126,6 +126,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (pathname === '/api/sessions') return upper === 'GET' ? 'sessions' : upper === 'POST' ? 'session' : 'none';
   if (pathname === '/api/inbox') return upper === 'GET' ? 'inbox' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
+  // D51: a Workflow agent's chat: its events carry the session id.
+  if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
   // D50: the Stop's and the background stop's answers carry the session under `session`.
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/(?:interrupt|background\/stop)$/.test(pathname)) return 'wrapped';
   const match = /^\/api\/sessions\/[^/]+(?:\/([a-z-]+))?$/.exec(pathname);
@@ -148,6 +150,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return isRecord(body) && typeof body['id'] === 'string' ? peerSessionDetail(machine, body as unknown as SessionDetail) : body;
     case 'events':
       return Array.isArray(body) ? body.filter(isRecord).map((event) => peerEvent(machine, event as unknown as SessionEvent)) : body;
+    case 'workflow-chat':
+      return isRecord(body) && Array.isArray(body['events'])
+        ? { ...body, events: body['events'].filter(isRecord).map((event) => peerEvent(machine, event as unknown as SessionEvent)) }
+        : body;
     case 'inbox':
       return Array.isArray(body) ? body.filter(isRecord).map((item) => peerInboxItem(machine, item as unknown as InboxItem)) : body;
     case 'wrapped':

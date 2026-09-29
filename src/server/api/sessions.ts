@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -319,6 +319,18 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       }
       const events = await store.events.list(record.id, since === undefined ? {} : { sinceTs: new Date(since).toISOString() });
       return events.map(toEvent);
+    },
+  );
+
+  // D51: a Workflow agent's conversation, read from its transcript under the CLI's folder of this session.
+  app.get<{ Params: IdParams & { agentId: string } }>(
+    '/api/sessions/:id/workflow-agents/:agentId/chat',
+    async (request, reply): Promise<WorkflowAgentChat | FastifyReply> => {
+      const record = await store.sessions.get(request.params.id);
+      if (!record) return notFound(reply, request.params.id);
+      const chat = await supervisor.workflowChat(record, request.params.agentId);
+      if (!chat) return reply.code(404).send({ error: 'not-found', message: `no workflow agent ${request.params.agentId} with a transcript in session ${request.params.id}` });
+      return chat;
     },
   );
 

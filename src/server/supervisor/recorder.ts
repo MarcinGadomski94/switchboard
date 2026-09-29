@@ -42,6 +42,7 @@ import type { AnsweredOn } from '../../core/remote-control.ts';
 import { writtenSolution } from '../../core/session-solutions.ts';
 import type { StreamMessage } from '../../core/stream-json.ts';
 import { readingFromRateLimit } from '../../core/usage.ts';
+import { type WorkflowLaunch, workflowLaunch } from '../../core/derive/workflows.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -89,7 +90,19 @@ export interface RecorderOptions {
    * publishes `sessionUpdated`.
    */
   readonly onContext?: () => void;
+  /**
+   * D51: what this process says about Workflow runs (`src/server/workflows/`): a
+   * launch (the `Workflow` call's result), a `task_progress` snapshot of a task's
+   * `workflow_progress`, a task's end. Called in stream order.
+   */
+  readonly onWorkflow?: (signal: WorkflowSignal) => void;
 }
+
+/** D51: one thing the stream says about a Workflow run ({@link RecorderOptions.onWorkflow}). */
+export type WorkflowSignal =
+  | { readonly kind: 'launched'; readonly launch: WorkflowLaunch; readonly toolUseId: string }
+  | { readonly kind: 'progress'; readonly taskId: string; readonly progress: readonly unknown[] }
+  | { readonly kind: 'ended'; readonly taskId: string; readonly status: string };
 
 interface ToolEntry {
   readonly eventId: number;
@@ -179,6 +192,7 @@ export class StreamRecorder {
   /** D49: the context meter (`sessions.context`), as stored. */
   #context: ContextState;
   readonly #onContext: (() => void) | undefined;
+  readonly #onWorkflow: ((signal: WorkflowSignal) => void) | undefined;
   readonly #now: () => Date;
 
   constructor(options: RecorderOptions) {
@@ -202,6 +216,7 @@ export class StreamRecorder {
     this.#onSolutionWritten = options.onSolutionWritten;
     this.#context = readContextState(options.session.context);
     this.#onContext = options.onContext;
+    this.#onWorkflow = options.onWorkflow;
     this.#now = options.now ?? (() => new Date());
   }
 
@@ -350,6 +365,11 @@ export class StreamRecorder {
     if (key === this.#activityKey) return;
     this.#activityKey = key;
     this.#onActivity?.(activity);
+  }
+
+  /** D51: a task's final status (any task: the workflow service keeps only its runs' task ids). */
+  #workflowEnded(taskId: string, status: string | null): void {
+    if (taskId !== '' && status !== null && isTaskFinished(status)) this.#onWorkflow?.({ kind: 'ended', taskId, status });
   }
 
   // ── events ─────────────────────────────────────────────────────────────
@@ -563,13 +583,17 @@ export class StreamRecorder {
         this.#background.started(message);
         return this.#onTaskStarted(message);
       case 'task-progress':
+        // D51: a workflow's live list of phases and agents.
+        if (message.workflowProgress !== null && message.taskId !== '') this.#onWorkflow?.({ kind: 'progress', taskId: message.taskId, progress: message.workflowProgress });
         return this.#onTaskProgress(message);
       case 'task-updated':
         // D43: a terminal status ends a background task; `is_backgrounded: true` moves a foreground one there.
         this.#background.updated(message.taskId, message.status, message.backgrounded);
+        this.#workflowEnded(message.taskId, message.status);
         return this.#onTaskEnd(message.taskId, message.status);
       case 'task-notification':
         this.#taskNotified(message.taskId || null, message.toolUseId);
+        this.#workflowEnded(message.taskId, message.status);
         return this.#onTaskEnd(message.taskId, message.status);
       case 'thinking-tokens': {
         // D19: ticks without `parent_tool_use_id` are the main agent's (the only ones observed).
@@ -748,6 +772,11 @@ export class StreamRecorder {
       });
       const entry = this.#tools.get(result.toolUseId);
       if (!entry) continue;
+      if (entry.name === 'Workflow' && !result.isError) {
+        // D51: the run a Workflow call launched (its run id: the key to its files).
+        const launch = workflowLaunch(result.text, message.results.length === 1 ? message.toolUseResult : undefined);
+        if (launch) this.#onWorkflow?.({ kind: 'launched', launch, toolUseId: result.toolUseId });
+      }
       const cut = clip(result.text);
       await this.#patchPayload<ToolPayload>(entry.eventId, (payload) => ({
         ...payload,

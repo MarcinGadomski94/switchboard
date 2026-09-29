@@ -11,9 +11,22 @@ import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
+import type { WorkflowSource } from '../workflows/service.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
 export const DETAIL_EVENT_LIMIT = 200;
+
+/**
+ * D51: where `toSession` finds a store's Workflow runs (the supervisor's
+ * `WorkflowService`, registered when it is created). Keyed by the store, so every
+ * app in a process (tests start many) has its own; a store without one has none.
+ */
+const workflowSources = new WeakMap<Store, WorkflowSource>();
+
+/** D51: registers the Workflow runs `toSession` adds for this store's sessions. */
+export function registerWorkflowSource(store: Store, source: WorkflowSource): void {
+  workflowSources.set(store, source);
+}
 
 /** An agent row as the API returns it. */
 export function toAgent(record: AgentRecord): Agent {
@@ -28,6 +41,8 @@ export function toAgent(record: AgentRecord): Agent {
     statusText: record.statusText,
     // D36: links the main agent's Agent / Task call to the subagent's chat.
     toolUseId: record.toolUseId,
+    // D51: only a workflow's agents have one (they are not stored: `toSession` adds them).
+    workflow: null,
   };
 }
 
@@ -90,6 +105,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
   const loops = await store.loops.list(record.id);
+  // D51: the session's Workflow runs and their agents (after the stored agents, in run order).
+  const workflows = (await workflowSources.get(store)?.forSession(record)) ?? { runs: [], agents: [] };
   return {
     id: record.id,
     name: record.name,
@@ -106,7 +123,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     attached: record.attached,
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
-    agents: agents.map(toAgent),
+    agents: [...agents.map(toAgent), ...workflows.agents],
+    workflows: workflows.runs,
     openQuestionCount: await openQuestionCount(store, record.id),
     cwd: record.cwd,
     folder: record.folderId,

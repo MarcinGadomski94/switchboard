@@ -814,7 +814,8 @@ export class HookService {
    * (`stop_reason: end_turn`), `idle` when the session ended first, else `run`.
    * Seam for D51: workflow agents' files (`subagents/workflows/…`,
    * `<session>/workflows/…`) are not read here (only `agent-*.jsonl` directly in
-   * `subagents/`). Returns whether an agent row was added or changed.
+   * `subagents/`): D51's `WorkflowService` reads them for every session by its CLI
+   * session id, hooked ones included. Returns whether an agent row was added or changed.
    */
   async #importSubagents(record: SessionRecord, transcript: string, mainAgentId: string, onEvent: (event: EventRecord) => void): Promise<boolean> {
     let changed = false;

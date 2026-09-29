@@ -1,5 +1,6 @@
-import { type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import type { SessionActivity, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import { type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { Agent, SessionActivity, SessionDetail, SessionEvent, WorkflowAgentChat } from '../../../core/api.ts';
+import { api } from '../../api/client.ts';
 import { AgentActivityText, SubagentActivityLine } from '../../activity/ActivityViews.tsx';
 import { type Route, routePath, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
@@ -23,6 +24,7 @@ import {
   rememberMainChat,
   subagentTitle,
 } from './subagent-chat.ts';
+import { WORKFLOW_BRIEF_LABEL, WORKFLOW_NO_MESSAGES, agentActivity } from './workflow-agents.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom" (the main chat's rule). */
 const STICK_PX = 32;
@@ -81,6 +83,36 @@ function BackLink({ href, onBack, className, testId, children }: { readonly href
   );
 }
 
+/** D51: a Workflow agent's conversation, read from its transcript (again whenever its `workflow.version` grows). */
+interface WorkflowChatState {
+  readonly key: string | null;
+  readonly data: WorkflowAgentChat | null;
+  readonly failed: boolean;
+}
+
+function useWorkflowChat(sessionId: string, agent: Agent | null): WorkflowChatState {
+  const key = agent && agent.kind === 'workflow' ? agent.id : null;
+  const version = agent?.workflow?.version ?? 0;
+  const status = agent?.status ?? null;
+  const [state, setState] = useState<WorkflowChatState>({ key: null, data: null, failed: false });
+  useEffect(() => {
+    if (key === null) return;
+    let cancelled = false;
+    api.workflowAgentChat(sessionId, key).then(
+      (data) => {
+        if (!cancelled) setState({ key, data, failed: false });
+      },
+      () => {
+        if (!cancelled) setState((current) => ({ key, data: current.key === key ? current.data : null, failed: true }));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, key, version, status]);
+  return state.key === key ? state : { key, data: null, failed: false };
+}
+
 /**
  * D36: a subagent's own chat in the chat tab (`docs/chat.md` → *Subagent chats*):
  * the top bar "← Main chat · <name>: <description>" with its status dot and live
@@ -108,6 +140,8 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
     const el = scroller.current;
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
   };
+  // D51: a Workflow agent's chat comes from its transcript, not from the session's events.
+  const workflowChat = useWorkflowChat(sessionId, session?.agents.find((candidate) => candidate.id === agentId) ?? null);
 
   if (!session) {
     return (
@@ -134,11 +168,13 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
     );
   }
 
-  const chat = subagentChat(events, session.questions, agent, session.agents);
+  const workflow = agent.kind === 'workflow';
+  const chat = workflow ? subagentChat(workflowChat.data?.events ?? [], [], agent, session.agents) : subagentChat(events, session.questions, agent, session.agents);
+  const result = workflow ? (workflowChat.data?.result ?? null) : chat.result;
   const card = agentCards([agent], session)[0];
   const status = card?.status ?? agent.status;
   const color = statusColor(status);
-  const entry = activity?.agents[agent.id] ?? null;
+  const entry = agentActivity(activity, agent);
   const title = subagentTitle(agent);
   const questionNote = (batchId: string): ReactNode => (
     <>
@@ -176,12 +212,19 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
           {entry ? <AgentActivityText entry={entry} turnStartedAt={null} /> : card?.statusText}
         </span>
       </div>
-      <div className="sb-chat" data-testid="subagent-chat" data-agent-id={agent.id} ref={scroller} onScroll={onScroll}>
+      <div
+        className="sb-chat"
+        data-testid="subagent-chat"
+        data-agent-id={agent.id}
+        data-state={workflow && workflowChat.data === null ? (workflowChat.failed ? 'failed' : 'loading') : undefined}
+        ref={scroller}
+        onScroll={onScroll}
+      >
         {placeholder ? <ChatSkeleton /> : null}
         {chat.brief !== null ? (
           <div className="sb-chat-message sb-subchat-brief" data-role="user" data-testid="subagent-brief">
             <div className="sb-subchat-label" data-testid="subagent-brief-label">
-              {SUBAGENT_BRIEF_LABEL}
+              {workflow ? WORKFLOW_BRIEF_LABEL : SUBAGENT_BRIEF_LABEL}
             </div>
             <div className="sb-chat-bubble" data-testid="chat-text">
               <ChatMarkdown text={chat.brief} />
@@ -191,20 +234,20 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
         {chat.items.map((item) => (
           <ChatItemView key={item.key} sessionId={sessionId} item={item} answering={null} onAnswer={async () => undefined} readOnlyNote={questionNote} />
         ))}
-        {chat.result ? (
-          <div className="sb-chat-message sb-subchat-result" data-role="agent" data-testid="subagent-result" data-error={chat.result.isError ? 'true' : 'false'}>
+        {result ? (
+          <div className="sb-chat-message sb-subchat-result" data-role="agent" data-testid="subagent-result" data-error={result.isError ? 'true' : 'false'}>
             <div className="sb-subchat-label" data-testid="subagent-result-label">
               {SUBAGENT_RESULT_LABEL}
             </div>
             <div className="sb-chat-bubble sb-subchat-result-body" data-testid="chat-text">
-              <ChatMarkdown text={chat.result.text} />
+              <ChatMarkdown text={result.text} />
             </div>
           </div>
         ) : null}
       </div>
       <SubagentActivityLine entry={entry} />
       <div className="sb-subchat-note" data-testid="subagent-note">
-        {SUBAGENT_NO_MESSAGES} ·{' '}
+        {workflow ? WORKFLOW_NO_MESSAGES : SUBAGENT_NO_MESSAGES} ·{' '}
         <BackLink href={mainHref} onBack={back} className="sb-subchat-note-link" testId="subagent-note-back">
           {SUBAGENT_REPLY_IN_MAIN}
         </BackLink>
