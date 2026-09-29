@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { open, readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { HooksStatus, Session, SessionEvent, TerminalSession } from '../../core/api.ts';
+import type { HookStatus, HooksStatus, Session, SessionActivity, SessionEvent, TerminalSession } from '../../core/api.ts';
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
+import { toolSummary } from '../../core/derive/activity.ts';
+import { NO_TURN, type TranscriptTurn, hookedActivity, transcriptTurn } from '../../core/derive/hooked-activity.ts';
+import { hookDelivery } from '../../core/derive/hooked-status.ts';
+import { parseTranscript } from '../../core/transcript-sync.ts';
 import { ANSWERED_IN_TERMINAL } from '../../core/remote-control.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
@@ -14,10 +18,11 @@ import type { Store } from '../db/store.ts';
 import { runCommand, succeeded } from '../exec.ts';
 import type { HubBus } from '../hub/bus.ts';
 import type { QuestionPipeline } from '../inbox/pipeline.ts';
-import { toEvent, toSession } from '../sessions/wire.ts';
+import { registerHookSource, toEvent, toSession } from '../sessions/wire.ts';
 import { claudeConfigDir, findTranscriptFile, importTerminalTurns } from '../supervisor/attach.ts';
 import { childEnv } from '../supervisor/argv.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
+import { LatestThrottle } from '../supervisor/activity-throttle.ts';
 import type { LoopEventInput } from '../../core/derive/loops.ts';
 import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
@@ -58,6 +63,15 @@ export const HOOK_MESSAGE_KIND = 'hook-message';
 /** How often a hooked session's transcript is checked for growth. */
 export const SYNC_POLL_MS = 1_500;
 
+/** D53: how often a hooked session's transcript is checked while its turn runs (ASSUMED D53-poll: 500 ms; one `stat` per file). */
+export const ACTIVE_POLL_MS = 500;
+
+/** D53: how much of a transcript's end is read for the live activity (a turn longer than this starts at the tail's first line). */
+export const ACTIVITY_TAIL_BYTES = 256 * 1024;
+
+/** D53: a hooked session's `/hub` `activity` events go out at most this often (the newest value always goes out). */
+export const ACTIVITY_EVENT_MS = 1_000;
+
 /** How often `claude agents --json` is asked while anything is hooked or waiting. */
 export const LIVENESS_POLL_MS = 10_000;
 
@@ -86,6 +100,9 @@ interface Terminal {
   lastHookAt: number | null;
   running: boolean;
   ended: boolean;
+  /** D53: the newest UserPromptSubmit / Stop seen (epoch ms). */
+  startedAt: number | null;
+  stoppedAt: number | null;
 }
 
 interface OpenRequest {
@@ -96,6 +113,8 @@ interface OpenRequest {
   readonly input: Record<string, unknown>;
   readonly suggestions: readonly unknown[];
   readonly batch: boolean;
+  /** D53: when the hook call came (epoch ms): the `waiting` activity's start. */
+  readonly openedAt: number;
   done: boolean;
   readonly finish: (answer: HookAnswer) => void;
 }
@@ -198,6 +217,15 @@ export class HookService {
   #closed = false;
   readonly #loopFiles = new TranscriptLoopEvents();
   readonly #eventListeners = new Set<(payload: { readonly sessionId: string; readonly event: SessionEvent }) => void>();
+  /** D53: each hooked session's live activity as last published (and its JSON, to publish only changes). */
+  readonly #activity = new Map<string, { readonly value: SessionActivity | null; readonly json: string }>();
+  /** D53: each transcript's turn, read again only when its size or mtime changed. */
+  readonly #turns = new Map<string, { readonly key: string; readonly turn: TranscriptTurn; readonly mtimeMs: number }>();
+  /** D53: each hooked session's delivery state as last published (a change publishes the session). */
+  readonly #statusJson = new Map<string, string>();
+  /** D53: the `/hub` `activity` events per session, at most one a second (the contract's limit, as for a supervised session). */
+  readonly #activityEvents = new Map<string, LatestThrottle<SessionActivity | null>>();
+  #activeTimer: NodeJS.Timeout | undefined;
 
   constructor(options: HookServiceOptions) {
     this.#config = options.config;
@@ -211,6 +239,8 @@ export class HookService {
     this.#limit = options.limit;
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? ((error) => console.error('switchboard hooks:', error));
+    // D53: `toSession` adds a hooked session's activity and delivery state from here.
+    registerHookSource(this.#store, { activity: (sessionId) => this.activity(sessionId), status: (record) => this.hookStatus(record) });
   }
 
   /** The CLI's config dir (its `settings.json`, `projects/`, `sessions/`). */
@@ -225,6 +255,9 @@ export class HookService {
     this.#syncTimer.unref();
     this.#livenessTimer = setInterval(() => void this.#pollLiveness(), LIVENESS_POLL_MS);
     this.#livenessTimer.unref();
+    // D53: a running turn's transcript is looked at more often, so its live line follows the tools closely.
+    this.#activeTimer = setInterval(() => void this.#pollTranscripts(true), ACTIVE_POLL_MS);
+    this.#activeTimer.unref();
   }
 
   /** Stops the polls and answers every held hook call with no decision / no message. */
@@ -232,6 +265,8 @@ export class HookService {
     this.#closed = true;
     clearInterval(this.#syncTimer);
     clearInterval(this.#livenessTimer);
+    clearInterval(this.#activeTimer);
+    for (const throttle of this.#activityEvents.values()) throttle.cancel();
     for (const timer of this.#pumpTimers.values()) clearTimeout(timer);
     for (const request of [...this.#requests.values()]) this.#finishRequest(request, { status: 204, body: null });
     for (const waiter of [...this.#waiters.values()]) this.#finishWaiter(waiter, { status: 204, body: null });
@@ -417,6 +452,142 @@ export class HookService {
     for (const request of [...this.#requests.values()]) {
       if (request.sessionId === sessionId) this.#finishRequest(request, { status: 204, body: null });
     }
+    await this.#refreshActivity(sessionId);
+  }
+
+  // ── D53 live activity and delivery state ─────────────────────────────
+
+  /**
+   * D53: a hooked session's live activity as last derived (`Session.activity`,
+   * the `/hub` `activity` event): its transcript's open turn and its hook calls
+   * (`hookedActivity`); `null` while no turn runs, and for any other session.
+   */
+  activity(sessionId: string): SessionActivity | null {
+    return this.#activity.get(sessionId)?.value ?? null;
+  }
+
+  /** D53: `Session.hookStatus` of a hooked session (`null` for a closed one, and for any other session). */
+  async hookStatus(record: SessionRecord): Promise<HookStatus | null> {
+    if (!record.hooked || record.closedAt !== null) return null;
+    const cs = record.claudeSessionId;
+    const terminal = this.#terminals.get(cs);
+    const woken = this.#awaitingTurn.get(cs);
+    const queued = (await this.#store.pendingMessages.pending(record.id)).filter((message) => message.kind === HOOK_MESSAGE_KIND).length;
+    const activity = this.activity(record.id);
+    const status: HookStatus = {
+      waiter: this.#waiters.has(cs),
+      hookSeen: terminal?.lastHookAt != null,
+      delivery: hookDelivery({
+        ended: terminal?.ended === true || record.status === 'done',
+        waiter: this.#waiters.has(cs),
+        // The live line, not `terminal.running` (a released wake-up marks it running before the CLI takes it up).
+        running: activity !== null,
+        released: woken !== undefined && !woken.started,
+        queued,
+      }),
+    };
+    this.#statusJson.set(record.id, JSON.stringify(status));
+    return status;
+  }
+
+  /** D53: the delivery state of the session changed? Its `sessionUpdated` (the header note, the clock's words). */
+  async #refreshStatus(record: SessionRecord): Promise<void> {
+    const before = this.#statusJson.get(record.id);
+    const after = JSON.stringify(await this.hookStatus(record));
+    if (before !== after) await this.#publishSession(record.id);
+  }
+
+  #refreshStatusOf(claudeSessionId: string): Promise<void> {
+    return (async () => {
+      if (this.#closed) return;
+      const record = await this.#hookedRecord(claudeSessionId);
+      if (record) await this.#refreshStatus(record);
+    })().catch((error: unknown) => this.#onError(error));
+  }
+
+  /** D53: a transcript's current turn (read again, its last {@link ACTIVITY_TAIL_BYTES}, only when its size or mtime changed). */
+  async #turnOf(file: string, sidechain: boolean): Promise<{ readonly turn: TranscriptTurn; readonly mtimeMs: number } | null> {
+    let info;
+    try {
+      info = await stat(file);
+    } catch {
+      return null;
+    }
+    const key = `${info.size}:${info.mtimeMs}`;
+    const cached = this.#turns.get(file);
+    if (cached && cached.key === key) return cached;
+    const start = Math.max(0, info.size - ACTIVITY_TAIL_BYTES);
+    let text = '';
+    const handle = await open(file, 'r');
+    try {
+      const buffer = Buffer.alloc(info.size - start);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+      text = buffer.subarray(0, bytesRead).toString('utf8');
+    } finally {
+      await handle.close();
+    }
+    // A tail starts inside a line: that line is not whole.
+    if (start > 0) text = text.slice(text.indexOf('\n') + 1);
+    const value = { key, turn: transcriptTurn(parseTranscript(text), { sidechain }), mtimeMs: info.mtimeMs };
+    this.#turns.set(file, value);
+    return value;
+  }
+
+  /**
+   * D53: derives the session's live activity again (its transcript's and running
+   * subagents' turns, its hook signals) and publishes the `/hub` `activity` event
+   * when it changed; then its delivery state.
+   */
+  async #refreshActivity(sessionId: string): Promise<void> {
+    if (this.#closed) return;
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || !record.hooked) return;
+    let value: SessionActivity | null = null;
+    const terminal = this.#terminals.get(record.claudeSessionId);
+    const agents = await this.#store.agents.listBySession(sessionId);
+    const main = agents.find((agent) => agent.kind === 'main');
+    if (record.closedAt === null && main && record.status !== 'done') {
+      const transcript = await this.#transcriptOf(record);
+      const read = transcript ? await this.#turnOf(transcript, false) : null;
+      let changed = read?.mtimeMs ?? null;
+      const subagents: Record<string, TranscriptTurn> = {};
+      if (transcript) {
+        const running = agents.filter((agent) => agent.kind === 'subagent' && agent.status === 'run' && agent.taskId);
+        for (const agent of running) {
+          const file = path.join(path.dirname(transcript), path.basename(transcript, '.jsonl'), 'subagents', `agent-${agent.taskId}.jsonl`);
+          const sub = await this.#turnOf(file, true);
+          if (!sub) continue;
+          subagents[agent.id] = sub.turn;
+          changed = Math.max(changed ?? 0, sub.mtimeMs);
+        }
+      }
+      const iso = (ms: number | null | undefined): string | null => (ms == null ? null : new Date(ms).toISOString());
+      const request = [...this.#requests.values()].filter((open) => open.sessionId === sessionId && !open.done).sort((a, b) => a.openedAt - b.openedAt)[0];
+      value = hookedActivity({
+        mainAgentId: main.id,
+        transcript: read?.turn ?? NO_TURN,
+        transcriptChangedAt: iso(changed),
+        subagents,
+        hooks: {
+          startedAt: iso(terminal?.startedAt),
+          stoppedAt: iso(terminal?.stoppedAt),
+          ended: terminal?.ended === true,
+          permission: request ? { tool: request.toolName, summary: toolSummary(request.toolName, request.input), since: iso(request.openedAt) as string } : null,
+          lastHookAt: iso(terminal?.lastHookAt),
+        },
+      });
+    }
+    const json = JSON.stringify(value);
+    if (this.#activity.get(sessionId)?.json !== json) {
+      this.#activity.set(sessionId, { value, json });
+      let throttle = this.#activityEvents.get(sessionId);
+      if (!throttle) {
+        throttle = new LatestThrottle<SessionActivity | null>({ intervalMs: ACTIVITY_EVENT_MS, send: (activity) => this.#bus.publish('activity', { sessionId, activity }) });
+        this.#activityEvents.set(sessionId, throttle);
+      }
+      throttle.push(value);
+    }
+    await this.#refreshStatus(record);
   }
 
   // ── messages ─────────────────────────────────────────────────────────
@@ -547,7 +718,7 @@ export class HookService {
     }
     let terminal = this.#terminals.get(claudeSessionId);
     if (!terminal) {
-      terminal = { claudeSessionId, pid: null, cwd: null, transcriptPath: null, entrypoint, lastHookAt: null, running: false, ended: false };
+      terminal = { claudeSessionId, pid: null, cwd: null, transcriptPath: null, entrypoint, lastHookAt: null, running: false, ended: false, startedAt: null, stoppedAt: null };
       this.#terminals.set(claudeSessionId, terminal);
     }
     if (typeof body['claudePid'] === 'number') terminal.pid = body['claudePid'];
@@ -571,6 +742,7 @@ export class HookService {
         break;
       case 'UserPromptSubmit': {
         terminal.running = true;
+        terminal.startedAt = this.#now();
         const woken = this.#awaitingTurn.get(cs);
         if (woken) woken.started = true;
         break;
@@ -580,6 +752,7 @@ export class HookService {
         break;
       case 'Stop':
         terminal.running = false;
+        terminal.stoppedAt = this.#now();
         // The woken turn (if any) ended; a Stop before it started (a turn already running) does not count.
         if (this.#awaitingTurn.get(cs)?.started) this.#awaitingTurn.delete(cs);
         this.#withdrawAll(cs);
@@ -604,6 +777,8 @@ export class HookService {
       this.#scheduleSync(record.id);
     }
     await this.#pump(cs);
+    // D53: the turn started / ended, a tool ran, the session ended: the live line follows at once.
+    if (record) await this.#refreshActivity(record.id);
   }
 
   #statusOf(terminal: Terminal): SessionStatus {
@@ -635,6 +810,7 @@ export class HookService {
         input: toolInput,
         suggestions,
         batch: toolName === 'AskUserQuestion',
+        openedAt: this.#now(),
         done: false,
         finish: resolve,
       };
@@ -663,6 +839,8 @@ export class HookService {
             },
           });
           await this.#setStatus(record.id, 'need');
+          // D53: "Waiting for permission: <tool>".
+          await this.#refreshActivity(record.id);
         } catch (error) {
           this.#onError(error);
           this.#finishRequest(request, { status: 204, body: null });
@@ -695,6 +873,8 @@ export class HookService {
     request.done = true;
     this.#requests.delete(request.requestId);
     request.finish(answer);
+    // D53: no longer "Waiting for permission".
+    void this.#refreshActivity(request.sessionId).catch((error: unknown) => this.#onError(error));
   }
 
   /** Closes a held request that was not answered here: stale, or (a question batch answered at the terminal) answered there. */
@@ -743,8 +923,10 @@ export class HookService {
         if (waiter.done) return;
         waiter.done = true;
         if (this.#waiters.get(cs) === waiter) this.#waiters.delete(cs);
+        void this.#refreshStatusOf(cs);
       });
-      void this.#pump(cs);
+      // D53: a hook listens now (the header note and the queued message's words follow).
+      void this.#pump(cs).then(() => this.#refreshStatusOf(cs));
     });
   }
 
@@ -753,6 +935,7 @@ export class HookService {
     waiter.done = true;
     if (this.#waiters.get(waiter.claudeSessionId) === waiter) this.#waiters.delete(waiter.claudeSessionId);
     waiter.finish(answer);
+    void this.#refreshStatusOf(waiter.claudeSessionId);
   }
 
   /** Waiters held right now (tests; the resource guard: at most one per session). */
@@ -810,6 +993,7 @@ export class HookService {
     if (!result.found) result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart: true });
     const agentsChanged = await this.#importSubagents(record, transcript, main.id, onEvent);
     if (result.imported > 0 || agentsChanged) await this.#publishSession(sessionId);
+    await this.#refreshActivity(sessionId);
   }
 
   /**
@@ -862,9 +1046,12 @@ export class HookService {
     return changed;
   }
 
-  async #pollTranscripts(): Promise<void> {
+  /** Checks the hooked sessions' transcripts for growth (`activeOnly`, D53: only those whose turn runs). */
+  async #pollTranscripts(activeOnly = false): Promise<void> {
+    if (this.#closed) return;
     for (const record of await this.#store.sessions.list({ closed: false })) {
       if (!record.hooked) continue;
+      if (activeOnly && !this.#activity.get(record.id)?.value) continue;
       const transcript = await this.#transcriptOf(record);
       if (!transcript) continue;
       try {
@@ -904,6 +1091,7 @@ export class HookService {
         this.#withdrawAll(record.claudeSessionId);
       }
       await this.#setStatus(record.id, 'done');
+      await this.#refreshActivity(record.id);
     }
   }
 

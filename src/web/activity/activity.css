@@ -140,3 +140,11 @@
     animation: none;
   }
 }
+
+/* D53: a hooked session's quiet running turn (`· no activity for 3m`): muted, never cut. */
+.sb-activity-stale,
+.sb-activity-label-stale {
+  flex: none;
+  color: var(--muted-3);
+  font-variant-numeric: tabular-nums;
+}

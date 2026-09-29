@@ -1,4 +1,5 @@
 import type { ActivityState, AgentActivity, BackgroundTask, SessionActivity } from '../../core/api.ts';
+import { staleFor } from '../../core/derive/hooked-status.ts';
 import { workflowBackgroundProgress } from '../views/session/workflow-agents.ts';
 
 /**
@@ -43,6 +44,30 @@ export const VERB_ROTATE_MS = 4_000;
 export const WRITING = 'Writing…';
 export const THINKING = 'Thinking…';
 export const WAITING = 'Waiting for you';
+/** D53: a hooked session's held PermissionRequest (`Waiting for permission: Bash`). */
+export const WAITING_PERMISSION = 'Waiting for permission';
+
+/** D53: the words of a waiting activity: `Waiting for permission: <tool>` when the tool is known (a hooked session), else `Waiting for you`. */
+export function waitingText(tool: string | null): string {
+  return tool ? `${WAITING_PERMISSION}: ${tool}` : WAITING;
+}
+
+/** D53: a quiet stretch as the staleness hint shows it: `3m`, `59m`, `1h 5m`. */
+export function formatQuiet(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * D53: the staleness hint of a hooked session's running turn (`no activity for
+ * 3m`) once neither its transcript nor a hook call changed for
+ * `STALE_AFTER_MS`; `null` otherwise (and always for a supervised session, which
+ * has no `quietSince`).
+ */
+export function staleHint(activity: Pick<SessionActivity, 'state' | 'quietSince'>, now: number): string | null {
+  const quiet = staleFor(activity, now);
+  return quiet === null ? null : `no activity for ${formatQuiet(quiet)}`;
+}
 
 /** D30: the background wait's words (`<words>: <summary>`, a wake-up `Waking up at HH:MM`). */
 export const WAITING_GITHUB = 'Waiting for GitHub Actions';
@@ -190,6 +215,8 @@ export interface ChatActivityLine {
   readonly tokens: string | null;
   /** D30 `background` with several tasks: `+N more`; absent otherwise. */
   readonly more?: string;
+  /** D53: a hooked session's quiet running turn: `no activity for 3m` (muted); absent otherwise. */
+  readonly stale?: string;
 }
 
 /**
@@ -201,6 +228,13 @@ export interface ChatActivityLine {
  * the time since it started.
  */
 export function chatActivityLine(activity: SessionActivity, now: number): ChatActivityLine {
+  const line = baseChatLine(activity, now);
+  // D53: a hooked session's running turn that went quiet.
+  const stale = staleHint(activity, now);
+  return stale ? { ...line, stale } : line;
+}
+
+function baseChatLine(activity: SessionActivity, now: number): ChatActivityLine {
   const turn = formatElapsed(elapsedMs(activity.turnStartedAt, now));
   switch (activity.state) {
     case 'background': {
@@ -210,7 +244,7 @@ export function chatActivityLine(activity: SessionActivity, now: number): ChatAc
     case 'tool':
       return { state: 'tool', glyph: '●', text: toolText(activity.tool, activity.summary), time: formatClock(elapsedMs(activity.since, now)), tokens: null };
     case 'waiting':
-      return { state: 'waiting', glyph: '⏸', text: WAITING, time: formatClock(elapsedMs(activity.since, now)), tokens: null };
+      return { state: 'waiting', glyph: '⏸', text: waitingText(activity.tool), time: formatClock(elapsedMs(activity.since, now)), tokens: null };
     case 'writing':
       return { state: 'writing', glyph: 'spinner', text: WRITING, time: turn, tokens: null };
     default:
@@ -231,6 +265,8 @@ export interface ActivityLabel {
   readonly time: string;
   /** D30 `background` with several tasks: `+N more`; absent otherwise. */
   readonly more?: string;
+  /** D53: a hooked session's quiet running turn (the sidebar row): `no activity for 3m`; absent otherwise. */
+  readonly stale?: string;
 }
 
 /**
@@ -253,7 +289,7 @@ export function activityLabel(
     case 'tool':
       return { state: 'tool', text: toolText(entry.tool, entry.summary), time: formatClock(elapsedMs(entry.since, now)) };
     case 'waiting':
-      return { state: 'waiting', text: WAITING, time: formatClock(elapsedMs(entry.since, now)) };
+      return { state: 'waiting', text: waitingText(entry.tool), time: formatClock(elapsedMs(entry.since, now)) };
     case 'writing':
       return { state: 'writing', text: WRITING, time: formatElapsed(elapsedMs(entry.startedAt, now)) };
     default:
@@ -263,7 +299,10 @@ export function activityLabel(
 
 /** The session's action for its sidebar row: the top-level state, timed like the chat line (D30: the background wait likewise). */
 export function sessionActivityLabel(activity: SessionActivity, now: number): ActivityLabel {
-  return activityLabel({ ...activity, startedAt: activity.turnStartedAt }, now, activity.background ?? []);
+  const label = activityLabel({ ...activity, startedAt: activity.turnStartedAt }, now, activity.background ?? []);
+  // D53: a hooked session's running turn that went quiet.
+  const stale = staleHint(activity, now);
+  return stale ? { ...label, stale } : label;
 }
 
 /**

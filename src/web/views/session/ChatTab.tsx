@@ -6,7 +6,7 @@ import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
-import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, draftToSend } from './chat.ts';
+import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, draftToSend, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
@@ -165,10 +165,13 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             onAnswer={answer}
             // D48 ruling D48-cache-persist: an unreachable machine's waiting questions are shown, not answerable.
             {...(blocked ? { readOnlyNote: () => blocked } : {})}
+            // D53: a hooked session's queued message says what it waits on.
+            queuedNote={blocked ? null : hookedQueuedNote(session)}
           />
         ))}
       </div>
-      <ChatActivityLine activity={activity} />
+      {/* D53: an offline machine's session has no live line (the offline note says why). */}
+      <ChatActivityLine activity={blocked ? null : activity} />
       <Composer
         sessionId={sessionId}
         blocked={blocked}

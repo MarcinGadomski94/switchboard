@@ -1,5 +1,6 @@
 import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
-import type { Agent, Question, SessionEvent } from '../../../core/api.ts';
+import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
+import type { Agent, HookStatus, Question, SessionEvent } from '../../../core/api.ts';
 import { isAsyncAgentLaunch } from '../../../core/derive/background.ts';
 import { AGENT_TOOLS } from '../../../core/derive/event-kind.ts';
 import type {
@@ -120,6 +121,16 @@ export const QUEUED_TOOLTIPS: Readonly<Record<QueuedReason, string>> = {
   turn: 'Queued: the agent reads it after its current turn',
   resume: 'Queued: sent when the session resumes',
 };
+
+/**
+ * D53: the words a hooked session's queued message shows (the clock's tooltip and
+ * the line under the bubble): what it waits on (`HOOK_DELIVERY_TEXT`), `null` for
+ * any other session and when nothing needs saying (the D44 tooltip stays).
+ */
+export function hookedQueuedNote(session: { readonly hooked?: boolean; readonly hookStatus?: HookStatus | null } | null): string | null {
+  const delivery = session?.hooked === true ? session.hookStatus?.delivery ?? null : null;
+  return delivery ? HOOK_DELIVERY_TEXT[delivery] : null;
+}
 
 /** D44: why a batch's answers still wait (in the session's outbox), `null` when they do not. */
 export function batchQueued(questions: readonly Question[]): QueuedReason | null {
