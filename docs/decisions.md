@@ -282,6 +282,16 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Memory:** the state is kept by the service (settings, per install), so it survives restarts, reloads and the installed app.
   - The right panel exists only in the session view, and its state applies to every session.
 
+## Model at session start, remembered (added 2026-09-29)
+- **D42 The New-session form has the model and effort picker, and Switchboard remembers the last choice.**
+  - **In the form:** a **Model** row, the same picker as D31's header picker: the model, plus its effort levels when it has some.
+    - It offers the latest model list any session's CLI reported (stored by the service), else the CLI's aliases (`default`, `opus`, `sonnet`, `haiku`).
+    - It starts on the **last model and effort the developer chose**, in this form or in a running session's header picker, else the CLI's default.
+  - **Stored per session:** a new session starts with `--model` / `--effort` from its choice (D31 already passes them on every spawn), and the choice becomes the new "last choice" (a service setting, per install).
+  - Scheduled runs' templates carry a model like any other field of the form.
+  - `NewSession` gains optional `model` and `effort`, validated like D31's route (additive).
+  - **Built after D38**, alongside D40.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

@@ -16,6 +16,7 @@ Everything is local to `other/switchboard`. Nothing is pushed.
 | D39 own answers (Other…) on question cards | `.worktrees/own-answers` · `feature/own-answers` | 4930-4939 |
 | D41 collapsible sidebar / right panel, remembered | `.worktrees/collapsible-panes` · `feature/collapsible-panes` | 4940-4949 |
 | D40 epic/task branching in the New-session form | **not started: dispatch after D38 merges** (same form, first message and worktree code) | 4950-4959 |
+| D42 model + effort in the New-session form, last choice remembered | **not started: dispatch after D38 merges**, alongside D40 | 4960-4969 |
 
 The repo lives in ~/RiderProjects/Personal/switchboard; its default port is 13001; the developer's own launchd service (com.switchboard) runs `npm ci` on start. Never run anything in the main checkout while it may restart; use worktrees.
 
