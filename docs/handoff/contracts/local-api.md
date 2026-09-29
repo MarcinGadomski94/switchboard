@@ -463,15 +463,19 @@ Developer request D50 (`docs/decisions.md` → *Stop the current turn*): stop th
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` |
+| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` · 409 `hooked-unavailable` (D48 P4) |
+| POST | /api/sessions/{id}/background/stop | StopBackgroundRequest `{ taskIds? }` (ruling, 2026-09-29) | 200 StopBackgroundResult · 422 `invalid` `{ errors: [{ field: "taskIds" }] }` · 404 `not-found` · 409 `hooked-unavailable` |
 
 - **InterruptResult:** `session` (the Session after the Stop: `idle` once the turn stopped, unless background work keeps it working), `outcome` (`stopped` = the CLI acknowledged and the turn ended; `idle` = no turn ran, nothing was sent; `timeout` = no acknowledgement in time: an error event is recorded and nothing is killed, Pause ends the process), `withdrawn` (the texts of the messages the Stop took back, oldest first, for the composer; empty for a second Stop while the first one waits). The call returns once the Stop is over.
 - **SessionEvent.payload** of type `user` gains `withdrawn: true` on a message the Stop took back (the agent never runs it); the event is re-sent on `/hub` `event` when it is set (and when a late echo shows the CLI had taken it up after all: `withdrawn` removed, `delivered: true`).
 - **SessionEvent.payload** of type `result` gains `stopped: true` on the stopped turn's result (kind `text`, label `Stopped`), and a new payload type `stop` `{ outcome: "timeout", waitedMs, missing: "ack" | "result" }` (kind `error`) records a Stop the CLI did not acknowledge.
 - **Question.closedReason** can be `turn stopped`: a batch whose turn was stopped while it waited (it leaves the Inbox, like D33's `session closed`). A permission request open then goes `stale`.
 
+- **Rulings on D50 (2026-09-29):** `POST …/background/stop` stops the session's background tasks (the CLI's `stop_task` each; `taskIds` absent = every stoppable one; a wake-up is never stoppable): **StopBackgroundResult** `{ session, stopped: string[], failed: [{ id, error }] }`. Both routes are served to paired machines (D48 peer API) and answered with the session mapped to the caller's remote id; a hooked terminal session answers 409 `hooked-unavailable` with the reason.
+
 ```json
 InterruptResult { "session": Session, "outcome": "stopped" | "idle" | "timeout", "withdrawn": ["Also: keep it short."] }
+StopBackgroundResult { "session": Session, "stopped": ["b1f2c3d4"], "failed": [] }
 Event { …, "payload": { "type": "user", "text": "Also: keep it short.", "origin": "user", "delivered": false, "withdrawn": true } }
 Event { …, "kind": "text", "label": "Stopped", "payload": { "type": "result", "subtype": "error_during_execution", "isError": true, "terminalReason": "aborted_streaming", …, "stopped": true } }
 ```
