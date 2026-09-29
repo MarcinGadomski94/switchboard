@@ -13,12 +13,18 @@ import { AGENT_TOOLS } from './event-kind.ts';
 /** Longest tool summary (characters, `…` included). */
 export const SUMMARY_MAX = 80;
 
-/** D30: the tool behind each kind of background task (the `tool` of a `background` activity). */
-export const BACKGROUND_TOOLS: Readonly<Record<BackgroundTaskKind, string>> = {
+/**
+ * D30: the tool behind each kind of background task (the `tool` of a `background`
+ * activity). D43: `Workflow` for a workflow; none for a `task` (the CLI reported it,
+ * no known tool started it).
+ */
+export const BACKGROUND_TOOLS: Readonly<Record<BackgroundTaskKind, string | null>> = {
   bash: 'Bash',
   agent: 'Agent',
   monitor: 'Monitor',
   wakeup: 'ScheduleWakeup',
+  workflow: 'Workflow',
+  task: null,
 };
 
 function text(input: Readonly<Record<string, unknown>>, key: string): string | null {
