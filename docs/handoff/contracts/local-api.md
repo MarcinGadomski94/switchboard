@@ -528,6 +528,20 @@ The developer approved one new `/hub` event name: `schedulesChanged` `{ schedule
 schedulesChanged { "scheduleId": "r~abcdefghijkl~5c1e…", "change": "paused" }
 ```
 
+## Live activity for hooked and peer sessions (D53, 2026-09-29, additive)
+Developer request D53 (`docs/decisions.md` → *Live activity for remote and hooked sessions*). Additive; nothing above changes meaning. No new route, no new event name, no migration. Details: `docs/derivations.md` → *Live activity* → *Hooked terminal sessions (D53)*.
+
+- **Session.activity** is also set for a **hooked** terminal session while its turn runs (derived from its transcript and hook calls; it has no live process: `live` stays `false`), and the `/hub` `activity` event is sent for it (at most one per second per session). `thinkingTokens` is always `null` and `background` always `[]` there.
+- **SessionActivity** gains `quietSince` (ISO): a hooked session's newest transcript change or hook call; absent for a supervised session. Clients add "no activity for Nm" once a running turn (not `waiting`) is quiet for 3 minutes.
+- **SessionActivity** in state `waiting` may carry `tool` / `summary`: a hooked session's held PermissionRequest (the UI reads "Waiting for permission: <tool>"); a supervised session's stay `null` as before.
+- **Session** gains `hookStatus` on hooked sessions only (absent on every other): `{ waiter: boolean, hookSeen: boolean, delivery: "handed" | "turn" | "no-waiter" | "ended" | null }` (`null` for a closed hooked session): what an undelivered message waits on. Changes are published as `sessionUpdated`.
+- **Peers (D48):** a paired machine's session carries `activity: null` while that machine is not online.
+
+```json
+SessionActivity { "turnStartedAt": "2026-09-29T10:01:00.000Z", "state": "tool", "since": "2026-09-29T10:01:04.000Z", "tool": "Bash", "summary": "npm test", "thinkingTokens": null, "agents": { "…": { "state": "tool", "…": "…" } }, "background": [], "quietSince": "2026-09-29T10:01:04.000Z" }
+Session { …, "hooked": true, "hookStatus": { "waiter": false, "hookSeen": true, "delivery": "no-waiter" } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
