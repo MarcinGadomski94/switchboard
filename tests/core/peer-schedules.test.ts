@@ -66,11 +66,23 @@ describe('D52 terminal transcript → loop events', () => {
     const events = transcriptLoopEvents(parseTranscript(ndjson(terminalLoopLines({ sessionId: 'cs1', cwd, start }))));
     expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'assistant', 'result']);
     expect(events[0]?.payload).toEqual({ type: 'user', text: '/loop 5m check the build' });
-    expect(events[1]?.payload).toMatchObject({ type: 'tool', name: 'CronCreate', result: 'Scheduled recurring job cron-1 (*/5 * * * *)', isError: false });
+    expect(events[1]?.payload).toMatchObject({ type: 'tool', name: 'CronCreate', result: expect.stringMatching(/^Scheduled recurring job a5207d74/), isError: false });
     const [loop] = deriveLoops(events, { now: new Date('2026-09-29T10:06:00.000Z'), status: 'idle', mainAgentId: null });
     expect(loop).toMatchObject({ kind: '/loop', label: '/loop 5m', iteration: 2, nextFireAt: '2026-09-29T10:10:00.000Z', expiresAt: '2026-10-06T10:00:02.000Z' });
     expect(loop?.iterations.map((it) => it.result)).toEqual(['ok', 'ok']);
     expect(loop?.note).toContain('Last iteration: Still green.');
+  });
+
+  it('D52 probe shapes: one result per message (a thinking line and a text line share its id), after its last line; two scheduled firings (isMeta prompts) are iterations 2 and 3', () => {
+    const events = transcriptLoopEvents(parseTranscript(ndjson(terminalLoopLines({ sessionId: 'cs1', cwd, start, fires: 2 }))));
+    expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'assistant', 'result', 'assistant', 'result']);
+    expect(events.filter((event) => (event.payload as { type: string }).type === 'result').map((event) => event.label)).toEqual(['Build is green.', 'Still green.', 'Green again.']);
+    // The skill's body and the scheduled prompts are meta lines: not user messages.
+    expect(events.filter((event) => (event.payload as { type: string }).type === 'user')).toHaveLength(1);
+    const [loop] = deriveLoops(events, { now: new Date('2026-09-29T10:11:00.000Z'), status: 'idle', mainAgentId: null });
+    expect(loop).toMatchObject({ kind: '/loop', iteration: 3, nextFireAt: '2026-09-29T10:15:00.000Z' });
+    expect(loop?.iterations.map((it) => it.result)).toEqual(['ok', 'ok', 'ok']);
+    expect(loop?.note).toContain('Last iteration: Green again.');
   });
 
   it('ScheduleWakeup and Workflow calls without a /loop; a failed Workflow run is a failed iteration', () => {

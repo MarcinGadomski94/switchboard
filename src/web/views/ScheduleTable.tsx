@@ -59,6 +59,8 @@ export function ScheduleTable() {
   const [error, setError] = useState<string | null>(null);
   const reload = schedules.reload;
   useHubEvent('scheduleRun', () => reload());
+  // D52 (ruling D52-peer-edits-live): a schedule saved, paused, resumed or deleted here or on a paired machine shows at once.
+  useHubEvent('schedulesChanged', () => reload());
   useHubEvent('sessionUpdated', useThrottled(reload, SESSIONS_RELOAD_MS));
 
   // After "Save schedule" the modal closes: show the new or edited row.

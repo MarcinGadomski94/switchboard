@@ -48,8 +48,8 @@ interface Cached {
 export class TerminalLoopReader {
   readonly #options: TerminalLoopReaderOptions;
   readonly #now: () => Date;
-  /** Per transcript file: its size + mtime and its loop events. */
-  readonly #cache = new Map<string, Cached>();
+  /** Per transcript file: its loop events (cached by size + mtime). */
+  readonly #files = new TranscriptLoopEvents();
 
   constructor(options: TerminalLoopReaderOptions) {
     this.#options = options;
@@ -97,12 +97,25 @@ export class TerminalLoopReader {
       }
     }
     // Sessions that are gone leave the cache.
-    for (const file of [...this.#cache.keys()]) if (!seen.has(file)) this.#cache.delete(file);
+    this.#files.retain(seen);
     return out;
   }
 
-  /** The loop events of one transcript (cached by its size and mtime). */
   async #events(file: string): Promise<LoopEventInput[]> {
+    return this.#files.events(file);
+  }
+}
+
+/**
+ * D52: the loop events of transcript files (`transcriptLoopEvents`), each read again
+ * only when its size or mtime changed, at most its last {@link MAX_TRANSCRIPT_BYTES}.
+ * Shared by the terminal-loop reader and the hooked sessions' loops.
+ */
+export class TranscriptLoopEvents {
+  readonly #cache = new Map<string, Cached>();
+
+  /** The file's loop events (`[]` when it cannot be read). */
+  async events(file: string): Promise<LoopEventInput[]> {
     let info: { size: number; mtimeMs: number };
     try {
       info = await stat(file);
@@ -116,6 +129,11 @@ export class TerminalLoopReader {
     const events = text === null ? [] : transcriptLoopEvents(parseTranscript(text));
     this.#cache.set(file, { key, events });
     return events;
+  }
+
+  /** Forgets every file but `keep`. */
+  retain(keep: ReadonlySet<string>): void {
+    for (const file of [...this.#cache.keys()]) if (!keep.has(file)) this.#cache.delete(file);
   }
 }
 

@@ -176,6 +176,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   // The conflict badge (M6.3) follows sessions starting, ending and moving to worktrees.
   useHubEvent('sessionUpdated', useThrottled(solutions.reload, SOLUTIONS_RELOAD_MS));
   useHubEvent('scheduleRun', () => schedules.reload());
+  // D52: a schedule saved, paused, resumed or deleted (here or on a paired machine).
+  useHubEvent('schedulesChanged', () => schedules.reload());
   useHubEvent('system', (payload) => setLiveSystem(payload));
   useToolsChanged(() => tools.reload()); // Settings → Embedded tools saved (M8.2)
 

@@ -1,5 +1,5 @@
 import type { Loop, SessionActivity, SessionEvent } from '../../core/api.ts';
-import { LOOP_SOURCE_TOOLS, type ObservedLoop, deriveLoops, isLoopCommand } from '../../core/derive/loops.ts';
+import { LOOP_SOURCE_TOOLS, type LoopEventInput, type ObservedLoop, deriveLoops, isLoopCommand } from '../../core/derive/loops.ts';
 import type { LoopRecord } from '../db/repos/loops.ts';
 import type { Store } from '../db/store.ts';
 import { folderOfSession } from '../folders/ref.ts';
@@ -79,6 +79,8 @@ export class LoopTracker {
   readonly #timers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #running = new Map<string, Promise<void>>();
   #closed = false;
+  /** D52: where a session's loop events come from instead of its stored events (a hooked session's transcript); `null` = the stored events. */
+  #eventsOf: ((sessionId: string) => Promise<readonly LoopEventInput[] | null>) | null = null;
 
   constructor(options: LoopTrackerOptions) {
     this.#store = options.store;
@@ -95,6 +97,15 @@ export class LoopTracker {
    * hooked terminal sessions). Its `activity` is not read: the published session
    * carries the main source's.
    */
+  /**
+   * D52: derives a session's loops from `source` when it answers (a hooked terminal
+   * session: its transcript, whose scheduled firings are meta lines and whose turn
+   * ends are no `result` events, VERIFIED D52-probe-fire), else from its stored events.
+   */
+  useEventsOf(source: (sessionId: string) => Promise<readonly LoopEventInput[] | null>): void {
+    this.#eventsOf = source;
+  }
+
   listen(source: Pick<LoopEventSource, 'on'>): void {
     if (this.#closed) return;
     this.#off.push(
@@ -190,9 +201,15 @@ export class LoopTracker {
   async #refreshNow(sessionId: string): Promise<Loop[]> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
-    const events = (await this.#store.events.list(sessionId)).sort((a, b) => a.id - b.id);
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
-    const observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
+    const own = this.#eventsOf ? await this.#eventsOf(sessionId) : null;
+    let observed: ObservedLoop[];
+    if (own) {
+      observed = deriveLoops(own, { now: this.#now(), status: session.status, mainAgentId: null });
+    } else {
+      const events = (await this.#store.events.list(sessionId)).sort((a, b) => a.id - b.id);
+      const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
+      observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
+    }
     if (observed.length === 0) return (await this.#store.loops.list(sessionId)).map(toLoop);
     this.#tracked.set(sessionId, true);
     // D14: the session's own folders; the shown path is relative to its folder.

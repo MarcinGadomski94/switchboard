@@ -183,21 +183,92 @@ export function toolResultLine(options: { sessionId: string; cwd: string; toolUs
 }
 
 /**
- * D52: a terminal session that ran `/loop 5m check the build` (typed as the CLI
- * writes a slash command), whose turn called CronCreate (`*\/5 * * * *`) and ended;
- * then one turn the CLI ran on its own (a firing). Oldest first; timestamps from `start`.
+ * D52: one assistant message as the interactive CLI writes it (VERIFIED D52-probe-blocks,
+ * CLI 2.1.284): one line per content block (a thinking block, then the text), each
+ * carrying the same `message.id` and the message's `stop_reason`; chained one after
+ * the other. Returns the lines.
  */
-export function terminalLoopLines(options: { sessionId: string; cwd: string; start: Date }): Line[] {
+export function assistantBlockLines(options: { sessionId: string; cwd: string; text: string; parentUuid: string | null; timestamp: string; stopReason?: string }): Line[] {
+  const id = `msg_${randomUUID().replaceAll('-', '')}`;
+  const base = (content: unknown[], parentUuid: string | null): Line => ({
+    parentUuid,
+    isSidechain: false,
+    message: { model: 'claude-haiku-4-5-20251001', id, type: 'message', role: 'assistant', content, stop_reason: options.stopReason ?? 'end_turn' },
+    requestId: `req_${id}`,
+    type: 'assistant',
+    uuid: randomUUID(),
+    timestamp: options.timestamp,
+    userType: 'external',
+    entrypoint: 'cli',
+    cwd: options.cwd,
+    sessionId: options.sessionId,
+    version: '2.1.284',
+    gitBranch: 'HEAD',
+  });
+  const thinking = base([{ type: 'thinking', thinking: '', signature: 'x' }], options.parentUuid);
+  return [thinking, base([{ type: 'text', text: options.text }], thinking['uuid'] as string)];
+}
+
+/**
+ * D52: the lines the interactive CLI writes when a scheduled task fires (VERIFIED
+ * D52-probe-fire, CLI 2.1.284): `system` `scheduled_task_fire`, then the prompt as an
+ * `isMeta` user line with `promptSource: "system"`, `turnOrigin: "scheduled"`.
+ */
+export function scheduledFireLines(options: { sessionId: string; cwd: string; prompt: string; parentUuid: string | null; timestamp: string }): Line[] {
+  const fire: Line = {
+    parentUuid: options.parentUuid,
+    isSidechain: false,
+    type: 'system',
+    subtype: 'scheduled_task_fire',
+    content: 'Running scheduled task',
+    isMeta: false,
+    uuid: randomUUID(),
+    timestamp: options.timestamp,
+    cwd: options.cwd,
+    sessionId: options.sessionId,
+    version: '2.1.284',
+  };
+  const prompt: Line = {
+    parentUuid: fire['uuid'] as string,
+    isSidechain: false,
+    type: 'user',
+    message: { role: 'user', content: options.prompt },
+    isMeta: true,
+    promptSource: 'system',
+    turnOrigin: 'scheduled',
+    uuid: randomUUID(),
+    timestamp: options.timestamp,
+    userType: 'external',
+    entrypoint: 'cli',
+    cwd: options.cwd,
+    sessionId: options.sessionId,
+    version: '2.1.284',
+  };
+  return [fire, prompt];
+}
+
+/**
+ * D52: a terminal session that ran `/loop 5m check the build` (typed as the CLI
+ * writes a slash command, followed by the skill's `isMeta` body), whose turn called
+ * CronCreate (`*\/5 * * * *`) and ended; then `fires` turns the CLI ran on its own
+ * (each a scheduled firing, as the D52 probe recorded them). Oldest first;
+ * timestamps from `start`, a firing every 300 s.
+ */
+export function terminalLoopLines(options: { sessionId: string; cwd: string; start: Date; fires?: number }): Line[] {
   const at = (seconds: number): string => new Date(options.start.getTime() + seconds * 1000).toISOString();
   const { sessionId, cwd } = options;
   const lines: Line[] = [
-    terminalUserLine({ sessionId, cwd, content: '<command-name>/loop</command-name>\n<command-message>loop</command-message>\n<command-args>5m check the build</command-args>', parentUuid: null, timestamp: at(0) }),
+    terminalUserLine({ sessionId, cwd, content: '<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>5m check the build</command-args>', parentUuid: null, timestamp: at(0) }),
   ];
+  lines.push({ ...terminalUserLine({ sessionId, cwd, content: '# /loop — schedule a recurring or self-paced prompt', parentUuid: lastUuid(lines), timestamp: at(0) }), isMeta: true });
   lines.push(assistantToolLine({ sessionId, cwd, toolUseId: 'toolu_cron1', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'check the build', recurring: true }, parentUuid: lastUuid(lines), timestamp: at(2) }));
-  lines.push(toolResultLine({ sessionId, cwd, toolUseId: 'toolu_cron1', text: 'Scheduled recurring job cron-1 (*/5 * * * *)', parentUuid: lastUuid(lines), timestamp: at(3) }));
-  lines.push(assistantTextLine({ sessionId, cwd, text: 'Build is green.', parentUuid: lastUuid(lines), timestamp: at(5) }));
-  // A firing: the CLI's own turn (no prompt line in between), ended by the assistant.
-  lines.push(assistantTextLine({ sessionId, cwd, text: 'Still green.', parentUuid: lastUuid(lines), timestamp: at(300) }));
+  lines.push(toolResultLine({ sessionId, cwd, toolUseId: 'toolu_cron1', text: 'Scheduled recurring job a5207d74 (Every 5 minutes). Session-only (not written to disk, dies when Claude exits). Auto-expires after 7 days.', parentUuid: lastUuid(lines), timestamp: at(3) }));
+  lines.push(...assistantBlockLines({ sessionId, cwd, text: 'Build is green.', parentUuid: lastUuid(lines), timestamp: at(5) }));
+  const texts = ['Still green.', 'Green again.', 'Green.'];
+  for (let n = 1; n <= (options.fires ?? 1); n++) {
+    lines.push(...scheduledFireLines({ sessionId, cwd, prompt: 'check the build', parentUuid: lastUuid(lines), timestamp: at(300 * n) }));
+    lines.push(...assistantBlockLines({ sessionId, cwd, text: texts[(n - 1) % texts.length] as string, parentUuid: lastUuid(lines), timestamp: at(300 * n + 1) }));
+  }
   return lines;
 }
 

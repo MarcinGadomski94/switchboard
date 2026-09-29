@@ -18,6 +18,8 @@ import { toEvent, toSession } from '../sessions/wire.ts';
 import { claudeConfigDir, findTranscriptFile, importTerminalTurns } from '../supervisor/attach.ts';
 import { childEnv } from '../supervisor/argv.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
+import type { LoopEventInput } from '../../core/derive/loops.ts';
+import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
 
 /**
@@ -194,6 +196,7 @@ export class HookService {
   #syncTimer: NodeJS.Timeout | undefined;
   #livenessTimer: NodeJS.Timeout | undefined;
   #closed = false;
+  readonly #loopFiles = new TranscriptLoopEvents();
   readonly #eventListeners = new Set<(payload: { readonly sessionId: string; readonly event: SessionEvent }) => void>();
 
   constructor(options: HookServiceOptions) {
@@ -928,6 +931,18 @@ export class HookService {
         this.#onError(error);
       }
     }
+  }
+
+  /**
+   * D52: a hooked session's loop events, read from its transcript (the loop
+   * tracker derives its loops from them: the stored events have no turn ends and
+   * no scheduled firings); `null` for any other session or without a transcript.
+   */
+  async loopEvents(sessionId: string): Promise<readonly LoopEventInput[] | null> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || !record.hooked) return null;
+    const transcript = await this.#transcriptOf(record);
+    return transcript ? this.#loopFiles.events(transcript) : null;
   }
 
   /**

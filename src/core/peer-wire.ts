@@ -95,10 +95,10 @@ export function peerTerminalLoop(machine: PeerMachineRef, entry: TerminalLoop): 
 
 /**
  * The `/hub` events a peer's stream forwards (the rest are the peer's own
- * business: worktrees, its machine). D52: `scheduleRun`, so a paired machine
- * refreshes the peer's schedules when one of its runs changes.
+ * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
+ * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -130,9 +130,10 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     }
     case 'inboxChanged':
       return payload;
-    case 'scheduleRun': {
-      const run = value as unknown as HubEvents['scheduleRun'];
-      return typeof run.scheduleId === 'string' ? ({ ...run, scheduleId: ns(machine, run.scheduleId) } as HubEvents[K]) : null;
+    case 'scheduleRun':
+    case 'schedulesChanged': {
+      const run = value as { scheduleId?: unknown };
+      return typeof run.scheduleId === 'string' ? ({ ...value, scheduleId: ns(machine, run.scheduleId) } as unknown as HubEvents[K]) : null;
     }
     default:
       return null;

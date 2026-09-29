@@ -97,9 +97,9 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
 /** The component module, imported at run time (the server tsconfig has no JSX; Vitest transforms it). */
 const SIDEBAR = '../../src/web/shell/Sidebar.tsx';
 
-describe('D23: the Week row shows its pace (src/web/shell/format.ts → usageRows, Sidebar MeterRow)', () => {
-  // Local times (the tooltip reads the local weekday and time), in a July week: no daylight-saving change anywhere.
-  // A Thursday 15:00 reset: day 4 runs Mon 13 July 15:00 − 24 h … Mon 15:00, day 5 from Mon 15:00.
+describe('D23, continuous (ruling 2026-09-29): the Week row shows its pace by the minute (src/web/shell/format.ts → usageRows, Sidebar MeterRow)', () => {
+  // Local times (the tooltip reads the local time), in a July week: no daylight-saving change anywhere.
+  // A Thursday 15:00 reset: the window runs Thu 9 July 15:00 → Thu 16 July 15:00; Mon 14:59 is its 5 760th minute (57.14 %).
   const RESET = new Date(2026, 6, 16, 15, 0).toISOString();
   const MON_1459 = new Date(2026, 6, 13, 14, 59).getTime();
   const MON_1500 = new Date(2026, 6, 13, 15, 0).getTime();
@@ -119,18 +119,21 @@ describe('D23: the Week row shows its pace (src/web/shell/format.ts → usageRow
       label: 'Week',
       pct: 33,
       text: '33% · 72h01',
-      pace: { state: 'on', markerPct: 57.14, title: 'On pace: 33% of 57.14% allowed until Mon 15:00' },
+      pace: { state: 'on', markerPct: 57.14, title: 'On pace: 33% of 57.14% until 15:00' },
     });
   });
 
-  it('at or above the allowance: ahead of pace (yellow); the step at the reset hour moves the allowance and the marker', () => {
-    expect(weekRow(system({ pct: 62 }), MON_1459)?.pace).toEqual({ state: 'ahead', markerPct: 57.14, title: 'Ahead of pace: 62% of 57.14% allowed until Mon 15:00' });
-    expect(weekRow(system({ pct: 57.14 }), MON_1459)?.pace).toMatchObject({ state: 'ahead', title: 'Ahead of pace: 57.14% of 57.14% allowed until Mon 15:00' });
-    expect(weekRow(system({ pct: 62 }), MON_1500)?.pace).toEqual({ state: 'on', markerPct: 71.43, title: 'On pace: 62% of 71.43% allowed until Tue 15:00' });
-    // Day 7: the whole week is allowed until the reset.
+  it('at or above the allowance: ahead of pace (yellow); each minute moves the allowance and the marker a little (no jump at the reset hour)', () => {
+    expect(weekRow(system({ pct: 62 }), MON_1459)?.pace).toEqual({ state: 'ahead', markerPct: 57.14, title: 'Ahead of pace: 62% of 57.14% until 15:00' });
+    expect(weekRow(system({ pct: 57.14 }), MON_1459)?.pace).toMatchObject({ state: 'ahead', title: 'Ahead of pace: 57.14% of 57.14% until 15:00' });
+    expect(weekRow(system({ pct: 57.14 }), MON_1500)?.pace).toEqual({ state: 'on', markerPct: 57.15, title: 'On pace: 57.14% of 57.15% until 15:01' });
+    expect(weekRow(system({ pct: 62 }), MON_1500)?.pace).toEqual({ state: 'ahead', markerPct: 57.15, title: 'Ahead of pace: 62% of 57.15% until 15:01' });
+    // Day 7, Wed 18:30 (the 8 851st minute): 87.81 % allowed until 18:31.
     const wed = new Date(2026, 6, 15, 18, 30).getTime();
-    expect(weekRow(system({ pct: 100 }), wed)?.pace).toEqual({ state: 'ahead', markerPct: 100, title: 'Ahead of pace: 100% of 100% allowed until Thu 15:00' });
-    expect(weekRow(system({ pct: 18.4 }), wed)?.pace?.title).toBe('On pace: 18.4% of 100% allowed until Thu 15:00');
+    expect(weekRow(system({ pct: 100 }), wed)?.pace).toEqual({ state: 'ahead', markerPct: 87.81, title: 'Ahead of pace: 100% of 87.81% until 18:31' });
+    expect(weekRow(system({ pct: 18.4 }), wed)?.pace?.title).toBe('On pace: 18.4% of 87.81% until 18:31');
+    // The last minute allows the whole week until the reset.
+    expect(weekRow(system({ pct: 99 }), new Date(2026, 6, 16, 14, 59, 30).getTime())?.pace).toEqual({ state: 'on', markerPct: 100, title: 'On pace: 99% of 100% until 15:00' });
   });
 
   it('the Week pace is the Week row\'s own: model rows keep no pace, whatever their numbers; the Session row has its own (D46)', () => {
@@ -155,7 +158,7 @@ describe('D23: the Week row shows its pace (src/web/shell/format.ts → usageRow
     const known = weekRow(system({ pct: 33 }), MON_1459);
     const html = renderToStaticMarkup(createElement(MeterRow as never, { label: 'Week', name: 'week', meter: known, pace: known?.pace }));
     expect(html).toBe(
-      '<div class="sb-meter" data-meter="week" data-pace="on" title="On pace: 33% of 57.14% allowed until Mon 15:00"><span>Week</span>' +
+      '<div class="sb-meter" data-meter="week" data-pace="on" title="On pace: 33% of 57.14% until 15:00"><span>Week</span>' +
         '<div class="sb-meter-track"><div class="sb-meter-fill" style="width:33%"></div>' +
         '<div class="sb-meter-marker" data-testid="pace-marker" style="left:calc(57.14% - 1px)"></div></div>' +
         '<span class="sb-meter-value">33% · 72h01</span></div>',
@@ -212,13 +215,13 @@ describe('D46: the Session row shows its pace by the minute (src/web/shell/forma
     expect(sessionRow(system({ pct: 38 }), at(11, 0))?.pace).toBeUndefined();
   });
 
-  it('the Week keeps its own D23 pace next to it; a model row gets none', () => {
+  it('the Week keeps its own pace next to it (by the minute over the week); a model row gets none', () => {
     const week: UsageWindow = { key: 'week', label: 'Week', pct: 18, resetsAt: new Date(2026, 6, 16, 15, 0).toISOString() };
     const fable: UsageWindow = { key: 'model', label: 'Fable', model: 'Fable', pct: 93, resetsAt: RESET };
     const rows = usageRows(system({ pct: 62 }, [week, fable]), at(14, 4));
     expect(rows.map((row) => [row.key, row.pace?.title ?? null])).toEqual([
       ['session', 'Ahead of pace: 62% of 50% until 14:05'],
-      ['week', 'On pace: 18% of 57.14% allowed until Mon 15:00'],
+      ['week', 'On pace: 18% of 56.6% until 14:05'],
       ['model', null],
     ]);
   });
