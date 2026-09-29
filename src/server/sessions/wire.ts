@@ -1,4 +1,4 @@
-import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
@@ -26,6 +26,25 @@ const workflowSources = new WeakMap<Store, WorkflowSource>();
 /** D51: registers the Workflow runs `toSession` adds for this store's sessions. */
 export function registerWorkflowSource(store: Store, source: WorkflowSource): void {
   workflowSources.set(store, source);
+}
+
+/**
+ * D53: a hooked terminal session's live activity and delivery state (the
+ * `HookService`, registered when it is created), keyed by the store like
+ * {@link registerWorkflowSource}.
+ */
+export interface HookSource {
+  /** The session's live activity (`null` while no turn runs). */
+  activity(sessionId: string): SessionActivity | null;
+  /** The session's delivery state (`null` for a closed one). */
+  status(record: SessionRecord): Promise<HookStatus | null>;
+}
+
+const hookSources = new WeakMap<Store, HookSource>();
+
+/** D53: registers the hooked sessions' activity and delivery state `toSession` adds for this store's sessions. */
+export function registerHookSource(store: Store, source: HookSource): void {
+  hookSources.set(store, source);
 }
 
 /** An agent row as the API returns it. */
@@ -107,6 +126,10 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
   const loops = await store.loops.list(record.id);
   // D51: the session's Workflow runs and their agents (after the stored agents, in run order).
   const workflows = (await workflowSources.get(store)?.forSession(record)) ?? { runs: [], agents: [] };
+  // D53: a hooked session's activity comes from its transcript and hooks (it has no process), with its delivery state.
+  const hookSource = record.hooked ? hookSources.get(store) : undefined;
+  const live = activity ?? (hookSource && record.closedAt === null ? hookSource.activity(record.id) : null);
+  const hookStatus = hookSource ? await hookSource.status(record) : null;
   return {
     id: record.id,
     name: record.name,
@@ -132,7 +155,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     folderKind: record.rootKind,
     origin: record.origin,
     live: record.pid !== null,
-    activity,
+    activity: live,
     resumeCommand: resumeCommand(record.claudeSessionId),
     chips: sessionChips(record, loops),
     loops: loops.map(toLoop),
@@ -147,6 +170,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     machine: null,
     // D48 P4: a hand-started terminal session Switchboard hooked into.
     hooked: record.hooked,
+    // D53: what a message to it waits on (hooked sessions only).
+    ...(record.hooked ? { hookStatus } : {}),
   };
 }
 

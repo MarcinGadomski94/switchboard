@@ -56,8 +56,9 @@ function ChatStepLine({ sessionId, step }: { readonly sessionId: string; readonl
  * reason as the tooltip. It sits outside the bubble, at its bottom left, and is
  * positioned absolutely, so the bubble keeps its size; muted like the step lines.
  */
-function QueuedClock({ reason }: { readonly reason: QueuedReason }) {
-  const tooltip = QUEUED_TOOLTIPS[reason];
+function QueuedClock({ reason, note = null }: { readonly reason: QueuedReason; readonly note?: string | null }) {
+  // D53: a hooked session's message says what it waits on instead.
+  const tooltip = note ?? QUEUED_TOOLTIPS[reason];
   return (
     <span className="sb-chat-queued" data-testid="chat-queued" data-reason={reason} title={tooltip} role="img" aria-label={tooltip}>
       <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false">
@@ -76,10 +77,12 @@ export interface ChatItemViewProps {
   readonly onAnswer: (batchId: string, body: AnswerBatch) => Promise<void>;
   /** D36: a waiting batch shows read-only with this note (a subagent's chat); absent in the main chat. */
   readonly readOnlyNote?: (batchId: string) => ReactNode;
+  /** D53: a hooked session's queued message: what it waits on (the clock's tooltip and a muted line under the bubble). */
+  readonly queuedNote?: string | null;
 }
 
 /** One chat item (a user bubble, an agent block with its step lines, a question batch); shared by the main and subagent chats. */
-export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote }: ChatItemViewProps) {
+export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null }: ChatItemViewProps) {
   if (item.kind === 'user') {
     return (
       <div
@@ -89,11 +92,17 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         data-origin={item.origin}
         data-delivered={item.delivered ? 'true' : 'false'}
         data-queued={item.queued ?? undefined}
+        data-queued-note={item.queued && queuedNote ? 'true' : undefined}
       >
         <div className="sb-chat-bubble" data-testid="chat-text">
           <ChatMarkdown text={item.text} />
         </div>
-        {item.queued ? <QueuedClock reason={item.queued} /> : null}
+        {item.queued ? <QueuedClock reason={item.queued} note={queuedNote} /> : null}
+        {item.queued && queuedNote ? (
+          <div className="sb-chat-queued-note" data-testid="chat-queued-note">
+            {queuedNote}
+          </div>
+        ) : null}
       </div>
     );
   }

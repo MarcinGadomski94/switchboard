@@ -68,12 +68,17 @@ function ChatLineView({ line }: { readonly line: ChatLine }) {
           {`· ${line.tokens}`}
         </span>
       ) : null}
+      {line.stale ? (
+        <span className="sb-activity-stale" data-testid="chat-activity-stale">
+          {`· ${line.stale}`}
+        </span>
+      ) : null}
     </div>
   );
 }
 
 function Label({ label, testId, titled = false }: { readonly label: ActivityLabel; readonly testId: string; readonly titled?: boolean }) {
-  const title = [label.text, label.more, label.time].filter(Boolean).join(' ');
+  const title = [label.text, label.more, label.time, label.stale].filter(Boolean).join(' ');
   return (
     <span className="sb-activity-label" data-testid={testId} data-state={label.state} title={titled || label.state === 'background' ? title : undefined}>
       <span className="sb-activity-label-text">{label.text}</span>{' '}
@@ -87,6 +92,14 @@ function Label({ label, testId, titled = false }: { readonly label: ActivityLabe
       <span className="sb-activity-label-time" data-testid={`${testId}-time`}>
         {label.time}
       </span>
+      {label.stale ? (
+        <>
+          {' '}
+          <span className="sb-activity-label-stale" data-testid={`${testId}-stale`}>
+            {`· ${label.stale}`}
+          </span>
+        </>
+      ) : null}
     </span>
   );
 }

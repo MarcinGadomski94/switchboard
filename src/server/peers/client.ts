@@ -245,6 +245,13 @@ export class PeerConnection {
       this.#sessions = session.closedAt ? rest : [...rest, session].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       this.#options.onCache();
     }
+    if (name === 'activity') {
+      // D53: the cached session carries the newest live activity, so a list read after the event (the sidebar's
+      // reload on any `sessionUpdated`) shows the running tool, not the activity of the last `sessionUpdated`.
+      // Not written to the snapshot (`onCache`): it changes too often, and an offline peer shows none anyway.
+      const { sessionId, activity } = payload as HubEvents['activity'];
+      this.#sessions = this.#sessions.map((known) => (known.id === sessionId ? { ...known, activity } : known));
+    }
     if (name === 'inboxChanged') void this.refreshInbox();
     if (name === 'questionBatch') {
       // The toast reads the batch's Inbox item: have it in the cache before the event goes out.

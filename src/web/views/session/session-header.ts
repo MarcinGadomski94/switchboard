@@ -1,4 +1,5 @@
-import type { AttachWarningReason, Session, SessionModel, SessionModelInput } from '../../../core/api.ts';
+import type { AttachWarningReason, HookStatus, Session, SessionModel, SessionModelInput } from '../../../core/api.ts';
+import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
 import { CLI_EFFORT_LEVELS, DEFAULT_MODEL_VALUE, effortLevelsFor, modelOptionFor, normalizeModel } from '../../../core/model-choice.ts';
 import { folderName, samePath } from '../../folders/folders.ts';
 
@@ -311,3 +312,12 @@ export function effortPickBody(model: NonNullable<Session['model']>, value: stri
  */
 export const HOOKED_NOTE =
   'Hooked terminal session: your messages reach it at its next step, or wake it when idle; interrupt, / commands, model changes and pause stay in the terminal (hooks cannot do them).';
+
+/**
+ * D53: the hooked note's second part: what a message waits on when that is not
+ * the usual (no hook listening yet, the session ended), `null` otherwise.
+ */
+export function hookedDeliveryNote(session: { readonly hooked?: boolean; readonly hookStatus?: HookStatus | null } | null): string | null {
+  const delivery = session?.hooked === true ? (session.hookStatus?.delivery ?? null) : null;
+  return delivery === 'no-waiter' || delivery === 'ended' ? HOOK_DELIVERY_TEXT[delivery] : null;
+}

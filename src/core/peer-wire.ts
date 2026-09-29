@@ -26,11 +26,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** A peer's {@link Session}: its id and its loops' session ids namespaced, `machine` added. */
+/**
+ * A peer's {@link Session}: its id and its loops' session ids namespaced, `machine`
+ * added. D53: no live activity while the machine is not online (its last known
+ * activity would read as a turn still running there).
+ */
 export function peerSession(machine: PeerMachineRef, session: Session): Session {
   return {
     ...session,
     id: ns(machine, session.id),
+    activity: machine.state === 'online' ? (session.activity ?? null) : null,
     loops: (session.loops ?? []).map((loop: Loop) => ({ ...loop, sessionId: ns(machine, loop.sessionId) })),
     machine: { id: machine.id, name: machine.name, state: machine.state },
   };

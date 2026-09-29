@@ -1174,3 +1174,19 @@ a.sb-agent--link:focus-visible {
 .sb-stop-background-note {
   color: var(--muted-3);
 }
+
+/*
+ * D53: a hooked session's queued message says what it waits on in a muted line
+ * under the bubble (the clock's tooltip too); the clock stays beside the bubble.
+ */
+.sb-chat-queued-note {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--muted-3);
+  text-align: right;
+}
+
+.sb-chat-message[data-queued-note='true'] .sb-chat-queued {
+  bottom: 34px;
+}

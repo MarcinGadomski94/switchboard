@@ -467,6 +467,12 @@ export interface SessionActivity {
   readonly agents: Readonly<Record<string, AgentActivity>>;
   /** Additive (D30): the main agent's pending background tasks, oldest first; empty when none (also while a turn runs). */
   readonly background: readonly BackgroundTask[];
+  /**
+   * Additive (D53): a hooked session's newest sign of life (a transcript change or
+   * a hook call, ISO): a running turn quiet for 3 minutes reads "· no activity for
+   * 3m". Absent for a supervised session (its stream-json is live).
+   */
+  readonly quietSince?: string | null;
 }
 
 /** `GET /api/sessions` item: a session with its agents and open question count. Provisional: M4.1. */
@@ -583,6 +589,27 @@ export interface Session {
    * server always sends it; optional so older payloads and fixtures type-check.
    */
   readonly hooked?: boolean;
+  /**
+   * Additive (D53): a hooked session's delivery state (`docs/chat.md` → *Queued
+   * messages* → *Hooked sessions*): whether a wake-up waiter is armed and what an
+   * undelivered message waits on. Absent / `null` for every other session.
+   */
+  readonly hookStatus?: HookStatus | null;
+}
+
+/** Additive (D53): what a message to a hooked terminal session waits on (`src/core/derive/hooked-activity.ts`). */
+export interface HookStatus {
+  /** A wake-up waiter (the SessionStart / Stop `asyncRewake` hook) is held for the session now. */
+  readonly waiter: boolean;
+  /** Switchboard's hooks reported from the session since Switchboard started. */
+  readonly hookSeen: boolean;
+  /**
+   * What an undelivered message waits on (`HOOK_DELIVERY_TEXT` has the words):
+   * `handed` (released to the waiter, not taken up yet), `turn` (the next turn
+   * boundary), `no-waiter` (no hook listening yet), `ended` (the terminal session
+   * is gone); `null` when nothing waits and a waiter is armed.
+   */
+  readonly delivery: 'handed' | 'turn' | 'no-waiter' | 'ended' | null;
 }
 
 /**

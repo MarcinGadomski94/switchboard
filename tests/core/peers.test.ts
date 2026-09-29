@@ -114,6 +114,12 @@ describe('D48 peer wire mapping', () => {
     expect(mapped.machine).toEqual(MACHINE);
   });
 
+  it('D53: keeps a session\'s live activity while its machine is online, drops it while it is not', () => {
+    const live = { ...session('s1'), activity: { turnStartedAt: 't', state: 'thinking' as const, since: 't', tool: null, summary: null, thinkingTokens: null, agents: {}, background: [] } };
+    expect(peerSession(MACHINE, live).activity).toEqual(live.activity);
+    expect(peerSession({ ...MACHINE, state: 'offline' }, live).activity).toBeNull();
+  });
+
   it('namespaces a detail: events (and an AskUserQuestion requestId), questions and artifacts; question ids stay', () => {
     const detail = {
       ...session('s1'),

@@ -20,6 +20,7 @@ import {
   REMOTE_LINK_LABEL,
   actionErrorText,
   attachWarningText,
+  hookedDeliveryNote,
   pauseButton,
   remoteToggle,
   rootLine,
@@ -250,6 +251,15 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       {hooked ? (
         <div className="sb-sv-remote-copy" data-testid="session-hooked-note">
           {HOOKED_NOTE}
+          {/* D53: no hook listening yet (or the session ended): messages wait, and why. */}
+          {hookedDeliveryNote(session) ? (
+            <>
+              {' '}
+              <strong className="sb-sv-hooked-delivery" data-testid="session-hooked-delivery">
+                {hookedDeliveryNote(session)}
+              </strong>
+            </>
+          ) : null}
         </div>
       ) : null}
       {session?.remoteSource ? (

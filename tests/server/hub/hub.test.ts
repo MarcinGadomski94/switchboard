@@ -99,7 +99,9 @@ const SESSION_KEYS = keys<Session>()([
   'hooked',
   // additive, D51 (workflow runs)
   'workflows',
-]);
+  // additive, D53 (a hooked session's delivery state; absent on every other session)
+  'hookStatus',
+]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',
@@ -150,7 +152,9 @@ const SESSION_ACTIVITY_KEYS = keys<SessionActivity>()([
   'agents',
   // additive, D30 (background work)
   'background',
-]);
+  // additive, D53 (a hooked session's newest sign of life; absent on a supervised session)
+  'quietSince',
+]).filter((key) => key !== 'quietSince');
 const AGENT_ACTIVITY_KEYS = keys<AgentActivity>()(['state', 'since', 'startedAt', 'tool', 'summary']);
 /** D30: `wakeAt` only on a wake-up; D51: `workflow` only on a workflow whose run is known. */
 const BACKGROUND_TASK_KEYS = keys<BackgroundTask>()(['id', 'toolUseId', 'kind', 'summary', 'startedAt', 'wakeAt', 'github', 'workflow']).filter((key) => key !== 'wakeAt' && key !== 'workflow');
