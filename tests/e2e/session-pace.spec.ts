@@ -20,7 +20,7 @@ import { stubToolProbes } from './probes.ts';
  * - in minute 186 (62 % allowed, exactly the usage): still yellow;
  * - one minute of page clock later, minute 187 (62.33 %): green, the marker moves;
  * - after the reset, and more than 5 h before it: no color, no marker, no tooltip.
- * The Week row keeps its own D23 pace throughout.
+ * The Week row keeps its own (continuous) D23 pace throughout.
  */
 
 const MIN = 60_000;
@@ -139,9 +139,10 @@ test('the Session bar is yellow at or above its allowance, green below it, stepp
   await expect(session.locator('.sb-meter-fill')).toHaveAttribute('style', `width: ${SESSION_PCT}%;`);
   await expectMarkerAt(session, 40);
   expect(await session.getByTestId('pace-marker').evaluate((marker) => getComputedStyle(marker).backgroundColor)).toBe(muted);
-  // The Week row keeps its own D23 pace (18 %, day 4 of its week: on pace).
+  // The Week row keeps its own pace (18 %, by the minute over its week, ruling 2026-09-29): about 75 h before its reset
+  // (74 h after the seed plus the page's 3 h lead) is its 5 580th or 5 581st minute, 55.36–55.37 % allowed: on pace.
   await expect(week).toHaveAttribute('data-pace', 'on');
-  await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
+  await expect(week).toHaveAttribute('title', /^On pace: 18% of 55\.3[67]% until \d\d:\d\d$/);
 
   // Minute 186: the allowance is exactly the usage (62 %), which is not below it → still yellow.
   await page.clock.pauseAt(start + 185 * MIN + 10_000);

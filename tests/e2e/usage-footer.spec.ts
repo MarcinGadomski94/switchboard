@@ -116,11 +116,13 @@ test('the footer shows Session, Week and the model in use, each with its bar, % 
     const track = usage.locator(`[data-meter="${meter}"] .sb-meter-track`);
     expect((await track.boundingBox())?.height).toBe(4);
   }
-  // D23 on the page's own clock: the Week reset is 74h12 ahead, so this is day 4 (57.14 % allowed) and 18 % is on pace
+  // D23 on the page's own clock: the Week reset is 74h12 ahead, so about 55.8 % is allowed and 18 % is on pace
   // (tests/e2e/week-pace.spec.ts drives the colors and the step on a fixed clock).
   const week = usage.locator('[data-meter="week"]');
   await expect(week).toHaveAttribute('data-pace', 'on');
-  await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
+  // Continuous (ruling 2026-09-29): 74h12m20s before the reset is the window's 5 628th minute: 55.83 %; each later minute of
+  // the page's clock (the reading was taken a little earlier) adds 0.01 %.
+  await expect(week).toHaveAttribute('title', /^On pace: 18% of 55\.8[3-6]% until \d\d:\d\d$/);
   await expect(week.getByTestId('pace-marker')).toHaveCount(1);
   // D46: the Session reset is 1h48 ahead, so it is in about its 192nd of 300 minutes (64–64.33 % allowed, each minute counted from its start) and 62 % is
   // on pace (tests/e2e/session-pace.spec.ts drives the colors and the minute step). The model row has no pace.

@@ -7,15 +7,17 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { stubToolProbes } from './probes.ts';
 
 /**
- * D23 oracle (E2E) on the real code path (no demo seed, D13): `node
+ * D23 oracle (E2E), continuous by the minute since the 2026-09-29 ruling, on the real code path (no demo seed, D13): `node
  * src/server/main.ts` with the fake CLIs and a temp data folder holding one
  * `get_usage` reading (the CLI's recorded shape): Week 62 % with its reset 74 h
  * ahead (a whole minute), so the server lists the Week window for the whole run.
  * The pace is computed in the browser from `usageWindows`, so the page gets a
  * fixed clock (`page.clock.setFixedTime`, timers keep running) at chosen moments
- * of that window, and the tooltip is read in UTC (`timezoneId`):
- * - one minute before the step into day 5 (day 4, 57.14 % allowed): yellow;
- * - at the step (day 5, 71.43 %): green, the marker moves;
+ * of that window, and the tooltip is read in UTC (`timezoneId`). The allowance
+ * grows by the minute (minute n of the 10 080 allows n × 100 / 10 080 %):
+ * - across the reset hour into day 5 it moves by one minute's share only (57.14 % → 57.15 %, no jump);
+ * - in the window's 6 249th minute 61.99 % is allowed: 62 % is ahead of pace, yellow;
+ * - two minutes later (62.01 %): green, the marker moves;
  * - after the reset (the page still has the window): no color, no marker, no tooltip.
  * The Session row never takes the Week's pace. D46 gives it its own, so its reset
  * here is 1 h after the seed: past on the page's clock at every moment above, it
@@ -25,7 +27,6 @@ import { stubToolProbes } from './probes.ts';
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 const WEEK_PCT = 62;
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 let tmp: string;
 let server: ServerProcess;
@@ -34,10 +35,10 @@ let reset = 0;
 
 test.use({ timezoneId: 'UTC' });
 
-/** `Mon 15:00` in UTC (the page's time zone here), as the tooltip names the next step. */
-function utcWeekdayTime(ms: number): string {
+/** `15:00` in UTC (the page's time zone here), as the tooltip names the next step. */
+function utcTime(ms: number): string {
   const date = new Date(ms);
-  return `${WEEKDAYS[date.getUTCDay()]} ${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+  return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 /** The computed color of a SPEC token, as the page resolves it. */
@@ -118,10 +119,11 @@ test.beforeEach(async ({ page }) => {
   await stubToolProbes(page);
 });
 
-test('the Week bar is yellow at or above the day’s allowance, green below it, with a marker at the allowance and a pace tooltip', async ({ page }) => {
+test('the Week bar is yellow at or above the minute’s allowance, green below it, with a marker at the allowance and a pace tooltip', async ({ page }) => {
+  const start = reset - 7 * DAY;
   const stepIntoDay5 = reset - 3 * DAY;
 
-  // Day 4 (one minute before the step): 62 % ≥ 57.14 % → ahead of pace, yellow.
+  // The reset hour is no step any more: one minute before it 57.14 %, at it 57.15 % (both below 62 %: yellow).
   let week = await openAt(page, stepIntoDay5 - MIN);
   const need = await tokenColor(page, '--status-need');
   const done = await tokenColor(page, '--status-done');
@@ -129,10 +131,18 @@ test('the Week bar is yellow at or above the day’s allowance, green below it, 
   const muted = await tokenColor(page, '--muted-3');
   expect(new Set([need, done, text]).size).toBe(3);
   await expect(week).toHaveAttribute('data-pace', 'ahead');
-  await expect(week).toHaveAttribute('title', `Ahead of pace: ${WEEK_PCT}% of 57.14% allowed until ${utcWeekdayTime(stepIntoDay5)}`);
+  await expect(week).toHaveAttribute('title', `Ahead of pace: ${WEEK_PCT}% of 57.14% until ${utcTime(stepIntoDay5)}`);
+  await expectMarkerAt(week, 57.14);
+  week = await openAt(page, stepIntoDay5);
+  await expect(week).toHaveAttribute('title', `Ahead of pace: ${WEEK_PCT}% of 57.15% until ${utcTime(stepIntoDay5 + MIN)}`);
+
+  // The window's 6 249th minute: 61.99 % allowed, 62 % ≥ it → ahead of pace, yellow.
+  week = await openAt(page, start + 6248 * MIN + 30_000);
+  await expect(week).toHaveAttribute('data-pace', 'ahead');
+  await expect(week).toHaveAttribute('title', `Ahead of pace: ${WEEK_PCT}% of 61.99% until ${utcTime(start + 6249 * MIN)}`);
   expect(await fillColor(week)).toBe(need);
   await expect(week.locator('.sb-meter-fill')).toHaveAttribute('style', `width: ${WEEK_PCT}%;`);
-  await expectMarkerAt(week, 57.14);
+  await expectMarkerAt(week, 61.99);
   expect(await week.getByTestId('pace-marker').evaluate((marker) => getComputedStyle(marker).backgroundColor)).toBe(muted);
 
   // The Session row does not take the Week's pace: its reset has passed on the page's clock (no D46 pace either),
@@ -143,12 +153,12 @@ test('the Week bar is yellow at or above the day’s allowance, green below it, 
   await expect(session.getByTestId('pace-marker')).toHaveCount(0);
   expect(await fillColor(session)).toBe(text);
 
-  // Day 5 starts at the reset hour: 62 % < 71.43 % → on pace, green; the marker moves to the new allowance.
-  week = await openAt(page, stepIntoDay5);
+  // Two minutes later (the 6 251st minute: 62.01 %): 62 % < it → on pace, green; the marker moves with the allowance.
+  week = await openAt(page, start + 6250 * MIN);
   await expect(week).toHaveAttribute('data-pace', 'on');
-  await expect(week).toHaveAttribute('title', `On pace: ${WEEK_PCT}% of 71.43% allowed until ${utcWeekdayTime(stepIntoDay5 + DAY)}`);
+  await expect(week).toHaveAttribute('title', `On pace: ${WEEK_PCT}% of 62.01% until ${utcTime(start + 6251 * MIN)}`);
   expect(await fillColor(week)).toBe(done);
-  await expectMarkerAt(week, 71.43);
+  await expectMarkerAt(week, 62.01);
 
   // After the reset the page still has the window, but its pace is unknown: no color, no marker, no tooltip.
   week = await openAt(page, reset + MIN);

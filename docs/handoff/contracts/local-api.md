@@ -521,6 +521,13 @@ Schedule { "id": "r~abcdefghijkl~5c1e…", "name": "nightly", "cron": "0 2 * * *
 TerminalLoop { "loop": { "id": "term:5c1e0b52-…:loop", "sessionId": "5c1e0b52-…", "kind": "/loop", "label": "/loop 5m", "iteration": 2, "nextFireAt": "…", "expiresAt": "…", "iterations": [ … ], "…": "…" }, "terminal": { "id": "5c1e0b52-…", "name": "pc-loop", "cwd": "/…/repo", "status": "idle", "pid": 4242, "startedAt": "…" } }
 ```
 
+### `schedulesChanged` (D52 ruling D52-peer-edits-live, 2026-09-29, additive)
+The developer approved one new `/hub` event name: `schedulesChanged` `{ scheduleId, change }`, `change` = `saved` (created or edited) · `paused` · `resumed` · `deleted` · `run` (sent with every `scheduleRun`). It is on the peer event stream: a paired machine refetches that machine's schedules, then publishes it locally with the schedule's remote id, so a schedule changed on one machine shows on the other at once (the 10 s staleness refresh stays as a fallback). Clients that do not know the name ignore it.
+
+```json
+schedulesChanged { "scheduleId": "r~abcdefghijkl~5c1e…", "change": "paused" }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -541,3 +548,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | scheduleRun | { scheduleId, result } |
 | system | same shape as GET /api/system, every 5 s |
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
+| schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
