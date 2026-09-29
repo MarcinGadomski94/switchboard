@@ -163,7 +163,7 @@ The step 1 rows from `GET /api/system`, the root line from the router's first `#
 
 While the process is live:
 1. an open `can_use_tool` request (question or permission) → `need`;
-2. else a running turn (a user message without its `result` yet, or a turn the CLI runs on its own, e.g. after a background agent finished) or a running subagent → `run`;
+2. else a running turn or work still to come → `run`: a user message written to stdin that the CLI has not taken up yet (no replay echo yet), a turn that is open (from its `system/init` or the replay of a message, to its `result`), or a running subagent. A `result` closes the open turn **with every message it took up**, whatever its origin (see *Turn accounting* in `docs/supervisor.md`);
 3. else the last finished turn: success → `done`, error (`error_max_turns`, …) → `fail`;
 4. nothing ran yet (a fresh attach) → `idle`.
 
@@ -177,7 +177,7 @@ The service shutting down is not a status: the stored status (`run` / `need`) is
 ## Live activity (D19)
 `src/core/derive/activity.ts` (`ActivityTracker`, `toolSummary`), fed by the recorder (`src/server/supervisor/recorder.ts`) as stdout lines arrive; held in memory per live process, never stored and never guessed. It is `Session.activity` (REST and `sessionUpdated`, always current: `SessionSupervisor.activity`) and the additive `/hub` event `activity` (`docs/hub.md`: at most one per second per session).
 
-- **Turn start**: `system/init` (every turn opens with it, M0.1) or the replay of a stdin message (the CLI took the message up), whichever comes first; a turn the CLI starts by itself (a background agent finished, `origin.kind: task-notification`) opens with `init` too. `turnStartedAt` = that moment; the main agent is `thinking`, no tokens yet. A message queued while a turn runs starts its own turn when the CLI takes it up, after the running turn's result.
+- **Turn start**: `system/init` (every turn opens with it, M0.1) or the replay of a stdin message (the CLI took the message up), whichever comes first; a turn the CLI starts by itself (a background agent finished, `origin.kind: task-notification`) opens with `init` too. `turnStartedAt` = that moment; the main agent is `thinking`, no tokens yet. A message queued while a turn runs either starts its own turn when the CLI takes it up, after the running turn's result, or (CLI 2.1.284) is folded into the running turn as a `queued_command` attachment, replayed at once, and ends with that turn's one `result`.
 - **`thinking`**: `system/thinking_tokens` ticks (no `parent_tool_use_id` on CLI 2.1.283, so they are the main agent's). `estimated_tokens` restarts with each model message, so `thinkingTokens` = the sum of the ticks' `estimated_tokens_delta` over the turn (without a delta: the rise of `estimated_tokens` since the previous tick, a drop meaning a new message); `null` before the first tick. A `thinking` content block also means thinking; so does a tool's end (the model continues with its result).
 - **`tool`**: an agent's `tool_use` until the `tool_result` with its id; `since` = the `tool_use` line's arrival. With several open, the newest shows; when it ends, the next open one shows again with its own start. The summary is short and literal (`toolSummary`): Bash → the command's first line; Read / Edit / Write → the file name; Grep / Glob → the pattern; Agent / Task → its description; WebFetch → the host; anything else, or an input without that field → the tool name; at most 80 characters.
 - **`writing`**: after a non-empty text block, until the next block, tool or result.
