@@ -122,13 +122,54 @@ export const GH_WAIT_COMMAND = 'for i in $(seq 1 60); do gh run view 4242 --json
 /** D30: the reason of the `ScheduleWakeup` call `[fake:wakeup <seconds>]` makes. */
 export const WAKEUP_REASON = 'fake-claude: check again later';
 
+/** D43: the `meta.name` of the workflow `[fake:workflow <seconds>]` launches (`workflow_name`, `tool_use_result.workflowName`). */
+export const FAKE_WORKFLOW_NAME = 'fake-audit';
+
+/** D43: the `meta.description` of that workflow: its launch result's `Summary:` and its `task_started` description. */
+export const FAKE_WORKFLOW_SUMMARY = 'fake-claude: read-only audit of the recorded fixtures';
+
+/** D43: the script `[fake:workflow <seconds>]` passes to the `Workflow` tool (never run). */
+export const FAKE_WORKFLOW_SCRIPT = `export const meta = { name: '${FAKE_WORKFLOW_NAME}', description: '${FAKE_WORKFLOW_SUMMARY}', phases: [{ title: 'Audit' }] }\nphase('Audit')\nawait agent('Audit the recorded fixtures read-only')`;
+
+/** D43: the task type `[fake:bg-task <seconds>]` reports without one given: a type Switchboard does not know. */
+export const FAKE_TASK_TYPE = 'fake_task';
+
+/** D43: the description of the task `[fake:bg-task …]` reports (its `task_started` description and notification summary). */
+export const FAKE_TASK_DESCRIPTION = 'fake-claude: a background task of the CLI';
+
+/**
+ * D43: the `Workflow` tool's result for a background launch, as CLI 2.1.284 words it
+ * (its `mapToolResultToToolResultBlockParam`, read in the binary): the task id, the
+ * `Summary:` (the script's `meta.description`), the transcript dir, the script file,
+ * the run id, then "You will be notified when it completes."
+ */
+export function workflowLaunchText(taskId: string, runId: string, scriptPath: string, transcriptDir: string): string {
+  return [
+    `Workflow launched in background. Task ID: ${taskId}`,
+    `Summary: ${FAKE_WORKFLOW_SUMMARY}`,
+    `Transcript dir: ${transcriptDir}`,
+    `Script file: ${scriptPath}`,
+    `(Edit this file with Write/Edit and re-invoke Workflow with {scriptPath: "${scriptPath}"} to iterate without resending the script.)`,
+    `Run ID: ${runId}`,
+    `To resume after editing the script: Workflow({scriptPath: "${scriptPath}", resumeFromRunId: "${runId}"}) \u2014 completed agents return cached results (cached results may themselves be empty \u2014 inspect journal.jsonl before assuming there is something to recover).`,
+    '',
+    'You will be notified when it completes. Use /workflows to watch live progress.',
+  ].join('\n');
+}
+
 /** Longest background delay a D30 token accepts (seconds). */
 const MAX_BACKGROUND_SECONDS = 3_600;
 
-/** What a D30 token asks for: a background `Bash` that ends after `seconds`, or a `ScheduleWakeup` that fires after `seconds`. */
+/**
+ * What a D30 / D43 token asks for: a background `Bash` that ends after `seconds`, a
+ * `ScheduleWakeup` that fires after `seconds`, a background `Workflow` that ends after
+ * `seconds` (D43), or a task of `taskType` the CLI reports without a tool call (D43).
+ */
 export type BackgroundSpec =
   | { readonly kind: 'bash'; readonly seconds: number; readonly command: string }
-  | { readonly kind: 'wakeup'; readonly seconds: number };
+  | { readonly kind: 'wakeup'; readonly seconds: number }
+  | { readonly kind: 'workflow'; readonly seconds: number }
+  | { readonly kind: 'task'; readonly seconds: number; readonly taskType: string };
 
 function seconds(value: string | undefined): number {
   return Math.min(Number(value ?? 0), MAX_BACKGROUND_SECONDS);
@@ -141,7 +182,13 @@ function seconds(value: string | undefined): number {
  *   and `<seconds>` later the task's end and a turn of the CLI's own follow;
  * - `[fake:background-gh <seconds>]`: the same with {@link GH_WAIT_COMMAND};
  * - `[fake:wakeup <seconds>]`: a `ScheduleWakeup` call (`delaySeconds` = `<seconds>`,
- *   not clamped as the real tool is), then `<seconds>` later a turn of its own.
+ *   not clamped as the real tool is), then `<seconds>` later a turn of its own;
+ * - D43 `[fake:workflow <seconds>]`: the same recording as a background `Workflow`
+ *   ({@link FAKE_WORKFLOW_SCRIPT}, the launch text {@link workflowLaunchText}, a
+ *   `local_workflow` `task_started`);
+ * - D43 `[fake:bg-task <seconds> [<type>]]`: the same recording without its tool call:
+ *   only a `task_started` of `<type>` (default {@link FAKE_TASK_TYPE}) without a
+ *   `tool_use_id`, then its end.
  * `<seconds>` may have decimals and is capped at an hour.
  * @returns the spec, `{ error }` for a malformed token, `null` without one.
  */
@@ -153,8 +200,15 @@ export function backgroundToken(text: string): BackgroundSpec | { error: string 
   if (bash && command) return { kind: 'bash', seconds: seconds(bash[1]), command };
   const wake = /\[fake:wakeup\s+(\d+(?:\.\d+)?)\]/.exec(text);
   if (wake) return { kind: 'wakeup', seconds: seconds(wake[1]) };
-  if (/\[fake:(?:background|background-gh|wakeup)(?:\s|\])/.test(text)) {
-    return { error: 'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>] or [fake:wakeup <seconds>]' };
+  const workflow = /\[fake:workflow\s+(\d+(?:\.\d+)?)\]/.exec(text);
+  if (workflow) return { kind: 'workflow', seconds: seconds(workflow[1]) };
+  const task = /\[fake:bg-task\s+(\d+(?:\.\d+)?)(?:\s+([A-Za-z0-9_-]+))?\s*\]/.exec(text);
+  if (task) return { kind: 'task', seconds: seconds(task[1]), taskType: task[2] ?? FAKE_TASK_TYPE };
+  if (/\[fake:(?:background|background-gh|wakeup|workflow|bg-task)(?:\s|\])/.test(text)) {
+    return {
+      error:
+        'expected [fake:background <seconds> <cmd>], [fake:background-gh <seconds>], [fake:wakeup <seconds>], [fake:workflow <seconds>] or [fake:bg-task <seconds> [<type>]]',
+    };
   }
   return null;
 }
