@@ -12,7 +12,13 @@ import {
   PLAY_LABEL,
   PLAY_MAX,
   PLAY_TICK_MS,
+  EMPTY_SESSION_SOURCE,
+  type SessionSource,
   playStep,
+  sessionFetched,
+  sessionPushed,
+  sessionRefetching,
+  shownSession,
   timelineModel,
 } from './timeline.ts';
 import './timeline.css';
@@ -82,18 +88,21 @@ function useSessionEvents(sessionId: string, onUnknownAgent: (agentId: string) =
  */
 export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
   const detail = useApi(() => api.getSession(sessionId), [sessionId]);
-  const [pushedSession, setPushedSession] = useState<Session | null>(null);
-  useEffect(() => setPushedSession(null), [sessionId]);
-  useHubEvent('sessionUpdated', (session) => {
-    if (session.id === sessionId) setPushedSession(session);
+  const [source, setSource] = useState<SessionSource>(EMPTY_SESSION_SOURCE);
+  useEffect(() => setSource(EMPTY_SESSION_SOURCE), [sessionId]);
+  useHubEvent('sessionUpdated', (pushed) => {
+    if (pushed.id === sessionId) setSource((prev) => sessionPushed(prev, pushed));
   });
-  const session: Session | null = pushedSession ?? detail.data;
+  const fetchedSession = detail.data;
+  useEffect(() => setSource(sessionFetched), [fetchedSession]);
+  const session: Session | null = shownSession(source, fetchedSession);
   const agents = session?.agents ?? [];
 
   // A subagent appears without a sessionUpdated (its status is not a session status change): refetch.
+  // The /hub copy stays until the refetch lands (`SessionSource`), so no lane blinks meanwhile.
   const reloadDetail = detail.reload;
   const refetchAgents = useThrottled(() => {
-    setPushedSession(null);
+    setSource(sessionRefetching);
     reloadDetail();
   }, 300);
   const agentIds = useRef<ReadonlySet<string>>(new Set());

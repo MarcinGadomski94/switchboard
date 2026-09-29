@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Agent, SessionEvent } from '../../src/core/api.ts';
+import type { Agent, Session, SessionEvent } from '../../src/core/api.ts';
 import type { EventKind } from '../../src/core/model.ts';
 import {
+  EMPTY_SESSION_SOURCE,
   LOG_LIMIT,
   MAIN_LANE_SUB,
   PLAY_MAX,
   formatClock,
   isOpenEvent,
   playStep,
+  sessionFetched,
+  sessionPushed,
+  sessionRefetching,
+  shownSession,
   timelineModel,
 } from '../../src/web/views/session/timeline.ts';
 
@@ -199,5 +204,41 @@ describe('helpers', () => {
     expect(playStep(0)).toEqual({ play: 8, playing: true });
     expect(playStep(990)).toEqual({ play: 998, playing: true });
     expect(playStep(992)).toEqual({ play: PLAY_MAX, playing: false });
+  });
+});
+
+describe('session source (the /hub copy over the fetched detail)', () => {
+  /** Only the agents matter here. */
+  const session = (...agents: Agent[]): Session => ({ id: 's', agents }) as unknown as Session;
+  const main = agent('m', 'orchestrator', 'main');
+  const sub = agent('a', 'general-purpose');
+
+  it('keeps the newest /hub copy while a refetch runs, so a lane it shows does not blink', () => {
+    const stale = session(main);
+    let source = sessionPushed(EMPTY_SESSION_SOURCE, session(main, sub));
+    source = sessionRefetching(source);
+    // The refetch is on its way: the copy with the subagent still draws its lane.
+    expect(shownSession(source, stale)?.agents).toEqual([main, sub]);
+    // Its answer lands: the copy asked about gives way to it.
+    const fresh = session(main, sub);
+    source = sessionFetched(source);
+    expect(source.pushed).toBeNull();
+    expect(shownSession(source, fresh)).toBe(fresh);
+  });
+
+  it('keeps a copy that arrived after the refetch was asked for', () => {
+    let source = sessionRefetching(sessionPushed(EMPTY_SESSION_SOURCE, session(main)));
+    const newer = session(main, sub);
+    source = sessionPushed(source, newer);
+    source = sessionFetched(source);
+    expect(shownSession(source, session(main))).toBe(newer);
+    expect(source.reloadFrom).toBeNull();
+  });
+
+  it('ignores detail changes without a pending refetch and shows the detail without a copy', () => {
+    const fetched = session(main);
+    expect(shownSession(EMPTY_SESSION_SOURCE, fetched)).toBe(fetched);
+    const pushed = sessionPushed(EMPTY_SESSION_SOURCE, session(main, sub));
+    expect(sessionFetched(pushed)).toBe(pushed);
   });
 });
