@@ -106,7 +106,7 @@ Subagents (the `Agent` tool; `init.tools` still lists it as `Task`):
 - **One process is multi-turn.** Each stdin message runs a full turn and ends with its own `result`. The process stays alive and idle while stdin is open (it was checked 8 s after the last result).
 - **What closes it: EOF on stdin.** If EOF arrives mid-turn, the running turn still completes and emits its `result`, then the process exits with code 0 (`eof-immediate`). Pausing does not need a signal.
 - `--replay-user-messages` echoes each consumed stdin message as a `user` line with `isReplay: true`. That is useful to confirm delivery of queued messages.
-- `result.queued_turn_count` and `control_response.response.still_queued` suggest that a message sent while a turn is running gets queued. Their names suggest this; sending mid-turn without an interrupt was not probed.
+- `result.queued_turn_count` and `control_response.response.still_queued` suggest that a message sent while a turn is running gets queued. Their names suggest this; sending mid-turn without an interrupt was not probed. (D44, 2026-09-29: settled by reading the 2.1.284 binary instead: the replay marks the pickup, at the running turn's next tool boundary or the next turn's start; `docs/derivations.md` → *Queued messages (D44)*.)
 
 ### Session id, resume, fork
 - `--session-id <uuid>` on start: `init.session_id` equals the given uuid (`multiturn`).

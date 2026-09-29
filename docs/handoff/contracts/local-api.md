@@ -323,6 +323,17 @@ AnswerRefusal { "error": "invalid", "message": "question q2: an own answer must 
 Question      { …, "answerIndex": null, "answerText": "Medium, with rounded corners" | null }
 ```
 
+## Queued messages (D44, 2026-09-29, additive)
+Developer ruling D44 (`docs/decisions.md` → *Queued messages*): the developer's own messages show a clock while the agent has not taken them up. No new route or event name, no migration: the state rides on existing payloads, and its changes go out on the existing `/hub` events. Details: `docs/derivations.md` → *Queued messages (D44)*, `docs/chat.md` → *Queued messages*.
+
+- **SessionEvent.payload** of type `user` gains `queued: "turn" | "resume"`, present while the message waits and absent once the CLI took it up (and on every message that never waited): `turn` = written while a turn ran (or behind messages still waiting), `resume` = sent to a session with no live process, which it resumed. When it goes, the event is re-sent on `/hub` `event` (same id, the payload without `queued`), as for a merged text or a closed tool call; `delivered` still flips with the CLI's replay.
+- **Question** gains `queued: "resume" | null`: `resume` while its batch's answers wait in the session's outbox (a stale batch answered while the session had no live process), `null` once they were written and for every other batch. Optional in `src/core/api.ts` so older fixtures type-check; the server always sends it (`/hub` `questionBatch`, `GET /api/inbox`, `SessionDetail.questions`). When the outbox is written, `sessionUpdated` is published for the session.
+
+```json
+Event    { …, "payload": { "type": "user", "text": "Keep it short.", "origin": "user", "delivered": false, "queued": "turn" } }
+Question { …, "state": "stale", "answeredAt": "2026-09-29T10:00:00.000Z", "queued": "resume" | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

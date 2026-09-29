@@ -1,5 +1,6 @@
 import type { BranchRef, InboxAction, InboxItem, NewSessionPrefill, Question } from '../../core/api.ts';
 import { toolLabel } from '../../core/derive/event-kind.ts';
+import type { QueuedReason } from '../../core/event-payload.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
 import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../db/repos/questions.ts';
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
@@ -38,7 +39,18 @@ export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): 
     answeredOn: batch.answeredOn,
     // D33: closed without answers (its session was closed).
     closedReason: batch.closedReason,
+    // D44: the answers wait in the session's outbox until its next run.
+    queued: batchQueued(batch),
   };
+}
+
+/**
+ * D44: `resume` while a batch's answers wait in the session's outbox: a stale
+ * batch answered but not delivered yet (`docs/questions.md`: answered while the
+ * session had no live process, they go out with its next message); else `null`.
+ */
+export function batchQueued(batch: QuestionBatchRecord): QueuedReason | null {
+  return batch.state === 'stale' && batch.answeredAt !== null && batch.deliveredVia === null && batch.closedReason === null ? 'resume' : null;
 }
 
 /**

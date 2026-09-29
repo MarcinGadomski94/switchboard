@@ -14,6 +14,7 @@
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { AnsweredOn } from './remote-control.ts';
+import type { QueuedReason } from './event-payload.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -573,6 +574,14 @@ export interface Question {
    * payloads and fixtures still type-check.
    */
   readonly closedReason?: string | null;
+  /**
+   * Additive (D44): `resume` while the batch's answers wait in the session's
+   * outbox (a stale batch answered while the session had no live process; they go
+   * out with the session's next message, e.g. "Continue." on Resume); `null` once
+   * they were written and for every other batch. Optional here so older payloads
+   * and fixtures still type-check; the server always sends it.
+   */
+  readonly queued?: QueuedReason | null;
 }
 
 /** A solution + branch pair (branch chips). */

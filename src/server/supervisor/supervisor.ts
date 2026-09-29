@@ -3,7 +3,8 @@ import { realpath } from 'node:fs/promises';
 import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
-import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin } from '../../core/event-payload.ts';
+import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
+import { withoutQueued } from '../../core/derive/queued.ts';
 import { DEFAULT_MODEL_VALUE, type ModelChoice, checkModelChoice, modelStepLabel, normalizeEffort, normalizeModel, parseInitializeModels } from '../../core/model-choice.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import {
@@ -468,7 +469,8 @@ export class SessionSupervisor {
 
   /**
    * Sends a user message. A session without a live process is resumed with
-   * `--resume` and gets the message instead of "Continue.". Refused while detached.
+   * `--resume` and gets the message instead of "Continue."; D44: that message is
+   * then queued (`resume`) until the new process takes it up. Refused while detached.
    */
   async sendMessage(sessionId: string, text: string, origin: UserMessageOrigin = 'user'): Promise<SessionRecord> {
     await this.#gate;
@@ -483,8 +485,9 @@ export class SessionSupervisor {
       // D33: the stop may have been a close.
       this.#assertNotClosed(await this.#get(sessionId));
     }
+    const resuming = !live;
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
-    await this.#send(live, text, origin);
+    await this.#send(live, text, origin, { resuming });
     return this.#get(sessionId);
   }
 
@@ -1155,8 +1158,9 @@ export class SessionSupervisor {
   /**
    * Clears what a service that died without stopping its processes left behind for
    * a session with no live process here: requests still marked open become stale
-   * (never answered, M0.2) and go to the `orphaned` hook, running subagents become
-   * idle, the recorded pid is cleared. Returns the stale request ids.
+   * (never answered, M0.2) and go to the `orphaned` hook, messages still marked
+   * queued lose it (D44), running subagents become idle, the recorded pid is
+   * cleared. Returns the stale request ids.
    */
   async settleAfterCrash(sessionId: string): Promise<string[]> {
     if (this.#live.has(sessionId)) return [];
@@ -1170,6 +1174,9 @@ export class SessionSupervisor {
       } else if (payload?.type === 'request' && payload.state === 'open' && payload.requestId) {
         stale.push(payload.requestId);
         next = { ...payload, state: 'stale' };
+      } else if (payload?.type === 'user' && (event.payload as UserPayload).queued !== undefined) {
+        // D44: the dead process never took it up and nothing sends it again: no clock stays behind.
+        next = withoutQueued(event.payload as UserPayload);
       }
       if (next === null) continue;
       const updated = await this.#store.events.update(event.id, { payload: next });
@@ -1360,13 +1367,15 @@ export class SessionSupervisor {
   /**
    * Writes one stdin user message. The session's undelivered `pending_messages`
    * (the outbox: the M2.4 restart note, M3.1 stale answers) go first, in the same
-   * message, and are marked delivered once written.
+   * message, and are marked delivered once written. D44: `options.resuming` = the
+   * process was started for this message (the session had none), so it is queued
+   * (`resume`) until the process takes it up.
    */
-  async #send(live: Live, text: string, origin: UserMessageOrigin): Promise<void> {
+  async #send(live: Live, text: string, origin: UserMessageOrigin, options: { readonly resuming?: boolean } = {}): Promise<void> {
     await this.#enqueue(live, async () => {
       const pending = await this.#store.pendingMessages.pending(live.sessionId);
       const full = [...pending.map((message) => message.text), text].join('\n\n');
-      await live.recorder.recordUserMessage(full, origin);
+      await live.recorder.recordUserMessage(full, origin, options);
       if (live.proc.write(userMessageLine(full))) {
         for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
         if (pending.length > 0 && this.#handler.pendingDelivered) {
@@ -1488,6 +1497,8 @@ export class SessionSupervisor {
       }
     }
     await live.recorder.closeRunningAgents();
+    // D44: nothing is taken up any more: no message keeps its clock.
+    await live.recorder.closeQueued();
     // D19: no turn runs once the process is gone.
     live.recorder.endActivity();
     const now = new Date().toISOString();

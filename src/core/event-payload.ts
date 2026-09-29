@@ -29,6 +29,17 @@ export type UserMessageOrigin =
   | 'remote';
 
 /**
+ * D44: why a message the agent has not taken up yet waits (`docs/derivations.md`
+ * → *Queued messages*):
+ * - `turn`: it was written while a turn ran (or behind other messages still
+ *   waiting), so the CLI takes it up after that turn;
+ * - `resume`: it was sent while the session had no live process, so it goes to
+ *   the agent when the session's resumed process takes it up (a chat message
+ *   resumes the session; answers wait in the outbox until the next run).
+ */
+export type QueuedReason = 'turn' | 'resume';
+
+/**
  * A user message Switchboard wrote to stdin (`delivered` flips when the CLI's
  * `isReplay` echo arrives), or one a terminal sent while the session was detached
  * (origin `terminal`, imported from the transcript, always delivered).
@@ -38,6 +49,12 @@ export interface UserPayload {
   readonly text: string;
   readonly origin: UserMessageOrigin;
   readonly delivered: boolean;
+  /**
+   * Additive (D44): present while the message waits for the agent to take it up,
+   * with the reason; removed once the CLI took it up (the turn that starts on it,
+   * or its replay, whichever comes first) and absent on messages that never waited.
+   */
+  readonly queued?: QueuedReason;
 }
 
 /** Assistant text; the text blocks of one `message.id` are merged into one event. */
