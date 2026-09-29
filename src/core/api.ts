@@ -78,6 +78,23 @@ export interface NewSession {
    * `session/{name}`.
    */
   readonly branch?: string | null;
+  /**
+   * Additive (D42): the model the session starts with, passed as `--model` on
+   * its first spawn (and every later one, D31). Omitted, `null`, blank or
+   * `"default"` = the CLI's default (no `--model`). Checked like D31's
+   * `PUT /api/sessions/{id}/model`: against the latest model list any claude
+   * process reported (`GET /api/models`) when there is one, else any model name
+   * (422 on field `model`). A start that names `model` or `effort` becomes the
+   * service's last choice ({@link ModelSettings.last}).
+   */
+  readonly model?: string | null;
+  /**
+   * Additive (D42): the effort level the session starts with (`--effort`);
+   * omitted, `null` or blank = the CLI's default. One of the chosen model's levels
+   * while the list is known (a model without levels takes none), else one of
+   * `low, medium, high, xhigh, max` (422 on field `effort`).
+   */
+  readonly effort?: string | null;
 }
 
 /**
@@ -99,6 +116,10 @@ export interface NewRepoSession {
   readonly title?: string | null;
   /** Additive (D32): as {@link NewSession.branch} (required with `worktrees: true`). */
   readonly branch?: string | null;
+  /** Additive (D42): as {@link NewSession.model}. */
+  readonly model?: string | null;
+  /** Additive (D42): as {@link NewSession.effort}. */
+  readonly effort?: string | null;
 }
 
 /**
@@ -327,6 +348,28 @@ export interface SessionModelOption {
 export interface SessionModelInput {
   readonly model?: string | null;
   readonly effort?: string | null;
+}
+
+/** Additive (D42): a model and effort as stored (`null` = the CLI's default: no `--model` / `--effort`). */
+export interface SessionModelChoice {
+  readonly model: string | null;
+  readonly effort: string | null;
+}
+
+/**
+ * Additive (D42): `GET /api/models`, what the New-session form's Model row
+ * offers and starts on (`docs/model-effort.md` → *At session start (D42)*).
+ * - `options`: the latest model list any claude process reported in its
+ *   `initialize` reply (the service's `models.options`); `null` until one did
+ *   (the form offers the CLI's aliases then);
+ * - `last`: the last model and effort the developer chose, at a start
+ *   (`POST /api/sessions` with `model` / `effort`) or in a session header's
+ *   picker (`PUT /api/sessions/{id}/model`); `null` until one was chosen (the
+ *   form starts on the CLI's default then).
+ */
+export interface ModelSettings {
+  readonly options: readonly SessionModelOption[] | null;
+  readonly last: SessionModelChoice | null;
 }
 
 

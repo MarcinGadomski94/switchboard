@@ -1,3 +1,4 @@
+import type { SessionModelOption } from '../../core/api.ts';
 import { parseCron } from '../../core/cron.ts';
 import { type FieldError, type ValidNewSession, type ValidationFolder, validateNewSession } from '../sessions/validate.ts';
 
@@ -36,6 +37,8 @@ export interface ScheduleInputChecks {
    * template. Without it the template is validated as a workspace session.
    */
   readonly folder?: ValidationFolder & { readonly id: string | null };
+  /** D42: the latest reported model list: a template's `model` / `effort` are checked against it (the New-session rule). */
+  readonly modelOptions?: readonly SessionModelOption[] | null;
 }
 
 /** Longest description kept from the prompt's first line. */
@@ -58,6 +61,8 @@ export function scheduleDescription(task: string): string {
  * because the task is the prompt every run starts with. The template's name is
  * the schedule's name: unique among schedules (runs get their own session names,
  * `docs/schedules.md`). Field names of template errors carry a `template.` prefix.
+ * D42: the template carries an optional `model` / `effort` like any other field
+ * (checked like a new session's); each run starts with them.
  */
 export async function validateScheduleInput(body: unknown, checks: ScheduleInputChecks): Promise<ScheduleInputValidation> {
   if (!isRecord(body)) return { ok: false, errors: [{ field: '', message: 'the body must be a ScheduleInput object ({ cron, template })' }] };
@@ -91,6 +96,7 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
       worktreeBranch: 'session',
       ...(checks.readOnly ? { readOnly: checks.readOnly } : {}),
       ...(checks.folder ? { folder: checks.folder } : {}),
+      ...(checks.modelOptions !== undefined ? { modelOptions: checks.modelOptions } : {}),
     });
     if (!result.ok) {
       for (const error of result.errors) errors.push({ field: error.field ? `template.${error.field}` : 'template', message: error.message });

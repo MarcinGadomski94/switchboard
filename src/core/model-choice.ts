@@ -148,3 +148,71 @@ export function checkModelChoice(choice: ModelChoice, available: readonly Sessio
 export function modelStepLabel(choice: ModelChoice, available: readonly SessionModelOption[] | null): string {
   return `Model: ${modelLabel(available, choice.model)} · effort: ${choice.effort ?? 'default'}`;
 }
+
+// ── D42: the model at session start (`docs/model-effort.md` → *At session start (D42)*) ──
+
+/**
+ * D42: what the New-session form offers while no claude process has reported
+ * its models: the CLI's model aliases (`claude --help`: "an alias for the latest
+ * model (e.g. 'sonnet' or 'opus')"), none with effort levels.
+ */
+export const CLI_MODEL_ALIASES: readonly SessionModelOption[] = [
+  { value: DEFAULT_MODEL_VALUE, label: 'Default', description: "claude's default model" },
+  { value: 'opus', label: 'Opus', description: '--model opus' },
+  { value: 'sonnet', label: 'Sonnet', description: '--model sonnet' },
+  { value: 'haiku', label: 'Haiku', description: '--model haiku' },
+];
+
+/** D42: the CLI's defaults (no `--model`, no `--effort`). */
+export const DEFAULT_MODEL_CHOICE: ModelChoice = { model: null, effort: null };
+
+/**
+ * D42: `choice` fitted to the models on offer, so {@link checkModelChoice}
+ * accepts it: the model stays when `available` lists it (else the CLI's
+ * default); the effort stays when that model supports it (else the default).
+ */
+export function fitModelChoice(choice: ModelChoice, available: readonly SessionModelOption[]): ModelChoice {
+  const model = choice.model !== null && available.some((option) => option.value === choice.model) ? choice.model : null;
+  const effort = choice.effort !== null && (effortLevelsFor(available, model) ?? []).includes(choice.effort) ? choice.effort : null;
+  return { model, effort };
+}
+
+/**
+ * D42: a stored or sent `{ model, effort }` (the service's `models.last`), read
+ * defensively: each a string (normalized: blank / `default` = `null`) or `null`;
+ * `null` when it is not such an object.
+ */
+export function readModelChoice(value: unknown): ModelChoice | null {
+  if (!isRecord(value)) return null;
+  const model = value['model'];
+  const effort = value['effort'];
+  if ((model !== null && typeof model !== 'string') || (effort !== null && typeof effort !== 'string')) return null;
+  return { model: normalizeModel(model), effort: normalizeEffort(effort) };
+}
+
+/**
+ * D42: a stored model list (the service's `models.options`, the shape
+ * {@link parseInitializeModels} makes), read defensively: entries without a string
+ * `value` and repeats are skipped, `label` falls back to the value, `description`
+ * and `efforts` are kept when they are text / text lists. `null` when nothing usable is left.
+ */
+export function readModelOptions(value: unknown): SessionModelOption[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: SessionModelOption[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) continue;
+    const option = text(entry['value']);
+    if (option === null || seen.has(option)) continue;
+    seen.add(option);
+    const description = text(entry['description']);
+    const efforts = Array.isArray(entry['efforts']) ? [...new Set(entry['efforts'].map(text).filter((level): level is string => level !== null))] : [];
+    out.push({
+      value: option,
+      label: text(entry['label']) ?? option,
+      ...(description !== null ? { description } : {}),
+      ...(efforts.length > 0 ? { efforts } : {}),
+    });
+  }
+  return out.length > 0 ? out : null;
+}
