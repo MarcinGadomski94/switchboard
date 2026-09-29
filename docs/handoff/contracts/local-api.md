@@ -503,6 +503,24 @@ Agent { "id": "wf_5bf13727-e69--12", "kind": "workflow", "name": "review:quizzes
 WorkflowAgentChat { "events": [Event, …], "result": null, "version": 457272 }
 ```
 
+## A peer's schedules and loops (D52, 2026-09-29, additive)
+Developer request D52 (`docs/decisions.md` → *A peer's schedules and loops*): a paired machine's schedules and loops on Schedules & loops. Additive; nothing above changes meaning. Two new routes, no new event name, no migration. Details: `docs/peers.md` → *A peer's schedules and loops (D52)*, `docs/schedules.md` → *Delete (D52)*, `docs/derivations.md` → *Loop cards* → *Terminal sessions (D52)*.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| DELETE | /api/schedules/{id} | — | 204 · 409 `{ error: "running" }` while a run is in progress · 404 |
+| GET | /api/terminal-loops | — | TerminalLoop[]: this machine's un-followed terminal sessions' loops, then the paired machines' (last known) |
+
+- **Schedule** gains `machine` (`{ id, name, state }`) on a paired machine's schedule; its `id` and its runs' `sessionId` are then remote ids (`r~<machine>~<id>`). `GET /api/schedules` lists this machine's schedules, then the paired machines' as last known.
+- **ScheduleInput** (`POST /api/schedules`) may carry `machine` (a paired machine's id: the schedule is saved there; this machine's id or empty = here), or an `id` that is a peer's schedule's remote id (the Edit goes there; `machine` naming another machine → 422).
+- **TerminalLoop** `{ loop: Loop, terminal: { id, name, cwd, status, pid, startedAt }, machine? }`: `loop.id` = `term:<claude session id>:<key>` (a remote id on a peer's), `loop.sessionId` = the terminal's claude session id (not a Switchboard session; hook it with `POST /api/terminal-sessions/{id}/hook`, on a peer through `/api/machines/{machine}/api/…`).
+- **Peers (D48):** both routes and every schedule route are on the peer API's allow-list; `scheduleRun` is forwarded between peers with the schedule's remote id. A machine that cannot be reached keeps its schedules and terminal loops listed (tagged unreachable); every action on them answers 502 `peer-unreachable`.
+
+```json
+Schedule { "id": "r~abcdefghijkl~5c1e…", "name": "nightly", "cron": "0 2 * * *", "paused": false, "runs": [{ "ts": "…", "result": "ok", "summary": "OK", "finishedAt": "…", "sessionId": "r~abcdefghijkl~9f0a…", "triggeredBy": "cron" }], "nextRunAt": "…", "running": false, "folder": "<its folder id there>", "machine": { "id": "abcdefghijkl", "name": "pc-office", "state": "online" } }
+TerminalLoop { "loop": { "id": "term:5c1e0b52-…:loop", "sessionId": "5c1e0b52-…", "kind": "/loop", "label": "/loop 5m", "iteration": 2, "nextFireAt": "…", "expiresAt": "…", "iterations": [ … ], "…": "…" }, "terminal": { "id": "5c1e0b52-…", "name": "pc-loop", "cwd": "/…/repo", "status": "idle", "pid": 4242, "startedAt": "…" } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

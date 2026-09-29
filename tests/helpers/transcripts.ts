@@ -138,6 +138,69 @@ export function assistantTextLine(options: {
   };
 }
 
+/** D52: an assistant line calling one tool (`stop_reason: tool_use`). */
+export function assistantToolLine(options: { sessionId: string; cwd: string; toolUseId: string; name: string; input: Record<string, unknown>; parentUuid: string | null; timestamp: string }): Line {
+  return {
+    parentUuid: options.parentUuid,
+    isSidechain: false,
+    message: {
+      model: 'claude-haiku-4-5-20251001',
+      id: `msg_${randomUUID().replaceAll('-', '')}`,
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: options.toolUseId, name: options.name, input: options.input }],
+      stop_reason: 'tool_use',
+    },
+    requestId: `req_${randomUUID().replaceAll('-', '')}`,
+    type: 'assistant',
+    uuid: randomUUID(),
+    timestamp: options.timestamp,
+    userType: 'external',
+    entrypoint: 'cli',
+    cwd: options.cwd,
+    sessionId: options.sessionId,
+    version: '2.1.283',
+    gitBranch: 'HEAD',
+  };
+}
+
+/** D52: the user line carrying one tool's result. */
+export function toolResultLine(options: { sessionId: string; cwd: string; toolUseId: string; text: string; isError?: boolean; parentUuid: string | null; timestamp: string }): Line {
+  return {
+    parentUuid: options.parentUuid,
+    isSidechain: false,
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: options.toolUseId, content: options.text, is_error: options.isError === true }] },
+    uuid: randomUUID(),
+    timestamp: options.timestamp,
+    userType: 'external',
+    entrypoint: 'cli',
+    cwd: options.cwd,
+    sessionId: options.sessionId,
+    version: '2.1.283',
+    gitBranch: 'HEAD',
+  };
+}
+
+/**
+ * D52: a terminal session that ran `/loop 5m check the build` (typed as the CLI
+ * writes a slash command), whose turn called CronCreate (`*\/5 * * * *`) and ended;
+ * then one turn the CLI ran on its own (a firing). Oldest first; timestamps from `start`.
+ */
+export function terminalLoopLines(options: { sessionId: string; cwd: string; start: Date }): Line[] {
+  const at = (seconds: number): string => new Date(options.start.getTime() + seconds * 1000).toISOString();
+  const { sessionId, cwd } = options;
+  const lines: Line[] = [
+    terminalUserLine({ sessionId, cwd, content: '<command-name>/loop</command-name>\n<command-message>loop</command-message>\n<command-args>5m check the build</command-args>', parentUuid: null, timestamp: at(0) }),
+  ];
+  lines.push(assistantToolLine({ sessionId, cwd, toolUseId: 'toolu_cron1', name: 'CronCreate', input: { cron: '*/5 * * * *', prompt: 'check the build', recurring: true }, parentUuid: lastUuid(lines), timestamp: at(2) }));
+  lines.push(toolResultLine({ sessionId, cwd, toolUseId: 'toolu_cron1', text: 'Scheduled recurring job cron-1 (*/5 * * * *)', parentUuid: lastUuid(lines), timestamp: at(3) }));
+  lines.push(assistantTextLine({ sessionId, cwd, text: 'Build is green.', parentUuid: lastUuid(lines), timestamp: at(5) }));
+  // A firing: the CLI's own turn (no prompt line in between), ended by the assistant.
+  lines.push(assistantTextLine({ sessionId, cwd, text: 'Still green.', parentUuid: lastUuid(lines), timestamp: at(300) }));
+  return lines;
+}
+
 /** The last chain entry's `uuid` (to append a turn after it). */
 export function lastUuid(lines: readonly Line[]): string | null {
   for (let i = lines.length - 1; i >= 0; i--) {

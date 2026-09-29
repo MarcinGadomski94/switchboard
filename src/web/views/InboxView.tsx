@@ -283,8 +283,10 @@ export function InboxView() {
             onAnswers={(body) => void run(current, () => api.answerBatch(current.id, body))}
             onAction={(action, message) => {
               // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.
+              // D52: a peer's failed run opens the form on that machine (the prefill's folder is its folder).
               const prefill = newSessionAfter(current, action.id);
-              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), prefill ? () => modals.open('new-session', { prefill }) : undefined);
+              const machine = current.machine?.id ?? null;
+              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), prefill ? () => modals.open('new-session', { prefill, machine }) : undefined);
             }}
           />
         ) : null}

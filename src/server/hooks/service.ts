@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { HooksStatus, Session, TerminalSession } from '../../core/api.ts';
+import type { HooksStatus, Session, SessionEvent, TerminalSession } from '../../core/api.ts';
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { ANSWERED_IN_TERMINAL } from '../../core/remote-control.ts';
@@ -194,6 +194,7 @@ export class HookService {
   #syncTimer: NodeJS.Timeout | undefined;
   #livenessTimer: NodeJS.Timeout | undefined;
   #closed = false;
+  readonly #eventListeners = new Set<(payload: { readonly sessionId: string; readonly event: SessionEvent }) => void>();
 
   constructor(options: HookServiceOptions) {
     this.#config = options.config;
@@ -325,9 +326,13 @@ export class HookService {
     }
   }
 
-  /** `GET /api/terminal-sessions`: the interactive terminal sessions on this machine (Switchboard's own left out). */
-  async listTerminals(): Promise<TerminalSession[]> {
-    const rows = await this.#listAgents(true);
+  /**
+   * `GET /api/terminal-sessions`: the interactive terminal sessions on this machine
+   * (Switchboard's own left out). D52: `fresh: false` may reuse a listing of the
+   * last few seconds (the terminal loops' poll).
+   */
+  async listTerminals(options: { readonly fresh?: boolean } = {}): Promise<TerminalSession[]> {
+    const rows = await this.#listAgents(options.fresh ?? true);
     if (rows === null) throw new HookError(502, 'agents-unavailable', '`claude agents --json` could not be read on this machine');
     const out: TerminalSession[] = [];
     for (const row of rows) {
@@ -914,7 +919,28 @@ export class HookService {
   }
 
   #publishEvent(event: EventRecord): void {
-    this.#bus.publish('event', { sessionId: event.sessionId, event: toEvent(event) });
+    const payload = { sessionId: event.sessionId, event: toEvent(event) };
+    this.#bus.publish('event', payload);
+    for (const listener of [...this.#eventListeners]) {
+      try {
+        listener(payload);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+  }
+
+  /**
+   * D52: every event imported into a hooked session (added or updated), as the
+   * supervisor's `event` notification reads, so the loop tracker derives a hooked
+   * session's loops like a supervised one's. Returns the unsubscribe.
+   */
+  on(name: 'event', listener: (payload: { readonly sessionId: string; readonly event: SessionEvent }) => void): () => void {
+    if (name !== 'event') return () => undefined;
+    this.#eventListeners.add(listener);
+    return () => {
+      this.#eventListeners.delete(listener);
+    };
   }
 }
 

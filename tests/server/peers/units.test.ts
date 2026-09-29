@@ -85,13 +85,25 @@ describe('D48 peer API allow-list', () => {
     expect(peerApiAllowed('POST', '/api/inbox/i/actions/allow-once')).toBe(true);
     expect(peerApiAllowed('POST', '/api/branching/preflight')).toBe(true);
     expect(peerApiAllowed('POST', '/api/hooks/install')).toBe(true);
+    // D52: the schedules and the terminal loops.
+    expect(peerApiAllowed('GET', '/api/schedules')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/schedules')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/schedules/s1/run')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/schedules/s1/pause')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/schedules/s1/resume')).toBe(true);
+    expect(peerApiAllowed('DELETE', '/api/schedules/s1')).toBe(true);
+    expect(peerApiAllowed('GET', '/api/terminal-loops')).toBe(true);
+    expect(peerApiAllowed('DELETE', `/api/schedules/${encodeURIComponent('r~abcdefghijkl~s1')}`)).toBe(false);
     for (const [method, url] of [
       ['GET', '/api/settings'],
       ['PUT', '/api/settings'],
       ['POST', '/api/folders'],
       ['DELETE', '/api/folders/x'],
       ['GET', '/api/tools'],
-      ['GET', '/api/schedules'],
+      // D52: a schedule's own routes only (no bulk delete, no PUT).
+      ['DELETE', '/api/schedules'],
+      ['PUT', '/api/schedules/x'],
+      ['POST', '/api/schedules/x/delete'],
       ['POST', '/api/sessions/abc/attach'],
       ['POST', '/api/sessions/abc/detach'],
       ['POST', '/api/sessions/teleport'],

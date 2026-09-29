@@ -1,6 +1,7 @@
 import type { ScheduleInput, SessionModelOption } from '../../core/api.ts';
 import { CLI_MODEL_ALIASES } from '../../core/model-choice.ts';
 import { MONTH_LABELS, WEEKDAY_LABELS, cronLabel, nextRuns, parseCron } from '../../core/cron.ts';
+import { parseRemoteId } from '../../core/peers.ts';
 import { runSessionName } from '../../core/schedules.ts';
 import { type FormFolder, MODEL_LINE_KEY, type NewSessionForm, type SummaryLine, formComplete, nameTaken, sessionName, summaryLines, toSessionBody } from './new-session.ts';
 
@@ -111,4 +112,18 @@ export function saveErrorText(status: number, body: unknown): string {
     if (typeof record.message === 'string' && record.message !== '') return `Not saved: ${record.message}`;
   }
   return status === 0 ? 'Not saved: Switchboard is not reachable.' : `Not saved: HTTP ${status}`;
+}
+
+/** D52: the paired machine a schedule's Edit stays on (its remote id names it); `null` for a new schedule or one of this machine. */
+export function scheduleMachine(draft: ScheduleDraft | null): string | null {
+  return parseRemoteId(draft?.id)?.machineId ?? null;
+}
+
+/** D52: the line shown when Delete is refused (`Not deleted: …`). */
+export function deleteErrorText(status: number, body: unknown): string {
+  if (typeof body === 'object' && body !== null) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === 'string' && message !== '') return `Not deleted: ${message}`;
+  }
+  return status === 0 ? 'Not deleted: Switchboard is not reachable.' : `Not deleted: HTTP ${status}`;
 }

@@ -5,8 +5,10 @@
  * the server derives from observed events (`docs/derivations.md` → *Loop cards*).
  * Unknown values show "—"; nothing is made up.
  */
-import type { Loop, LoopIterationResult, Session } from '../../core/api.ts';
+import type { Loop, LoopIterationResult, Session, TerminalLoop } from '../../core/api.ts';
+import { terminalStatus } from '../../core/terminal-status.ts';
 import type { SessionStatus } from '../../core/model.ts';
+import { type SessionMachine, offlineReason } from '../../core/peers.ts';
 import { displayTitle } from '../../core/session-title.ts';
 
 /** At most this many strip cells (the newest iterations); the prototype shows 12–17. */
@@ -40,7 +42,20 @@ export interface LoopCardModel {
   readonly cells: readonly LoopIterationResult[];
   readonly facts: readonly [LoopFact, LoopFact, LoopFact];
   readonly note: string | null;
+  /** D52: the paired machine the loop runs on (its tag); `null` on this machine. */
+  readonly machine: SessionMachine | null;
+  /**
+   * D52: a loop of a terminal session Switchboard does not follow: its claude
+   * session id (the card offers "Hook into…" instead of "Open session"); `null`
+   * for a session's loop.
+   */
+  readonly terminalId: string | null;
+  /** D52: why the card's action cannot be used now (the machine is offline); `null` when it can. */
+  readonly blocked: string | null;
 }
+
+/** D52: why a terminal loop's card has no "Open session". */
+export const TERMINAL_LOOP_NOTE = 'A terminal session Switchboard does not follow: read from its transcript. Hook into it to open it.';
 
 const STATUS_VAR: Record<SessionStatus, string> = {
   need: 'var(--status-need)',
@@ -130,7 +145,7 @@ export function loopFacts(loop: Loop, now: Date): readonly [LoopFact, LoopFact, 
  * first); loops that started at the same moment follow their sessions' start,
  * then the server's order.
  */
-export function loopCards(sessions: readonly Session[], now: Date): LoopCardModel[] {
+export function loopCards(sessions: readonly Session[], now: Date, terminalLoops: readonly TerminalLoop[] = []): LoopCardModel[] {
   const cards: Array<LoopCardModel & { readonly createdAt: string; readonly sessionCreatedAt: string; readonly index: number }> = [];
   for (const session of sessions) {
     for (const loop of session.loops ?? []) {
@@ -148,9 +163,41 @@ export function loopCards(sessions: readonly Session[], now: Date): LoopCardMode
         facts: loopFacts(loop, now),
         note: loop.note?.trim() || null,
         createdAt: loop.createdAt,
+        machine: session.machine ?? null,
+        terminalId: null,
+        // "Open session" of a peer's session works offline too: it opens on the last known snapshot (D48).
+        blocked: null,
       });
     }
   }
+  // D52: loops of terminal sessions Switchboard does not follow (this machine's and the paired machines').
+  for (const entry of terminalLoops) {
+    const loop = entry.loop;
+    const status = terminalStatus(entry.terminal.status);
+    cards.push({
+      index: cards.length,
+      sessionCreatedAt: entry.terminal.startedAt ?? loop.createdAt,
+      id: loop.id,
+      sessionId: entry.terminal.id,
+      sessionName: entry.terminal.name?.trim() || `Terminal · ${baseName(entry.terminal.cwd) || 'session'}`,
+      status,
+      dot: STATUS_VAR[status],
+      border: status === 'need' ? NEED_BORDER : 'var(--border-card)',
+      kind: loop.label?.trim() || loop.kind,
+      cells: stripCells(loop),
+      facts: loopFacts(loop, now),
+      note: loop.note?.trim() || null,
+      createdAt: loop.createdAt,
+      machine: entry.machine ?? null,
+      terminalId: entry.terminal.id,
+      blocked: offlineReason(entry.machine),
+    });
+  }
   cards.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.sessionCreatedAt.localeCompare(b.sessionCreatedAt) || a.index - b.index);
   return cards.map(({ createdAt: _createdAt, sessionCreatedAt: _sessionCreatedAt, index: _index, ...card }) => card);
+}
+
+/** The last part of a path (either separator). */
+function baseName(folder: string | null): string {
+  return (folder ?? '').split(/[\\/]/).filter(Boolean).at(-1) ?? '';
 }

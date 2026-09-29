@@ -1,6 +1,7 @@
 import type { Schedule, ScheduleRun } from '../../core/api.ts';
 import { WEEKDAY_LABELS, MONTH_LABELS, cronLabel } from '../../core/cron.ts';
 import type { ScheduleRunResult, SessionStatus } from '../../core/model.ts';
+import { type SessionMachine, offlineReason } from '../../core/peers.ts';
 import { formatAge } from '../shell/format.ts';
 
 /**
@@ -38,6 +39,10 @@ export interface ScheduleRow {
   readonly runDisabled: boolean;
   /** `Pause` / `Resume`. */
   readonly pauseLabel: string;
+  /** D52: the paired machine the schedule lives on (its tag); `null` for this machine's own. */
+  readonly machine: SessionMachine | null;
+  /** D52: why nothing can be done with it now (`<machine> is offline — reconnect to continue`); `null` when it can. */
+  readonly blocked: string | null;
 }
 
 /** The strip / dot tone of a run result (prototype `rs`: g ok, r fail, a need, b running, n skipped). */
@@ -152,6 +157,8 @@ export function scheduleRows(schedules: readonly Schedule[], now: number = Date.
       runLabel: running ? 'Running' : 'Run now',
       runDisabled: running,
       pauseLabel: schedule.paused ? 'Resume' : 'Pause',
+      machine: schedule.machine ?? null,
+      blocked: offlineReason(schedule.machine),
     };
   });
 }

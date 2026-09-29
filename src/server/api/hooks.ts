@@ -1,5 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { TerminalLoop } from '../../core/api.ts';
 import { HookError } from '../hooks/service.ts';
+import { TerminalLoopReader } from '../loops/terminal.ts';
+import { isPeerRequest } from './machines.ts';
 import type { ApiContext } from '../routes.ts';
 
 /** Largest hook input (a Write tool's input can be large). */
@@ -22,6 +25,9 @@ function sendHookError(reply: FastifyReply, error: unknown): FastifyReply {
  *   `agents-unavailable`).
  * - `GET /api/hooks`, `POST /api/hooks/install`, `POST /api/hooks/remove` → HooksStatus
  *   (409 `settings-unreadable`).
+ * - D52: `GET /api/terminal-loops` → `TerminalLoop[]`: the loops of the terminal
+ *   sessions not followed here (`src/server/loops/terminal.ts`), then the paired
+ *   machines' (last known; a peer's request gets this machine's own only).
  */
 export async function registerHookRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { hooks } = context;
@@ -59,6 +65,13 @@ export async function registerHookRoutes(app: FastifyInstance, context: ApiConte
       return sendHookError(reply, error);
     }
   });
+
+  // D52: the loops of the terminal sessions Switchboard does not follow (read-only, from their transcripts), plus the paired machines' as last known.
+  const terminalLoops = new TerminalLoopReader({
+    listTerminals: () => hooks.listTerminals({ fresh: false }).catch(() => null),
+    configDir: () => hooks.configDir,
+  });
+  app.get('/api/terminal-loops', async (request): Promise<TerminalLoop[]> => [...(await terminalLoops.list()), ...(isPeerRequest(request) ? [] : context.peers.remoteTerminalLoops())]);
 
   app.get('/api/hooks', async () => hooks.status());
   app.post('/api/hooks/install', async (_request, reply) => {

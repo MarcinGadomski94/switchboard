@@ -24,6 +24,7 @@ import type {
   NewSession,
   ResumeCommand,
   Schedule,
+  TerminalLoop,
   Session,
   SessionTitleInput,
   SessionCloseInput,
@@ -167,6 +168,10 @@ export const api = {
   runSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/run`),
   pauseSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/pause`),
   resumeSchedule: (id: string) => request<Schedule>('POST', `/api/schedules/${enc(id)}/resume`),
+  /** D52: 204; 409 `running` while a run is in progress; a peer's schedule (remote id) is deleted there. */
+  deleteSchedule: (id: string) => request<void>('DELETE', `/api/schedules/${enc(id)}`),
+  /** D52: the loops of terminal sessions Switchboard does not follow, this machine's and the paired machines' (last known). */
+  terminalLoops: () => request<TerminalLoop[]>('GET', '/api/terminal-loops'),
 
   artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
   history: (q?: string) => request<HistoryItem[]>('GET', `/api/history${query({ q })}`),

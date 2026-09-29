@@ -1,12 +1,12 @@
 import type { RepoContext } from '../context.ts';
 
-/** What a snapshot holds (D48 ruling D48-cache-persist). */
-export type PeerSnapshotKind = 'sessions' | 'detail' | 'events';
+/** What a snapshot holds (D48 ruling D48-cache-persist; D52: `schedules` and `terminal-loops`, key ''). */
+export type PeerSnapshotKind = 'sessions' | 'detail' | 'events' | 'schedules' | 'terminal-loops';
 
 /**
  * The last known answers of each paired machine (migration 0018): its open
  * sessions, and the detail and events of the sessions that were opened here,
- * raw as the peer sent them. Read while the machine cannot be reached.
+ * raw as the peer sent them (D52: also its schedules and terminal loops). Read while the machine cannot be reached.
  */
 export class PeerSnapshotRepository {
   readonly #ctx: RepoContext;
@@ -35,9 +35,9 @@ export class PeerSnapshotRepository {
     }
   }
 
-  /** Drops the detail / events snapshots of sessions no longer in `keep` (the machine's open sessions). */
+  /** Drops the detail / events snapshots of sessions no longer in `keep` (the machine's open sessions); the machine-wide lists stay. */
   async prune(machineId: string, keep: readonly string[]): Promise<void> {
-    const rows = this.#ctx.db.prepare("SELECT kind, key FROM peer_snapshots WHERE machine_id = ? AND kind <> 'sessions'").all(machineId) as Array<{ kind: string; key: string }>;
+    const rows = this.#ctx.db.prepare("SELECT kind, key FROM peer_snapshots WHERE machine_id = ? AND kind IN ('detail', 'events')").all(machineId) as Array<{ kind: string; key: string }>;
     const wanted = new Set(keep);
     const drop = this.#ctx.db.prepare('DELETE FROM peer_snapshots WHERE machine_id = ? AND kind = ? AND key = ?');
     for (const row of rows) if (!wanted.has(row.key)) drop.run(machineId, row.kind, row.key);

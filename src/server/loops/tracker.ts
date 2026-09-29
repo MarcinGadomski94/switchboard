@@ -72,7 +72,7 @@ export class LoopTracker {
   readonly #debounceMs: number;
   readonly #now: () => Date;
   readonly #onError: (error: unknown) => void;
-  readonly #off: () => void;
+  readonly #off: Array<() => void> = [];
   readonly #events: LoopEventSource;
   /** Sessions known to have loops (`true`) or not (`false`); unknown ones are looked up once. */
   readonly #tracked = new Map<string, boolean>();
@@ -87,9 +87,21 @@ export class LoopTracker {
     this.#now = options.now ?? (() => new Date());
     this.#onError = options.onError ?? ((error) => console.error('switchboard loops:', error));
     this.#events = options.events;
-    this.#off = options.events.on('event', ({ sessionId, event }) => {
-      void this.#onEvent(sessionId, event).catch(this.#onError);
-    });
+    this.listen(options.events);
+  }
+
+  /**
+   * Also follows the events of `source` (D52: the hook service's imported events of
+   * hooked terminal sessions). Its `activity` is not read: the published session
+   * carries the main source's.
+   */
+  listen(source: Pick<LoopEventSource, 'on'>): void {
+    if (this.#closed) return;
+    this.#off.push(
+      source.on('event', ({ sessionId, event }) => {
+        void this.#onEvent(sessionId, event).catch(this.#onError);
+      }),
+    );
   }
 
   async #onEvent(sessionId: string, event: SessionEvent): Promise<void> {
@@ -169,7 +181,7 @@ export class LoopTracker {
   /** Stops listening; scheduled refreshes are dropped, running ones finish. */
   async close(): Promise<void> {
     this.#closed = true;
-    this.#off();
+    for (const off of this.#off.splice(0)) off();
     for (const timer of this.#timers.values()) clearTimeout(timer);
     this.#timers.clear();
     await Promise.allSettled([...this.#running.values()]);

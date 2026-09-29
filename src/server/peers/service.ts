@@ -1,8 +1,8 @@
 import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
-import type { HubEventName, HubEvents, InboxItem, Session } from '../../core/api.ts';
-import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSession } from '../../core/peer-wire.ts';
+import type { HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop } from '../../core/api.ts';
+import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerTerminalLoop } from '../../core/peer-wire.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -67,11 +67,20 @@ export const PEER_LONG_TIMEOUT_MS = 180_000;
 /** Time limit of the other forwarded calls. */
 export const PEER_FORWARD_TIMEOUT_MS = 30_000;
 
+/** D52: a peer's schedules / terminal loops are fetched again when a list read finds them older than this. */
+export const PEER_LIST_STALE_MS = 10_000;
+
+/** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. */
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops' } as const;
+
+/** D52: one of {@link PEER_LISTS}. */
+export type PeerListKind = keyof typeof PEER_LISTS;
+
 /**
  * The peer API's allow-list (`docs/peers.md` → *What a peer may call*): method +
  * path (no query). Everything else is 403 `peer-forbidden`: no settings, no folder
- * management, no schedules, no tools, no terminal handoff (attach / detach), no
- * teleport, no history.
+ * management, no tools, no terminal handoff (attach / detach), no teleport, no
+ * history. D52 added the schedules and the terminal sessions' loops.
  */
 export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegExp]> = [
   ['GET', /^\/api\/sessions$/],
@@ -95,6 +104,12 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/terminal-sessions\/[^/]+\/hook$/],
   ['GET', /^\/api\/hooks$/],
   ['POST', /^\/api\/hooks\/(?:install|remove)$/],
+  // D52: the schedules (list, Save schedule = create / Edit, Run now, Pause / Resume, Delete) and the terminal sessions' loops.
+  ['GET', /^\/api\/schedules$/],
+  ['POST', /^\/api\/schedules$/],
+  ['POST', /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/],
+  ['DELETE', /^\/api\/schedules\/[^/]+$/],
+  ['GET', /^\/api\/terminal-loops$/],
 ];
 
 /** `true` when the peer API may serve `method path` (`url` may carry a query). */
@@ -177,6 +192,11 @@ export class PeerService implements PeerHandlers {
   readonly #savedLists = new Map<string, string>();
   /** `true` while a peer's event is being published on the local bus (listeners run synchronously): never sent on to a peer. */
   #republishing = false;
+  /** D52: each machine's schedules and terminal loops as last known (raw, as the peer answered), by machine then kind. */
+  readonly #lists = new Map<string, Map<PeerListKind, unknown[]>>();
+  /** D52: when each `<machine> <kind>` list was last fetched (ms), and the fetch in flight. */
+  readonly #listFetched = new Map<string, number>();
+  readonly #listRefresh = new Map<string, Promise<boolean>>();
 
   constructor(options: PeerServiceOptions) {
     this.#config = options.config;
@@ -208,6 +228,11 @@ export class PeerService implements PeerHandlers {
       if (Array.isArray(snapshot)) {
         this.#connections.get(record.id)?.seed(snapshot as Session[]);
         this.#savedLists.set(record.id, JSON.stringify(snapshot));
+      }
+      // D52: its schedules and terminal loops stay listed from the snapshot too.
+      for (const kind of Object.keys(PEER_LISTS) as PeerListKind[]) {
+        const list = await this.#store.peerSnapshots.get(record.id, kind, '');
+        if (Array.isArray(list)) this.#setList(record.id, kind, list);
       }
     }
     await this.#applyListener();
@@ -440,6 +465,7 @@ export class PeerService implements PeerHandlers {
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     this.#savedLists.delete(id);
+    this.#lists.delete(id);
     for (const stream of [...this.#inbound]) if (stream.machineId === id) stream.close();
     if (ref) for (const session of sessions) this.#publishFromPeer('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
     await this.#publishInboxCount();
@@ -494,9 +520,11 @@ export class PeerService implements PeerHandlers {
     if (record) this.#records.set(id, record);
   }
 
-  #onPeerState(id: string, _state: MachineState): void {
+  #onPeerState(id: string, state: MachineState): void {
     this.#publishMachineSessions(id);
     void this.#publishInboxCount();
+    // D52: (re)connected: its schedules and terminal loops are fetched again.
+    if (state === 'online') for (const kind of Object.keys(PEER_LISTS) as PeerListKind[]) void this.refreshList(id, kind);
   }
 
   /** Every cached session of the machine again (its tag's state changed, or its name). */
@@ -512,6 +540,15 @@ export class PeerService implements PeerHandlers {
     if (!ref) return;
     if (name === 'inboxChanged') {
       void this.#publishInboxCount();
+      return;
+    }
+    if (name === 'scheduleRun') {
+      // D52: the peer's schedules are fetched again first, so a page that reloads on the event sees the run.
+      void this.refreshList(id, 'schedules').then(() => {
+        const current = this.#ref(id);
+        const mapped = current ? peerHubEvent(current, name, payload) : null;
+        if (mapped !== null) this.#publishFromPeer(name, mapped);
+      });
       return;
     }
     const mapped = peerHubEvent(ref, name, payload);
@@ -558,6 +595,76 @@ export class PeerService implements PeerHandlers {
     return out;
   }
 
+  /**
+   * D52: the paired machines' schedules as last known, namespaced and tagged (an
+   * unreachable machine's from its snapshot, tagged with its state). A list older
+   * than {@link PEER_LIST_STALE_MS} is fetched again in the background: nothing here
+   * waits on the network.
+   */
+  remoteSchedules(): Schedule[] {
+    return this.#remoteList('schedules', (ref, item) => peerSchedule(ref, item as Schedule));
+  }
+
+  /** D52: the paired machines' terminal loops (`GET /api/terminal-loops` there) as last known; see {@link remoteSchedules}. */
+  remoteTerminalLoops(): TerminalLoop[] {
+    return this.#remoteList('terminal-loops', (ref, item) => peerTerminalLoop(ref, item as TerminalLoop));
+  }
+
+  #remoteList<T>(kind: PeerListKind, map: (ref: PeerMachineRef, item: unknown) => T): T[] {
+    const out: T[] = [];
+    for (const id of this.#records.keys()) {
+      const ref = this.#ref(id);
+      if (!ref) continue;
+      if (ref.state === 'online' && Date.now() - (this.#listFetched.get(`${id} ${kind}`) ?? 0) > PEER_LIST_STALE_MS) void this.refreshList(id, kind);
+      for (const item of this.#lists.get(id)?.get(kind) ?? []) {
+        if (typeof item === 'object' && item !== null) out.push(map(ref, item));
+      }
+    }
+    return out;
+  }
+
+  #setList(id: string, kind: PeerListKind, list: unknown[]): void {
+    let lists = this.#lists.get(id);
+    if (!lists) {
+      lists = new Map();
+      this.#lists.set(id, lists);
+    }
+    lists.set(kind, list);
+  }
+
+  /**
+   * D52: fetches machine `id`'s list `kind` now (coalesced per machine and kind) and
+   * keeps it as last known (the cache and its snapshot). Resolves `true` when the
+   * list changed; `false` when it did not, the machine is not connected, or it did
+   * not answer the list (an older Switchboard without D52 answers 403: its list
+   * stays empty).
+   */
+  refreshList(id: string, kind: PeerListKind): Promise<boolean> {
+    const key = `${id} ${kind}`;
+    const running = this.#listRefresh.get(key);
+    if (running) return running;
+    const run = (async (): Promise<boolean> => {
+      const connection = this.#connections.get(id);
+      if (!connection || connection.state !== 'online' || this.#closed) return false;
+      this.#listFetched.set(key, Date.now());
+      let answer: { status: number; body: unknown };
+      try {
+        answer = await connection.request('GET', `/peer/v1${PEER_LISTS[kind]}`, undefined, { timeoutMs: PEER_FORWARD_TIMEOUT_MS });
+      } catch (error) {
+        if (!(error instanceof PeerUnreachableError)) this.#onError(error);
+        return false;
+      }
+      if (answer.status !== 200 || !Array.isArray(answer.body) || !this.#records.has(id) || this.#closed) return false;
+      const before = JSON.stringify(this.#lists.get(id)?.get(kind) ?? []);
+      this.#setList(id, kind, answer.body);
+      if (before === JSON.stringify(answer.body)) return false;
+      await this.#store.peerSnapshots.put(id, kind, '', answer.body).catch((error: unknown) => this.#onError(error));
+      return true;
+    })().finally(() => this.#listRefresh.delete(key));
+    this.#listRefresh.set(key, run);
+    return run;
+  }
+
   // ── forwarding (local UI → peer) ──────────────────────────────────────
 
   /**
@@ -570,7 +677,8 @@ export class PeerService implements PeerHandlers {
     const connection = this.#connections.get(machineId);
     const ref = this.#ref(machineId);
     if (!connection || !ref) return { status: 404, body: { error: 'not-found', message: `no paired machine ${machineId}` } };
-    const long = (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/'))) || path.endsWith('/hook');
+    // D52: Save schedule (a folder scan) and Run now (a start with worktrees) take the long limit too.
+    const long = (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules'))) || path.endsWith('/hook');
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
     const snapshot = snapshotOf(method, path, kind);
@@ -595,7 +703,11 @@ export class PeerService implements PeerHandlers {
       connection.kick();
       return { status: 502, body: { error: 'peer-auth-failed', message: `${ref.name} refused this pairing (revoked there?): pair again` } };
     }
-    if (answer.status >= 200 && answer.status < 300) return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
+    if (answer.status >= 200 && answer.status < 300) {
+      // D52: a schedule changed there (saved, run, paused, resumed, deleted): its list is fetched again before the answer goes back.
+      if (method.toUpperCase() !== 'GET' && path.split('?')[0]?.startsWith('/api/schedules')) await this.refreshList(machineId, 'schedules');
+      return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
+    }
     return answer;
   }
 
@@ -728,7 +840,7 @@ export class PeerService implements PeerHandlers {
 function isAboutRemote(message: HubMessage): boolean {
   const payload = message.payload as unknown as Record<string, unknown>;
   if (typeof payload !== 'object' || payload === null) return false;
-  return isRemoteId(payload['sessionId']) || isRemoteId(payload['id']) || (message.name === 'sessionUpdated' && payload['machine'] != null);
+  return isRemoteId(payload['sessionId']) || isRemoteId(payload['id']) || isRemoteId(payload['scheduleId']) || (message.name === 'sessionUpdated' && payload['machine'] != null);
 }
 
 /** The host name without a `.local` / domain tail. */

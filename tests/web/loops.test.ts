@@ -163,3 +163,27 @@ describe('loops view · cards', () => {
     expect(loopCards([old as unknown as Session], NOW)).toEqual([]);
   });
 });
+
+describe('D52 · a peer\'s loops and terminal sessions\' loops', () => {
+  const PEER = { id: 'abcdefghijkl', name: 'pc-office', state: 'online' as const };
+
+  it('a peer session\'s loop carries its machine; "Open session" is never blocked (the snapshot opens offline)', () => {
+    const cards = loopCards([session({ id: 'r~abcdefghijkl~s1', loops: [loop({ sessionId: 'r~abcdefghijkl~s1' })], machine: { ...PEER, state: 'offline' } })], NOW);
+    expect(cards[0]).toMatchObject({ machine: { id: PEER.id, state: 'offline' }, terminalId: null, blocked: null });
+  });
+
+  it('a terminal loop: named after the terminal (else its folder), dot from its status words, Hook into… blocked while its machine is offline', () => {
+    const entry = {
+      loop: loop({ id: 'r~abcdefghijkl~term:cs1:loop', sessionId: 'cs1', createdAt: '2026-09-28T11:00:00.000Z' }),
+      terminal: { id: 'cs1', name: null, cwd: '/Users/dev/repo-a', status: 'busy', pid: 42, startedAt: '2026-09-28T10:59:00.000Z' },
+      machine: PEER,
+    };
+    const [card] = loopCards([], NOW, [entry]);
+    expect(card).toMatchObject({ sessionId: 'cs1', sessionName: 'Terminal · repo-a', status: 'run', terminalId: 'cs1', machine: PEER, blocked: null });
+    const [offline] = loopCards([], NOW, [{ ...entry, terminal: { ...entry.terminal, name: 'pc-loop', status: 'waiting' }, machine: { ...PEER, state: 'offline' as const } }]);
+    expect(offline).toMatchObject({ sessionName: 'pc-loop', status: 'need', border: NEED_BORDER, blocked: 'pc-office is offline — reconnect to continue' });
+    // Sorted with the sessions' loops by start.
+    const both = loopCards([session({ loops: [loop({ createdAt: '2026-09-28T12:00:00.000Z' })] })], NOW, [entry]);
+    expect(both.map((c) => c.terminalId)).toEqual(['cs1', null]);
+  });
+});
