@@ -21,6 +21,8 @@ export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
   'fetch-failed': 409,
   'base-missing': 409,
   'branch-checked-out': 409,
+  // D47: the typed parent key names several origin branches in a repo.
+  'parent-ambiguous': 409,
 };
 
 /**

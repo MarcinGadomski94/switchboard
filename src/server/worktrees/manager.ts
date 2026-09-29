@@ -2,6 +2,19 @@ import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { BranchingPreflightRow, FileDiff, Worktree } from '../../core/api.ts';
 import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
+import {
+  PARENT_PR_FIELDS,
+  type MergeKind,
+  type ParentRef,
+  type ParentStatus,
+  type RepoBase,
+  effectiveParent,
+  parentMatches,
+  parentText,
+  parseParentPullRequest,
+  resolveRepoBase,
+  storedParent,
+} from '../../core/stacking.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import {
   PR_VIEW_FIELDS,
@@ -21,7 +34,7 @@ import {
   worktreePath,
 } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
-import type { WorktreePatch, WorktreeRecord } from '../db/repos/worktrees.ts';
+import type { WorktreeParentFields, WorktreePatch, WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
@@ -49,7 +62,9 @@ export type WorktreeErrorCode =
   // D40: `git fetch origin` failed; the base to cut a task worktree from is not on origin; an existing task branch is checked out elsewhere.
   | 'fetch-failed'
   | 'base-missing'
-  | 'branch-checked-out';
+  | 'branch-checked-out'
+  // D47: a typed parent key names several origin branches in a repo.
+  | 'parent-ambiguous';
 
 /** A refusal of the worktree manager. Nothing was changed on disk when it is thrown. */
 export class WorktreeError extends Error {
@@ -73,6 +88,14 @@ export interface SessionControl {
 export interface WorktreeEvents {
   readonly worktreeRemovable: Worktree;
 }
+
+/**
+ * D47: a stacked worktree's parent PR was seen `MERGED` (once per worktree; the
+ * record carries `parentBranch`, `parentBase`, `parentHeadOid`, `parentMerge`).
+ * Not a `/hub` event: the system items turn it into the Inbox item and the
+ * session message.
+ */
+export type ParentMergedListener = (worktree: WorktreeRecord) => void;
 
 /** Options for {@link WorktreeManager}. */
 export interface WorktreeManagerOptions {
@@ -149,7 +172,7 @@ export type AdoptionSession = Pick<SessionRecord, 'id' | 'name' | 'branch'> & { 
 export interface TaskWorktreeOptions {
   /** The task branch (D32's ticket branch the caller validated), the same in every repo. */
   readonly task: string;
-  /** The session's branching (the epic, its base, per-repo overrides); dropped repos must already be left out of `solutions`. */
+  /** The session's branching (the epic, its base, per-repo overrides; D47: the parent); dropped repos must already be left out of `solutions`. */
   readonly branching: SessionBranching;
 }
 
@@ -160,6 +183,10 @@ export interface TaskWorktree {
   readonly from: string | null;
   /** The task branch: made by this call (`new`), made from `origin/<task>` and tracking it (`origin`), or the existing `local` branch. */
   readonly reuse: 'new' | 'origin' | 'local';
+  /** D47: the repo's resolved base and PR target (`null` for a repo without `origin`). */
+  readonly base: Extract<RepoBase, { ok: true }> | null;
+  /** D47: the parent's PR in this repo when the task is stacked here (`null` otherwise). */
+  readonly parentStatus: ParentStatus | null;
 }
 
 /** What {@link WorktreeManager.preflight} checks (D40, `POST /api/branching/preflight`). */
@@ -173,6 +200,8 @@ export interface PreflightInput {
   readonly taskBranch: string | null;
   /** Per-solution base overrides. */
   readonly bases: Readonly<Record<string, string>>;
+  /** D47: the typed parent; `null` / omitted = not stacked. */
+  readonly parent?: ParentRef | null;
 }
 
 /** Result of {@link WorktreeManager.isolate}. */
@@ -216,6 +245,11 @@ interface TaskPlan {
   readonly from: string | null;
   /** The row's `base_ref`: `origin/<cut point>`, or the branch HEAD was on (no origin). */
   readonly base: string;
+  /** D47: the resolution (`null` without origin) and the parent's status. */
+  readonly resolved: Extract<RepoBase, { ok: true }> | null;
+  readonly parentStatus: ParentStatus | null;
+  /** D47: the parent fields the row starts with. */
+  readonly parent: Partial<WorktreeParentFields>;
 }
 
 interface DiffTarget {
@@ -273,6 +307,8 @@ export class WorktreeManager implements DiffProvider {
   readonly #onError: (error: unknown) => void;
   readonly #fetchTimeout: number;
   readonly #listeners = new Set<Listener>();
+  /** D47: `parentMerged` listeners. */
+  readonly #parentListeners = new Set<ParentMergedListener>();
   /** D40: network git calls per repository, one at a time (a preflight and a Start never fetch one repo at once). */
   readonly #fetching = new Map<string, Promise<unknown>>();
   /** D40: worktrees whose branch existed before (reused): {@link discard} never deletes it. */
@@ -300,6 +336,12 @@ export class WorktreeManager implements DiffProvider {
     void name;
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /** D47: subscribes to a stacked worktree's parent merging ({@link ParentMergedListener}); returns the unsubscribe function. */
+  onParentMerged(listener: ParentMergedListener): () => void {
+    this.#parentListeners.add(listener);
+    return () => this.#parentListeners.delete(listener);
   }
 
   // ── solutions ─────────────────────────────────────────────────────────
@@ -473,7 +515,7 @@ export class WorktreeManager implements DiffProvider {
     }
     const created: TaskWorktree[] = [];
     try {
-      for (const plan of plans) created.push({ record: await this.#createTask(plan), from: plan.from, reuse: plan.reuse });
+      for (const plan of plans) created.push({ record: await this.#createTask(plan), from: plan.from, reuse: plan.reuse, base: plan.resolved, parentStatus: plan.parentStatus });
     } catch (error) {
       await this.discard(created.map((worktree) => worktree.record));
       throw error;
@@ -500,24 +542,42 @@ export class WorktreeManager implements DiffProvider {
       const headSha = head.stdout.trim();
       const symbolic = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
       const base = succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : headSha;
-      return { solution, repoPath, branch: task, path: target, reuse: local ? 'local' : 'new', start: local ? task : headSha, from: null, base };
+      return { solution, repoPath, branch: task, path: target, reuse: local ? 'local' : 'new', start: local ? task : headSha, from: null, base, resolved: null, parentStatus: null, parent: {} };
     }
-    const fetched = await this.#fetch(repoPath, ['fetch', 'origin']);
-    if (!succeeded(fetched)) throw new WorktreeError('fetch-failed', `git fetch origin failed in ${solution}: ${failureText(fetched)}`);
     const { branching } = options;
+    const parent = effectiveParent(storedParent(branching), branching.epic?.branch ?? null);
+    // D47: a stacked task prunes, so a parent deleted on origin (merged) is not taken for present.
+    const fetched = await this.#fetch(repoPath, parent ? ['fetch', 'origin', '--prune'] : ['fetch', 'origin']);
+    if (!succeeded(fetched)) throw new WorktreeError('fetch-failed', `git fetch origin failed in ${solution}: ${failureText(fetched)}`);
     const epicOnOrigin = branching.epic !== null && (await this.#refExists(repoPath, `refs/remotes/origin/${branching.epic.branch}`));
-    const needsDefault = branching.epic === null && branching.bases[solution] === undefined;
-    const cut = cutPoint(branching, solution, { epicOnOrigin, defaultBranch: needsDefault ? await this.#originDefault(repoPath) : null });
+    const matches = parent ? parentMatches(parent, await this.#originBranches(repoPath), task) : null;
+    const needsDefault = branching.epic === null && branching.bases[solution] === undefined && !(matches !== null && matches.length > 0);
+    const resolved = resolveRepoBase(branching, solution, { parentMatches: matches, epicOnOrigin, defaultBranch: needsDefault ? await this.#originDefault(repoPath) : null });
+    if (!resolved.ok) throw new WorktreeError('parent-ambiguous', `${solution}: ${resolved.message}`);
+    const cut = resolved.cut;
     if (cut === null) throw new WorktreeError('base-missing', `${solution}: origin has no default branch (origin/HEAD): use another base for it`);
     if (!(await this.#refExists(repoPath, `refs/remotes/origin/${cut}`))) {
       throw new WorktreeError('base-missing', `${solution}: origin/${cut} does not exist: drop it from the task or use another base`);
     }
     const from = `origin/${cut}`;
-    if (local) return { solution, repoPath, branch: task, path: target, reuse: 'local', start: task, from, base: from };
-    if (await this.#refExists(repoPath, `refs/remotes/origin/${task}`)) {
-      return { solution, repoPath, branch: task, path: target, reuse: 'origin', start: `origin/${task}`, from, base: from };
+    // D47: the parent's PR now (the hand-off's status, the watcher's first state); gh failing never blocks the start.
+    let parentStatus: ParentStatus | null = null;
+    let parentFields: Partial<WorktreeParentFields> = {};
+    if (resolved.parent !== null) {
+      parentStatus = await this.#parentStatus(repoPath, resolved.parent);
+      const cutOid = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${resolved.parent}^{commit}`]);
+      parentFields = {
+        parentBranch: resolved.parent,
+        parentHeadOid: (parentStatus.kind === 'pr' ? parentStatus.pr.headRefOid : null) ?? (succeeded(cutOid) && cutOid.stdout.trim() !== '' ? cutOid.stdout.trim() : null),
+        ...(parentStatus.kind === 'pr'
+          ? { parentPrNumber: parentStatus.pr.number, parentPrUrl: parentStatus.pr.url, parentPrState: parentStatus.pr.state, parentBase: parentStatus.pr.baseRefName }
+          : {}),
+      };
     }
-    return { solution, repoPath, branch: task, path: target, reuse: 'new', start: `refs/remotes/origin/${cut}`, from, base: from };
+    const plan = { solution, repoPath, branch: task, path: target, from, base: from, resolved, parentStatus, parent: parentFields };
+    if (local) return { ...plan, reuse: 'local', start: task };
+    if (await this.#refExists(repoPath, `refs/remotes/origin/${task}`)) return { ...plan, reuse: 'origin', start: `origin/${task}` };
+    return { ...plan, reuse: 'new', start: `refs/remotes/origin/${cut}` };
   }
 
   async #createTask(plan: TaskPlan): Promise<WorktreeRecord> {
@@ -539,6 +599,7 @@ export class WorktreeManager implements DiffProvider {
         baseRef: plan.base,
         path: await realpath(plan.path),
         sessionId: null,
+        ...plan.parent,
       });
       if (plan.reuse === 'local') this.#keptBranches.add(record.id);
       return record;
@@ -565,6 +626,7 @@ export class WorktreeManager implements DiffProvider {
   async #preflightRow(solution: string, folder: FolderRef, input: PreflightInput): Promise<BranchingPreflightRow> {
     const override = input.bases[solution];
     const epicBranch = input.epicBranch;
+    const parent = effectiveParent(input.parent ?? null, epicBranch);
     const baseSource: BranchingPreflightRow['baseSource'] = override !== undefined ? 'override' : epicBranch !== null ? 'epic' : 'default';
     const unknown = (repoPath: string | null, error: string): BranchingPreflightRow => ({
       solution,
@@ -576,6 +638,8 @@ export class WorktreeManager implements DiffProvider {
       epic: epicBranch !== null ? { branch: epicBranch, exists: null, behind: null } : null,
       task: input.taskBranch !== null ? { branch: input.taskBranch, exists: null, local: null } : null,
       cutFrom: null,
+      parent: null,
+      prTarget: null,
     });
     let repoPath: string;
     try {
@@ -607,8 +671,54 @@ export class WorktreeManager implements DiffProvider {
             local: await this.#refExists(repoPath, `refs/heads/${input.taskBranch}`),
           }
         : null;
-    const cutFrom = epic?.exists ? `origin/${epic.branch}` : baseExists ? `origin/${base as string}` : null;
-    return { solution, repoPath, error: null, base, baseSource, baseExists, epic, task, cutFrom };
+    // D47: the typed parent in this repo (after the prune), its PR (gh), and the resolved base / PR target.
+    let parentRow: BranchingPreflightRow['parent'] = null;
+    let resolved: RepoBase | null = null;
+    const branching = { epic: epicBranch !== null ? { key: '', summary: '', branch: epicBranch } : null, base: input.base, bases: input.bases };
+    const matches = parent ? parentMatches(parent, await this.#originBranches(repoPath), input.taskBranch) : null;
+    resolved = resolveRepoBase(branching, solution, { parentMatches: matches, epicOnOrigin: epic?.exists === true, defaultBranch: epicBranch === null ? base : null });
+    if (parent) {
+      const found = resolved.ok ? resolved.parent : null;
+      const status = found !== null ? await this.#parentStatus(repoPath, found) : null;
+      parentRow = {
+        typed: parentText(parent),
+        branch: found,
+        matches: matches ?? [],
+        error: resolved.ok ? null : resolved.message,
+        pr: status?.kind === 'pr' ? { number: status.pr.number, state: status.pr.state, url: status.pr.url, baseRefName: status.pr.baseRefName } : null,
+        noPr: status?.kind === 'none',
+        prError: status?.kind === 'unknown' ? status.error : null,
+      };
+    }
+    let cutFrom: string | null;
+    if (resolved.ok && resolved.via === 'parent') cutFrom = `origin/${resolved.cut as string}`;
+    else if (resolved.ok === false) cutFrom = null;
+    else cutFrom = epic?.exists ? `origin/${epic.branch}` : baseExists ? `origin/${base as string}` : null;
+    const prTarget = resolved.ok && cutFrom !== null ? resolved.prTarget : null;
+    return { solution, repoPath, error: null, base, baseSource, baseExists, epic, task, cutFrom, parent: parentRow, prTarget };
+  }
+
+  /** D47: the branch names under `refs/remotes/origin/` (without `origin/`; `HEAD` left out). */
+  async #originBranches(repoPath: string): Promise<string[]> {
+    const listed = await this.#runGit(repoPath, ['for-each-ref', '--format=%(refname)', 'refs/remotes/origin/']);
+    if (!succeeded(listed)) return [];
+    const prefix = 'refs/remotes/origin/';
+    return listed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((ref) => ref.startsWith(prefix) && ref !== `${prefix}HEAD`)
+      .map((ref) => ref.slice(prefix.length));
+  }
+
+  /** D47: `gh pr view <branch> --json number,state,url,baseRefName,headRefOid` in `cwd`: its PR, `none`, or `unknown` (gh failed). */
+  async #parentStatus(cwd: string, branch: string): Promise<ParentStatus> {
+    const result = await this.#runGh(cwd, ['pr', 'view', branch, '--json', PARENT_PR_FIELDS]);
+    if (succeeded(result)) {
+      const pr = parseParentPullRequest(result.stdout);
+      return pr ? { kind: 'pr', pr } : { kind: 'unknown', error: `gh pr view printed an unexpected shape: ${result.stdout.slice(0, 200)}` };
+    }
+    if (result.error === null && isNoPullRequest(result.stderr)) return { kind: 'none' };
+    return { kind: 'unknown', error: `gh pr view failed: ${failureText(result)}` };
   }
 
   /** `true` when the repo has an `origin` remote (its config; no network). */
@@ -704,16 +814,17 @@ export class WorktreeManager implements DiffProvider {
           continue;
         }
         if (worktreePath === repoPath || (await this.#store.worktrees.getLiveByPath(worktreePath))) continue;
-        // D40: a branching session's worktree is compared with the origin branch it was cut from.
-        const cutFrom = session.branching ? await this.#adoptedBase(worktreePath, session.branching, repo.solution) : null;
+        // D40: a branching session's worktree is compared with the origin branch it was cut from (D47: the parent when stacked there).
+        const cutFrom = session.branching ? await this.#adoptedBase(worktreePath, session.branching, repo.solution, entry.branch as string) : null;
         adopted.push(
           await this.#store.worktrees.create({
             repo: repo.solution,
             repoPath,
             branch: entry.branch as string,
-            baseRef: cutFrom ?? main?.branch ?? main?.head ?? null,
+            baseRef: cutFrom?.base ?? main?.branch ?? main?.head ?? null,
             path: worktreePath,
             sessionId: session.id,
+            ...(cutFrom?.parent ?? {}),
           }),
         );
       }
@@ -726,9 +837,26 @@ export class WorktreeManager implements DiffProvider {
    * cut from, by the session's rule (`origin/<epic>` when it is on origin, else
    * `origin/<base>` or the repo's override; without an epic, the override or
    * `origin/HEAD`), read in the worktree itself (no fetch, nothing run in the main
-   * checkout); `null` when that ref does not resolve.
+   * checkout); `null` when that ref does not resolve. D47: a stacked session's
+   * worktree whose repo has the parent on origin is cut from `origin/<parent>`
+   * and watches it (the parent fields; its PR is read by the next poll).
    */
-  async #adoptedBase(worktreePath: string, branching: SessionBranching, solution: string): Promise<string | null> {
+  async #adoptedBase(
+    worktreePath: string,
+    branching: SessionBranching,
+    solution: string,
+    task: string,
+  ): Promise<{ readonly base: string | null; readonly parent: Partial<WorktreeParentFields> } | null> {
+    const parent = effectiveParent(storedParent(branching), branching.epic?.branch ?? null);
+    if (parent) {
+      const matches = parentMatches(parent, await this.#originBranches(worktreePath), task);
+      if (matches.length === 1) {
+        const name = matches[0] as string;
+        const oid = await this.#runGit(worktreePath, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${name}^{commit}`]);
+        const tip = succeeded(oid) && oid.stdout.trim() !== '' ? oid.stdout.trim() : null;
+        return { base: `origin/${name}`, parent: { parentBranch: name, parentHeadOid: tip } };
+      }
+    }
     const epicOnOrigin = branching.epic !== null && (await this.#refExists(worktreePath, `refs/remotes/origin/${branching.epic.branch}`));
     let defaultBranch: string | null = null;
     if (branching.epic === null && branching.bases[solution] === undefined) {
@@ -737,7 +865,7 @@ export class WorktreeManager implements DiffProvider {
       if (succeeded(symbolic) && ref.startsWith('origin/')) defaultBranch = ref.slice('origin/'.length);
     }
     const cut = cutPoint(branching, solution, { epicOnOrigin, defaultBranch });
-    return cut !== null && (await this.#refExists(worktreePath, `refs/remotes/origin/${cut}`)) ? `origin/${cut}` : null;
+    return { base: cut !== null && (await this.#refExists(worktreePath, `refs/remotes/origin/${cut}`)) ? `origin/${cut}` : null, parent: {} };
   }
 
   // ── isolate (gap #2) ──────────────────────────────────────────────────
@@ -846,13 +974,24 @@ export class WorktreeManager implements DiffProvider {
    * worktree becomes `removable` when its PR is `MERGED` and removal would be
    * allowed (gap #3); `worktreeRemovable` fires once, when that flag turns on. PR
    * artifacts with the same URL get the state as their meta (`open`, `merged`, …).
+   * D47: a stacked worktree's parent PR is checked too ({@link #checkParent}).
    * Concurrent calls share one run.
    */
   checkPullRequests(): Promise<PullRequestCheck[]> {
     this.#checking ??= (async () => {
       try {
         const results: PullRequestCheck[] = [];
-        for (const record of await this.#store.worktrees.list()) results.push(await this.#checkOne(record));
+        for (const record of await this.#store.worktrees.list()) {
+          results.push(await this.#checkOne(record));
+          // D47: a stacked worktree also watches its parent's PR (once merged, never again).
+          if (record.parentBranch !== null && record.parentMergedAt === null) {
+            try {
+              await this.#checkParent(record);
+            } catch (error) {
+              this.#onError(error);
+            }
+          }
+        }
         return results;
       } finally {
         this.#checking = null;
@@ -928,6 +1067,65 @@ export class WorktreeManager implements DiffProvider {
     if (pr.info?.url) await this.#updatePullRequestArtifacts(pr.info);
     if (updated && removable && !record.removable) this.#emit(toWorktree(updated));
     return { worktreeId: record.id, prState, removable, error };
+  }
+
+  /**
+   * D47 (rule 5): `gh pr view <parent> --json number,state,url,baseRefName,headRefOid`
+   * for a stacked worktree. The PR's number, URL, state, base and head are stored;
+   * no PR or a gh failure changes nothing. When it is `MERGED` (and its base is
+   * known): `git fetch origin --prune` in the repo, then how it merged (its last
+   * head is an ancestor of `origin/<base>`: `merge`, else `squash`; `unknown` when
+   * the fetch fails or the head is not known), `parent_merged_at`, and the row's
+   * `base_ref` becomes `origin/<base>` (where the branch goes after its rebase);
+   * then `parentMerged` fires, once per worktree. Switchboard never retargets,
+   * rebases or pushes anything itself.
+   */
+  async #checkParent(record: WorktreeRecord): Promise<void> {
+    const parent = record.parentBranch;
+    if (parent === null) return;
+    const cwd = (await isDirectory(record.path)) ? record.path : record.repoPath;
+    const status = await this.#parentStatus(cwd, parent);
+    if (status.kind !== 'pr') {
+      if (status.kind === 'unknown') this.#onError(new Error(`parent ${parent} of ${record.branch}: ${status.error}`));
+      return;
+    }
+    const { pr } = status;
+    const parentBase = pr.baseRefName ?? record.parentBase;
+    const parentHeadOid = pr.headRefOid ?? record.parentHeadOid;
+    const patch: { -readonly [K in keyof WorktreePatch]: WorktreePatch[K] } = {
+      parentPrNumber: pr.number,
+      parentPrUrl: pr.url,
+      parentPrState: pr.state,
+      parentBase,
+      parentHeadOid,
+    };
+    const merged = pr.state === 'MERGED' && parentBase !== null;
+    if (merged) {
+      patch.parentMerge = await this.#mergeKind(record.repoPath, parentHeadOid, parentBase);
+      patch.parentMergedAt = new Date().toISOString();
+      patch.baseRef = `origin/${parentBase}`;
+    }
+    const updated = await this.#store.worktrees.update(record.id, patch);
+    if (merged && updated) {
+      for (const listener of this.#parentListeners) {
+        try {
+          listener(updated);
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
+    }
+  }
+
+  /** D47: how a merged parent reached `origin/<base>` (after a fetch): its last head an ancestor → `merge`, not → `squash`, else `unknown`. */
+  async #mergeKind(repoPath: string, head: string | null, base: string): Promise<MergeKind> {
+    if (head === null) return 'unknown';
+    const fetched = await this.#fetch(repoPath, ['fetch', 'origin', '--prune']);
+    if (!succeeded(fetched)) return 'unknown';
+    if (!(await this.#refExists(repoPath, `refs/remotes/origin/${base}`)) || !(await this.#refExists(repoPath, head))) return 'unknown';
+    const ancestor = await this.#runGit(repoPath, ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${base}`]);
+    if (ancestor.error !== null) return 'unknown';
+    return ancestor.code === 0 ? 'merge' : ancestor.code === 1 ? 'squash' : 'unknown';
   }
 
   async #updatePullRequestArtifacts(info: PullRequestInfo): Promise<void> {

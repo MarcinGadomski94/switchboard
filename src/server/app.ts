@@ -113,7 +113,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const worktrees = options.worktrees ?? createWorktreeManager(options.config, options.store, supervisor);
   let systemItems = options.systemItems;
   if (!systemItems) {
-    const own = new SystemItemService({ store: options.store, bus, worktrees });
+    const own = new SystemItemService({ store: options.store, bus, worktrees, sessions: supervisor });
     app.addHook('onClose', async () => {
       await own.close();
     });

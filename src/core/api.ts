@@ -127,6 +127,17 @@ export interface NewSessionBranching {
   readonly bases?: Readonly<Record<string, string>> | null;
   /** Solutions dropped from the task (the preflight's "Drop from task"): no worktree, and they leave the session's solutions. */
   readonly dropped?: readonly string[] | null;
+  /**
+   * Additive (D47): the parent the task is **stacked** on, typed by the developer:
+   * a task key (`PROJ-3013`: per repo the one origin branch whose name starts with
+   * `PROJ-3013-`) or a full branch name (a valid git branch name; a leading
+   * `origin/` is dropped). Omitted, `null` or blank = the epic branch (not
+   * stacked). Per repo the worktree is cut from `origin/<parent>` when the parent
+   * is on origin there (its PR targets the parent), else by the D40 rule (PR into
+   * the epic, or without an epic into the origin default branch). Also read
+   * without an epic. 422 on field `branching.parent`.
+   */
+  readonly parent?: string | null;
 }
 
 /** Additive (D40): `POST /api/branching/preflight` body. */
@@ -143,6 +154,36 @@ export interface BranchingPreflightRequest {
   readonly taskBranch?: string | null;
   /** Per-solution base overrides (as in {@link NewSessionBranching.bases}). */
   readonly bases?: Readonly<Record<string, string>> | null;
+  /** Additive (D47): the typed parent (as in {@link NewSessionBranching.parent}); omitted, `null` or blank = not stacked. */
+  readonly parent?: string | null;
+}
+
+/** Additive (D47): the parent's pull request in one repo (`gh pr view <parent> --json number,state,url,baseRefName`). */
+export interface BranchingParentPullRequest {
+  readonly number: number;
+  /** Verbatim: `OPEN`, `CLOSED`, `MERGED`. */
+  readonly state: string;
+  readonly url: string | null;
+  /** The branch the parent's PR goes into. */
+  readonly baseRefName: string | null;
+}
+
+/** Additive (D47): the typed parent in one repo of a preflight. */
+export interface BranchingPreflightParent {
+  /** As typed, normalized (a key upper-cased, `origin/` dropped). */
+  readonly typed: string;
+  /** The origin branch it resolves to in this repo; `null` when it is not there (or several match). */
+  readonly branch: string | null;
+  /** The origin branches it names here (a key can name several). */
+  readonly matches: readonly string[];
+  /** Why it cannot be used here (several branches match a key); `null` otherwise. */
+  readonly error: string | null;
+  /** The parent's PR here; `null` when there is none, the parent is not here, or gh failed ({@link prError}). */
+  readonly pr: BranchingParentPullRequest | null;
+  /** `true` when gh answered "no pull requests found". */
+  readonly noPr: boolean;
+  /** Why gh could not tell; `null` otherwise. */
+  readonly prError: string | null;
 }
 
 /** Additive (D40): one repo of a preflight. `null` values are unknown (the repo could not be read or fetched). */
@@ -166,8 +207,20 @@ export interface BranchingPreflightRow {
   readonly epic: { readonly branch: string; readonly exists: boolean | null; readonly behind: number | null } | null;
   /** The task branch on origin and locally (`null` when no valid task branch was sent). */
   readonly task: { readonly branch: string; readonly exists: boolean | null; readonly local: boolean | null } | null;
-  /** The branch the task worktree would be cut from (`origin/<x>`), `null` when there is none yet. */
+  /**
+   * The branch the task worktree would be cut from (`origin/<x>`), `null` when
+   * there is none yet. D47: `origin/<parent>` when the typed parent is on origin
+   * in this repo.
+   */
   readonly cutFrom: string | null;
+  /** Additive (D47): the typed parent in this repo; `null` when not stacked (or the row has an `error`). */
+  readonly parent?: BranchingPreflightParent | null;
+  /**
+   * Additive (D47): where this repo's PR would go: the parent (on origin here),
+   * else the epic branch (even while it is not on origin), else the branch cut
+   * from; `null` when unknown or the row has an `error`.
+   */
+  readonly prTarget?: string | null;
 }
 
 /** Additive (D40): `POST /api/branching/preflight` answer. */

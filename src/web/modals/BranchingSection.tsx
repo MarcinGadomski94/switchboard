@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BranchingPreflightRequest, BranchingPreflightRow } from '../../core/api.ts';
 import { DEFAULT_EPIC_BASE, EPIC_KEY_EXAMPLE, tidyEpicKey } from '../../core/branching.ts';
+import { PARENT_EPIC_LABEL, parentText, parseParent } from '../../core/stacking.ts';
 import { ApiError, api } from '../api/client.ts';
 import {
   type BranchingForm,
@@ -10,10 +11,14 @@ import {
   droppedSolutions,
   fieldProblems,
   formEpicBranch,
+  formParent,
   hasEpic,
+  parentFromTaskShown,
   preflightCells,
   preflightKey,
   rowMissesBase,
+  stackedCells,
+  stackedParent,
 } from './branching-form.ts';
 import './branching.css';
 
@@ -125,7 +130,10 @@ function OtherBase({ solution, value, onApply }: { readonly solution: string; re
  * preflight table (one row per picked solution, or the repo of a repo folder)
  * with Re-check; a row whose base is missing offers **Drop from task** / **Use
  * other base: ___** (a repo folder only the latter). The task branch is D32's
- * Branch field above. `docs/new-session.md` → *Branching (D40)*.
+ * Branch field above. `docs/new-session.md` → *Branching (D40)*. D47: the
+ * **Parent** field (empty = the epic branch; pre-filled from the task text until
+ * typed in) and, while stacked, the Resolved base / PR target / Parent status
+ * columns (`docs/new-session.md` → *Parent (D47)*).
  */
 export function BranchingSection({
   form,
@@ -134,6 +142,7 @@ export function BranchingSection({
   taskBranch,
   preflight,
   repo,
+  task = '',
 }: {
   readonly form: BranchingForm;
   readonly onChange: (patch: Partial<BranchingForm>) => void;
@@ -141,9 +150,15 @@ export function BranchingSection({
   readonly taskBranch: string;
   readonly preflight: PreflightState;
   readonly repo: boolean;
+  /** D47: the task text the Parent field is pre-filled from. */
+  readonly task?: string;
 }) {
   const epic = hasEpic(form);
-  const problems = fieldProblems(form);
+  // D47: the Parent field as it reads (typed, else the task text's key).
+  const parentValue = formParent(form, task);
+  const reading: BranchingForm = { ...form, parent: parentValue };
+  const stacked = stackedParent(reading) !== null;
+  const problems = fieldProblems(reading, taskBranch);
   const dropped = droppedSolutions(form, solutions);
   const choose = (solution: string, choice: RepoChoice | null): void => {
     const choices = { ...form.choices };
@@ -152,14 +167,14 @@ export function BranchingSection({
     onChange({ choices });
   };
   const rows = (preflight.rows ?? []).filter((row) => solutions.includes(row.solution));
-  const note = problems.key ?? problems.epicBranch ?? problems.base;
+  const note = problems.key ?? problems.epicBranch ?? problems.base ?? problems.parent;
 
   return (
     <div className="sb-ns-section sb-ns-section--branching" data-testid="ns-branching" data-section="branching">
       <div className="sb-br-label">
         Branching
         <span className="sb-ns-hint" data-testid="br-model">
-          {epic ? 'epic/task · lazy' : 'task only · no epic'}
+          {`${epic ? 'epic/task · lazy' : 'task only · no epic'}${stacked ? ' · stacked' : ''}`}
         </span>
       </div>
       <div className="sb-br-epic">
@@ -217,6 +232,32 @@ export function BranchingSection({
           No epic: the task branch is cut from each repo&apos;s origin default branch (origin/HEAD, usually origin/master).
         </div>
       )}
+      <label className="sb-br-parent">
+        <span>Parent</span>
+        <input
+          className="sb-ns-input sb-ns-input--name"
+          data-testid="br-parent"
+          aria-label="Parent branch"
+          data-derived={parentFromTaskShown(form, task) ? 'true' : 'false'}
+          value={parentValue}
+          placeholder={epic ? PARENT_EPIC_LABEL : "Origin default branch (independent)"}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => onChange({ parent: event.target.value })}
+          onBlur={() => {
+            const check = parseParent(parentValue);
+            const tidy = check.ok ? (check.parent ? parentText(check.parent) : '') : parentValue;
+            if (form.parent !== null && form.parent !== undefined && tidy !== form.parent) onChange({ parent: tidy });
+          }}
+        />
+      </label>
+      <div className="sb-br-line" data-testid="br-parent-hint">
+        {stacked
+          ? parentFromTaskShown(form, task)
+            ? 'Stacked (from the task text): cut from the parent in each repo where it is on origin, its PR into the parent.'
+            : 'Stacked: cut from the parent in each repo where it is on origin, its PR into the parent.'
+          : 'A task key (e.g. PROJ-3013) or branch name to stack this task on an unmerged task branch.'}
+      </div>
       {note ? (
         <div className="sb-br-line" data-testid="br-note" data-ok="false">
           {note}
@@ -248,11 +289,19 @@ export function BranchingSection({
                   <th>base</th>
                   {epic ? <th>epic</th> : null}
                   <th>{`task ${taskBranch || '—'}`}</th>
+                  {stacked ? (
+                    <>
+                      <th>resolved base</th>
+                      <th>PR target</th>
+                      <th>parent status</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
                   const cells = preflightCells(row);
+                  const extra = stacked ? stackedCells(row) : null;
                   const choice = form.choices[row.solution];
                   const isDropped = dropped.includes(row.solution);
                   const failed = row.error !== null;
@@ -260,7 +309,7 @@ export function BranchingSection({
                   return (
                     <tr key={row.solution} data-testid="br-row" data-solution={row.solution} data-dropped={isDropped ? 'true' : 'false'}>
                       <td className="sb-br-repo">{row.solution}</td>
-                      <td colSpan={failed ? (epic ? 3 : 2) : 1} data-testid="br-cell-base" data-tone={cells.base.tone}>
+                      <td colSpan={failed ? (epic ? 3 : 2) + (stacked ? 3 : 0) : 1} data-testid="br-cell-base" data-tone={cells.base.tone}>
                         {isDropped ? '— dropped from the task' : cells.base.text}
                         {offer && !isDropped ? (
                           <div className="sb-br-choices">
@@ -287,6 +336,19 @@ export function BranchingSection({
                         <td data-testid="br-cell-task" data-tone={cells.task?.tone}>
                           {cells.task?.text ?? '—'}
                         </td>
+                      ) : null}
+                      {stacked && !failed ? (
+                        <>
+                          <td data-testid="br-cell-resolved" data-tone={extra?.resolved.tone}>
+                            {extra?.resolved.text ?? '—'}
+                          </td>
+                          <td data-testid="br-cell-target" data-tone={extra?.target.tone}>
+                            {extra?.target.text ?? '—'}
+                          </td>
+                          <td data-testid="br-cell-parent" data-tone={extra?.status.tone}>
+                            {extra?.status.text ?? '—'}
+                          </td>
+                        </>
                       ) : null}
                     </tr>
                   );

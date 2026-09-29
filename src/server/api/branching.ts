@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { BranchingPreflight } from '../../core/api.ts';
 import { DEFAULT_EPIC_BASE, checkBranchName, isValidBranchName } from '../../core/branching.ts';
+import { PARENT_RULE, parseParent } from '../../core/stacking.ts';
 import { repoSolutionName } from '../folders/ref.ts';
 import type { ApiContext } from '../routes.ts';
 import { resolveSessionFolder } from '../sessions/start.ts';
@@ -29,7 +30,10 @@ function optionalText(value: unknown): string | null {
  * is not an object, `solutions` that is not a list of names (at most
  * {@link PREFLIGHT_MAX_SOLUTIONS}), an epic branch or base that is not a valid
  * branch name, or `bases` that is not a map of names to valid branch names. A
- * task branch that is not a valid branch name is simply not checked.
+ * task branch that is not a valid branch name is simply not checked. D47:
+ * `parent` (a task key or a branch name, `parseParent`; 422 on field `parent`
+ * otherwise) adds each row's parent (resolved per repo, its PR through gh) and
+ * PR target.
  */
 export async function registerBranchingRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   app.post('/api/branching/preflight', async (request, reply): Promise<BranchingPreflight | FastifyReply> => {
@@ -59,6 +63,9 @@ export async function registerBranchingRoutes(app: FastifyInstance, context: Api
         }
       }
     }
+    const rawParent = body['parent'];
+    const parent = rawParent === undefined || rawParent === null ? null : typeof rawParent === 'string' ? parseParent(rawParent) : ({ ok: false, message: PARENT_RULE } as const);
+    if (parent !== null && !parent.ok) errors.push({ field: 'parent', message: parent.message });
     if (errors.length > 0 || solutions === null) return reply.code(422).send({ error: 'invalid', errors });
 
     const resolved = await resolveSessionFolder(context, body);
@@ -73,6 +80,7 @@ export async function registerBranchingRoutes(app: FastifyInstance, context: Api
       base: base?.ok ? base.name : DEFAULT_EPIC_BASE,
       taskBranch: task !== null && isValidBranchName(task) ? task : null,
       bases,
+      parent: parent?.ok ? parent.parent : null,
     });
     return { rows };
   });

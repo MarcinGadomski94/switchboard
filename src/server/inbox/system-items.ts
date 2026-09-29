@@ -1,6 +1,8 @@
 import path from 'node:path';
 import type { BranchRef, InboxAction, NewSessionPrefill, Worktree } from '../../core/api.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES } from '../../core/model.ts';
+import type { UserMessageOrigin } from '../../core/event-payload.ts';
+import { type MergeKind, type ParentMerged, parentMergedMessage, parentMergedTitle, rebaseCommand } from '../../core/stacking.ts';
 import type { ScheduleRecord, ScheduleRunRecord } from '../db/repos/schedules.ts';
 import type { SystemItemCreate, SystemItemRecord } from '../db/repos/system-items.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
@@ -15,13 +17,19 @@ import { inboxCount, sessionBranches } from './wire.ts';
  * itself, "Scheduled run failed" (a `schedule_runs` row with result `fail`) and
  * "PR merged" (a worktree the M2.2 manager flagged removable), and their actions
  * through `POST /api/inbox/{id}/actions/{action}`. Every item is built from stored
- * state only (D13); each run and each worktree raises at most one item.
+ * state only (D13); each run and each worktree raises at most one item. D47:
+ * "Parent … merged — retarget and rebase …" (a stacked worktree whose parent's PR
+ * merged), which also sends its session the rule-5 message.
  */
 
 /** Kind of the item a failed scheduled run raises. */
 export const SCHEDULE_RUN_FAILED = 'schedule-run-failed';
 /** Kind of the item a removable worktree raises. */
 export const WORKTREE_REMOVABLE = 'worktree-removable';
+/** D47: kind of the item a stacked worktree raises when its parent's PR merged. */
+export const PARENT_MERGED = 'parent-merged';
+/** D47: outbox kind (`pending_messages.kind`) of the parent-merged message when it cannot be sent at once. */
+export const PARENT_MERGED_KIND = 'parent-merged';
 
 /** "Open fix session": closes the item; the UI opens the New-session modal with the item's `prefill`. */
 export const OPEN_FIX_SESSION = 'open-fix-session';
@@ -42,6 +50,9 @@ export const WORKTREE_REMOVABLE_ACTIONS: readonly InboxAction[] = [
   { id: REMOVE_WORKTREE, label: 'Remove worktree' },
   { id: 'keep', label: 'Keep' },
 ];
+
+/** D47: the actions of a parent-merged item (it only informs: the agent, not Switchboard, retargets and rebases). */
+export const PARENT_MERGED_ACTIONS: readonly InboxAction[] = [{ id: 'dismiss', label: 'Dismiss' }];
 
 /** Default pause between two {@link SystemItemService.sync} runs of {@link SystemItemService.startWatching}. */
 export const DEFAULT_SYNC_MS = 30_000;
@@ -74,8 +85,16 @@ export interface ScheduleRunner {
 /** What the service needs from the M2.2 worktree manager. */
 export interface WorktreeSource {
   on(name: 'worktreeRemovable', listener: (worktree: Worktree) => void): () => void;
+  /** D47: a stacked worktree's parent merged (optional: without it the items come from {@link SystemItemService.sync} only). */
+  onParentMerged?(listener: (worktree: WorktreeRecord) => void): () => void;
   /** Removes the worktree folder (gap #3); throws a `WorktreeError` when it refuses. */
   remove(worktreeId: string): Promise<unknown>;
+}
+
+/** D47: how the service tells a session that its parent merged (the supervisor). */
+export interface SessionMessenger {
+  /** Sends `text` (resuming a session without a live process); throws when the session cannot take it (detached, closed). */
+  sendMessage(sessionId: string, text: string, origin: UserMessageOrigin): Promise<unknown>;
 }
 
 /** Options for {@link SystemItemService}. */
@@ -87,6 +106,8 @@ export interface SystemItemServiceOptions {
   readonly worktrees?: WorktreeSource;
   /** The scheduler (M7.1); "Retry run" answers `unavailable` without one. */
   readonly scheduleRunner?: ScheduleRunner;
+  /** D47: sends the parent-merged message (the supervisor); without one the message waits in the session's outbox. */
+  readonly sessions?: SessionMessenger;
   /** Called when a background raise or sync fails (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
 }
@@ -104,10 +125,12 @@ export class SystemItemService {
   readonly #store: Store;
   readonly #bus: HubBus | null;
   readonly #worktrees: WorktreeSource | null;
+  readonly #sessions: SessionMessenger | null;
   readonly #onError: (error: unknown) => void;
   readonly #busy = new Set<string>();
   #runner: ScheduleRunner | null;
   #unsubscribe: (() => void) | null = null;
+  #unsubscribeParent: (() => void) | null = null;
   #timer: NodeJS.Timeout | undefined;
   #watching = false;
   #syncing: Promise<SystemItemRecord[]> | null = null;
@@ -117,11 +140,16 @@ export class SystemItemService {
     this.#bus = options.bus ?? null;
     this.#worktrees = options.worktrees ?? null;
     this.#runner = options.scheduleRunner ?? null;
+    this.#sessions = options.sessions ?? null;
     this.#onError = options.onError ?? ((error) => console.error('switchboard system items:', error));
     if (this.#worktrees) {
       this.#unsubscribe = this.#worktrees.on('worktreeRemovable', (worktree) => {
         this.worktreeRemovable(worktree.id).catch(this.#onError);
       });
+      this.#unsubscribeParent =
+        this.#worktrees.onParentMerged?.((worktree) => {
+          this.parentMerged(worktree.id).catch(this.#onError);
+        }) ?? null;
     }
   }
 
@@ -155,9 +183,23 @@ export class SystemItemService {
   }
 
   /**
+   * D47: raises the "Parent … merged" item of a stacked worktree whose parent's PR
+   * was seen merged (once per worktree) and, with it, tells the session to
+   * retarget and rebase ({@link parentMergedMessage}): sent at once (resuming a
+   * paused session), else left in its outbox (e.g. while it continues in a
+   * terminal); a closed session gets only the item.
+   * @returns the new item, or `null`.
+   */
+  async parentMerged(worktreeId: string): Promise<SystemItemRecord | null> {
+    const created = await this.#raiseParent(worktreeId);
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /**
    * Raises the items of every failed run and every removable worktree in the
-   * database that has none yet (runs, then worktrees, oldest first). Concurrent
-   * calls share one run.
+   * database that has none yet (runs, then worktrees, oldest first; D47: then
+   * the stacked worktrees whose parent merged). Concurrent calls share one run.
    * @returns the items raised.
    */
   sync(): Promise<SystemItemRecord[]> {
@@ -170,6 +212,10 @@ export class SystemItemService {
         }
         for (const worktreeId of await this.#store.systemItems.removableWorktreesWithoutItem(WORKTREE_REMOVABLE)) {
           const created = await this.#raiseWorktree(worktreeId);
+          if (created) raised.push(created);
+        }
+        for (const worktreeId of await this.#store.systemItems.parentMergedWorktreesWithoutItem(PARENT_MERGED)) {
+          const created = await this.#raiseParent(worktreeId);
           if (created) raised.push(created);
         }
         if (raised.length > 0) await this.#publishInbox();
@@ -214,6 +260,8 @@ export class SystemItemService {
   async close(): Promise<void> {
     this.#unsubscribe?.();
     this.#unsubscribe = null;
+    this.#unsubscribeParent?.();
+    this.#unsubscribeParent = null;
     await this.stopWatching();
   }
 
@@ -231,6 +279,26 @@ export class SystemItemService {
     const worktree = await this.#store.worktrees.get(worktreeId);
     if (!worktree || !worktree.removable || worktree.removedAt) return null;
     return this.#store.systemItems.createOnce(removableWorktreeItem(worktree));
+  }
+
+  async #raiseParent(worktreeId: string): Promise<SystemItemRecord | null> {
+    const worktree = await this.#store.worktrees.get(worktreeId);
+    if (!worktree || worktree.parentMergedAt === null || worktree.parentBranch === null || worktree.parentBase === null) return null;
+    const session = worktree.sessionId ? await this.#store.sessions.get(worktree.sessionId) : null;
+    const open = session !== null && session.closedAt === null;
+    const merged = parentMergedOf(worktree);
+    const created = await this.#store.systemItems.createOnce(parentMergedItem(worktree, merged, open));
+    if (!created || !open || !session) return created;
+    // Once per parent per repo: only the call that raised the item tells the session.
+    const text = parentMergedMessage(merged);
+    try {
+      if (!this.#sessions) throw new Error('no session messenger');
+      await this.#sessions.sendMessage(session.id, text, 'service');
+    } catch {
+      // Detached (a terminal owns it), the service closing, …: the message waits for the session's next run.
+      await this.#store.pendingMessages.enqueue({ sessionId: session.id, kind: PARENT_MERGED_KIND, text });
+    }
+    return created;
   }
 
   // ── act ───────────────────────────────────────────────────────────────
@@ -371,6 +439,49 @@ export function removableWorktreeItem(worktree: WorktreeRecord): SystemItemCreat
     worktreeId: worktree.id,
     payload: null,
     ...(worktree.prCheckedAt ? { createdAt: worktree.prCheckedAt } : {}),
+  };
+}
+
+/** D47: what the parent-merged message and item name, from a stacked worktree's stored parent fields. */
+export function parentMergedOf(worktree: WorktreeRecord): ParentMerged {
+  const merge: MergeKind = worktree.parentMerge === 'merge' || worktree.parentMerge === 'squash' ? worktree.parentMerge : 'unknown';
+  return {
+    solution: worktree.repo,
+    task: worktree.branch,
+    parent: worktree.parentBranch ?? '',
+    parentBase: worktree.parentBase ?? '',
+    parentPr: worktree.parentPrNumber,
+    oldTip: worktree.parentHeadOid,
+    merge,
+    childPr: worktree.prNumber,
+    worktreePath: worktree.path,
+  };
+}
+
+/**
+ * D47: the "Parent … merged" item of a stacked worktree: title `Parent <parent>
+ * merged — retarget and rebase <task>`, detail = the repo, the parent's PR and
+ * base, the steps asked of the agent (or, for a closed session, that nothing was
+ * sent), the `<repo> ⎇ <task>` chip, Dismiss. Dated when the merge was seen.
+ */
+export function parentMergedItem(worktree: WorktreeRecord, merged: ParentMerged, sessionOpen: boolean): SystemItemCreate {
+  const pr = merged.parentPr !== null ? `PR #${merged.parentPr} ` : '';
+  const how = merged.merge === 'squash' ? ' (squash-merged)' : merged.merge === 'merge' ? '' : ' (merge kind unknown)';
+  const steps = `retarget the PR to ${merged.parentBase} (gh pr edit ${merged.task} --base ${merged.parentBase}) and rebase: ${rebaseCommand(merged)}`;
+  return {
+    kind: PARENT_MERGED,
+    source: 'worktrees',
+    status: 'need',
+    title: parentMergedTitle(merged),
+    detail: sessionOpen
+      ? `${merged.solution} · ${pr}${merged.parent} was merged into ${merged.parentBase}${how}. The session was asked to ${steps}, then report.`
+      : `${merged.solution} · ${pr}${merged.parent} was merged into ${merged.parentBase}${how}. The session is closed, so nothing was sent to it: ${steps}.`,
+    branches: [{ solution: worktree.repo, branch: worktree.branch }],
+    actions: PARENT_MERGED_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+    sessionId: worktree.sessionId,
+    worktreeId: worktree.id,
+    payload: null,
+    ...(worktree.parentMergedAt ? { createdAt: worktree.parentMergedAt } : {}),
   };
 }
 

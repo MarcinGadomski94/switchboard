@@ -380,6 +380,27 @@ BranchingPreflight        { "rows": [ { "solution": "alpha-front", "repoPath": "
 NewSession                { …, "worktrees": true, "branch": "PROJ-3011-kpi-dashboard", "branching": { "epic": { "key": "PROJ-3010", "summary": "Platform tracking", "branch": "feature/PROJ-3010-Platform-tracking" }, "base": "dev", "bases": { "mobile": "main" }, "dropped": ["beta-front"] } }
 ```
 
+## Stacked task branches (D47, 2026-09-29, additive)
+Developer ruling D47 (`docs/decisions.md` → *Stacked task branches*): a task branch can be stacked on an earlier, unmerged task branch (its **parent**). Additive: the rows and payloads above keep their meaning; a body without `parent` is D40 exactly. Details: `docs/new-session.md` → *Parent (D47)*, `docs/worktrees.md` → *Stacked task branches (D47)*, migration `0013_worktree_parent.sql`.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/branching/preflight | BranchingPreflightRequest + `parent?` | 200 BranchingPreflight (rows + `parent`, `prTarget`) · 422 `invalid` also on field `parent` |
+| POST | /api/sessions | NewSession / NewRepoSession with `branching.parent?` | 201 Session · 422 `invalid` also on `branching.parent` · 409 `parent-ambiguous` `{ message }` (a key naming several origin branches in a repo; nothing created) |
+
+- **parent** (`BranchingPreflightRequest.parent`, `NewSessionBranching.parent`): a task key (`PROJ-3013`, any case) or a full branch name (a valid git branch name; a leading `origin/` is dropped); omitted, `null` or blank = the epic branch (not stacked). A key resolves per repo to the origin branch whose name starts with `<KEY>-` (the task branch left out). Refused: not a key nor a valid name, the task branch itself or its key, the epic's base. The epic branch itself = not stacked. Also read without an epic.
+- **BranchingPreflightRow.parent** (`null` when not stacked or the row has an `error`): `{ typed, branch, matches, error, pr, noPr, prError }`: `branch` = the origin branch it resolves to here (`null` = not in this repo, or several matched: `error`); `pr` `{ number, state, url, baseRefName }` from `gh pr view <branch> --json number,state,url,baseRefName,headRefOid` (asked only where the parent is on origin), `noPr` when gh says there is none, `prError` when gh failed. **prTarget** (every row without `error`): where the task's PR would go: the parent, else the epic branch (even while it is not on origin), else the branch cut from; `null` when nothing can be cut. **cutFrom** is `origin/<parent>` where the parent is found. The fetch is `git fetch origin --prune`.
+- **At Start**, per repo: `git fetch origin --prune`; the parent on origin → cut from `origin/<parent>` (the worktree's `base_ref`), else D40's cut point; a merged / closed parent is not refused. Nothing is created on origin or pushed. The parent is stored in `sessions.branching` (not on the wire), the per-repo parent and its PR on the worktree row.
+- **Parent merged:** the PR poll also checks each stacked worktree's parent; once it is `MERGED`, the Inbox gets a system item (kind `parent-merged`, title `Parent <parent> merged — retarget and rebase <task>`, action `dismiss`, the usual `inboxChanged`), and the session (unless closed) gets a service message asking the agent to retarget its PR (`gh pr edit <task> --base <parent's base>`) and rebase (`git rebase --onto origin/<base> <old parent tip> <task>` after a squash merge, else a normal rebase), then report. Once per worktree. No new route or `/hub` event.
+
+```json
+BranchingPreflightRequest { "folder": "f1", "solutions": ["alpha-front", "gamma-front"], "epicBranch": "feature/PROJ-3010-Platform", "base": "dev", "taskBranch": "PROJ-3014-kpi-events", "parent": "PROJ-3013" }
+BranchingPreflightRow     { …, "cutFrom": "origin/PROJ-3013-cookie-banner", "prTarget": "PROJ-3013-cookie-banner",
+                            "parent": { "typed": "PROJ-3013", "branch": "PROJ-3013-cookie-banner", "matches": ["PROJ-3013-cookie-banner"], "error": null,
+                                        "pr": { "number": 306, "state": "OPEN", "url": "https://github.com/o/r/pull/306", "baseRefName": "feature/PROJ-3010-Platform" }, "noPr": false, "prError": null } }
+NewSession                { …, "branch": "PROJ-3014-kpi-events", "branching": { "epic": { "key": "PROJ-3010", "summary": "Platform" }, "base": "dev", "parent": "PROJ-3013" } }
+```
+
 ## Model at session start (D42, 2026-09-29, additive)
 Developer ruling D42 (`docs/decisions.md` → *Model at session start, remembered*): the New-session form picks the model and effort a session starts with, and the service remembers the last choice. Additive; the rows and payloads above keep their meaning. Details: `docs/model-effort.md` → *At session start (D42)*, `docs/new-session.md` → *Model (D42)*. No migration: both settings are rows of the existing `settings` table.
 

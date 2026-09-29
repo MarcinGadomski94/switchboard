@@ -79,7 +79,7 @@ import {
 } from './remote-session.ts';
 import { ScheduleSection } from './ScheduleSection.tsx';
 import { BranchingSection, useBranchingPreflight } from './BranchingSection.tsx';
-import { type BranchingForm, branchingBlocks, branchingFromPrefill, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
+import { type BranchingForm, branchingBlocks, branchingFromPrefill, formParent, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
 
@@ -276,9 +276,13 @@ export function NewSessionModal({
   const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting;
   // D40: the Branching section shows with the Branch row; its repos are the picked solutions (a repo folder: its repo).
   const branchingSolutions = repo && folder ? [folder.name] : form.solutions;
-  const preflight = useBranchingPreflight(branchShown ? preflightRequest(branching, folder?.id ?? form.folder, branchingSolutions, formBranch(form)) : null);
-  const summary = branchShown ? withBranchingLines(lines, branching, branchingSolutions, (solution) => worktreeFolder(solution, startNames(form, takenNames).name), preflight.rows) : lines;
-  const branchingReady = !branchShown || !branchingBlocks(branching, branchingSolutions, preflight.rows);
+  // D47: the Parent field as it reads (typed, else the key the task text stacks on).
+  const stacking: BranchingForm = { ...branching, parent: formParent(branching, form.task) };
+  const preflight = useBranchingPreflight(branchShown ? preflightRequest(stacking, folder?.id ?? form.folder, branchingSolutions, formBranch(form)) : null);
+  const summary = branchShown
+    ? withBranchingLines(lines, stacking, branchingSolutions, (solution) => worktreeFolder(solution, startNames(form, takenNames).name), preflight.rows, formBranch(form))
+    : lines;
+  const branchingReady = !branchShown || !branchingBlocks(stacking, branchingSolutions, preflight.rows, formBranch(form));
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
   const startable = remoting
@@ -351,8 +355,8 @@ export function NewSessionModal({
     try {
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
       const body = toStartBody(launch, folder, takenNames);
-      // D40: with a worktree, the branching (epic, base, per-repo choices) goes with it.
-      const session = await api.createSession(branchShown ? { ...body, branching: toBranching(branching, branchingSolutions) } : body);
+      // D40: with a worktree, the branching (epic, base, per-repo choices; D47: the parent) goes with it.
+      const session = await api.createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -722,6 +726,7 @@ export function NewSessionModal({
               }}
               solutions={branchingSolutions}
               taskBranch={formBranch(form)}
+              task={form.task}
               preflight={preflight}
               repo={repo}
             />

@@ -145,6 +145,8 @@ describe('POST /api/branching/preflight (D40)', () => {
         epic: { branch: EPIC, exists: true, behind: 2 },
         task: { branch: 'PROJ-9-on-origin', exists: true, local: false },
         cutFrom: `origin/${EPIC}`,
+        parent: null,
+        prTarget: EPIC,
       },
       {
         solution: 'beta-front',
@@ -156,6 +158,8 @@ describe('POST /api/branching/preflight (D40)', () => {
         epic: { branch: EPIC, exists: false, behind: null },
         task: { branch: 'PROJ-9-on-origin', exists: false, local: false },
         cutFrom: null,
+        parent: null,
+        prTarget: null,
       },
       {
         solution: 'mobile',
@@ -167,6 +171,8 @@ describe('POST /api/branching/preflight (D40)', () => {
         epic: { branch: EPIC, exists: null, behind: null },
         task: { branch: 'PROJ-9-on-origin', exists: null, local: null },
         cutFrom: null,
+        parent: null,
+        prTarget: null,
       },
     ]);
     // The fetch ran with --prune in each repo with an origin; nothing was pushed or changed.
