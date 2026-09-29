@@ -146,7 +146,8 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
     .toEqual(['CONTRACT | contracts/arts-e2e.md | ', 'DIFF | web-front · 2 files | +2', 'DOC | docs/notes.md | ']);
   await expect(rows.filter({ hasText: 'docs/notes.md' })).toHaveAttribute('title', 'web-front ⎇ PROJ-21-arts-e2e');
 
-  // A QA matrix at the root, then a follow-up in the mobile main checkout (outside the session's scope).
+  // A QA matrix at the root, then a follow-up in the mobile main checkout. D38: the write puts mobile in the
+  // session's solutions (it was outside its scope before), so its in-place diff against HEAD counts: +1.
   await sendMessage(page, id, 'Coverage [fake:write coverage-matrix.md]');
   await expect(rows).toHaveCount(4, { timeout: 20_000 });
   await expect(rows.nth(0)).toHaveAttribute('data-type', 'QA');
@@ -155,7 +156,7 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
     .poll(() => sortedRows(page), { timeout: 20_000 })
     .toEqual([
       'CONTRACT | contracts/arts-e2e.md | ',
-      'DIFF | mobile · 1 file | ',
+      'DIFF | mobile · 1 file | +1',
       'DIFF | web-front · 2 files | +2',
       'DOC | docs/notes.md | ',
       'FOLLOWUP | mobile-followups/from-web-front.md | ',
@@ -163,7 +164,7 @@ test('Artifacts: type tag + name + meta rows from real writes, live through /hub
     ]);
   // Newest first: the follow-up's pair, then QA, then the web-front pair, then the contract.
   const order = await rowTexts(page);
-  expect(order.slice(0, 2).sort()).toEqual(['DIFF | mobile · 1 file | ', 'FOLLOWUP | mobile-followups/from-web-front.md | ']);
+  expect(order.slice(0, 2).sort()).toEqual(['DIFF | mobile · 1 file | +1', 'FOLLOWUP | mobile-followups/from-web-front.md | ']);
   expect(order[2]).toBe('QA | coverage-matrix.md | ');
   expect(order.slice(3, 5).sort()).toEqual(['DIFF | web-front · 2 files | +2', 'DOC | docs/notes.md | ']);
   expect(order[5]).toBe('CONTRACT | contracts/arts-e2e.md | ');
