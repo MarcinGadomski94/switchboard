@@ -19,11 +19,14 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 ## D32 additions (not findings)
 With Worktree on (the prototype's draft) the app's form has a **Branch row** inside section 1 under the name / task row (the name field's box and style, placeholder `PROJ-0001-short-description`, the ticket branch entered through the form like the draft's other values, since Start needs it), and the summary a **`branch` line** right after `# worktrees`. The prototype has neither: section 1 is compared with its height less the row's (`height − <n>` in the table), the sections below it with their y less that too, and the summary lines after `# worktrees` at the app's index + 2 with their y less both added lines. The added parts are checked on their own (`D32 …` rows).
 
+## D38 ruling (not findings)
+Picking solutions is optional (the agent determines them when none is picked). In the `empty` state the prototype's `⚠ pick at least one solution` line reads `solutions  chosen by the agent` in the app (a value line at the warning's place), Start is enabled (the app's Branch field holds the draft's ticket branch; the prototype shows it at 45%) and section 4's hint reads `0 selected · leave empty to let the agent choose · read-only folders locked`. Those three parts leave the prototype comparison and are checked on their own (`D38 …` rows): the hint has the prototype hint's styles, right edge, y and height; the line the warning line's box and style (color aside: a value line's); Start the prototype's box, copy and styles with opacity 1. The draft state (solutions picked) is compared as before.
+
 ## D25 addition (not a finding)
 **From a remote session** (`⇣` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (`D25 …` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the warning line, Start at 45%). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
+Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the prototype's warning line and Start at 45%, D38's line, Start and hint checked on their own). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -139,8 +142,6 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | qa · qaFigma | size (y − 116) | 544,808 328×34 | 544,742 328×34 | ok |  |
 | qa · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      test-authoring (QA)" |
 | qa · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "stack     both" |
-| empty · solutionsHint | box (y − 120) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "0 selected · read-only folders locked" |
-| empty · start | box | 996.3,797 247.7×37 | 996.3,797 247.7×37 | ok | "Start session" |
 | empty · summaryLine0 | box | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
 | empty · summaryLine1 | box (y − 20.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
 | empty · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      feature-building" |
@@ -149,7 +150,6 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
 | empty · summaryLine6 | box (y − 20.1) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
 | empty · summaryLine7 | box (y − 20.1) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
-| empty · summaryLine8 | box (y − 40.3) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "⚠ pick at least one solution" |
 | empty · summaryLine9 | box (y − 40.3) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
 | empty · D14 Folder row between the head and section 1 | addition | — | 208,119 664×58 | ok | |
 | empty · D14 label copy | addition | — | "Folder" | ok | |
@@ -168,6 +168,16 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · D32 Branch note font (mono meta) | addition | — | 11px "Geist Mono", monospace | ok | |
 | empty · D32 summary branch line after # worktrees | addition | — | "branch    PROJ-640-free-talk" | ok | |
 | empty · D32 summary branch line = a value line | addition | — | value | ok | |
+| empty · D38 hint copy | ruling | — | "0 selected · leave empty to let the agent choose · read-onl | ok | |
+| empty · D38 hint style = the prototype hint | ruling | — | same | ok | |
+| empty · D38 hint right edge, y and height = the prototype hint | ruling | — | 872 vs 872 | ok | |
+| empty · D38 summary line copy (the prototype warning's place) | ruling | — | "solutions  chosen by the agent" | ok | |
+| empty · D38 summary line = a value line | ruling | — | value rgb(191, 190, 184) | ok | |
+| empty · D38 summary line x, y and height = the warning line | ruling | — | 932,417.6 297×20.1 | ok | |
+| empty · D38 summary line style = the warning line (color aside) | ruling | — | same | ok | |
+| empty · D38 Start box and copy = the prototype | ruling | — | 996.3,797 247.7×37 "Start session" | ok | |
+| empty · D38 Start enabled (opacity 1; the prototype 0.45) | ruling | — | 1 vs 0.45 | ok | |
+| empty · D38 Start style = the prototype (opacity aside) | ruling | — | same | ok | |
 
 ## SPEC tokens (computed)
 | Check | Expected | App | Result |

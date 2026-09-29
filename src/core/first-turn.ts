@@ -13,6 +13,11 @@ import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './mode
  * router's session-start questions). A session in a **repo** folder gets only
  * the worktree note ({@link repoWorktreeNote}) when it runs in a worktree, and
  * nothing appended otherwise.
+ *
+ * D38: a workspace session may start without picked solutions; the block then
+ * tells the agent to determine them ({@link SOLUTIONS_NOT_CHOSEN}) and, with
+ * Worktrees on, to create its own worktree per solution it changes
+ * ({@link agentWorktreesInstruction}).
  */
 
 /** Outbox kind (`pending_messages.kind`) of the answers block when the task is empty. */
@@ -30,9 +35,10 @@ export interface FirstTurnWorktree {
 
 /**
  * The validated NewSession fields the block reads (the router fields are `null`
- * only for a repo folder's session, which gets no block, D14).
+ * only for a repo folder's session, which gets no block, D14). D38: `name` is the
+ * session's short name, which the agent's own worktree folders are named after.
  */
-export type FirstTurnSession = Pick<NewSession, 'solutions' | 'coordination' | 'qa' | 'worktrees' | 'ultracode'> & {
+export type FirstTurnSession = Pick<NewSession, 'name' | 'solutions' | 'coordination' | 'qa' | 'worktrees' | 'ultracode' | 'branch'> & {
   readonly workType: WorkType | null;
   readonly mode: SessionMode | null;
   readonly phase: Phase | null;
@@ -45,6 +51,12 @@ export interface SessionStartAnswers {
   readonly folders: readonly string[];
   /** The worktrees created for the session; empty when `session.worktrees` is false. */
   readonly worktrees: readonly FirstTurnWorktree[];
+  /**
+   * D38: the branch the agent's own worktrees get when the session starts with
+   * Worktrees on and no solutions picked: the D32 ticket branch, `session/{name}`
+   * for a scheduled run. The service always passes it; omitted, `session.branch`.
+   */
+  readonly agentBranch?: string | null;
 }
 
 /** Opening lines of the block. */
@@ -63,6 +75,26 @@ const COORDINATION_TERMS: Readonly<Record<Coordination, string>> = {
 };
 
 const STACK_TERMS: Readonly<Record<QaStack, string>> = { web: 'web', mobile: 'mobile', both: 'both' };
+
+/**
+ * D38: the `Solutions in scope` answer of a workspace session started without
+ * picked solutions: the agent determines them itself.
+ */
+export const SOLUTIONS_NOT_CHOSEN =
+  'not chosen: determine them from the task and the router (AGENTS.md), name them in your one-line confirmation before you change anything, and ask if it is unclear';
+
+/**
+ * D38: the `Worktrees` answer of a workspace session started with Worktrees on
+ * and no picked solutions: the agent creates one worktree per solution it
+ * changes, on the session's branch, at `<repo parent>/<repo>-wt-<name>` (gap #1's
+ * naming, so Switchboard adopts it: `docs/worktrees.md` → *Adopted worktrees*).
+ */
+export function agentWorktreesInstruction(branch: string, name: string): string {
+  return (
+    `for each solution you change, create a git worktree on branch ${branch} at <the solution repo's parent>/<repo>-wt-${name} ` +
+    `(git worktree add -b ${branch} <path>, from the repo's current HEAD) and make every change there, not in the main checkout`
+  );
+}
 
 /** Last segment of a solution name or path (`microfrontends/web-front` → `web-front`). */
 function lastSegment(solution: string): string {
@@ -84,6 +116,9 @@ export function asksMobileCoordination(session: Pick<FirstTurnSession, 'workType
  * paths), phase, then mobile coordination (only when it applies and was given)
  * or the QA stack + Confluence / Figma sources (QA), ultracode, and the absolute
  * worktree paths or "no worktrees · edits in place". Lines are `- Label: value`.
+ * D38: without solutions, `Solutions in scope` is {@link SOLUTIONS_NOT_CHOSEN},
+ * mobile coordination is not pre-answered, and with Worktrees on the worktree
+ * list becomes {@link agentWorktreesInstruction}.
  */
 export function sessionStartBlock(answers: SessionStartAnswers): string {
   const { session } = answers;
@@ -93,7 +128,8 @@ export function sessionStartBlock(answers: SessionStartAnswers): string {
   };
   item('Work type', session.workType === 'qa' ? 'test-authoring (QA)' : 'feature-building');
   item('Mode', session.mode === 'orchestrator' ? 'workspace orchestrator' : 'single-solution');
-  item('Solutions in scope', answers.folders.length > 0 ? answers.folders.join(', ') : NONE);
+  const chosen = session.solutions.length > 0;
+  item('Solutions in scope', !chosen ? SOLUTIONS_NOT_CHOSEN : answers.folders.length > 0 ? answers.folders.join(', ') : NONE);
   item('Phase', session.phase === 'integration' ? 'integration' : 'UI-first');
   if (session.workType === 'qa') {
     const qa = session.qa ?? null;
@@ -105,13 +141,16 @@ export function sessionStartBlock(answers: SessionStartAnswers): string {
       lines.push('- Figma frames:');
       for (const url of figma) lines.push(`  - ${url}`);
     }
-  } else if (asksMobileCoordination(session) && session.coordination !== null) {
+  } else if (chosen && asksMobileCoordination(session) && session.coordination !== null) {
     item('Mobile coordination', COORDINATION_TERMS[session.coordination]);
   }
   item('Ultracode', session.ultracode ? 'on' : 'off');
+  const agentBranch = answers.agentBranch ?? session.branch ?? null;
   if (session.worktrees && answers.worktrees.length > 0) {
     lines.push('- Worktrees (one per solution; make every change there, not in the main checkout):');
     for (const worktree of answers.worktrees) lines.push(`  - ${worktree.folder}: ${worktree.path} (branch ${worktree.branch})`);
+  } else if (session.worktrees && !chosen && agentBranch !== null) {
+    item('Worktrees', agentWorktreesInstruction(agentBranch, session.name));
   } else {
     item('Worktrees', 'no worktrees · edits in place');
   }

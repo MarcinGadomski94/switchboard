@@ -34,6 +34,7 @@ import {
   showsBranch,
   showsCoordination,
   showsQa,
+  solutionsHint,
   startErrorText,
   summaryLines,
   toStartBody,
@@ -154,7 +155,9 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * (`startNames` in new-session.ts). D32: while Start will create a worktree, a
  * **Branch** row under the name names its branch after the ticket (pre-filled
  * from a title that starts with a ticket key, tidied on blur, its check under
- * it; Start waits for a valid one). Details: `docs/new-session.md`,
+ * it; Start waits for a valid one). D38: picking solutions is optional for a
+ * workspace folder (the hint says to leave them empty to let the agent choose,
+ * the summary reads `solutions  chosen by the agent`). Details: `docs/new-session.md`,
  * `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
@@ -577,7 +580,7 @@ export function NewSessionModal({
               <div className="sb-ns-label sb-ns-label--row">
                 {repo ? '2 · Solution in scope' : '4 · Solutions in scope'}
                 <span className="sb-ns-hint" data-testid="ns-solutions-hint">
-                  {repo ? '1 selected · a git repo is one solution' : `${form.solutions.length} selected · read-only folders locked`}
+                  {solutionsHint(form, folder)}
                 </span>
               </div>
               {repo && folder ? (

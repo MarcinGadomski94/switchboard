@@ -1,4 +1,5 @@
 import { SESSION_START_KIND } from '../../core/first-turn.ts';
+import { worktreeBranch } from '../../core/worktrees.ts';
 import { type RefusalBody, worktreeRefusal } from '../api/worktree-errors.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
@@ -69,7 +70,10 @@ export async function resolveSessionFolder(
  * first stdin message (M5.2: task + the confirmed answers for a workspace, only
  * the worktree note for a repo; with no task the block waits in the outbox) and
  * start the process. A supervisor refusal is thrown (a `SupervisorError`) after
- * the worktrees created for it are discarded again.
+ * the worktrees created for it are discarded again. D38: a workspace session may
+ * name no solutions; it then gets no worktree up front (its agent creates them on
+ * the stored branch and `WorktreeAdoption` registers them) and starts with empty
+ * `solutions`, which fill in from what its agents touch.
  */
 export async function startNewSession(context: SessionStartContext, body: unknown, options: StartNewSessionOptions = {}): Promise<StartNewSessionOutcome> {
   const { store, supervisor, providers, worktrees, folders } = context;
@@ -93,11 +97,15 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
-  const input = result.value;
+  // D38: the branch the session's worktrees are on (stored with the session): the developer's ticket branch
+  // (D32), `session/{name}` for scheduled runs; also the branch its agent's own worktrees get.
+  const branch = result.value.worktrees ? (result.value.branch ?? worktreeBranch(result.value.name)) : null;
+  const input: ValidNewSession = { ...result.value, ...(branch !== null ? { branch } : {}) };
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
   // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
+  // D38: a workspace session without solutions gets none up front: its agent creates them (and Switchboard adopts them).
   let created: WorktreeRecord[] = [];
-  if (input.worktrees) {
+  if (input.worktrees && input.solutions.length > 0) {
     try {
       created = await worktrees.createForSession(input.name, input.solutions, folder, null, input.branch ? { branch: input.branch } : {});
     } catch (error) {
@@ -112,6 +120,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
       folder,
       worktrees: created,
       resolveRepo: (solution) => worktrees.resolveRepo(solution, folder),
+      agentBranch: branch,
     });
     // D14: a workspace session runs at the folder root (the router applies); a repo session in the repo, or in its worktree.
     const cwd = folder.kind === 'repo' && created[0] ? created[0].path : folder.root;

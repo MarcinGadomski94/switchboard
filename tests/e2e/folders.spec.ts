@@ -245,7 +245,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   // Another workspace: its own chips; the selection does not carry over.
   await select.selectOption({ label: 'second ws' });
   await expect(modal.getByTestId('ns-chip')).toHaveText(['pay-front']);
-  await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · read-only folders locked');
+  await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · leave empty to let the agent choose · read-only folders locked');
   await expect(modal.getByTestId('ns-folder-check')).toHaveText('✓ AGENTS.md (Workspace Router) · 1 solution');
   expect((await summary(modal)).slice(0, 3)).toEqual(['# claude code · background · Max', 'folder    second ws · workspace', `cwd       ${second}`]);
 

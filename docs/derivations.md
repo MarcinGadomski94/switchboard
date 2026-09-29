@@ -65,6 +65,13 @@ Labels are one line (first line, at most 120 characters): the text, `Write · fi
 - **BRANCH**: branches a Bash command creates: `git checkout -b|-B`, `git switch -c|-C|--create`, `git worktree add … -b|-B`, `git branch <name>` (no options). The solution comes from a preceding `cd <dir>` or `git -C <dir>` in the same command, else none. Worktrees Switchboard creates itself are registered by M2.2.
 - **TICKET**: not auto-detected in v1.
 
+## Session solutions (D38)
+`src/core/session-solutions.ts`. A **workspace** session may start without picked solutions (`Session.solutions` empty; the agent determines them). Its solutions then fill in by themselves from what its agents touch, for every workspace session (picked ones included):
+- **A write** (the D21 derivation, above: a successful Write / Edit / MultiEdit / NotebookEdit of any agent, main or subagent): `writtenSolution` maps the file with `solutionFolder` / `locateFile` to the solution's **name**, as the New-session chips name it (`microfrontends/acme-app-front/…` and its worktree `acme-app-front-wt-<name>/…` → `acme-app-front`; `mobile/…` → `mobile`). Every write counts, not only an agent's first (which alone sets its `solutionPath`). The workspace root, paths outside the folder and read-only solutions (`deprecated/…`, `infrastructure/…`) add nothing; a repo folder's one solution is fixed (D14). The recorder calls `SessionSupervisor.addSolutions`, in order with the stream.
+- **An adopted worktree** (`docs/worktrees.md` → *Adopted worktrees (D38)*): its solution's name.
+- `addSolutions` appends what `Session.solutions` does not name yet (`withSolutions`; a relative path and its last segment are the same solution, `sameSolution`), keeping the order in which they appear, stores it (`sessions.solutions`) and publishes `sessionUpdated` (an adoption publishes even when nothing was added). One update at a time per session.
+- Everything that reads `Session.solutions` follows as it already does: the `scope` chip (*Session chips* below), the Solutions view's in-place sessions and conflict detection (`docs/solutions.md`), the Diff tab's in-place solutions, History. The main agent keeps the name it got at the start (`main` without solutions in single-solution mode).
+
 ## Solutions rows (M6.2)
 The live fields of `GET /api/solutions` (which sessions work on a solution, its branches, status, phase, changes, phase ledger, artifacts & follow-ups and codebase-memory freshness) are derived by `LiveSolutions`; the rules are in `docs/solutions.md` → *Live fields* and `src/core/solutions-live.ts`. Conflicts (M6.3: two or more open sessions write one repo and at least one has no worktree of its own) are in `docs/solutions.md` → *Conflicts* and `src/core/conflicts.ts`.
 
@@ -77,7 +84,7 @@ The live fields of `GET /api/solutions` (which sessions work on a solution, its 
 | `mode` | `mode` | `single-solution` / `orchestrator` |
 | `phase` | `phase` | `UI-first` / `integration` |
 | `stack` | `qaStack`, QA sessions only | `web` / `mobile` / `both` |
-| `scope` | `solutions` | the names joined with ` + ` |
+| `scope` | `solutions` | the names joined with ` + ` (D38: absent until a session started without solutions touches one) |
 | `ultracode` (blue) | `ultracode` | `on` |
 | `run` (blue) | each `loops` row of kind `Workflow` (D9) | its label, else the kind |
 | `loop` (blue) | each other `loops` row | its label, else the kind |

@@ -121,7 +121,8 @@ describe('Scheduler · Save schedule (D8)', () => {
       [{ cron: '0 2 * * *' }, 'template'],
       [{ cron: '0 2 * * *', template: template({ task: '   ' }) }, 'template.task'],
       [{ cron: '0 2 * * *', template: template({ name: 'Nightly Check' }) }, 'template.name'],
-      [{ cron: '0 2 * * *', template: template({ solutions: [] }) }, 'template.solutions'],
+      // D38: a template without solutions is valid (the agent determines them); a solution that is no name is not.
+      [{ cron: '0 2 * * *', template: template({ solutions: [''] }) }, 'template.solutions'],
       [{ cron: '0 2 * * *', template: template({ solutions: ['deprecated/microfrontends/old-front'] }) }, 'template.solutions'],
       [{ cron: '0 2 * * *', template: template({ workType: 'qa', qa: null }) }, 'template.qa'],
     ];
@@ -325,13 +326,13 @@ describe('Scheduler · runs in progress, questions and failures', () => {
 
   it('a template that cannot start: the run fails at once with "Not started: …" and raises the item', async () => {
     const r = await setup(at(2, 0));
-    // Stored directly: a template the API would refuse (no solutions), e.g. from an older build.
+    // Stored directly: a template the API would refuse (no work type, mode or phase), e.g. from an older build.
     const schedule = await r.w.store.schedules.create({ name: 'broken', cron: '0 2 * * *', template: { task: 'Do it.' } });
     const run = await r.scheduler.runNow(schedule.id);
     expect(run.result).toBe('fail');
     expect(run.sessionId).toBeNull();
     expect(run.summary).toMatch(/^Not started: /);
-    expect(run.summary).toContain('choose at least one solution');
+    expect(run.summary).toContain('workType must be one of feature, qa');
     expect((await r.w.store.systemItems.list(['open'])).map((i) => i.title)).toEqual([run.summary]);
     expect(await r.w.store.sessions.list()).toEqual([]);
   });

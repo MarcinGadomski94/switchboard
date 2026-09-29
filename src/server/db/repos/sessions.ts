@@ -89,6 +89,13 @@ export interface SessionRecord {
    * recovery; History lists it and Reopen clears this.
    */
   readonly closedAt: string | null;
+  /**
+   * D38 (0011): the branch the session's worktrees are on (the D32 ticket branch,
+   * or `session/{name}` for a scheduled run), stored when it starts with Worktrees
+   * on; `null` without worktrees (and before 0011). Worktrees its agent creates on
+   * this branch are adopted as the session's (`docs/worktrees.md` → *Adopted worktrees*).
+   */
+  readonly branch: string | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -151,6 +158,7 @@ const SPEC: TableSpec<SessionRecord> = {
     effort: ['effort', 'text'],
     modelOptions: ['model_options', 'json'],
     closedAt: ['closed_at', 'text'],
+    branch: ['branch', 'text'],
   },
 };
 

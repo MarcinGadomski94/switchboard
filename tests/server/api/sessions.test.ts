@@ -60,7 +60,9 @@ describe('POST /api/sessions · validation (contract → NewSession)', () => {
     const w = await setup('handoff-start');
     const cases: Array<[string, Record<string, unknown>, string]> = [
       ['name not kebab-case', { name: 'Free Talk' }, 'name'],
-      ['no solutions', { solutions: [] }, 'solutions'],
+      // D38: no solutions is allowed (the agent determines them); a list that is not a list is not.
+      ['solutions not a list', { solutions: 'web-front' }, 'solutions'],
+      ['a blank solution', { solutions: [' '] }, 'solutions'],
       ['read-only deprecated path', { solutions: ['deprecated/microfrontends/old-chat-front'] }, 'solutions'],
       ['read-only infrastructure', { solutions: ['infrastructure'] }, 'solutions'],
       ['path escape', { solutions: ['../elsewhere'] }, 'solutions'],
