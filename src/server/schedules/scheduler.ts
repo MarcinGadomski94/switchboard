@@ -288,6 +288,25 @@ export class Scheduler {
   }
 
   /**
+   * D52: deletes the schedule (its runs go with it; sessions its runs started and
+   * failed-run Inbox items stay, unlinked). Refused while a run of it is in progress.
+   * @throws {SchedulerError} `not-found`, `running`, `closing`.
+   */
+  async delete(id: string): Promise<void> {
+    this.#assertOpen();
+    await this.#record(id);
+    await this.#serial(async () => {
+      if (await this.#inProgress(id)) throw new SchedulerError('running', 'a run of this schedule is still in progress: delete it once the run has ended');
+      for (const run of await this.#store.schedules.unfinishedRuns()) {
+        if (run.scheduleId === id && run.sessionId) this.#runBySession.delete(run.sessionId);
+      }
+      await this.#store.schedules.delete(id);
+      this.#armedFrom.delete(id);
+    });
+    await this.#rearm();
+  }
+
+  /**
    * "Run now" / "Retry run": one manual run of the schedule now. Refused while a run
    * of it is in progress (its session runs or waits for the developer).
    * @returns the run, whatever its first result (`running`, or `fail` when the session could not start).

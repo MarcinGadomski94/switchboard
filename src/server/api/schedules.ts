@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Schedule } from '../../core/api.ts';
 import type { ApiContext } from '../routes.ts';
 import { SchedulerError, type SchedulerErrorCode } from '../schedules/scheduler.ts';
+import { isPeerRequest } from './machines.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 
 /** Schedule routes (contract → REST; D8 "Save schedule" = POST /api/schedules) not implemented yet (none since M7.1). */
@@ -29,12 +30,14 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
 /**
  * Registers the schedule routes (M7.1, `docs/schedules.md`): the list, "Save
  * schedule" (create, or replace with `id` = Edit), Run now, Pause and Resume, each
- * answering the contract's `Schedule`.
+ * answering the contract's `Schedule`; D52: Delete, and the paired machines'
+ * schedules in the list.
  */
 export async function registerScheduleRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { scheduler } = context;
 
-  app.get('/api/schedules', async (): Promise<Schedule[]> => scheduler.list());
+  // D52: plus the paired machines' schedules as last known (tagged, remote ids); a peer's request gets this machine's own only.
+  app.get('/api/schedules', async (request): Promise<Schedule[]> => [...(await scheduler.list()), ...(isPeerRequest(request) ? [] : context.peers.remoteSchedules())]);
 
   // D8: the New-session modal's "Save schedule" (ScheduleInput); 201 for a new schedule, 200 for an Edit.
   app.post('/api/schedules', async (request, reply) => {
@@ -69,6 +72,16 @@ export async function registerScheduleRoutes(app: FastifyInstance, context: ApiC
   app.post<{ Params: IdParams }>('/api/schedules/:id/resume', async (request, reply) => {
     try {
       return await scheduler.resume(request.params.id);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D52: Delete (the schedule editor's "Delete schedule"; also a peer's schedule, through the peer proxy). 204; 409 while a run is in progress.
+  app.delete<{ Params: IdParams }>('/api/schedules/:id', async (request, reply) => {
+    try {
+      await scheduler.delete(request.params.id);
+      return reply.code(204).send();
     } catch (error) {
       return sendError(reply, error);
     }

@@ -8,7 +8,7 @@
  * matter inside one answer (question ids, agent ids, event ids) stay as they are.
  * Pure: no I/O.
  */
-import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Session, SessionDetail, SessionEvent } from './api.ts';
+import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, TerminalLoop } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 
 /** The machine whose answers are mapped. */
@@ -74,8 +74,31 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
   };
 }
 
-/** The `/hub` events a peer's stream forwards (the rest are the peer's own business: schedules, worktrees, its machine). */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity']);
+/**
+ * D52: a peer's {@link Schedule}: its id and its runs' session ids namespaced,
+ * `machine` added. `folder` and `template` stay as the peer sent them (its own
+ * folder ids: an Edit loads that machine's folders).
+ */
+export function peerSchedule(machine: PeerMachineRef, schedule: Schedule): Schedule {
+  return {
+    ...schedule,
+    id: ns(machine, schedule.id),
+    runs: (schedule.runs ?? []).map((run) => ({ ...run, sessionId: nsMaybe(machine, run.sessionId) })),
+    machine: { id: machine.id, name: machine.name, state: machine.state },
+  };
+}
+
+/** D52: a peer's {@link TerminalLoop}: the loop id namespaced (the terminal's claude session id stays raw: it is hooked on that machine), `machine` added. */
+export function peerTerminalLoop(machine: PeerMachineRef, entry: TerminalLoop): TerminalLoop {
+  return { ...entry, loop: { ...entry.loop, id: ns(machine, entry.loop.id) }, machine: { id: machine.id, name: machine.name, state: machine.state } };
+}
+
+/**
+ * The `/hub` events a peer's stream forwards (the rest are the peer's own
+ * business: worktrees, its machine). D52: `scheduleRun`, so a paired machine
+ * refreshes the peer's schedules when one of its runs changes.
+ */
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -107,6 +130,10 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     }
     case 'inboxChanged':
       return payload;
+    case 'scheduleRun': {
+      const run = value as unknown as HubEvents['scheduleRun'];
+      return typeof run.scheduleId === 'string' ? ({ ...run, scheduleId: ns(machine, run.scheduleId) } as HubEvents[K]) : null;
+    }
     default:
       return null;
   }
@@ -114,7 +141,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 
 /** Which mapping a forwarded answer gets, by the local API path it came from (method + path without the query). */
 /** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). D51: `workflow-chat`. */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'inbox' | 'wrapped' | 'none';
+/** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -125,6 +153,10 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   const upper = method.toUpperCase();
   if (pathname === '/api/sessions') return upper === 'GET' ? 'sessions' : upper === 'POST' ? 'session' : 'none';
   if (pathname === '/api/inbox') return upper === 'GET' ? 'inbox' : 'none';
+  // D52: the schedules (the list, Save schedule, Run now, Pause, Resume; Delete answers 204) and the terminal sessions' loops.
+  if (pathname === '/api/schedules') return upper === 'GET' ? 'schedules' : upper === 'POST' ? 'schedule' : 'none';
+  if (upper === 'POST' && /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/.test(pathname)) return 'schedule';
+  if (pathname === '/api/terminal-loops') return upper === 'GET' ? 'terminal-loops' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
@@ -159,6 +191,14 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
     case 'wrapped':
       return isRecord(body) && isRecord(body['session']) && typeof body['session']['id'] === 'string'
         ? { ...body, session: peerSession(machine, body['session'] as unknown as Session) }
+        : body;
+    case 'schedule':
+      return isRecord(body) && typeof body['id'] === 'string' ? peerSchedule(machine, body as unknown as Schedule) : body;
+    case 'schedules':
+      return Array.isArray(body) ? body.filter(isRecord).map((schedule) => peerSchedule(machine, schedule as unknown as Schedule)) : body;
+    case 'terminal-loops':
+      return Array.isArray(body)
+        ? body.filter((entry) => isRecord(entry) && isRecord(entry['loop'])).map((entry) => peerTerminalLoop(machine, entry as unknown as TerminalLoop))
         : body;
     case 'none':
       return body;

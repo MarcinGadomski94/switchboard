@@ -140,4 +140,26 @@ describe('/api/schedules (M7.1)', () => {
     for (const name of names) expect(name).toMatch(/^crashing-\d{4}-\d{4}(?:-2)?$/);
     expect(new Set(names).size).toBe(2);
   });
+
+  it('D52: Delete removes a schedule and its runs (204); 409 while a run is in progress; 404 for an unknown one; the run\'s session stays', async () => {
+    const w = await setup();
+    const schedule = (await call('POST', '/api/schedules', { cron: '0 2 * * *', template: template({ task: '[fake:hang] Keep going.' }) })).json() as Schedule;
+    const run = (await call('POST', `/api/schedules/${schedule.id}/run`)).json() as Schedule;
+    const sessionId = run.runs[0]!.sessionId!;
+    await until(async () => (await schedules())[0]?.running === true, 'running');
+    const busy = await call('DELETE', `/api/schedules/${schedule.id}`);
+    expect(busy.statusCode).toBe(409);
+    expect(busy.json().error).toBe('running');
+
+    await w.supervisor.pause(sessionId);
+    await until(async () => (await schedules())[0]?.running === false, 'the run no longer in progress');
+    const deleted = await call('DELETE', `/api/schedules/${schedule.id}`);
+    expect(deleted.statusCode).toBe(204);
+    expect(await schedules()).toEqual([]);
+    expect(await w.store.schedules.recentRuns(schedule.id)).toEqual([]);
+    expect((await w.store.sessions.get(sessionId))?.scheduleId ?? null).toBeNull();
+    expect((await call('DELETE', `/api/schedules/${schedule.id}`)).statusCode).toBe(404);
+    // The name is free again.
+    expect((await call('POST', '/api/schedules', { cron: '0 2 * * *', template: template() })).statusCode).toBe(201);
+  });
 });

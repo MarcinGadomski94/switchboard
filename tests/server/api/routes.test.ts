@@ -64,6 +64,9 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['POST', '/api/schedules/c1/run', 'M7.1'],
   ['POST', '/api/schedules/c1/pause', 'M7.1'],
   ['POST', '/api/schedules/c1/resume', 'M7.1'],
+  // D52, additive: Delete a schedule; the terminal sessions' loops.
+  ['DELETE', '/api/schedules/c1', 'D52'],
+  ['GET', '/api/terminal-loops', 'D52'],
   // M5.3: 503 here (this app has no system provider; main.ts passes the real SystemProbe).
   ['GET', '/api/system', 'M5.3'],
   // M5.3, additive to the contract (docs/setup.md): the first-run wizard.

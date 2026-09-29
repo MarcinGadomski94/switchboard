@@ -1234,6 +1234,40 @@ export interface Schedule {
    * existed) or the folder was removed.
    */
   readonly folder?: string | null;
+  /**
+   * Additive (D52, `docs/peers.md` → *A peer's schedules and loops*): the paired
+   * machine the schedule lives and runs on, only on a peer's schedule (its `id`
+   * and its runs' `sessionId` are then remote ids); absent for this machine's own.
+   * `state` other than `online` = its last known state (actions are refused).
+   */
+  readonly machine?: SessionMachine | null;
+}
+
+/**
+ * Additive (D52): a loop observed in a terminal `claude` session Switchboard does
+ * not follow (neither its own nor hooked), derived read-only from that session's
+ * transcript on its machine (`GET /api/terminal-loops`). It cannot be opened
+ * until the session is hooked (D48 P4: "Hook into…").
+ */
+export interface TerminalLoop {
+  /**
+   * The loop as a session's loop reads (`Session.loops`): `id` = `term:<claude
+   * session id>:<key>` (a remote id on a peer's), `sessionId` = the terminal's
+   * claude session id (not a Switchboard session), cap + breaker from a
+   * `.loop/progress.md` in its cwd.
+   */
+  readonly loop: Loop;
+  /** The terminal session (its claude session id, name, cwd, the CLI's status words, pid, start). */
+  readonly terminal: {
+    readonly id: string;
+    readonly name: string | null;
+    readonly cwd: string | null;
+    readonly status: string | null;
+    readonly pid: number | null;
+    readonly startedAt: string | null;
+  };
+  /** The paired machine it runs on (a peer's); absent for this machine's own. */
+  readonly machine?: SessionMachine | null;
 }
 
 /**

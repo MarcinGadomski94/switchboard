@@ -95,7 +95,9 @@ const ID_PARAMS = ['id', 'batchId'] as const;
  * D48: a `preHandler` for every route. A request whose `:id` or `:batchId` param is
  * a remote id goes to that machine with the id made raw again, and its answer comes
  * back namespaced (`PeerService.forward`); `POST /api/sessions` with a `machine`
- * field (another machine's id) starts the session there (P3). Requests the peer API
+ * field (another machine's id) starts the session there (P3); D52: `POST
+ * /api/schedules` with a `machine` field saves a new schedule there, and with the
+ * `id` of a peer's schedule edits it there. Requests the peer API
  * injected (header {@link PEER_REQUEST_HEADER}) are never forwarded.
  */
 export function registerPeerForwarding(app: FastifyInstance, peers: PeerService): void {
@@ -124,6 +126,25 @@ export function registerPeerForwarding(app: FastifyInstance, peers: PeerService)
         if (typeof machine === 'string' && machine !== '' && machine !== (await peers.self()).id) machineId = machine;
         // This machine (or none): the field is the form's, not NewSession's.
         else request.body = rest;
+      }
+    }
+    // D52: Save schedule on a peer: `machine` names it (a new schedule), or `id` is a peer's schedule (an Edit; made raw).
+    if (machineId === null && route === '/api/schedules' && request.method === 'POST' && body !== null && typeof body === 'object' && !Array.isArray(body)) {
+      const { machine, ...rest } = body as Record<string, unknown>;
+      const remote = parseRemoteId(rest['id']);
+      const self = (await peers.self()).id;
+      const given = typeof machine === 'string' && machine !== '' ? machine : null;
+      const named = given !== null && given !== self ? given : null;
+      if (remote && given !== null && given !== remote.machineId) return reply.code(422).send({ error: 'invalid', message: 'a schedule stays on its machine: `machine` names another one' });
+      if (remote) {
+        machineId = remote.machineId;
+        body = { ...rest, id: remote.id };
+      } else if (named !== null) {
+        machineId = named;
+        body = rest;
+      } else if (machine !== undefined) {
+        // This machine (or none): the field is the form's, not ScheduleInput's.
+        request.body = rest;
       }
     }
     if (machineId === null) return undefined;
