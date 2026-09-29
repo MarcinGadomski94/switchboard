@@ -542,6 +542,29 @@ SessionActivity { "turnStartedAt": "2026-09-29T10:01:00.000Z", "state": "tool", 
 Session { …, "hooked": true, "hookStatus": { "waiter": false, "hookSeen": true, "delivery": "no-waiter" } }
 ```
 
+## Sidebar pins and folders (D54, 2026-09-29, additive)
+Developer request D54 (`docs/decisions.md` → *Pin, re-order and folders in the sidebar*). Additive; nothing above changes meaning. Six new routes, one new event name, migration 0019. Details: `docs/sidebar.md`.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | /api/sidebar | — | SidebarLayout |
+| POST | /api/sidebar/folders | `{ name }` | 201 SidebarLayout (the new folder is last) · 422 |
+| PUT | /api/sidebar/folders/{folderId} | `{ name?, collapsed? }` (at least one) | SidebarLayout · 404 · 422 |
+| PUT | /api/sidebar/folders/{folderId}/position | `{ index }` | SidebarLayout · 404 · 422 |
+| DELETE | /api/sidebar/folders/{folderId} | — | SidebarLayout (its sessions are loose again) · 404 |
+| POST | /api/sidebar/place | `{ sessionId, place: "pinned" \| "folder" \| "loose", folderId?, index? }` | SidebarLayout · 404 unknown session or folder · 422 |
+
+- **SidebarLayout** `{ pinned: string[], folders: SidebarFolder[] }`, **SidebarFolder** `{ id, name, collapsed, sessionIds: string[] }`: session ids in their manual order; a session is in one place at most; a session in none is loose (listed after the folders in `GET /api/sessions` order). Ids of closed sessions stay (Reopen restores the place) and are not shown.
+- `name`: trimmed, 1–60 characters, may repeat. `index`: the final position in the target group (absent = the end; ignored for `loose`). `sessionId`: a session of this machine or a paired machine's remote id (`r~<machine>~<id>`); in the body, so it is never forwarded to the peer.
+- Every write answers the whole new layout and publishes it as **`sidebarLayoutChanged`** (payload: SidebarLayout). A refused write changes nothing and publishes nothing.
+- **Peers (D48):** the layout is this machine's: no sidebar route is on the peer API's allow-list, and `sidebarLayoutChanged` is not on the peer event stream.
+
+```json
+SidebarLayout { "pinned": ["5c1e0b52-…", "r~abcdefghijkl~9f0a…"], "folders": [{ "id": "7d2c…", "name": "Reviews", "collapsed": false, "sessionIds": ["a41b…"] }] }
+POST /api/sidebar/place { "sessionId": "a41b…", "place": "folder", "folderId": "7d2c…", "index": 0 }
+sidebarLayoutChanged { "pinned": ["5c1e0b52-…"], "folders": [{ "id": "7d2c…", "name": "Reviews", "collapsed": true, "sessionIds": ["a41b…"] }] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -563,3 +586,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | system | same shape as GET /api/system, every 5 s |
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
+| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers) |

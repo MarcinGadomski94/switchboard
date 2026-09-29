@@ -81,6 +81,13 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['PUT', '/api/folders/nope/default', 'D14'],
   // D40, additive: the New-session form's branching preflight (no body here → 422, nothing fetched; tests/server/worktrees/branching.test.ts).
   ['POST', '/api/branching/preflight', 'D40'],
+  // D54, additive: the sidebar's pins and folders (unknown folder → 404, no body → 422; tests/server/api/sidebar.test.ts).
+  ['GET', '/api/sidebar', 'D54'],
+  ['POST', '/api/sidebar/folders', 'D54'],
+  ['PUT', '/api/sidebar/folders/nope', 'D54'],
+  ['PUT', '/api/sidebar/folders/nope/position', 'D54'],
+  ['DELETE', '/api/sidebar/folders/nope', 'D54'],
+  ['POST', '/api/sidebar/place', 'D54'],
 ];
 
 let tmp: string;

@@ -17,6 +17,7 @@ import { QuestionRepository } from './repos/questions.ts';
 import { ScheduleRepository } from './repos/schedules.ts';
 import { SessionRepository } from './repos/sessions.ts';
 import { SettingRepository } from './repos/settings.ts';
+import { SidebarLayoutRepository } from './repos/sidebar.ts';
 import { SystemItemRepository } from './repos/system-items.ts';
 import { ToolRepository } from './repos/tools.ts';
 import { UsageRepository } from './repos/usage.ts';
@@ -53,6 +54,8 @@ export interface Store {
   readonly machines: MachineRepository;
   /** The paired machines' last known sessions (D48 ruling D48-cache-persist). */
   readonly peerSnapshots: PeerSnapshotRepository;
+  /** The sidebar's pins and folders (D54, `docs/sidebar.md`). */
+  readonly sidebar: SidebarLayoutRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -111,6 +114,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     folders: new FolderRepository(ctx),
     machines: new MachineRepository(ctx),
     peerSnapshots: new PeerSnapshotRepository(ctx),
+    sidebar: new SidebarLayoutRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

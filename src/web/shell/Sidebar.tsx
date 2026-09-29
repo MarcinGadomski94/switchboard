@@ -1,18 +1,12 @@
-import { type MouseEvent, useEffect, useState } from 'react';
-import type { Session, SystemInfo, Tool } from '../../core/api.ts';
-import { CLOSE_TOOLTIP, openSessions } from '../../core/session-close.ts';
-import { displayTitle } from '../../core/session-title.ts';
-import { SessionActivityOr } from '../activity/ActivityViews.tsx';
+import { useEffect, useState } from 'react';
+import type { SystemInfo, Tool } from '../../core/api.ts';
+import { openSessions } from '../../core/session-close.ts';
 import { useLiveActivities } from '../activity/useActivity.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { useCloseSession } from '../components/CloseSession.tsx';
-import { InlineTitle } from '../components/InlineTitle.tsx';
-import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
-import { FolderTag } from '../folders/FolderTag.tsx';
-import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
@@ -20,16 +14,14 @@ import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { PANE_ID, PaneHideButton } from './Panes.tsx';
+import { SidebarSessions } from './SidebarSessions.tsx';
 import {
   type Meter,
   type PaceView,
   conflictCount,
   cpuMeter,
-  formatAge,
-  modeLine,
   processCount,
   ramMeter,
-  statusColor,
   urlHost,
   usageRows,
 } from './format.ts';
@@ -101,40 +93,6 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
 }
 
 /**
- * D33: the × of a sidebar row: invisible at rest, shown on hover or focus at the
- * row's right (over the age, which hides meanwhile; shell.css), absolutely placed
- * so the row keeps the prototype's geometry. A click closes the session and never
- * follows the row's link. The glyph is drawn, so the row's text is unchanged.
- */
-function SessionCloseButton({ session, busy, onClose }: { readonly session: Session; readonly busy: boolean; readonly onClose: () => void }) {
-  const click = (event: MouseEvent<HTMLButtonElement>): void => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!busy) onClose();
-  };
-  return (
-    <button
-      type="button"
-      className="sb-button sb-session-close"
-      data-testid="sidebar-session-close"
-      data-session-id={session.id}
-      aria-label={`Close ${displayTitle(session)}`}
-      aria-busy={busy || undefined}
-      title={CLOSE_TOOLTIP}
-      onClick={click}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-    >
-      <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" focusable="false">
-        <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      </svg>
-    </button>
-  );
-}
-
-/**
  * The sidebar (SPEC → Shell), top to bottom: logo + ⌘K badge · "+ New session" ·
  * nav with badges · TOOLS · SESSIONS · Settings · machine footer. Everything it
  * lists comes from the API (sessions, tools, inbox, solutions, schedules,
@@ -147,7 +105,8 @@ function SessionCloseButton({ session, busy, onClose }: { readonly session: Sess
  * closes its session, asking first while it runs or waits (`useCloseSession`),
  * and closing the session on screen goes to the Inbox. D41: the brand row's hide
  * button slides the sidebar out; while `hidden` it stays mounted (its lists keep
- * loading) but is inert and hidden from assistive technology.
+ * loading) but is inert and hidden from assistive technology. D54: the SESSIONS
+ * list groups Pinned, the sidebar folders and the loose sessions (`SidebarSessions`).
  */
 export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   const { route, navigate } = useRouter();
@@ -248,48 +207,16 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         ))}
       </div>
 
-      <div className="sb-section-label">
-        Sessions
-        <span className="sb-section-count">{sessions.data ? String(sessionList.length) : ''}</span>
-      </div>
-      <div className="sb-sessions" data-testid="sidebar-sessions">
-        {sessionList.map((session) => (
-          <Link
-            key={session.id}
-            to={{ view: 'session', id: session.id, tab: 'chat' }}
-            className="sb-session"
-            aria-current={isActive(route, 'session', session.id) ? 'page' : undefined}
-          >
-            {/* D30: waiting on background work reads as working: the running color, pulsing. */}
-            <span
-              className="sb-session-dot"
-              data-activity={activityOf(session.id)?.state}
-              style={{ background: statusColor(activityOf(session.id)?.state === 'background' ? 'run' : session.status) }}
-            />
-            <div className="sb-session-body">
-              <div className="sb-session-head">
-                {/* D22: the display title; a double-click renames it in place. */}
-                <InlineTitle session={session} gesture="double-click" className="sb-session-name" />
-                {/* D24: reachable from the phone (Remote Control on a live process). */}
-                {session.remote?.enabled && session.live ? (
-                  <span className="sb-session-remote" data-testid="session-remote-glyph" title="Remote Control on: reachable from claude.ai and the Claude app">
-                    <PhoneGlyph title="Remote Control on" />
-                  </span>
-                ) : null}
-                <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
-              </div>
-              <div className="sb-session-mode">
-                {/* D48: a peer's session carries its machine's tag (and "unreachable" while it is offline). */}
-                <MachineTag machine={session.machine} />
-                <FolderTag name={tagOf(session)} title={session.folderPath} />
-                <SessionActivityOr activity={activityOf(session.id)}>{modeLine(session)}</SessionActivityOr>
-              </div>
-            </div>
-            {/* D33: after the row's own parts, so the prototype's child paths (dot, body) are unchanged. */}
-            <SessionCloseButton session={session} busy={closer.busyId === session.id} onClose={() => closer.request({ ...session, activity: activityOf(session.id) ?? session.activity })} />
-          </Link>
-        ))}
-      </div>
+      {/* D54: the SESSIONS label and list (Pinned, folders, loose sessions): SidebarSessions.tsx. */}
+      <SidebarSessions
+        sessions={sessionList}
+        loaded={sessions.data !== null}
+        activityOf={activityOf}
+        closer={closer}
+        isCurrent={(id) => isActive(route, 'session', id)}
+        tagOf={tagOf}
+        now={now}
+      />
       {closer.error ? (
         <div className="sb-session-close-error" role="alert" data-testid="sidebar-close-error">
           {closer.error.text}

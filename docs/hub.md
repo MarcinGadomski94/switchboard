@@ -29,6 +29,7 @@ The route is behind the same guard as every API call (`docs/security.md`): a for
 | `scheduleRun` | `{ scheduleId, result }` | the scheduler (`schedules/scheduler.ts`), `bus.publish`: a run starts (`running`), is skipped, or its result changes (`docs/schedules.md`) | M7.1 |
 | `system` | `GET /api/system` shape | the hub itself: `providers.system.system()` every **5 s** while a client is connected | real provider M5.3 / M9.2; demo provider when `SWITCHBOARD_DEMO=1` |
 | `activity` (additive, D19) | `{ sessionId, activity: SessionActivity \| null }` | `SessionSupervisor.on('activity')`, forwarded by `forwardServiceEvents`: the live activity of a session changed (`docs/derivations.md` → *Live activity*); `null` = no turn runs | D19 |
+| `sidebarLayoutChanged` (additive, D54) | `SidebarLayout` | the sidebar routes (`src/server/api/sidebar.ts`), `bus.publish`, after every write (pin, place, folder create / rename / collapse / move / delete): the whole new layout; every tab replaces its own (`docs/sidebar.md`). Not on the peer event stream | D54 |
 
 `buildApp` wires the forwarding (`forwardServiceEvents`) for the supervisor and the worktree manager it is given, and stops it when the app closes.
 
