@@ -379,6 +379,18 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 - **A parent closed without merging:** when the poll sees a stacked worktree's parent PR turn CLOSED (not merged), the Inbox gets an item "Parent <parent> closed — retarget <task> to <epic or default branch>" (label "Parent closed", Dismiss only), once per worktree, surviving restarts like the merged item (raised from the sync if missed). Inbox item only: the session gets no message.
 - **PR target column:** shows always in the preflight table for every branching session (stacked or not: the parent, the epic, or the default branch without an epic). The Resolved base and Parent status columns stay stacked-only.
 
+## Context window meter (added 2026-09-29)
+- **D49 A context window meter above the quick replies.** Developer request, 2026-09-29: "An embedded progress bar above quick replies to see how much of the context window for the current session is filled in. It should detect context compression and then reset accordingly."
+  - **Placement (ruling):** a thin bar directly above the quick-replies row of the session composer (main chat). Subagent chats have no composer, so they show no bar.
+  - **Content (ruling):** the bar and the text `Context 62% · 124k / 200k`. The hover tooltip names the model's context window and the time the context was last compacted (local 24 h time).
+  - **Colors (ruling):** green below 60 %, yellow from 60 %, red from 80 %, on the SPEC tokens (the usage footer's green `--status-done` and yellow `--status-need`, the failure red `--status-fail`).
+  - **Compaction (ruling):** the CLI's `system/compact_boundary` (`compact_metadata.trigger` `auto` / `manual`, `pre_tokens`, optional `post_tokens`; names confirmed in the CLI 2.1.284 binary) resets the bar to the post-compaction size: the boundary's `post_tokens` at once, then the next main-agent usage. The text shows "compacted 14:05" until the next turn starts; the tooltip keeps "Last compacted: 14:05 (auto)".
+  - **Filled (ruling, matched to the CLI):** the latest main-agent assistant message's `usage`: `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`. That is the CLI's own status-line formula (`context_window.used_percentage` = `round(tokens / window × 100)`), which leaves `output_tokens` out, so Switchboard leaves them out too. Subagent (sidechain) messages never count.
+  - **Window (ruling):** the result's `modelUsage[<model>].contextWindow`, else from the model (`[1m]` → 1 000 000, otherwise 200 000; the CLI's own fallback). It follows D31 / D42 model changes: it is resolved on every read against the session's model choice.
+  - **Persistence:** stored on the session (`sessions.context`, migration 0015). It survives a reload, a Switchboard restart, and closing and reopening from History. An Attach / move / teleport import reads the terminal's turns from the transcript. Live over `/hub` `sessionUpdated`, with no polling.
+  - **Unknown:** an empty neutral bar, `Context —`.
+  - Details: `docs/chat.md` → *Context bar*; choices where the ruling is silent: `.loop/questions.md` → *D49 · Context window meter*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
