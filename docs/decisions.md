@@ -260,7 +260,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - an **existing task branch is reused** (tracking `origin/<task>` when there, else the local branch), replacing D32's refusal;
     - nothing is pushed and the epic branch is not created at session start;
     - dropped repos get no worktree.
-  - **Tasks without an epic:** unchanged (as today).
+  - **Tasks without an epic** (e.g. a bug fix; developer ruling 2026-09-29): `git fetch origin` first, then the task branch is cut from `origin/master` (the repo's origin default branch, `origin/HEAD`, where it isn't `master`), never from a possibly stale local `master` and never from `dev`. The hand-off line reads `- Branching model: task only: <task branch> (base: origin/master)`.
   - **Hand-off:** the session-start answers block gains:
     - `- Branching model: epic/task (lazy)`;
     - the Epic line (key, epic branch, base);
@@ -270,6 +270,17 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     With no picked solutions (D38), the same rule applies to the worktrees the agent creates.
   - **Unchanged:** scheduled runs keep `session/{name}`.
   - **Built after D38**, on top of it.
+
+## Collapsible panes (added 2026-09-29)
+- **D41 The sidebar and the session's right panel slide out and back in on request, and the choice is remembered.**
+  - Both are shown by default, so the layout matches the prototype.
+  - **Controls:**
+    - Each pane has a small hide button, and a slim handle at the window edge brings it back.
+    - Shortcuts: ⌘B (Ctrl+B) for the sidebar, ⌘⌥B (Ctrl+Alt+B) for the right panel.
+    - A slide transition (off with `prefers-reduced-motion`).
+    - The main area takes the freed width.
+  - **Memory:** the state is kept by the service (settings, per install), so it survives restarts, reloads and the installed app.
+  - The right panel exists only in the session view, and its state applies to every session.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
