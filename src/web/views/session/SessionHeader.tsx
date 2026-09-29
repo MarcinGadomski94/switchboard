@@ -24,7 +24,7 @@ import {
 } from './session-header.ts';
 import { ModelPicker } from './ModelPicker.tsx';
 import { RemotePopover } from './RemotePopover.tsx';
-import { RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
+import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
 
 /** Props of {@link SessionHeader}. */
 export interface SessionHeaderProps {
@@ -38,9 +38,9 @@ export interface SessionHeaderProps {
   /** D45: the session's data is late: the title bar and root line placeholders show. */
   readonly placeholder?: boolean;
   readonly tab: SessionTab;
-  /** Changed files (`SessionDetail.files`) and session artifacts, for the tab counts. */
-  readonly files: number;
-  readonly artifacts: number;
+  /** Changed files (`SessionDetail.files`) and session artifacts, for the tab counts; D45: `null` while the detail loads (no count). */
+  readonly files: number | null;
+  readonly artifacts: number | null;
   /** A header action changed the session: reload it. */
   readonly onChanged: () => void;
 }
@@ -269,6 +269,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       ) : null}
       {closer.dialog}
       <div className="sb-sv-chips" data-testid="session-chips">
+        {/* D45 (developer ruling): chip-shaped blocks hold the row while the session loads, so the tabs do not jump. */}
+        {placeholder ? <ChipSkeletons /> : null}
         {(session?.chips ?? []).map((chip) => (
           <span key={`${chip.k} ${chip.v}`} className="sb-sv-chip" data-testid="session-chip" data-loop={chip.loop ? 'true' : 'false'}>
             <span className="sb-sv-chip-k">{chip.k} </span>

@@ -65,13 +65,17 @@ export interface TabLabel {
   readonly label: string;
 }
 
-/** The tabs with their counts: changed files (gap #10) and the session's artifacts (gap #9). */
-export function tabLabels(files: number, artifacts: number): TabLabel[] {
+/**
+ * The tabs with their counts: changed files (gap #10) and the session's artifacts
+ * (gap #9). D45 (developer ruling): a count is `null` while the session's detail
+ * loads, and its tab reads just `Diff` / `Artifacts` until it is there.
+ */
+export function tabLabels(files: number | null, artifacts: number | null): TabLabel[] {
   return [
     { tab: 'chat', label: 'Chat' },
     { tab: 'timeline', label: 'Timeline' },
-    { tab: 'diff', label: `Diff · ${files}` },
-    { tab: 'artifacts', label: `Artifacts · ${artifacts}` },
+    { tab: 'diff', label: files === null ? 'Diff' : `Diff · ${files}` },
+    { tab: 'artifacts', label: artifacts === null ? 'Artifacts' : `Artifacts · ${artifacts}` },
   ];
 }
 

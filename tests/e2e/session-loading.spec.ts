@@ -31,8 +31,8 @@ test.afterAll(async () => {
   await world?.stop();
 });
 
-const A = { name: 'load-a', task: 'Task A: say alpha.', reply: 'Alpha reply from session A.' } as const;
-const B = { name: 'load-b', task: 'Task B: say bravo.', reply: 'Bravo reply from session B.' } as const;
+const A = { name: 'loadalpha', task: 'Task A: say alpha.', reply: 'Alpha reply from session A.' } as const;
+const B = { name: 'loadbravo', task: 'Task B: say bravo.', reply: 'Bravo reply from session B.' } as const;
 const A_AGAIN = 'Alpha again, while you were away.';
 
 /**
@@ -159,6 +159,10 @@ async function expectPlaceholders(page: Page): Promise<void> {
   const view = page.getByTestId('view-session');
   await expect(view.getByTestId('skeleton-title')).toBeVisible();
   await expect(view.getByTestId('skeleton-root')).toBeVisible();
+  // Developer ruling D45-chips: chip blocks hold the chip row.
+  await expect(view.getByTestId('session-chips').getByTestId('skeleton-chip')).toHaveCount(3);
+  // Developer ruling D45-tab-counts: no counts until the detail is there.
+  await expect(view.getByRole('tab')).toHaveText(['Chat', 'Timeline', 'Diff', 'Artifacts']);
   await expect(view.getByTestId('skeleton-chat').getByTestId('skeleton-bubble')).toHaveCount(4);
   expect(await view.getByTestId('skeleton-bubble').evaluateAll((els) => els.map((el) => el.getAttribute('data-side')))).toEqual(['user', 'agent', 'user', 'agent']);
   await expect(view.getByTestId('skeleton-panel').getByTestId('skeleton-overview')).toHaveCount(1);
@@ -201,9 +205,16 @@ test('switching sessions: never the old content, placeholders only after the del
   await sidebarRow(page, b.id).click();
   await expect(page).toHaveURL(new RegExp(`/sessions/${b.id}$`));
   await expectPlaceholders(page);
+  const tabsWhileLoading = await page.locator('.sb-sv-tabs').boundingBox();
   await expect(name).toHaveText(B.name, { timeout: 10_000 });
   await expect(chat).toContainText(B.reply);
   await expectLoaded(page);
+  // The tabs do not jump when the session arrives (the chip row was held), and now carry their counts. (Names without a
+  // hyphen: with the live session's header actions a short hyphenated title wraps at its hyphen, a loaded-view matter.)
+  const tabsLoaded = await page.locator('.sb-sv-tabs').boundingBox();
+  expect(Math.abs((tabsWhileLoading?.y ?? -1) - (tabsLoaded?.y ?? -100))).toBeLessThanOrEqual(0.5);
+  await expect(page.getByTestId('session-tab-diff')).toHaveText(/^Diff · \d+$/);
+  await expect(page.getByTestId('session-tab-artifacts')).toHaveText(/^Artifacts · \d+$/);
   expect(late.hits()).toBeGreaterThanOrEqual(2);
   const toB = await watched(page);
   expect(toB.clicked).toBe(true);

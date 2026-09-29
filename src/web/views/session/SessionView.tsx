@@ -80,8 +80,8 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
           loadError={failed && failed.status !== 404 ? actionErrorText(failed.status, failed.body) : null}
           placeholder={placeholders.header}
           tab={tab}
-          files={session?.files.length ?? 0}
-          artifacts={session?.artifacts.length ?? 0}
+          files={session?.files.length ?? null}
+          artifacts={session?.artifacts.length ?? null}
           onChanged={data.reload}
         />
         {tab === 'chat' ? (

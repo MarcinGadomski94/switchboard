@@ -47,6 +47,12 @@
   height: 11px;
 }
 
+/* Header chips (D45 developer ruling): the loaded chip's height (11.5px mono line + 2px paddings + 1px lines) and 5px radius, so the row keeps its height. */
+.sb-skel-chip {
+  height: 21px;
+  border-radius: var(--radius-chip-lg);
+}
+
 /* Chat: bubble shapes in the conversation (its padding and gap), the developer's on the right, the agent's on the left. */
 .sb-skel-chat {
   display: flex;

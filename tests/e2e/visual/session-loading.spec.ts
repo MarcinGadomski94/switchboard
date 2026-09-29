@@ -132,6 +132,10 @@ test.describe('visual: session loading placeholders (D45 addition)', () => {
       chat: await one(page, '[data-testid="session-chat"]'),
       top: await one(page, '.sb-sv-top'),
       title: await one(page, '[data-testid="skeleton-title"]'),
+      chips: await all(page, '[data-testid="skeleton-chip"]'),
+      chipRow: await one(page, '[data-testid="session-chips"]'),
+      tabs: await one(page, '.sb-sv-tabs'),
+      header: await one(page, '[data-testid="session-header"]'),
       root: await one(page, '[data-testid="skeleton-root"]'),
       bubbles: await all(page, '[data-testid="skeleton-bubble"]'),
       overviewBlock: await one(page, '[data-testid="skeleton-overview"]'),
@@ -156,6 +160,10 @@ test.describe('visual: session loading placeholders (D45 addition)', () => {
       composer: await one(page, '[data-testid="chat-composer"]'),
       chat: await one(page, '[data-testid="session-chat"]'),
       name: await one(page, '[data-testid="session-name"]'),
+      chip: await one(page, '[data-testid="session-chip"]'),
+      chipRow: await one(page, '[data-testid="session-chips"]'),
+      tabs: await one(page, '.sb-sv-tabs'),
+      header: await one(page, '[data-testid="session-header"]'),
       userMessage: await one(page, '.sb-chat-message[data-role="user"]'),
       agentMessage: await one(page, '.sb-chat-message[data-role="agent"]'),
       overview: await one(page, '[data-testid="agent-overview"]'),
@@ -191,13 +199,20 @@ test.describe('visual: session loading placeholders (D45 addition)', () => {
     sameBox('frame: main column', skel.main, loaded.main);
     sameBox('frame: right panel', skel.panel, loaded.panel);
     sameBox('frame: composer', skel.composer, loaded.composer);
-    check('frame: the chat keeps its x, width and bottom', near(skel.chat?.box.x, loaded.chat?.box.x) && near(skel.chat?.box.width, loaded.chat?.box.width) && near(bottom(skel.chat), bottom(loaded.chat)), `${fmt(skel.chat)} vs loaded ${fmt(loaded.chat)} (the header has no chips while loading)`);
+    sameBox('frame: header (the chip row is held)', skel.header, loaded.header);
+    sameBox('frame: tabs (no jump when the session arrives)', skel.tabs, loaded.tabs);
+    sameBox('frame: chat', skel.chat, loaded.chat);
 
     // Header.
     check('header: the title bar starts where the title does', near(skel.title?.box.x, loaded.name?.box.x), `${fmt(skel.title)} vs title ${fmt(loaded.name)}`);
     check('header: the title bar is centred in the top row', near(centerY(skel.title), centerY(skel.top)), `${round(centerY(skel.title) ?? 0)} vs row ${round(centerY(skel.top) ?? 0)}`);
     check('header: the title bar is 16 px high, the root line 11 px', near(skel.title?.box.height, 16, 0.5) && near(skel.root?.box.height, 11, 0.5), `${fmt(skel.title)} · ${fmt(skel.root)}`);
     check('header: the root line one row gap (10 px) after the title bar, centred', near(skel.root?.box.x, (right(skel.title) ?? 0) + 10) && near(centerY(skel.root), centerY(skel.top)), fmt(skel.root));
+
+    check('header: chip blocks in the chip row, the loaded chip\'s height, at the row\'s x', skel.chips.length === 3 && skel.chips.every((c) => near(c.box.height, loaded.chip?.box.height) && near(c.box.y, skel.chipRow?.box.y)) && near(skel.chips[0]?.box.x, loaded.chip?.box.x), `${skel.chips.map(fmt).join(' · ')} vs chip ${fmt(loaded.chip)}`);
+    check('header: the chip row keeps its height', near(skel.chipRow?.box.height, loaded.chipRow?.box.height), `${fmt(skel.chipRow)} vs loaded ${fmt(loaded.chipRow)}`);
+    const chipGaps = skel.chips.slice(1).map((c, i) => c.box.x - (right(skel.chips[i]) ?? 0));
+    check('header: one chip gap (6 px) between chip blocks', chipGaps.every((gap) => near(gap, 6, 0.5)), chipGaps.map(round).join(', '));
 
     // Chat.
     const bubbles = skel.bubbles;
@@ -226,11 +241,11 @@ test.describe('visual: session loading placeholders (D45 addition)', () => {
 
     // SPEC tokens.
     const shapes = skel.shapes;
-    check('tokens: every shape is --bg-card with a 1 px solid --border-row line', shapes.length === 9 && shapes.every((s) => s.style['background-color'] === BG_CARD && s.style['border-top-width'] === '1px' && s.style['border-top-style'] === 'solid' && s.style['border-top-color'] === BORDER_ROW && s.style['border-bottom-color'] === BORDER_ROW), `${shapes.length} shapes · ${shapes[0]?.style['background-color']} / ${shapes[0]?.style['border-top-width']} ${shapes[0]?.style['border-top-color']}`);
+    check('tokens: every shape is --bg-card with a 1 px solid --border-row line', shapes.length === 12 && shapes.every((s) => s.style['background-color'] === BG_CARD && s.style['border-top-width'] === '1px' && s.style['border-top-style'] === 'solid' && s.style['border-top-color'] === BORDER_ROW && s.style['border-bottom-color'] === BORDER_ROW), `${shapes.length} shapes · ${shapes[0]?.style['background-color']} / ${shapes[0]?.style['border-top-width']} ${shapes[0]?.style['border-top-color']}`);
     check('tokens: the shimmer band is --bg-selected-nav', shapes.every((s) => (s.style['background-image'] ?? '').includes(BG_SELECTED_NAV)), shapes[0]?.style['background-image'] ?? '');
-    check('tokens: radii 4 px (bars), 12 px (bubbles), 8 px (overview, cards)', skel.title?.style['border-radius'] === '4px' && skel.root?.style['border-radius'] === '4px' && bubbles.every((b) => b.style['border-radius'] === '12px') && skel.overviewBlock?.style['border-radius'] === '8px' && skel.cards.every((c) => c.style['border-radius'] === '8px'), `${skel.title?.style['border-radius']} · ${bubbles[0]?.style['border-radius']} · ${skel.overviewBlock?.style['border-radius']}`);
+    check('tokens: radii 4 px (bars), 5 px (chips), 12 px (bubbles), 8 px (overview, cards)', skel.title?.style['border-radius'] === '4px' && skel.root?.style['border-radius'] === '4px' && skel.chips.every((c) => c.style['border-radius'] === '5px') && bubbles.every((b) => b.style['border-radius'] === '12px') && skel.overviewBlock?.style['border-radius'] === '8px' && skel.cards.every((c) => c.style['border-radius'] === '8px'), `${skel.title?.style['border-radius']} · ${bubbles[0]?.style['border-radius']} · ${skel.overviewBlock?.style['border-radius']}`);
     check('motion: the shimmer runs (1.6 s, infinite) and moves', shapes.every((s) => s.style['animation-name'] === 'sb-skel-shimmer' && s.style['animation-duration'] === '1.6s' && s.style['animation-iteration-count'] === 'infinite') && firstPosition !== laterPosition, `${shapes[0]?.style['animation-name']} ${shapes[0]?.style['animation-duration']} · ${firstPosition} → ${laterPosition}`);
-    check('motion: static with prefers-reduced-motion (no animation, no band, --bg-card)', still.length === 9 && still.every((s) => s.style['animation-name'] === 'none' && s.style['background-image'] === 'none' && s.style['background-color'] === BG_CARD), `${still.length} shapes · ${still[0]?.style['animation-name']} · ${still[0]?.style['background-image']}`);
+    check('motion: static with prefers-reduced-motion (no animation, no band, --bg-card)', still.length === 12 && still.every((s) => s.style['animation-name'] === 'none' && s.style['background-image'] === 'none' && s.style['background-color'] === BG_CARD), `${still.length} shapes · ${still[0]?.style['animation-name']} · ${still[0]?.style['background-image']}`);
 
     // Accessibility.
     check('a11y: the view is aria-busy while loading, not once loaded', busy === 'true' && busyAfter === null, `${busy} → ${busyAfter}`);
@@ -248,7 +263,7 @@ test.describe('visual: session loading placeholders (D45 addition)', () => {
       '|---|---|---|',
       ...rows,
       '',
-      'Every other visual spec and the full pass measure the loaded views, which D45 leaves unchanged. Known difference, by the ruling: while loading, the header has no chips (only the title bar and the root line stand in), so the conversation starts higher until the session is there. Screenshot: `session-loading-side-by-side.png` (placeholders left, loaded right).',
+      'Every other visual spec and the full pass measure the loaded views, which D45 leaves unchanged. Developer ruling (D45-chips): chip blocks hold the header\'s chip row while loading, so the header, the tabs and the conversation keep their boxes when the session arrives. Screenshot: `session-loading-side-by-side.png` (placeholders left, loaded right).',
       '',
     ].join('\n');
     await writeReport({ 'session-loading.md': report, 'session-loading-side-by-side.png': pair });

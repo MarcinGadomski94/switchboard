@@ -18,6 +18,20 @@ export function RootSkeleton() {
   return <span className="sb-skel sb-skel-root" data-testid="skeleton-root" aria-hidden="true" />;
 }
 
+/** The chip blocks' widths (px): a few chips of different lengths, like the loaded row. */
+const CHIPS = [132, 118, 96] as const;
+
+/** D45 (developer ruling): chip-shaped blocks in the header's chip row, so it keeps its height while loading. */
+export function ChipSkeletons() {
+  return (
+    <>
+      {CHIPS.map((width, index) => (
+        <span key={index} className="sb-skel sb-skel-chip" data-testid="skeleton-chip" aria-hidden="true" style={{ width }} />
+      ))}
+    </>
+  );
+}
+
 /** The chat's bubbles, top to bottom: the side each sits on, like messages (the task first, from the developer). */
 const BUBBLES = ['user', 'agent', 'user', 'agent'] as const;
 
