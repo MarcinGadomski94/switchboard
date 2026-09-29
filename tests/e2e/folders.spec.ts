@@ -325,6 +325,8 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     worktrees: true,
     ultracode: false,
     branch: 'TOOL-7-fix-the-tool',
+    // D40: the Branching section's choices (no epic: a task only; the repo has no origin, so it is cut from HEAD).
+    branching: { epic: null, base: 'dev' },
     // D42: the Model row's choice (the CLI default).
     model: null,
     effort: null,

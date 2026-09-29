@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
+import { registerBranchingRoutes } from './api/branching.ts';
 import { registerFolderRoutes } from './api/folders.ts';
 import { registerFrameHelperRoutes } from './api/frame-helper.ts';
 import { registerHistoryRoutes } from './api/history.ts';
@@ -75,5 +76,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerServiceRoutes(app, context);
   await registerSetupRoutes(app, context);
   await registerFolderRoutes(app, context);
+  await registerBranchingRoutes(app, context);
   await registerHubRoutes(app, context);
 }

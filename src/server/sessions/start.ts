@@ -7,7 +7,7 @@ import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
-import { WorktreeError } from '../worktrees/manager.ts';
+import { type TaskWorktree, WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
 import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
 
@@ -74,7 +74,12 @@ export async function resolveSessionFolder(
  * the worktrees created for it are discarded again. D38: a workspace session may
  * name no solutions; it then gets no worktree up front (its agent creates them on
  * the stored branch and `WorktreeAdoption` registers them) and starts with empty
- * `solutions`, which fill in from what its agents touch. D42: its `model` /
+ * `solutions`, which fill in from what its agents touch. D40: with a ticket
+ * branch the worktrees follow the epic/task model (`createTaskWorktrees`: fetch,
+ * cut from `origin/<epic>` / `origin/<base>` / the origin default branch, reuse an
+ * existing task branch; 409 `fetch-failed` / `base-missing` /
+ * `branch-checked-out`), dropped repos leave `solutions`, the branching is
+ * stored and the first message carries the Branching lines. D42: its `model` /
  * `effort` are checked against the latest reported model list and stored on the
  * session, so its first spawn passes `--model` / `--effort`.
  */
@@ -105,14 +110,25 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   // D38: the branch the session's worktrees are on (stored with the session): the developer's ticket branch
   // (D32), `session/{name}` for scheduled runs; also the branch its agent's own worktrees get.
   const branch = result.value.worktrees ? (result.value.branch ?? worktreeBranch(result.value.name)) : null;
-  const input: ValidNewSession = { ...result.value, ...(branch !== null ? { branch } : {}) };
+  // D40: a ticket-branch session's worktrees follow the epic/task model (a body without `branching` is a task
+  // without an epic); dropped repos get no worktree and leave the session's solutions.
+  const branching = result.value.worktrees && result.value.branch ? (result.value.branching ?? null) : null;
+  const solutions = branching ? result.value.solutions.filter((solution) => !branching.dropped.includes(solution)) : result.value.solutions;
+  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}) };
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
   // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
   // D38: a workspace session without solutions gets none up front: its agent creates them (and Switchboard adopts them).
+  // D40: task worktrees are cut from origin after a `git fetch origin` (WorktreeManager.createTaskWorktrees).
   let created: WorktreeRecord[] = [];
+  let taskWorktrees: TaskWorktree[] = [];
   if (input.worktrees && input.solutions.length > 0) {
     try {
-      created = await worktrees.createForSession(input.name, input.solutions, folder, null, input.branch ? { branch: input.branch } : {});
+      if (branching && input.branch) {
+        taskWorktrees = await worktrees.createTaskWorktrees(input.name, input.solutions, folder, { task: input.branch, branching });
+        created = taskWorktrees.map((worktree) => worktree.record);
+      } else {
+        created = await worktrees.createForSession(input.name, input.solutions, folder, null, input.branch ? { branch: input.branch } : {});
+      }
     } catch (error) {
       if (!(error instanceof WorktreeError)) throw error;
       return { ok: false, ...worktreeRefusal(error, 'solutions') };
@@ -126,11 +142,15 @@ export async function startNewSession(context: SessionStartContext, body: unknow
       worktrees: created,
       resolveRepo: (solution) => worktrees.resolveRepo(solution, folder),
       agentBranch: branch,
+      branching,
+      cutFrom: new Map(taskWorktrees.map((worktree) => [worktree.record.id, worktree.from])),
     });
     // D14: a workspace session runs at the folder root (the router applies); a repo session in the repo, or in its worktree.
     const cwd = folder.kind === 'repo' && created[0] ? created[0].path : folder.root;
     const record = await supervisor.start(input, { folder, cwd }, firstTurn.message, {
       beforeSpawn: async (session) => {
+        // D40 (0012): the branching, for the worktrees its agent creates later (adoption reads it, also after a restart).
+        if (branching) await store.sessions.update(session.id, { branching });
         await worktrees.assign(created, session.id);
         if (firstTurn.message === '' && firstTurn.block !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
         if (options.beforeSpawn) await options.beforeSpawn(session);

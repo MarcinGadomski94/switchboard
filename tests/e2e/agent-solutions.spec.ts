@@ -178,7 +178,7 @@ test('Worktrees on + a ticket branch: the agent creates its worktree, Switchboar
   // No worktree up front; the first message tells the agent where to create its own.
   const lines = await firstMessage(page, created?.id ?? '');
   expect(lines).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
-  expect(lines).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-38-agent-worktree', name)}`);
+  expect(lines).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-38-agent-worktree', name, { epic: null, base: 'dev' })}`);
 
   // The fake ran `git worktree add` (a main-agent Bash): the worktree is adopted and acme-app-front joins the session.
   await expect(page.getByTestId('session-chip').filter({ hasText: 'scope' })).toHaveText('scope acme-app-front');

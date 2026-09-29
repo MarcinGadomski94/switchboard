@@ -1,0 +1,144 @@
+/* The section label: the form's section-label look (`.sb-ns-label`), under its own class since the section is not one of the prototype's. */
+.sb-br-label {
+  display: flex;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/*
+ * D40 · the New-session form's Branching section (not in the prototype): the
+ * epic key + summary row, the epic branch + base row, the muted lines and the
+ * preflight table, over the SPEC tokens and the form's own input / button looks.
+ */
+.sb-br-epic {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-8);
+}
+
+.sb-br-branch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.sb-br-base,
+.sb-br-other {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-br-base input {
+  width: 120px;
+}
+
+.sb-br-line {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  line-height: 1.4;
+  color: var(--muted-3);
+}
+
+.sb-br-line[data-ok='false'] {
+  color: var(--status-need);
+}
+
+.sb-br-preflight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.sb-br-preflight-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-br-status {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-ns-browse.sb-br-recheck {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.sb-br-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-br-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted-2);
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border-control);
+}
+
+.sb-br-table td {
+  vertical-align: top;
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid var(--border-card);
+  overflow-wrap: anywhere;
+}
+
+.sb-br-table td[data-tone='ok'] {
+  color: oklch(0.76 0.13 150);
+}
+
+.sb-br-table td[data-tone='warn'] {
+  color: var(--status-need);
+}
+
+.sb-br-table td[data-tone='muted'] {
+  color: var(--muted-3);
+}
+
+.sb-br-table tr[data-dropped='true'] td {
+  color: var(--muted-4);
+}
+
+.sb-br-repo {
+  color: var(--text);
+}
+
+.sb-br-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-6);
+}
+
+.sb-br-choices .sb-ns-browse.sb-button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.sb-br-other-input {
+  width: 120px;
+  padding: 4px 8px;
+}
+
+.sb-br-undo {
+  margin-left: var(--space-6);
+  font-size: 12px;
+  color: var(--text-2);
+  text-decoration: underline;
+}

@@ -184,11 +184,13 @@ describe('REST · worktrees (M2.2)', () => {
     expect(missing.json()).toMatchObject({ error: 'invalid', errors: [{ field: 'solutions' }] });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-half'))).toBe(false);
 
-    // D32: the ticket branch exists in one repo already → 409 naming that repo; nothing is made in the other.
-    await g.git(g.mobile, 'branch', 'PROJ-9-clash');
+    // D40 (replaces D32's refusal of an existing branch): an existing ticket branch is reused, but one checked out in
+    // another worktree → 409 naming that repo; nothing is made in the other.
+    const elsewhere = path.join(g.root, 'clash-elsewhere');
+    await g.git(g.mobile, 'worktree', 'add', '-q', '-b', 'PROJ-9-clash', elsewhere);
     const clash = await call('POST', '/api/sessions', newSession({ name: 'clash', solutions: ['web-front', 'mobile'], worktrees: true, branch: 'PROJ-9-clash' }));
     expect(clash.statusCode).toBe(409);
-    expect(clash.json()).toEqual({ error: 'branch-exists', message: 'mobile already has a branch PROJ-9-clash' });
+    expect(clash.json()).toEqual({ error: 'branch-checked-out', message: `mobile: PROJ-9-clash is checked out at ${elsewhere}` });
     expect(await exists(path.join(path.dirname(g.web), 'web-front-wt-clash'))).toBe(false);
     expect(await g.git(g.web, 'branch', '--list', 'PROJ-9-clash')).toBe('');
 

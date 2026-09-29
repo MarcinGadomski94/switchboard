@@ -76,6 +76,8 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['POST', '/api/folders', 'D14'], // no body here → 422, nothing saved
   ['DELETE', '/api/folders/nope', 'D14'],
   ['PUT', '/api/folders/nope/default', 'D14'],
+  // D40, additive: the New-session form's branching preflight (no body here → 422, nothing fetched; tests/server/worktrees/branching.test.ts).
+  ['POST', '/api/branching/preflight', 'D40'],
 ];
 
 let tmp: string;

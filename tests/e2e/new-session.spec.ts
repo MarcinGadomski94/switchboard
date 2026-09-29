@@ -405,6 +405,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
     ultracode: true,
     folder: folder?.id,
     branch: 'PROJ-0640-free-talk-screen',
+    // D40: with a worktree the Branching section's choices go along (no epic here: a task only).
+    branching: { epic: null, base: 'dev' },
     // D42: the Model row's choice (the CLI default).
     model: null,
     effort: null,
@@ -492,15 +494,16 @@ test('D32: a ticket title pre-fills the Branch until the developer types in it; 
 });
 
 test('a refusal from POST /api/sessions stays in the modal as one line', async ({ page }) => {
-  // D22: the form always derives a valid short name, so the refusal here is the worktree's: D32, the ticket branch exists already.
-  await git(path.join(workspace, 'microfrontends', 'billing-front'), 'branch', 'PROJ-77-taken-branch');
+  // D22: the form always derives a valid short name, so the refusal here is the worktree's. D40: an existing ticket branch is
+  // reused, so the refusal is one checked out in another worktree.
+  await git(path.join(workspace, 'microfrontends', 'billing-front'), 'worktree', 'add', '-q', '-b', 'PROJ-77-taken-branch', path.join(path.dirname(workspace), 'taken-elsewhere'));
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openModal(page);
   await modal.getByTestId('ns-name').fill('Taken branch');
   await chip(modal, 'billing-front').click();
   await modal.getByTestId('ns-branch').fill('PROJ-77-taken-branch');
   await modal.getByTestId('ns-start').click();
-  await expect(modal.getByTestId('ns-error')).toHaveText('Not started: billing-front already has a branch PROJ-77-taken-branch');
+  await expect(modal.getByTestId('ns-error')).toHaveText(/^Not started: billing-front: PROJ-77-taken-branch is checked out at .*taken-elsewhere$/);
   await expect(modal).toBeVisible();
   // Editing the form clears the line.
   await modal.getByTestId('ns-name').fill('good-name');

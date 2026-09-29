@@ -1,4 +1,5 @@
 import type { NewSession } from './api.ts';
+import { type HandoffBranching, branchingLines } from './branching.ts';
 import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './model.ts';
 
 /**
@@ -18,6 +19,11 @@ import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './mode
  * tells the agent to determine them ({@link SOLUTIONS_NOT_CHOSEN}) and, with
  * Worktrees on, to create its own worktree per solution it changes
  * ({@link agentWorktreesInstruction}).
+ *
+ * D40: a session whose worktrees follow the epic/task branching model gets its
+ * Branching lines (`branchingLines` in `branching.ts`) before the worktrees, each
+ * worktree names the origin branch it was cut from, and the D38 instruction
+ * names the base to cut from and the lazy push rule.
  */
 
 /** Outbox kind (`pending_messages.kind`) of the answers block when the task is empty. */
@@ -31,6 +37,8 @@ export interface FirstTurnWorktree {
   readonly path: string;
   /** The worktree record's branch: the developer's ticket branch (D32), `session/{name}` for a scheduled run. */
   readonly branch: string;
+  /** D40: the origin branch it was cut from (`origin/dev`); omitted or `null` = not cut from origin (shown as before). */
+  readonly from?: string | null;
 }
 
 /**
@@ -57,6 +65,8 @@ export interface SessionStartAnswers {
    * for a scheduled run. The service always passes it; omitted, `session.branch`.
    */
   readonly agentBranch?: string | null;
+  /** D40: the session's branching lines' input; omitted or `null` = no Branching lines (a scheduled run, no worktrees). */
+  readonly branching?: HandoffBranching | null;
 }
 
 /** Opening lines of the block. */
@@ -89,10 +99,27 @@ export const SOLUTIONS_NOT_CHOSEN =
  * changes, on the session's branch, at `<repo parent>/<repo>-wt-<name>` (gap #1's
  * naming, so Switchboard adopts it: `docs/worktrees.md` → *Adopted worktrees*).
  */
-export function agentWorktreesInstruction(branch: string, name: string): string {
+export function agentWorktreesInstruction(branch: string, name: string, branching: Pick<HandoffBranching, 'epic' | 'base'> | null = null): string {
+  const where = `at <the solution repo's parent>/<repo>-wt-${name}`;
+  if (branching === null) {
+    return `for each solution you change, create a git worktree on branch ${branch} ${where} (git worktree add -b ${branch} <path>, from the repo's current HEAD) and make every change there, not in the main checkout`;
+  }
+  // D40: fetch first, cut from origin (never a local branch), reuse an existing task branch, push only at the first code change.
+  const reuse = `when ${branch} exists already, on origin or locally, reuse it instead of creating it`;
+  if (branching.epic) {
+    const epic = branching.epic.branch;
+    return (
+      `for each solution you change, run git fetch origin in its repo, then create a git worktree on branch ${branch} ${where}, ` +
+      `cut from origin/${epic} when it exists on origin, else from origin/${branching.base} ` +
+      `(git worktree add --no-track -b ${branch} <path> origin/<that branch>; ${reuse}), make every change there, not in the main checkout, ` +
+      `and follow the Rule above: push nothing before that repo's first code change`
+    );
+  }
   return (
-    `for each solution you change, create a git worktree on branch ${branch} at <the solution repo's parent>/<repo>-wt-${name} ` +
-    `(git worktree add -b ${branch} <path>, from the repo's current HEAD) and make every change there, not in the main checkout`
+    `for each solution you change, run git fetch origin in its repo, then create a git worktree on branch ${branch} ${where}, ` +
+    `cut from origin/master (the repo's origin default branch, origin/HEAD, where it is not master; never a local branch) ` +
+    `(git worktree add --no-track -b ${branch} <path> origin/master; ${reuse}), make every change there, not in the main checkout, ` +
+    `and push ${branch} (git push -u origin ${branch}) only at that repo's first code change`
   );
 }
 
@@ -145,12 +172,15 @@ export function sessionStartBlock(answers: SessionStartAnswers): string {
     item('Mobile coordination', COORDINATION_TERMS[session.coordination]);
   }
   item('Ultracode', session.ultracode ? 'on' : 'off');
+  // D40: the branching model, before the worktrees it applies to.
+  const branching = session.worktrees ? (answers.branching ?? null) : null;
+  if (branching) lines.push(...branchingLines(branching));
   const agentBranch = answers.agentBranch ?? session.branch ?? null;
   if (session.worktrees && answers.worktrees.length > 0) {
     lines.push('- Worktrees (one per solution; make every change there, not in the main checkout):');
-    for (const worktree of answers.worktrees) lines.push(`  - ${worktree.folder}: ${worktree.path} (branch ${worktree.branch})`);
+    for (const worktree of answers.worktrees) lines.push(`  - ${worktree.folder}: ${worktree.path} (branch ${worktree.branch}${worktree.from ? `, from ${worktree.from}` : ''})`);
   } else if (session.worktrees && !chosen && agentBranch !== null) {
-    item('Worktrees', agentWorktreesInstruction(agentBranch, session.name));
+    item('Worktrees', agentWorktreesInstruction(agentBranch, session.name, branching));
   } else {
     item('Worktrees', 'no worktrees · edits in place');
   }
@@ -170,18 +200,22 @@ export interface RepoWorktree {
   readonly base: string;
   /** The repository's main checkout. */
   readonly repoPath: string;
+  /** D40: the session's branching lines' input; omitted or `null` = none. */
+  readonly branching?: HandoffBranching | null;
 }
 
 /**
  * The only thing a repo folder's session gets appended to its first message
  * (D14: no router answers): which worktree it runs in and that the main
- * checkout is not its working tree. Lines are `- Label: value`.
+ * checkout is not its working tree. Lines are `- Label: value`. D40: then the
+ * session's Branching lines, when it has them.
  */
 export function repoWorktreeNote(worktree: RepoWorktree): string {
   return [
     REPO_WORKTREE_NOTE_HEADER,
     `- Worktree: ${worktree.path} (branch ${worktree.branch}, from ${worktree.base}); it is your working folder: make every change here.`,
     `- Main checkout: ${worktree.repoPath} (leave it as it is).`,
+    ...(worktree.branching ? branchingLines(worktree.branching) : []),
   ].join('\n');
 }
 

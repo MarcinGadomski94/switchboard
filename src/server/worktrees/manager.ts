@@ -1,6 +1,7 @@
 import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { FileDiff, Worktree } from '../../core/api.ts';
+import type { BranchingPreflightRow, FileDiff, Worktree } from '../../core/api.ts';
+import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import {
   PR_VIEW_FIELDS,
@@ -44,7 +45,11 @@ export type WorktreeErrorCode =
   | 'removed'
   | 'uncommitted'
   | 'unpushed'
-  | 'git-failed';
+  | 'git-failed'
+  // D40: `git fetch origin` failed; the base to cut a task worktree from is not on origin; an existing task branch is checked out elsewhere.
+  | 'fetch-failed'
+  | 'base-missing'
+  | 'branch-checked-out';
 
 /** A refusal of the worktree manager. Nothing was changed on disk when it is thrown. */
 export class WorktreeError extends Error {
@@ -80,8 +85,12 @@ export interface WorktreeManagerOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** The supervisor, for isolate (gap #2). */
   readonly sessions?: SessionControl;
-  /** ms before a git (default 120 s) or gh (default 30 s) call is killed. */
-  readonly timeouts?: { readonly git?: number; readonly gh?: number };
+  /**
+   * ms before a git (default 120 s) or gh (default 30 s) call is killed; D40:
+   * `fetch` bounds the git calls that reach origin over the network (`git fetch`,
+   * `git ls-remote`; default 60 s).
+   */
+  readonly timeouts?: { readonly git?: number; readonly gh?: number; readonly fetch?: number };
   /** Called when a background step fails (default: `console.error`). */
   readonly onError?: (error: unknown) => void;
 }
@@ -130,8 +139,41 @@ export interface AdoptionRepo {
   readonly repoPath: string;
 }
 
-/** The session {@link WorktreeManager.adopt} registers worktrees for (D38). */
-export type AdoptionSession = Pick<SessionRecord, 'id' | 'name' | 'branch'>;
+/**
+ * The session {@link WorktreeManager.adopt} registers worktrees for (D38; D40:
+ * its `branching` gives the base an agent-created worktree was cut from).
+ */
+export type AdoptionSession = Pick<SessionRecord, 'id' | 'name' | 'branch'> & { readonly branching?: SessionBranching | null };
+
+/** Options of {@link WorktreeManager.createTaskWorktrees} (D40). */
+export interface TaskWorktreeOptions {
+  /** The task branch (D32's ticket branch the caller validated), the same in every repo. */
+  readonly task: string;
+  /** The session's branching (the epic, its base, per-repo overrides); dropped repos must already be left out of `solutions`. */
+  readonly branching: SessionBranching;
+}
+
+/** A task worktree {@link WorktreeManager.createTaskWorktrees} made (D40). */
+export interface TaskWorktree {
+  readonly record: WorktreeRecord;
+  /** The origin branch it was cut from (`origin/dev`, `origin/<epic>`); `null` for a repo without an `origin` remote (cut from its HEAD, as before D40). */
+  readonly from: string | null;
+  /** The task branch: made by this call (`new`), made from `origin/<task>` and tracking it (`origin`), or the existing `local` branch. */
+  readonly reuse: 'new' | 'origin' | 'local';
+}
+
+/** What {@link WorktreeManager.preflight} checks (D40, `POST /api/branching/preflight`). */
+export interface PreflightInput {
+  readonly solutions: readonly string[];
+  /** The epic branch; `null` = a task without an epic (the rows check the origin default branch). */
+  readonly epicBranch: string | null;
+  /** The epic's base. */
+  readonly base: string;
+  /** The task branch to look for; `null` = not checked. */
+  readonly taskBranch: string | null;
+  /** Per-solution base overrides. */
+  readonly bases: Readonly<Record<string, string>>;
+}
 
 /** Result of {@link WorktreeManager.isolate}. */
 export interface IsolateResult {
@@ -159,6 +201,20 @@ interface Plan {
   readonly branch: string;
   readonly path: string;
   readonly headSha: string;
+  readonly base: string;
+}
+
+/** One repo's D40 plan: where its task worktree comes from. */
+interface TaskPlan {
+  readonly solution: string;
+  readonly repoPath: string;
+  readonly branch: string;
+  readonly path: string;
+  readonly reuse: TaskWorktree['reuse'];
+  /** What `git worktree add` starts from: `refs/remotes/origin/<x>`, `origin/<task>` (reuse), the HEAD commit (no origin) or the local branch. */
+  readonly start: string;
+  readonly from: string | null;
+  /** The row's `base_ref`: `origin/<cut point>`, or the branch HEAD was on (no origin). */
   readonly base: string;
 }
 
@@ -215,7 +271,12 @@ export class WorktreeManager implements DiffProvider {
   readonly #gitTimeout: number;
   readonly #ghTimeout: number;
   readonly #onError: (error: unknown) => void;
+  readonly #fetchTimeout: number;
   readonly #listeners = new Set<Listener>();
+  /** D40: network git calls per repository, one at a time (a preflight and a Start never fetch one repo at once). */
+  readonly #fetching = new Map<string, Promise<unknown>>();
+  /** D40: worktrees whose branch existed before (reused): {@link discard} never deletes it. */
+  readonly #keptBranches = new Set<string>();
   #checking: Promise<PullRequestCheck[]> | null = null;
   /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
   #adopting: Promise<unknown> = Promise.resolve();
@@ -230,6 +291,7 @@ export class WorktreeManager implements DiffProvider {
     this.#sessions = options.sessions ?? null;
     this.#gitTimeout = options.timeouts?.git ?? 120_000;
     this.#ghTimeout = options.timeouts?.gh ?? 30_000;
+    this.#fetchTimeout = options.timeouts?.fetch ?? 60_000;
     this.#onError = options.onError ?? ((error) => console.error('switchboard worktrees:', error));
   }
 
@@ -316,13 +378,16 @@ export class WorktreeManager implements DiffProvider {
   /**
    * Undoes {@link createForSession} for worktrees nothing has used yet (the session
    * could not start): `git worktree remove` (never `--force`) and `git branch -d`
-   * of the branch it just made (never `-D`), then the row is marked removed.
+   * of the branch it just made (never `-D`; D40: a reused branch is kept), then
+   * the row is marked removed.
    */
   async discard(records: readonly WorktreeRecord[]): Promise<void> {
     for (const record of [...records].reverse()) {
       const removed = await this.#runGit(record.repoPath, ['worktree', 'remove', record.path]);
       if (!succeeded(removed)) this.#onError(new Error(`could not discard ${record.path}: ${failureText(removed)}`));
-      else {
+      else if (this.#keptBranches.delete(record.id)) {
+        // D40: the task branch was there before this session: it stays.
+      } else {
         const branch = await this.#runGit(record.repoPath, ['branch', '-d', record.branch]);
         if (!succeeded(branch)) this.#onError(new Error(`kept branch ${record.branch}: ${failureText(branch)}`));
       }
@@ -376,6 +441,219 @@ export class WorktreeManager implements DiffProvider {
     }
   }
 
+  // ── epic/task branching (D40) ─────────────────────────────────────────
+
+  /**
+   * D40 (`docs/worktrees.md` → *Epic/task branching (D40)*): a new session's task
+   * worktrees, one per solution of `folder`, on the task branch, at
+   * `../{repo}-wt-{name}`. In each repo with an `origin` remote it first runs
+   * `git fetch origin`, then cuts the worktree from `origin/<epic>` when the epic
+   * is on origin, else from `origin/<base>` (the repo's override when set); without
+   * an epic from the origin default branch (`origin/HEAD`, else what `git
+   * ls-remote --symref origin HEAD` names), never from a local branch. An existing
+   * task branch is **reused**: the local branch when there is one, else a new
+   * local branch tracking `origin/<task>`; one checked out in another worktree is
+   * refused (`branch-checked-out`). A new task branch has no upstream until the
+   * agent pushes it (`--no-track`). A repo without an `origin` remote is cut from
+   * its current HEAD as before. It never creates the epic branch, never pushes and
+   * never touches the main checkout's working tree.
+   *
+   * All or nothing like {@link createForSession}: every repo is planned (and
+   * fetched) before anything is created; a missing base is `base-missing`, a failed
+   * fetch `fetch-failed`.
+   */
+  async createTaskWorktrees(sessionName: string, solutions: readonly string[], folder: FolderRef, options: TaskWorktreeOptions): Promise<TaskWorktree[]> {
+    const plans: TaskPlan[] = [];
+    for (const solution of solutions) {
+      const plan = await this.#planTask(solution, sessionName, folder, options);
+      if (plans.some((other) => other.path === plan.path)) {
+        throw new WorktreeError('path-exists', `"${solution}" names the same repository as another solution in scope`);
+      }
+      plans.push(plan);
+    }
+    const created: TaskWorktree[] = [];
+    try {
+      for (const plan of plans) created.push({ record: await this.#createTask(plan), from: plan.from, reuse: plan.reuse });
+    } catch (error) {
+      await this.discard(created.map((worktree) => worktree.record));
+      throw error;
+    }
+    return created;
+  }
+
+  async #planTask(solution: string, sessionName: string, folder: FolderRef, options: TaskWorktreeOptions): Promise<TaskPlan> {
+    const { repoPath } = await this.resolveRepo(solution, folder);
+    const target = worktreePath(repoPath, sessionName);
+    if ((await pathExists(target)) || (await this.#store.worktrees.getLiveByPath(target))) {
+      throw new WorktreeError('path-exists', `${target} already exists`);
+    }
+    const task = options.task;
+    const local = await this.#refExists(repoPath, `refs/heads/${task}`);
+    if (local) {
+      const elsewhere = await this.#checkedOutAt(repoPath, task);
+      if (elsewhere !== null) throw new WorktreeError('branch-checked-out', `${solution}: ${task} is checked out at ${elsewhere}`);
+    }
+    if (!(await this.#hasOrigin(repoPath))) {
+      // No origin to cut from: the repo's current HEAD, as before D40 (an existing task branch is still reused).
+      const head = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+      if (!succeeded(head) || head.stdout.trim() === '') throw new WorktreeError('no-commits', `${solution} has no commit to branch from`);
+      const headSha = head.stdout.trim();
+      const symbolic = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+      const base = succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : headSha;
+      return { solution, repoPath, branch: task, path: target, reuse: local ? 'local' : 'new', start: local ? task : headSha, from: null, base };
+    }
+    const fetched = await this.#fetch(repoPath, ['fetch', 'origin']);
+    if (!succeeded(fetched)) throw new WorktreeError('fetch-failed', `git fetch origin failed in ${solution}: ${failureText(fetched)}`);
+    const { branching } = options;
+    const epicOnOrigin = branching.epic !== null && (await this.#refExists(repoPath, `refs/remotes/origin/${branching.epic.branch}`));
+    const needsDefault = branching.epic === null && branching.bases[solution] === undefined;
+    const cut = cutPoint(branching, solution, { epicOnOrigin, defaultBranch: needsDefault ? await this.#originDefault(repoPath) : null });
+    if (cut === null) throw new WorktreeError('base-missing', `${solution}: origin has no default branch (origin/HEAD): use another base for it`);
+    if (!(await this.#refExists(repoPath, `refs/remotes/origin/${cut}`))) {
+      throw new WorktreeError('base-missing', `${solution}: origin/${cut} does not exist: drop it from the task or use another base`);
+    }
+    const from = `origin/${cut}`;
+    if (local) return { solution, repoPath, branch: task, path: target, reuse: 'local', start: task, from, base: from };
+    if (await this.#refExists(repoPath, `refs/remotes/origin/${task}`)) {
+      return { solution, repoPath, branch: task, path: target, reuse: 'origin', start: `origin/${task}`, from, base: from };
+    }
+    return { solution, repoPath, branch: task, path: target, reuse: 'new', start: `refs/remotes/origin/${cut}`, from, base: from };
+  }
+
+  async #createTask(plan: TaskPlan): Promise<WorktreeRecord> {
+    const args =
+      plan.reuse === 'local'
+        ? ['worktree', 'add', plan.path, plan.start]
+        : plan.reuse === 'origin'
+          ? ['worktree', 'add', '--track', '-b', plan.branch, plan.path, plan.start]
+          : plan.from === null
+            ? ['worktree', 'add', '-b', plan.branch, plan.path, plan.start]
+            : ['worktree', 'add', '--no-track', '-b', plan.branch, plan.path, plan.start];
+    const added = await this.#runGit(plan.repoPath, args);
+    if (!succeeded(added)) throw new WorktreeError('git-failed', `git worktree add failed for ${plan.solution}: ${failureText(added)}`);
+    try {
+      const record = await this.#store.worktrees.create({
+        repo: plan.solution,
+        repoPath: plan.repoPath,
+        branch: plan.branch,
+        baseRef: plan.base,
+        path: await realpath(plan.path),
+        sessionId: null,
+      });
+      if (plan.reuse === 'local') this.#keptBranches.add(record.id);
+      return record;
+    } catch (error) {
+      const removed = await this.#runGit(plan.repoPath, ['worktree', 'remove', plan.path]);
+      if (succeeded(removed) && plan.reuse !== 'local') await this.#runGit(plan.repoPath, ['branch', '-d', plan.branch]);
+      throw error;
+    }
+  }
+
+  /**
+   * D40 (`POST /api/branching/preflight`): for each solution of `folder` (in
+   * parallel), `git fetch origin --prune`, then what the task worktree would be
+   * cut from: `origin/<base>` present (the override, the epic's base, or without
+   * an epic the origin default branch), the epic on origin and how many commits of
+   * `origin/<base>` it lacks (`git rev-list --count origin/<epic>..origin/<base>`),
+   * the task branch on origin and locally. Nothing is created; a repo that cannot
+   * be read, has no `origin` or cannot be fetched is a row with its `error`.
+   */
+  async preflight(folder: FolderRef, input: PreflightInput): Promise<BranchingPreflightRow[]> {
+    return Promise.all(input.solutions.map((solution) => this.#preflightRow(solution, folder, input)));
+  }
+
+  async #preflightRow(solution: string, folder: FolderRef, input: PreflightInput): Promise<BranchingPreflightRow> {
+    const override = input.bases[solution];
+    const epicBranch = input.epicBranch;
+    const baseSource: BranchingPreflightRow['baseSource'] = override !== undefined ? 'override' : epicBranch !== null ? 'epic' : 'default';
+    const unknown = (repoPath: string | null, error: string): BranchingPreflightRow => ({
+      solution,
+      repoPath,
+      error,
+      base: override ?? (epicBranch !== null ? input.base : null),
+      baseSource,
+      baseExists: null,
+      epic: epicBranch !== null ? { branch: epicBranch, exists: null, behind: null } : null,
+      task: input.taskBranch !== null ? { branch: input.taskBranch, exists: null, local: null } : null,
+      cutFrom: null,
+    });
+    let repoPath: string;
+    try {
+      repoPath = (await this.resolveRepo(solution, folder)).repoPath;
+    } catch (error) {
+      return unknown(null, errorText(error));
+    }
+    if (!(await this.#hasOrigin(repoPath))) return unknown(repoPath, "no origin remote: the worktree starts from the repo's current HEAD");
+    const fetched = await this.#fetch(repoPath, ['fetch', 'origin', '--prune']);
+    if (!succeeded(fetched)) return unknown(repoPath, `git fetch origin failed: ${failureText(fetched)}`);
+    const base = override ?? (epicBranch !== null ? input.base : await this.#originDefault(repoPath));
+    const baseExists = base !== null && (await this.#refExists(repoPath, `refs/remotes/origin/${base}`));
+    let epic: BranchingPreflightRow['epic'] = null;
+    if (epicBranch !== null) {
+      const exists = await this.#refExists(repoPath, `refs/remotes/origin/${epicBranch}`);
+      let behind: number | null = null;
+      if (exists && baseExists) {
+        const count = await this.#runGit(repoPath, ['rev-list', '--count', `refs/remotes/origin/${epicBranch}..refs/remotes/origin/${base}`, '--']);
+        behind = succeeded(count) ? Number.parseInt(count.stdout.trim(), 10) : null;
+        if (behind !== null && !Number.isFinite(behind)) behind = null;
+      }
+      epic = { branch: epicBranch, exists, behind };
+    }
+    const task =
+      input.taskBranch !== null
+        ? {
+            branch: input.taskBranch,
+            exists: await this.#refExists(repoPath, `refs/remotes/origin/${input.taskBranch}`),
+            local: await this.#refExists(repoPath, `refs/heads/${input.taskBranch}`),
+          }
+        : null;
+    const cutFrom = epic?.exists ? `origin/${epic.branch}` : baseExists ? `origin/${base as string}` : null;
+    return { solution, repoPath, error: null, base, baseSource, baseExists, epic, task, cutFrom };
+  }
+
+  /** `true` when the repo has an `origin` remote (its config; no network). */
+  async #hasOrigin(repoPath: string): Promise<boolean> {
+    const url = await this.#runGit(repoPath, ['remote', 'get-url', 'origin']);
+    return succeeded(url) && url.stdout.trim() !== '';
+  }
+
+  /** `true` when `ref` (a full ref name) resolves to a commit. */
+  async #refExists(repoPath: string, ref: string): Promise<boolean> {
+    const result = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    return succeeded(result) && result.stdout.trim() !== '';
+  }
+
+  /**
+   * The origin default branch (without `origin/`): `refs/remotes/origin/HEAD`
+   * (a fetch sets it), else what `git ls-remote --symref origin HEAD` names; `null`
+   * when neither says.
+   */
+  async #originDefault(repoPath: string): Promise<string | null> {
+    const symbolic = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    const local = symbolic.stdout.trim();
+    if (succeeded(symbolic) && local.startsWith('origin/') && local.length > 'origin/'.length) return local.slice('origin/'.length);
+    const remote = await this.#fetch(repoPath, ['ls-remote', '--symref', 'origin', 'HEAD']);
+    return succeeded(remote) ? parseSymrefHead(remote.stdout) : null;
+  }
+
+  /** Where `branch` is checked out in a worktree of `repoPath` (the main checkout included), else `null`. */
+  async #checkedOutAt(repoPath: string, branch: string): Promise<string | null> {
+    const listed = await this.#runGit(repoPath, ['worktree', 'list', '--porcelain']);
+    if (!succeeded(listed)) return null;
+    return parseWorktreeList(listed.stdout).find((entry) => entry.branch === branch && !entry.prunable)?.path ?? null;
+  }
+
+  /** A git call that reaches origin (`fetch`, `ls-remote`): bounded by the fetch timeout, one at a time per repository. */
+  #fetch(repoPath: string, args: readonly string[]): Promise<RunResult> {
+    const previous = this.#fetching.get(repoPath) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.#runGit(repoPath, args, this.#fetchTimeout));
+    this.#fetching.set(repoPath, run);
+    void run.finally(() => {
+      if (this.#fetching.get(repoPath) === run) this.#fetching.delete(repoPath);
+    });
+    return run;
+  }
+
   // ── adopt (D38) ───────────────────────────────────────────────────────
 
   /**
@@ -426,12 +704,14 @@ export class WorktreeManager implements DiffProvider {
           continue;
         }
         if (worktreePath === repoPath || (await this.#store.worktrees.getLiveByPath(worktreePath))) continue;
+        // D40: a branching session's worktree is compared with the origin branch it was cut from.
+        const cutFrom = session.branching ? await this.#adoptedBase(worktreePath, session.branching, repo.solution) : null;
         adopted.push(
           await this.#store.worktrees.create({
             repo: repo.solution,
             repoPath,
             branch: entry.branch as string,
-            baseRef: main?.branch ?? main?.head ?? null,
+            baseRef: cutFrom ?? main?.branch ?? main?.head ?? null,
             path: worktreePath,
             sessionId: session.id,
           }),
@@ -439,6 +719,25 @@ export class WorktreeManager implements DiffProvider {
       }
     }
     return adopted;
+  }
+
+  /**
+   * D40: the origin branch an agent-created worktree of a branching session was
+   * cut from, by the session's rule (`origin/<epic>` when it is on origin, else
+   * `origin/<base>` or the repo's override; without an epic, the override or
+   * `origin/HEAD`), read in the worktree itself (no fetch, nothing run in the main
+   * checkout); `null` when that ref does not resolve.
+   */
+  async #adoptedBase(worktreePath: string, branching: SessionBranching, solution: string): Promise<string | null> {
+    const epicOnOrigin = branching.epic !== null && (await this.#refExists(worktreePath, `refs/remotes/origin/${branching.epic.branch}`));
+    let defaultBranch: string | null = null;
+    if (branching.epic === null && branching.bases[solution] === undefined) {
+      const symbolic = await this.#runGit(worktreePath, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+      const ref = symbolic.stdout.trim();
+      if (succeeded(symbolic) && ref.startsWith('origin/')) defaultBranch = ref.slice('origin/'.length);
+    }
+    const cut = cutPoint(branching, solution, { epicOnOrigin, defaultBranch });
+    return cut !== null && (await this.#refExists(worktreePath, `refs/remotes/origin/${cut}`)) ? `origin/${cut}` : null;
   }
 
   // ── isolate (gap #2) ──────────────────────────────────────────────────
@@ -764,11 +1063,11 @@ export class WorktreeManager implements DiffProvider {
     }
   }
 
-  #runGit(cwd: string, args: readonly string[]): Promise<RunResult> {
+  #runGit(cwd: string, args: readonly string[], timeoutMs: number = this.#gitTimeout): Promise<RunResult> {
     const options: RunOptions = {
       cwd,
       env: { ...this.#env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
-      timeoutMs: this.#gitTimeout,
+      timeoutMs,
     };
     return runCommand(this.#git, args, options);
   }

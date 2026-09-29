@@ -46,11 +46,13 @@ import {
   showsQa,
   solutionsHint,
   startErrorText,
+  startNames,
   summaryLines,
   toStartBody,
   toggleSolution,
   withFormModel,
   workspaceRoot,
+  worktreeFolder,
 } from './new-session.ts';
 import {
   RESUME_TERMINAL_CONVERSATION,
@@ -76,6 +78,8 @@ import {
   toTeleportBody,
 } from './remote-session.ts';
 import { ScheduleSection } from './ScheduleSection.tsx';
+import { BranchingSection, useBranchingPreflight } from './BranchingSection.tsx';
+import { type BranchingForm, branchingBlocks, branchingFromPrefill, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
 
@@ -194,6 +198,8 @@ export function NewSessionModal({
   const [cron, setCron] = useState(() => schedule?.cron ?? '');
 
   const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
+  // D40: the Branching section's state (epic, base, per-repo choices), next to the form's.
+  const [branching, setBranching] = useState<BranchingForm>(() => branchingFromPrefill(prefill));
   // D42: the latest reported model list and the last choice (the Model row starts on it); a failed read = neither.
   const models = useApi(() => api.models());
   const modelSettings: ModelSettings | null = models.data ?? (models.error ? NO_MODEL_SETTINGS : null);
@@ -266,16 +272,21 @@ export function NewSessionModal({
       : resume
         ? resumeSummaryLines(resume, folder, form.name, takenNames)
         : summaryLines(launch, workspaceRoot(scan), takenNames, folder, 'start', modelOptions);
+  // D32: the Branch row, while Start will create a worktree on the developer's branch (not a schedule, move or teleport).
+  const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting;
+  // D40: the Branching section shows with the Branch row; its repos are the picked solutions (a repo folder: its repo).
+  const branchingSolutions = repo && folder ? [folder.name] : form.solutions;
+  const preflight = useBranchingPreflight(branchShown ? preflightRequest(branching, folder?.id ?? form.folder, branchingSolutions, formBranch(form)) : null);
+  const summary = branchShown ? withBranchingLines(lines, branching, branchingSolutions, (solution) => worktreeFolder(solution, startNames(form, takenNames).name), preflight.rows) : lines;
+  const branchingReady = !branchShown || !branchingBlocks(branching, branchingSolutions, preflight.rows);
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
   const startable = remoting
     ? canStartRemote(remote, form.name, folder) && !busy
     : resuming
       ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
-      : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder)) && !busy;
+      : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder) && branchingReady) && !busy;
   const hideRouter = repo || resuming || remoting;
-  // D32: the Branch row, while Start will create a worktree on the developer's branch (not a schedule, move or teleport).
-  const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting;
   const branchNoteId = useId();
   const branchState = branchCheck(form);
   const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
@@ -339,7 +350,9 @@ export function NewSessionModal({
     setError(null);
     try {
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
-      const session = await api.createSession(toStartBody(launch, folder, takenNames));
+      const body = toStartBody(launch, folder, takenNames);
+      // D40: with a worktree, the branching (epic, base, per-repo choices) goes with it.
+      const session = await api.createSession(branchShown ? { ...body, branching: toBranching(branching, branchingSolutions) } : body);
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -700,6 +713,20 @@ export function NewSessionModal({
             </div>
           ) : null}
 
+          {branchShown ? (
+            <BranchingSection
+              form={branching}
+              onChange={(patch) => {
+                setBranching((current) => ({ ...current, ...patch }));
+                setError(null);
+              }}
+              solutions={branchingSolutions}
+              taskBranch={formBranch(form)}
+              preflight={preflight}
+              repo={repo}
+            />
+          ) : null}
+
           {scheduling ? (
             <ScheduleSection
               cron={cron}
@@ -753,7 +780,7 @@ export function NewSessionModal({
           </div>
           <div className="sb-ns-side-label sb-ns-side-label--summary">Summary</div>
           <div className="sb-ns-summary" data-testid="ns-summary">
-            {lines.map((line, index) => (
+            {summary.map((line, index) => (
               <div key={index} className="sb-ns-summary-line" data-testid="ns-summary-line" data-tone={line.tone}>
                 {line.text}
               </div>

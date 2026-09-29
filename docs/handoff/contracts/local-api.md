@@ -360,6 +360,26 @@ NewSession { "name": "proj-38-agent-worktree", "title": "PROJ-38 Agent worktree"
 Session    { …, "solutions": [] }  →  sessionUpdated { …, "solutions": ["acme-app-front"] }
 ```
 
+## Epic/task branching (D40, 2026-09-29, additive)
+Developer ruling D40 (`docs/decisions.md` → *Epic/task branching*): the New-session form supports the epic/task branching model, created lazily. Additive: the rows and payloads above keep their meaning, except that a new session **reuses** an existing task branch instead of D32's 409 `branch-exists`. Details: `docs/new-session.md` → *Branching (D40)*, `docs/worktrees.md` → *Epic/task branching (D40)*, migration `0012_session_branching.sql`.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/branching/preflight | BranchingPreflightRequest | 200 BranchingPreflight · 422 `invalid` `{ errors: [{ field: "solutions" \| "epicBranch" \| "base" \| "bases" }] }` · 422 / 409 `no-folder` / `folder-missing` for the folder, as for NewSession |
+| POST | /api/sessions | NewSession / NewRepoSession (+ `branching`) | 201 Session · 422 `invalid` on `branching`, `branching.epic`, `branching.epic.key`, `branching.epic.summary`, `branching.epic.branch`, `branching.base`, `branching.dropped`, `branching.bases` · 409 `fetch-failed` / `base-missing` / `branch-checked-out` `{ message }` (nothing created) |
+
+- **BranchingPreflightRequest:** `folder` (a saved folder's id; default when omitted), `solutions` (at most 40; a repo folder checks its repo whatever is sent; empty = `{ rows: [] }`), `epicBranch` (omitted / blank = no epic: the rows check the origin default branch), `base` (default `dev`), `taskBranch` (not checked when not a valid branch name), `bases` (solution → base). Each repo with an `origin` remote is fetched (`git fetch origin --prune`, bounded) and read; nothing is created or pushed.
+- **BranchingPreflightRow:** `solution`, `repoPath` (`null` when not a git repo), `error` (`no origin remote: the worktree starts from the repo's current HEAD`, `git fetch origin failed: …`, a resolution message; `null` when checked), `base` + `baseSource` (`override` / `epic` / `default`) + `baseExists`, `epic` `{ branch, exists, behind }` (`behind` = `git rev-list --count origin/<epic>..origin/<base>`), `task` `{ branch, exists, local }`, `cutFrom` (`origin/<epic>` when on origin, else `origin/<base>` when present, else `null`). Unknown values are `null`.
+- **NewSession.branching** (and NewRepoSession's), read only with `worktrees: true` under the ticket rule (never for scheduled runs, which keep `session/{name}`): `{ epic?: { key, summary?, branch? } | null, base?, bases?, dropped? }`. `key` a ticket key (`PROJ-3010`); `summary` text ≤ 255; `branch` a valid git branch name, blank = `feature/<KEY>-<Summary>` derived; `base` a valid branch name, blank = `dev` (not the epic branch itself); `dropped` solutions in scope, never all of them, never a repo folder's repo; `bases` solution in scope (not dropped) → valid branch name. Omitted or `null` = a task without an epic.
+- **At Start**, per repo: `git fetch origin`, then the task worktree is cut from `origin/<epic>` when on origin, else `origin/<base>` (the override when set); without an epic from the origin default branch (`origin/HEAD`); never a local branch. An existing task branch is reused (the local one, else tracking `origin/<task>`). A repo without `origin` is cut from its HEAD as before. Dropped repos get no worktree and leave `Session.solutions`. The epic branch is never created and nothing is pushed. The branching is stored (`sessions.branching`), not on the wire.
+- **Worktree.branch / base:** `base_ref` of a task worktree is `origin/<cut point>`; the first message's answers block gains the Branching lines (`docs/new-session.md` → *First-turn payload*).
+
+```json
+BranchingPreflightRequest { "folder": "f1", "solutions": ["alpha-front", "beta-front"], "epicBranch": "feature/PROJ-3010-Platform-tracking", "base": "dev", "taskBranch": "PROJ-3011-kpi-dashboard", "bases": {} }
+BranchingPreflight        { "rows": [ { "solution": "alpha-front", "repoPath": "/w/microfrontends/alpha-front", "error": null, "base": "dev", "baseSource": "epic", "baseExists": true, "epic": { "branch": "feature/PROJ-3010-Platform-tracking", "exists": true, "behind": 2 }, "task": { "branch": "PROJ-3011-kpi-dashboard", "exists": false, "local": false }, "cutFrom": "origin/feature/PROJ-3010-Platform-tracking" } ] }
+NewSession                { …, "worktrees": true, "branch": "PROJ-3011-kpi-dashboard", "branching": { "epic": { "key": "PROJ-3010", "summary": "Platform tracking", "branch": "feature/PROJ-3010-Platform-tracking" }, "base": "dev", "bases": { "mobile": "main" }, "dropped": ["beta-front"] } }
+```
+
 ## Model at session start (D42, 2026-09-29, additive)
 Developer ruling D42 (`docs/decisions.md` → *Model at session start, remembered*): the New-session form picks the model and effort a session starts with, and the service remembers the last choice. Additive; the rows and payloads above keep their meaning. Details: `docs/model-effort.md` → *At session start (D42)*, `docs/new-session.md` → *Model (D42)*. No migration: both settings are rows of the existing `settings` table.
 

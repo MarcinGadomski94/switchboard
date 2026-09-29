@@ -316,6 +316,30 @@ describe('0010 session closed (D33)', () => {
   });
 });
 
+describe('0012 session branching (D40)', () => {
+  it('adds a nullable sessions.branching (JSON): existing sessions have none; the store round-trips it', async () => {
+    const file = path.join(tmp, 'existing-branching.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 12)).toMatchObject({ name: 'session_branching' });
+    migrate(database, shipped.filter((m) => m.version <= 11));
+    const ts = '2026-09-29T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s-old', 'free-talk-640', 'c-old', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 11).map((m) => m.version));
+    expect(database.prepare('SELECT id, branching FROM sessions').all()).toEqual([{ id: 's-old', branching: null }]);
+    database.close();
+
+    const store = await openStore(file);
+    try {
+      expect(await store.sessions.get('s-old')).toMatchObject({ branching: null });
+      const branching = { epic: { key: 'PROJ-3010', summary: 'Platform', branch: 'feature/PROJ-3010-Platform' }, base: 'dev', bases: { mobile: 'main' }, dropped: ['x'] };
+      expect(await store.sessions.update('s-old', { branching })).toMatchObject({ branching });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

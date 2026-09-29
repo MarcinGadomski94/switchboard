@@ -1,4 +1,5 @@
 import type { NewSession, SessionModelOption } from '../../core/api.ts';
+import { type SessionBranching, type SessionEpic, DEFAULT_EPIC_BASE, TASK_ONLY, checkBranchName, checkEpicKey, epicBranchName } from '../../core/branching.ts';
 import { MODEL_VALUE_MAX, checkModelChoice, normalizeEffort, normalizeModel } from '../../core/model-choice.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import { checkTicketBranch } from '../../core/ticket-branch.ts';
@@ -14,14 +15,17 @@ export interface FieldError {
  * A validated NewSession (D14: without `folder`, which the caller resolved; the
  * router-only fields `workType`, `mode`, `phase` are `null` for a repo folder).
  * D22: `title` is present (trimmed) only when the body had one. D32: `branch` is
- * present only when the session creates worktrees under the ticket rule. D42:
+ * present only when the session creates worktrees under the ticket rule. D40:
+ * `branching` likewise, normalized ({@link SessionBranching}; a body without one
+ * is a task without an epic). D42:
  * `model` and `effort` are both present (normalized, `null` = the CLI's default)
  * only when the body named either.
  */
-export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder'> & {
+export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder' | 'branching'> & {
   readonly workType: WorkType | null;
   readonly mode: SessionMode | null;
   readonly phase: Phase | null;
+  readonly branching?: SessionBranching;
 };
 
 /** Result of {@link validateNewSession}. */
@@ -106,6 +110,109 @@ function branchOf(body: Record<string, unknown>, worktrees: unknown, checks: New
   if (check.ok) return check.name;
   fail('branch', check.message);
   return null;
+}
+
+/** The example the D40 branch-name messages show. */
+const EPIC_BRANCH_EXAMPLE = 'feature/PROJ-3010-Platform-tracking';
+const BASE_EXAMPLE = DEFAULT_EPIC_BASE;
+/** The longest epic summary taken (a Jira summary is at most 255 characters). */
+const EPIC_SUMMARY_MAX = 255;
+
+/**
+ * D40: the branching of the worktrees (`docs/worktrees.md` → *Epic/task
+ * branching (D40)*). Read under the `ticket` rule with `worktrees: true` only
+ * (scheduled runs keep `session/{name}`): omitted or `null` = a task without an
+ * epic ({@link TASK_ONLY}); else `epic` (`{ key, summary?, branch? }`: a ticket
+ * key, text, a valid branch name or blank = derived with `epicBranchName`),
+ * `base` (a valid branch name, blank = `dev`), `dropped` (solutions in scope,
+ * never all of them, never a repo folder's one repo) and `bases` (solution in
+ * scope and not dropped → a valid branch name). Failures are on fields
+ * `branching…`.
+ */
+function branchingOf(
+  body: Record<string, unknown>,
+  worktrees: unknown,
+  checks: NewSessionChecks,
+  solutions: readonly string[] | null,
+  fail: (field: string, message: string) => void,
+): SessionBranching | null {
+  if ((checks.worktreeBranch ?? 'ticket') !== 'ticket' || worktrees !== true) return null;
+  const raw = body['branching'];
+  if (raw === undefined || raw === null) return TASK_ONLY;
+  if (!isRecord(raw)) {
+    fail('branching', 'branching must be an object: { epic?, base?, bases?, dropped? }');
+    return null;
+  }
+  const state = { failed: false };
+  const failHere = (field: string, message: string): void => {
+    state.failed = true;
+    fail(field, message);
+  };
+
+  let epic: SessionEpic | null = null;
+  const rawEpic = raw['epic'];
+  if (rawEpic !== undefined && rawEpic !== null) {
+    if (!isRecord(rawEpic)) failHere('branching.epic', 'branching.epic must be { key, summary?, branch? }');
+    else {
+      const key = checkEpicKey(rawEpic['key']);
+      if (!key.ok) failHere('branching.epic.key', key.message);
+      const rawSummary = rawEpic['summary'] ?? '';
+      const summary = typeof rawSummary === 'string' ? rawSummary.trim() : null;
+      if (summary === null || summary.length > EPIC_SUMMARY_MAX) failHere('branching.epic.summary', `the epic summary must be text of at most ${EPIC_SUMMARY_MAX} characters`);
+      const rawBranch = rawEpic['branch'];
+      let branch: string | null = null;
+      if (rawBranch === undefined || rawBranch === null || (typeof rawBranch === 'string' && rawBranch.trim() === '')) {
+        branch = key.ok && summary !== null ? epicBranchName(key.name, summary) : null;
+      } else {
+        const check = checkBranchName(rawBranch, 'epic branch', EPIC_BRANCH_EXAMPLE);
+        if (check.ok) branch = check.name;
+        else failHere('branching.epic.branch', check.message);
+      }
+      if (key.ok && summary !== null && branch !== null) epic = { key: key.name, summary, branch };
+    }
+  }
+
+  let base = DEFAULT_EPIC_BASE;
+  const rawBase = raw['base'];
+  if (rawBase !== undefined && rawBase !== null && !(typeof rawBase === 'string' && rawBase.trim() === '')) {
+    const check = checkBranchName(rawBase, 'epic base branch', BASE_EXAMPLE);
+    if (check.ok) base = check.name;
+    else failHere('branching.base', check.message);
+  }
+  if (epic !== null && epic.branch === base) failHere('branching.epic.branch', `the epic branch cannot be its own base (${base})`);
+
+  const inScope = (solution: string): boolean => solutions === null || solutions.includes(solution);
+  let dropped: string[] = [];
+  const rawDropped = raw['dropped'];
+  if (rawDropped !== undefined && rawDropped !== null) {
+    if (!Array.isArray(rawDropped) || !rawDropped.every((s): s is string => typeof s === 'string')) {
+      failHere('branching.dropped', 'branching.dropped must be a list of solutions in scope');
+    } else {
+      dropped = [...new Set(rawDropped)];
+      const foreign = dropped.filter((s) => !inScope(s));
+      if (checks.folder?.kind === 'repo' && dropped.length > 0) failHere('branching.dropped', `a repo folder's one solution (${checks.folder.repoName}) cannot be dropped`);
+      else if (foreign.length > 0) failHere('branching.dropped', `not a solution in scope: ${foreign.join(', ')}`);
+      else if (solutions !== null && solutions.length > 0 && dropped.length === solutions.length) failHere('branching.dropped', 'every solution in scope is dropped: keep one, or start without solutions');
+    }
+  }
+
+  const bases: Record<string, string> = {};
+  const rawBases = raw['bases'];
+  if (rawBases !== undefined && rawBases !== null) {
+    if (!isRecord(rawBases)) failHere('branching.bases', 'branching.bases must map a solution in scope to a base branch');
+    else {
+      for (const [solution, value] of Object.entries(rawBases)) {
+        if (!inScope(solution) || dropped.includes(solution)) {
+          failHere('branching.bases', `not a solution in scope: ${solution}`);
+          continue;
+        }
+        const check = checkBranchName(value, `base branch of ${solution}`, BASE_EXAMPLE);
+        if (check.ok) bases[solution] = check.name;
+        else failHere('branching.bases', check.message);
+      }
+    }
+  }
+  return state.failed ? null : { epic, base, bases, dropped };
 }
 
 /**
@@ -221,6 +328,7 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
   const worktrees = body['worktrees'];
   if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
   const branch = branchOf(body, worktrees, checks, fail);
+  const branching = branchingOf(body, worktrees, checks, Array.isArray(solutions) && solutions.every((s) => typeof s === 'string') ? (solutions as string[]) : null, fail);
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
   const model = modelOf(body, checks, fail);
@@ -241,6 +349,7 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
       ...(branch !== null ? { branch } : {}),
+      ...(branching !== null ? { branching } : {}),
       ...(model ?? {}),
     },
   };
@@ -280,6 +389,8 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
   } else if (solutions.some((s) => s !== repoName)) {
     fail('solutions', `a repo folder has one solution, ${repoName}`);
   }
+  // D40: the repo is the one solution the branching choices can name.
+  const branching = branchingOf(body, worktrees, checks, [repoName], fail);
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -296,6 +407,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
       ...(branch !== null ? { branch } : {}),
+      ...(branching !== null ? { branching } : {}),
       ...(model ?? {}),
     },
   };
