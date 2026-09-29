@@ -35,3 +35,5 @@ M7.2: `derive/loops.ts` (loops observed in a session's events: `/loop`, CronCrea
 D21: `derive/status-table.ts` (which printed tables are agent status tables: box-drawing in or outside code fences, GFM pipe tables outside them, with an Agent and a Status column; the newest wins; D27: `parseStatusTable` splits one into its header and rows, `reportedStatus` colors its Status cells), documented in `docs/derivations.md` → *Agent overview*; the chat is read by `src/server/sessions/reported-table.ts`.
 
 D31: `model-choice.ts` (the `initialize` reply's models list as Switchboard keeps it, the checks of a model / effort choice, the chat step line; shared by the server and the header's picker), documented in `docs/model-effort.md`.
+
+D39: `own-answer.ts` (an own answer to a question, "Other…": trimmed, 1–2000 characters; shared by the answers route and the question card), documented in `docs/questions.md` → *Own answers (D39)*.

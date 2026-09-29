@@ -17,6 +17,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
+import { type OtherPillCheck, checkOtherPills, sameCopyBesidesOther } from './own-answer.ts';
 
 /**
  * Visual oracle for the Inbox (M3.2, D10): the app (demo seed) against the
@@ -27,6 +28,10 @@ import {
  *    every item, the app on the real code path with nothing waiting (no demo seed).
  * Gate: boxes within ±2 px, copy exact, computed styles equal, plus the advisory
  * pixel diff and side-by-side PNGs (`docs/visual/inbox.md`).
+ * D39 (an addition, checked on its own like D18's Name row): each question's
+ * options end with an **Other…** pill the prototype does not have. The prototype's
+ * parts keep their boxes; a question's text differs only by that pill at its end
+ * (`sameCopyBesidesOther`), and the pill is gated on its own (`own-answer.ts`).
  */
 
 interface PartSpec {
@@ -180,6 +185,8 @@ async function compare(protoPage: Page, appPage: Page, parts: Readonly<Record<st
       const known = KNOWN_COPY[name];
       if (known && p.text === known.prototype && a.text === known.app) {
         copyNote = `${JSON.stringify(a.text)} (prototype ${JSON.stringify(p.text)}: known difference, D13)`;
+      } else if (p.text !== a.text && sameCopyBesidesOther(p.text, a.text)) {
+        copyNote = `${JSON.stringify(p.text)} + "Other…" (D39, checked on its own)`;
       } else {
         if (p.text !== a.text) issues.push(`${state} ${name}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`);
         copyNote = JSON.stringify(a.text);
@@ -275,6 +282,14 @@ test('Inbox matches the prototype: list, cards, detail, question card, system ac
   // 1. Default view.
   const first = await compare(protoPage, appPage, DEFAULT_PARTS, 'default');
   const failures = [...first.failures];
+  // D39: the Other… pill of each question, on its own.
+  const otherPills = await checkOtherPills(
+    protoPage,
+    appPage,
+    'default',
+    { q0Options: [...DETAIL, 3, 1, 2], q1Options: [...DETAIL, 3, 2, 2], q2Options: [...DETAIL, 3, 3, 2] },
+    failures,
+  );
   const sendPath = [...DETAIL, 3, 4, 1];
   const sendOpacity = { prototype: await opacityAt(protoPage, sendPath), app: await opacityAt(appPage, sendPath) };
   if (sendOpacity.prototype !== '0.45' || sendOpacity.app !== '0.45') failures.push(`default send.opacity: prototype ${sendOpacity.prototype} vs app ${sendOpacity.app}`);
@@ -332,6 +347,7 @@ test('Inbox matches the prototype: list, cards, detail, question card, system ac
         ['System item picked (nightly-build-verify)', system.rows],
         ['Inbox zero', zero.rows],
       ],
+      otherPills,
       failures,
       opacity: { default: sendOpacity, partial: partialOpacity },
       diffs: { full: diffFull.percent, main: diffMain.percent, system: diffSystem.percent, empty: diffEmpty.percent },
@@ -347,6 +363,7 @@ test('Inbox matches the prototype: list, cards, detail, question card, system ac
 
 function report(input: {
   sections: Array<[string, string[]]>;
+  otherPills: readonly OtherPillCheck[];
   failures: string[];
   opacity: Record<string, { prototype: string | null; app: string | null }>;
   diffs: { full: number; main: number; system: number; empty: number };
@@ -377,7 +394,13 @@ Every part also compares these computed styles: ${COMPARED_STYLES.join(', ')}.
 
 ${sections}
 
+### D39 · Other… (an addition, checked on its own)
+| Part | Geometry | Prototype | App | Result | Copy (exact) |
+|---|---|---|---|---|---|
+${input.otherPills.map((check) => `| ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`).join('\n')}
+
 ## Known differences (not findings)
+- D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question (\`q1\`, \`q2\`) is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above: after the prototype's options, on their line, one gap after the last option, as high as them, styled like an unpicked option).
 - \`card2Kind\`: the prototype shows "Loop paused" for button-rollout because its one question comes from the mock source "circuit breaker"; a real batch's source is the session's main agent (M0.2), the app shows "Question" and never reads prototype mock data (D13). \`docs/inbox.md\`.
 
 ## Findings

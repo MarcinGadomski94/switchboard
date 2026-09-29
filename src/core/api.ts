@@ -549,8 +549,16 @@ export interface Question {
   readonly options: readonly QuestionOption[];
   readonly multiSelect: boolean;
   readonly state: QuestionState;
+  /** The picked option's index; `null` until answered, and for an own answer (D39). */
   readonly answerIndex: number | null;
   readonly answeredAt: string | null;
+  /**
+   * Additive (D39): the developer's own answer ("Other…"), verbatim as it went to
+   * the CLI (trimmed); `answerIndex` is then `null`. `null` for an option answer
+   * and while unanswered. Optional here so older payloads and fixtures still
+   * type-check; the server always sends it.
+   */
+  readonly answerText?: string | null;
   /**
    * Additive (D24): where the batch was answered when that was not Switchboard:
    * `claude.ai` when the phone (Remote Control) answered first and the CLI withdrew
@@ -625,9 +633,20 @@ export interface PermissionRequest {
   readonly agent: string | null;
 }
 
-/** `POST /api/questions/batch/{batchId}/answers` body (contract). */
+/**
+ * One answer of {@link AnswerBatch}: exactly one of `answerIndex` (a picked option)
+ * and, additive (D39), `text` (the developer's own words, 1–2000 characters once
+ * trimmed; `src/core/own-answer.ts`).
+ */
+export interface BatchAnswer {
+  readonly questionId: string;
+  readonly answerIndex?: number;
+  readonly text?: string;
+}
+
+/** `POST /api/questions/batch/{batchId}/answers` body (contract; D39 adds `text`). */
 export interface AnswerBatch {
-  readonly answers: ReadonlyArray<{ readonly questionId: string; readonly answerIndex: number }>;
+  readonly answers: readonly BatchAnswer[];
 }
 
 /** A git worktree (data model). Provisional: M2.2. */

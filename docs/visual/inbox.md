@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.61%**, main area (256,0 1184×900) **0.03%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **0.69%**, main area (256,0 1184×900) **0.12%**, main area with the system item picked **0.03%**, main area empty **0.00%**.
 
 Side by side (prototype left, app right): `inbox-side-by-side.png`, `inbox-main-side-by-side.png`, `inbox-system-side-by-side.png`, `inbox-empty-side-by-side.png`.
 
@@ -79,8 +79,8 @@ Every part also compares these computed styles: color, background-color, font-fa
 | q0Option0 | box | 653,262.4 174×31 | 653,262.4 174×31 | ok | "Wrap to 2 rows (as Figma)" |
 | q0Option1 | box | 833,262.4 118.2×31 | 833,262.4 118.2×31 | ok | "Horizontal scroll" |
 | q0Option2 | box | 957.3,262.4 100.7×31 | 957.3,262.4 100.7×31 | ok | "Ask designer" |
-| q1 | box | 653,305.4 730×90.3 | 653,305.4 730×90.3 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?”Use default sizeAdd compact variantStop here" |
-| q2 | box | 653,407.7 730×90.3 | 653,407.7 730×90.3 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" |
+| q1 | box | 653,305.4 730×90.3 | 653,305.4 730×90.3 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Components.Maui. Add the variant, or use the default size at 360?”Use default sizeAdd compact variantStop here" + "Other…" (D39, checked on its own) |
+| q2 | box | 653,407.7 730×90.3 | 653,407.7 730×90.3 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile as required. The Confluence page is silent. Which is correct?”NullableRequiredCheck Confluence first" + "Other…" (D39, checked on its own) |
 | cardFoot | box | 653,509.9 730×31 | 653,509.9 730×31 | ok |  |
 | cardStatus | box | 653,517.4 88.9×16 | 653,517.4 88.9×16 | ok | "0 of 3 answered" |
 | send | box | 1248,509.9 135×31 | 1248,509.9 135×31 | ok | "Send all answers" |
@@ -121,7 +121,33 @@ Every part also compares these computed styles: color, background-color, font-fa
 | zeroTitle | box | 784.1,427 467.8×23 | 784.1,427 467.8×23 | ok | "Inbox zero" |
 | zeroHint | box | 784.1,456 467.8×17 | 784.1,456 467.8×17 | ok | "New questions, approvals and failed runs show up here with a toast and sound." |
 
+### D39 · Other… (an addition, checked on its own)
+| Part | Geometry | Prototype | App | Result | Copy (exact) |
+|---|---|---|---|---|---|
+| q0Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| q0Options · D39 copy | addition | — | "Other…" | ok | |
+| q0Options · D39 on the options' line | addition | — | 1063.9,262.4 64.8×31 · first option 653,262.4 174×31 | ok | |
+| q0Options · D39 one row gap after the last option | addition | — | x 1063.9 · last option ends 1057.9 + gap 6 | ok | |
+| q0Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
+| q0Options · D39 inside the row | addition | — | ends 1128.7 · row ends 1383 | ok | |
+| q0Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| q1Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| q1Options · D39 copy | addition | — | "Other…" | ok | |
+| q1Options · D39 on the options' line | addition | — | 1013.4,364.7 64.8×31 · first option 653,364.7 116.9×31 | ok | |
+| q1Options · D39 one row gap after the last option | addition | — | x 1013.4 · last option ends 1007.4 + gap 6 | ok | |
+| q1Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
+| q1Options · D39 inside the row | addition | — | ends 1078.2 · row ends 1383 | ok | |
+| q1Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| q2Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| q2Options · D39 copy | addition | — | "Other…" | ok | |
+| q2Options · D39 on the options' line | addition | — | 978.7,466.9 64.8×31 · first option 653,466.9 73.2×31 | ok | |
+| q2Options · D39 one row gap after the last option | addition | — | x 978.7 · last option ends 972.7 + gap 6 | ok | |
+| q2Options · D39 as high as the options | addition | — | 31 · option 31 | ok | |
+| q2Options · D39 inside the row | addition | — | ends 1043.5 · row ends 1383 | ok | |
+| q2Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+
 ## Known differences (not findings)
+- D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question (`q1`, `q2`) is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above: after the prototype's options, on their line, one gap after the last option, as high as them, styled like an unpicked option).
 - `card2Kind`: the prototype shows "Loop paused" for button-rollout because its one question comes from the mock source "circuit breaker"; a real batch's source is the session's main agent (M0.2), the app shows "Question" and never reads prototype mock data (D13). `docs/inbox.md`.
 
 ## Findings

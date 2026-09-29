@@ -304,6 +304,23 @@ Developer ruling D36 (`docs/decisions.md` → *Subagent chats*): a subagent's ow
 Agent { …, "toolUseId": "toolu_01E5QUrP9sKnU8eg6FiNuCbb" | null }
 ```
 
+## Own answers (D39, 2026-09-29, additive)
+Developer ruling D39 (`docs/decisions.md` → *Own answers*): a question can be answered with the developer's own words ("Other…"), as Claude Code's own "Other" does: the CLI receives the typed text as the answer string. Additive; the row above keeps its meaning for option answers. Details: `docs/questions.md` → *Own answers (D39)*. No migration: the stored answer label holds the text.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/questions/batch/{batchId}/answers | `{ answers: [{ questionId, answerIndex } \| { questionId, text }] }` | 204 · 400 `invalid` as before (not every question has exactly one entry, an unknown question, an `answerIndex` that is not one of its options) · 422 `invalid` `{ message, errors: [{ questionId, field: "text" \| "answer", message }] }` (every refused entry: `answer` = both or neither of `answerIndex` / `text` given; `text` = not text of 1–2000 characters once trimmed) · the other answers as before |
+
+- **An answer entry** carries exactly one of `answerIndex` (an option) and `text` (the developer's own words); a `null` value counts as not given. `text` is trimmed; inner line breaks stay.
+- **What the CLI gets:** `updatedInput.answers[<question text>]` = the trimmed text, verbatim, where an option answer has the option's label. A `multiSelect` question still takes one answer (M3.1), so its own answer is its whole answer string. Two questions with the same text keep the existing join (their distinct answers, `", "`). A stale batch's answers message lists the text in place of the label.
+- **Question** gains `answerText`: the own answer as sent (trimmed), with `answerIndex` `null`; `null` for an option answer and while unanswered. Optional in `src/core/api.ts` (like D24's `answeredOn`) so older fixtures type-check; the server always sends it (`/hub` `questionBatch`, `GET /api/inbox`, `SessionDetail.questions`).
+
+```json
+AnswerBatch   { "answers": [{ "questionId": "q1", "answerIndex": 2 }, { "questionId": "q2", "text": "Medium, with rounded corners" }] }
+AnswerRefusal { "error": "invalid", "message": "question q2: an own answer must be text of 1–2000 characters", "errors": [{ "questionId": "q2", "field": "text", "message": "question q2: an own answer must be text of 1–2000 characters" }] }
+Question      { …, "answerIndex": null, "answerText": "Medium, with rounded corners" | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

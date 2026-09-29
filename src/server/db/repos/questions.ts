@@ -52,8 +52,12 @@ export interface QuestionRecord {
   readonly header: string | null;
   readonly options: QuestionOption[];
   readonly multiSelect: boolean;
+  /** The chosen option's index; `null` until answered and for an own answer (D39). */
   readonly answerIndex: number | null;
-  /** The chosen option's label, as written into `answers`. */
+  /**
+   * The answer as written into `answers`: the chosen option's label, or (D39, with
+   * `answerIndex` `null`) the developer's own words, trimmed ({@link ownAnswerOf}).
+   */
   readonly answerLabel: string | null;
   readonly answeredAt: string | null;
 }
@@ -77,10 +81,21 @@ export interface QuestionCreate {
   readonly multiSelect?: boolean;
 }
 
-/** One answer for {@link QuestionRepository.answer}. */
-export interface QuestionAnswer {
-  readonly questionId: string;
-  readonly answerIndex: number;
+/**
+ * One answer for {@link QuestionRepository.answer}: an option index, or (D39) the
+ * developer's own words (`text`, already checked and trimmed by the caller).
+ */
+export type QuestionAnswer =
+  | { readonly questionId: string; readonly answerIndex: number; readonly text?: undefined }
+  | { readonly questionId: string; readonly text: string; readonly answerIndex?: undefined };
+
+/**
+ * D39: a stored question's own answer (its `answer_label` with no `answer_index`),
+ * or `null` for an option answer and while unanswered. No column of its own: the
+ * label column already holds what went into `answers`.
+ */
+export function ownAnswerOf(record: Pick<QuestionRecord, 'answerIndex' | 'answerLabel'>): string | null {
+  return record.answerIndex === null ? record.answerLabel : null;
 }
 
 /** A batch with its questions in order. */
@@ -202,11 +217,13 @@ export class QuestionRepository {
   }
 
   /**
-   * Records answers (index + the option's label). When every question of the batch
-   * has an answer, the batch gets `answeredAt`, and an `open` batch becomes
-   * `answered`; a `stale` batch stays `stale` (its answers go out as a user message).
+   * Records answers: index + the option's label, or (D39) an own answer as the
+   * label with no index. When every question of the batch has an answer, the batch
+   * gets `answeredAt`, and an `open` batch becomes `answered`; a `stale` batch stays
+   * `stale` (its answers go out as a user message).
    * @throws {StoreError} `not-found` for an unknown batch; `conflict` if the batch is
-   * already answered; `invalid` for a question of another batch or an index out of range.
+   * already answered; `invalid` for a question of another batch, an index out of
+   * range or an empty own answer.
    */
   async answer(batchId: string, answers: readonly QuestionAnswer[]): Promise<QuestionBatchWithQuestions> {
     return transaction(this.#ctx.db, () => {
@@ -215,15 +232,22 @@ export class QuestionRepository {
       if (batch.answeredAt !== null) throw new StoreError('conflict', `question batch ${batchId} is already answered`);
       const ts = this.#ctx.now();
       const byId = new Map(this.#questionsOf(batchId).map((question) => [question.id, question]));
-      for (const { questionId, answerIndex } of answers) {
+      for (const answer of answers) {
+        const { questionId } = answer;
         const question = byId.get(questionId);
         if (!question) throw new StoreError('invalid', `question ${questionId} is not in batch ${batchId}`);
+        if (answer.text !== undefined) {
+          if (typeof answer.text !== 'string' || answer.text.trim() === '') throw new StoreError('invalid', `the own answer to question ${questionId} is empty`);
+          this.#questions.update(questionId, { answerIndex: null, answerLabel: answer.text, answeredAt: ts });
+          continue;
+        }
+        const { answerIndex } = answer;
         const option = Number.isInteger(answerIndex) ? question.options[answerIndex] : undefined;
         if (!option) throw new StoreError('invalid', `answer index ${answerIndex} is out of range for question ${questionId}`);
         this.#questions.update(questionId, { answerIndex, answerLabel: option.label, answeredAt: ts });
       }
       const questions = this.#questionsOf(batchId);
-      const complete = questions.every((question) => question.answerIndex !== null);
+      const complete = questions.every((question) => question.answeredAt !== null);
       const updated = complete
         ? this.#batches.update(batchId, { answeredAt: ts, state: batch.state === 'open' ? 'answered' : batch.state })
         : batch;

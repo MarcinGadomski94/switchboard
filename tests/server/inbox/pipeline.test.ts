@@ -47,7 +47,7 @@ const PORT = 4910; // inject() opens no socket; the port feeds the Host check on
 const HOST = `127.0.0.1:${PORT}`;
 
 /** The exact keys of the contract's Question (src/core/api.ts). */
-const QUESTION_KEYS = ['answerIndex', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
+const QUESTION_KEYS = ['answerIndex', 'answerText', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
 
 interface Rig {
   readonly w: SupervisorWorld;
@@ -329,6 +329,111 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
   });
 });
 
+describe('D39 · own answers ("Other…": the typed text is the answer string)', () => {
+  it('ask-2q: one option + one own answer → the control_response carries the label and the trimmed text verbatim; 422 cases write nothing; the text is persisted', async () => {
+    const r = await setup('ask-2q');
+    const session = await startSession(r, 'Ask me two questions.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    const [q0, q1] = questions as [QuestionRecord, QuestionRecord];
+    const url = `/api/questions/batch/${batch.id}/answers`;
+    const pid = await pidOf(r, session.id);
+
+    // 422 on the question: both or neither, an empty / too long / non-string text. Nothing reaches the process.
+    const blue = { questionId: q0.id, answerIndex: 2 };
+    const refused: Array<[string, unknown, string]> = [
+      ['both', { answers: [blue, { questionId: q1.id, answerIndex: 0, text: 'Medium' }] }, 'answer'],
+      ['neither', { answers: [blue, { questionId: q1.id }] }, 'answer'],
+      ['both null', { answers: [blue, { questionId: q1.id, answerIndex: null, text: null }] }, 'answer'],
+      ['blank text', { answers: [blue, { questionId: q1.id, text: ' \n\t ' }] }, 'text'],
+      ['empty text', { answers: [blue, { questionId: q1.id, text: '' }] }, 'text'],
+      ['2001 characters', { answers: [blue, { questionId: q1.id, text: 'x'.repeat(2001) }] }, 'text'],
+      ['not a string', { answers: [blue, { questionId: q1.id, text: 42 }] }, 'text'],
+    ];
+    for (const [what, body, field] of refused) {
+      const response = await call(r, 'POST', url, body);
+      expect(response.statusCode, what).toBe(422);
+      const json = response.json() as { error: string; message: string; errors: Array<{ questionId: string; field: string; message: string }> };
+      expect(json.error, what).toBe('invalid');
+      expect(json.errors, what).toEqual([{ questionId: q1.id, field, message: expect.stringContaining(q1.id) }]);
+      expect(json.message, what).toBe(json.errors[0]?.message);
+    }
+    // Two refused entries: both are named.
+    const two = await call(r, 'POST', url, { answers: [{ questionId: q0.id, text: '' }, { questionId: q1.id }] });
+    expect(two.statusCode).toBe(422);
+    expect((two.json() as { errors: Array<{ questionId: string; field: string }> }).errors.map((e) => [e.questionId, e.field])).toEqual([
+      [q0.id, 'text'],
+      [q1.id, 'answer'],
+    ]);
+    // Still 400 (the contract's rule) when a question has no entry at all, even next to a refused text.
+    expect((await call(r, 'POST', url, { answers: [{ questionId: q1.id, text: '' }] })).statusCode).toBe(400);
+    expect((await rawStdin(r.w.logFile, pid)).filter((l) => l.includes('control_response'))).toEqual([]);
+    expect(await r.w.store.questions.getBatch(batch.id)).toMatchObject({ state: 'open', answeredAt: null });
+
+    // Blue + an own answer (trimmed, inner line break kept) → 204 and one control_response.
+    const typed = 'Medium, with rounded corners\nand a "soft" shadow';
+    const answered = await call(r, 'POST', url, { answers: [blue, { questionId: q1.id, text: `  ${typed}\n ` }] });
+    expect(answered.statusCode).toBe(204);
+    const sent = await sentResponses(r.w.logFile, pid);
+    expect(sent).toHaveLength(1);
+    const recorded = await recordedResponse('ask-2q');
+    const expected = JSON.parse(recorded.line.replace(recorded.requestId, batch.id)) as { response: { response: { updatedInput: { answers: Record<string, string> } } } };
+    expected.response.response.updatedInput.answers = { 'Which color should the button be?': 'Blue', 'Which size should it be?': typed };
+    expect(JSON.parse(sent[0] as string)).toEqual(expected);
+    // Same key order and envelope as the recording: only the answer values differ.
+    expect(sent[0]).toBe(JSON.stringify(expected));
+
+    // The fake built its AskUserQuestion result from it; the session goes on.
+    await waitForStatus(r.w.store, session.id, ['done']);
+    const ask = (await r.w.store.events.list(session.id)).find((e) => (e.payload as ToolPayload).name === 'AskUserQuestion');
+    expect((ask?.payload as ToolPayload).result).toContain(`"Which size should it be?"="${typed}"`);
+
+    // Persisted: index null, the text as the label; the API's Question carries answerText.
+    const after = await r.w.store.questions.getBatchWithQuestions(batch.id);
+    expect(after?.batch).toMatchObject({ state: 'answered', deliveredVia: 'control_response' });
+    expect(after?.questions.map((q) => [q.answerIndex, q.answerLabel])).toEqual([
+      [2, 'Blue'],
+      [null, typed],
+    ]);
+    const detail = (await call(r, 'GET', `/api/sessions/${session.id}`)).json() as { questions: Question[] };
+    expect(detail.questions.map((q) => [q.state, q.answerIndex, q.answerText])).toEqual([
+      ['answered', 2, null],
+      ['answered', null, typed],
+    ]);
+    expect(hub(r, 'inboxChanged').at(-1)).toEqual({ count: 0 });
+  });
+
+  it('ask-multiselect: an own answer is the one pick of a multi-select question and goes out as its answer string', async () => {
+    const r = await setup('ask-multiselect');
+    const session = await startSession(r, 'Ask me a multi-select question.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    expect(questions[0]?.multiSelect).toBe(true);
+    const typed = 'Only the changelog';
+    const response = await call(r, 'POST', `/api/questions/batch/${batch.id}/answers`, { answers: [{ questionId: questions[0]?.id, text: typed }] });
+    expect(response.statusCode).toBe(204);
+    const recorded = await recordedResponse('ask-multiselect');
+    const sent = await sentResponses(r.w.logFile, await pidOf(r, session.id));
+    // The recording chose "Tests, Docs"; the one own answer is sent in its place, verbatim.
+    expect(sent).toEqual([recorded.line.replace(recorded.requestId, batch.id).replace('"Tests, Docs"', JSON.stringify(typed))]);
+    await waitForStatus(r.w.store, session.id, ['done']);
+  });
+
+  it('ask-interrupt: a stale batch answered with own words sends them verbatim in the answers message', async () => {
+    const r = await setup('ask-interrupt');
+    const session = await startSession(r, 'Ask me one question.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    await r.w.supervisor.pause(session.id);
+    const typed = 'A preview environment first, then Staging';
+    const response = await call(r, 'POST', `/api/questions/batch/${batch.id}/answers`, { answers: [{ questionId: questions[0]?.id, text: typed }] });
+    expect(response.statusCode).toBe(204);
+    const pending = await r.w.store.pendingMessages.pending(session.id);
+    expect(pending.map((m) => m.text)).toEqual([`Answers to your earlier questions:\n"Which environment should I target?" = "${typed}"`]);
+    expect(await r.w.store.questions.getBatch(batch.id)).toMatchObject({ state: 'stale', deliveredVia: null });
+  });
+});
+
 describe('M3.1 · permission items (D6: Allow once / Deny)', () => {
   it('perm-allow: an Inbox permission item with tool + input verbatim; allow-once writes the recorded reply (input unchanged, no updatedPermissions)', async () => {
     const r = await setup('perm-allow');
@@ -484,6 +589,52 @@ describe('M3.1 · pure rules', () => {
     }
   });
 
+  it('D39: validateAnswers takes one own answer text per question instead of an index: trimmed, 1–2000 characters; both / neither / out of bounds → invalid-answer (422) naming each question', () => {
+    const questions = [q('a', 'A?', ['x', 'y'], 0), q('b', 'B?', ['z'], 1)];
+    const max = 'y'.repeat(2000);
+    expect(validateAnswers({ answers: [{ questionId: 'a', text: `  ${max}  ` }, { questionId: 'b', answerIndex: 0, text: null }] }, questions)).toEqual([
+      { questionId: 'a', text: max },
+      { questionId: 'b', answerIndex: 0 },
+    ]);
+    expect(validateAnswers({ answers: [{ questionId: 'a', answerIndex: null, text: 'Mine\nand more' }, { questionId: 'b', text: 'z' }] }, questions)).toEqual([
+      { questionId: 'a', text: 'Mine\nand more' },
+      { questionId: 'b', text: 'z' },
+    ]);
+    const refusal = (body: unknown): InboxError => {
+      try {
+        validateAnswers(body, questions);
+      } catch (error) {
+        if (error instanceof InboxError) return error;
+      }
+      throw new Error('not refused');
+    };
+    const cases: Array<[unknown, Array<[string, string]>]> = [
+      [{ answers: [{ questionId: 'a', answerIndex: 0, text: 'x' }, { questionId: 'b', answerIndex: 0 }] }, [['a', 'answer']]],
+      [{ answers: [{ questionId: 'a' }, { questionId: 'b', answerIndex: 0 }] }, [['a', 'answer']]],
+      [{ answers: [{ questionId: 'a', text: '   ' }, { questionId: 'b', text: 'y'.repeat(2001) }] }, [['a', 'text'], ['b', 'text']]],
+      [{ answers: [{ questionId: 'a', text: ['x'] }, { questionId: 'b', answerIndex: 0 }] }, [['a', 'text']]],
+    ];
+    for (const [body, want] of cases) {
+      const error = refusal(body);
+      expect(error.code).toBe('invalid-answer');
+      expect(error.errors.map((e) => [e.questionId, e.field])).toEqual(want);
+      expect(error.errors.every((e) => e.message.startsWith(`question ${e.questionId}`))).toBe(true);
+    }
+    // The contract's 400s stay first: an unknown question, a bad index, a question without an entry.
+    expect(refusal({ answers: [{ questionId: 'nope', text: 'x' }] }).code).toBe('invalid');
+    expect(refusal({ answers: [{ questionId: 'a', text: '' }, { questionId: 'b', answerIndex: 5 }] }).code).toBe('invalid');
+    expect(refusal({ answers: [{ questionId: 'a', text: '' }] }).code).toBe('invalid');
+  });
+
+  it('D39: answersByText writes an own answer verbatim; with a duplicate question text it joins the labels in the CLI format', () => {
+    const questions = [q('a', 'Same?', ['x', 'y'], 0), q('b', 'Other?', ['z'], 1), q('c', 'Same?', ['x', 'y'], 2)];
+    expect(answersByText(questions, [{ questionId: 'a', answerIndex: 1 }, { questionId: 'b', text: 'Mine, "quoted"\nline 2' }, { questionId: 'c', text: 'typed' }])).toEqual({
+      'Same?': 'y, typed',
+      'Other?': 'Mine, "quoted"\nline 2',
+    });
+    expect(answersByText(questions, [{ questionId: 'a', text: 'x' }, { questionId: 'b', answerIndex: 0 }, { questionId: 'c', answerIndex: 0 }])).toEqual({ 'Same?': 'x', 'Other?': 'z' });
+  });
+
   it('answersByText keys by question text in order; duplicate texts join their labels like the CLI', () => {
     const questions = [q('a', 'Same?', ['x', 'y'], 0), q('b', 'Other?', ['z'], 1), q('c', 'Same?', ['x', 'y'], 2)];
     expect(answersByText(questions, [{ questionId: 'a', answerIndex: 1 }, { questionId: 'b', answerIndex: 0 }, { questionId: 'c', answerIndex: 0 }])).toEqual({ 'Same?': 'y, x', 'Other?': 'z' });
@@ -493,5 +644,7 @@ describe('M3.1 · pure rules', () => {
   it('staleAnswersText lists the questions and labels verbatim', () => {
     const questions = [{ ...q('b', 'Second "quoted"?', ['z'], 1), answerLabel: 'z' }, { ...q('a', 'First?', ['x'], 0), answerLabel: 'x' }];
     expect(staleAnswersText(questions)).toBe('Answers to your earlier questions:\n"First?" = "x"\n"Second "quoted"?" = "z"');
+    // D39: an own answer (no index, the text as the label) is listed verbatim too.
+    expect(staleAnswersText([{ ...q('a', 'First?', ['x'], 0), answerLabel: 'My own\nwords' }])).toBe('Answers to your earlier questions:\n"First?" = "My own\nwords"');
   });
 });

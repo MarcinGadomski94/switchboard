@@ -1,7 +1,7 @@
 import type { BranchRef, InboxAction, InboxItem, NewSessionPrefill, Question } from '../../core/api.ts';
 import { toolLabel } from '../../core/derive/event-kind.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
-import type { QuestionBatchRecord, QuestionRecord } from '../db/repos/questions.ts';
+import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../db/repos/questions.ts';
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
 import type { Store } from '../db/store.ts';
 
@@ -32,6 +32,8 @@ export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): 
     state: batch.state,
     answerIndex: record.answerIndex,
     answeredAt: record.answeredAt,
+    // D39: the developer's own answer ("Other…"), verbatim.
+    answerText: ownAnswerOf(record),
     // D24: answered on the phone (Remote Control) before Switchboard answered.
     answeredOn: batch.answeredOn,
     // D33: closed without answers (its session was closed).

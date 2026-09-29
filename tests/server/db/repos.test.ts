@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ownAnswerOf } from '../../../src/server/db/repos/questions.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { StoreError } from '../../../src/server/db/table.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -364,6 +365,44 @@ describe('questions', () => {
     await expect(store.questions.answer('req-ask', [{ questionId: q0!.id, answerIndex: 0 }])).rejects.toMatchObject({ code: 'conflict' });
     const delivered = await store.questions.markDelivered('req-ask', 'control_response');
     expect(delivered).toMatchObject({ deliveredVia: 'control_response', deliveredAt: t2 });
+  });
+
+  it('D39: an own answer is stored as the label with no index, completes the batch like an option and survives a reopen', async () => {
+    const s = await session();
+    const { questions } = await batch(s.id);
+    const [q0, q1] = questions;
+    const text = 'Neither: wrap on phones,\nscroll from 768 up';
+    const t1 = tick();
+    const partial = await store.questions.answer('req-ask', [{ questionId: q0!.id, text }]);
+    expect(partial.batch).toMatchObject({ state: 'open', answeredAt: null });
+    expect(partial.questions[0]).toMatchObject({ answerIndex: null, answerLabel: text, answeredAt: t1 });
+    expect(ownAnswerOf(partial.questions[0]!)).toBe(text);
+    expect(ownAnswerOf(partial.questions[1]!)).toBeNull();
+
+    const t2 = tick();
+    const done = await store.questions.answer('req-ask', [{ questionId: q1!.id, answerIndex: 0 }]);
+    expect(done.batch).toMatchObject({ state: 'answered', answeredAt: t2 });
+    expect(done.questions.map((q) => [q.answerIndex, q.answerLabel, ownAnswerOf(q)])).toEqual([
+      [null, text, text],
+      [0, 'Default', null],
+    ]);
+
+    // Persisted: a fresh store on the same file reads the same answers.
+    await store.close();
+    store = await openTempStore(tmp, { now: () => clock });
+    const reread = await store.questions.questionsOf('req-ask');
+    expect(reread.map((q) => [q.answerIndex, q.answerLabel, q.answeredAt])).toEqual([
+      [null, text, t1],
+      [0, 'Default', t2],
+    ]);
+    expect(await store.questions.getBatch('req-ask')).toMatchObject({ state: 'answered', answeredAt: t2 });
+  });
+
+  it('D39: an empty own answer is refused and nothing is written', async () => {
+    const s = await session();
+    const { questions } = await batch(s.id);
+    await expect(store.questions.answer('req-ask', [{ questionId: questions[0]!.id, text: '  ' }])).rejects.toMatchObject({ code: 'invalid' });
+    expect((await store.questions.questionsOf('req-ask')).every((q) => q.answeredAt === null && q.answerLabel === null)).toBe(true);
   });
 
   it('answer refuses unknown batches, foreign questions and out-of-range indexes', async () => {
