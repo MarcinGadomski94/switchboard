@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { realpath } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
+import path from 'node:path';
+import { type ContextState, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
+import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
@@ -358,6 +361,8 @@ export class SessionSupervisor {
   readonly #command: readonly string[];
   readonly #extraArgs: readonly string[];
   readonly #env: NodeJS.ProcessEnv;
+  /** D49: sessions whose meter is being read from their transcript ({@link backfillContext}). */
+  readonly #backfilling = new Set<string>();
   readonly #timeouts: StopTimeouts;
   readonly #handler: ControlRequestHandler;
   readonly #onError: (error: unknown) => void;
@@ -1448,7 +1453,7 @@ export class SessionSupervisor {
     const cwd = session.cwd;
     if (!cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
     const permissionMode = DEFAULT_PERMISSION_MODE;
-    const prepared =
+    let prepared =
       (await this.#store.sessions.update(session.id, {
         cwd,
         requestedPermissionMode: permissionMode,
@@ -1457,6 +1462,12 @@ export class SessionSupervisor {
         // D24: unknown (not available) until this process's `initialize` answers.
         remoteAvailable: false,
       })) ?? session;
+    // D49 ruling D49-autocompact-mark: the auto-compact settings this process runs with (env + settings files), on the session's meter.
+    const autoCompact = autoCompactConfig(childEnv(this.#env), await readClaudeSettings(claudeConfigDir(this.#env), cwd));
+    // D49-backfill: a session from before D49 starts from its transcript's meter (read once).
+    const stored = prepared.context === null ? await this.#transcriptContext(prepared.claudeSessionId) : readContextState(prepared.context);
+    const withConfig = reduceContext(stored, { kind: 'config', autoCompact });
+    if (withConfig !== stored || prepared.context === null) prepared = (await this.#store.sessions.update(session.id, { context: withConfig })) ?? prepared;
     const mainAgentId = await this.#mainAgentId(prepared);
     const holder: { live?: Live } = {};
     const activity = new LatestThrottle<SessionActivity | null>({
@@ -1789,6 +1800,42 @@ export class SessionSupervisor {
     }
   }
 
+  /**
+   * D49 ruling D49-backfill: a session with no stored meter (from before D49)
+   * reads it once from its transcript (the main chain through the compaction
+   * boundary, `contextFromTranscript`), in the background of its first detail
+   * request, then publishes `sessionUpdated`. The result is stored even when the
+   * transcript is missing, unreadable or has no reading (the empty meter:
+   * `Context —`), so it is never read again. Skipped for a session Switchboard never
+   * ran a process for (the demo seed) and for a live one (its recorder fills it).
+   */
+  async backfillContext(sessionId: string): Promise<void> {
+    if (this.#backfilling.has(sessionId)) return;
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || record.context !== null || record.remoteAvailable === null || this.#live.has(sessionId)) return;
+    this.#backfilling.add(sessionId);
+    try {
+      const state = await this.#transcriptContext(record.claudeSessionId);
+      const again = await this.#store.sessions.get(sessionId);
+      if (!again || again.context !== null || this.#live.has(sessionId)) return;
+      await this.#store.sessions.update(sessionId, { context: state });
+      await this.#emitSession(sessionId);
+    } finally {
+      this.#backfilling.delete(sessionId);
+    }
+  }
+
+  /** D49-backfill: the meter from a session's transcript; the empty meter when it is missing or unreadable. */
+  async #transcriptContext(claudeSessionId: string): Promise<ContextState> {
+    try {
+      const file = await findTranscriptFile(claudeConfigDir(this.#env), claudeSessionId);
+      if (file) return contextFromTranscript(EMPTY_CONTEXT, newestChain(parseTranscript(await readFile(file, 'utf8'))));
+    } catch {
+      // Unreadable: the empty meter all the same (read once).
+    }
+    return EMPTY_CONTEXT;
+  }
+
   async #emitSession(sessionId: string): Promise<void> {
     const listeners = this.#listeners.sessionUpdated;
     if (listeners.size === 0 || this.#starting.has(sessionId)) return;
@@ -1808,6 +1855,25 @@ export class SessionSupervisor {
 /** D25: what a `--teleport` process said before `init`: its stderr, else its non-JSON stdout lines and error results (verbatim, trimmed). */
 function teleportOutput(stderr: string, output: readonly string[]): string {
   return stderr.trim() || output.join('\n').trim();
+}
+
+/**
+ * D49 ruling D49-autocompact-mark: the settings files the CLI reads for a process in
+ * `cwd`, lowest precedence first: user (`<configDir>/settings.json`), project
+ * (`<cwd>/.claude/settings.json`), local (`<cwd>/.claude/settings.local.json`).
+ * Missing or unreadable files are left out (managed policy settings are not read).
+ */
+async function readClaudeSettings(configDir: string, cwd: string): Promise<unknown[]> {
+  const files = [path.join(configDir, 'settings.json'), path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')];
+  const out: unknown[] = [];
+  for (const file of files) {
+    try {
+      out.push(JSON.parse(await readFile(file, 'utf8')) as unknown);
+    } catch {
+      // Not there or not JSON: the CLI's defaults for what it would have said.
+    }
+  }
+  return out;
 }
 
 /** How a process ended, in words (when it printed nothing). */

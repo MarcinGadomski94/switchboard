@@ -114,6 +114,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   app.get<{ Params: IdParams }>('/api/sessions/:id', async (request, reply): Promise<SessionDetail | FastifyReply> => {
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
+    // D49 ruling D49-backfill: a session from before D49 reads its meter from its transcript once, in the background.
+    if (record.context === null) void supervisor.backfillContext(record.id).catch((error: unknown) => request.log.error(error));
     return toSessionDetail(store, providers, record, supervisor.activity(record.id));
   });
 

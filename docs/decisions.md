@@ -391,6 +391,13 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Unknown:** an empty neutral bar, `Context —`.
   - Details: `docs/chat.md` → *Context bar*; choices where the ruling is silent: `.loop/questions.md` → *D49 · Context window meter*.
 
+## Rulings on D49 (added 2026-09-29)
+- **D49-backfill: yes.** A session with no stored meter (from before D49) reads its context once from its transcript, reusing the transcript replay (the main chain through the compaction boundary). This happens in the background of its first detail request (`GET /api/sessions/{id}`), which then publishes `sessionUpdated`, or at its next spawn, whichever comes first. The result is stored, so it is never read on every GET. A missing or unreadable transcript stores the empty meter (`Context —`).
+- **D49-autocompact-mark: yes.** A small tick on the track where the CLI will auto-compact, and the tooltip adds "Auto-compact at N%".
+  - The threshold is exactly the CLI's (2.1.284 `kK` + `_Q`): `window − min(maxOutputTokens, 20 000) − 13 000`, lowered by `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, with the window clamped by `CLAUDE_CODE_AUTO_COMPACT_WINDOW`.
+  - There is no tick (the tooltip says "Auto-compact off") when `autoCompactEnabled` is false or `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT` is set. Those are read from the process's env and its user / project / local settings files at each spawn.
+  - The tick sits at `threshold / window` on the bar's own scale; see `.loop/questions.md` → *D49* for how the CLI's count (which adds the last reply's output tokens) relates to the displayed percentage.
+
 ## Stop the current turn (added 2026-09-29)
 - **D50 Stop the current turn.** Developer request, 2026-09-29: "I should be able to stop the current message from being processed (like Ctrl+C in Claude Code terminal mode)."
   - **Stop = interrupt the running turn only (ruling).** The process stays alive and the session becomes idle, ready for the next message; unlike Pause (D7), which interrupts and then ends the process. It uses the stdin `control_request` `interrupt`, with `cancel_queued: true` (read in the CLI 2.1.284 binary: the capability `interrupt_cancel_queued_v1`; the queued main-thread commands are removed with the abort and never run).
