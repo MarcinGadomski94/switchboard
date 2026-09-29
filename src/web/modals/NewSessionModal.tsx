@@ -1,5 +1,6 @@
 import { type MouseEvent, useEffect, useId, useState } from 'react';
-import type { HistoryItem, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import type { HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import { DEFAULT_MODEL_CHOICE } from '../../core/model-choice.ts';
 import { formatHistoryDate } from '../../core/history.ts';
 import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
 import { ApiError, api } from '../api/client.ts';
@@ -11,11 +12,15 @@ import { defaultFolder, folderById, folderCheckLine } from '../folders/folders.t
 import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWarningText, terminalConversations } from '../views/history-move.ts';
+import { ModelChoicePicker } from '../views/session/ModelPicker.tsx';
 import { useConversationMoves } from '../views/useConversationMoves.ts';
 import {
   COORDINATION_OPTIONS,
   type FormFolder,
+  MODEL_ROW_DESCRIPTION,
+  MODEL_ROW_TITLE,
   MODE_OPTIONS,
+  NO_MODEL_SETTINGS,
   type NewSessionForm,
   PHASE_OPTIONS,
   type PillOption,
@@ -28,7 +33,12 @@ import {
   folderChoices,
   formBranch,
   formFromPrefill,
+  formModel,
+  formModelOptions,
+  formModelPicker,
   isRepoFolder,
+  pickFormEffort,
+  pickFormModel,
   resolveFormFolder,
   sanitizeName,
   showsBranch,
@@ -39,6 +49,7 @@ import {
   summaryLines,
   toStartBody,
   toggleSolution,
+  withFormModel,
   workspaceRoot,
 } from './new-session.ts';
 import {
@@ -157,8 +168,11 @@ function Toggle({ name, title, description, on, onToggle }: { readonly name: str
  * from a title that starts with a ticket key, tidied on blur, its check under
  * it; Start waits for a valid one). D38: picking solutions is optional for a
  * workspace folder (the hint says to leave them empty to let the agent choose,
- * the summary reads `solutions  chosen by the agent`). Details: `docs/new-session.md`,
- * `docs/folders.md` → *UI*.
+ * the summary reads `solutions  chosen by the agent`). D42: a **Model** row
+ * under the Launch toggles (D31's picker over `GET /api/models`' list, else the
+ * CLI's aliases) starts on the last choice; the summary's `model` line follows
+ * `ultracode`, and Start / Save schedule send `model` / `effort`. Details:
+ * `docs/new-session.md`, `docs/folders.md` → *UI*.
  */
 export function NewSessionModal({
   onClose,
@@ -180,6 +194,12 @@ export function NewSessionModal({
   const [cron, setCron] = useState(() => schedule?.cron ?? '');
 
   const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
+  // D42: the latest reported model list and the last choice (the Model row starts on it); a failed read = neither.
+  const models = useApi(() => api.models());
+  const modelSettings: ModelSettings | null = models.data ?? (models.error ? NO_MODEL_SETTINGS : null);
+  const modelOptions = formModelOptions(modelSettings);
+  // What the summary and the bodies read: the form with its model choice filled in.
+  const launch = withFormModel(form, modelSettings);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -240,12 +260,12 @@ export function NewSessionModal({
   const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id).map((s) => s.name);
   const preview = cronPreview(cron, new Date());
   const lines = scheduling
-    ? scheduleSummaryLines(form, workspaceRoot(scan), preview, takenScheduleNames, folder)
+    ? scheduleSummaryLines(launch, workspaceRoot(scan), preview, takenScheduleNames, folder, modelOptions)
     : remoting
       ? remoteSummaryLines(remote, folder, form.name, form.task, takenNames)
       : resume
         ? resumeSummaryLines(resume, folder, form.name, takenNames)
-        : summaryLines(form, workspaceRoot(scan), takenNames, folder);
+        : summaryLines(launch, workspaceRoot(scan), takenNames, folder, 'start', modelOptions);
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
   const startable = remoting
@@ -268,7 +288,7 @@ export function NewSessionModal({
     setBusy(true);
     setError(null);
     try {
-      await api.createSchedule(toScheduleInput(form, cron, schedule?.id, folder));
+      await api.createSchedule(toScheduleInput(launch, cron, schedule?.id, folder));
       onClose();
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
@@ -319,7 +339,7 @@ export function NewSessionModal({
     setError(null);
     try {
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
-      const session = await api.createSession(toStartBody(form, folder, takenNames));
+      const session = await api.createSession(toStartBody(launch, folder, takenNames));
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -714,6 +734,20 @@ export function NewSessionModal({
                   onToggle={() => update({ worktrees: !form.worktrees })}
                 />
                 <Toggle name="ultracode" title="Ultracode (workflows)" description="Dispatch via the Workflow tool" on={form.ultracode} onToggle={() => update({ ultracode: !form.ultracode })} />
+                {/* D42: the model and effort the session starts with (D31's picker), on the last choice until picked. */}
+                <div className="sb-ns-toggle-row sb-ns-model-row" data-testid="ns-model-row">
+                  <div className="sb-ns-toggle-text">
+                    <div className="sb-ns-toggle-title">{MODEL_ROW_TITLE}</div>
+                    <div className="sb-ns-toggle-desc">{MODEL_ROW_DESCRIPTION}</div>
+                  </div>
+                  <ModelChoicePicker
+                    testId="ns-model"
+                    picker={formModelPicker(form, modelSettings)}
+                    keepEscape
+                    onPickModel={(value) => update({ model: pickFormModel(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, modelOptions, value) })}
+                    onPickEffort={(value) => update({ model: pickFormEffort(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, value) })}
+                  />
+                </div>
               </>
             )}
           </div>

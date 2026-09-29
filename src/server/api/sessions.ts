@@ -7,6 +7,7 @@ import type { ApiContext } from '../routes.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
+import { rememberModelChoice } from '../settings/models.ts';
 import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 
@@ -68,8 +69,9 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
  * a local copy of a remote session, {@link SessionTeleporter}; D31 the additive
  * `PUT /api/sessions/{id}/model`, the model and effort; D33 the additive
  * `POST /api/sessions/{id}/close` and `/reopen`, and `GET /api/sessions` leaving
- * closed sessions out unless `?closed=include`). Every route sits behind the
- * security guard.
+ * closed sessions out unless `?closed=include`; D42 the additive `model` /
+ * `effort` of NewSession, remembered as the last choice). Every route sits
+ * behind the security guard.
  */
 export async function registerSessionRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, supervisor, providers } = context;
@@ -90,6 +92,10 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       // Validation, worktrees (M2.2), the first-turn payload (M5.2) and the start: sessions/start.ts (shared with the M7.1 scheduler).
       const outcome = await startNewSession(context, request.body);
       if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+      // D42: a start that names a model or effort is the developer's last choice (the form's next default).
+      // Scheduled runs start through `startNewSession` too, but not here: they never change it.
+      const { model, effort } = outcome.session;
+      if (model !== undefined || effort !== undefined) await rememberModelChoice(store.settings, { model: model ?? null, effort: effort ?? null });
       return reply.code(201).send(await toSession(store, outcome.record, supervisor.activity(outcome.record.id)));
     } catch (error) {
       return sendError(reply, error);

@@ -18,7 +18,7 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `workspace.router` | read-only | string \| null | the first `# ` heading of `<default folder>/AGENTS.md` (first 16 KiB, read asynchronously), `AGENTS.md` without one, `null` without the file, without a default folder, or when the default folder is a repo (D14) | not shown since the UI stage of D14 (the check line of Folders names the router) |
 | `github.prPollMinutes` | read-only | number | the worktree manager's `DEFAULT_PR_POLL_MS` (5) | GitHub → PR merge detection |
 
-Nothing is stored until something is set; a stored value of the wrong type reads as the default. `GET` never returns other rows of the `settings` table (e.g. the demo marker `demo.seed`).
+Nothing is stored until something is set; a stored value of the wrong type reads as the default. `GET` never returns other rows of the `settings` table (e.g. the demo marker `demo.seed`). D42: the service's own `models.options` / `models.last` rows are read through `GET /api/models` instead (`docs/model-effort.md` → *At session start (D42)*).
 
 ## The sections (`src/web/views/SettingsView.tsx`, `views/settings/*`, `views/settings.css`)
 Values the API cannot tell read **unknown** (never invented).

@@ -24,6 +24,7 @@ import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { FolderRef } from '../folders/ref.ts';
 import { toEvent, toSession } from '../sessions/wire.ts';
+import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildClaudeArgs, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
 import { ClaudeProcess, type ProcessExit } from './process.ts';
@@ -427,7 +428,8 @@ export class SessionSupervisor {
    * first-turn payload, `sessions/first-turn.ts`); an empty one leaves the process idle.
    * The input must already be validated (sessions/validate.ts; D22: its `title`
    * is stored, `null` when absent; D38: with `worktrees` its `branch`, the branch
-   * the session's worktrees are on, is stored too). `options.beforeSpawn`
+   * the session's worktrees are on, is stored too; D42: its `model` / `effort`,
+   * so the first spawn passes `--model` / `--effort`). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).
    */
@@ -457,6 +459,9 @@ export class SessionSupervisor {
       rootKind: place.folder.kind,
       requestedPermissionMode: DEFAULT_PERMISSION_MODE,
       branch: input.worktrees ? (input.branch ?? null) : null,
+      // D42: the model and effort chosen at the start (normalized by the validation); the first spawn passes them.
+      model: input.model ?? null,
+      effort: input.effort ?? null,
     });
     await this.#store.agents.create({
       sessionId: session.id,
@@ -1045,7 +1050,8 @@ export class SessionSupervisor {
    * {@link MODEL_CONTROL_TIMEOUT_MS}); without one it is only stored. Either way
    * the stored choice is what every later spawn passes as `--model` / `--effort`,
    * a chat step line records it (`Model: Opus 5.5 · effort: high`, a `model`
-   * event) and the session is published. A choice equal to the stored one does nothing.
+   * event) and the session is published; D42: a stored choice also becomes the
+   * service's last choice (`models.last`). A choice equal to the stored one does nothing.
    * @throws {ModelChoiceError} a model or effort not on offer (nothing sent or stored).
    * @throws {SupervisorError} `not-found`; `closing`; `model-failed` with the CLI's
    * text verbatim when it refused (or did not answer) a request: the stored choice
@@ -1098,6 +1104,7 @@ export class SessionSupervisor {
           // The process took the model before it refused the effort: store what it runs on.
           const taken: ModelChoice = { model: next.model, effort: session.effort };
           await this.#store.sessions.update(sessionId, { model: taken.model });
+          await rememberModelChoice(this.#store.settings, taken);
           await this.#recordModel(sessionId, 'text', modelStepLabel(taken, available), { type: 'model', action: 'changed', ...taken, live: true });
         }
         await this.#recordModel(sessionId, 'error', `Could not change the effort: ${failure}`, {
@@ -1112,6 +1119,8 @@ export class SessionSupervisor {
       }
     }
     await this.#store.sessions.update(sessionId, { model: next.model, effort: next.effort });
+    // D42: a stored choice is the developer's last one (the New-session form starts on it).
+    await rememberModelChoice(this.#store.settings, next);
     await this.#recordModel(sessionId, 'text', modelStepLabel(next, available), { type: 'model', action: 'changed', ...next, live: live !== null });
     await this.#emitSession(sessionId);
     return this.#get(sessionId);
@@ -1370,9 +1379,12 @@ export class SessionSupervisor {
         publish: () => this.#emitSession(session.id),
         current: () => this.#live.get(session.id) === live && !live.stopping && live.proc.running,
         // D31: the models this process offers (kept on the session; a reply without a list keeps the last one).
+        // D42: also the service's latest list (`models.options`), which the New-session form offers.
         initialized: async (response) => {
           const options = parseInitializeModels(response);
-          if (options !== null) await this.#store.sessions.update(session.id, { modelOptions: options });
+          if (options === null) return;
+          await this.#store.sessions.update(session.id, { modelOptions: options });
+          await rememberModelOptions(this.#store.settings, options);
         },
       }),
       teleport,

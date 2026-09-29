@@ -1,7 +1,8 @@
-import type { ScheduleInput } from '../../core/api.ts';
+import type { ScheduleInput, SessionModelOption } from '../../core/api.ts';
+import { CLI_MODEL_ALIASES } from '../../core/model-choice.ts';
 import { MONTH_LABELS, WEEKDAY_LABELS, cronLabel, nextRuns, parseCron } from '../../core/cron.ts';
 import { runSessionName } from '../../core/schedules.ts';
-import { type FormFolder, type NewSessionForm, type SummaryLine, formComplete, nameTaken, sessionName, summaryLines, toSessionBody } from './new-session.ts';
+import { type FormFolder, MODEL_LINE_KEY, type NewSessionForm, type SummaryLine, formComplete, nameTaken, sessionName, summaryLines, toSessionBody } from './new-session.ts';
 
 /**
  * Pure logic of the New-session modal's Schedule section (M7.1, D8): the modal
@@ -62,8 +63,9 @@ export function canSaveSchedule(form: NewSessionForm, preview: CronPreview, take
 /**
  * The summary in schedule mode: the New-session summary for the first run's
  * session (`<name>-<MMDD>-<HHMM>`, so the worktree folders are the ones that run
- * gets), a `schedule` line after `ultracode`, and the schedule's own warnings
- * before the closing line.
+ * gets), a `schedule` line after `ultracode` (D42: after the `model` line that
+ * follows it, when the form has a model choice), and the schedule's own
+ * warnings before the closing line.
  */
 export function scheduleSummaryLines(
   form: NewSessionForm,
@@ -71,11 +73,13 @@ export function scheduleSummaryLines(
   preview: CronPreview,
   takenScheduleNames: readonly string[],
   folder: FormFolder | null = null,
+  modelOptions: readonly SessionModelOption[] = CLI_MODEL_ALIASES,
 ): SummaryLine[] {
   const name = sessionName(form);
   const runName = preview.first ? runSessionName(name, preview.first) : `${name}-<MMDD>-<HHMM>`;
-  const lines = summaryLines({ ...form, name: runName }, root, [], folder, 'as-typed');
-  const at = lines.findIndex((line) => line.text.startsWith('ultracode'));
+  const lines = summaryLines({ ...form, name: runName }, root, [], folder, 'as-typed', modelOptions);
+  const ultracode = lines.findIndex((line) => line.text.startsWith('ultracode'));
+  const at = lines[ultracode + 1]?.text.startsWith(MODEL_LINE_KEY) ? ultracode + 1 : ultracode;
   lines.splice(at + 1, 0, { text: `schedule  ${preview.ok ? preview.label : '—'}`, tone: 'value' });
   const warnings: SummaryLine[] = [];
   if (takenScheduleNames.includes(name)) warnings.push({ text: '⚠ a schedule with this name exists', tone: 'warn' });
@@ -88,7 +92,7 @@ export function scheduleSummaryLines(
 /**
  * The `POST /api/schedules` body (`ScheduleInput`): the template is exactly what
  * "Start session" would post, so it carries the form's folder (D14; a repo
- * folder's template is a `NewRepoSession`).
+ * folder's template is a `NewRepoSession`) and, D42, its model choice.
  */
 export function toScheduleInput(form: NewSessionForm, cron: string, id: string | undefined, folder: FormFolder | null = null): ScheduleInput {
   return { ...(id ? { id } : {}), cron: cron.trim(), template: toSessionBody(form, folder) };

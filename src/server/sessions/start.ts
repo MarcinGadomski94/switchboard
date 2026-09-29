@@ -6,6 +6,7 @@ import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
+import { readModelOptionsSetting } from '../settings/models.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
 import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
@@ -73,7 +74,9 @@ export async function resolveSessionFolder(
  * the worktrees created for it are discarded again. D38: a workspace session may
  * name no solutions; it then gets no worktree up front (its agent creates them on
  * the stored branch and `WorktreeAdoption` registers them) and starts with empty
- * `solutions`, which fill in from what its agents touch.
+ * `solutions`, which fill in from what its agents touch. D42: its `model` /
+ * `effort` are checked against the latest reported model list and stored on the
+ * session, so its first spawn passes `--model` / `--effort`.
  */
 export async function startNewSession(context: SessionStartContext, body: unknown, options: StartNewSessionOptions = {}): Promise<StartNewSessionOutcome> {
   const { store, supervisor, providers, worktrees, folders } = context;
@@ -94,6 +97,8 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     nameTaken: async (name) => (await store.sessions.getByName(name)) !== null,
     folder: { kind: folder.kind, repoName: repoSolutionName(folder) },
     worktreeBranch: options.worktreeBranch ?? 'ticket',
+    // D42: a `model` / `effort` is checked against the latest list any claude process reported.
+    modelOptions: await readModelOptionsSetting(store.settings),
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
