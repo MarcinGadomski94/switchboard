@@ -228,6 +228,14 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **The session's solutions fill in by themselves** from what the agent touches: every solution it writes into (the D21 agent-solution derivation) or adopts a worktree in joins `Session.solutions`. This is persisted and published, so the chips, the Solutions view and conflict detection follow.
   - **The server** accepts an empty `solutions` for a workspace session; the other validation is unchanged.
 
+## Own answers (added 2026-09-29)
+- **D39 A question can be answered with the developer's own words.**
+  - Every question card (chat and Inbox) gets, after the offered options, an **Other…** choice that opens a text field. The typed text is the answer, exactly as Claude Code's own "Other" works: the CLI receives it as the answer string.
+  - For a multi-select question, the typed text is one more picked item.
+  - "Send all answers" needs every question answered, by an option or by a non-empty own answer.
+  - The answers bubble and the chat show the typed text verbatim.
+  - The answer API gains an additive `text` next to `answerIndex`: one of the two per question.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
