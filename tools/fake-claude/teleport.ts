@@ -115,14 +115,14 @@ export function remoteHistoryEntries(history: readonly RemoteExchange[], now: nu
 }
 
 /** What {@link runGit} returns. */
-interface GitResult {
+export interface GitResult {
   readonly code: number | null;
   readonly stdout: string;
   readonly stderr: string;
 }
 
-/** Runs git in `cwd` (argv only, `shell: false`). */
-function runGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<GitResult> {
+/** Runs git in `cwd` (argv only, `shell: false`); also the D38 `[fake:worktree-add]` token's `git worktree add`. */
+export function runGit(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<GitResult> {
   return new Promise((resolve) => {
     const child = spawn('git', [...args], { cwd, env: { ...env, GIT_TERMINAL_PROMPT: '0' }, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';

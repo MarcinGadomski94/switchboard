@@ -36,6 +36,7 @@ import {
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
+import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts';
 
 /** How a turn playback ended. */
 type Outcome = 'done' | 'sigint' | 'crash';
@@ -78,6 +79,8 @@ interface UserMessage {
 interface ToolSpec {
   name: string;
   input: JsonObject;
+  /** D38 `[fake:worktree-add]`: the real result of the call (default: `toolResultText`, no error). */
+  result?: { readonly text: string; readonly isError: boolean };
 }
 
 /** A `[fake:write]` in progress. */
@@ -612,11 +615,12 @@ export class Runner {
     let scenario: string;
     let turnIndex: number;
 
-    const writePath = msg.fired ? null : writeToken(msg.text);
-    const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
+    const worktreeAdd = msg.fired ? null : worktreeAddToken(msg.text, this.o.cwd);
+    const writePath = msg.fired || worktreeAdd !== null ? null : writeToken(msg.text);
+    const toolCall = msg.fired || writePath !== null || worktreeAdd !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
-    const background = msg.fired || writePath !== null || toolCall !== null ? null : backgroundToken(msg.text);
-    const said = msg.fired || writePath !== null || toolCall !== null || background !== null ? null : sayToken(msg.text);
+    const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null ? null : backgroundToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : sayToken(msg.text);
     /** D30: the recording's rest after this turn's result, played `delayMs` later. */
     let later: { readonly steps: readonly Step[]; readonly delayMs: number } | null = null;
     /** D30: a `[fake:wakeup]` fires a turn of its own this many ms after the turn. */
@@ -627,6 +631,16 @@ export class Runner {
       // A turn of its own (a cron firing): no stdin message, so no replay echo.
       steps = (this.core.base.turns[0] ?? []).filter((s) => s.t !== 'replay');
       scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
+    } else if (worktreeAdd !== null && 'error' in worktreeAdd) {
+      await this.crash(`fake-claude: [fake:worktree-add]: ${worktreeAdd.error}`);
+      return 'crash';
+    } else if (worktreeAdd !== null) {
+      // D38: the agent adds a git worktree itself (a Bash call), and the fake really runs it.
+      const result = await addWorktree(worktreeAdd, this.o.env);
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: 'Bash', input: { command: worktreeAddCommand(worktreeAdd), description: 'Create the git worktree' }, result };
+      scenario = 'tx-main';
       turnIndex = 0;
     } else if (toolCall !== null && 'error' in toolCall) {
       await this.crash(`fake-claude: [fake:tool]: ${toolCall.error}`);
@@ -1095,11 +1109,13 @@ export class Runner {
       return;
     }
     if (line['type'] !== 'user') return;
-    const text = toolResultText(tool.name);
+    const text = tool.result?.text ?? toolResultText(tool.name);
     for (const block of asArray(asObject(line['message'])?.['content'])) {
-      if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;
+      if (!isObject(block) || block['type'] !== 'tool_result') continue;
+      block['content'] = text;
+      if (tool.result?.isError) block['is_error'] = true;
     }
-    if ('tool_use_result' in line) line['tool_use_result'] = text;
+    if ('tool_use_result' in line) line['tool_use_result'] = tool.result?.isError ? `Error: ${text}` : text;
   }
 
   /** `[fake:say]`: the main agent's reply text (and the result's) becomes `text`. */
