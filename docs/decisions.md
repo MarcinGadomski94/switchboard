@@ -310,6 +310,14 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The icon goes away the moment the agent starts on the message. That moment is derived from the CLI's own signals, verified against the stream: the replay/ack, or the next turn's start, whichever marks the real pickup.
   - Live over `/hub`. Nothing changes for delivered messages.
 
+## Loading a session (added 2026-09-29)
+- **D45 Switching sessions shows a loading state, never the previous session's content.**
+  - **Placeholders:** while a session's data loads, its header, chat and right panel show skeleton placeholders on SPEC tokens (header bars, 3–4 bubble shapes, overview and card blocks) with a light shimmer. The shimmer is static with `prefers-reduced-motion`.
+  - **No flicker:** the placeholders appear only if the load takes longer than about 150 ms.
+  - **Never stale:** the view clears when the session id changes, so one session's data never shows under another's name.
+  - **Instant revisit:** a session opened before in this tab shows at once from an in-memory cache while it refreshes in the background.
+  - A failed load shows the existing error state.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
