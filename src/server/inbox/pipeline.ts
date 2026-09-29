@@ -1,7 +1,8 @@
-import type { AnswerBatch, SessionActivity } from '../../core/api.ts';
+import type { SessionActivity } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
+import { checkOwnAnswer } from '../../core/own-answer.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { SESSION_CLOSED_REASON } from '../../core/session-close.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
@@ -41,16 +42,31 @@ export interface QuestionSessions {
   activity?(sessionId: string): SessionActivity | null;
 }
 
-/** Why the pipeline refused a call; `code` maps to an HTTP status in the routes. */
-export type InboxErrorCode = 'not-found' | 'invalid' | 'already-answered' | 'not-open' | 'busy' | 'unknown-action';
+/**
+ * Why the pipeline refused a call; `code` maps to an HTTP status in the routes.
+ * `invalid-answer` (D39, 422) = an answer entry that names one question but holds
+ * no usable answer: both or neither of `answerIndex` / `text`, or a `text` that is
+ * not 1–2000 characters once trimmed.
+ */
+export type InboxErrorCode = 'not-found' | 'invalid' | 'invalid-answer' | 'already-answered' | 'not-open' | 'busy' | 'unknown-action';
+
+/** D39: one refused answer of a 422 `invalid-answer`: the question and the field (`text`, or `answer` for both / neither). */
+export interface AnswerFieldError {
+  readonly questionId: string;
+  readonly field: 'text' | 'answer';
+  readonly message: string;
+}
 
 /** A refusal of the question pipeline. */
 export class InboxError extends Error {
   override name = 'InboxError';
   readonly code: InboxErrorCode;
-  constructor(code: InboxErrorCode, message: string) {
+  /** D39: the refused answers of an `invalid-answer` (empty otherwise). */
+  readonly errors: readonly AnswerFieldError[];
+  constructor(code: InboxErrorCode, message: string, errors: readonly AnswerFieldError[] = []) {
     super(message);
     this.code = code;
+    this.errors = errors;
   }
 }
 
@@ -199,13 +215,15 @@ export class QuestionPipeline implements ControlRequestHandler {
 
   /**
    * `POST /api/questions/batch/{batchId}/answers`. Every question of the batch must
-   * get exactly one valid `answerIndex` (`invalid` otherwise); a `multiSelect`
-   * question takes one option, because the contract carries one index. An open
-   * batch is answered with one `control_response`: `allow` + the input unchanged +
-   * `answers{<question text>: <option label>}`. A stale batch (or one whose request
-   * is gone) keeps its answers and sends them, questions and answers verbatim, as a
-   * user message: now when the session has a live process, else with its next run.
-   * @throws {InboxError} `not-found`, `invalid`, `already-answered`, `busy`.
+   * get exactly one answer: a valid `answerIndex` (`invalid` otherwise) or, D39, an
+   * own answer `text` (`invalid-answer` when it is empty or too long, or when both
+   * or neither are given); a `multiSelect` question takes one of them, because the
+   * contract carries one index. An open batch is answered with one
+   * `control_response`: `allow` + the input unchanged + `answers{<question text>:
+   * <option label or own text>}`. A stale batch (or one whose request is gone) keeps
+   * its answers and sends them, questions and answers verbatim, as a user message:
+   * now when the session has a live process, else with its next run.
+   * @throws {InboxError} `not-found`, `invalid`, `invalid-answer`, `already-answered`, `busy`.
    */
   async answerBatch(batchId: string, body: unknown): Promise<AnswerOutcome> {
     const found = await this.#store.questions.getBatchWithQuestions(batchId);
@@ -373,44 +391,65 @@ export function parseQuestions(input: unknown): Array<Omit<QuestionCreate, 'sour
 
 /**
  * The body of `POST /api/questions/batch/{batchId}/answers` checked against the
- * batch: `{ answers: [{ questionId, answerIndex }] }` with exactly one entry per
- * question and an integer index of one of its options.
- * @throws {InboxError} `invalid` (HTTP 400) otherwise.
+ * batch: `{ answers: [{ questionId, answerIndex } | { questionId, text }] }` with
+ * exactly one entry per question and, per entry, exactly one of an integer index of
+ * one of its options or (D39) an own answer `text`, 1–2000 characters once trimmed
+ * (`checkOwnAnswer`; returned trimmed). A `null` `answerIndex` / `text` counts as
+ * not given.
+ * @throws {InboxError} `invalid` (HTTP 400) for a body that is not that shape, an
+ * unknown or repeated question, an index that is not an option, or a question
+ * without an entry; then `invalid-answer` (HTTP 422, every refused entry in
+ * `errors`) for an entry with both or neither, or an own answer out of bounds.
  */
 export function validateAnswers(body: unknown, questions: readonly QuestionRecord[]): QuestionAnswer[] {
-  const list = typeof body === 'object' && body !== null ? (body as Partial<AnswerBatch>).answers : undefined;
-  if (!Array.isArray(list)) throw new InboxError('invalid', 'the body must be { answers: [{ questionId, answerIndex }] }');
+  const list = typeof body === 'object' && body !== null ? (body as { answers?: unknown }).answers : undefined;
+  if (!Array.isArray(list)) throw new InboxError('invalid', 'the body must be { answers: [{ questionId, answerIndex } or { questionId, text }] }');
   const byId = new Map(questions.map((question) => [question.id, question]));
   const seen = new Set<string>();
   const answers: QuestionAnswer[] = [];
+  const refused: AnswerFieldError[] = [];
   for (const entry of list as unknown[]) {
-    const { questionId, answerIndex } = asRecord(entry);
+    const { questionId, answerIndex, text } = asRecord(entry);
     if (typeof questionId !== 'string' || !byId.has(questionId)) throw new InboxError('invalid', `unknown questionId ${String(questionId)}`);
     if (seen.has(questionId)) throw new InboxError('invalid', `question ${questionId} is answered twice`);
+    seen.add(questionId);
     const question = byId.get(questionId) as QuestionRecord;
+    const hasIndex = answerIndex !== undefined && answerIndex !== null;
+    const hasText = text !== undefined && text !== null;
+    if (hasIndex === hasText) {
+      refused.push({ questionId, field: 'answer', message: `question ${questionId} needs exactly one of answerIndex and text` });
+      continue;
+    }
+    if (hasText) {
+      const own = checkOwnAnswer(text);
+      if (own.ok) answers.push({ questionId, text: own.text });
+      else refused.push({ questionId, field: 'text', message: `question ${questionId}: ${own.message}` });
+      continue;
+    }
     if (typeof answerIndex !== 'number' || !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= question.options.length) {
       throw new InboxError('invalid', `answerIndex ${String(answerIndex)} is not an option of question ${questionId}`);
     }
-    seen.add(questionId);
     answers.push({ questionId, answerIndex });
   }
   const missing = questions.filter((question) => !seen.has(question.id)).length;
-  if (missing > 0) throw new InboxError('invalid', `${answers.length} of ${questions.length} answered: every question needs an answer`);
+  if (missing > 0) throw new InboxError('invalid', `${seen.size} of ${questions.length} answered: every question needs an answer`);
+  if (refused.length > 0) throw new InboxError('invalid-answer', refused.map((error) => error.message).join('; '), refused);
   return answers;
 }
 
 /**
  * `answers` of the `control_response`: question text (verbatim) → the chosen
- * option's label, in question order. Two questions with the same text (the CLI keys
- * answers by text) get their distinct labels joined with ", ", the CLI's own
- * multi-value format.
+ * option's label or (D39) the own answer's text, verbatim (trimmed), in question
+ * order. That is what the CLI's own "Other" sends: the typed text as the answer
+ * string. Two questions with the same text (the CLI keys answers by text) get their
+ * distinct answers joined with ", ", the CLI's own multi-value format.
  */
 export function answersByText(questions: readonly QuestionRecord[], answers: readonly QuestionAnswer[]): Record<string, string> {
-  const index = new Map(answers.map((answer) => [answer.questionId, answer.answerIndex]));
+  const byId = new Map(answers.map((answer) => [answer.questionId, answer]));
   const labels = new Map<string, string[]>();
   for (const question of [...questions].sort((a, b) => a.position - b.position)) {
-    const at = index.get(question.id);
-    const label = at === undefined ? undefined : question.options[at]?.label;
+    const answer = byId.get(question.id);
+    const label = answer === undefined ? undefined : answer.text !== undefined ? answer.text : question.options[answer.answerIndex]?.label;
     if (label === undefined) continue;
     const list = labels.get(question.text) ?? [];
     if (!list.includes(label)) list.push(label);
@@ -421,7 +460,11 @@ export function answersByText(questions: readonly QuestionRecord[], answers: rea
   return out;
 }
 
-/** The user message for a stale batch's answers: a heading, then `"<question>" = "<label>"` per question, verbatim. */
+/**
+ * The user message for a stale batch's answers: a heading, then
+ * `"<question>" = "<label>"` per question, verbatim (D39: an own answer's text in
+ * place of the label).
+ */
 export function staleAnswersText(questions: readonly QuestionRecord[]): string {
   const lines = [...questions]
     .sort((a, b) => a.position - b.position)

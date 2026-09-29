@@ -14,19 +14,20 @@ The question pipeline turns the CLI's `can_use_tool` control requests into Inbox
 - On creation: `/hub` `questionBatch` `{ sessionId, batchId, questions: Question[] }` and `inboxChanged { count }`. The session is `need` (supervisor).
 
 ### Answering: `POST /api/questions/batch/{batchId}/answers`
-Body `{ answers: [{ questionId, answerIndex }] }`.
+Body `{ answers: [{ questionId, answerIndex }] }`; D39 adds `{ questionId, text }` (an own answer, *Own answers (D39)* below): exactly one of the two per entry.
 
 | Case | Answer |
 |---|---|
 | unknown batch | `404 {error:"not-found"}` |
 | already answered | `409 {error:"already-answered"}` |
-| not every question answered exactly once with an integer index of one of its options (or no/garbled body) | `400 {error:"invalid"}` |
+| not every question answered exactly once, an unknown question, or an `answerIndex` that is not an integer index of one of its options (or no/garbled body) | `400 {error:"invalid"}` |
+| D39: an entry with both or neither of `answerIndex` / `text`, or a `text` that is not 1–2000 characters once trimmed (checked after the 400 cases) | `422 {error:"invalid", message, errors:[{questionId, field:"answer"\|"text", message}]}`, every refused entry |
 | an answer for the same batch is being written | `409 {error:"busy"}` |
 | otherwise | `204` |
 
 - **Open batch** → exactly one stdin line: `{"type":"control_response","response":{"subtype":"success","request_id":<batchId>,"response":{"behavior":"allow","updatedInput":{<input unchanged>,"answers":{"<question text>":"<option label>"}}}}}`. The batch becomes `answered`, delivered via `control_response`. The recorded `ask-2q` answer is reproduced byte for byte (apart from the fresh `request_id`).
-- **multiSelect**: the contract has one `answerIndex` per question, so a multi-select question takes one option and `answers` carries that one label (the CLI accepts several joined with `", "`; M0.2).
-- **Same question text twice** in one batch: the CLI keys `answers` by text, so their distinct labels are joined with `", "` (the CLI's own multi-value format).
+- **multiSelect**: the contract has one `answerIndex` per question, so a multi-select question takes one option and `answers` carries that one label (the CLI accepts several joined with `", "`; M0.2). D39: or one own answer, which is then its whole answer string.
+- **Same question text twice** in one batch: the CLI keys `answers` by text, so their distinct labels (D39: or own answers) are joined with `", "` (the CLI's own multi-value format).
 - **Stale batch** (see below), or an open one whose request ended just before the answer: the answers are stored (the batch stays `stale`, with `answeredAt`) and go to the session as a normal user message, questions and answers verbatim:
   ```
   Answers to your earlier questions:
@@ -37,6 +38,15 @@ Body `{ answers: [{ questionId, answerIndex }] }`.
   - otherwise (paused, ended, detached, service closing) → queued in the session's outbox (`pending_messages`, kind `stale-answers`, with the batch id) and sent ahead of the session's next message, e.g. `<answers>\n\nContinue.` on Resume. Answering never starts or resumes a process by itself.
   - The batch records `deliveredVia: user_message` once the message is written (`pendingDelivered` hook for queued ones).
 - After an answer: `inboxChanged` and `sessionUpdated` (the open question count).
+
+### Own answers (D39)
+Every question can be answered with the developer's own words ("Other…" on the card) instead of an option, as Claude Code's own "Other" does. Code: `src/core/own-answer.ts` (the rule, shared with the card), `validateAnswers` / `answersByText` in `pipeline.ts`, `QuestionRepository.answer` / `ownAnswerOf`.
+- **The entry:** `{ questionId, text }`. `text` is trimmed and must be 1–2000 characters (`checkOwnAnswer`); inner line breaks stay. `null` counts as not given, so `{ answerIndex: 0, text: null }` is an option answer.
+- **What goes to the CLI:** `answers[<question text>]` = the trimmed text, verbatim, in the same `control_response` as the option labels (`{ "Which color should the button be?": "Blue", "Which size should it be?": "Medium, with rounded corners" }`). A stale batch's answers message has `"<question>" = "<text>"`.
+- **How the CLI itself does it** (read in the CLI 2.1.284 binary's bundled code, read-only, never run for D39): the terminal's AskUserQuestion form adds an `Other` choice (value `__other__`, placeholder "Type something.") to every question. For a single-select question the typed text becomes the answer string as it is. For a multi-select one the picked labels and the typed text become one string through the helper that joins several labels: items joined with `", "`, and an item that contains `", "` or `"` written as a quoted JSON string (the parser next to it reads such items back with `JSON.parse`). A permission answer from a host the CLI checks strictly (AskUserQuestion's `admitCardAnswer`) may only add `answers` (plus `annotations`, `response`, `followUp`) to the unchanged input; each `answers` value is a string of at most 8192 characters or, for a multi-select question only, an array of at most options + 1 strings, which it joins with that helper. Other hosts' `updatedInput` is taken as it is. Switchboard sends one string per question, as before, so both accept it; the 2000-character limit stays under the 8192.
+- **Multi-select:** the card and the contract carry one answer per question (M3.1), so a multi-select question takes one option **or** one own answer, never both; the own answer is its whole answer string. D39's "the typed text is one more picked item" needs several picks per question first (`.loop/questions.md` → *D39*).
+- **Stored** without a migration: `answer_index` NULL and the text in `answer_label` (the column already holds "the answer as written into `answers`"); the question has `answered_at` like an option answer, and the batch completes when every question has one. `ownAnswerOf(record)` reads it back.
+- **Question.answerText** (additive): the own answer as sent, `answerIndex` then `null`; `null` otherwise (`toQuestion`).
 
 ## Permission requests (D6)
 - A `can_use_tool` request for any other tool = an Inbox **permission item** (`permission_requests`): `tool_name` + `input` verbatim, `description`, `decision_reason`, and `agent_id` when a subagent asks. The asking agent is the subagent whose `system/task_started.task_id` equals `agent_id` (`subagent-perm`), else the main agent.

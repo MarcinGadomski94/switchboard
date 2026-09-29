@@ -118,6 +118,8 @@ const QUESTION_KEYS = keys<Question>()([
   'state',
   'answerIndex',
   'answeredAt',
+  // additive, D39 (own answer)
+  'answerText',
   // additive, D24 (answered on claude.ai)
   'answeredOn',
   // additive, D33 (closed with its session)
@@ -426,6 +428,7 @@ describe('/hub · events (contract, field by field)', () => {
         state: 'open',
         answerIndex: null,
         answeredAt: null,
+        answerText: null,
         answeredOn: null,
         closedReason: null,
       },
@@ -441,6 +444,7 @@ describe('/hub · events (contract, field by field)', () => {
         state: 'open',
         answerIndex: null,
         answeredAt: null,
+        answerText: null,
         answeredOn: null,
         closedReason: null,
       },

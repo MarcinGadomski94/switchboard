@@ -14,6 +14,7 @@ export const INBOX_ROUTES_PENDING: readonly PendingRoute[] = [];
 const ERROR_STATUS: Record<InboxErrorCode, number> = {
   'not-found': 404,
   invalid: 400,
+  'invalid-answer': 422,
   'unknown-action': 400,
   'already-answered': 409,
   'not-open': 409,
@@ -31,11 +32,16 @@ const SYSTEM_ERROR_STATUS: Record<SystemItemErrorCode, number> = {
 };
 
 /**
- * Sends a pipeline or system-item refusal as `{ error: <code>, message }` (a missing
- * service as 501 `{ error: "not-implemented", item, message }`), a worktree manager
- * refusal as `worktree-errors.ts` does; rethrows anything else.
+ * Sends a pipeline or system-item refusal as `{ error: <code>, message }` (D39: a
+ * refused answer as 422 `{ error: "invalid", message, errors: [{ questionId, field,
+ * message }] }`, the API's usual 422 shape; a missing service as 501 `{ error:
+ * "not-implemented", item, message }`), a worktree manager refusal as
+ * `worktree-errors.ts` does; rethrows anything else.
  */
 function sendError(reply: FastifyReply, error: unknown): FastifyReply {
+  if (error instanceof InboxError && error.code === 'invalid-answer') {
+    return reply.code(422).send({ error: 'invalid', message: error.message, errors: error.errors });
+  }
   if (error instanceof InboxError) return reply.code(ERROR_STATUS[error.code]).send({ error: error.code, message: error.message });
   if (error instanceof SystemItemError) {
     if (error.code === 'unavailable') return reply.code(501).send({ error: 'not-implemented', item: error.item ?? '', message: error.message });
@@ -57,7 +63,7 @@ export async function registerInboxRoutes(app: FastifyInstance, context: ApiCont
   // Contract: InboxItem[] (question batches, permission items, system items).
   app.get('/api/inbox', async () => listInbox(store));
 
-  // Contract: 204, 400 unless every question is answered.
+  // Contract: 204, 400 unless every question is answered; D39: 422 for an entry with both / neither or a bad own answer.
   app.post<{ Params: { batchId: string } }>('/api/questions/batch/:batchId/answers', async (request, reply) => {
     try {
       await questions.answerBatch(request.params.batchId, request.body);
