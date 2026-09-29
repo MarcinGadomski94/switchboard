@@ -96,7 +96,8 @@ export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
   const fetchedSession = detail.data;
   useEffect(() => setSource(sessionFetched), [fetchedSession]);
   const session: Session | null = shownSession(source, fetchedSession);
-  const agents = session?.agents ?? [];
+  // D51: a Workflow's agents have no events of the session (their chats read their transcripts): no empty lanes.
+  const agents = (session?.agents ?? []).filter((agent) => agent.kind !== 'workflow');
 
   // A subagent appears without a sessionUpdated (its status is not a session status change): refetch.
   // The /hub copy stays until the refetch lands (`SessionSource`), so no lane blinks meanwhile.

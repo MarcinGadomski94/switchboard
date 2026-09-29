@@ -38,6 +38,7 @@ import type {
   Tool,
   ToolProbe,
   Worktree,
+  WorkflowAgentChat,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
@@ -142,6 +143,8 @@ export const api = {
   attachSession: (id: string, confirm = false) =>
     request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/attach`, confirm ? ({ confirm: true } satisfies AttachRequest) : undefined),
   sessionEvents: (id: string, since?: string) => request<SessionEvent[]>('GET', `/api/sessions/${enc(id)}/events${query({ since })}`),
+  /** D51: a Workflow agent's conversation (from its transcript). */
+  workflowAgentChat: (id: string, agentId: string) => request<WorkflowAgentChat>('GET', `/api/sessions/${enc(id)}/workflow-agents/${enc(agentId)}/chat`),
   sessionDiff: (id: string, file?: string) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file })}`),
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),

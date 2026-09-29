@@ -75,10 +75,13 @@ describe('fake-claude · background tokens (parser)', () => {
   });
 
   it('D43: [fake:workflow <s>], [fake:bg-task <s> [<type>]]', () => {
-    expect(backgroundToken('Audit it [fake:workflow 5]')).toEqual({ kind: 'workflow', seconds: 5 });
+    expect(backgroundToken('Audit it [fake:workflow 5]')).toEqual({ kind: 'workflow', seconds: 5, grid: null });
+    // D51: a grid of phases × agents.
+    expect(backgroundToken('Audit it [fake:workflow 12 2x3]')).toEqual({ kind: 'workflow', seconds: 12, grid: { phases: 2, agents: 3 } });
+    expect(backgroundToken('[fake:workflow 5 0x2]')).toMatchObject({ error: expect.any(String) });
     expect(backgroundToken('[fake:bg-task 0.5]')).toEqual({ kind: 'task', seconds: 0.5, taskType: FAKE_TASK_TYPE });
     expect(backgroundToken('[fake:bg-task 2 mcp_task]')).toEqual({ kind: 'task', seconds: 2, taskType: 'mcp_task' });
-    expect(backgroundToken('[fake:workflow]')).toMatchObject({ error: expect.stringContaining('[fake:workflow <seconds>]') });
+    expect(backgroundToken('[fake:workflow]')).toMatchObject({ error: expect.stringContaining('[fake:workflow <seconds> [<P>x<A>]]') });
     expect(backgroundToken('[fake:bg-task soon]')).toMatchObject({ error: expect.stringContaining('[fake:bg-task <seconds> [<type>]]') });
   });
 });

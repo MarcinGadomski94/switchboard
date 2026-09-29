@@ -1,10 +1,11 @@
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { ReportedTable, SessionActivity, SessionDetail } from '../../../core/api.ts';
+import type { Agent, ReportedTable, SessionActivity, SessionDetail, WorkflowRun } from '../../../core/api.ts';
+import type { SessionStatus } from '../../../core/model.ts';
 import { OverviewActivityText } from '../../activity/ActivityViews.tsx';
 import { useTick } from '../../activity/useActivity.ts';
 import { Link, useRouter } from '../../router.tsx';
-import { statusColor } from '../../shell/format.ts';
+import { UNKNOWN, statusColor } from '../../shell/format.ts';
 import { hasSubagentChat } from './chat.ts';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import {
@@ -24,6 +25,7 @@ import {
 } from './agent-overview.ts';
 import { isFinishedSubagent } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
+import { agentActivity, overviewEntries } from './workflow-agents.ts';
 import './agent-overview.css';
 
 /** The printed table's age refreshes as often as the sidebar's ages. */
@@ -59,8 +61,10 @@ export function AgentOverview({
   readonly hidden?: boolean;
 }) {
   const shown = session.agents.filter((agent) => !isFinishedSubagent(agent));
-  const rows = overviewRows(shown, session);
+  const rows = new Map(overviewRows(shown, session).map((row) => [row.id, row]));
   const chats = new Set(shown.filter(hasSubagentChat).map((agent) => agent.id));
+  // D51: each Workflow run's row, its agents indented under it.
+  const entries = overviewEntries(shown, session.workflows ?? []);
   return (
     <section className="sb-overview" data-testid="agent-overview">
       <div className="sb-sv-panel-label sb-overview-label">
@@ -84,9 +88,13 @@ export function AgentOverview({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <OverviewRowView key={row.id} sessionId={session.id} row={row} activity={activity} opensChat={chats.has(row.id)} />
-          ))}
+          {entries.map((entry) => {
+            if (entry.kind === 'workflow') return <WorkflowRowView key={`wf:${entry.run.runId}`} run={entry.run} status={entry.status} statusText={entry.statusText} />;
+            const row = rows.get(entry.agent.id);
+            return row ? (
+              <OverviewRowView key={row.id} sessionId={session.id} row={row} agent={entry.agent} depth={entry.depth} activity={activity} opensChat={chats.has(row.id)} />
+            ) : null;
+          })}
         </tbody>
       </table>
       {session.reportedTable ? <ReportedTableView key={session.id} table={session.reportedTable} panelHidden={hidden} /> : null}
@@ -94,25 +102,53 @@ export function AgentOverview({
   );
 }
 
+/**
+ * D51: a Workflow run's row: its name, summary and progress (`3/7 done · phase
+ * Review`); its agents follow it, indented.
+ */
+function WorkflowRowView({ run, status, statusText }: { readonly run: WorkflowRun; readonly status: SessionStatus; readonly statusText: string }) {
+  return (
+    <tr className="sb-overview-workflow" data-testid="overview-workflow" data-run-id={run.runId} data-status={status}>
+      <td className="sb-overview-agent" data-testid="overview-workflow-name" title={run.name}>
+        {run.name}
+      </td>
+      <td className="sb-overview-desc" data-testid="overview-workflow-summary" title={run.summary ?? undefined}>
+        {run.summary ?? ''}
+      </td>
+      <td className="sb-overview-solution">{UNKNOWN}</td>
+      <td className="sb-overview-status" data-testid="overview-workflow-status" style={{ color: statusColor(status) }} title={statusText}>
+        {statusText}
+      </td>
+    </tr>
+  );
+}
+
 function OverviewRowView({
   sessionId,
   row,
+  agent,
+  depth,
   activity,
   opensChat,
 }: {
   readonly sessionId: string;
   readonly row: OverviewRow;
+  readonly agent: Agent;
+  /** D51: 1 for a Workflow's agent under its run's row. */
+  readonly depth: 0 | 1;
   readonly activity: SessionActivity | null;
   /** D36: a subagent with a chat to open (the row links to it). */
   readonly opensChat: boolean;
 }) {
   const { navigate } = useRouter();
-  const entry = activity?.agents[row.id] ?? null;
+  const entry = agentActivity(activity, agent);
   const chat = { view: 'session', id: sessionId, tab: 'chat', agentId: row.id } as const;
   return (
     <tr
+      className={depth === 1 ? 'sb-overview-row--nested' : undefined}
       data-testid="overview-row"
       data-agent-id={row.id}
+      data-run-id={agent.workflow?.runId}
       data-status={row.status}
       data-opens-chat={opensChat ? 'true' : undefined}
       onClick={

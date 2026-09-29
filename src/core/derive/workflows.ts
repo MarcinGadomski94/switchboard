@@ -635,12 +635,6 @@ export function workflowAgents(views: readonly WorkflowAgentView[], solutionOf: 
   }));
 }
 
-/** The progress line of a run: `3/7 agents done · phase Review` (without a phase: the counts only). */
-export function workflowProgressText(run: Pick<WorkflowRun, 'doneCount' | 'agentCount' | 'phase'>): string {
-  const counts = `${run.doneCount}/${run.agentCount} agents done`;
-  return run.phase ? `${counts} · phase ${run.phase}` : counts;
-}
-
 // ── an agent's chat ──────────────────────────────────────────────────────
 
 /** The frame the CLI puts around a workflow agent's brief (its first user line). */

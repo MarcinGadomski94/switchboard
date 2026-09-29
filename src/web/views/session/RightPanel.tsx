@@ -12,6 +12,7 @@ import { PanelSkeleton } from './SessionSkeletons.tsx';
 import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, terminalLines } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
+import { agentActivity, cappedCards, moreCardsLine } from './workflow-agents.ts';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
 const finishedExpanded = new Map<string, boolean>();
@@ -54,6 +55,8 @@ export function RightPanel({
     setExpanded(!expanded);
   };
   const panel = session ? panelAgents(session.agents, expanded) : null;
+  // D51: a Workflow that fans out shows at most a few cards; the overview lists every agent.
+  const capped = session && panel ? cappedCards(panel.shown, session.workflows ?? [], expanded) : null;
   return (
     <aside
       className="sb-sv-panel"
@@ -63,7 +66,7 @@ export function RightPanel({
       inert={hidden}
       aria-hidden={hidden || undefined}
     >
-      {session && panel ? (
+      {session && panel && capped ? (
         <>
           <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />
           <div className="sb-sv-panel-head">
@@ -73,20 +76,25 @@ export function RightPanel({
             </span>
           </div>
           <div className="sb-agents" data-testid="agent-cards">
-            {agentCards(panel.shown, session).map((card, index) => {
-              const agent = panel.shown[index];
+            {agentCards(capped.cards, session).map((card, index) => {
+              const agent = capped.cards[index];
               return (
                 <AgentCardView
                   key={card.id}
                   sessionId={sessionId}
                   card={card}
                   opensChat={agent ? hasSubagentChat(agent) : false}
-                  activity={activity?.agents[card.id] ?? null}
+                  activity={agent ? agentActivity(activity, agent) : (activity?.agents[card.id] ?? null)}
                   turnStartedAt={activity && agent?.kind === 'main' ? activity.turnStartedAt : null}
                   background={activity?.background ?? []}
                 />
               );
             })}
+            {capped.more.map((more) => (
+              <div key={`more:${more.runId}`} className="sb-agents-more" data-testid="agents-more" data-run-id={more.runId} title={more.name}>
+                {moreCardsLine(more)}
+              </div>
+            ))}
             {panel.finished > 0 ? (
               <button
                 type="button"

@@ -156,6 +156,13 @@ describe('D48 peer wire mapping', () => {
     expect(peerAnswerKind('POST', '/api/sessions/s1/pause')).toBe('session');
     expect(peerAnswerKind('PUT', '/api/sessions/s1/model')).toBe('session');
     expect(peerAnswerKind('GET', '/api/sessions/s1/diff')).toBe('none');
+    // D51: a workflow agent's chat: its events are namespaced.
+    expect(peerAnswerKind('GET', '/api/sessions/s1/workflow-agents/wf_a.a1/chat')).toBe('workflow-chat');
+    expect(mapPeerAnswer({ id: 'm1', name: 'A', state: 'online' }, 'workflow-chat', { events: [{ id: 1, sessionId: 's1', agentId: 'wf_a.a1', ts: 't', endTs: null, kind: 'text', label: 'x', payload: null }], result: null, version: 3 })).toEqual({
+      events: [{ id: 1, sessionId: 'r~m1~s1', agentId: 'wf_a.a1', ts: 't', endTs: null, kind: 'text', label: 'x', payload: null }],
+      result: null,
+      version: 3,
+    });
     expect(peerAnswerKind('GET', '/api/inbox')).toBe('inbox');
     expect(peerAnswerKind('POST', '/api/terminal-sessions/abc/hook')).toBe('session');
     expect(peerAnswerKind('GET', '/api/folders')).toBe('none');
