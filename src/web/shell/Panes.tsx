@@ -59,7 +59,7 @@ interface Change {
   readonly focus: Element | null;
 }
 
-/** The focused element as {@link isTextEntry} reads it. */
+/** The element a key press comes from (the focused one; the document's active element for a key on the window). */
 function focusedElement(target: EventTarget | null): Element | null {
   return target instanceof Element ? target : document.activeElement;
 }
@@ -68,11 +68,12 @@ function focusedElement(target: EventTarget | null): Element | null {
  * Holds which panes are hidden (D41), starting from `initial` (read before the
  * first paint, {@link loadPaneState}). Every change is saved at once, one save
  * after the other so the service keeps the last one; a failed save leaves the
- * page as it is (the next change saves again). ⌘B / Ctrl+B toggles the sidebar and
- * ⌥⌘B / Ctrl+Alt+B the right panel while the session view shows one; neither
- * while typing in a text field or while a modal is open (`paneForShortcut`). Focus follows the control: a
- * pane that slides out with focus inside hands it to its reveal handle, and a pane
- * brought back from its handle gives it to its hide button.
+ * page as it is (the next change saves again). ⌘B / Ctrl+B toggles the sidebar
+ * and ⌥⌘B / Ctrl+Alt+B the right panel while the session view shows one;
+ * neither while typing in a text field or while a modal is open
+ * (`paneForShortcut`). Focus follows the control: a pane that slides out with
+ * focus inside hands it to its reveal handle, and a pane brought back from its
+ * handle gives it to its hide button.
  */
 export function PanesProvider({ initial = PANES_SHOWN, children }: { readonly initial?: PaneState; readonly children: ReactNode }) {
   const [state, setState] = useState<PaneState>(initial);
