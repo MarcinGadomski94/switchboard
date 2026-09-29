@@ -1,4 +1,4 @@
-# Max usage meter (M9.2, D17, D23)
+# Max usage meter (M9.2, D17, D23, D46)
 
 The footer's usage rows and the usage warning. Sources and the verdict come from the M0.3 spike (`docs/spike-m0.md` → *Usage %*); the item is BACKLOG M9.2 (adapted after M0). **Never a guessed percentage:** anything missing, erroring or shaped differently is "unknown", and `usagePct` is left out.
 
@@ -6,18 +6,20 @@ The footer's usage rows and the usage warning. Sources and the verdict come from
 
 **D23 (2026-09-28):** the Week bar shows whether usage is on pace for the week: green below the day's allowance, yellow at or above it, with a marker at the allowance (*Weekly pace* below). No API change: the browser computes it from `usageWindows`.
 
+**D46 (2026-09-29):** the Session bar shows its pace too, against an allowance that grows by the minute over the 5-hour window (*Session pace* below). Same colors, marker and computation in the browser; no API change.
+
 ## Files
 | File | Role |
 |---|---|
-| `src/core/usage.ts` | The rules, pure: parse a `get_usage` answer or a `rate_limit_event`, the state at a moment (max rule, unknown cases), the warnings due, the `/api/system` fields; D23: `weeklyPace`. |
+| `src/core/usage.ts` | The rules, pure: parse a `get_usage` answer or a `rate_limit_event`, the state at a moment (max rule, unknown cases), the warnings due, the `/api/system` fields; D23: `weeklyPace`; D46: `sessionPace` (sharing D23's window step, rounding and comparison). |
 | `src/server/usage/meter.ts` | `UsageMeter`: when to read, storing readings, firing warnings, pruning. |
 | `src/server/usage/poller.ts` | `UsagePoller`: the short-lived `claude` process that reads usage while no session is live. |
 | `src/server/usage/wire.ts` | `withUsage(providers, meter)` (adds the fields to `providers.system`) and `createUsageMeter` (normal runs). |
 | `src/server/supervisor/supervisor.ts` | `idleLiveSessionIds()` and `controlRequest()`: a stdin control request to a live session between turns. |
 | `src/server/supervisor/recorder.ts` | Stores every `rate_limit_event` as a reading (M2.1; now through `readingFromRateLimit`). |
 | `src/web/toast/usage-warning.ts`, `useUsageWarnings.ts` | The warning toast. |
-| `src/web/shell/format.ts` → `usageRows` | The footer rows (D17, replacing M1.4's single `maxMeter`): Session and Week from `usageWindows` (each "unknown" without its window), then one row per model window; D23: the Week row's `pace`. |
-| `src/web/shell/Sidebar.tsx` → `MeterRow`, `shell.css` | One footer row; D23: `data-pace`, the tooltip, the allowance marker and the pace colors. |
+| `src/web/shell/format.ts` → `usageRows` | The footer rows (D17, replacing M1.4's single `maxMeter`): Session and Week from `usageWindows` (each "unknown" without its window), then one row per model window; D23: the Week row's `pace`; D46: the Session row's. |
+| `src/web/shell/Sidebar.tsx` → `MeterRow`, `shell.css` | One footer row; D23 / D46: `data-pace`, the tooltip, the allowance marker and the pace colors. |
 
 ## Readings
 Each reading is one `usage_readings` row: 5-hour and weekly utilization (0–100) with their reset times (ISO), the source, the session it came from (or none), when Switchboard received it, and the CLI's payload verbatim (`raw`). Only the newest reading drives the meter.
@@ -63,8 +65,24 @@ The Week row says whether the week's usage is on pace: the allowance is spread e
 - The row gets `data-pace="on"` (bar fill SPEC *status done*, green) below the allowance or `data-pace="ahead"` (*status need*, yellow) at or above it; the bar width, the value text (`62% · 74h12`) and the 90 % warning are unchanged.
 - A **2 px marker** in `--muted-3` sits on the bar at the allowance (centered on it, as high as the 4 px bar, inside the track; on day 7 half of it shows at the bar's end).
 - The row's `title`: `On pace: 33% of 57.14% allowed until Mon 15:00` or `Ahead of pace: 62% of 57.14% allowed until Mon 15:00`: the utilization and the allowance with up to 2 decimals (trailing zeros dropped: `33%`, `18.4%`, `100%`), then the next step's local weekday and `HH:MM`.
-- The Session row and the model rows never get a pace, color or marker.
-- **Demo mode:** the demo's Week row is "unknown" (D17), so the demo views and the visual specs are unchanged.
+- The model rows never get a pace, color or marker. D46 gives the Session row its own pace (*Session pace* below), never the Week's.
+- **Demo mode:** the demo's Week row is "unknown" (D17), so the demo views and the visual specs are unchanged by D23 (D46 changes the demo's Session row: *Session pace* → *Demo mode*).
+
+## Session pace (D46)
+The Session row says whether the 5-hour window's usage is on pace: the allowance grows evenly over the window's 300 minutes, counted from the window's own reset.
+
+**The rule** (`sessionPace(session, now)` in `src/core/usage.ts`, pure):
+- The window started **5 h before** its `resetsAt` (the Session window's, i.e. `five_hour.resets_at`). After *m* whole minutes of it the allowance is *m* × 100 / 300 %: 0 % at the window's start, 0.33 % after a minute, 50 % half-way, 99.67 % in its last minute. The minutes are counted from the window's start instant, not from the clock's minutes: a reset at 16:00:20 steps at 20 s past each minute.
+- Rounded to 2 decimals and compared like D23's (`weeklyPace` and `sessionPace` share the window step, the rounding and the comparison: `paceStep` / `paceAgainst`): **on pace** means `pct < allowance`, so a Session at exactly the allowance (as shown) is yellow. In the window's first minute nothing is allowed yet, so any usage then reads "Ahead of pace: 3% of 0%" until the first step.
+- It also gives `nextStepAt`, the end of the current minute (in the last minute, the reset).
+- **Unknown stays unknown** (`null`, no color, no marker, no tooltip): no Session window (D17: missing, malformed, expired), a reset that is not ahead of now (the page's clock may pass it before the next `system` event), or a reset more than 5 h ahead (now would be outside the window it closes). A reset exactly 5 h ahead is the window's first minute.
+
+**The footer** (`usageRows` → `pace`, `MeterRow`, `shell.css`): as D23's Week row, from `usageWindows`' `key: 'session'` entry and the page's clock. No API field is added.
+- The row gets `data-pace="on"` (green, SPEC *status done*) below the allowance or `data-pace="ahead"` (yellow, *status need*) at or above it, and the 2 px `--muted-3` marker at the allowance. The bar width, the value text (`62% · 1h48`, the reset stays visible) and the 90 % warning are unchanged.
+- The row's `title`: `On pace: 38% of 50% until 14:05` or `Ahead of pace: 62% of 50% until 14:05`: the utilization and the allowance with up to 2 decimals like D23's, then the next minute step as local 24 h `HH:MM`. As D46 words it, there is no "allowed" and no weekday (D23's Week names the day of its step; the Session's is at most a minute away).
+- **Every minute:** the sidebar re-renders every 30 s and on every `system` event, so each minute step shows within 30 s.
+- Without a pace the Session row keeps the D17 look (`--text` fill, no marker, no title).
+- **Demo mode:** the demo's Session window is the prototype's `62% · 1h48` (D17: a reset 1 h 48 min after each `/api/system` answer), so about 192 of its 300 minutes have passed (about 64 % allowed) and 62 % is on pace: the demo's Session bar is green with a marker near 64 %. The shell / full-pass visual specs (`tests/e2e/visual/usage-rows.ts`) gate a usage row with a pace on its pace color and marker instead of the prototype Max bar's fill; the rest of the demo views is unchanged. `docs/visual/` was not regenerated for D46 (its reports are records, written only with `SWITCHBOARD_VISUAL_REPORT=1`).
 
 ## `usagePct` (the max rule)
 `GET /api/system` and the `system` hub event get, from `providers.system` wrapped by `withUsage`:
@@ -94,3 +112,4 @@ The Week row says whether the week's usage is on pace: the allowance is spread e
 - `tests/web/usage-warning.test.ts` — the toast copy, once per window and reset, the storage helpers; D17: the model toast and key.
 - **D17:** `tests/core/usage.test.ts` → *D17: usage windows* (the recorded answer: Session + Week, Fable at 0 % not listed; in use above 0 % or active; the `model_scoped` / `limits` join; every unknown case; Session and Week independent; the model warning once until its reset and its stored state; labels). `tests/server/usage/meter.test.ts` → *D17 model-scoped windows* (a newer `rate_limit_event` keeps them, gone after 10 min or a failed `get_usage`, the warning once across a restart). `tests/server/usage/wire.test.ts` (`usageWindows` on `GET /api/system` and the `system` event from the real poller with fake-claude, and a Fable window with its warning), `tests/server/demo/providers.test.ts` (the demo's Session window, a Week figure when present), `tests/web/format.test.ts` (`usageRows`), `tests/e2e/usage-footer.spec.ts` (the footer on the real path) and the shell / full-pass visual specs (the rows as D17 additions).
 - **D23:** `tests/core/usage.test.ts` → *D23: weekly pace* (the day boundaries at the reset hour, Mon 14:59 → day 4 / 57.14 %, Mon 15:00 → day 5 / 71.43 %; every day's allowance; day 1 right at the previous reset, day 7 just before the next; at the allowance → not on pace; unknown / past / too-far reset → `null`; a week across the Europe/Warsaw DST change). `tests/web/format.test.ts` → *D23* (the Week row's state, marker position and tooltip; Session and model rows without a pace; unknown → none; `MeterRow`'s markup with and without a pace). `tests/e2e/week-pace.spec.ts` (real path, one seeded reading, the page on a fixed clock in UTC: yellow one minute before the step into day 5, green at it, the marker at 57.14 % / 71.43 %, the tooltip, the Session row unchanged, nothing after the reset) and `tests/e2e/usage-footer.spec.ts` (on the page's own clock: day 4, on pace, one marker). The demo's Week row is unknown, so the shell / full-pass visual specs are unchanged.
+- **D46:** `tests/core/usage.test.ts` → *D46: session pace* (the window start with nothing allowed, the middle, the last minute at 99.67 % until the reset; the 2-decimal rounding; one step per minute counted from the window's start, a reset at :20 s stepping at :20 s; exactly at the allowance → not on pace; past / now / more than 5 h ahead / unparseable reset or no usable pct → `null`). `tests/web/format.test.ts` → *D46* (the Session row's state, marker and tooltip, the minute step, the window's start and end, unknown → the D17 row, the Week's own pace next to it, `MeterRow`'s markup) and *D23* (the Week pace stays the Week's own). `tests/e2e/session-pace.spec.ts` (real path, one seeded reading, the page's clock installed in UTC and moved: yellow 120 minutes in at 40 %, still yellow at exactly 62 %, green one minute of page clock later at 62.33 % with the marker and the tooltip following, nothing after the reset or more than 5 h before it, the Week's D23 pace alongside), `tests/e2e/usage-footer.spec.ts` (the Session's own pace on the page's clock) and `tests/e2e/week-pace.spec.ts` (its Session reset has passed on the page's clock, so it keeps the D17 look). The shell / full-pass visual specs gate the demo's paced Session row on its pace color and marker (`usage-rows.ts`).
