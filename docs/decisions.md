@@ -227,6 +227,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - Switchboard **adopts** each such worktree when it appears (after an agent's `git worktree add`, and on a sweep at each turn's end): it registers the worktree (Diff tab, PR checks, the Solutions chips, removal) and assigns it to the session.
   - **The session's solutions fill in by themselves** from what the agent touches: every solution it writes into (the D21 agent-solution derivation) or adopts a worktree in joins `Session.solutions`. This is persisted and published, so the chips, the Solutions view and conflict detection follow.
   - **The server** accepts an empty `solutions` for a workspace session; the other validation is unchanged.
+  - **Developer rulings (2026-09-29):** fill-in applies to every workspace session, not only those started without solutions. The form's empty state (the hint, `solutions  chosen by the agent`, and Start enabled) differs from the prototype by ruling and is checked on its own, like D29/D37.
 
 ## Own answers (added 2026-09-29)
 - **D39 A question can be answered with the developer's own words.**

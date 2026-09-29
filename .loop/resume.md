@@ -12,16 +12,14 @@ Everything is local to `other/switchboard`. Nothing is pushed.
 ## In flight (2026-09-29)
 | Item | Worktree · branch | Ports |
 |---|---|---|
-| D38 solutions chosen by the agent | `.worktrees/agent-solutions` · `feature/agent-solutions` | 4920-4929 |
-| D41 collapsible sidebar / right panel | `.worktrees/collapsible-panes` · `feature/collapsible-panes` | 4940-4949 |
 | D43 background workflows + any CLI task show as working | `.worktrees/bg-workflows` · `feature/bg-workflows` | 4910-4919 |
 | D44 clock on queued chat messages | `.worktrees/queued-messages` · `feature/queued-messages` | 4900-4909 |
 | D45 session loading skeleton + instant revisit | `.worktrees/session-loading` · `feature/session-loading` | 4890-4899 |
 | D46 Session-bar pace (5 h), every minute | `.worktrees/session-pace` · `feature/session-pace` | 4880-4889 |
-| D40 epic/task branching | **after D38 merges** | 4950-4959 |
-| D42 model + effort in the form, remembered | **after D38 merges** | 4960-4969 |
+| D40 epic/task branching | `.worktrees/epic-branching` · `feature/epic-branching` (from `3c6ee25`) | 4950-4959 |
+| D42 model + effort in the form, remembered | `.worktrees/model-at-start` · `feature/model-at-start` (from `3c6ee25`) | 4960-4969 |
 
-- D39 is merged (`97b74a8`) and verified in `.worktrees/verify` (a detached worktree at master): e2e 149/149; 10 unit timeouts under load average ~39 passed on rerun (49/49).
+- Merged since: D41 `afd5248`, D38 `3c6ee25` (migration 0011). D39 is merged (`97b74a8`) and verified in `.worktrees/verify` (a detached worktree at master): e2e 149/149; 10 unit timeouts under load average ~39 passed on rerun (49/49).
 - The main branch is **`master`**; there is a GitHub remote (`MarcinGadomski94/switchboard`). Never push.
 - Verify merges in `.worktrees/verify` (`git -C .worktrees/verify checkout --detach master`), never in the main checkout (the developer's launchd service runs from it and does `npm ci` on start).
 - Open question for the developer: several picks on multi-select questions together with an own answer (D39 allows one pick per question).
