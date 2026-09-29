@@ -9,13 +9,17 @@ import { App } from './App.tsx';
 // worker that shows the offline page.
 import './pwa/app-install.ts';
 import { registerServiceWorker } from './pwa/service-worker.ts';
+import { loadPaneState } from './shell/Panes.tsx';
 
 if (import.meta.env.PROD) registerServiceWorker();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Switchboard: #root element missing from index.html');
-createRoot(container).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// D41: the stored pane state is read before the first paint, so a hidden sidebar or panel never flashes open.
+void loadPaneState().then((panes) => {
+  createRoot(container).render(
+    <StrictMode>
+      <App panes={panes} />
+    </StrictMode>,
+  );
+});

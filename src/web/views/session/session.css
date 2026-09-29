@@ -980,3 +980,54 @@ a.sb-agent--link:focus-visible {
 .sb-subchat-note .sb-subchat-note-link:hover {
   color: var(--text);
 }
+
+/*
+ * D41 · the right panel slides out (docs/panes.md; not in the prototype, which
+ * always shows it): to the right (transform, the shell's 180 ms), while its column
+ * narrows to the shell's slim rail; the header and the tab take the freed width.
+ * The panel keeps its 380 px meanwhile (no reflow) and is not painted after the
+ * slide. The view clips sideways (`overflow-x: clip`, which makes no scroll box),
+ * so the panel sliding past the window's edge never scrolls anything sideways
+ * (D29). The children are placed explicitly, so the reveal handle can share the
+ * panel's cell (its look: shell.css). `prefers-reduced-motion`: no slide.
+ */
+.sb-sv {
+  overflow-x: clip;
+  transition: grid-template-columns var(--pane-slide) ease;
+}
+
+.sb-sv[data-panel='hidden'] {
+  grid-template-columns: minmax(0, 1fr) var(--pane-rail);
+}
+
+.sb-sv > .sb-sv-main {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.sb-sv > .sb-sv-panel {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  box-sizing: border-box;
+  width: 380px;
+  transition:
+    transform var(--pane-slide) ease,
+    visibility 0s linear 0s;
+}
+
+.sb-sv[data-panel='hidden'] > .sb-sv-panel {
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform var(--pane-slide) ease,
+    visibility 0s linear var(--pane-slide);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-sv,
+  .sb-sv > .sb-sv-panel,
+  .sb-sv[data-panel='hidden'] > .sb-sv-panel {
+    transition: none;
+  }
+}

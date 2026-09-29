@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReportedTable, SessionActivity, SessionDetail } from '../../../core/api.ts';
 import { OverviewActivityText } from '../../activity/ActivityViews.tsx';
@@ -43,15 +43,30 @@ const AGE_TICK_MS = 30_000;
  * wrapped. Nothing in the panel scrolls sideways. D36: a subagent's row opens its
  * chat (the whole row, and its name as a keyboard-focusable link). D37: finished
  * subagents have no row (they are simply gone; the cards below keep a "✓ N
- * finished" line).
+ * finished" line). D41: `labelAction` (the panel's hide button) sits at the right
+ * of the label row, out of the flow; while the panel is `hidden` the "as
+ * printed" popover is closed.
  */
-export function AgentOverview({ session, activity }: { readonly session: SessionDetail; readonly activity: SessionActivity | null }) {
+export function AgentOverview({
+  session,
+  activity,
+  labelAction = null,
+  hidden = false,
+}: {
+  readonly session: SessionDetail;
+  readonly activity: SessionActivity | null;
+  readonly labelAction?: ReactNode;
+  readonly hidden?: boolean;
+}) {
   const shown = session.agents.filter((agent) => !isFinishedSubagent(agent));
   const rows = overviewRows(shown, session);
   const chats = new Set(shown.filter(hasSubagentChat).map((agent) => agent.id));
   return (
     <section className="sb-overview" data-testid="agent-overview">
-      <div className="sb-sv-panel-label sb-overview-label">{OVERVIEW_LABEL}</div>
+      <div className="sb-sv-panel-label sb-overview-label">
+        {OVERVIEW_LABEL}
+        {labelAction}
+      </div>
       <table className="sb-overview-table" data-testid="overview-table">
         <colgroup>
           <col className="sb-overview-col-agent" />
@@ -74,7 +89,7 @@ export function AgentOverview({ session, activity }: { readonly session: Session
           ))}
         </tbody>
       </table>
-      {session.reportedTable ? <ReportedTableView key={session.id} table={session.reportedTable} /> : null}
+      {session.reportedTable ? <ReportedTableView key={session.id} table={session.reportedTable} panelHidden={hidden} /> : null}
     </section>
   );
 }
@@ -146,12 +161,16 @@ function OverviewRowView({
  * The newest status table the agent printed, with its age (D27): drawn as a table
  * when it parses, else a one-line note (developer ruling 2026-09-28; nothing in
  * the panel scrolls sideways). Either way the "as printed" toggle opens the
- * original, unwrapped, in a popover over the main area.
+ * original, unwrapped, in a popover over the main area. D41: it closes when the
+ * panel slides out (its toggle goes with the panel).
  */
-function ReportedTableView({ table }: { readonly table: ReportedTable }) {
+function ReportedTableView({ table, panelHidden }: { readonly table: ReportedTable; readonly panelHidden: boolean }) {
   const now = useTick(AGE_TICK_MS);
   const view = useMemo(() => reportedTableView(table), [table]);
   const [printed, setPrinted] = useState(false);
+  useEffect(() => {
+    if (panelHidden) setPrinted(false);
+  }, [panelHidden]);
   const popoverId = useId();
   const section = useRef<HTMLDivElement | null>(null);
   const toggle = useRef<HTMLButtonElement | null>(null);
@@ -180,7 +199,7 @@ function ReportedTableView({ table }: { readonly table: ReportedTable }) {
           {UNREADABLE_TABLE}
         </div>
       )}
-      {printed ? <PrintedPopover id={popoverId} table={table} anchor={section} toggle={toggle} onClose={() => setPrinted(false)} /> : null}
+      {printed && !panelHidden ? <PrintedPopover id={popoverId} table={table} anchor={section} toggle={toggle} onClose={() => setPrinted(false)} /> : null}
     </div>
   );
 }

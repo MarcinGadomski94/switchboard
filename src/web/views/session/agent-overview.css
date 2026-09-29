@@ -22,6 +22,16 @@
 /* The label sits where the panel's other labels do (16 px from the panel's edge). */
 .sb-overview-label {
   padding: 0 4px;
+  /* D41: holds the panel's hide button at its right, out of the flow. */
+  position: relative;
+}
+
+/* D41: the panel's hide button (look: shell.css `.sb-pane-hide`), centred on the label line at the row's right; the row keeps its height. */
+.sb-overview-label > .sb-overview-hide {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  margin-top: -10px;
 }
 
 .sb-overview-table {
