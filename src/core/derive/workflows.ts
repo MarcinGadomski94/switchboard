@@ -377,9 +377,14 @@ export interface WorkflowAgentView {
   readonly result: { readonly text: string; readonly isError: boolean } | null;
 }
 
-/** The API id of a workflow agent: `<runId>.<agentId>`, or `<runId>.q<index>` while it is queued. */
+/**
+ * The API id of a workflow agent: `<runId>--<index>` (the script's agent number,
+ * the same while it is queued and once it runs), else `<runId>--<agentId>` (known
+ * from the journal alone, after a restart mid-run). No dot: the UI's address
+ * `/sessions/{id}/agents/{agentId}` must not look like a file to the web server.
+ */
 export function workflowAgentKey(id: string, agentId: string | null, index: number | null): string {
-  return agentId !== null ? `${id}.${agentId}` : `${id}.q${index ?? 0}`;
+  return index !== null ? `${id}--${index}` : `${id}--${agentId ?? '0'}`;
 }
 
 /** The status a progress `state` means: `start` without a start time is queued (`idle`), `start` / `progress` run, `done`, `error` fails. */

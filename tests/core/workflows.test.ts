@@ -191,10 +191,10 @@ describe('deriveWorkflowRun', () => {
       endedAt: null,
     });
     expect(agents.map((a) => [a.id, a.label, a.status, a.statusText, a.workflow.phase])).toEqual([
-      ['wf_abc123-def.a1', 'audit:a', 'done', null, 'Audit'],
-      ['wf_abc123-def.a2', 'audit:b', 'done', null, 'Audit'],
-      ['wf_abc123-def.a3', 'review:a', 'run', null, 'Review'],
-      ['wf_abc123-def.q4', 'review:b', 'idle', 'queued', 'Review'],
+      ['wf_abc123-def--1', 'audit:a', 'done', null, 'Audit'],
+      ['wf_abc123-def--2', 'audit:b', 'done', null, 'Audit'],
+      ['wf_abc123-def--3', 'review:a', 'run', null, 'Review'],
+      ['wf_abc123-def--4', 'review:b', 'idle', 'queued', 'Review'],
     ]);
     expect(agents[0]?.workflow).toMatchObject({ startedAt: iso(1), endedAt: iso(21), model: 'claude-opus-5-5', action: null });
     expect(agents[2]?.workflow.action).toEqual({ tool: 'Read', summary: 'a.md', since: iso(32) });
@@ -207,13 +207,13 @@ describe('deriveWorkflowRun', () => {
     expect(agents[2]?.workflow).toMatchObject({ action: { tool: 'Bash', summary: 'npm test', since: iso(40) }, cwd: '/ws/microfrontends/x-front', version: 2048 });
   });
 
-  it('a queued entry of an older snapshot that the journal shows started is the same agent (no double row)', () => {
+  it('a queued entry of an older snapshot that the journal shows started is the same agent (no double row, the same id)', () => {
     const { agents } = deriveWorkflowRun(base({ progress: snapshot, journal: [{ type: 'started', agentId: 'a4', label: 'review:b', phase: 'Review' }] }));
     expect(agents.map((a) => [a.id, a.status])).toEqual([
-      ['wf_abc123-def.a1', 'done'],
-      ['wf_abc123-def.a2', 'done'],
-      ['wf_abc123-def.a3', 'run'],
-      ['wf_abc123-def.a4', 'run'],
+      ['wf_abc123-def--1', 'done'],
+      ['wf_abc123-def--2', 'done'],
+      ['wf_abc123-def--3', 'run'],
+      ['wf_abc123-def--4', 'run'],
     ]);
   });
 
@@ -277,7 +277,7 @@ describe('deriveWorkflowRun', () => {
     const { agents } = deriveWorkflowRun(base({ progress: snapshot, transcripts: new Map([['a3', { ...NO_TRANSCRIPT, cwd: '/ws/x-front' }]]) }));
     const api = workflowAgents(agents, (cwd) => (cwd.endsWith('x-front') ? 'x-front/' : null));
     expect(api[2]).toEqual({
-      id: 'wf_abc123-def.a3',
+      id: 'wf_abc123-def--3',
       kind: 'workflow',
       name: 'review:a',
       description: 'Review',
@@ -289,7 +289,9 @@ describe('deriveWorkflowRun', () => {
       workflow: agents[2]?.workflow,
     });
     expect(api[0]?.solutionPath).toBeNull();
-    expect(workflowAgentKey('wf_a', null, 7)).toBe('wf_a.q7');
+    expect(workflowAgentKey('wf_a', 'a7', 7)).toBe('wf_a--7');
+    expect(workflowAgentKey('wf_a', null, 7)).toBe('wf_a--7');
+    expect(workflowAgentKey('wf_a', 'a7', null)).toBe('wf_a--a7');
   });
 });
 
@@ -310,13 +312,13 @@ describe('a workflow agent\'s chat', () => {
       { ...envelope, type: 'assistant', uuid: 'm2', parentUuid: 'r1', timestamp: iso(4), message: { id: 'msg2', model: 'claude', content: [{ type: 'text', text: 'First part.' }] } },
       { ...envelope, type: 'assistant', uuid: 'm3', parentUuid: 'm2', timestamp: iso(4), message: { id: 'msg2', model: 'claude', content: [{ type: 'text', text: 'Second part.' }] } },
     ];
-    const events = workflowAgentEvents(entries, 'session-1', 'wf_x.a1');
+    const events = workflowAgentEvents(entries, 'session-1', 'wf_x--a1');
     expect(events.map((e) => [e.id, e.kind, (e.payload as { type: string }).type])).toEqual([
       [1, 'text', 'agent-prompt'],
       [2, 'plan', 'tool'],
       [3, 'text', 'assistant'],
     ]);
-    expect(events.every((e) => e.sessionId === 'session-1' && e.agentId === 'wf_x.a1')).toBe(true);
+    expect(events.every((e) => e.sessionId === 'session-1' && e.agentId === 'wf_x--a1')).toBe(true);
     expect(events[0]?.payload).toEqual({ type: 'agent-prompt', text: 'Read a.md' });
     expect(events[1]).toMatchObject({ endTs: iso(3), payload: { name: 'Read', toolUseId: 't1', result: 'contents', isError: false } });
     expect(events[2]?.payload).toEqual({ type: 'assistant', text: 'First part.\n\nSecond part.', messageId: 'msg2' });

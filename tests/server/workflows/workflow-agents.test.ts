@@ -115,7 +115,7 @@ describe('D51 · workflow agents on the real path', () => {
     expect(updates.some((s) => s.id === session.id && (s.workflows ?? []).some((r) => r.status === 'run'))).toBe(true);
     expect(updates.some((s) => s.id === session.id && (s.workflows ?? []).some((r) => r.status === 'done'))).toBe(true);
     // Unknown agents: 404.
-    expect((await get(`/api/sessions/${session.id}/workflow-agents/wf_nope.a1/chat`)).statusCode).toBe(404);
+    expect((await get(`/api/sessions/${session.id}/workflow-agents/wf_nope--a1/chat`)).statusCode).toBe(404);
     expect((await get(`/api/sessions/no-such/workflow-agents/x/chat`)).statusCode).toBe(404);
     await w.supervisor.pause(session.id);
 
@@ -128,6 +128,25 @@ describe('D51 · workflow agents on the real path', () => {
     const reread = await extra.workflowChat(record, first?.id ?? '');
     expect(reread?.events.map((e) => (e.payload as { type: string }).type)).toEqual(['agent-prompt', 'tool', 'assistant']);
     expect(w.errors).toEqual([]);
+  }, 60_000);
+});
+
+describe('D51 · a run whose process ends', () => {
+  it('a pause mid-run stops the run at once: it and its running agents read stopped (idle), however fresh the files are', async () => {
+    const w = await setup();
+    const session = await w.supervisor.start(newSession({ task: 'Audit. [fake:workflow 30 1x2]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    await until(async () => {
+      const d = await detail(session.id);
+      return d.agents.filter((a) => a.kind === 'workflow' && a.status === 'run' && a.workflow?.agentId).length === 2 || undefined;
+    }, 'two running workflow agents');
+    await w.supervisor.pause(session.id);
+    const stopped = await until(async () => {
+      const d = await detail(session.id);
+      return d.workflows?.[0]?.status === 'idle' ? d : undefined;
+    }, 'the run stopped', 5_000);
+    expect(stopped.agents.filter((a) => a.kind === 'workflow').map((a) => a.status)).toEqual(['idle', 'idle']);
+    expect(stopped.workflows?.[0]).toMatchObject({ doneCount: 0, agentCount: 2 });
   }, 60_000);
 });
 
@@ -177,7 +196,7 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
     try {
       const first = await service.forSession(record(w.workspace));
       expect(first.runs.map((r) => [r.runId, r.name, r.summary, r.status])).toEqual([['wf_1111aaaa-222', 'term-audit', 'Audit from a terminal', 'run']]);
-      expect(first.agents.map((a) => [a.id, a.name, a.status, a.workflow?.cwd])).toEqual([['wf_1111aaaa-222.a1', 'audit:one', 'run', '/elsewhere']]);
+      expect(first.agents.map((a) => [a.id, a.name, a.status, a.workflow?.cwd])).toEqual([['wf_1111aaaa-222--a1', 'audit:one', 'run', '/elsewhere']]);
 
       // The agent ends (the journal grows): the poll picks it up and tells the UI.
       await writeFile(path.join(runDir, 'journal.jsonl'), '{"type":"result","key":"k1","agentId":"a1","result":"fine"}\n', { flag: 'a' });
@@ -193,7 +212,7 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
       const stale = await fresh.forSession(record(w.workspace));
       expect(stale.runs[0]?.status).toBe('idle');
       fresh.close();
-      const chat = await service.chat(record(w.workspace), 'wf_1111aaaa-222.a1');
+      const chat = await service.chat(record(w.workspace), 'wf_1111aaaa-222--a1');
       expect(chat?.events[0]?.payload).toEqual({ type: 'agent-prompt', text: 'Audit one. Transcript dir: /etc/passwd' });
       expect(chat?.result).toEqual({ text: 'fine', isError: false });
     } finally {
@@ -208,7 +227,7 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
     const service = new WorkflowService({ configDir: () => w.configDir, onChange: () => undefined });
     try {
       expect(await service.forSession(record(w.workspace))).toEqual({ runs: [], agents: [] });
-      expect(await service.chat(record(w.workspace), 'wf_3333cccc-444.a1')).toBeNull();
+      expect(await service.chat(record(w.workspace), 'wf_3333cccc-444--a1')).toBeNull();
     } finally {
       service.close();
     }

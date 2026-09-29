@@ -27,8 +27,8 @@ afterEach(async () => {
 
 describe('D51 · a peer\'s workflow agents', () => {
   it('the chat route is part of the peer API', () => {
-    expect(peerApiAllowed('GET', '/api/sessions/s1/workflow-agents/wf_abc.a1/chat')).toBe(true);
-    expect(peerApiAllowed('POST', '/api/sessions/s1/workflow-agents/wf_abc.a1/chat')).toBe(false);
+    expect(peerApiAllowed('GET', '/api/sessions/s1/workflow-agents/wf_abc--a1/chat')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/sessions/s1/workflow-agents/wf_abc--a1/chat')).toBe(false);
     expect(peerApiAllowed('GET', `/api/sessions/${encodeURIComponent(remoteId('abcdefabcdef', 's1'))}/workflow-agents/x/chat`)).toBe(false);
   });
 

@@ -102,6 +102,8 @@ interface RunState {
   launchedAt: string | null;
   /** This session's live process launched it or reported its progress, and has not ended. */
   live: boolean;
+  /** The process that ran it ended (a pause, a stop, an exit): it runs no more, however fresh its files are. */
+  stopped: boolean;
   /** The task's final status on stdout. */
   ended: string | null;
   progress: WorkflowProgress | null;
@@ -226,6 +228,7 @@ export class WorkflowService implements WorkflowSource {
       run.launch = signal.launch;
       run.launchedAt ??= new Date(this.#now()).toISOString();
       run.live = true;
+      run.stopped = false;
       run.ended = null;
       if (signal.launch.taskId) {
         state.tasks.set(signal.launch.taskId, run.runId);
@@ -248,6 +251,7 @@ export class WorkflowService implements WorkflowSource {
       }
       run.progress = progress;
       run.live = true;
+      run.stopped = false;
     } else {
       const runId = state.tasks.get(signal.taskId);
       const run = runId ? state.runs.get(runId) : undefined;
@@ -262,7 +266,10 @@ export class WorkflowService implements WorkflowSource {
   processEnded(sessionId: string): void {
     const state = this.#sessions.get(sessionId);
     if (!state) return;
-    for (const run of state.runs.values()) run.live = false;
+    for (const run of state.runs.values()) {
+      if (run.live) run.stopped = true;
+      run.live = false;
+    }
     state.early.clear();
     this.#kick(state);
   }
@@ -345,6 +352,7 @@ export class WorkflowService implements WorkflowSource {
         launch: null,
         launchedAt: null,
         live: false,
+        stopped: false,
         ended: null,
         progress: null,
         runFile: null,
@@ -564,7 +572,7 @@ export class WorkflowService implements WorkflowSource {
           transcripts,
           script: run.script,
           ended: run.ended,
-          running: (run.live && run.ended === null) || (run.ended === null && recent),
+          running: !run.stopped && run.ended === null && (run.live || recent),
         }),
       };
     });
