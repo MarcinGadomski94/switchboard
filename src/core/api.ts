@@ -16,6 +16,7 @@ import type { StatusTableFormat } from './derive/status-table.ts';
 import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
+import type { SessionMachine } from './peers.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -551,6 +552,22 @@ export interface Session {
    * still type-check.
    */
   readonly context?: SessionContext | null;
+  /**
+   * Additive (D48, `docs/peers.md`): the paired machine the session runs on, only
+   * on a peer's session (its `id` is then a remote id, `r~<machine>~<id>`); absent
+   * for this machine's own sessions. `state` other than `online` = unreachable now
+   * (the session is shown, not deleted; the peer keeps running it).
+   */
+  readonly machine?: SessionMachine | null;
+  /**
+   * Additive (D48 P4, migration 0017, `docs/peers.md` → *Hooked terminal
+   * sessions*): a hand-started terminal session Switchboard hooked into. Its chat
+   * comes from the transcript; messages wake it through its hooks (held until its
+   * turn ends); interrupt, slash commands, model changes, pause / resume and the
+   * terminal handoff stay in the terminal. `false` for every other session. The
+   * server always sends it; optional so older payloads and fixtures type-check.
+   */
+  readonly hooked?: boolean;
 }
 
 /**
@@ -799,6 +816,28 @@ export interface ResumeCommand {
   readonly resumeCommand: string;
 }
 
+/**
+ * D50: how a Stop (`POST /api/sessions/{id}/interrupt`) ended:
+ * - `stopped`: the CLI acknowledged the interrupt and the running turn ended (or had just ended);
+ * - `idle`: no turn ran (nothing to stop; nothing was sent);
+ * - `timeout`: the CLI did not acknowledge in time (or the interrupted turn did not end):
+ *   an error line is recorded and nothing is killed; Pause ends the process.
+ */
+export type InterruptOutcome = 'stopped' | 'idle' | 'timeout';
+
+/** Additive (D50): the reply of `POST /api/sessions/{id}/interrupt`. */
+export interface InterruptResult {
+  /** The session after the Stop (status `idle` once the turn stopped, unless background work keeps it working). */
+  readonly session: Session;
+  readonly outcome: InterruptOutcome;
+  /**
+   * The texts of the messages the Stop took back (queued while the turn ran and not
+   * taken up by the agent), oldest first: the composer puts them back for editing.
+   * Empty for a second Stop while the first one is still waiting.
+   */
+  readonly withdrawn: readonly string[];
+}
+
 /** Additive (M4.1): optional body of `POST /api/sessions/{id}/attach`. */
 export interface AttachRequest {
   /** Attach even though the warning below applies (the developer confirmed it). */
@@ -914,6 +953,49 @@ export interface InboxItem {
   readonly permission?: PermissionRequest;
   /** Additive (M3.3): what "Open fix session" (action `open-fix-session`) opens the New-session modal with. */
   readonly prefill?: NewSessionPrefill;
+  /** Additive (D48): the paired machine the item comes from (a peer's item; its ids are remote ids); absent for this machine's own. */
+  readonly machine?: SessionMachine | null;
+}
+
+/**
+ * Additive (D48 P4): a terminal `claude` session running on this machine
+ * (`GET /api/terminal-sessions`): `claude agents --json` plus what the hooks
+ * reported. Sessions Switchboard itself runs are not listed.
+ */
+export interface TerminalSession {
+  /** The claude session id. */
+  readonly id: string;
+  readonly pid: number | null;
+  readonly cwd: string | null;
+  /** The CLI's session name. */
+  readonly name: string | null;
+  /** The CLI's words: `idle`, `busy`, `waiting`. */
+  readonly status: string | null;
+  /** E.g. `permission prompt`. */
+  readonly waitingFor: string | null;
+  readonly startedAt: string | null;
+  /** Switchboard follows it (an open hooked session). */
+  readonly hooked: boolean;
+  /** That Switchboard session's id, `null` while not hooked. */
+  readonly sessionId: string | null;
+  /** Switchboard's hooks have reported from it (so messages can wake it after its next turn end, or now when a waiter is armed). */
+  readonly hookSeen: boolean;
+  /** A wake-up waiter is armed (a message would go out now, once the session is idle). */
+  readonly waiter: boolean;
+}
+
+/** Additive (D48 P4): Switchboard's hooks in this machine's user Claude settings (`GET /api/hooks`). */
+export interface HooksStatus {
+  /** `installed`: exactly the current entries; `outdated`: Switchboard's entries, but not the current ones (install again); `unreadable`: the file is not valid JSON (nothing is changed). */
+  readonly state: 'installed' | 'outdated' | 'none' | 'unreadable';
+  readonly settingsPath: string;
+  /** `claude --version`, `null` when it could not be read. */
+  readonly cliVersion: string | null;
+  /** `internal`: the tested `rewakeMessage` / `rewakeSummary` fields are used; `fallback`: the documented `asyncRewake` only. */
+  readonly rewake: 'internal' | 'fallback';
+  /** The backup the last Install / Remove made (absolute path), `null` when none. */
+  readonly lastBackup: string | null;
+  readonly error: string | null;
 }
 
 /** A permission request as the Inbox shows it (D6: tool + input verbatim). Provisional: M3.1 / M3.2. */
@@ -931,6 +1013,13 @@ export interface PermissionRequest {
   readonly agentId: string | null;
   /** The asking agent's name (the subagent through `task_started`, else the main agent). */
   readonly agent: string | null;
+  /**
+   * Additive (D48 P4): a hooked terminal session's request: Deny takes an
+   * optional message (`POST /api/inbox/{id}/actions/deny` with `{ message }`), and
+   * "Always allow" (`always-allow`) is offered when the CLI suggested rules.
+   * Absent for a supervised process's request (D6).
+   */
+  readonly hook?: { readonly denyMessage: true; readonly alwaysAllow: boolean } | null;
 }
 
 /**

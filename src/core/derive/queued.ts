@@ -63,6 +63,20 @@ export interface TakenUp {
    * turn took it with the message ahead of it, so no `result` of its own follows.
    */
   readonly absorbed: boolean;
+  /**
+   * D50: it had been withdrawn by a Stop ({@link QueueTracker.withdraw}), but the
+   * CLI had already taken it up (its echo was on its way): it was delivered after
+   * all. It was no pending turn any more, so it costs no count.
+   */
+  readonly withdrawn?: true;
+}
+
+/** D50: a message a Stop took back ({@link QueueTracker.withdraw}): its event and text. */
+export interface Withdrawn {
+  readonly eventId: number;
+  readonly text: string;
+  /** It showed the D44 clock (`queued`) when it was withdrawn. */
+  readonly wasQueued: boolean;
 }
 
 /**
@@ -71,10 +85,36 @@ export interface TakenUp {
  */
 export class QueueTracker {
   readonly #pending: Pending[] = [];
+  /** D50: messages the last Stop withdrew; kept until the next message is sent, in case the CLI's echo of one was already on its way. */
+  #withdrawn: Pending[] = [];
 
   /** Records a message written to stdin (its event id and text) with the reason it waits, if any. */
   sent(eventId: number, text: string, queued: QueuedReason | null): void {
+    this.#withdrawn = [];
     this.#pending.push({ eventId, text, queued, takenUp: false });
+  }
+
+  /**
+   * D50 Stop: takes back every message no turn has started on yet (the D44 queued
+   * ones, and one written idle whose turn has not started), oldest first. The
+   * interrupt's `cancel_queued` removes them from the CLI's queue, so none of them
+   * is taken up any more: they leave the list. A message a turn already started on
+   * (its `init` came) stays: the interrupt stops that turn instead.
+   */
+  withdraw(): Withdrawn[] {
+    const out: Withdrawn[] = [];
+    const kept: Pending[] = [];
+    for (const pending of this.#pending) {
+      if (pending.takenUp) {
+        kept.push(pending);
+        continue;
+      }
+      out.push({ eventId: pending.eventId, text: pending.text, wasQueued: pending.queued !== null });
+      this.#withdrawn.push(pending);
+    }
+    this.#pending.length = 0;
+    this.#pending.push(...kept);
+    return out;
   }
 
   /**
@@ -98,6 +138,12 @@ export class QueueTracker {
    */
   replayed(text: string): TakenUp | null {
     const at = this.#pending.findIndex((pending) => pending.text === text);
+    if (at < 0) {
+      // D50: the echo of a message a Stop withdrew a moment too late (the CLI had taken it up already).
+      const late = this.#withdrawn.findIndex((pending) => pending.text === text);
+      const [hit] = late >= 0 ? this.#withdrawn.splice(late, 1) : [];
+      if (hit) return { eventId: hit.eventId, wasQueued: false, absorbed: true, withdrawn: true };
+    }
     const [hit] = this.#pending.splice(at >= 0 ? at : 0, 1);
     if (!hit) return null;
     return { eventId: hit.eventId, wasQueued: hit.queued !== null, absorbed: !hit.takenUp };
@@ -111,6 +157,7 @@ export class QueueTracker {
   ended(): number[] {
     const ids = this.#pending.filter((pending) => pending.queued !== null).map((pending) => pending.eventId);
     this.#pending.length = 0;
+    this.#withdrawn = [];
     return ids;
   }
 

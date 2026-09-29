@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BranchingPreflightRequest, BranchingPreflightRow } from '../../core/api.ts';
 import { DEFAULT_EPIC_BASE, EPIC_KEY_EXAMPLE, tidyEpicKey } from '../../core/branching.ts';
 import { PARENT_EPIC_LABEL, parentText, parseParent } from '../../core/stacking.ts';
-import { ApiError, api } from '../api/client.ts';
+import { ApiError, machineApi } from '../api/client.ts';
 import {
   type BranchingForm,
   CREATION_LINE,
@@ -47,10 +47,14 @@ function errorText(caught: unknown): string {
  * again on `recheck`. Answers to an older request are dropped. `null` = no check
  * (no solutions, or the section is hidden): no rows.
  */
-export function useBranchingPreflight(request: BranchingPreflightRequest | null): PreflightState {
-  const key = preflightKey(request);
+export function useBranchingPreflight(request: BranchingPreflightRequest | null, machine: string | null = null): PreflightState {
+  // D48 (P3): on another machine the preflight runs there (its repos); a machine switch is a new request.
+  const requestKey = preflightKey(request);
+  const key = requestKey === null ? null : `${machine ?? ''}\u0000${requestKey}`;
   const latest = useRef(request);
   latest.current = request;
+  const latestMachine = useRef(machine);
+  latestMachine.current = machine;
   const sequence = useRef(0);
   const [state, setState] = useState<{ key: string | null; rows: readonly BranchingPreflightRow[] | null; loading: boolean; error: string | null }>({
     key: null,
@@ -66,9 +70,10 @@ export function useBranchingPreflight(request: BranchingPreflightRequest | null)
       setState({ key: null, rows: null, loading: false, error: null });
       return;
     }
-    const runKey = preflightKey(body);
+    const runMachine = latestMachine.current;
+    const runKey = `${runMachine ?? ''}\u0000${preflightKey(body)}`;
     setState((current) => ({ ...current, key: runKey, loading: true, error: null }));
-    api.branchingPreflight(body).then(
+    machineApi(runMachine).branchingPreflight(body).then(
       (answer) => {
         if (id === sequence.current) setState({ key: runKey, rows: answer.rows, loading: false, error: null });
       },

@@ -13,7 +13,8 @@ import {
 } from '../../core/event-payload.ts';
 import { type ContextInput, type ContextState, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { ActivityTracker } from '../../core/derive/activity.ts';
-import { QueueTracker, queuedReason, withoutQueued } from '../../core/derive/queued.ts';
+import { QueueTracker, type Withdrawn, queuedReason, withoutQueued } from '../../core/derive/queued.ts';
+import { STOPPED_LABEL, isInterruptedResult, stopTimeoutText } from '../../core/stop-turn.ts';
 import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import {
@@ -165,6 +166,13 @@ export class StreamRecorder {
   #lastOutcome: TurnOutcome | null = null;
   /** Set while Switchboard stops the process: the interrupted turn's result is not an outcome. */
   #stopping = false;
+  /**
+   * D50: the developer stopped the turn (Stop / Esc) and no message was sent since:
+   * an interrupted result is the stop's (outcome `stopped`, the "Stopped" line), not a failure.
+   */
+  #stopRequested = false;
+  /** D50: the "Stopped" line of the current stop is written (a late second aborted result adds none). */
+  #stopLineWritten = false;
   readonly #openRequests = new Map<string, OpenRequest>();
   readonly #runningAgents = new Set<string>();
   readonly #textByMessage = new Map<string, { eventId: number; text: string }>();
@@ -244,6 +252,60 @@ export class StreamRecorder {
   /** Marks the start of a Switchboard-initiated stop. */
   beginStop(): void {
     this.#stopping = true;
+  }
+
+  /** `true` while a turn is open (started by `init` or a replay, not ended by its `result`). */
+  get turnOpen(): boolean {
+    return this.#turnOpen;
+  }
+
+  /**
+   * D50: the developer stops the running turn (the supervisor then writes the
+   * interrupt): the interrupted result that follows is the stop's, until the next
+   * message is sent.
+   */
+  beginInterrupt(): void {
+    this.#stopRequested = true;
+    this.#stopLineWritten = false;
+  }
+
+  /**
+   * D50: takes back the messages the agent has not taken up (they were queued, or
+   * their turn had not started; {@link QueueTracker.withdraw}), oldest first. Each
+   * is no pending turn any more; its event loses `queued` and gets `withdrawn`
+   * (re-sent on `/hub`, so every chat drops the bubble). Returns them with their text.
+   */
+  async withdrawQueued(): Promise<Withdrawn[]> {
+    const withdrawn = this.#queue.withdraw();
+    this.#pendingTurns = Math.max(0, this.#pendingTurns - withdrawn.length);
+    for (const message of withdrawn) {
+      await this.#patchPayload<UserPayload>(message.eventId, (payload) => ({ ...withoutQueued(payload), withdrawn: true }));
+    }
+    return withdrawn;
+  }
+
+  /**
+   * D50: requests still open after a stopped turn ended (the CLI withdraws them
+   * with `control_cancel_request`; this is the fallback when it did not): closed
+   * as `cancelled`. Returns the ids it closed.
+   */
+  async cancelRequests(requestIds: readonly string[]): Promise<string[]> {
+    const closed: string[] = [];
+    for (const id of requestIds) {
+      const open = this.#openRequests.get(id);
+      if (!open) continue;
+      this.#openRequests.delete(id);
+      this.#activity.requestClosed(id);
+      await this.#setRequestState(open, 'cancelled');
+      closed.push(id);
+    }
+    this.#syncActivity();
+    return closed;
+  }
+
+  /** D50: the CLI did not acknowledge a Stop in time (or its turn did not end): the chat's error line. */
+  async recordStopTimeout(waitedMs: number, missing: 'ack' | 'result'): Promise<EventRecord> {
+    return this.#append('error', stopTimeoutText(waitedMs), { type: 'stop', outcome: 'timeout', waitedMs, missing });
   }
 
   /**
@@ -337,6 +399,8 @@ export class StreamRecorder {
    */
   async recordUserMessage(text: string, origin: UserMessageOrigin, options: { readonly resuming?: boolean } = {}): Promise<EventRecord> {
     const queued = queuedReason({ turnRunning: this.#pendingTurns > 0 || this.#turnOpen, resuming: options.resuming === true });
+    // D50: a new message ends the stop: a later interrupted result is a failure again.
+    this.#stopRequested = false;
     this.#pendingTurns++;
     const payload: UserPayload = { type: 'user', text, origin, delivered: false, ...(queued ? { queued } : {}) };
     const event = await this.#append(userMessageKind(text), textLabel(text), payload);
@@ -589,6 +653,21 @@ export class StreamRecorder {
       await this.#setTranscriptUuid(message.uuid, null);
       return;
     }
+    const taken = this.#queue.replayed(message.text);
+    if (taken?.withdrawn) {
+      // D50: a message a Stop withdrew had been taken up already (into the turn the Stop aborts): it
+      // was delivered after all, so its bubble comes back. It was no pending turn any more.
+      await this.#patchPayload<UserPayload>(
+        taken.eventId,
+        (payload) => {
+          const { withdrawn: _withdrawn, ...rest } = withoutQueued(payload);
+          return { ...rest, delivered: true };
+        },
+        message.uuid ? { uuid: message.uuid } : {},
+      );
+      await this.#setTranscriptUuid(message.uuid, null);
+      return;
+    }
     // The CLI took up a stdin message (D19: the turn starts, if `init` did not start it already).
     // It is no longer to come: the open turn (its own, or the one it was folded into) answers it.
     this.#openTurn();
@@ -596,7 +675,6 @@ export class StreamRecorder {
     this.#turnTookUp = true;
     this.#startTurn();
     // Delivered; D44: no longer queued (a message a running turn absorbs is echoed mid-turn, without an `init`).
-    const taken = this.#queue.replayed(message.text);
     if (taken) await this.#clearQueued(taken.eventId, { delivered: true, ...(message.uuid ? { uuid: message.uuid } : {}) });
     await this.#setTranscriptUuid(message.uuid, null);
   }
@@ -700,6 +778,14 @@ export class StreamRecorder {
   /** A foreground Agent call without task events ends with its tool_result. */
   async #onAgentToolResult(toolUseId: string, isError: boolean): Promise<void> {
     const agent = await this.#store.agents.findByToolUseId(this.#sessionId, toolUseId);
+    if (agent && agent.taskId && agent.status === 'run' && isError && this.#stopRequested) {
+      // D50: a foreground subagent cut off by the Stop (its call's result is the interrupt's error):
+      // it is idle, like a subagent a stopped process leaves behind, and no longer keeps the session running.
+      await this.#store.agents.update(agent.id, { status: 'idle', statusText: null, endedAt: new Date().toISOString() });
+      this.#activity.agentEnded(agent.id);
+      this.#runningAgents.delete(agent.taskId);
+      return;
+    }
     if (!agent || agent.taskId || agent.status !== 'run') return;
     await this.#store.agents.update(agent.id, { status: isError ? 'fail' : 'done', statusText: null, endedAt: new Date().toISOString() });
     this.#activity.agentEnded(agent.id);
@@ -734,6 +820,26 @@ export class StreamRecorder {
     this.#failedCommands.clear();
     this.#textByMessage.clear();
     if (this.#stopping) return;
+    if (this.#stopRequested && isInterruptedResult(message)) {
+      // D50: the turn the developer stopped: the session is idle, ready for the next message.
+      this.#lastOutcome = 'stopped';
+      if (this.#stopLineWritten) return;
+      this.#stopLineWritten = true;
+      await this.#append('text', STOPPED_LABEL, {
+        type: 'result',
+        subtype: message.subtype,
+        isError: message.isError,
+        text: null,
+        terminalReason: message.terminalReason,
+        errors: message.errors,
+        taskNotification: message.taskNotification,
+        numTurns: message.numTurns,
+        durationMs: message.durationMs,
+        costUsd: message.totalCostUsd,
+        stopped: true,
+      }, { uuid: message.uuid });
+      return;
+    }
     this.#lastOutcome = message.isError ? 'error' : 'success';
     const label = message.isError
       ? [message.subtype, message.errors[0]].filter(Boolean).join(': ')

@@ -55,6 +55,12 @@ export interface UserPayload {
    * or its replay, whichever comes first) and absent on messages that never waited.
    */
   readonly queued?: QueuedReason;
+  /**
+   * Additive (D50): a Stop took the message back before the agent took it up (it
+   * was queued, or its turn had not started): the CLI never runs it, its text went
+   * back into the composer, and the chat no longer shows it. Absent otherwise.
+   */
+  readonly withdrawn?: true;
 }
 
 /** Assistant text; the text blocks of one `message.id` are merged into one event. */
@@ -135,6 +141,25 @@ export interface ResultPayload {
   readonly numTurns: number | null;
   readonly durationMs: number | null;
   readonly costUsd: number | null;
+  /**
+   * Additive (D50): the developer stopped this turn (Stop / Esc): the CLI's
+   * interrupted result (`error_during_execution`, `terminal_reason` `aborted_*`).
+   * The event is the chat's small "Stopped" line, kind `text`, and not a failure.
+   */
+  readonly stopped?: true;
+}
+
+/**
+ * D50: a Stop the CLI did not acknowledge in time (kind `error`): the chat's error
+ * line; the composer offers Pause, which ends the process (D7). Nothing is killed.
+ */
+export interface StopPayload {
+  readonly type: 'stop';
+  readonly outcome: 'timeout';
+  /** How long Switchboard waited (ms). */
+  readonly waitedMs: number;
+  /** What did not come: the interrupt's `control_response`, or the interrupted turn's `result`. */
+  readonly missing: 'ack' | 'result';
 }
 
 /** What happened to the process. */
@@ -238,7 +263,8 @@ export type EventPayload =
   | LifecyclePayload
   | ModeMismatchPayload
   | RemotePayload
-  | ModelPayload;
+  | ModelPayload
+  | StopPayload;
 
 /** `text` cut to {@link PAYLOAD_TEXT_LIMIT} characters. */
 export function clip(text: string, limit = PAYLOAD_TEXT_LIMIT): { text: string; truncated: boolean } {

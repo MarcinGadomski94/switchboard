@@ -304,3 +304,10 @@ export function modelPickBody(model: NonNullable<Session['model']>, value: strin
 export function effortPickBody(model: NonNullable<Session['model']>, value: string | null): SessionModelInput | null {
   return value === model.effort ? null : { effort: value };
 }
+
+/**
+ * D48 P4: the note of a hooked terminal session (`docs/peers.md` → *Hooked
+ * terminal sessions*): what works from here, and what stays in the terminal.
+ */
+export const HOOKED_NOTE =
+  'Hooked terminal session: your messages go in when its turn ends; interrupt, / commands, model changes and pause stay in the terminal (hooks cannot do them).';

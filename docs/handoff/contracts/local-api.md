@@ -429,6 +429,25 @@ Event    { …, "payload": { "type": "user", "text": "Keep it short.", "origin":
 Question { …, "state": "stale", "answeredAt": "2026-09-29T10:00:00.000Z", "queued": "resume" | null }
 ```
 
+## Switchboard peers (D48, 2026-09-29, additive)
+Developer ruling D48 (`docs/decisions.md` → *Switchboard peers*; design and limits `docs/peers.md`). Every change is additive; no existing route, field or event changes shape.
+
+- **Machines (Settings → Machines):** `GET /api/machines` → `{ self: { id, name }, listener: PeerListenerState, machines: Machine[] }`; `PUT /api/machines/self` `{ name }`; `PUT /api/machines/listener` `{ enabled?, address?, port? }` → PeerListenerState (422 `invalid`); `POST /api/machines/pairing-code` → `{ code, expiresAt }`; `POST /api/machines` `{ address, code }` → 201 Machine (422 `invalid`, 409 `pairing-refused`, 502 `peer-unreachable` / `pairing-failed`); `PUT /api/machines/{id}` `{ name }` → Machine; `DELETE /api/machines/{id}` → 204 (404). Types in `src/core/peers.ts`.
+- **A machine's peer API through this service:** `GET/POST/PUT/DELETE /api/machines/{id}/api/<path>` → that machine's `/api/<path>` (its allow-list, `docs/peers.md` → *The peer API*), answers namespaced; 403 `peer-forbidden` for a route it does not serve, 404 `not-found` for an unknown machine, 502 `peer-unreachable` / `peer-auth-failed`.
+- **Remote ids:** a paired machine's session, question batch and Inbox item ids read `r~<machine id>~<its id>`. Every existing route that takes `{id}` or `{batchId}` accepts them and is answered by that machine (same statuses and bodies; plus the 404 / 502 / 403 above).
+- **Session** and **InboxItem** gain `machine: { id, name, state: "online" | "offline" | "auth-failed" | "no-address" } | null`: set on a paired machine's session or item, `null` (sessions) / absent (items) on this machine's own. `GET /api/sessions` lists this machine's sessions, then the paired machines' open ones; `GET /api/inbox` this machine's items, then the reachable machines' ones.
+- **New session on a peer (P3):** `POST /api/sessions` takes an additive `machine` (a paired machine's id): the session starts there (its folder ids, its validation) and the 201 answer carries its remote id; `machine` naming this machine, or empty, starts here. The form uses `/api/machines/{id}/api/folders`, `…/models`, `…/solutions`, `…/branching/preflight` and `…/sessions`.
+- **Hooked terminal sessions (P4):** `GET /api/terminal-sessions` → TerminalSession[] (502 `agents-unavailable`); `POST /api/terminal-sessions/{id}/hook` → 201 Session (a new hooked session) / 200 (it was hooked before; 404, 409 `already-in-switchboard`); `GET /api/hooks` → HooksStatus; `POST /api/hooks/install` / `POST /api/hooks/remove` → HooksStatus (409 `settings-unreadable`). **Session** gains `hooked: boolean`; for a hooked session `pause`, `resume`, `model`, `remote`, `detach`, `attach` and a message that is a slash command answer 409 `hooked-unavailable` (message = why), and `close` unhooks it. **PermissionRequest** (Inbox) gains `hook: { denyMessage: true, alwaysAllow } | null` on a hooked session's request, whose actions are `allow-once`, `always-allow` (when offered) and `deny`, which takes an optional body `{ message }` (at most 2000 characters). **Question.answeredOn** may also read `terminal`. The hook script's own endpoints `POST /hook/v1/event | permission | waiter` take only the hook token (`docs/security.md` → *Hook endpoints*) and are not part of the UI contract.
+- **`/hub`:** a paired machine's `sessionUpdated`, `event`, `questionBatch` and `activity` arrive with remote ids; `inboxChanged.count` counts this machine's items plus the reachable machines' ones. No new event names.
+
+```json
+Machine            { "id": "k3v7q2m9x4ab", "name": "pc-office", "address": "100.101.102.103:13002", "state": "online", "lastError": null, "lastSeenAt": "2026-09-29T12:00:00.000Z", "pairedAt": "2026-09-29T11:58:00.000Z" }
+PeerListenerState  { "enabled": true, "configuredAddress": null, "port": 13002, "listening": "100.64.1.2:13002", "error": null }
+Session            { "id": "r~k3v7q2m9x4ab~0b7c3e0a-…", …, "machine": { "id": "k3v7q2m9x4ab", "name": "pc-office", "state": "online" }, "hooked": false }
+TerminalSession    { "id": "7b6d7a38-…", "pid": 48150, "cwd": "C:\\Users\\me\\repo", "name": "t3-0f", "status": "waiting", "waitingFor": "permission prompt", "startedAt": "2026-09-29T10:00:00.000Z", "hooked": false, "sessionId": null, "hookSeen": true, "waiter": true }
+HooksStatus        { "state": "installed", "settingsPath": "C:\\Users\\me\\.claude\\settings.json", "cliVersion": "2.1.284 (Claude Code)", "rewake": "internal", "lastBackup": null, "error": null }
+```
+
 ## Context window meter (D49, 2026-09-29, additive)
 Developer request D49 (`docs/decisions.md` → *Context window meter*): the composer shows how full the session's context window is. No new route or event name; migration `0015_session_context.sql`. Details: `docs/chat.md` → *Context bar*.
 
@@ -437,6 +456,24 @@ Developer request D49 (`docs/decisions.md` → *Context window meter*): the comp
 
 ```json
 Session { …, "context": { "tokens": 124000, "window": 200000, "windowSource": "reported", "model": "claude-opus-4-7", "percent": 62, "band": "warn", "updatedAt": "2026-09-29T12:05:00.000Z", "compaction": { "at": "2026-09-29T12:05:00.000Z", "trigger": "auto", "preTokens": 167000, "postTokens": 18000 }, "compactedRecently": false, "autoCompactTokens": 167000, "autoCompactPercent": 83.5 } | null }
+```
+
+## Stop the current turn (D50, 2026-09-29, additive)
+Developer request D50 (`docs/decisions.md` → *Stop the current turn*): stop the running turn only; the process stays alive and the session becomes idle. One new route, no new event name, no migration. Details: `docs/supervisor.md` → *Stop the current turn (D50)*, `docs/chat.md` → *Stop (D50)*.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` |
+
+- **InterruptResult:** `session` (the Session after the Stop: `idle` once the turn stopped, unless background work keeps it working), `outcome` (`stopped` = the CLI acknowledged and the turn ended; `idle` = no turn ran, nothing was sent; `timeout` = no acknowledgement in time: an error event is recorded and nothing is killed, Pause ends the process), `withdrawn` (the texts of the messages the Stop took back, oldest first, for the composer; empty for a second Stop while the first one waits). The call returns once the Stop is over.
+- **SessionEvent.payload** of type `user` gains `withdrawn: true` on a message the Stop took back (the agent never runs it); the event is re-sent on `/hub` `event` when it is set (and when a late echo shows the CLI had taken it up after all: `withdrawn` removed, `delivered: true`).
+- **SessionEvent.payload** of type `result` gains `stopped: true` on the stopped turn's result (kind `text`, label `Stopped`), and a new payload type `stop` `{ outcome: "timeout", waitedMs, missing: "ack" | "result" }` (kind `error`) records a Stop the CLI did not acknowledge.
+- **Question.closedReason** can be `turn stopped`: a batch whose turn was stopped while it waited (it leaves the Inbox, like D33's `session closed`). A permission request open then goes `stale`.
+
+```json
+InterruptResult { "session": Session, "outcome": "stopped" | "idle" | "timeout", "withdrawn": ["Also: keep it short."] }
+Event { …, "payload": { "type": "user", "text": "Also: keep it short.", "origin": "user", "delivered": false, "withdrawn": true } }
+Event { …, "kind": "text", "label": "Stopped", "payload": { "type": "result", "subtype": "error_during_execution", "isError": true, "terminalReason": "aborted_streaming", …, "stopped": true } }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)

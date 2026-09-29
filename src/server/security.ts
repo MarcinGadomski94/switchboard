@@ -116,6 +116,26 @@ export interface SecurityOptions {
   readonly port: number;
   /** The per-install token. */
   readonly token: string;
+  /**
+   * D48 P4: the hook token (`<dataDir>/hook-token`, 0600). `/hook/*` takes only it,
+   * as `Authorization: Bearer <token>` (never the cookie); without one `/hook/*`
+   * is refused.
+   */
+  readonly hookToken?: string | null;
+}
+
+/** D48 P4: `true` for `/hook` and `/hook/…` (the hook script's endpoints). */
+export function isHookPath(url: string): boolean {
+  const q = url.indexOf('?');
+  const pathname = q < 0 ? url : url.slice(0, q);
+  return pathname === '/hook' || pathname.startsWith('/hook/');
+}
+
+/** D48 P4: `true` when an `Authorization` header carries the hook token (constant time). */
+export function hasHookToken(header: string | undefined, hookToken: string | null | undefined): boolean {
+  if (!hookToken || typeof header !== 'string') return false;
+  const match = /^Bearer (\S+)$/.exec(header.trim());
+  return match !== null && tokenMatches(match[1] as string, hookToken);
 }
 
 function deny(reply: FastifyReply, status: 401 | 403, error: string): FastifyReply {
@@ -125,6 +145,8 @@ function deny(reply: FastifyReply, status: 401 | 403, error: string): FastifyRep
 /**
  * Installs the guard as the first `onRequest` hook, for every route and every 404:
  * 1. `Host` must be a loopback name with the service port → else 403 `forbidden-host`.
+ *    D48 P4: `/hook/*` then needs no `Origin` (403) and the hook token as a bearer
+ *    (401), never the cookie.
  * 2. `Origin`, when present, must be the service's own origin → else 403 `forbidden-origin`.
  * 3. Unless the route is marked `config.public` (UI page, static files) and the path
  *    is not under `/api` or `/hub`, the `sb_token` cookie must match → else 401 `unauthorized`.
@@ -134,6 +156,12 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
   app.addHook('onRequest', async (request, reply) => {
     if (!isAllowedHost(request.headers.host, port)) return deny(reply, 403, 'forbidden-host');
     const origin = request.headers.origin;
+    // D48 P4: the hook script's endpoints: no browser (any Origin refused), only the hook token.
+    if (isHookPath(request.url)) {
+      if (origin !== undefined) return deny(reply, 403, 'forbidden-origin');
+      if (!hasHookToken(request.headers.authorization, options.hookToken)) return deny(reply, 401, 'unauthorized');
+      return undefined;
+    }
     if (origin !== undefined && !isAllowedOrigin(origin, port)) return deny(reply, 403, 'forbidden-origin');
     const isPublic = request.routeOptions.config?.public === true && !isProtectedPath(request.url);
     if (!isPublic && !hasValidTokenCookie(request, token)) return deny(reply, 401, 'unauthorized');

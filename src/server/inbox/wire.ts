@@ -19,6 +19,13 @@ export const PERMISSION_ACTIONS: readonly InboxAction[] = [
   { id: 'deny', label: 'Deny' },
 ];
 
+/** D48 P4: a hooked terminal session's request: Allow once (primary), Always allow (when the CLI suggested rules), Deny. */
+export function hookPermissionActions(alwaysAllow: boolean): readonly InboxAction[] {
+  return alwaysAllow
+    ? [{ id: 'allow-once', label: 'Allow once' }, { id: 'always-allow', label: 'Always allow' }, { id: 'deny', label: 'Deny' }]
+    : PERMISSION_ACTIONS;
+}
+
 /** A stored question as the API and `/hub` return it; its state is its batch's state. */
 export function toQuestion(record: QuestionRecord, batch: QuestionBatchRecord): Question {
   return {
@@ -154,7 +161,7 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
     detail: record.description ?? record.decisionReason ?? '',
     createdAt: record.createdAt,
     branches: await sessionBranches(store, record.sessionId),
-    actions: PERMISSION_ACTIONS,
+    actions: record.hookSuggestions === null ? PERMISSION_ACTIONS : hookPermissionActions(record.hookSuggestions.length > 0),
     permission: {
       requestId: record.requestId,
       toolName: record.toolName,
@@ -163,6 +170,8 @@ export async function permissionItem(store: Store, record: PermissionRequestReco
       decisionReason: record.decisionReason,
       agentId: record.agentId,
       agent: agent?.name ?? null,
+      // D48 P4: a hooked terminal session's request (Deny with a message; Always allow when the CLI suggested rules).
+      hook: record.hookSuggestions === null ? null : { denyMessage: true, alwaysAllow: record.hookSuggestions.length > 0 },
     },
   };
 }

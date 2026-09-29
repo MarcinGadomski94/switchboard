@@ -93,6 +93,10 @@ const SESSION_KEYS = keys<Session>()([
   'closedAt',
   // additive, D49 (context window meter)
   'context',
+  // additive, D48 (a peer's session: its machine; null here)
+  'machine',
+  // additive, D48 P4 (a hooked terminal session)
+  'hooked',
   // additive, D51 (workflow runs)
   'workflows',
 ]);

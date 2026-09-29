@@ -5,6 +5,7 @@ import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
+import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link } from '../router.tsx';
@@ -65,6 +66,8 @@ function ListCard({ item, selected, now, onPick }: { readonly item: InboxItem; r
     >
       <div className="sb-inbox__card-head">
         <span className="sb-inbox__dot" style={{ background: statusColor(item.status) }} />
+        {/* D48: a peer's item names its machine. */}
+        <MachineTag machine={item.machine} />
         <span className="sb-inbox__card-source">{item.sourceTitle ?? item.source}</span>
         <span className="sb-inbox__card-age">{formatAge(item.createdAt, now)}</span>
       </div>
@@ -112,11 +115,16 @@ interface DetailProps {
   readonly busy: boolean;
   readonly error: string | null;
   readonly onAnswers: (body: AnswerBatch) => void;
-  readonly onAction: (action: InboxAction) => void;
+  /** D48 P4: `message` = a hooked session's Deny message (empty = the fixed text). */
+  readonly onAction: (action: InboxAction, message?: string) => void;
 }
 
 function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAction }: DetailProps) {
   const body = detailBody(item);
+  // D48 P4: a hooked terminal session's Deny can tell Claude why.
+  const [denyText, setDenyText] = useState('');
+  useEffect(() => setDenyText(''), [item.id]);
+  const denyMessage = item.permission?.hook?.denyMessage === true;
   return (
     <>
       <div className="sb-inbox__meta" data-testid="inbox-meta">
@@ -127,6 +135,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
         <span>·</span>
         <span>{formatAge(item.createdAt, now)}</span>
         {folderTag ? <FolderTag name={folderTag} title={folderPath} /> : null}
+        <MachineTag machine={item.machine} testId="inbox-machine" />
         {linksSession(item) ? (
           <Link to={{ view: 'session', id: item.sessionId, tab: 'chat' }} className="sb-inbox__open" data-testid="inbox-open-session">
             {OPEN_SESSION}
@@ -163,7 +172,22 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
           </pre>
         </div>
       ) : null}
-      {body !== 'questions' ? <Actions item={item} busy={busy} onAction={onAction} /> : null}
+      {body === 'permission' && denyMessage ? (
+        <textarea
+          className="sb-inbox__deny-message"
+          data-testid="permission-deny-message"
+          aria-label="Message with Deny"
+          placeholder="Tell Claude why, with Deny (optional)"
+          rows={2}
+          maxLength={2000}
+          value={denyText}
+          disabled={busy}
+          onChange={(event) => setDenyText(event.target.value)}
+        />
+      ) : null}
+      {body !== 'questions' ? (
+        <Actions item={item} busy={busy} onAction={(action) => onAction(action, action.id === 'deny' && denyMessage && denyText.trim() !== '' ? denyText.trim() : undefined)} />
+      ) : null}
       {body !== 'questions' && error ? (
         <div className="sb-inbox__error" data-testid="inbox-error">
           {error}
@@ -257,10 +281,10 @@ export function InboxView() {
             busy={busyId === current.id}
             error={errors[current.id] ?? null}
             onAnswers={(body) => void run(current, () => api.answerBatch(current.id, body))}
-            onAction={(action) => {
+            onAction={(action, message) => {
               // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.
               const prefill = newSessionAfter(current, action.id);
-              void run(current, () => api.inboxAction(current.id, action.id), prefill ? () => modals.open('new-session', { prefill }) : undefined);
+              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), prefill ? () => modals.open('new-session', { prefill }) : undefined);
             }}
           />
         ) : null}

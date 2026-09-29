@@ -10,8 +10,10 @@ import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, comp
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
-import { SubagentChatView } from './SubagentChat.tsx';
-import { mainChatPlace, rememberMainChat } from './subagent-chat.ts';
+import { SubagentChatView, isEditing } from './SubagentChat.tsx';
+import { OVERLAY_SELECTOR, mainChatPlace, rememberMainChat } from './subagent-chat.ts';
+import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPING_LABEL, withdrawnDraft } from '../../../core/stop-turn.ts';
+import { canStop, escStops } from './stop.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -157,6 +159,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <ChatActivityLine activity={activity} />
       <Composer
         sessionId={sessionId}
+        // D50: while a turn runs, Send becomes ■ Stop (and Esc stops it).
+        stoppable={session !== null && canStop({ live: session.live, status: session.status, activity })}
         // D49: the context bar above the quick replies (none for a session without meter data: the demo seed).
         context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
@@ -164,6 +168,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         onSent={() => {
           stick.current = true;
         }}
+        // D50: the reply's session is newer than the view's (its `/hub` refresh is throttled): reload it now.
+        onStopped={onChanged}
       />
     </>
   );
@@ -204,22 +210,96 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
   );
 }
 
-/** The composer (prototype): D49 the context bar, quick replies, then the message field and Send. */
+/**
+ * The composer (prototype): D49 the context bar, quick replies, then the message
+ * field and Send. D50: while a turn runs (`stoppable`) Send is the ■ Stop button,
+ * and Esc stops the turn too when nothing else owns the key (`escStops`); the
+ * messages the Stop took back come back into the field, before what is there.
+ */
 function Composer({
   sessionId,
+  stoppable: turnRuns,
   context,
   placeholder,
   onSent,
+  onStopped,
 }: {
   readonly sessionId: string;
+  readonly stoppable: boolean;
   readonly context: SessionContext | null;
   readonly placeholder: string;
   readonly onSent: () => void;
+  readonly onStopped: () => void;
 }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement | null>(null);
+  // D50: a Stop waits for the CLI; the note (with Pause) when it did not stop in time.
+  const [stopping, setStopping] = useState(false);
+  const [stopTimedOut, setStopTimedOut] = useState(false);
+  // The turn is stopped, but the view's session may still say `run` for a moment: Send is back at once,
+  // until the view catches up (the turn no longer runs) or a new message goes out.
+  const [stopped, setStopped] = useState(false);
+  useEffect(() => {
+    if (!turnRuns) setStopped(false);
+  }, [turnRuns]);
+  const stoppable = turnRuns && !stopped;
+  const stoppingRef = useRef(false);
+  const stoppableRef = useRef(stoppable);
+  stoppableRef.current = stoppable;
+
+  const stop = async (): Promise<void> => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    setStopTimedOut(false);
+    setError(null);
+    try {
+      const result = await api.interruptSession(sessionId);
+      if (result.outcome !== 'timeout' && result.session.status !== 'run' && result.session.status !== 'need') setStopped(true);
+      onStopped();
+      if (result.withdrawn.length > 0) {
+        setDraft((current) => withdrawnDraft(result.withdrawn, current));
+        input.current?.focus();
+      }
+      if (result.outcome === 'timeout') setStopTimedOut(true);
+    } catch (caught) {
+      setError(refusal(caught));
+    } finally {
+      stoppingRef.current = false;
+      setStopping(false);
+    }
+  };
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+
+  const pause = async (): Promise<void> => {
+    setStopTimedOut(false);
+    try {
+      await api.pauseSession(sessionId);
+    } catch (caught) {
+      setError(refusal(caught));
+    }
+  };
+
+  // D50: Esc stops the running turn, read in the window's capture phase (before a popover's own handler closes it).
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      const active = document.activeElement;
+      const context = {
+        stoppable: stoppableRef.current,
+        stopping: stoppingRef.current,
+        overlayOpen: document.querySelector(OVERLAY_SELECTOR) !== null,
+        editingElsewhere: isEditing(active) && active !== input.current,
+      };
+      if (!escStops(event, context)) return;
+      event.preventDefault();
+      void stopRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
   // D26: the one-line height (the prototype's input) and whether the text needs more lines.
   const oneLine = useRef<{ readonly height: number; readonly line: number } | null>(null);
   const [multiline, setMultiline] = useState(false);
@@ -266,6 +346,7 @@ function Composer({
     const text = draftToSend(draft);
     if (text === null || sending) return;
     const sent = draft;
+    setStopped(false);
     setSending(true);
     setError(null);
     try {
@@ -320,18 +401,41 @@ function Composer({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button
-          type="button"
-          className="sb-button sb-chat-send"
-          data-testid="chat-send"
-          disabled={sending}
-          aria-busy={sending}
-          style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
-          onClick={() => void send()}
-        >
-          Send
-        </button>
+        {stoppable || stopping ? (
+          <button
+            type="button"
+            className="sb-button sb-chat-send sb-chat-stop"
+            data-testid="chat-stop"
+            disabled={stopping}
+            aria-busy={stopping}
+            title={STOP_TOOLTIP}
+            style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
+            onClick={() => void stop()}
+          >
+            {stopping ? STOPPING_LABEL : `■ ${STOP_LABEL}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="sb-button sb-chat-send"
+            data-testid="chat-send"
+            disabled={sending}
+            aria-busy={sending}
+            style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
+            onClick={() => void send()}
+          >
+            Send
+          </button>
+        )}
       </div>
+      {stopTimedOut ? (
+        <div className="sb-chat-error" data-testid="chat-stop-timeout" role="alert">
+          {STOP_TIMEOUT_NOTE}{' '}
+          <button type="button" className="sb-button sb-chat-stop-pause" data-testid="chat-stop-pause" onClick={() => void pause()}>
+            {STOP_TIMEOUT_PAUSE}
+          </button>
+        </div>
+      ) : null}
       {error ? (
         <div className="sb-chat-error" data-testid="chat-error" role="alert">
           {error}

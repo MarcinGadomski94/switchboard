@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { fakeOpenerEnv } from '../../tools/fake-opener/command.ts';
+import { fakeTailscaleBinEnv } from '../../tools/fake-tailscale/command.ts';
 import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
 
 /** The UI build E2E servers serve (`tests/e2e/global-setup.ts` builds it): never `dist/web`, which a running Switchboard may be serving. */
@@ -31,7 +32,7 @@ export interface ServerProcess extends SpawnedServer {
  * (AGENTS.md), and the setup wizard does not open by itself over the page a spec
  * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on). D35: the fake
  * opener in front of the frame-helper setup's OS openers, so no test opens Chrome,
- * Finder or Explorer.
+ * Finder or Explorer. D48: the fake Tailscale CLI (`tools/fake-tailscale`).
  */
 export function testServerDefaults(): Record<string, string> {
   return {
@@ -40,6 +41,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_SETUP_WIZARD: 'off',
     SWITCHBOARD_WEB_ROOT: E2E_WEB_ROOT,
     SWITCHBOARD_OPEN_COMMAND: fakeOpenerEnv(),
+    // D48: `tailscale ip -4` of the peer listener never runs the real CLI.
+    SWITCHBOARD_TAILSCALE_BIN: fakeTailscaleBinEnv(),
   };
 }
 

@@ -48,6 +48,8 @@ export function chatMessages(events: readonly SessionEvent[]): ChatMessage[] {
     const payload = payloadOf(event);
     if (payload?.type === 'user') {
       const user = payload as UserPayload;
+      // D50: a message a Stop took back is not part of the conversation.
+      if (user.withdrawn) continue;
       out.push({ id: event.id, role: 'user', text: withoutSessionStartBlock(user.text), origin: user.origin, ts: event.ts });
     } else if (payload?.type === 'assistant') {
       out.push({ id: event.id, role: 'agent', text: (payload as AssistantPayload).text, origin: null, ts: event.ts });
@@ -67,9 +69,10 @@ export function upsertEvent(events: readonly SessionEvent[], event: SessionEvent
 
 /**
  * The mark in front of a step line (the prototype's tool lines): `✓` finished,
- * `●` still running, `✕` failed / denied, `⏸` waiting on the developer.
+ * `●` still running, `✕` failed / denied, `⏸` waiting on the developer; D50 `■`
+ * the developer stopped the turn (the "Stopped" line).
  */
-export type StepMark = '✓' | '●' | '✕' | '⏸' | '⚠';
+export type StepMark = '✓' | '●' | '✕' | '⏸' | '⚠' | '■';
 
 /** One mono step line under an agent message. */
 export interface ChatStep {
@@ -153,7 +156,12 @@ export function stepMark(event: SessionEvent): StepMark | null {
       // D6: Switchboard's own switch to the fallback mode is a notice (⚠, like the terminal tail); a real mismatch is ✕.
       return (payload as { fallback?: string }).fallback ? '⚠' : '✕';
     case 'result':
+      // D50: a turn the developer stopped is no failure: the small "■ Stopped" line.
+      if ((payload as ResultPayload).stopped) return '■';
       return (payload as ResultPayload).isError ? '✕' : null;
+    case 'stop':
+      // D50: the CLI did not acknowledge a Stop in time.
+      return '✕';
     default:
       return null;
   }
@@ -171,6 +179,8 @@ export function batchWaiting(questions: readonly Pick<Question, 'answeredAt' | '
 
 /** D24: what the answers bubble says for a batch the phone answered first (Remote Control). */
 export function answeredOnText(answeredOn: string): string {
+  // D48 P4: a hooked terminal session's question answered at the terminal itself.
+  if (answeredOn === 'terminal') return 'Answered in the terminal';
   return `Answered on ${answeredOn}`;
 }
 
@@ -255,6 +265,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
     const type = payload?.type;
     if (type === 'user') {
       const user = payload as UserPayload;
+      // D50: withdrawn by a Stop (its text went back into the composer): no bubble.
+      if (user.withdrawn) continue;
       out.push({
         kind: 'user',
         key: `u:${event.id}`,
@@ -298,9 +310,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
  *   subagent's own lines belong to its agent card, the timeline and (D36) its own
  *   chat ({@link subagentChat});
  * - in time order (`ts`, then id);
- * - user messages → user bubbles; assistant text → an agent block; tool calls,
- *   permission requests, automatic denials, failed turns and a permission-mode
- *   mismatch → step lines under the agent block before them (a block without
+ * - user messages → user bubbles (D50: not the ones a Stop withdrew); assistant
+ *   text → an agent block; tool calls, permission requests, automatic denials,
+ *   failed turns, D50 a stopped turn ("■ Stopped") or a Stop that timed out, and a
+ *   permission-mode mismatch → step lines under the agent block before them (a block without
  *   text when the turn started with a tool); D36: an Agent / Task call whose
  *   subagent has a chat (`agents`, {@link hasSubagentChat}) carries its id, so its
  *   step line opens that chat;

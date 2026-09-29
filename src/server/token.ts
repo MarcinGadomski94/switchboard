@@ -23,14 +23,18 @@ async function readToken(file: string): Promise<string | null> {
   }
 }
 
+/** D48 P4: the hook token's file inside the data dir: what the hook script presents to `/hook/v1/*` (`docs/peers.md`). */
+export const HOOK_TOKEN_FILE = 'hook-token';
+
 /**
  * Returns the per-install `sb_token`, creating the data dir (0700) and the token
  * file (0600) on first start. The same token is returned on every later start.
- * A token file that exists but does not hold a valid token is replaced.
+ * A token file that exists but does not hold a valid token is replaced. D48 P4:
+ * `name` = {@link HOOK_TOKEN_FILE} makes the hook token the same way.
  */
-export async function loadOrCreateToken(dataDir: string): Promise<string> {
+export async function loadOrCreateToken(dataDir: string, name: string = TOKEN_FILE): Promise<string> {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const file = path.join(dataDir, TOKEN_FILE);
+  const file = path.join(dataDir, name);
   const existing = await readToken(file);
   if (existing) return existing;
   const token = generateToken();

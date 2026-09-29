@@ -348,6 +348,15 @@ export function startupDelayMs(env: NodeJS.ProcessEnv = process.env): number | {
   return ms;
 }
 
+/**
+ * D50: `FAKE_CLAUDE_IGNORE_INTERRUPT=1`: the process ignores the stdin `interrupt`
+ * control request (no receipt, the turn goes on), a CLI that does not acknowledge a
+ * Stop, so the supervisor's timeout can be tested. SIGINT and EOF still work.
+ */
+export function ignoresInterrupt(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['FAKE_CLAUDE_IGNORE_INTERRUPT'] === '1';
+}
+
 /** The error text `remote_control` `enabled: true` answers with `FAKE_CLAUDE_REMOTE_CONTROL=unavailable`. */
 export const REMOTE_CONTROL_UNAVAILABLE = 'fake-claude: Remote Control is not available (FAKE_CLAUDE_REMOTE_CONTROL=unavailable)';
 

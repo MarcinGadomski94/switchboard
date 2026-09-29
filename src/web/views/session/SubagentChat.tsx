@@ -41,8 +41,8 @@ export interface SubagentChatViewProps {
   readonly placeholder?: boolean;
 }
 
-/** `true` while focus is in a text field, where Esc belongs to the field. */
-function isEditing(el: Element | null): boolean {
+/** `true` while focus is in a text field, where Esc belongs to the field (D50: the composer's Esc reads it too). */
+export function isEditing(el: Element | null): boolean {
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
   return el instanceof HTMLElement && el.isContentEditable;
 }

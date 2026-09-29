@@ -4,7 +4,7 @@ import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
 import { checkOwnAnswer } from '../../core/own-answer.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
-import { SESSION_CLOSED_REASON } from '../../core/session-close.ts';
+import { SESSION_CLOSED_REASON, TURN_STOPPED_REASON } from '../../core/session-close.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
@@ -31,6 +31,19 @@ export const STALE_ANSWERS_HEADING = 'Answers to your earlier questions:';
 
 /** The permission item actions of `POST /api/inbox/{id}/actions/{action}` (D6). */
 export const PERMISSION_ACTION_IDS: readonly PermissionDecision[] = ['allow-once', 'deny'];
+
+/** Longest own Deny message of a hooked session's request (D48 P4). */
+export const DENY_MESSAGE_MAX = 2_000;
+
+/**
+ * The actions of a permission request: D6's Allow once / Deny, and for a hooked
+ * terminal session's request (D48 P4, `hookSuggestions` not `null`) also Always
+ * allow when the CLI suggested rules.
+ */
+export function permissionActions(record: Pick<PermissionRequestRecord, 'hookSuggestions'>): readonly PermissionDecision[] {
+  if (record.hookSuggestions === null) return PERMISSION_ACTION_IDS;
+  return record.hookSuggestions.length > 0 ? ['allow-once', 'always-allow', 'deny'] : PERMISSION_ACTION_IDS;
+}
 
 /** What the pipeline needs from the supervisor (structural, so tests can pass stand-ins). */
 export interface QuestionSessions {
@@ -121,8 +134,12 @@ export class QuestionPipeline implements ControlRequestHandler {
 
   // ── ControlRequestHandler ─────────────────────────────────────────────
 
-  /** A `can_use_tool` request: a question batch for AskUserQuestion, else a permission item. */
-  async canUseTool({ session, request }: CanUseToolContext): Promise<void> {
+  /**
+   * A `can_use_tool` request: a question batch for AskUserQuestion, else a
+   * permission item. D48 P4: a hooked terminal session's PermissionRequest hook
+   * arrives here too, with its `hookSuggestions` (stored with the item).
+   */
+  async canUseTool({ session, request }: CanUseToolContext & { readonly request: { readonly hookSuggestions?: readonly unknown[] } }): Promise<void> {
     if (request.toolName === ASK_TOOL) {
       const questions = parseQuestions(request.input);
       if (questions) {
@@ -152,6 +169,7 @@ export class QuestionPipeline implements ControlRequestHandler {
       description: request.description,
       decisionReason: request.decisionReason,
       agentId: request.agentId,
+      ...(request.hookSuggestions ? { hookSuggestions: request.hookSuggestions } : {}),
     });
     await this.#publishInbox();
   }
@@ -179,6 +197,27 @@ export class QuestionPipeline implements ControlRequestHandler {
   async orphaned(sessionId: string, requestIds: readonly string[]): Promise<void> {
     for (const requestId of requestIds) await this.#markStale(sessionId, requestId);
     await this.#publishInbox();
+  }
+
+  /**
+   * D50: the developer stopped the turn these requests belonged to (the CLI
+   * withdrew them): a question batch closes without answers with the label
+   * {@link TURN_STOPPED_REASON} (`closeUnanswered`), a permission request goes
+   * stale; both leave the Inbox, and the chat's card shows the batch as closed.
+   * Publishes `inboxChanged` and the session.
+   */
+  async stopped(sessionId: string, requestIds: readonly string[]): Promise<void> {
+    for (const requestId of requestIds) {
+      const batch = await this.#store.questions.getBatch(requestId);
+      if (batch && batch.sessionId === sessionId) {
+        await this.#store.questions.closeUnanswered(requestId, TURN_STOPPED_REASON);
+        continue;
+      }
+      const permission = await this.#store.permissions.getByRequestId(sessionId, requestId);
+      if (permission && permission.state === 'open') await this.#store.permissions.markStale(permission.id);
+    }
+    await this.#publishInbox();
+    await this.#publishSession(sessionId);
   }
 
   /**
@@ -284,20 +323,28 @@ export class QuestionPipeline implements ControlRequestHandler {
    * `POST /api/inbox/{id}/actions/{action}` for a permission item (D6): `allow-once`
    * = `allow` + the input unchanged (never `updatedPermissions`), `deny` = `deny` +
    * {@link DENY_MESSAGE}. A request that is no longer open closes as stale.
-   * @throws {InboxError} `not-found`, `unknown-action`, `not-open`, `busy`.
+   * D48 P4, a hooked terminal session's request: `always-allow` = `allow` + the
+   * CLI's suggested rules as `updatedPermissions`, and `deny` takes the body's
+   * optional `{ message }` (1–{@link DENY_MESSAGE_MAX} characters) instead of the
+   * fixed text.
+   * @throws {InboxError} `not-found`, `unknown-action`, `invalid`, `not-open`, `busy`.
    */
-  async decide(id: string, action: string): Promise<PermissionRequestRecord> {
+  async decide(id: string, action: string, body?: unknown): Promise<PermissionRequestRecord> {
     const request = await this.#store.permissions.get(id);
     if (!request) throw new InboxError('not-found', `no Inbox item ${id}`);
-    const decision = PERMISSION_ACTION_IDS.find((known) => known === action);
+    const decision = permissionActions(request).find((known) => known === action);
     if (!decision) throw new InboxError('unknown-action', `a permission item has no action "${action}"`);
+    const ownMessage = request.hookSuggestions !== null && decision === 'deny' ? denyMessageOf(body) : null;
     if (request.state !== 'open') throw new InboxError('not-open', `the permission request is ${request.state}`);
     if (this.#busy.has(id)) throw new InboxError('busy', `the permission request is being decided`);
     this.#busy.add(id);
     try {
-      const reply: ToolDecision = decision === 'allow-once'
-        ? { behavior: 'allow', updatedInput: asRecord(request.input) }
-        : { behavior: 'deny', message: DENY_MESSAGE };
+      const reply: ToolDecision =
+        decision === 'allow-once'
+          ? { behavior: 'allow', updatedInput: asRecord(request.input) }
+          : decision === 'always-allow'
+            ? { behavior: 'allow', updatedInput: asRecord(request.input), updatedPermissions: request.hookSuggestions ?? [] }
+            : { behavior: 'deny', message: ownMessage ?? DENY_MESSAGE };
       try {
         await this.#supervisor.respond(request.sessionId, request.requestId, reply);
       } catch (error) {
@@ -479,6 +526,22 @@ export function staleAnswersText(questions: readonly QuestionRecord[]): string {
     .sort((a, b) => a.position - b.position)
     .map((question) => `"${question.text}" = "${question.answerLabel ?? ''}"`);
   return [STALE_ANSWERS_HEADING, ...lines].join('\n');
+}
+
+/**
+ * D48 P4: the optional own message of a hooked request's Deny (`{ message }`):
+ * trimmed text, `null` when none is given.
+ * @throws {InboxError} `invalid` for a body that is not that shape or a message over {@link DENY_MESSAGE_MAX} characters.
+ */
+export function denyMessageOf(body: unknown): string | null {
+  if (body === undefined || body === null) return null;
+  if (typeof body !== 'object' || Array.isArray(body)) throw new InboxError('invalid', 'the body must be empty or { message }');
+  const message = (body as { message?: unknown }).message;
+  if (message === undefined || message === null) return null;
+  if (typeof message !== 'string') throw new InboxError('invalid', 'message must be text');
+  const text = message.trim();
+  if (text.length > DENY_MESSAGE_MAX) throw new InboxError('invalid', `the message must be at most ${DENY_MESSAGE_MAX} characters`);
+  return text === '' ? null : text;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

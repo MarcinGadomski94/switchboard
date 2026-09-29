@@ -111,6 +111,14 @@ export interface SessionRecord {
    * first reading (and for every session before 0015). Read with `readContextState`.
    */
   readonly context: ContextState | null;
+  /**
+   * D48 P4 (migration 0017): a hand-started terminal session Switchboard hooked
+   * into (`docs/peers.md` → *Hooked terminal sessions*); Switchboard never runs a
+   * process for it. `false` for every other session.
+   */
+  readonly hooked: boolean;
+  /** D48 P4: the transcript its hooks reported; `null` when unknown. */
+  readonly transcriptPath: string | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -176,6 +184,8 @@ const SPEC: TableSpec<SessionRecord> = {
     branch: ['branch', 'text'],
     branching: ['branching', 'json'],
     context: ['context', 'json'],
+    hooked: ['hooked', 'bool'],
+    transcriptPath: ['transcript_path', 'text'],
   },
 };
 

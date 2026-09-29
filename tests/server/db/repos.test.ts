@@ -88,6 +88,9 @@ describe('sessions', () => {
       // D40 (0012): no branching.
       branching: null,
       context: null,
+      // D48 P4 (0017): not a hooked terminal session.
+      hooked: false,
+      transcriptPath: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

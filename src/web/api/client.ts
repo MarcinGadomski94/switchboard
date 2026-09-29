@@ -1,4 +1,5 @@
 import type {
+  InterruptResult,
   BranchingPreflight,
   BranchingPreflightRequest,
   AnswerBatch,
@@ -13,6 +14,7 @@ import type {
   FolderListing,
   FrameHelperInfo,
   HistoryItem,
+  HooksStatus,
   InboxItem,
   IsolateRequest,
   ModelSettings,
@@ -32,11 +34,13 @@ import type {
   SolutionGroup,
   SystemInfo,
   TeleportSession,
+  TerminalSession,
   Tool,
   ToolProbe,
   Worktree,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
+import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
 
 /**
  * Typed client for the local API (`docs/handoff/contracts/local-api.md`). Every
@@ -125,6 +129,8 @@ export const api = {
   /** D31: the session's model and / or effort (a field left out keeps its value; `null` = the CLI's default). */
   setModel: (id: string, input: SessionModelInput) => request<Session>('PUT', `/api/sessions/${enc(id)}/model`, input),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
+  /** D50: Stop the current turn (the process stays alive); the reply carries the messages taken back for the composer. */
+  interruptSession: (id: string) => request<InterruptResult>('POST', `/api/sessions/${enc(id)}/interrupt`),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
@@ -140,7 +146,8 @@ export const api = {
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),
-  inboxAction: (id: string, action: string) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`),
+  /** D48 P4: a hooked session's Deny takes `{ message }`. */
+  inboxAction: (id: string, action: string, body?: { readonly message: string }) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`, body),
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
@@ -206,7 +213,45 @@ export const api = {
   /** The list left; 409 `folder-in-use` (`FolderInUse`) while schedules start their runs there. */
   removeFolder: (id: string) => request<Folder[]>('DELETE', `/api/folders/${enc(id)}`),
   setDefaultFolder: (id: string) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/default`),
+
+  // D48, additive (docs/peers.md): Settings → Machines.
+  machines: () => request<MachinesView>('GET', '/api/machines'),
+  renameSelf: (name: string) => request<{ id: string; name: string }>('PUT', '/api/machines/self', { name }),
+  setListener: (body: PeerListenerInput) => request<PeerListenerState>('PUT', '/api/machines/listener', body),
+  /** "Allow a new peer": a one-time code for the other machine. */
+  pairingCode: () => request<PairingCode>('POST', '/api/machines/pairing-code'),
+  /** "Add machine": 201; 409 `pairing-refused` (wrong / expired / used code), 502 `peer-unreachable`, 422 `invalid`. */
+  addMachine: (body: AddMachineInput) => request<Machine>('POST', '/api/machines', body),
+  renameMachine: (id: string, name: string) => request<Machine>('PUT', `/api/machines/${enc(id)}`, { name }),
+  removeMachine: (id: string) => request<null>('DELETE', `/api/machines/${enc(id)}`),
 } as const;
+
+/**
+ * D48: a route on machine `machine` (`null` = this machine): the path as it is, or
+ * through that machine's peer API (`/api/machines/{id}/api/…`); answers come back
+ * namespaced (remote ids, `docs/peers.md` → *Proxy*).
+ */
+export function onMachine(machine: string | null, path: string): string {
+  return machine ? `/api/machines/${enc(machine)}${path}` : path;
+}
+
+/** D48 (P3): the New-session form's calls on the chosen machine (`null` = this one). */
+export function machineApi(machine: string | null) {
+  return {
+    savedFolders: () => request<Folder[]>('GET', onMachine(machine, '/api/folders')),
+    models: () => request<ModelSettings>('GET', onMachine(machine, '/api/models')),
+    solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
+    branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
+    createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
+    // D48 P4: the machine's terminal sessions and its hooks.
+    terminalSessions: () => request<TerminalSession[]>('GET', onMachine(machine, '/api/terminal-sessions')),
+    /** 201 a new hooked session (200 one that existed); 404, 409 `already-in-switchboard`. */
+    hookTerminal: (id: string) => request<Session>('POST', onMachine(machine, `/api/terminal-sessions/${enc(id)}/hook`)),
+    hooks: () => request<HooksStatus>('GET', onMachine(machine, '/api/hooks')),
+    installHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/install')),
+    removeHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/remove')),
+  } as const;
+}
 
 /** The client's type (for test doubles). */
 export type Api = typeof api;

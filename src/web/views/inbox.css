@@ -278,3 +278,19 @@
 .sb-inbox__meta .sb-folder-tag {
   margin-right: 0;
 }
+
+/* D48 P4: a hooked terminal session's Deny message. */
+.sb-inbox__deny-message {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
