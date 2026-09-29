@@ -113,7 +113,9 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **Continuing existing work:**
   - **pick a terminal conversation** to move it into Switchboard;
   - **"From a remote session"**: paste a claude.ai/code session URL to continue a cloud or Remote Control session as a local copy.
-- **Branching:** with an epic (key + summary), task branches are cut from `feature/<EPIC-KEY>-<Summary>`, which is itself cut from `origin/dev`. Without an epic (bug fixes), they are cut from `origin/master` after a fetch. Branches are created and pushed lazily, only in the repos the agent changes. A preflight table shows, per repo, the base, the epic, the task branch and the cut point before you start. An existing task branch is reused.
+- **Branching:** with an epic (key + summary), task branches are cut from `feature/<EPIC-KEY>-<Summary>`, which is itself cut from `origin/dev`. Without an epic (bug fixes), they are cut from `origin/master` after a fetch. Branches are created and pushed lazily, only in the repos the agent changes. A preflight table shows, per repo, the base, the epic, the task branch, the cut point and the PR target before you start. An existing task branch is reused.
+- **Stacked tasks:** type a **Parent** (a task key such as `PROJ-3013`, or a branch name; it is pre-filled when the task says "create it from PROJ-3013") to cut the task from that unmerged task branch instead of the epic, per repo where the parent exists, with its PR into the parent. The preflight shows each repo's resolved base, PR target and the parent PR's status. When the parent PR merges, the Inbox tells you and the agent is asked to retarget its PR and rebase (it asks you before force-pushing); a parent closed without merging raises an Inbox item.
+- **Machine:** with a paired machine (see *Machines (peers)*), start the session on that machine instead, with its folders and models.
 
 [`docs/new-session.md`](docs/new-session.md) · [`docs/worktrees.md`](docs/worktrees.md)
 
@@ -125,7 +127,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.
 - **Queued messages:** a message you send while the agent is busy shows a clock until the agent takes it up. A message to a paused session resumes it.
 - **Stop:** while the agent works, **Send** becomes **■ Stop**, and **Esc** does the same (an open popup takes Esc first). It stops the current turn only, like Ctrl+C in the terminal: the session stays ready for your next message. Messages still queued come back into the message field so you can edit them. When only background tasks are left, **Stop background tasks** stops them after you confirm.
-- **Context bar:** a thin bar above the quick replies shows how full the session's context window is (`Context 62% · 124k / 200k`), green, then yellow from 60 % and red from 80 %. After the CLI compacts the conversation it resets and reads "compacted 14:05" until the next turn.
+- **Context bar:** a thin bar above the quick replies shows how full the session's context window is (`Context 62% · 124k / 200k`), green, then yellow from 60 % and red from 80 %. After the CLI compacts the conversation it resets and reads "compacted 14:05" until the next turn. A tick marks where the CLI will compact by itself ("Auto-compact at 84%" on hover).
 - **Questions:** the agent's questions appear as cards in the chat. Besides the offered answers, **Other…** lets you answer in your own words.
 
 **Header**
