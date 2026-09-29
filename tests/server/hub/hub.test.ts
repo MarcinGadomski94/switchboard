@@ -91,6 +91,8 @@ const SESSION_KEYS = keys<Session>()([
   'model',
   // additive, D33 (closed sessions)
   'closedAt',
+  // additive, D49 (context window meter)
+  'context',
 ]);
 const AGENT_KEYS = keys<Agent>()([
   'id',
@@ -303,6 +305,9 @@ describe('/hub · events (contract, field by field)', () => {
     }
     const listed = (await requestJson(port, 'GET', '/api/sessions', cookie)).body as Session[];
     expect(updates.at(-1)).toEqual(listed.find((s) => s.id === session.id));
+    // D49: the context meter arrives with sessionUpdated as the usage comes (the recorded turn: 47 780 of a reported 200 000).
+    expect(updates.some((s) => s.context?.tokens === null)).toBe(true);
+    expect(updates.at(-1)?.context).toMatchObject({ tokens: expect.any(Number), window: 200_000, windowSource: 'reported', band: 'ok', compaction: null });
 
     // event: { sessionId, event: Event }; every stored event was streamed, the last version of each equals GET …/events.
     const wrapped = stream.payloads<HubEvents['event']>('event').filter((e) => e.sessionId === session.id);

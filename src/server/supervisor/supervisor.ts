@@ -1341,6 +1341,8 @@ export class SessionSupervisor {
       onSolutionWritten: async (solution) => {
         await this.addSolutions(session.id, [solution]);
       },
+      // D49: the context meter changed (stored on the session): the header and composer follow `sessionUpdated`.
+      onContext: () => void this.#emitSession(session.id).catch((error: unknown) => this.#onError(error)),
     });
     let teleport: TeleportState | null = null;
     if (start.kind === 'teleport') {

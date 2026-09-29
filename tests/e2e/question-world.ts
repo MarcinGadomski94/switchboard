@@ -26,6 +26,8 @@ export interface QuestionWorld {
    * With worktrees its branch is the ticket branch `PROJ-1-<name>` (D32).
    */
   startSession(page: Page, name: string, task: string, worktrees?: boolean): Promise<{ id: string }>;
+  /** Additive (D49): stops the server and starts it again on the same data folder and env (`server` / `baseUrl` follow). */
+  restart(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -64,7 +66,7 @@ export async function startQuestionWorld(label: string, options: { readonly env?
 
     // D14: the workspace is a saved folder (the default) in the server's database.
     await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
-    const server = await startServer({
+    const serverEnv: Record<string, string> = {
       ...gitEnv,
       SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
       SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
@@ -72,10 +74,19 @@ export async function startQuestionWorld(label: string, options: { readonly env?
       CLAUDE_CONFIG_DIR: path.join(tmp, 'claude-config'),
       FAKE_GH_PRS: prsFile,
       ...options.env,
-    });
+    };
+    let server = await startServer(serverEnv);
     return {
-      server,
-      baseUrl: server.baseUrl,
+      get server() {
+        return server;
+      },
+      get baseUrl() {
+        return server.baseUrl;
+      },
+      async restart() {
+        expect(await server.stop()).toBe(0);
+        server = await startServer(serverEnv);
+      },
       workspace,
       configDir: path.join(tmp, 'claude-config'),
       async startSession(page, name, task, worktrees = false) {

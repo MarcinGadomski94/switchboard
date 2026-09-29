@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SessionModelOption } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
+import type { ContextState } from '../../../core/context-meter.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
@@ -104,6 +105,12 @@ export interface SessionRecord {
    * reads it for the base an agent-created worktree was cut from.
    */
   readonly branching: SessionBranching | null;
+  /**
+   * D49 (0015): the context window meter's state (`src/core/context-meter.ts`),
+   * written by the stream recorder and by terminal-turn imports; `null` until the
+   * first reading (and for every session before 0015). Read with `readContextState`.
+   */
+  readonly context: ContextState | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -168,6 +175,7 @@ const SPEC: TableSpec<SessionRecord> = {
     closedAt: ['closed_at', 'text'],
     branch: ['branch', 'text'],
     branching: ['branching', 'json'],
+    context: ['context', 'json'],
   },
 };
 
