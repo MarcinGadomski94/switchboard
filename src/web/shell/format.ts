@@ -1,6 +1,5 @@
 import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
-import { WEEKDAY_LABELS } from '../../core/cron.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { USAGE_ROW_LABELS, sessionPace, weeklyPace } from '../../core/usage.ts';
@@ -125,23 +124,17 @@ function clockTime(date: Date): string {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
-/** `Mon 15:00`: local weekday and time. */
-function weekdayTime(date: Date): string {
-  return `${WEEKDAY_LABELS[date.getDay()]} ${clockTime(date)}`;
-}
-
 /**
  * D23 / D46: the Week or the Session row's pace at `now`, `null` while unknown
- * (never guessed). The Week steps by the day, so its tooltip names the step's
- * weekday ("allowed until Mon 15:00", D23); the Session steps by the minute, so
- * its tooltip names the time only ("until 14:05", D46).
+ * (never guessed). Both step by the minute (the Week since the 2026-09-29
+ * ruling), so the tooltip names the time only ("until 14:05").
  */
 function paceView(key: 'session' | 'week', window: UsageWindow, now: number): PaceView | null {
   const pace = key === 'week' ? weeklyPace(window, new Date(now)) : sessionPace(window, new Date(now));
   if (!pace) return null;
   const verdict = pace.onPace ? 'On pace' : 'Ahead of pace';
   const next = new Date(pace.nextStepAt);
-  const until = key === 'week' ? `allowed until ${weekdayTime(next)}` : `until ${clockTime(next)}`;
+  const until = `until ${clockTime(next)}`;
   return {
     state: pace.onPace ? 'on' : 'ahead',
     markerPct: pace.allowancePct,

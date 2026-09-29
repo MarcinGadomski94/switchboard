@@ -419,19 +419,24 @@ function paceAgainst(pct: number, allowance: number, nextStepAt: number): UsageP
 }
 
 /**
- * D23: the weekly window's pace at `now`. The allowance is spread evenly over the
- * window's 7 days, counted from its own reset time: the window started 7 × 24 h
- * before `resetsAt`, each day starts at the reset's time of day, and during day
- * *n* the allowance is *n* × 100 / 7 %. Returns `null` (unknown, never guessed)
- * when `pct` or `resetsAt` is not usable, when the reset is not ahead of `now`, or
- * when it is more than 7 days ahead (then `now` is outside the window it closes).
+ * D23, made continuous (developer ruling 2026-09-29): the weekly window's pace at
+ * `now`. The window started 7 × 24 h before `resetsAt` and its allowance grows
+ * evenly by the minute like the Session bar's (D46): during minute *n* (1–10 080)
+ * it is *n* × 100 / 10 080 %. (Before, each whole day's 14.29 % was allowed from
+ * that day's start, which left the last day almost nothing.) `day` is still the
+ * window's day, 1–7. Returns `null` (unknown, never guessed) when `pct` or
+ * `resetsAt` is not usable, when the reset is not ahead of `now`, or when it is
+ * more than 7 days ahead (then `now` is outside the window it closes).
  */
 export function weeklyPace(week: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date): WeeklyPace | null {
-  const at = paceStep(week, now, WEEK_DAYS, PACE_DAY_MS);
+  const at = paceStep(week, now, WEEK_MINUTES, PACE_MINUTE_MS);
   if (!at) return null;
-  const day = at.step + 1;
-  return { day, ...paceAgainst(at.pct, (day * 100) / WEEK_DAYS, at.start + day * PACE_DAY_MS) };
+  const day = Math.floor((at.step * PACE_MINUTE_MS) / PACE_DAY_MS) + 1;
+  return { day, ...paceAgainst(at.pct, ((at.step + 1) * 100) / WEEK_MINUTES, at.start + (at.step + 1) * PACE_MINUTE_MS) };
 }
+
+/** The weekly window in pace minutes (7 × 24 × 60). */
+export const WEEK_MINUTES = WEEK_DAYS * 24 * 60;
 
 /**
  * D46: the 5-hour Session window's pace at `now`. The window started 5 h before
