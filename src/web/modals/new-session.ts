@@ -29,7 +29,9 @@ import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
  * (`docs/folders.md` → *UI*). D22: the name field takes free text as the
  * session's title; Start posts the short name derived from it ({@link startNames}).
  * D32: with a worktree, the **Branch** field names its branch after the ticket
- * ({@link formBranch}); Start waits for a valid one.
+ * ({@link formBranch}); Start waits for a valid one. D38: picking solutions is
+ * optional for a workspace folder; with none picked the agent determines them
+ * ({@link SOLUTIONS_BY_AGENT}).
  */
 
 /** The form's state. `figmaUrls` is the raw text of its field (URLs separated by spaces, commas or new lines). */
@@ -240,13 +242,30 @@ export function nameTaken(form: Pick<NewSessionForm, 'name'>, takenNames: readon
 }
 
 /**
- * Everything but the name is ready: at least one solution and, for QA, the stack
- * + both sources the fields mark "(required)". A repo folder (D14) has nothing
- * else to pick: the repo is the one solution and the router sections do not apply.
+ * Everything but the name is ready: for QA, the stack + both sources the fields
+ * mark "(required)". D38: solutions are optional (none picked = the agent
+ * determines them). A repo folder (D14) has nothing else to pick: the repo is the
+ * one solution and the router sections do not apply.
  */
 export function formComplete(form: NewSessionForm, folder: Pick<FormFolder, 'kind'> | null = null): boolean {
   if (isRepoFolder(folder)) return true;
-  return form.solutions.length > 0 && missingQa(form).length === 0;
+  return missingQa(form).length === 0;
+}
+
+/** D38: the summary line of a workspace session started without picked solutions (in place of the old warning). */
+export const SOLUTIONS_BY_AGENT = 'solutions  chosen by the agent';
+
+/** D38: section 4's hint while no solution is picked (the muted hint on the label line). */
+export const SOLUTIONS_HINT_NONE = '0 selected · leave empty to let the agent choose · read-only folders locked';
+
+/**
+ * Section 4's hint (prototype `nsSolHint`): `<n> selected · read-only folders
+ * locked`; D38: {@link SOLUTIONS_HINT_NONE} while none is picked; a repo folder's
+ * `1 selected · a git repo is one solution` (D14).
+ */
+export function solutionsHint(form: Pick<NewSessionForm, 'solutions'>, folder: Pick<FormFolder, 'kind'> | null = null): string {
+  if (isRepoFolder(folder)) return '1 selected · a git repo is one solution';
+  return form.solutions.length === 0 ? SOLUTIONS_HINT_NONE : `${form.solutions.length} selected · read-only folders locked`;
 }
 
 /**
@@ -523,7 +542,9 @@ function nameWarnings(form: NewSessionForm, takenNames: readonly string[], namin
  * the worktree folders use the short name derived from the field; when it is not
  * the field as typed and Worktree is off, a `name      <name>` line says so under
  * the worktree comment. D32: with Worktree on, a `branch    <branch>` line there
- * names the ticket branch (`—` until the field is valid, with a `⚠` line).
+ * names the ticket branch (`—` until the field is valid, with a `⚠` line). D38:
+ * with no solution picked, {@link SOLUTIONS_BY_AGENT} stands where the worktree
+ * folders go (it replaces the prototype's `⚠ pick at least one solution`).
  */
 export function summaryLines(
   form: NewSessionForm,
@@ -549,7 +570,8 @@ export function summaryLines(
   lines.push({ text: form.worktrees ? '# worktrees' : '# no worktrees · edits in place', tone: 'comment' });
   if (line) lines.push(line);
   if (form.worktrees) for (const solution of form.solutions) lines.push({ text: worktreeFolder(solution, name), tone: 'path' });
-  if (form.solutions.length === 0) lines.push({ text: '⚠ pick at least one solution', tone: 'warn' });
+  // D38: none picked is no longer a reason to wait: the agent determines them.
+  if (form.solutions.length === 0) lines.push(value(SOLUTIONS_BY_AGENT));
   lines.push(...nameWarnings(form, takenNames, naming));
   const missing = missingQa(form);
   if (missing.includes('stack')) lines.push({ text: '⚠ pick the stack under test', tone: 'warn' });

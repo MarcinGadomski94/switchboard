@@ -121,7 +121,8 @@ describe('Schedule section of the New-session modal (D8)', () => {
     const ok = cronPreview('0 2 * * *', at);
     expect(canSaveSchedule(form(), ok, [])).toBe(true);
     expect(canSaveSchedule(form({ task: '  ' }), ok, [])).toBe(false);
-    expect(canSaveSchedule(form({ solutions: [] }), ok, [])).toBe(false);
+    // D38: a template without solutions is fine (each run's agent determines them).
+    expect(canSaveSchedule(form({ solutions: [] }), ok, [])).toBe(true);
     expect(canSaveSchedule(form(), cronPreview('nope', at), [])).toBe(false);
     expect(canSaveSchedule(form(), ok, ['nightly-check'])).toBe(false);
     expect(canSaveSchedule(form({ workType: 'qa' }), ok, [])).toBe(false);

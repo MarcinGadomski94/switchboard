@@ -50,6 +50,14 @@ import {
  * both added lines. The branch is filled through the form like the draft's other
  * values (Start needs it); the added parts are checked on their own
  * ({@link d32Additions}).
+ *
+ * D38 (developer ruling, not findings): picking solutions is optional. In the
+ * `empty` state the prototype's `⚠ pick at least one solution` line reads
+ * `solutions  chosen by the agent` (a value line), Start is enabled (the app's
+ * Branch field holds the draft's ticket branch) and section 4's hint says
+ * `0 selected · leave empty to let the agent choose · read-only folders locked`.
+ * Those three parts leave the prototype comparison and are checked on their own
+ * ({@link d38Additions}); the draft state (solutions picked) is unchanged.
  */
 
 interface PartSpec {
@@ -523,6 +531,82 @@ async function d32Additions(state: string, appPage: Page, branch: string, rows: 
   }
 }
 
+/** D38: the hint while no solution is picked. */
+const D38_HINT = '0 selected · leave empty to let the agent choose · read-only folders locked';
+/** D38: the summary line in place of the prototype's warning. */
+const D38_LINE = 'solutions  chosen by the agent';
+/** The prototype's summary line D38 replaces. */
+const PROTO_WARNING = '⚠ pick at least one solution';
+
+/** The prototype's index of the summary line with this text (`null` without one). */
+async function protoLineIndex(protoPage: Page, text: string): Promise<number | null> {
+  return protoPage.evaluate(
+    ({ path, wanted }) => {
+      let el: Element | undefined | null = findPanelIn(document);
+      for (const index of path) el = el?.children[index];
+      const index = [...(el?.children ?? [])].findIndex((line) => (line.textContent ?? '').trim() === wanted);
+      return index === -1 ? null : index;
+    },
+    { path: [...SUMMARY], wanted: text },
+  );
+}
+
+/**
+ * The D38 parts of the `empty` state, checked on their own against the
+ * prototype's parts they replace: section 4's hint (the ruled copy, the
+ * prototype hint's styles, right edge, y and height), the summary line in place
+ * of `⚠ pick at least one solution` (the ruled copy, a value line: the value
+ * lines' color, the warning line's x, y and height) and Start (the prototype's
+ * box, copy and styles, but enabled: opacity 1 where the prototype has 45%).
+ */
+async function d38Additions(state: string, protoPage: Page, appPage: Page, warning: number, rows: string[], failures: string[]): Promise<void> {
+  const worktreesLine = await worktreesLineOf(protoPage);
+  const offsets = await measureOffsets(protoPage, appPage, worktreesLine);
+  const hintPath = [...SOLUTIONS, 0, 0];
+  const linePath = [...SUMMARY, warning];
+  const startPath = [...SIDE, 4, 1];
+  const proto = await measurePanel(protoPage, { hint: hintPath, line: linePath, start: startPath });
+  const app = await measurePanel(appPage, { hint: appPathOf(hintPath), line: appPathOf(linePath, worktreesLine), start: startPath, value: [...SUMMARY, 2] });
+  const facts = await appPage.evaluate(() => {
+    const lines = [...document.querySelectorAll('[data-testid="ns-summary-line"]')];
+    const line = lines.find((el) => (el.textContent ?? '').trim() === 'solutions  chosen by the agent');
+    const start = document.querySelector<HTMLButtonElement>('[data-testid="ns-start"]');
+    return { tone: line?.getAttribute('data-tone') ?? null, startDisabled: start?.disabled ?? null };
+  });
+  const near = (a: number | undefined, b: number | undefined): boolean => a !== undefined && b !== undefined && Math.abs(a - b) <= 2;
+  const styleDiff = (a: Part | null | undefined, b: Part | null | undefined, skip: readonly string[] = []): string[] =>
+    COMPARED_STYLES.filter((prop) => !skip.includes(prop) && a?.style[prop] !== b?.style[prop]).map((prop) => `${prop}: ${a?.style[prop]} vs ${b?.style[prop]}`);
+  const [ph, ah, pl, al, ps, as, av] = [proto['hint'], app['hint'], proto['line'], app['line'], proto['start'], app['start'], app['value']];
+  const hintStyle = styleDiff(ph, ah);
+  // The border colors are `currentColor` (the text color): a value line's, not the warning's amber.
+  const lineStyle = styleDiff(pl, al, ['color', 'border-top-color', 'border-right-color']);
+  const startStyle = styleDiff(ps, as, ['opacity']);
+  const checks: Array<[string, boolean, string]> = [
+    ['hint copy', ah?.text === D38_HINT, JSON.stringify(ah?.text ?? null)],
+    ['hint style = the prototype hint', !!ph && !!ah && hintStyle.length === 0, hintStyle.join(', ') || 'same'],
+    [
+      'hint right edge, y and height = the prototype hint',
+      !!ph && !!ah && near(ph.box.x + ph.box.width, ah.box.x + ah.box.width) && near(ph.box.y, ah.box.y - offsets.belowTask) && near(ph.box.height, ah.box.height),
+      ph && ah ? `${round(ah.box.x + ah.box.width)} vs ${round(ph.box.x + ph.box.width)}` : 'missing',
+    ],
+    ['summary line copy (the prototype warning\'s place)', al?.text === D38_LINE, JSON.stringify(al?.text ?? null)],
+    ['summary line = a value line', facts.tone === 'value' && !!al && !!av && al.style['color'] === av.style['color'], `${facts.tone ?? 'missing'} ${al?.style['color'] ?? ''}`],
+    [
+      'summary line x, y and height = the warning line',
+      !!pl && !!al && near(pl.box.x, al.box.x) && near(pl.box.y, al.box.y - offsets.belowBranch) && near(pl.box.height, al.box.height),
+      pl && al ? fmtBox(al) : 'missing',
+    ],
+    ['summary line style = the warning line (color aside)', !!pl && !!al && lineStyle.length === 0, lineStyle.join(', ') || 'same'],
+    ['Start box and copy = the prototype', !!ps && !!as && compareBoxes('Start', ps.box, as.box, 'box').length === 0 && ps.text === as.text, as ? `${fmtBox(as)} ${JSON.stringify(as.text)}` : 'missing'],
+    ['Start enabled (opacity 1; the prototype 0.45)', facts.startDisabled === false && as?.style['opacity'] === '1' && ps?.style['opacity'] === '0.45', `${as?.style['opacity'] ?? ''} vs ${ps?.style['opacity'] ?? ''}`],
+    ['Start style = the prototype (opacity aside)', !!ps && !!as && startStyle.length === 0, startStyle.join(', ') || 'same'],
+  ];
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D38 ${what}: ${note}`);
+    rows.push(`| ${state} · D38 ${what} | ruling | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
+}
+
 /** Clicks the prototype's pill or chip with exactly this text (its onClick sits on the text's parent span). */
 async function protoClick(page: Page, text: string): Promise<void> {
   await page.getByText(text, { exact: true }).first().click();
@@ -717,21 +801,23 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   }
   compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, qaWorktreesLine) }])), protoQa, appQa, rows, failures, qaOffsets);
 
-  // State 4: back to the draft's work type, no solutions → "⚠ pick at least one solution", Start at 45%.
+  // State 4: back to the draft's work type, no solutions → the prototype's "⚠ pick at least one solution", Start at 45%.
+  // D38 (ruling): the app reads `solutions  chosen by the agent` there, Start is enabled and the hint says to leave
+  // them empty; those parts are checked on their own (d38Additions), every other line against the prototype.
   await protoClick(protoPage, 'Feature-building');
   await protoClick(protoPage, '✓ acme-app-front');
   await protoClick(protoPage, '✓ mobile');
   await modal.locator('[data-group="work-type"][data-value="feature"]').click();
   await modal.locator('[data-testid="ns-chip"][data-solution="acme-app-front"]').click();
   await modal.locator('[data-testid="ns-chip"][data-solution="mobile"]').click();
-  const empty: Record<string, PartSpec> = {
-    solutionsHint: { path: [...SOLUTIONS, 0, 0], geometry: 'box', copy: true },
-    start: { path: [...SIDE, 4, 1], geometry: 'box', copy: true },
-  };
-  for (let i = 0; i < 10; i++) empty[`summaryLine${i}`] = { path: [...SIDE, 3, i], geometry: 'box', copy: true };
+  const warning = await protoLineIndex(protoPage, PROTO_WARNING);
+  if (warning === null) failures.push(`empty · the prototype's "${PROTO_WARNING}" line is missing`);
+  const empty: Record<string, PartSpec> = {};
+  for (let i = 0; i < 10; i++) if (i !== warning) empty[`summaryLine${i}`] = { path: [...SIDE, 3, i], geometry: 'box', copy: true };
   await measureAndCompare('empty', protoPage, appPage, empty, rows, failures);
   await d14Additions('empty', appPage, rows, failures);
   await d32Additions('empty', appPage, DRAFT_BRANCH, rows, failures);
+  if (warning !== null) await d38Additions('empty', protoPage, appPage, warning, rows, failures);
 
   await writeReport({
     'new-session.md': report({ rows, computedRows, failures, panel: panelDiff.percent, full: fullDiff.percent }),
@@ -764,11 +850,14 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 ## D32 additions (not findings)
 With Worktree on (the prototype's draft) the app's form has a **Branch row** inside section 1 under the name / task row (the name field's box and style, placeholder \`PROJ-0001-short-description\`, the ticket branch entered through the form like the draft's other values, since Start needs it), and the summary a **\`branch\` line** right after \`# worktrees\`. The prototype has neither: section 1 is compared with its height less the row's (\`height − <n>\` in the table), the sections below it with their y less that too, and the summary lines after \`# worktrees\` at the app's index + 2 with their y less both added lines. The added parts are checked on their own (\`D32 …\` rows).
 
+## D38 ruling (not findings)
+Picking solutions is optional (the agent determines them when none is picked). In the \`empty\` state the prototype's \`⚠ pick at least one solution\` line reads \`solutions  chosen by the agent\` in the app (a value line at the warning's place), Start is enabled (the app's Branch field holds the draft's ticket branch; the prototype shows it at 45%) and section 4's hint reads \`0 selected · leave empty to let the agent choose · read-only folders locked\`. Those three parts leave the prototype comparison and are checked on their own (\`D38 …\` rows): the hint has the prototype hint's styles, right edge, y and height; the line the warning line's box and style (color aside: a value line's); Start the prototype's box, copy and styles with opacity 1. The draft state (solutions picked) is compared as before.
+
 ## D25 addition (not a finding)
 **From a remote session** (\`⇣\` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (\`D25 …\` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. States: \`draft\` (the prototype's draft), \`single\` (Single-solution: section 6 · Mobile coordination), \`qa\` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), \`empty\` (no solutions: the warning line, Start at 45%). Styles compared: ${COMPARED_STYLES.join(', ')}.
+Geometry: \`box\` = x, y, width, height; \`size\` = x, width, height. States: \`draft\` (the prototype's draft), \`single\` (Single-solution: section 6 · Mobile coordination), \`qa\` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), \`empty\` (no solutions: the prototype's warning line and Start at 45%, D38's line, Start and hint checked on their own). Styles compared: ${COMPARED_STYLES.join(', ')}.
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
