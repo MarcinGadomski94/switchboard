@@ -1,4 +1,6 @@
 import type {
+  BranchingPreflight,
+  BranchingPreflightRequest,
   AnswerBatch,
   AttachRequest,
   Artifact,
@@ -111,6 +113,8 @@ export const api = {
   createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
   /** D25, additive: continue a remote session locally (201 Session; 422 / 409, or 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text). */
   teleportSession: (body: TeleportSession) => request<Session>('POST', '/api/sessions/teleport', body),
+  /** D40, additive: the New-session form's branching preflight (each repo fetched, then read; nothing created). */
+  branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', '/api/branching/preflight', body),
   getSession: (id: string) => request<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
   /** D22, additive: rename (`null` or an empty title clears it; 422 on field `title` beyond 80 characters). */

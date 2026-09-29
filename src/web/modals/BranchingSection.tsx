@@ -1,0 +1,301 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { BranchingPreflightRequest, BranchingPreflightRow } from '../../core/api.ts';
+import { DEFAULT_EPIC_BASE, EPIC_KEY_EXAMPLE, tidyEpicKey } from '../../core/branching.ts';
+import { ApiError, api } from '../api/client.ts';
+import {
+  type BranchingForm,
+  CREATION_LINE,
+  PREFLIGHT_DEBOUNCE_MS,
+  type RepoChoice,
+  droppedSolutions,
+  fieldProblems,
+  formEpicBranch,
+  hasEpic,
+  preflightCells,
+  preflightKey,
+  rowMissesBase,
+} from './branching-form.ts';
+import './branching.css';
+
+/** The preflight table's state: the last answer (for the request it answered), running, the error text. */
+export interface PreflightState {
+  readonly rows: readonly BranchingPreflightRow[] | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+  /** Runs the check again now (the Re-check button). */
+  readonly recheck: () => void;
+}
+
+function errorText(caught: unknown): string {
+  const error = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+  const body = error.body as { message?: unknown; errors?: Array<{ message?: unknown }> } | null;
+  if (typeof body?.message === 'string') return body.message;
+  const first = body?.errors?.[0]?.message;
+  if (typeof first === 'string') return first;
+  return error.unreachable ? 'Switchboard is not reachable.' : `The preflight failed (HTTP ${error.status}).`;
+}
+
+/**
+ * D40: runs `POST /api/branching/preflight` about {@link PREFLIGHT_DEBOUNCE_MS}
+ * after the request's key (folder, solutions, epic, base, overrides) settles, and
+ * again on `recheck`. Answers to an older request are dropped. `null` = no check
+ * (no solutions, or the section is hidden): no rows.
+ */
+export function useBranchingPreflight(request: BranchingPreflightRequest | null): PreflightState {
+  const key = preflightKey(request);
+  const latest = useRef(request);
+  latest.current = request;
+  const sequence = useRef(0);
+  const [state, setState] = useState<{ key: string | null; rows: readonly BranchingPreflightRow[] | null; loading: boolean; error: string | null }>({
+    key: null,
+    rows: null,
+    loading: false,
+    error: null,
+  });
+
+  const run = useCallback((): void => {
+    const body = latest.current;
+    const id = ++sequence.current;
+    if (body === null) {
+      setState({ key: null, rows: null, loading: false, error: null });
+      return;
+    }
+    const runKey = preflightKey(body);
+    setState((current) => ({ ...current, key: runKey, loading: true, error: null }));
+    api.branchingPreflight(body).then(
+      (answer) => {
+        if (id === sequence.current) setState({ key: runKey, rows: answer.rows, loading: false, error: null });
+      },
+      (caught: unknown) => {
+        if (id === sequence.current) setState({ key: runKey, rows: null, loading: false, error: errorText(caught) });
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (key === null) {
+      sequence.current += 1;
+      setState({ key: null, rows: null, loading: false, error: null });
+      return;
+    }
+    const timer = setTimeout(run, PREFLIGHT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [key, run]);
+
+  const current = state.key === key;
+  return { rows: current ? state.rows : null, loading: key !== null && (!current || state.loading), error: current ? state.error : null, recheck: run };
+}
+
+/** One row's "Use other base: ___" field (applied on Enter or blur). */
+function OtherBase({ solution, value, onApply }: { readonly solution: string; readonly value: string; readonly onApply: (base: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const apply = (): void => {
+    if (text.trim() !== value) onApply(text.trim());
+  };
+  return (
+    <label className="sb-br-other">
+      <span>Use other base:</span>
+      <input
+        className="sb-ns-input sb-ns-input--name sb-br-other-input"
+        data-testid="br-other-base"
+        data-solution={solution}
+        aria-label={`Other base for ${solution}`}
+        value={text}
+        placeholder="main"
+        spellCheck={false}
+        autoComplete="off"
+        onChange={(event) => setText(event.target.value)}
+        onBlur={apply}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            apply();
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+/**
+ * The New-session form's **Branching** section (D40), shown with Worktree on
+ * (like D32's Branch field): the epic key and summary, the derived (editable)
+ * epic branch and its base (default `dev`), the read-only creation line, and the
+ * preflight table (one row per picked solution, or the repo of a repo folder)
+ * with Re-check; a row whose base is missing offers **Drop from task** / **Use
+ * other base: ___** (a repo folder only the latter). The task branch is D32's
+ * Branch field above. `docs/new-session.md` → *Branching (D40)*.
+ */
+export function BranchingSection({
+  form,
+  onChange,
+  solutions,
+  taskBranch,
+  preflight,
+  repo,
+}: {
+  readonly form: BranchingForm;
+  readonly onChange: (patch: Partial<BranchingForm>) => void;
+  readonly solutions: readonly string[];
+  readonly taskBranch: string;
+  readonly preflight: PreflightState;
+  readonly repo: boolean;
+}) {
+  const epic = hasEpic(form);
+  const problems = fieldProblems(form);
+  const dropped = droppedSolutions(form, solutions);
+  const choose = (solution: string, choice: RepoChoice | null): void => {
+    const choices = { ...form.choices };
+    if (choice === null) delete choices[solution];
+    else choices[solution] = choice;
+    onChange({ choices });
+  };
+  const rows = (preflight.rows ?? []).filter((row) => solutions.includes(row.solution));
+  const note = problems.key ?? problems.epicBranch ?? problems.base;
+
+  return (
+    <div className="sb-ns-section sb-ns-section--branching" data-testid="ns-section" data-section="branching">
+      <div className="sb-ns-label sb-ns-label--row">
+        Branching
+        <span className="sb-ns-hint" data-testid="br-model">
+          {epic ? 'epic/task · lazy' : 'task only · no epic'}
+        </span>
+      </div>
+      <div className="sb-br-epic">
+        <input
+          className="sb-ns-input sb-ns-input--name"
+          data-testid="br-epic-key"
+          aria-label="Epic key"
+          value={form.epicKey}
+          placeholder={`Epic key (optional), e.g. ${EPIC_KEY_EXAMPLE}`}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => onChange({ epicKey: event.target.value })}
+          onBlur={() => {
+            const tidy = tidyEpicKey(form.epicKey);
+            if (tidy !== form.epicKey) onChange({ epicKey: tidy });
+          }}
+        />
+        <input
+          className="sb-ns-input"
+          data-testid="br-epic-summary"
+          aria-label="Epic summary"
+          value={form.epicSummary}
+          placeholder="Epic summary"
+          onChange={(event) => onChange({ epicSummary: event.target.value })}
+        />
+      </div>
+      {epic ? (
+        <div className="sb-br-branch">
+          <input
+            className="sb-ns-input sb-ns-input--name"
+            data-testid="br-epic-branch"
+            aria-label="Epic branch"
+            data-derived={form.epicBranch === null ? 'true' : 'false'}
+            value={formEpicBranch(form)}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => onChange({ epicBranch: event.target.value })}
+          />
+          <label className="sb-br-base">
+            <span>base</span>
+            <input
+              className="sb-ns-input sb-ns-input--name"
+              data-testid="br-epic-base"
+              aria-label="Epic base branch"
+              value={form.base}
+              placeholder={DEFAULT_EPIC_BASE}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(event) => onChange({ base: event.target.value })}
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="sb-br-line" data-testid="br-task-only">
+          No epic: the task branch is cut from each repo&apos;s origin default branch (origin/HEAD, usually origin/master).
+        </div>
+      )}
+      {note ? (
+        <div className="sb-br-line" data-testid="br-note" data-ok="false">
+          {note}
+        </div>
+      ) : null}
+      <div className="sb-br-line" data-testid="br-creation">
+        {CREATION_LINE}
+      </div>
+      {solutions.length === 0 ? (
+        <div className="sb-br-line" data-testid="br-no-rows">
+          No solutions picked: the agent cuts its own worktrees by these rules.
+        </div>
+      ) : (
+        <div className="sb-br-preflight" data-testid="br-preflight">
+          <div className="sb-br-preflight-head">
+            <span>Preflight</span>
+            <span className="sb-br-status" data-testid="br-status">
+              {preflight.loading ? 'checking… (git fetch origin)' : (preflight.error ?? '')}
+            </span>
+            <button type="button" className="sb-button sb-ns-browse sb-br-recheck" data-testid="br-recheck" disabled={preflight.loading} onClick={preflight.recheck}>
+              Re-check
+            </button>
+          </div>
+          {rows.length > 0 ? (
+            <table className="sb-br-table" data-testid="br-table">
+              <thead>
+                <tr>
+                  <th>repo</th>
+                  <th>base</th>
+                  {epic ? <th>epic</th> : null}
+                  <th>{`task ${taskBranch || '—'}`}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const cells = preflightCells(row);
+                  const choice = form.choices[row.solution];
+                  const isDropped = dropped.includes(row.solution);
+                  const failed = row.error !== null;
+                  const offer = rowMissesBase(row) || (choice !== undefined && row.error === null && row.baseExists === false);
+                  return (
+                    <tr key={row.solution} data-testid="br-row" data-solution={row.solution} data-dropped={isDropped ? 'true' : 'false'}>
+                      <td className="sb-br-repo">{row.solution}</td>
+                      <td colSpan={failed ? (epic ? 3 : 2) : 1} data-testid="br-cell-base" data-tone={cells.base.tone}>
+                        {isDropped ? '— dropped from the task' : cells.base.text}
+                        {offer && !isDropped ? (
+                          <div className="sb-br-choices">
+                            {repo ? null : (
+                              <button type="button" className="sb-button sb-ns-browse" data-testid="br-drop" onClick={() => choose(row.solution, { drop: true })}>
+                                Drop from task
+                              </button>
+                            )}
+                            <OtherBase solution={row.solution} value={choice && 'base' in choice ? choice.base : ''} onApply={(base) => choose(row.solution, base === '' ? null : { base })} />
+                          </div>
+                        ) : null}
+                        {isDropped ? (
+                          <button type="button" className="sb-button sb-br-undo" data-testid="br-undo" onClick={() => choose(row.solution, null)}>
+                            Undo
+                          </button>
+                        ) : null}
+                      </td>
+                      {epic && !failed ? (
+                        <td data-testid="br-cell-epic" data-tone={cells.epic?.tone}>
+                          {cells.epic?.text ?? ''}
+                        </td>
+                      ) : null}
+                      {!failed ? (
+                        <td data-testid="br-cell-task" data-tone={cells.task?.tone}>
+                          {cells.task?.text ?? '—'}
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
