@@ -318,6 +318,16 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Instant revisit:** a session opened before in this tab shows at once from an in-memory cache while it refreshes in the background.
   - A failed load shows the existing error state.
 
+## Session bar pace (added 2026-09-29)
+- **D46 The 5-hour Session bar is colored by pace too, like the Week bar (D23), updated every minute.**
+  - **The allowance:** the window runs from its reset time minus 5 hours to the reset. It grows evenly: `minutes elapsed ÷ 300 × 100 %`, rounded like D23's, recomputed every minute.
+  - **Display:**
+    - **green** while the Session usage is below the allowance, **yellow** once it is at or above it;
+    - a marker at the allowance (D23's marker);
+    - a tooltip "On pace: 38% of 50% until 14:05" / "Ahead of pace: …", where "until" is the next minute step. The reset stays visible as today.
+  - **No pace:** without a known reset, or with a reset more than 5 h ahead or in the past, the Session row keeps its plain D17 look.
+  - The pace is computed in the browser from `usageWindows`, like D23; no API change.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
