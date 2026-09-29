@@ -1,6 +1,6 @@
 import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
-import { readContextState, resolveContext } from '../../core/context-meter.ts';
+import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -159,7 +159,9 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
  */
 export function toSessionContext(record: Pick<SessionRecord, 'remoteAvailable' | 'context' | 'model'>): SessionContext | null {
   if (record.remoteAvailable === null && record.context === null) return null;
-  return resolveContext(readContextState(record.context), record.model);
+  const state = readContextState(record.context);
+  learnWindows(state.windows);
+  return resolveContext(state, record.model);
 }
 
 /**

@@ -310,7 +310,31 @@ export function contextWindow(state: ContextState, choice: string | null): { win
     // A reported window that contradicts a `[1m]` choice (a key without `[1m]` at 200k) is stale: the choice changed.
     if (reported !== undefined && !(wantOneM && reported < ONE_M_CONTEXT_WINDOW)) return { window: reported, source: 'reported' };
   }
-  return { window: wantOneM ? ONE_M_CONTEXT_WINDOW : DEFAULT_CONTEXT_WINDOW, source: 'model' };
+  // A window the CLI reported for this model in any session (attached, backfilled and History sessions never see a result of their own).
+  if (model !== null) {
+    const base = stripOneM(model);
+    const learned = [...LEARNED_WINDOWS.entries()].filter(([key]) => key === model || stripOneM(key) === base);
+    const pick = learned.find(([key]) => hasOneM(key) === wantOneM) ?? learned.find(([key]) => !hasOneM(key));
+    if (pick !== undefined && !(wantOneM && pick[1] < ONE_M_CONTEXT_WINDOW)) return { window: pick[1], source: 'reported' };
+  }
+  const fallback = wantOneM ? ONE_M_CONTEXT_WINDOW : DEFAULT_CONTEXT_WINDOW;
+  // Sanity floor: a context that already held more than the fallback (or compacted above it) cannot be that small.
+  const seen = Math.max(state.tokens ?? 0, state.compaction?.preTokens ?? 0);
+  if (seen > fallback) return { window: ONE_M_CONTEXT_WINDOW, source: 'model' };
+  return { window: fallback, source: 'model' };
+}
+
+/**
+ * Windows the CLI reported per model, learned from every session's stored meter
+ * ({@link learnWindows}), so a session that never saw a result of its own (an
+ * attached terminal, a backfill, History) still gets the model's real window.
+ * In memory only; refilled as sessions are read.
+ */
+const LEARNED_WINDOWS = new Map<string, number>();
+
+/** Remembers reported `modelUsage` windows (the newest value per model wins). */
+export function learnWindows(windows: Readonly<Record<string, number>>): void {
+  for (const [model, window] of Object.entries(windows)) if (window > 0) LEARNED_WINDOWS.set(model, window);
 }
 
 /** The meter's color band: `ok` (green) below 60 %, `warn` (yellow) from 60 %, `high` (red) from 80 %; `unknown` without a reading. */
