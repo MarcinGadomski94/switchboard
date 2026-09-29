@@ -1,38 +1,33 @@
-# Resume point: Switchboard (2026-09-28, late evening)
+# Resume point: Switchboard (2026-09-29)
 
-Everything is local to `other/switchboard`. Nothing is pushed.
+The repo lives at `~/RiderProjects/Personal/switchboard` (moved from the workspace's `other/switchboard`). The main branch is **`master`**; there is a GitHub remote (`MarcinGadomski94/switchboard`). Never push.
 
-## main: all green after the D34–D37 merges
-- typecheck (4 configs); `npm test` 1523 + 1 skipped; `npm run e2e` 147/147 (visual report committed).
-- Merged today: D19–D34, the D28 scope follow-up, the empty-first-bubble fix, and toasts that close by themselves. D34 (installable app) also has its localhost → 127.0.0.1 page redirect.
-- README.md at the root describes everything on main.
-- Migrations 0001–0010.
-- Known flaky under load: the supervisor sync-point test and `session-handoff.spec` (`.loop/questions.md` → Known flaky tests).
+## master: all green at 363cbe6
+- typecheck (4 configs); `npm test -- --maxWorkers=4` 1707 + 1 skipped; `npm run e2e` 168/168 (in `.worktrees/verify`, ports 4970-4979).
+- Merged 2026-09-29: default port 13001 (`440fea1`), D39 own answers, D41 collapsible panes, D38 agent-chosen solutions (migration 0011), D43 every background task counts, D46 Session-bar pace, D42 model + effort at start, the stuck-running fix (turn accounting in the recorder), D45 session loading, D44 clock on queued messages, D40 epic/task branching (migration 0012). Rulings for each are in `docs/decisions.md` and `.loop/questions.md`.
+- README.md at the root describes everything on master.
+- Migrations 0001–0012.
+- Known flaky under load: the supervisor sync-point test, `session-handoff.spec`, `timeline.spec`, and timing-based server tests when several lanes run at once (`.loop/questions.md` → Known flaky tests). Run unit tests with `--maxWorkers=4`.
 
-## In flight (2026-09-29)
-| Item | Worktree · branch | Ports |
-|---|---|---|
-| D43 background workflows + any CLI task show as working | `.worktrees/bg-workflows` · `feature/bg-workflows` | 4910-4919 |
-| D44 clock on queued chat messages | `.worktrees/queued-messages` · `feature/queued-messages` | 4900-4909 |
-| D45 session loading skeleton + instant revisit | `.worktrees/session-loading` · `feature/session-loading` | 4890-4899 |
-| D46 Session-bar pace (5 h), every minute | `.worktrees/session-pace` · `feature/session-pace` | 4880-4889 |
-| D40 epic/task branching | `.worktrees/epic-branching` · `feature/epic-branching` (from `3c6ee25`) | 4950-4959 |
-| D42 model + effort in the form, remembered | `.worktrees/model-at-start` · `feature/model-at-start` (from `3c6ee25`) | 4960-4969 |
+## Working rules
+- The developer runs Switchboard as their own launchd agent (`com.switchboard`, port 13001) from the main checkout; it does `npm ci && npm run build && npm start` on every start. Never touch or restart it, never run tests or builds in the main checkout.
+- Build features in `.worktrees/<lane>` on distinct test ports (`SWITCHBOARD_TEST_PORTS`). Merge in the main checkout; verify in `.worktrees/verify` (`git -C .worktrees/verify checkout --detach master`).
+- After merging, check that code fences in `docs/handoff/contracts/local-api.md` are balanced.
 
-- Merged since: D41 `afd5248`, D38 `3c6ee25` (migration 0011). D39 is merged (`97b74a8`) and verified in `.worktrees/verify` (a detached worktree at master): e2e 149/149; 10 unit timeouts under load average ~39 passed on rerun (49/49).
-- The main branch is **`master`**; there is a GitHub remote (`MarcinGadomski94/switchboard`). Never push.
-- Verify merges in `.worktrees/verify` (`git -C .worktrees/verify checkout --detach master`), never in the main checkout (the developer's launchd service runs from it and does `npm ci` on start).
-- Open question for the developer: several picks on multi-select questions together with an own answer (D39 allows one pick per question).
+## Open questions for the developer (not blocking)
+- D42: should scheduled runs update the remembered model choice? Should schedules edited before D42 start on the last choice?
+- D44: run a live Haiku probe of mid-turn absorption? Mark or resend messages a killed process never took up?
+- D39: several picks plus an own answer on multi-select questions?
+- D41: live sync of pane state across tabs; is the 6 px rail right?
+- D40: "letters" in epic branch names include non-ASCII letters (e.g. `Zażółć`); switch to ASCII only?
 
 ## The developer's next steps
-- `npm run build`, then restart their Switchboard (127.0.0.1:4870). Never restart it for them.
-- Reload the unpacked frame helper in Chrome (2.0.0).
-- Install the app (Chrome: Settings → Claude Code → Install as app; Safari: File → Add to Dock).
-- Live tests: D24 Remote, D25 teleport, D31 model/effort, D30 with a real GitHub wait.
+- Restart their Switchboard (the service rebuilds on start). The session stuck as running on the old build clears after the restart.
+- Live tests: D24 Remote, D25 teleport, D31 model/effort, D30 with a real GitHub wait, D40 branching on a real repo.
 
 ## Parked by the developer
 - Remote sessions on the other PC (Windows).
 - Safari can't frame signed-in sites; they open in a new tab.
 
 ## Clean-up
-- Done 2026-09-28: every merged worktree and branch removed; only `main` remains.
+- Worktrees of merged lanes (D38–D46, fix/stuck-running, verify) are still present; remove them only when the developer says so.

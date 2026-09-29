@@ -106,10 +106,13 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **Title:** free text, e.g. "JIRA Ticket handling". A kebab-case short name is derived from it for the branch and worktree folder.
 - **Task:** what the agent should do.
 - **Session-start answers:** work type, mode, solutions in scope, phase, mobile coordination, ultracode.
+- **No solutions picked:** you can leave the solutions empty and let the agent decide. It creates the worktrees it needs, Switchboard adopts them, and the session's solutions fill in from what the agent touches.
+- **Model and effort:** chosen in the form; the next session starts on your last choice.
 - **Worktrees:** each session can work in its own git worktree. The **branch must be named after its ticket**, e.g. `PROJ-0001-short-description`, and it is pre-filled when the title starts with a ticket key.
 - **Continuing existing work:**
   - **pick a terminal conversation** to move it into Switchboard;
   - **"From a remote session"**: paste a claude.ai/code session URL to continue a cloud or Remote Control session as a local copy.
+- **Branching:** with an epic (key + summary), task branches are cut from `feature/<EPIC-KEY>-<Summary>`, which is itself cut from `origin/dev`. Without an epic (bug fixes), they are cut from `origin/master` after a fetch. Branches are created and pushed lazily, only in the repos the agent changes. A preflight table shows, per repo, the base, the epic, the task branch and the cut point before you start. An existing task branch is reused.
 
 [`docs/new-session.md`](docs/new-session.md) · [`docs/worktrees.md`](docs/worktrees.md)
 
@@ -118,8 +121,9 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **Formatting:** agent and developer messages render as Markdown, with syntax colors and clickable links.
 - **Composer:** **Enter** sends, **Shift+Enter** adds a line.
 - **Live activity:** "Pondering… 1m 23s", "● Bash: npm test 0:42".
-- **Background waits:** a GitHub Actions run, a build, a subagent or a timer shows as "⏳ Waiting for GitHub Actions: …" instead of looking idle.
-- **Questions:** the agent's questions appear as cards in the chat.
+- **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.
+- **Queued messages:** a message you send while the agent is busy shows a clock until the agent takes it up. A message to a paused session resumes it.
+- **Questions:** the agent's questions appear as cards in the chat. Besides the offered answers, **Other…** lets you answer in your own words.
 
 **Header**
 - **Rename:** click the title.
@@ -140,6 +144,8 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **No composer:** subagents take no messages; reply in the main chat.
 
 **Tabs:** Timeline, Diff (per worktree), Artifacts.
+
+**Switching sessions:** a session you visited recently opens instantly; one still loading shows placeholders instead of a blank or stale view.
 
 **More room:** slide the sidebar (**⌘B**) or the right panel (**⌥⌘B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
 
@@ -191,7 +197,7 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 
 ### Usage and footer
 The sidebar footer shows RAM in use and two **Max usage** bars:
-- **Session.**
+- **Session.** It is colored by pace, updated every minute: green while you're under the elapsed share of the 5-hour window, yellow once you're ahead of it.
 - **Week.** It is colored by pace: green while you're under the day's share of the week (14.29% per day from your reset hour), yellow once you're ahead of it.
 
 [`docs/usage.md`](docs/usage.md)
@@ -266,7 +272,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 `SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. [`docs/demo.md`](docs/demo.md)
 
 ### How changes are made
-- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D37). The developer's rulings win where the two differ.
+- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D46). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
 - **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `main` with the full suites green.
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.
