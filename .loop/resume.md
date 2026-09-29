@@ -9,8 +9,15 @@ Everything is local to `other/switchboard`. Nothing is pushed.
 - Migrations 0001–0010.
 - Known flaky under load: the supervisor sync-point test and `session-handoff.spec` (`.loop/questions.md` → Known flaky tests).
 
-## In flight
-- Nothing. Open D36 questions for the developer: trim the subagent result wrapper? store background subagents' final summary?
+## In flight (2026-09-29)
+| Item | Worktree · branch | Ports |
+|---|---|---|
+| D38 solutions chosen by the agent | `.worktrees/agent-solutions` · `feature/agent-solutions` | 4920-4929 |
+| D39 own answers (Other…) on question cards | `.worktrees/own-answers` · `feature/own-answers` | 4930-4939 |
+| D41 collapsible sidebar / right panel, remembered | `.worktrees/collapsible-panes` · `feature/collapsible-panes` | 4940-4949 |
+| D40 epic/task branching in the New-session form | **not started: dispatch after D38 merges** (same form, first message and worktree code) | 4950-4959 |
+
+The repo lives in ~/RiderProjects/Personal/switchboard; its default port is 13001; the developer's own launchd service (com.switchboard) runs `npm ci` on start. Never run anything in the main checkout while it may restart; use worktrees.
 
 ## The developer's next steps
 - `npm run build`, then restart their Switchboard (127.0.0.1:4870). Never restart it for them.
