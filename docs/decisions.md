@@ -301,6 +301,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - Unknown task types are kept, as kind `task` with the CLI's description.
   - **Display:** "⏳ Running a workflow: <summary>", or "⏳ Waiting for a background task: <description>" for other kinds, next to D30's lines. Everything else is as D30 has it.
 
+## Queued messages (added 2026-09-29)
+- **D44 The developer's own chat messages show a clock while they are queued.**
+  - **Queued** means sent but not yet taken up by the agent:
+    - sent while a turn runs, so it waits for that turn to end;
+    - sent to a paused or stopped session, so it waits in the outbox until the session resumes.
+  - Such a bubble shows a small clock icon (SPEC muted tokens) with a tooltip: "Queued: the agent reads it after its current turn" / "Queued: sent when the session resumes".
+  - The icon goes away the moment the agent starts on the message. That moment is derived from the CLI's own signals, verified against the stream: the replay/ack, or the next turn's start, whichever marks the real pickup.
+  - Live over `/hub`. Nothing changes for delivered messages.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
