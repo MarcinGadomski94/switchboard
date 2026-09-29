@@ -219,6 +219,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
 ## Default port (added 2026-09-28)
 - **Developer ruling:** Switchboard's default port is **13001** (`DEFAULT_PORT`, was 4870); `SWITCHBOARD_PORT` still overrides it. Tests keep their own ports and refuse the app's port. An app installed from `127.0.0.1:4870` (D34) must be installed again from `127.0.0.1:13001`. The handoff spec, the prototype and the demo seed keep their `4870`, since the visual oracle compares copy verbatim.
 
+## Solutions chosen by the agent (added 2026-09-29)
+- **D38 A workspace session can start without picked solutions; the agent determines them.**
+  - **Form:** picking solutions is optional for a workspace folder. With none picked, the summary reads `solutions  chosen by the agent` (no warning) and Start follows the other rules only. Repo folders are unchanged: their repo is the one solution.
+  - **The first message's answers block** reads "Solutions in scope: not chosen: determine them from the task and the router (`AGENTS.md`), name them in your one-line confirmation before you change anything, and ask if it is unclear". Mobile coordination is not pre-answered then.
+  - **Worktrees, when on and nothing is picked:** the block tells the agent to create one git worktree per solution it changes, on the session's ticket branch (D32; `session/{name}` for scheduled runs), at `../<repo>-wt-<name>` next to the solution's repo, and to change files only there.
+    - Switchboard **adopts** each such worktree when it appears (after an agent's `git worktree add`, and on a sweep at each turn's end): it registers the worktree (Diff tab, PR checks, the Solutions chips, removal) and assigns it to the session.
+  - **The session's solutions fill in by themselves** from what the agent touches: every solution it writes into (the D21 agent-solution derivation) or adopts a worktree in joins `Session.solutions`. This is persisted and published, so the chips, the Solutions view and conflict detection follow.
+  - **The server** accepts an empty `solutions` for a workspace session; the other validation is unchanged.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
