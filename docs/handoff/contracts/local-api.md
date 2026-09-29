@@ -33,7 +33,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
   "coordination": "sequential|parallel-twin|none|null", "qa": { "stack": "web|mobile|both", "confluenceUrl": "", "figmaUrls": [] } ,
   "worktrees": true, "ultracode": false }
 ```
-Validation: name unique and kebab-case; solutions not empty; read-only paths are rejected (422); `qa` is required when workType = qa.
+Validation: name unique and kebab-case; solutions not empty (D38: an empty list is allowed for a workspace folder, see below); read-only paths are rejected (422); `qa` is required when workType = qa.
 
 ## Folders per session (D14, 2026-09-28, additive)
 Developer ruling D14 (`docs/decisions.md`): there is no single configured workspace root. Sessions start in **saved folders**, each a *workspace* (a folder with a router `AGENTS.md` that is not itself a git main checkout) or a *repo* (a git main checkout). Everything below is additive; the rows and payloads above keep their meaning. Details: `docs/folders.md`.
@@ -302,6 +302,23 @@ Developer ruling D36 (`docs/decisions.md` → *Subagent chats*): a subagent's ow
 
 ```json
 Agent { …, "toolUseId": "toolu_01E5QUrP9sKnU8eg6FiNuCbb" | null }
+```
+
+## Solutions chosen by the agent (D38, 2026-09-29, additive)
+Developer ruling D38 (`docs/decisions.md` → *Solutions chosen by the agent*): a workspace session can start without picked solutions; the agent determines them. Additive: an empty list is now allowed; the rows and payloads above keep their meaning. Details: `docs/new-session.md` → *Solutions chosen by the agent (D38)*, `docs/worktrees.md` → *Adopted worktrees (D38)*, `docs/derivations.md` → *Session solutions (D38)*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/sessions | NewSession with `solutions: []` (or without `solutions`) for a **workspace** folder | 201 Session with `solutions: []` · the other validation is unchanged (a non-empty list: every name non-empty, not twice, never read-only, else 422 on `solutions`; a `solutions` that is not a list is 422 "solutions must be a list of solution names") |
+
+- **NewSession.solutions** may be empty or omitted for a workspace folder (it was "not empty", 422 "choose at least one solution"). A repo folder is unchanged (its repo is the one solution). A schedule's template follows the same rule (`POST /api/schedules`).
+- **No worktree up front:** with `worktrees: true` and no solutions nothing is created (the D32 `branch` is still required and validated); the first message tells the agent to create one worktree per solution it changes on that branch at `<repo>-wt-<name>` (scheduled runs: `session/{run name}`). Switchboard **adopts** each such worktree when it appears (after a main-agent `git worktree add`, and on a sweep at each turn's end): it becomes a normal `Worktree` of the session (`sessionId` set; Diff, PR checks, removal and the Solutions chips as before). No new route.
+- **Session.solutions** (so also SessionDetail, `sessionUpdated`, `ConflictSession`s and the Solutions view) starts empty and **fills in** with every solution an agent of the session writes into or Switchboard adopts a worktree in, in the order they appear; each change is stored and published as `sessionUpdated` (no new `/hub` event). This applies to every workspace session, so one that picked solutions gains the others it writes into.
+- The session's worktree branch is stored (`sessions.branch`, migration `0011_session_branch.sql`); it is not on the wire.
+
+```json
+NewSession { "name": "proj-38-agent-worktree", "title": "PROJ-38 Agent worktree", "task": "…", "workType": "feature", "mode": "single", "solutions": [], "phase": "ui-first", "coordination": null, "qa": null, "worktrees": true, "ultracode": false, "branch": "PROJ-38-agent-worktree" }
+Session    { …, "solutions": [] }  →  sessionUpdated { …, "solutions": ["acme-app-front"] }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)
