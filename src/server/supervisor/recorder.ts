@@ -126,10 +126,21 @@ export class StreamRecorder {
   /** The last activity reported to `onActivity`, as JSON. */
   #activityKey = 'null';
 
-  /** User messages written to stdin whose turn has not produced its `result` yet. */
+  /**
+   * User messages written to stdin that the CLI has not taken up yet (no replay
+   * echo yet). Each one is work still to come: the session runs until it is taken up.
+   */
   #pendingTurns = 0;
-  /** The CLI runs a turn of its own (a background agent finishing, `origin.kind: task-notification`). */
-  #cliTurn = false;
+  /**
+   * A turn runs: opened by `system/init` or by the replay of a stdin message,
+   * closed by its `result`. One result closes the turn whatever it took up: the
+   * CLI folds messages queued while a turn runs into that turn (a `queued_command`
+   * attachment, replayed at once) and ends them all with that turn's one `result`,
+   * whose origin may be a task notification (the stuck-`run` fix of 2026-09-29).
+   */
+  #turnOpen = false;
+  /** The open turn took up at least one stdin message of ours (a replay echo came). */
+  #turnTookUp = false;
   #lastOutcome: TurnOutcome | null = null;
   /** Set while Switchboard stops the process: the interrupted turn's result is not an outcome. */
   #stopping = false;
@@ -175,7 +186,7 @@ export class StreamRecorder {
     return {
       live: true,
       openRequests: this.#openRequests.size,
-      turnRunning: this.#pendingTurns > 0 || this.#cliTurn,
+      turnRunning: this.#pendingTurns > 0 || this.#turnOpen,
       runningAgents: this.#runningAgents.size,
       lastOutcome: this.#lastOutcome,
     };
@@ -183,7 +194,7 @@ export class StreamRecorder {
 
   /** `true` while a turn runs or waits for an answer (an interrupt then produces a `result`). */
   turnBusy(): boolean {
-    return this.#pendingTurns > 0 || this.#cliTurn || this.#openRequests.size > 0;
+    return this.#pendingTurns > 0 || this.#turnOpen || this.#openRequests.size > 0;
   }
 
   get lastOutcome(): TurnOutcome | null {
@@ -218,6 +229,13 @@ export class StreamRecorder {
     this.#activity.endTurn();
     this.#background.clear();
     this.#syncActivity();
+  }
+
+  /** Opens the turn for the status (a no-op while one is open). */
+  #openTurn(): void {
+    if (this.#turnOpen) return;
+    this.#turnOpen = true;
+    this.#turnTookUp = false;
   }
 
   /** A turn starts (D19); D30: when none ran, the wake-ups have fired. */
@@ -416,11 +434,11 @@ export class StreamRecorder {
 
   async #onInit(message: Extract<StreamMessage, { kind: 'init' }>): Promise<void> {
     // D25: a `--teleport` process may report `init` at startup, before any message: that one is no turn.
-    const startup = this.#startupInit && this.#pendingTurns === 0 && !this.#cliTurn;
+    const startup = this.#startupInit && this.#pendingTurns === 0 && !this.#turnOpen;
     this.#startupInit = false;
     if (!startup) {
-      if (this.#pendingTurns === 0 && !this.#cliTurn) this.#cliTurn = true;
       // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
+      this.#openTurn();
       this.#startTurn();
     }
     const patch: { observedPermissionMode?: string | null; cliVersion?: string | null } = {};
@@ -464,6 +482,10 @@ export class StreamRecorder {
       return;
     }
     // The CLI took up a stdin message (D19: the turn starts, if `init` did not start it already).
+    // It is no longer to come: the open turn (its own, or the one it was folded into) answers it.
+    this.#openTurn();
+    if (this.#pendingTurns > 0) this.#pendingTurns--;
+    this.#turnTookUp = true;
     this.#startTurn();
     const at = this.#pendingUserEvents.findIndex((pending) => pending.text === message.text);
     const pending = at >= 0 ? this.#pendingUserEvents.splice(at, 1)[0] : this.#pendingUserEvents.shift();
@@ -593,8 +615,13 @@ export class StreamRecorder {
   }
 
   async #onResult(message: Extract<StreamMessage, { kind: 'result' }>): Promise<void> {
-    if (message.taskNotification || this.#pendingTurns === 0) this.#cliTurn = false;
-    else this.#pendingTurns--;
+    // The running turn is over, with every message it took up (however many, whatever
+    // the result's origin). Without a replay echo for the turn (a stream without
+    // `--replay-user-messages`), a result that is not the CLI's own still answers
+    // the oldest message we wrote.
+    if (!this.#turnTookUp && !message.taskNotification && this.#pendingTurns > 0) this.#pendingTurns--;
+    this.#turnOpen = false;
+    this.#turnTookUp = false;
     // D19: a turn's result → idle (a queued message's turn starts when the CLI takes it up).
     this.#activity.endTurn();
     this.#failedCommands.clear();
