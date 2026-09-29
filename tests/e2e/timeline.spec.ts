@@ -1,4 +1,5 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
+import { PLAY_MAX, PLAY_STEP, PLAY_TICK_MS } from '../../src/web/views/session/timeline.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
@@ -9,6 +10,11 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * shows one lane per agent with blocks colored by kind, the white playhead, the
  * scrubber with ▶ / ❚❚, the "Events up to" log and the terminal tail, and follows
  * new events through `/hub` without a reload.
+ *
+ * Playback steps the scrubber on a timer (8 every 50 ms), so the page runs on
+ * Playwright's clock: the sweep to the end is played in page time
+ * (`page.clock.runFor`), not waited for in wall time: a timer tick takes ~62 ms
+ * on a quiet machine and ~85 ms on a busy one, so a wall-clock sweep took 7.5–10+ s.
  */
 let world: QuestionWorld;
 
@@ -60,6 +66,8 @@ async function sendMessage(page: Page, id: string, text: string): Promise<void> 
 
 test('Timeline: lanes per agent, kind colors, playhead, scrub / play, log, terminal and live events', async ({ page }) => {
   test.setTimeout(90_000);
+  // Page time flows as usual until the sweep below advances it.
+  await page.clock.install();
   await openWithHub(page, `${world.baseUrl}/inbox`);
   const { id } = await world.startSession(page, 'timeline-e2e', 'Write a file and list the folder [fake:tool-use]');
   await expect.poll(() => sessionStatus(page, id), { timeout: 15_000 }).toBe('done');
@@ -157,7 +165,9 @@ test('Timeline: lanes per agent, kind colors, playhead, scrub / play, log, termi
   await page.waitForTimeout(200);
   expect(Number(await scrubber.inputValue())).toBe(paused);
   await play.click();
-  await expect(play).toHaveText('▶', { timeout: 10_000 });
+  // The whole sweep (0 → PLAY_MAX) in page time: every tick fires, however slow the machine is.
+  await page.clock.runFor((PLAY_MAX / PLAY_STEP) * PLAY_TICK_MS);
+  await expect(play).toHaveText('▶');
   expect(Number(await scrubber.inputValue())).toBe(1000);
   await expect(now).toHaveText(endClock!);
   await expect(page.locator('[data-testid="timeline-block"][data-dim="true"]')).toHaveCount(0);

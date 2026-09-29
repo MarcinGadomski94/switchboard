@@ -6,7 +6,7 @@
  * tab*; the prototype's own code is the `tl` object of
  * `docs/handoff/prototype/Switchboard App.dc.html`.
  */
-import type { Agent, SessionEvent } from '../../../core/api.ts';
+import type { Agent, Session, SessionEvent } from '../../../core/api.ts';
 import type { EventKind, SessionStatus } from '../../../core/model.ts';
 
 /** Event kinds drawn as blocks: SPEC's plan / impl / loop / ask / ok, plus `error` so failures show. */
@@ -283,4 +283,47 @@ export function timelineModel(input: TimelineInput): TimelineModel {
 export function playStep(play: number): { readonly play: number; readonly playing: boolean } {
   const next = play + PLAY_STEP;
   return next >= PLAY_MAX ? { play: PLAY_MAX, playing: false } : { play: next, playing: true };
+}
+
+/**
+ * Where the Timeline takes its session (and so its lanes) from: the newest `/hub`
+ * `sessionUpdated` copy over the fetched detail. A refetch (asked for when an event
+ * names an agent the session does not list yet) replaces only the copies that
+ * arrived before it was asked for, and only once its answer lands; until then the
+ * newest copy stays, so a lane it shows does not vanish and come back while the
+ * refetch runs.
+ */
+export interface SessionSource {
+  /** The newest `/hub` copy and its number (1, 2, …); `null` when none or when a refetch replaced it. */
+  readonly pushed: { readonly session: Session; readonly seq: number } | null;
+  /** How many copies arrived so far. */
+  readonly seq: number;
+  /** {@link seq} when the pending refetch was asked for; `null` without one. */
+  readonly reloadFrom: number | null;
+}
+
+/** No `/hub` copy yet and no refetch pending. */
+export const EMPTY_SESSION_SOURCE: SessionSource = { pushed: null, seq: 0, reloadFrom: null };
+
+/** A `/hub` copy arrived: it wins over the fetched detail. */
+export function sessionPushed(source: SessionSource, session: Session): SessionSource {
+  const seq = source.seq + 1;
+  return { ...source, pushed: { session, seq }, seq };
+}
+
+/** A refetch was asked for: the copies so far give way once its answer lands. */
+export function sessionRefetching(source: SessionSource): SessionSource {
+  return { ...source, reloadFrom: source.seq };
+}
+
+/** The fetched detail changed: a pending refetch replaces the copies that arrived before it was asked for. */
+export function sessionFetched(source: SessionSource): SessionSource {
+  const from = source.reloadFrom;
+  if (from === null) return source;
+  return { ...source, reloadFrom: null, pushed: source.pushed !== null && source.pushed.seq <= from ? null : source.pushed };
+}
+
+/** The session to draw: the `/hub` copy when there is one, else the fetched detail. */
+export function shownSession(source: SessionSource, fetched: Session | null): Session | null {
+  return source.pushed?.session ?? fetched;
 }
