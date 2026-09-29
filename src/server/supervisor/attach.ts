@@ -173,7 +173,17 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     if (item.kind !== 'tool-result' && (await store.events.hasUuid(session.id, item.uuid))) continue;
     switch (item.kind) {
       case 'prompt': {
-        const payload: UserPayload = { type: 'user', text: item.text, origin, delivered: true };
+        if (item.from === 'switchboard') {
+          // D48 P4: the developer's message, sent from Switchboard to a hooked session: its waiting bubble is now delivered.
+          const pending = await findUndelivered(store, session.id, item.text);
+          if (pending) {
+            const { queued: _queued, ...rest } = pending.payload as UserPayload;
+            const updated = await store.events.update(pending.id, { payload: { ...rest, delivered: true }, uuid: item.uuid });
+            if (updated) onEvent(updated);
+            break;
+          }
+        }
+        const payload: UserPayload = { type: 'user', text: item.text, origin: item.from === 'switchboard' ? 'user' : origin, delivered: true };
         await append({
           sessionId: session.id,
           agentId: mainAgentId,
@@ -256,4 +266,13 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
   if (lastTs !== null && (!session.lastActivityAt || lastTs > session.lastActivityAt)) patch.lastActivityAt = lastTs;
   if (Object.keys(patch).length > 0) await store.sessions.update(session.id, patch);
   return { imported: counts.imported, found: true, forked: slice.forked, tip: slice.tip };
+}
+
+/** D48 P4: the oldest of the session's user messages that waits (not delivered yet) with exactly `text`, else `null`. */
+async function findUndelivered(store: Store, sessionId: string, text: string): Promise<EventRecord | null> {
+  for (const event of await store.events.list(sessionId)) {
+    const payload = event.payload as Partial<UserPayload> | null;
+    if (payload?.type === 'user' && payload.delivered === false && payload.text?.trim() === text.trim()) return event;
+  }
+  return null;
 }

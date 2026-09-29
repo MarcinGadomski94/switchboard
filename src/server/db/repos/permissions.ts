@@ -24,6 +24,13 @@ export interface PermissionRequestRecord {
   readonly createdAt: string;
   readonly decidedAt: string | null;
   readonly staleAt: string | null;
+  /**
+   * D48 P4 (migration 0017): a hooked terminal session's request: the
+   * PermissionRequest hook's `permission_suggestions` (`[]` when none), sent as
+   * `updatedPermissions` by "Always allow"; `null` for a supervised process's
+   * request (D6: Allow once / Deny only).
+   */
+  readonly hookSuggestions: readonly unknown[] | null;
 }
 
 /** Input of {@link PermissionRepository.create}; `id` defaults to a random UUID, `state` to `open`. */
@@ -57,6 +64,7 @@ const SPEC: TableSpec<PermissionRequestRecord> = {
     createdAt: ['created_at', 'text'],
     decidedAt: ['decided_at', 'text'],
     staleAt: ['stale_at', 'text'],
+    hookSuggestions: ['hook_suggestions', 'json'],
   },
 };
 

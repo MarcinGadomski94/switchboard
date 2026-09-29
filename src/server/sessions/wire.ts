@@ -84,7 +84,8 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  * what the UI shows. D24: its `remote` state ({@link toSessionRemote}). D25:
  * `remoteSource`, the remote session a teleported session is a local copy of
  * (`null` otherwise). D31: its `model` ({@link toSessionModel}). D33: `closedAt`,
- * when the developer closed it (`null` while open).
+ * when the developer closed it (`null` while open). D48: `machine` is `null` (a
+ * session of this machine).
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
@@ -124,6 +125,10 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     model: toSessionModel(record),
     closedAt: record.closedAt,
     context: toSessionContext(record),
+    // D48: this machine's own session (a peer's carries its machine, core/peer-wire.ts).
+    machine: null,
+    // D48 P4: a hand-started terminal session Switchboard hooked into.
+    hooked: record.hooked,
   };
 }
 

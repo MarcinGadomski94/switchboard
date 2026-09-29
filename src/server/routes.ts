@@ -5,7 +5,9 @@ import { registerFolderRoutes } from './api/folders.ts';
 import { registerFrameHelperRoutes } from './api/frame-helper.ts';
 import { registerHistoryRoutes } from './api/history.ts';
 import { registerHubRoutes } from './api/hub.ts';
+import { registerHookRoutes } from './api/hooks.ts';
 import { registerInboxRoutes } from './api/inbox.ts';
+import { registerMachineRoutes } from './api/machines.ts';
 import { registerScheduleRoutes } from './api/schedules.ts';
 import { registerServiceRoutes } from './api/service.ts';
 import { registerSessionRoutes } from './api/sessions.ts';
@@ -21,6 +23,8 @@ import type { HubBus } from './hub/bus.ts';
 import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
+import type { HookService } from './hooks/service.ts';
+import type { PeerService } from './peers/service.ts';
 import type { Providers } from './providers.ts';
 import type { Scheduler } from './schedules/scheduler.ts';
 import type { SetupService } from './setup/service.ts';
@@ -52,6 +56,10 @@ export interface ApiContext {
   readonly folders: FolderService;
   /** Schedules: cron runs from templates, Run now, Pause/Resume (M7.1, docs/schedules.md). */
   readonly scheduler: Scheduler;
+  /** Paired machines, the peer listener and the proxy to peers (D48, docs/peers.md). */
+  readonly peers: PeerService;
+  /** Hand-started terminal sessions: hooks, the hook endpoints, hooked sessions (D48 P4, docs/peers.md). */
+  readonly hooks: HookService;
 }
 
 /**
@@ -77,5 +85,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerSetupRoutes(app, context);
   await registerFolderRoutes(app, context);
   await registerBranchingRoutes(app, context);
+  await registerMachineRoutes(app, context);
+  await registerHookRoutes(app, context);
   await registerHubRoutes(app, context);
 }

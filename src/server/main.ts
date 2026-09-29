@@ -16,10 +16,12 @@ import { loadServiceRedirect } from './service/target.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
+import { PeerService } from './peers/service.ts';
 import { claudeAgentsLister, recoverSessions } from './supervisor/recovery.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import { SystemProbe } from './system/probe.ts';
-import { loadOrCreateToken } from './token.ts';
+import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
+import { HookService } from './hooks/service.ts';
 import { ToolProxies, settingsProxyPorts } from './tools/proxies.ts';
 import { createUsageMeter, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
@@ -102,7 +104,12 @@ async function main(): Promise<void> {
     // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
     const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, ...(usage ? { usage } : {}), logger: true });
+    // D48 (docs/peers.md): paired machines and the optional peer listener; started once the UI port is ours. The demo has none.
+    const peers = new PeerService({ config, store, bus, token });
+    // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
+    const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
+    const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -111,6 +118,8 @@ async function main(): Promise<void> {
       // Recovery may still be spawning; let it finish so shutdown sees every process.
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
+      await peers.close();
+      await hooks.close();
       await worktrees.stopPolling();
       await scheduler.close();
       await systemItems.close();
@@ -130,6 +139,10 @@ async function main(): Promise<void> {
     if (!config.demo) systemItems.startWatching();
     // The cron timer (M7.1), only once the port is ours; the demo's schedules never fire.
     if (!config.demo) scheduler.start();
+    // D48: the peer listener (when switched on) and the connections to paired machines.
+    if (!config.demo) await peers.start().catch((error: unknown) => app.log.error(error, 'peers failed to start'));
+    // D48 P4: the hooked sessions' transcript and liveness polls.
+    if (!config.demo) hooks.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
     if (releaseCommands) {
       recovering = recover(app, config, store, supervisor).finally(releaseCommands);

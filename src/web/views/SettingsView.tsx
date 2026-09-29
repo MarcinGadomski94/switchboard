@@ -7,6 +7,7 @@ import { Link } from '../router.tsx';
 import { SETTINGS_SECTIONS, type SettingsSection, resolveSection } from './settings/model.ts';
 import { ClaudeSection, GithubSection, NotifySection, type SaveSettings, SchedulesSection, SessionsSection } from './settings/sections.tsx';
 import { ToolsSection } from './settings/ToolsSection.tsx';
+import { MachinesSection } from './settings/MachinesSection.tsx';
 import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import './settings.css';
 
@@ -26,6 +27,8 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
       return <ToolsSection />;
     case 'github':
       return <GithubSection settings={settings} />;
+    case 'machines':
+      return <MachinesSection />;
   }
 }
 

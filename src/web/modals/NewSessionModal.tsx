@@ -1,9 +1,9 @@
 import { type MouseEvent, useEffect, useId, useState } from 'react';
-import type { HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import type { Folder, HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
 import { DEFAULT_MODEL_CHOICE } from '../../core/model-choice.ts';
 import { formatHistoryDate } from '../../core/history.ts';
 import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
-import { ApiError, api } from '../api/client.ts';
+import { ApiError, api, machineApi } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
@@ -188,12 +188,24 @@ export function NewSessionModal({
   readonly schedule?: ScheduleDraft | null;
 }) {
   const { navigate } = useRouter();
-  const folders = useSavedFolders();
+  const scheduling = schedule !== null;
+  // D48 (P3, docs/peers.md): the machine the session starts on; `null` = this one. A schedule always runs here.
+  const machines = useApi(() => (scheduling ? Promise.resolve(null) : api.machines().catch(() => null)), [scheduling]);
+  const [machine, setMachine] = useState<string | null>(null);
+  const peer = scheduling ? null : machine;
+  const localFolders = useSavedFolders();
+  // A peer's saved folders (its own ids), tagged with the machine so a switch never shows the last machine's list.
+  const peerFolders = useApi(
+    (): Promise<{ readonly machine: string; readonly list: Folder[] } | null> => (peer ? machineApi(peer).savedFolders().then((list) => ({ machine: peer, list })) : Promise.resolve(null)),
+    [peer],
+  );
+  const folders: { readonly data: Folder[] | null; readonly error: ApiError | null } = peer
+    ? { data: peerFolders.data?.machine === peer ? peerFolders.data.list : null, error: peerFolders.error }
+    : localFolders;
   // D33: closed sessions keep their short names, so the name check lists them too.
   const sessions = useApi(() => api.listSessions({ closed: 'include' }));
   useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
 
-  const scheduling = schedule !== null;
   const schedules = useApi((): Promise<Schedule[]> => (scheduling ? api.schedules() : Promise.resolve([])), [scheduling]);
   const [cron, setCron] = useState(() => schedule?.cron ?? '');
 
@@ -201,7 +213,7 @@ export function NewSessionModal({
   // D40: the Branching section's state (epic, base, per-repo choices), next to the form's.
   const [branching, setBranching] = useState<BranchingForm>(() => branchingFromPrefill(prefill));
   // D42: the latest reported model list and the last choice (the Model row starts on it); a failed read = neither.
-  const models = useApi(() => api.models());
+  const models = useApi(() => machineApi(peer).models(), [peer]);
   const modelSettings: ModelSettings | null = models.data ?? (models.error ? NO_MODEL_SETTINGS : null);
   const modelOptions = formModelOptions(modelSettings);
   // What the summary and the bodies read: the form with its model choice filled in.
@@ -226,6 +238,17 @@ export function NewSessionModal({
   const [remote, setRemote] = useState('');
   const remoting = remoteMode && !scheduling;
   const conversations = useApi((): Promise<HistoryItem[] | null> => (resumeOpen ? api.history() : Promise.resolve(null)), [resumeOpen]);
+  const pickMachine = (id: string | null): void => {
+    setMachine(id);
+    // The folders, their scan and the conversations belong to a machine: nothing carries over.
+    update({ folder: null, solutions: [] });
+    setResume(null);
+    setResumeOpen(false);
+    setRemoteMode(false);
+    setAdding(false);
+    moves.close();
+  };
+  const peerMachines = machines.data?.machines ?? [];
   const pickFolder = (id: string): void => {
     update({ folder: id, solutions: [] });
     // The conversations belong to the folder: a pick from another folder does not carry over.
@@ -253,14 +276,15 @@ export function NewSessionModal({
   // The chips are the chosen folder's scan (D14): read again when the folder changes, tagged with it so a switch never shows the last folder's chips.
   const scanFolder = folder?.id ?? form.folder ?? undefined;
   const solutions = useApi(
-    (): Promise<{ readonly folder: string | undefined; readonly groups: SolutionGroup[] }> =>
-      folderReady ? api.solutions(scanFolder).then((groups) => ({ folder: scanFolder, groups })) : new Promise(() => undefined),
-    [scanFolder, folderReady],
+    (): Promise<{ readonly folder: string | undefined; readonly machine: string | null; readonly groups: SolutionGroup[] }> =>
+      folderReady ? machineApi(peer).solutions(scanFolder).then((groups) => ({ folder: scanFolder, machine: peer, groups })) : new Promise(() => undefined),
+    [scanFolder, folderReady, peer],
   );
-  const scan = solutions.data && solutions.data.folder === scanFolder ? solutions.data.groups : null;
+  const scan = solutions.data && solutions.data.folder === scanFolder && solutions.data.machine === peer ? solutions.data.groups : null;
   const scanError = scan === null && !solutions.loading ? solutions.error : null;
 
-  const takenNames = (sessions.data ?? []).map((session) => session.name);
+  // Short names are unique per machine (D48: a peer's sessions are listed too, with their machine).
+  const takenNames = (sessions.data ?? []).filter((session) => (session.machine?.id ?? null) === peer).map((session) => session.name);
   const scanned = scan ?? (scanError ? [] : null);
   const groups = chipGroups(scanned, form.solutions);
   const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id).map((s) => s.name);
@@ -278,7 +302,7 @@ export function NewSessionModal({
   const branchingSolutions = repo && folder ? [folder.name] : form.solutions;
   // D47: the Parent field as it reads (typed, else the key the task text stacks on).
   const stacking: BranchingForm = { ...branching, parent: formParent(branching, form.task) };
-  const preflight = useBranchingPreflight(branchShown ? preflightRequest(stacking, folder?.id ?? form.folder, branchingSolutions, formBranch(form)) : null);
+  const preflight = useBranchingPreflight(branchShown ? preflightRequest(stacking, folder?.id ?? form.folder, branchingSolutions, formBranch(form)) : null, peer);
   const summary = branchShown
     ? withBranchingLines(lines, stacking, branchingSolutions, (solution) => worktreeFolder(solution, startNames(form, takenNames).name), preflight.rows, formBranch(form))
     : lines;
@@ -356,7 +380,8 @@ export function NewSessionModal({
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
       const body = toStartBody(launch, folder, takenNames);
       // D40: with a worktree, the branching (epic, base, per-repo choices; D47: the parent) goes with it.
-      const session = await api.createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
+      // D48: on a peer the session starts there; the answer is its remote id (the session view opens it like a local one).
+      const session = await machineApi(peer).createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -392,6 +417,34 @@ export function NewSessionModal({
             )}
           </div>
 
+          {!scheduling && peerMachines.length > 0 ? (
+            <div className="sb-ns-section sb-ns-section--machine" data-testid="ns-section" data-section="machine">
+              <div className="sb-ns-label">Machine</div>
+              <div className="sb-ns-folder-row">
+                <select
+                  className="sb-ns-input sb-ns-select"
+                  data-testid="ns-machine"
+                  aria-label="Machine"
+                  value={peer ?? ''}
+                  disabled={busy}
+                  onChange={(event) => pickMachine(event.target.value === '' ? null : event.target.value)}
+                >
+                  <option value="">{`This machine${machines.data ? ` (${machines.data.self.name})` : ''}`}</option>
+                  {peerMachines.map((entry) => (
+                    <option key={entry.id} value={entry.id} disabled={entry.state !== 'online'}>
+                      {entry.state === 'online' ? entry.name : `${entry.name} (${entry.state})`}
+                    </option>
+                  ))}
+                </select>
+                {peer ? (
+                  <span className="sb-ns-folder-check" data-testid="ns-machine-note">
+                    Folders, models and the branching check come from that machine; the session runs there.
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="sb-ns-section sb-ns-section--folder" data-testid="ns-section" data-section="folder" data-kind={folder?.kind}>
             <div className="sb-ns-label">Folder</div>
             <div className="sb-ns-folder-row">
@@ -413,6 +466,7 @@ export function NewSessionModal({
                   </option>
                 ))}
               </select>
+              {peer ? null : (
               <button
                 type="button"
                 className="sb-button sb-ns-browse"
@@ -422,6 +476,7 @@ export function NewSessionModal({
               >
                 Browse…
               </button>
+              )}
               {checkLine ? (
                 <span className="sb-ns-folder-check" data-testid="ns-folder-check" data-ok={String(checkLine.ok)} title={checkLine.text}>
                   {checkLine.text}
@@ -443,7 +498,8 @@ export function NewSessionModal({
                 {choices.length === 0 ? NO_REPO_FOLDER_HINT : REPO_FOLDERS_HINT}
               </div>
             ) : null}
-            {scheduling ? null : (
+            {/* D48: a peer's folders are managed there, and a teleport runs here only. */}
+            {scheduling || peer ? null : (
               <button
                 type="button"
                 className="sb-button sb-ns-remote-toggle"
@@ -584,7 +640,7 @@ export function NewSessionModal({
                 )}
               </div>
             ) : null}
-            {scheduling ? null : (
+            {scheduling || peer ? null : (
               <button
                 type="button"
                 className="sb-button sb-ns-resume-toggle"

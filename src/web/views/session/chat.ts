@@ -179,6 +179,8 @@ export function batchWaiting(questions: readonly Pick<Question, 'answeredAt' | '
 
 /** D24: what the answers bubble says for a batch the phone answered first (Remote Control). */
 export function answeredOnText(answeredOn: string): string {
+  // D48 P4: a hooked terminal session's question answered at the terminal itself.
+  if (answeredOn === 'terminal') return 'Answered in the terminal';
   return `Answered on ${answeredOn}`;
 }
 

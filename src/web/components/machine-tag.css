@@ -1,0 +1,21 @@
+/* D48: a peer's session / Inbox item (docs/peers.md). Shaped like the folder tag, in the accent's blue. */
+.sb-machine-tag {
+  display: inline-block;
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: 1px;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid #2f4a6b;
+  border-radius: var(--radius-chip);
+  font: 500 10px/12px var(--font-mono);
+  color: #8ab4e8;
+}
+
+.sb-machine-tag[data-state]:not([data-state='online']) {
+  border-color: var(--border-control);
+  color: #8a8984;
+}

@@ -38,6 +38,18 @@ export interface ServerConfig {
    * Default `null`: the opener runs itself.
    */
   readonly openCommand: readonly string[] | null;
+  /**
+   * D48 (`docs/peers.md`): `SWITCHBOARD_TAILSCALE_BIN` as an argv prefix, default
+   * `["tailscale"]`: `tailscale ip -4` gives the address the optional peer listener
+   * binds. Tests point it at `tools/fake-tailscale`.
+   */
+  readonly tailscaleCommand: readonly string[];
+  /**
+   * D48, **tests only**: `SWITCHBOARD_PEER_TEST_LOOPBACK=1` lets the peer listener
+   * bind 127.0.0.1 (two test servers on one machine act as peers). Without it the
+   * peer listener binds only a Tailscale address (100.64.0.0/10).
+   */
+  readonly peerTestLoopback: boolean;
 }
 
 /** Thrown when an environment variable has an unusable value. */
@@ -153,5 +165,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
     demo: env['SWITCHBOARD_DEMO'] === '1',
     openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,
+    tailscaleCommand: parseCommand('SWITCHBOARD_TAILSCALE_BIN', env['SWITCHBOARD_TAILSCALE_BIN'], 'tailscale'),
+    peerTestLoopback: env['SWITCHBOARD_PEER_TEST_LOOPBACK'] === '1',
   };
 }
