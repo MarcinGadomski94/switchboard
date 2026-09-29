@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -178,6 +178,17 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     try {
       const record = await supervisor.pause(request.params.id);
       return await toSession(store, record, supervisor.activity(record.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D50 (additive): Stop the current turn (the process stays alive; the session becomes idle). The reply carries the
+  // outcome (`stopped` / `idle` / `timeout`) and the texts of the messages the Stop took back, for the composer.
+  app.post<{ Params: IdParams }>('/api/sessions/:id/interrupt', async (request, reply): Promise<InterruptResult | FastifyReply> => {
+    try {
+      const result = await supervisor.interrupt(request.params.id);
+      return { session: await toSession(store, result.record, supervisor.activity(result.record.id)), outcome: result.outcome, withdrawn: result.withdrawn };
     } catch (error) {
       return sendError(reply, error);
     }

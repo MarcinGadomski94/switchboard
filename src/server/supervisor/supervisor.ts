@@ -3,7 +3,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { type ContextState, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
-import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import type { AttachWarningReason, InterruptOutcome, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
@@ -81,10 +81,25 @@ export interface ControlRequestHandler {
   /** The process ended with these requests still open: they are stale. */
   orphaned?(sessionId: string, requestIds: readonly string[]): void | Promise<void>;
   /**
+   * D50: the developer stopped the turn these requests belonged to (the CLI withdrew
+   * them with `control_cancel_request`, or they were still open when the stopped
+   * turn ended): they never get an answer, so they leave the Inbox (called instead
+   * of {@link cancelled} for them).
+   */
+  stopped?(sessionId: string, requestIds: readonly string[]): void | Promise<void>;
+  /**
    * These outbox messages (`pending_messages`) just went out ahead of a stdin user
    * message (M3.1: a queued stale batch's answers are delivered now).
    */
   pendingDelivered?(sessionId: string, messages: readonly PendingMessageRecord[]): void | Promise<void>;
+}
+
+/** D50: what {@link SessionSupervisor.interrupt} did. */
+export interface InterruptReply {
+  readonly record: SessionRecord;
+  readonly outcome: InterruptOutcome;
+  /** The texts of the messages the Stop took back, oldest first (empty for a second Stop while the first one waits). */
+  readonly withdrawn: readonly string[];
 }
 
 /** Options of {@link SessionSupervisor.start}. */
@@ -326,6 +341,10 @@ interface Live {
   readonly remote: LiveRemote;
   /** D25: set on a `--teleport` process (its first spawn only). */
   readonly teleport: TeleportState | null;
+  /** D50: the Stop in progress (a second Stop waits for it); `null` when none runs. */
+  interrupting: Promise<InterruptOutcome> | null;
+  /** D50: the interrupt is written and the Stop not finished: requests the CLI withdraws now are the Stop's. */
+  stopInFlight: boolean;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -494,6 +513,8 @@ export class SessionSupervisor {
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     let live = this.#live.get(sessionId);
+    // D50: a message sent while a Stop waits for the CLI goes out after it (the Stop never takes it back).
+    if (live?.interrupting) await live.interrupting;
     if (live?.stopping) {
       await live.finished;
       live = undefined;
@@ -528,6 +549,123 @@ export class SessionSupervisor {
     const live = this.#live.get(sessionId);
     if (live) await this.#stop(live, 'pause');
     return live ? this.#get(sessionId) : session;
+  }
+
+  /**
+   * D50 Stop: interrupts the running turn only; the process stays alive and the
+   * session becomes idle, ready for the next message (`docs/supervisor.md` → *Stop
+   * the current turn*). First the messages the agent has not taken up are withdrawn
+   * (their events get `withdrawn`, their texts are returned for the composer), then
+   * the interrupt `control_request` goes out with `cancel_queued: true` (the CLI
+   * drops them from its queue), then Switchboard waits for its `control_response`
+   * and, while a turn is still open, the turn's `result` (the "Stopped" line; the
+   * outcome `stopped`, status `idle`). Requests the CLI withdraws meanwhile, or that
+   * are still open when the turn ended, go to the handler's `stopped`.
+   *
+   * No turn running (or no live process, or a process being stopped) → `idle`,
+   * nothing is written. A second call while one waits shares its outcome and gets
+   * no texts. When the acknowledgement (or the result) does not come in time →
+   * `timeout`: an error line is recorded, nothing is killed (Pause ends the process).
+   * @throws {SupervisorError} `not-found`.
+   */
+  async interrupt(sessionId: string): Promise<InterruptReply> {
+    await this.#gate;
+    const session = await this.#get(sessionId);
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.running) return { record: session, outcome: 'idle', withdrawn: [] };
+    if (live.interrupting) {
+      const outcome = await live.interrupting;
+      return { record: await this.#get(sessionId), outcome, withdrawn: [] };
+    }
+    let withdrawn: readonly string[] = [];
+    const run = this.#interruptNow(live, (texts) => {
+      withdrawn = texts;
+    });
+    live.interrupting = run;
+    let outcome: InterruptOutcome;
+    try {
+      outcome = await run;
+    } finally {
+      live.interrupting = null;
+    }
+    return { record: await this.#get(sessionId), outcome, withdrawn };
+  }
+
+  async #interruptNow(live: Live, onWithdrawn: (texts: readonly string[]) => void): Promise<InterruptOutcome> {
+    const t = this.#timeouts;
+    const requestId = `sb-stop-${randomUUID()}`;
+    let acked: Promise<boolean> = Promise.resolve(false);
+    let ended: Promise<boolean> = Promise.resolve(true);
+    let openAtStop: string[] = [];
+    let written = false;
+    let busy = false;
+    // Inside the live's queue: no stdout line is handled between the check, the withdrawal and the write.
+    await this.#enqueue(live, async () => {
+      busy = !live.stopping && live.proc.running && live.recorder.turnBusy();
+      if (!busy) return;
+      const taken = await live.recorder.withdrawQueued();
+      onWithdrawn(taken.map((message) => message.text));
+      openAtStop = live.recorder.openRequestIds();
+      live.recorder.beginInterrupt();
+      // The waiters are registered before the write, so a fast reply is never missed.
+      acked = this.#waitFor(live, (m) => m.kind === 'control-response' && m.requestId === requestId, t.ack);
+      ended = this.#waitFor(live, (m) => m.kind === 'result', t.ack + t.result);
+      live.stopInFlight = true;
+      written = live.proc.write(interruptLine(requestId, { cancelQueued: true }));
+      await this.#refreshStatus(live);
+    });
+    if (!busy) return 'idle';
+    if (!written) {
+      live.stopInFlight = false;
+      return 'idle';
+    }
+    let outcome: InterruptOutcome = 'stopped';
+    const ackOk = await acked;
+    if (!ackOk && !live.proc.running) {
+      // The process ended meanwhile (its exit is recorded as usual): there is nothing left to stop.
+      live.stopInFlight = false;
+      return 'idle';
+    }
+    if (!ackOk) {
+      outcome = 'timeout';
+      await this.#stopTimedOut(live, t.ack, 'ack');
+    } else {
+      // A turn still open after the acknowledgement ends with the interrupted result (the CLI writes the receipt first).
+      let open = false;
+      await this.#enqueue(live, async () => {
+        open = live.proc.running && (live.recorder.turnOpen || live.recorder.turnBusy());
+      });
+      if (open && !(await ended)) {
+        outcome = 'timeout';
+        await this.#stopTimedOut(live, t.ack + t.result, 'result');
+      }
+    }
+    live.stopInFlight = false;
+    await this.#enqueue(live, async () => {
+      if (outcome === 'stopped') {
+        // Requests the CLI did not withdraw although their turn ended: they never get an answer.
+        const left = await live.recorder.cancelRequests(openAtStop);
+        if (left.length > 0) await this.#stoppedRequests(live.sessionId, left);
+      }
+      await this.#refreshStatus(live);
+      await this.#emitSession(live.sessionId);
+    });
+    return outcome;
+  }
+
+  async #stopTimedOut(live: Live, waitedMs: number, missing: 'ack' | 'result'): Promise<void> {
+    await this.#enqueue(live, async () => {
+      await live.recorder.recordStopTimeout(waitedMs, missing);
+    });
+  }
+
+  async #stoppedRequests(sessionId: string, requestIds: readonly string[]): Promise<void> {
+    if (!this.#handler.stopped) return;
+    try {
+      await this.#handler.stopped(sessionId, requestIds);
+    } catch (error) {
+      this.#onError(error);
+    }
   }
 
   /** D7 Resume: `--resume <claudeSessionId>` + "Continue.". */
@@ -1387,6 +1525,8 @@ export class SessionSupervisor {
       stopping: null,
       stoppedBy: null,
       status: prepared.status,
+      interrupting: null,
+      stopInFlight: false,
       remote: new LiveRemote({
         request: (line, timeoutMs) => (holder.live ? this.#controlOn(holder.live, line, timeoutMs) : Promise.resolve(null)),
         session: () => this.#store.sessions.get(session.id),
@@ -1479,7 +1619,10 @@ export class SessionSupervisor {
         this.#onError(error);
       }
     }
-    if (message.kind === 'control-cancel' && this.#handler.cancelled) {
+    if (message.kind === 'control-cancel' && live.stopInFlight && !answeredOn) {
+      // D50: withdrawn because the developer stopped the turn: it leaves the Inbox.
+      await this.#stoppedRequests(live.sessionId, [message.requestId]);
+    } else if (message.kind === 'control-cancel' && this.#handler.cancelled) {
       try {
         await this.#handler.cancelled(live.sessionId, message.requestId, answeredOn);
       } catch (error) {

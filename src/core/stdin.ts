@@ -40,9 +40,22 @@ export function userMessageLine(text: string): UserMessageLine {
   return { type: 'user', message: { role: 'user', content: text } };
 }
 
-/** The interrupt control request (D7 pause). */
-export function interruptLine(requestId: string): ControlRequestLine {
-  return { type: 'control_request', request_id: requestId, request: { subtype: 'interrupt' } };
+/** Options of {@link interruptLine}. */
+export interface InterruptOptions {
+  /**
+   * D50 Stop: `cancel_queued: true`: the CLI also cancels every main-thread command
+   * still in its queue (the stdin messages written while the turn ran), so none of
+   * them runs after the interrupt (CLI 2.1.284, capability `interrupt_cancel_queued_v1`;
+   * `docs/supervisor.md` → *Stop the current turn*). Absent = a plain interrupt (D7
+   * Pause: the process ends anyway).
+   */
+  readonly cancelQueued?: boolean;
+}
+
+/** The interrupt control request (D7 pause; D50 stop with `cancelQueued`). */
+export function interruptLine(requestId: string, options: InterruptOptions = {}): ControlRequestLine {
+  const request = options.cancelQueued ? { subtype: 'interrupt', cancel_queued: true } : { subtype: 'interrupt' };
+  return { type: 'control_request', request_id: requestId, request };
 }
 
 /** The `set_permission_mode` control request (D6 fallback, `docs/spike-m0.md` → *D6: auto mode headless*). */

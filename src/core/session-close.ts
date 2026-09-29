@@ -15,6 +15,9 @@ import type { SessionStatus } from './model.ts';
 /** The label a question batch closed with its session carries (`Question.closedReason`, `question_batches.closed_reason`). */
 export const SESSION_CLOSED_REASON = 'session closed';
 
+/** D50: the label of a question batch whose turn the developer stopped (`Question.closedReason`): it leaves the Inbox. */
+export const TURN_STOPPED_REASON = 'turn stopped';
+
 /** The refusal code of `POST /api/sessions/{id}/close` without `confirm` for a session that runs or waits (HTTP 409). */
 export const CLOSE_NEEDS_CONFIRM = 'close-needs-confirm';
 

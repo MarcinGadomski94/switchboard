@@ -711,6 +711,28 @@ export interface ResumeCommand {
   readonly resumeCommand: string;
 }
 
+/**
+ * D50: how a Stop (`POST /api/sessions/{id}/interrupt`) ended:
+ * - `stopped`: the CLI acknowledged the interrupt and the running turn ended (or had just ended);
+ * - `idle`: no turn ran (nothing to stop; nothing was sent);
+ * - `timeout`: the CLI did not acknowledge in time (or the interrupted turn did not end):
+ *   an error line is recorded and nothing is killed; Pause ends the process.
+ */
+export type InterruptOutcome = 'stopped' | 'idle' | 'timeout';
+
+/** Additive (D50): the reply of `POST /api/sessions/{id}/interrupt`. */
+export interface InterruptResult {
+  /** The session after the Stop (status `idle` once the turn stopped, unless background work keeps it working). */
+  readonly session: Session;
+  readonly outcome: InterruptOutcome;
+  /**
+   * The texts of the messages the Stop took back (queued while the turn ran and not
+   * taken up by the agent), oldest first: the composer puts them back for editing.
+   * Empty for a second Stop while the first one is still waiting.
+   */
+  readonly withdrawn: readonly string[];
+}
+
 /** Additive (M4.1): optional body of `POST /api/sessions/{id}/attach`. */
 export interface AttachRequest {
   /** Attach even though the warning below applies (the developer confirmed it). */

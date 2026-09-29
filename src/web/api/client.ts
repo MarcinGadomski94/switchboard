@@ -1,4 +1,5 @@
 import type {
+  InterruptResult,
   BranchingPreflight,
   BranchingPreflightRequest,
   AnswerBatch,
@@ -125,6 +126,8 @@ export const api = {
   /** D31: the session's model and / or effort (a field left out keeps its value; `null` = the CLI's default). */
   setModel: (id: string, input: SessionModelInput) => request<Session>('PUT', `/api/sessions/${enc(id)}/model`, input),
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
+  /** D50: Stop the current turn (the process stays alive); the reply carries the messages taken back for the composer. */
+  interruptSession: (id: string) => request<InterruptResult>('POST', `/api/sessions/${enc(id)}/interrupt`),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),

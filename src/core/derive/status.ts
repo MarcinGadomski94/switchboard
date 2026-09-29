@@ -5,8 +5,12 @@
  */
 import type { SessionStatus } from '../model.ts';
 
-/** Outcome of the last turn the process finished (turns Switchboard interrupted to stop it do not count). */
-export type TurnOutcome = 'success' | 'error';
+/**
+ * Outcome of the last turn the process finished (turns Switchboard interrupted to
+ * stop the process do not count). D50: `stopped` = the developer stopped the turn
+ * (Stop / Esc); the process lives on, ready for the next message.
+ */
+export type TurnOutcome = 'success' | 'error' | 'stopped';
 
 /** A Switchboard-initiated stop (D7): `pause`, `detach` or the service shutting down. */
 export type StopReason = 'pause' | 'detach' | 'shutdown';
@@ -40,7 +44,8 @@ export type StatusInput = LiveStatusInput | EndedStatusInput;
 
 /**
  * - Live: an open request → `need`; a running turn or subagent → `run`; else the
- *   last turn's outcome (`done` / `fail`); nothing ran yet → `idle`.
+ *   last turn's outcome (`done` / `fail`); nothing ran yet, or D50 the developer
+ *   stopped the last turn → `idle`.
  * - Ended: a stop Switchboard started (`pause` / `detach`) → `paused`, whatever the
  *   exit code (D7: exit 0 idle, exit 1 mid-turn or with a question open); a failed
  *   start, a non-zero exit or a signal it did not send → `fail`; a clean exit it did

@@ -398,6 +398,17 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - There is no tick (the tooltip says "Auto-compact off") when `autoCompactEnabled` is false or `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT` is set. Those are read from the process's env and its user / project / local settings files at each spawn.
   - The tick sits at `threshold / window` on the bar's own scale; see `.loop/questions.md` → *D49* for how the CLI's count (which adds the last reply's output tokens) relates to the displayed percentage.
 
+## Stop the current turn (added 2026-09-29)
+- **D50 Stop the current turn.** Developer request, 2026-09-29: "I should be able to stop the current message from being processed (like Ctrl+C in Claude Code terminal mode)."
+  - **Stop = interrupt the running turn only (ruling).** The process stays alive and the session becomes idle, ready for the next message; unlike Pause (D7), which interrupts and then ends the process. It uses the stdin `control_request` `interrupt`, with `cancel_queued: true` (read in the CLI 2.1.284 binary: the capability `interrupt_cancel_queued_v1`; the queued main-thread commands are removed with the abort and never run).
+  - **Trigger (ruling): a button and Esc.** While a turn runs, the composer's Send becomes a ■ **Stop** button. **Esc** also stops the turn when nothing else is open; an open popover, dialog or menu, or a subagent chat, keeps its current Esc behaviour first (it closes, or goes back to the main chat). Ctrl+C stays copy. Esc stops nothing when no turn runs.
+  - **Queued messages (ruling): back into the composer.** Messages sent while the turn ran (the D44 clock) that the CLI has not taken up yet are removed from the queue and never delivered afterwards (`cancel_queued`). Their text goes back into the message field for editing, joined in order. Their bubbles disappear.
+  - **Status:** after the interrupt's `result` the session shows idle, not running, and the turn accounting stays right (tested: 0, 1 and 2 queued messages, a stop at a tool boundary, a stop with a permission prompt open).
+  - **Chat:** the stopped turn shows as a small "■ Stopped" line.
+  - **API:** additive `POST /api/sessions/{id}/interrupt` (`docs/handoff/contracts/local-api.md`).
+  - **Out of scope:** peer / hooked sessions (D48, another lane).
+  - Details: `docs/supervisor.md` → *Stop the current turn (D50)*, `docs/chat.md` → *Stop (D50)*; choices where the ruling is silent: `.loop/questions.md` → *D50 · Stop the current turn*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
