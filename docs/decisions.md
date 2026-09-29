@@ -330,6 +330,13 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **No pace:** without a known reset, or with a reset more than 5 h ahead or in the past, the Session row keeps its plain D17 look.
   - The pace is computed in the browser from `usageWindows`, like D23; no API change.
 
+## Rulings on D40, D42 and D44 (added 2026-09-29)
+- **D40:**
+  - The derived epic branch keeps only letters, digits, `-`, `_` and `.` after `feature/`; anything else becomes `-`, and the casing is kept.
+  - A repo without `origin` is cut from its local HEAD.
+  - An existing task branch is reused (replacing D32's refusal).
+- **D44:** a chat message to a paused session resumes it at once, as before; its bubble shows the clock until the new process takes it up.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
