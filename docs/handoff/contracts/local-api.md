@@ -134,6 +134,16 @@ BackgroundTask  { "id": "<CLI task id | tool_use id>", "toolUseId": "toolu_…",
 ```
 `id` = the CLI's task id (the background command's, the async agent's, the monitor's), the `tool_use` id when there is none (a wake-up); `summary` = D19's short text (a GitHub wait: its `gh …` command; a wake-up: its reason); `startedAt` = its tool call; `wakeAt` only on a wake-up (the call's time + `delaySeconds`); `github` = the command uses `gh run`, `gh pr checks` or `gh workflow`. A task ends with the CLI's `system/task_notification` for it, a wake-up when the next turn starts, all of them when the process ends (exit, pause, detach).
 
+**D43 (2026-09-29, additive): every background task counts.** Developer ruling D43 (`docs/decisions.md`): a background **Workflow**, and every other background task the CLI reports (`system/task_started`), keeps a session working like D30's tasks. Nothing above changes meaning; no new route, event or field.
+- **`BackgroundTask.kind`** gains `workflow` (a `Workflow` call whose result confirms a background launch; `summary` = the result's `Summary:` line, else the call's description / name) and `task` (a task the CLI reported of a type Switchboard does not map; `summary` = its description). A background shell or subagent the CLI reports without a known call has kind `bash` / `agent`.
+- For a task the CLI reported without a `tool_use_id`, **`toolUseId`** is its task id; **`startedAt`** of a task known only from its `system/task_started` is that line's arrival.
+- In state `background`, **`SessionActivity.tool`** is `Workflow` for a workflow and `null` for a `task`.
+- A task also ends with a `system/task_updated` whose status is terminal. Details: `docs/derivations.md` → *Background work* → *Every background task counts (D43)*.
+
+```json
+BackgroundTask  { …D30 fields, "kind": "bash|agent|monitor|wakeup|workflow|task" }
+```
+
 ## Session titles (D22, 2026-09-28, additive)
 Developer ruling D22 (`docs/decisions.md`): a session keeps its technical short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` and branch `session/{name}` are built from it, so it never changes) and may have a free-text **title**, which the UI shows wherever the session is named. Additive; the rows and payloads above keep their meaning. Details: `docs/derivations.md` → *Session titles*.
 
