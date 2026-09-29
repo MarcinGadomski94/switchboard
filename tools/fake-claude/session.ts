@@ -32,6 +32,9 @@ import {
   remoteAnswerToken,
   remoteControlError,
   remoteControlMode,
+  startupDelayMs,
+  holdToken,
+  absorbable,
   writeToken, autoModeSupported } from './scenarios.ts';
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
@@ -45,7 +48,9 @@ type WaitEvent =
   | { kind: 'response'; response: JsonObject }
   | { kind: 'interrupt'; requestId: string }
   | { kind: 'sigint' }
-  | { kind: 'eof' };
+  | { kind: 'eof' }
+  /** D44: a `[fake:hold]` ran its time. */
+  | { kind: 'timeout' };
 
 interface Waiter {
   readonly requestId: string | null;
@@ -88,7 +93,11 @@ interface WriteSpec {
 }
 
 /** Steps the runner plays: fixture steps plus a tool_result built from the host's decision. */
-type PlayStep = Step | { readonly t: 'decided'; readonly line: JsonObject; readonly payload: JsonObject };
+type PlayStep =
+  | Step
+  | { readonly t: 'decided'; readonly line: JsonObject; readonly payload: JsonObject }
+  /** D44 `[fake:hold]`: the turn waits this long (an interrupt ends it). */
+  | { readonly t: 'hold'; readonly ms: number };
 
 interface TurnState {
   readonly msg: UserMessage;
@@ -133,6 +142,13 @@ interface Core {
 
 function firstStep<T extends Step['t']>(steps: readonly Step[], t: T): Extract<Step, { t: T }> | undefined {
   return steps.find((s): s is Extract<Step, { t: T }> => s.t === t);
+}
+
+/** D44 `[fake:hold]`: `steps` with a hold of `ms` right before the first assistant line (after the turn's init and replay). */
+function withHold(steps: readonly Step[], ms: number): readonly PlayStep[] {
+  const firstAssistant = steps.findIndex((step) => step.t === 'line' && step.line['type'] === 'assistant');
+  const at = firstAssistant < 0 ? steps.length : firstAssistant;
+  return [...steps.slice(0, at), { t: 'hold', ms }, ...steps.slice(at)];
 }
 
 function stepsAfterWait(steps: readonly Step[]): readonly Step[] {
@@ -240,6 +256,11 @@ export class Runner {
   private recordedModel = '';
   /** D30: pending `[fake:background]` / `[fake:wakeup]` timers. */
   private readonly backgroundTimers = new Set<NodeJS.Timeout>();
+  /** D44: when the process started, and how long it takes to start (`FAKE_CLAUDE_STARTUP_MS`) before it takes up messages. */
+  private readonly startedAt = Date.now();
+  private startupMs = 0;
+  /** D44: the pump that runs once the startup is over (messages arrived before it). */
+  private startupTimer: NodeJS.Timeout | null = null;
 
   constructor(options: RunnerOptions) {
     this.o = options;
@@ -263,6 +284,9 @@ export class Runner {
   /** Starts the run; the process ends through {@link RunnerOptions.exit}. */
   async start(): Promise<void> {
     if (!this.isScenario(this.scenario)) return this.fail(`fake-claude: unknown scenario "${this.scenario}" (FAKE_CLAUDE_SCENARIO)`);
+    const startup = startupDelayMs(this.o.env);
+    if (typeof startup !== 'number') return this.fail(startup.error);
+    this.startupMs = startup;
     const { store } = this.o;
     const resuming = this.args.resume !== null;
     // D25: `--teleport <id>` checks the cwd, "fetches" the session and checks out its branch before anything is printed.
@@ -561,6 +585,15 @@ export class Runner {
 
   private async pump(): Promise<void> {
     if (this.running || this.finished) return;
+    const starting = this.startedAt + this.startupMs - Date.now();
+    if (starting > 0 && this.queue.length > 0) {
+      // D44 (`FAKE_CLAUDE_STARTUP_MS`): the CLI is still starting (hooks, MCP servers): messages wait until it is up.
+      this.startupTimer ??= setTimeout(() => {
+        this.startupTimer = null;
+        void this.pump();
+      }, starting);
+      return;
+    }
     this.running = true;
     try {
       while (this.queue.length > 0 && !this.finished) {
@@ -617,6 +650,8 @@ export class Runner {
     const fire = msg.fired ? null : fireToken(msg.text);
     const background = msg.fired || writePath !== null || toolCall !== null ? null : backgroundToken(msg.text);
     const said = msg.fired || writePath !== null || toolCall !== null || background !== null ? null : sayToken(msg.text);
+    /** D44: `[fake:hold <seconds>]`: the default turn, held before its reply. */
+    const hold = msg.fired || writePath !== null || toolCall !== null || background !== null || said !== null ? null : holdToken(msg.text);
     /** D30: the recording's rest after this turn's result, played `delayMs` later. */
     let later: { readonly steps: readonly Step[]; readonly delayMs: number } | null = null;
     /** D30: a `[fake:wakeup]` fires a turn of its own this many ms after the turn. */
@@ -673,6 +708,14 @@ export class Runner {
     } else if (said !== null && 'error' in said) {
       await this.crash(`fake-claude: [fake:say]: ${said.error}`);
       return 'crash';
+    } else if (hold !== null && typeof hold !== 'number') {
+      await this.crash(`fake-claude: [fake:hold]: ${hold.error}`);
+      return 'crash';
+    } else if (hold !== null) {
+      // The default turn ("OK"), held after its start (init, replay) and before its reply (below).
+      steps = this.core.base.turns[0] ?? [];
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
     } else if (said !== null) {
       // The default turn ("OK") with the given reply text.
       steps = this.core.base.turns[0] ?? [];
@@ -708,7 +751,7 @@ export class Runner {
     const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
-    const outcome = await this.play(steps, turn);
+    const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
     this.live?.setStatus('idle');
     if (fire && outcome === 'done') this.scheduleFires(fire.count, fire.everyMs);
     if (later && outcome === 'done') this.scheduleBackground(later.delayMs, { content: '', text: '', uuid: randomUUID(), resume: { steps: later.steps, turn } });
@@ -745,6 +788,8 @@ export class Runner {
   private stopFires(): void {
     if (this.fireTimer) clearTimeout(this.fireTimer);
     this.fireTimer = null;
+    if (this.startupTimer) clearTimeout(this.startupTimer);
+    this.startupTimer = null;
     for (const timer of this.remoteTimers) clearTimeout(timer);
     this.remoteTimers.clear();
     for (const timer of this.backgroundTimers) clearTimeout(timer);
@@ -757,11 +802,20 @@ export class Runner {
       const step = steps[i] as PlayStep;
       switch (step.t) {
         case 'line':
-          this.emit(step.line, turn);
+          this.absorbAt(this.emit(step.line, turn));
           break;
         case 'decided':
-          this.emit(step.line, turn, (line) => this.applyDecision(line, step.payload, turn));
+          this.absorbAt(this.emit(step.line, turn, (line) => this.applyDecision(line, step.payload, turn)));
           break;
+        case 'hold': {
+          // D44 `[fake:hold]`: the turn thinks for a while; an interrupt or SIGINT ends it like `hang`.
+          const event = await this.waitFor(null, false, step.ms);
+          if (event.kind === 'interrupt' || event.kind === 'sigint') {
+            this.playTail(stepsAfterWait(this.core.interrupt.turns[0] ?? []), turn, event.kind === 'interrupt' ? event.requestId : null);
+            return event.kind === 'sigint' ? 'sigint' : 'done';
+          }
+          break;
+        }
         case 'replay':
           if (this.args.replayUserMessages) this.writeReplay(turn.msg);
           break;
@@ -862,6 +916,9 @@ export class Runner {
         this.playTail(tail, turn, event.kind === 'interrupt' ? event.requestId : null);
         return event.kind === 'sigint' ? 'sigint' : 'done';
       }
+      case 'timeout':
+        // Never: a request wait has no timeout (only `[fake:hold]` has one).
+        return 'done';
       case 'eof': {
         // stdin closed while the request was open: the CLI fails the request at once (M0.2 subagent-perm, first run).
         const template = this.aliasedAnswer(this.core.permDeny, turn, open);
@@ -973,7 +1030,7 @@ export class Runner {
     }
   }
 
-  private waitFor(requestId: string | null, acceptsEof: boolean): Promise<WaitEvent> {
+  private waitFor(requestId: string | null, acceptsEof: boolean, timeoutMs: number | null = null): Promise<WaitEvent> {
     if (requestId !== null) {
       const early = this.unmatchedResponses.get(requestId);
       if (early) {
@@ -992,15 +1049,43 @@ export class Runner {
     }
     if (acceptsEof && this.eof) return Promise.resolve({ kind: 'eof' });
     return new Promise((resolve) => {
+      // D44 `[fake:hold]`: the wait ends by itself after `timeoutMs`.
+      const timer = timeoutMs === null ? null : setTimeout(() => this.waiter?.resolve({ kind: 'timeout' }), timeoutMs);
       this.waiter = {
         requestId,
         acceptsEof,
         resolve: (event) => {
+          if (timer) clearTimeout(timer);
           this.waiter = null;
           resolve(event);
         },
       };
     });
+  }
+
+  /**
+   * D44: after a main-chain `tool_result` line (a tool boundary), the running turn
+   * absorbs the plain messages queued meanwhile, as the CLI does (its mid-turn
+   * `queued_command`, read in the 2.1.284 binary): each is echoed at once
+   * (`isReplay`, with `--replay-user-messages`) and gets no turn of its own. A
+   * message with a `[fake:…]` token keeps its own turn; nothing is absorbed while
+   * an interrupt is pending. Not written to the transcript (the CLI writes a
+   * `queued_command` attachment there, which the fake does not write).
+   */
+  private absorbAt(line: JsonObject | null): void {
+    if (!line || line['type'] !== 'user' || line['parent_tool_use_id'] !== null) return;
+    const content = asObject(line['message'])?.['content'];
+    if (!Array.isArray(content) || !content.some((block) => isObject(block) && block['type'] === 'tool_result')) return;
+    if (this.pendingInterrupt !== null || this.pendingSigint) return;
+    for (let i = 0; i < this.queue.length; ) {
+      const msg = this.queue[i] as UserMessage;
+      if (msg.fired || msg.resume || !absorbable(msg.text)) {
+        i += 1;
+        continue;
+      }
+      this.queue.splice(i, 1);
+      if (this.args.replayUserMessages) this.writeReplay(msg);
+    }
   }
 
   // ---------------------------------------------------------------- output

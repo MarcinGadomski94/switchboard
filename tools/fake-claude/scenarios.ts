@@ -76,6 +76,33 @@ export function toolToken(text: string): { name: string; input: JsonObject } | {
   }
 }
 
+/** Longest `[fake:hold <seconds>]` (ten minutes). */
+export const MAX_HOLD_SECONDS = 600;
+
+/**
+ * `[fake:hold <seconds>]` in a stdin user message (D44): the `default` turn, held
+ * `<seconds>` (decimals allowed, at most {@link MAX_HOLD_SECONDS}) after it started
+ * (its `init` and replay) and before its reply, like a model that thinks for a
+ * while without calling a tool: a message written meanwhile has no tool boundary
+ * to be absorbed at, so it waits for the turn's `result` and gets a turn of its own.
+ * An interrupt or SIGINT during the hold ends the turn like `hang`.
+ * @returns the milliseconds, `{ error }` for a malformed token, `null` without one.
+ */
+export function holdToken(text: string): number | { error: string } | null {
+  const match = /\[fake:hold\s+(\d+(?:\.\d+)?)\]/.exec(text);
+  if (match) return Math.round(Math.min(Number(match[1]), MAX_HOLD_SECONDS) * 1000);
+  return /\[fake:hold(?:\s|\])/.test(text) ? { error: 'expected [fake:hold <seconds>]' } : null;
+}
+
+/**
+ * D44: a queued stdin message a running turn may absorb at a tool boundary (the
+ * CLI's mid-turn `queued_command`): a plain message. One that carries a `[fake:…]`
+ * token asks for a turn of its own (a scenario, a write, a hold, …), so it waits.
+ */
+export function absorbable(text: string): boolean {
+  return !text.includes('[fake:');
+}
+
 /**
  * `[fake:say "<json string>"]` in a stdin user message (D20): the `default` turn
  * with the reply text replaced by the JSON string's value (Markdown, raw HTML, …),
@@ -193,6 +220,27 @@ export function remoteControlMode(env: NodeJS.ProcessEnv = process.env): RemoteC
 export function remoteControlError(env: NodeJS.ProcessEnv = process.env): string | null {
   const value = env['FAKE_CLAUDE_REMOTE_CONTROL_ERROR'];
   return value !== undefined && value !== '' ? value : null;
+}
+
+/** The longest `FAKE_CLAUDE_STARTUP_MS` the fake takes (one minute). */
+export const MAX_STARTUP_MS = 60_000;
+
+/**
+ * D44: `FAKE_CLAUDE_STARTUP_MS`, how long the fake takes to start before it takes
+ * up stdin user messages (the real CLI first runs its SessionStart hooks and
+ * connects its MCP servers: ~1.6 s of hooks and ~3.5 s for a control-only run in
+ * M0.3); messages written meanwhile wait, control requests are answered at once.
+ * Unset / empty = 0. Returns an error text for anything but a whole number of
+ * milliseconds from 0 to {@link MAX_STARTUP_MS}.
+ */
+export function startupDelayMs(env: NodeJS.ProcessEnv = process.env): number | { readonly error: string } {
+  const value = env['FAKE_CLAUDE_STARTUP_MS'];
+  if (value === undefined || value.trim() === '') return 0;
+  const ms = /^\d+$/.test(value.trim()) ? Number(value.trim()) : Number.NaN;
+  if (!Number.isInteger(ms) || ms > MAX_STARTUP_MS) {
+    return { error: `fake-claude: FAKE_CLAUDE_STARTUP_MS must be a whole number of milliseconds from 0 to ${MAX_STARTUP_MS}, got "${value}"` };
+  }
+  return ms;
 }
 
 /** The error text `remote_control` `enabled: true` answers with `FAKE_CLAUDE_REMOTE_CONTROL=unavailable`. */
