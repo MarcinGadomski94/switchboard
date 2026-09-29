@@ -4,6 +4,7 @@ import { AgentActivityText } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { Link } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
+import { PANE_ID, PaneHideButton } from '../../shell/Panes.tsx';
 import { AgentOverview } from './AgentOverview.tsx';
 import { hasSubagentChat } from './chat.ts';
 import { HandoffCard } from './HandoffCard.tsx';
@@ -28,9 +29,11 @@ const finishedExpanded = new Map<string, boolean>();
  * header; the prototype's parts follow it unchanged. D36: a subagent's card opens
  * its chat. D37: finished subagents leave the cards (and the overview) for a
  * "✓ N finished" line under the cards, which expands them in place; the summary
- * still counts every agent.
+ * still counts every agent. D41: the overview's label row holds the panel's hide
+ * button; while `hidden` the panel stays mounted but is inert and hidden from
+ * assistive technology (and the "as printed" popover closes).
  */
-export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
+export function RightPanel({ sessionId, session, hidden = false }: { readonly sessionId: string; readonly session: SessionDetail | null; readonly hidden?: boolean }) {
   const activity = useLiveActivity(sessionId, session);
   const [expanded, setExpanded] = useState(() => finishedExpanded.get(sessionId) ?? false);
   const toggle = (): void => {
@@ -39,10 +42,17 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
   };
   const panel = session ? panelAgents(session.agents, expanded) : null;
   return (
-    <aside className="sb-sv-panel" data-testid="session-right-panel" data-session-id={sessionId}>
+    <aside
+      className="sb-sv-panel"
+      data-testid="session-right-panel"
+      data-session-id={sessionId}
+      id={PANE_ID.rightPanel}
+      inert={hidden}
+      aria-hidden={hidden || undefined}
+    >
       {session && panel ? (
         <>
-          <AgentOverview session={session} activity={activity} />
+          <AgentOverview session={session} activity={activity} hidden={hidden} labelAction={<PaneHideButton pane="rightPanel" className="sb-overview-hide" />} />
           <div className="sb-sv-panel-head">
             <span className="sb-sv-panel-label">Agents &amp; solutions</span>
             <span className="sb-sv-panel-summary" data-testid="agents-summary">

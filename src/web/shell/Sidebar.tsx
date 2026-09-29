@@ -18,6 +18,7 @@ import { Link, type Route, useRouter } from '../router.tsx';
 import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
+import { PANE_ID, PaneHideButton } from './Panes.tsx';
 import {
   type Meter,
   type WeekPaceView,
@@ -143,9 +144,11 @@ function SessionCloseButton({ session, busy, onClose }: { readonly session: Sess
  * and time in place of the mode line, and its dot pulses. D33: closed sessions are
  * not listed (`GET /api/sessions` leaves them out); a row's × (hover / focus)
  * closes its session, asking first while it runs or waits (`useCloseSession`),
- * and closing the session on screen goes to the Inbox.
+ * and closing the session on screen goes to the Inbox. D41: the brand row's hide
+ * button slides the sidebar out; while `hidden` it stays mounted (its lists keep
+ * loading) but is inert and hidden from assistive technology.
  */
-export function Sidebar() {
+export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   const { route, navigate } = useRouter();
   const { open } = useModals();
   const now = useNow(30_000);
@@ -196,13 +199,15 @@ export function Sidebar() {
   const reachable = system.reachable ?? sessions.reachable;
 
   return (
-    <aside className="sb-sidebar" data-testid="sidebar">
+    <aside className="sb-sidebar" data-testid="sidebar" id={PANE_ID.sidebar} inert={hidden} aria-hidden={hidden || undefined}>
       <div className="sb-brand">
         <div className="sb-brand-mark">S</div>
         <div className="sb-brand-name">Switchboard</div>
         <button type="button" className="sb-button sb-brand-kbd" data-testid="open-palette" onClick={() => open('palette')}>
           {isApplePlatform() ? '⌘K' : 'Ctrl K'}
         </button>
+        {/* D41: after the row's own parts (their child paths are the prototype's); drawn before the ⌘K key (shell.css). */}
+        <PaneHideButton pane="sidebar" className="sb-brand-hide" />
       </div>
 
       <div className="sb-new-wrap">

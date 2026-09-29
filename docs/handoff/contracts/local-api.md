@@ -323,6 +323,16 @@ AnswerRefusal { "error": "invalid", "message": "question q2: an own answer must 
 Question      { …, "answerIndex": null, "answerText": "Medium, with rounded corners" | null }
 ```
 
+## Collapsible panes (D41, 2026-09-29, additive)
+Developer ruling D41 (`docs/decisions.md` → *Collapsible panes*): the sidebar and the session view's right panel slide out and back in on request, and the choice is kept by the service, per install. Additive; no new route or `/hub` event, and the rows above keep their meaning. Details: `docs/panes.md`, `docs/settings.md`.
+
+- **Settings** (`GET/PUT /api/settings`) gains two editable keys: `ui.sidebarHidden` and `ui.rightPanelHidden`, booleans, default `false` (both panes shown). `PUT` takes either or both like any editable key (a value that is not a boolean → 422 `invalid` on that key; nothing stored); `GET` always returns both (a stored value of the wrong type reads as `false`).
+- The right panel's value applies to every session. Other open pages read the stored state on their next load (no live event).
+
+```json
+Settings { …, "ui.sidebarHidden": false, "ui.rightPanelHidden": true }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

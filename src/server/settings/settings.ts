@@ -42,8 +42,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
- * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` are
- * booleans, `usage.warnAtPct` a whole number 1–100. A read-only or unknown key,
+ * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` and
+ * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
+ * `usage.warnAtPct` a whole number 1–100. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
