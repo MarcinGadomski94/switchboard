@@ -7,6 +7,7 @@ import { statusColor } from '../../shell/format.ts';
 import { AgentOverview } from './AgentOverview.tsx';
 import { hasSubagentChat } from './chat.ts';
 import { HandoffCard } from './HandoffCard.tsx';
+import { PanelSkeleton } from './SessionSkeletons.tsx';
 import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, terminalLines } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
@@ -28,9 +29,10 @@ const finishedExpanded = new Map<string, boolean>();
  * header; the prototype's parts follow it unchanged. D36: a subagent's card opens
  * its chat. D37: finished subagents leave the cards (and the overview) for a
  * "✓ N finished" line under the cards, which expands them in place; the summary
- * still counts every agent.
+ * still counts every agent. D45: while the detail is late (`placeholder`), the
+ * overview's block and two card blocks stand in (`PanelSkeleton`).
  */
-export function RightPanel({ sessionId, session }: { readonly sessionId: string; readonly session: SessionDetail | null }) {
+export function RightPanel({ sessionId, session, placeholder = false }: { readonly sessionId: string; readonly session: SessionDetail | null; readonly placeholder?: boolean }) {
   const activity = useLiveActivity(sessionId, session);
   const [expanded, setExpanded] = useState(() => finishedExpanded.get(sessionId) ?? false);
   const toggle = (): void => {
@@ -80,6 +82,8 @@ export function RightPanel({ sessionId, session }: { readonly sessionId: string;
           <TerminalTail lines={terminalLines(session.events, session.agents, session.status)} className="sb-sv-term" />
           <HandoffCard attached={session.attached} command={session.resumeCommand} cwd={session.cwd} />
         </>
+      ) : placeholder ? (
+        <PanelSkeleton />
       ) : null}
     </aside>
   );
