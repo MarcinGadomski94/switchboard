@@ -147,6 +147,19 @@ export class SystemItemRepository {
     return rows.map((row) => String(row['id']));
   }
 
+  /** D47: ids of the live worktrees whose parent was seen merged that have no item of `kind` yet, oldest first. */
+  async parentMergedWorktreesWithoutItem(kind: string): Promise<string[]> {
+    const rows = this.#table
+      .statement(
+        `SELECT w.id AS id FROM worktrees w
+         WHERE w.parent_merged_at IS NOT NULL AND w.removed_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM system_items s WHERE s.kind = ? AND s.worktree_id = w.id)
+         ORDER BY w.parent_merged_at, w.rowid`,
+      )
+      .all(kind);
+    return rows.map((row) => String(row['id']));
+  }
+
   /** Items, newest first. */
   async list(states?: readonly SystemItemState[]): Promise<SystemItemRecord[]> {
     if (states) {

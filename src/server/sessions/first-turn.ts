@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { HandoffBranching, SessionBranching } from '../../core/branching.ts';
+import type { HandoffStack, ParentStatus, RepoBase } from '../../core/stacking.ts';
 import { type FirstTurnSession, type SessionStartAnswers, firstTurnPayload, repoWorktreeNote, sessionStartBlock } from '../../core/first-turn.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { FolderRef } from '../folders/ref.ts';
@@ -26,6 +27,11 @@ export interface FirstTurnSources {
    */
   readonly branching?: SessionBranching | null;
   readonly cutFrom?: ReadonlyMap<string, string | null>;
+  /**
+   * D47: per worktree record id, the repo's resolved base / PR target (`null`
+   * without origin) and the parent's status there (`null` when not stacked there).
+   */
+  readonly stack?: ReadonlyMap<string, { readonly base: Extract<RepoBase, { ok: true }> | null; readonly parentStatus: ParentStatus | null }>;
 }
 
 /** `repoPath` relative to `root`, `/`-separated, or `null` when it is not inside it. */
@@ -55,7 +61,9 @@ async function folderOf(solution: string, sources: FirstTurnSources): Promise<st
  * session with Worktrees on under the ticket rule gets them when it has an epic,
  * a worktree cut from origin, per-repo choices, or no picked solutions (D38: the
  * agent cuts its own worktrees from origin). A task without an epic whose repos
- * all lack an `origin` remote gets none (nothing is cut from origin).
+ * all lack an `origin` remote gets none (nothing is cut from origin). D47: a
+ * stacked session (`branching.parent`) always gets them, with the parent and each
+ * repo's resolved base and PR target (none listed without an up-front worktree, D38).
  */
 export async function handoffBranching(session: FirstTurnSession, sources: FirstTurnSources): Promise<HandoffBranching | null> {
   const branching = sources.branching ?? null;
@@ -63,7 +71,9 @@ export async function handoffBranching(session: FirstTurnSession, sources: First
   if (!session.worktrees || branching === null || task === null) return null;
   const from = sources.worktrees.map((record) => sources.cutFrom?.get(record.id) ?? null);
   const overridden = Object.keys(branching.bases);
-  const relevant = branching.epic !== null || session.solutions.length === 0 || from.some((ref) => ref !== null) || overridden.length > 0 || branching.dropped.length > 0;
+  const parent = branching.parent ?? null;
+  const relevant =
+    parent !== null || branching.epic !== null || session.solutions.length === 0 || from.some((ref) => ref !== null) || overridden.length > 0 || branching.dropped.length > 0;
   if (!relevant) return null;
   const defaultBases = [
     ...new Set(sources.worktrees.flatMap((record, index) => (overridden.includes(record.repo) ? [] : from[index] ? [from[index] as string] : []))),
@@ -72,7 +82,25 @@ export async function handoffBranching(session: FirstTurnSession, sources: First
   for (const solution of overridden) overrides.push([await folderOf(solution, sources), branching.bases[solution] as string]);
   const dropped: string[] = [];
   for (const solution of branching.dropped) dropped.push(await folderOf(solution, sources));
-  return { task, epic: branching.epic ? { key: branching.epic.key, branch: branching.epic.branch } : null, base: branching.base, defaultBases, overrides, dropped };
+  let stack: HandoffStack | null = null;
+  if (parent !== null) {
+    const repos = session.solutions.flatMap((solution) => {
+      const record = sources.worktrees.find((w) => w.repo === solution);
+      if (!record) return [];
+      const info = sources.stack?.get(record.id);
+      return [{ solution, base: info?.base ?? null, status: info?.parentStatus ?? null }];
+    });
+    stack = { parent, repos };
+  }
+  return {
+    task,
+    epic: branching.epic ? { key: branching.epic.key, branch: branching.epic.branch } : null,
+    base: branching.base,
+    defaultBases,
+    overrides,
+    dropped,
+    ...(stack !== null ? { stack } : {}),
+  };
 }
 
 /**

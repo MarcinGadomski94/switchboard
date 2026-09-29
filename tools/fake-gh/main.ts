@@ -11,13 +11,16 @@
  *   JSON file named by `FAKE_GH_PRS` (`{"<branch or number>": {number, state, url, headRefOid, …}}`,
  *   re-read on every call), printed as compact JSON with only the requested fields;
  *   no entry → gh's `no pull requests found for branch "<b>"` on stderr, exit 1. Without a
- *   selector the branch checked out in the cwd is used. `FAKE_GH_FAIL=<text>` makes every
+ *   selector the branch checked out in the cwd is used. D47: a key `<repo>:<branch>` (the
+ *   folder name of the cwd's repository, its main checkout for a worktree) wins over
+ *   `<branch>`, so each repo can have its own PR for the same branch name. `FAKE_GH_FAIL=<text>` makes every
  *   `pr` command print that text to stderr and exit 1 (a network or auth failure).
  * - anything else → `unknown command`, exit 1.
  * - `FAKE_GH_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
  */
 import { spawn } from 'node:child_process';
 import { appendFile, readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 process.stdout.on('error', () => undefined);
 process.stderr.on('error', () => undefined);
@@ -42,6 +45,25 @@ function currentBranch(cwd: string): Promise<string | null> {
     });
     child.on('error', () => resolve(null));
     child.on('close', (code) => resolve(code === 0 && out.trim() !== '' ? out.trim() : null));
+  });
+}
+
+/** D47: the folder name of the repository `cwd` belongs to (the main checkout's, also from a worktree), else `null`. */
+function repoName(cwd: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const child = spawn('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, shell: false, stdio: ['ignore', 'pipe', 'ignore'] });
+    let out = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      out += chunk;
+    });
+    child.on('error', () => resolve(null));
+    child.on('close', (code) => {
+      const dir = out.trim();
+      if (code !== 0 || dir === '') return resolve(null);
+      // `<repo>/.git` → `<repo>`; a bare repository is its own folder.
+      resolve(path.basename(path.basename(dir) === '.git' ? path.dirname(dir) : dir));
+    });
   });
 }
 
@@ -79,7 +101,9 @@ async function prView(args: string[]): Promise<never> {
   const branch = selector ?? (await currentBranch(process.cwd()));
   if (branch === null) return finish(1, '', 'could not determine current branch\n');
   const prs = await loadPullRequests();
+  const repo = Object.keys(prs).some((key) => key.includes(':')) ? await repoName(process.cwd()) : null;
   const entry =
+    (repo !== null ? prs[`${repo}:${branch}`] : undefined) ??
     prs[branch] ?? (/^\d+$/.test(branch) ? Object.values(prs).find((pr) => pr['number'] === Number(branch)) : undefined);
   if (!entry) {
     return finish(1, '', /^\d+$/.test(branch) ? `GraphQL: Could not resolve to a PullRequest with the number of ${branch}.\n` : `no pull requests found for branch "${branch}"\n`);

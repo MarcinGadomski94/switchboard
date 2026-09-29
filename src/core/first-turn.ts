@@ -1,5 +1,6 @@
 import type { NewSession } from './api.ts';
-import { type HandoffBranching, branchingLines } from './branching.ts';
+import type { HandoffBranching } from './branching.ts';
+import { handoffLines } from './stacking.ts';
 import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './model.ts';
 
 /**
@@ -24,6 +25,9 @@ import type { Coordination, Phase, QaStack, SessionMode, WorkType } from './mode
  * Branching lines (`branchingLines` in `branching.ts`) before the worktrees, each
  * worktree names the origin branch it was cut from, and the D38 instruction
  * names the base to cut from and the lazy push rule.
+ *
+ * D47: a stacked session's Branching lines are `stackedLines` (`stacking.ts`,
+ * through `handoffLines`), and the D38 instruction cuts from the parent.
  */
 
 /** Outbox kind (`pending_messages.kind`) of the answers block when the task is empty. */
@@ -99,13 +103,22 @@ export const SOLUTIONS_NOT_CHOSEN =
  * changes, on the session's branch, at `<repo parent>/<repo>-wt-<name>` (gap #1's
  * naming, so Switchboard adopts it: `docs/worktrees.md` → *Adopted worktrees*).
  */
-export function agentWorktreesInstruction(branch: string, name: string, branching: Pick<HandoffBranching, 'epic' | 'base'> | null = null): string {
+export function agentWorktreesInstruction(branch: string, name: string, branching: Pick<HandoffBranching, 'epic' | 'base' | 'stack'> | null = null): string {
   const where = `at <the solution repo's parent>/<repo>-wt-${name}`;
   if (branching === null) {
     return `for each solution you change, create a git worktree on branch ${branch} ${where} (git worktree add -b ${branch} <path>, from the repo's current HEAD) and make every change there, not in the main checkout`;
   }
   // D40: fetch first, cut from origin (never a local branch), reuse an existing task branch, push only at the first code change.
   const reuse = `when ${branch} exists already, on origin or locally, reuse it instead of creating it`;
+  if (branching.stack) {
+    // D47: stacked: the per-repo base is the parent when it is on origin there (the Per-repo line above).
+    return (
+      `for each solution you change, run git fetch origin --prune in its repo, then create a git worktree on branch ${branch} ${where}, ` +
+      `cut from the base the Per-repo line above names for that repo ` +
+      `(git worktree add --no-track -b ${branch} <path> origin/<that branch>; ${reuse}), make every change there, not in the main checkout, ` +
+      `and follow the Rule above: push nothing before that repo's first code change`
+    );
+  }
   if (branching.epic) {
     const epic = branching.epic.branch;
     return (
@@ -174,7 +187,7 @@ export function sessionStartBlock(answers: SessionStartAnswers): string {
   item('Ultracode', session.ultracode ? 'on' : 'off');
   // D40: the branching model, before the worktrees it applies to.
   const branching = session.worktrees ? (answers.branching ?? null) : null;
-  if (branching) lines.push(...branchingLines(branching));
+  if (branching) lines.push(...handoffLines(branching));
   const agentBranch = answers.agentBranch ?? session.branch ?? null;
   if (session.worktrees && answers.worktrees.length > 0) {
     lines.push('- Worktrees (one per solution; make every change there, not in the main checkout):');
@@ -215,7 +228,7 @@ export function repoWorktreeNote(worktree: RepoWorktree): string {
     REPO_WORKTREE_NOTE_HEADER,
     `- Worktree: ${worktree.path} (branch ${worktree.branch}, from ${worktree.base}); it is your working folder: make every change here.`,
     `- Main checkout: ${worktree.repoPath} (leave it as it is).`,
-    ...(worktree.branching ? branchingLines(worktree.branching) : []),
+    ...(worktree.branching ? handoffLines(worktree.branching) : []),
   ].join('\n');
 }
 

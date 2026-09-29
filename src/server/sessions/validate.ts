@@ -1,5 +1,6 @@
 import type { NewSession, SessionModelOption } from '../../core/api.ts';
 import { type SessionBranching, type SessionEpic, DEFAULT_EPIC_BASE, TASK_ONLY, checkBranchName, checkEpicKey, epicBranchName } from '../../core/branching.ts';
+import { PARENT_RULE, effectiveParent, parentConflict, parentText, parseParent } from '../../core/stacking.ts';
 import { MODEL_VALUE_MAX, checkModelChoice, normalizeEffort, normalizeModel } from '../../core/model-choice.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import { checkTicketBranch } from '../../core/ticket-branch.ts';
@@ -126,8 +127,10 @@ const EPIC_SUMMARY_MAX = 255;
  * key, text, a valid branch name or blank = derived with `epicBranchName`),
  * `base` (a valid branch name, blank = `dev`), `dropped` (solutions in scope,
  * never all of them, never a repo folder's one repo) and `bases` (solution in
- * scope and not dropped → a valid branch name). Failures are on fields
- * `branching…`.
+ * scope and not dropped → a valid branch name). D47: `parent` (a task key or a
+ * valid branch name, `parseParent`; not the task branch or its key, not the
+ * epic's base; the epic branch itself or blank = not stacked, left out). Failures
+ * are on fields `branching…`.
  */
 function branchingOf(
   body: Record<string, unknown>,
@@ -140,7 +143,7 @@ function branchingOf(
   const raw = body['branching'];
   if (raw === undefined || raw === null) return TASK_ONLY;
   if (!isRecord(raw)) {
-    fail('branching', 'branching must be an object: { epic?, base?, bases?, dropped? }');
+    fail('branching', 'branching must be an object: { epic?, base?, bases?, dropped?, parent? }');
     return null;
   }
   const state = { failed: false };
@@ -212,7 +215,23 @@ function branchingOf(
       }
     }
   }
-  return state.failed ? null : { epic, base, bases, dropped };
+
+  let parent: string | null = null;
+  const rawParent = raw['parent'];
+  if (rawParent !== undefined && rawParent !== null) {
+    const check = typeof rawParent === 'string' ? parseParent(rawParent) : ({ ok: false, message: PARENT_RULE } as const);
+    if (!check.ok) failHere('branching.parent', check.message);
+    else if (check.parent !== null) {
+      const task = typeof body['branch'] === 'string' && body['branch'].trim() !== '' ? body['branch'].trim() : null;
+      const conflict = parentConflict(check.parent, { task, base, epic: epic?.branch ?? null });
+      if (conflict !== null) failHere('branching.parent', conflict);
+      else {
+        const effective = effectiveParent(check.parent, epic?.branch ?? null);
+        if (effective !== null) parent = parentText(effective);
+      }
+    }
+  }
+  return state.failed ? null : { epic, base, bases, dropped, ...(parent !== null ? { parent } : {}) };
 }
 
 /**

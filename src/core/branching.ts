@@ -14,6 +14,8 @@
  * *Epic/task branching (D40)*, `docs/new-session.md` → *Branching (D40)*.
  */
 
+import type { HandoffStack } from './stacking.ts';
+
 /** The epic's base branch on origin when the developer names none. */
 export const DEFAULT_EPIC_BASE = 'dev';
 
@@ -139,6 +141,12 @@ export interface SessionBranching {
   readonly bases: Readonly<Record<string, string>>;
   /** Solutions dropped from the task (no worktree; they leave the session's solutions). */
   readonly dropped: readonly string[];
+  /**
+   * D47: the parent the task is stacked on, as typed (a task key such as
+   * `PROJ-3013`, or a full branch name); omitted or `null` = the epic branch
+   * (not stacked, D40 as before). `src/core/stacking.ts`.
+   */
+  readonly parent?: string | null;
 }
 
 /** A task without an epic and no per-repo choices (D40's default for a body without `branching`). */
@@ -173,6 +181,8 @@ export interface HandoffBranching {
   readonly overrides: ReadonlyArray<readonly [folder: string, base: string]>;
   /** Folders dropped from the task. */
   readonly dropped: readonly string[];
+  /** D47: a stacked session's parent and per-repo resolution; omitted or `null` = not stacked (D40's lines). */
+  readonly stack?: HandoffStack | null;
 }
 
 /** The model line of an epic session. */
@@ -220,6 +230,13 @@ export function branchingLines(branching: HandoffBranching): string[] {
     const base = bases.length === 0 ? DEFAULT_BRANCH_BASE : bases.length === 1 ? (bases[0] as string) : `each repo's origin default branch: ${bases.join(', ')}`;
     lines.push(`- Branching model: task only: ${branching.task} (base: ${base})`);
   }
+  lines.push(...branchingTailLines(branching));
+  return lines;
+}
+
+/** The optional last Branching lines (D40): `Base overrides: …` and `Dropped repos (no base branch): …`, when any. */
+export function branchingTailLines(branching: Pick<HandoffBranching, 'overrides' | 'dropped'>): string[] {
+  const lines: string[] = [];
   if (branching.overrides.length > 0) lines.push(`- Base overrides: ${branching.overrides.map(([folder, base]) => `${folder}: origin/${base}`).join('; ')}`);
   if (branching.dropped.length > 0) lines.push(`- Dropped repos (no base branch): ${branching.dropped.join(', ')}`);
   return lines;

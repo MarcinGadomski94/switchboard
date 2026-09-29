@@ -340,6 +340,34 @@ describe('0012 session branching (D40)', () => {
   });
 });
 
+describe('0013 worktree parent (D47)', () => {
+  it('adds the nullable parent columns to worktrees: existing rows have none; the store round-trips them', async () => {
+    const file = path.join(tmp, 'existing-parent.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 13)).toMatchObject({ name: 'worktree_parent' });
+    migrate(database, shipped.filter((m) => m.version <= 12));
+    const ts = '2026-09-29T10:00:00.000Z';
+    database
+      .prepare('INSERT INTO worktrees (id, repo, repo_path, branch, path, removable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)')
+      .run('w-old', 'web-front', '/r/web-front', 'PROJ-1-x', '/r/web-front-wt-x', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 12).map((m) => m.version));
+    expect(database.prepare('SELECT parent_branch, parent_pr_number, parent_pr_state, parent_base, parent_head_oid, parent_merge, parent_merged_at FROM worktrees').all()).toEqual([
+      { parent_branch: null, parent_pr_number: null, parent_pr_state: null, parent_base: null, parent_head_oid: null, parent_merge: null, parent_merged_at: null },
+    ]);
+    database.close();
+
+    const store = await openStore(file);
+    try {
+      expect(await store.worktrees.get('w-old')).toMatchObject({ parentBranch: null, parentMergedAt: null });
+      const parent = { parentBranch: 'PROJ-3013-x', parentPrNumber: 306, parentPrUrl: 'https://x/306', parentPrState: 'MERGED', parentBase: 'dev', parentHeadOid: 'abc1234', parentMerge: 'squash', parentMergedAt: ts };
+      expect(await store.worktrees.update('w-old', parent)).toMatchObject(parent);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

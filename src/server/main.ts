@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     const { supervisor, questions } = createSessionServices(config, store, bus);
     const worktrees = createWorktreeManager(config, store, supervisor);
     // System Inbox items (M3.3): "PR merged" from the manager's worktreeRemovable, "Scheduled run failed" from schedule_runs.
-    const systemItems = new SystemItemService({ store, bus, worktrees });
+    const systemItems = new SystemItemService({ store, bus, worktrees, sessions: supervisor });
     // Real providers are added here by their items (docs/lanes.md); demo mode swaps in the demo ones.
     // Solutions of one folder at a time (a scanner per workspace folder); sessions' solutions resolve in their own folders.
     const solutions = new LiveSolutions({

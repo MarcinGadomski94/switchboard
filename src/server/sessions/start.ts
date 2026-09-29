@@ -144,6 +144,8 @@ export async function startNewSession(context: SessionStartContext, body: unknow
       agentBranch: branch,
       branching,
       cutFrom: new Map(taskWorktrees.map((worktree) => [worktree.record.id, worktree.from])),
+      // D47: each repo's resolved base / PR target and the parent's PR there.
+      stack: new Map(taskWorktrees.map((worktree) => [worktree.record.id, { base: worktree.base, parentStatus: worktree.parentStatus }])),
     });
     // D14: a workspace session runs at the folder root (the router applies); a repo session in the repo, or in its worktree.
     const cwd = folder.kind === 'repo' && created[0] ? created[0].path : folder.root;
