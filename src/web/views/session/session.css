@@ -806,6 +806,12 @@ a.sb-agent--link:focus-visible {
   gap: 3px;
 }
 
+/* D39: an own answer shows verbatim: its line breaks kept, a long word broken inside the bubble. */
+.sb-chat-answers-bubble > div {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .sb-chat-answers-note {
   font: 400 12px var(--font-mono);
   color: oklch(0.74 0.12 250);

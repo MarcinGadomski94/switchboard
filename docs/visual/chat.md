@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.20%**, free-talk-feature with the open card **11.06%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
+Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.20%**, free-talk-feature with the open card **11.18%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
 
 Side by side (prototype left, app right): `chat-calendar-side-by-side.png`, `chat-card-side-by-side.png`, `chat-answered-side-by-side.png`.
 
@@ -42,22 +42,22 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | free-talk-feature | step1 | box (y rel. chat) | 282,164.7 691.8×16 | 282,164.7 691.8×16 | ok | "✓ figma-extractor · spec table, 14 slots" |
 | free-talk-feature | card | box (y rel. chat) | 282,234.7 752×397.7 | 282,234.7 752×397.7 | ok |  |
 | free-talk-feature | cardHead | box (y rel. chat) | 299,249.7 718×14 | 299,249.7 718×14 | ok | "3 questions · relayed verbatim" |
-| free-talk-feature | q0 | box (y rel. chat) | 299,275.7 718×90.5 | 299,275.7 718×90.5 | ok | "web · microfrontends/acme-app-front“Figma shows the topic chips wrapp |
+| free-talk-feature | q0 | box (y rel. chat) | 299,275.7 718×90.5 | 299,275.7 718×90.5 | ok | "web · microfrontends/acme-app-front“Figma shows the topic chips wrapp + "Other…" (D39) |
 | free-talk-feature | q0Source | box (y rel. chat) | 299,286.7 718×14 | 299,286.7 718×14 | ok | "web · microfrontends/acme-app-front" |
 | free-talk-feature | q0Quote | box (y rel. chat) | 299,307.7 718×20.1 | 299,307.7 718×20.1 | ok | "“Figma shows the topic chips wrapping to 2 rows at 360. Should overfl |
-| free-talk-feature | q0Options | box (y rel. chat) | 299,334.8 718×31.4 | 299,334.8 718×31.4 | ok | "Wrap to 2 rows (as Figma)Horizontal scrollAsk designer" |
+| free-talk-feature | q0Options | box (y rel. chat) | 299,334.8 718×31.4 | 299,334.8 718×31.4 | ok | "Wrap to 2 rows (as Figma)Horizontal scrollAsk designer" + "Other…" (D39) |
 | free-talk-feature | q0Opt0 | box (y rel. chat) | 299,334.8 172×31.4 | 299,334.8 172×31.4 | ok | "Wrap to 2 rows (as Figma)" |
 | free-talk-feature | q0Opt1 | box (y rel. chat) | 477,334.8 116.2×31.4 | 477,334.8 116.2×31.4 | ok | "Horizontal scroll" |
-| free-talk-feature | q1 | box (y rel. chat) | 299,378.2 718×90.5 | 299,378.2 718×90.5 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Componen |
+| free-talk-feature | q1 | box (y rel. chat) | 299,378.2 718×90.5 | 299,378.2 718×90.5 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Componen + "Other…" (D39) |
 | free-talk-feature | q1Source | box (y rel. chat) | 299,389.2 718×14 | 299,389.2 718×14 | ok | "mobile · mobile/" |
 | free-talk-feature | q1Quote | box (y rel. chat) | 299,410.2 718×20.1 | 299,410.2 718×20.1 | ok | "“AcmChip has no compact size in Acme.Components.Maui. Add the |
-| free-talk-feature | q1Options | box (y rel. chat) | 299,437.3 718×31.4 | 299,437.3 718×31.4 | ok | "Use default sizeAdd compact variantStop here" |
+| free-talk-feature | q1Options | box (y rel. chat) | 299,437.3 718×31.4 | 299,437.3 718×31.4 | ok | "Use default sizeAdd compact variantStop here" + "Other…" (D39) |
 | free-talk-feature | q1Opt0 | box (y rel. chat) | 299,437.3 114.9×31.4 | 299,437.3 114.9×31.4 | ok | "Use default size" |
 | free-talk-feature | q1Opt1 | box (y rel. chat) | 419.9,437.3 142.3×31.4 | 419.9,437.3 142.3×31.4 | ok | "Add compact variant" |
-| free-talk-feature | q2 | box (y rel. chat) | 299,480.7 718×90.5 | 299,480.7 718×90.5 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile |
+| free-talk-feature | q2 | box (y rel. chat) | 299,480.7 718×90.5 | 299,480.7 718×90.5 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile + "Other…" (D39) |
 | free-talk-feature | q2Source | box (y rel. chat) | 299,491.7 718×14 | 299,491.7 718×14 | ok | "(orchestrator)" |
 | free-talk-feature | q2Quote | box (y rel. chat) | 299,512.7 718×20.1 | 299,512.7 718×20.1 | ok | "“Web mocked FreeTalkService.TopicId as nullable, mobile as required.  |
-| free-talk-feature | q2Options | box (y rel. chat) | 299,539.9 718×31.4 | 299,539.9 718×31.4 | ok | "NullableRequiredCheck Confluence first" |
+| free-talk-feature | q2Options | box (y rel. chat) | 299,539.9 718×31.4 | 299,539.9 718×31.4 | ok | "NullableRequiredCheck Confluence first" + "Other…" (D39) |
 | free-talk-feature | q2Opt0 | box (y rel. chat) | 299,539.9 71.2×31.4 | 299,539.9 71.2×31.4 | ok | "Nullable" |
 | free-talk-feature | q2Opt1 | box (y rel. chat) | 376.2,539.9 75.3×31.4 | 376.2,539.9 75.3×31.4 | ok | "Required" |
 | free-talk-feature | foot | box (y rel. chat) | 299,583.2 718×34.1 | 299,583.2 718×34.1 | ok | "0 of 3 answeredSend all answers" |
@@ -75,22 +75,22 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | free-talk-feature | send | box | 974.5,843 63.5×41 | 974.5,843 63.5×41 | ok | "Send" |
 | free-talk-feature picked | card | box (y rel. chat) | 282,234.7 752×397.7 | 282,234.7 752×397.7 | ok |  |
 | free-talk-feature picked | cardHead | box (y rel. chat) | 299,249.7 718×14 | 299,249.7 718×14 | ok | "3 questions · relayed verbatim" |
-| free-talk-feature picked | q0 | box (y rel. chat) | 299,275.7 718×90.5 | 299,275.7 718×90.5 | ok | "web · microfrontends/acme-app-front“Figma shows the topic chips wrapp |
+| free-talk-feature picked | q0 | box (y rel. chat) | 299,275.7 718×90.5 | 299,275.7 718×90.5 | ok | "web · microfrontends/acme-app-front“Figma shows the topic chips wrapp + "Other…" (D39) |
 | free-talk-feature picked | q0Source | box (y rel. chat) | 299,286.7 718×14 | 299,286.7 718×14 | ok | "web · microfrontends/acme-app-front" |
 | free-talk-feature picked | q0Quote | box (y rel. chat) | 299,307.7 718×20.1 | 299,307.7 718×20.1 | ok | "“Figma shows the topic chips wrapping to 2 rows at 360. Should overfl |
-| free-talk-feature picked | q0Options | box (y rel. chat) | 299,334.8 718×31.4 | 299,334.8 718×31.4 | ok | "Wrap to 2 rows (as Figma)Horizontal scrollAsk designer" |
+| free-talk-feature picked | q0Options | box (y rel. chat) | 299,334.8 718×31.4 | 299,334.8 718×31.4 | ok | "Wrap to 2 rows (as Figma)Horizontal scrollAsk designer" + "Other…" (D39) |
 | free-talk-feature picked | q0Opt0 | box (y rel. chat) | 299,334.8 172×31.4 | 299,334.8 172×31.4 | ok | "Wrap to 2 rows (as Figma)" |
 | free-talk-feature picked | q0Opt1 | box (y rel. chat) | 477,334.8 116.2×31.4 | 477,334.8 116.2×31.4 | ok | "Horizontal scroll" |
-| free-talk-feature picked | q1 | box (y rel. chat) | 299,378.2 718×90.5 | 299,378.2 718×90.5 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Componen |
+| free-talk-feature picked | q1 | box (y rel. chat) | 299,378.2 718×90.5 | 299,378.2 718×90.5 | ok | "mobile · mobile/“AcmChip has no compact size in Acme.Componen + "Other…" (D39) |
 | free-talk-feature picked | q1Source | box (y rel. chat) | 299,389.2 718×14 | 299,389.2 718×14 | ok | "mobile · mobile/" |
 | free-talk-feature picked | q1Quote | box (y rel. chat) | 299,410.2 718×20.1 | 299,410.2 718×20.1 | ok | "“AcmChip has no compact size in Acme.Components.Maui. Add the |
-| free-talk-feature picked | q1Options | box (y rel. chat) | 299,437.3 718×31.4 | 299,437.3 718×31.4 | ok | "Use default sizeAdd compact variantStop here" |
+| free-talk-feature picked | q1Options | box (y rel. chat) | 299,437.3 718×31.4 | 299,437.3 718×31.4 | ok | "Use default sizeAdd compact variantStop here" + "Other…" (D39) |
 | free-talk-feature picked | q1Opt0 | box (y rel. chat) | 299,437.3 114.9×31.4 | 299,437.3 114.9×31.4 | ok | "Use default size" |
 | free-talk-feature picked | q1Opt1 | box (y rel. chat) | 419.9,437.3 142.3×31.4 | 419.9,437.3 142.3×31.4 | ok | "Add compact variant" |
-| free-talk-feature picked | q2 | box (y rel. chat) | 299,480.7 718×90.5 | 299,480.7 718×90.5 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile |
+| free-talk-feature picked | q2 | box (y rel. chat) | 299,480.7 718×90.5 | 299,480.7 718×90.5 | ok | "(orchestrator)“Web mocked FreeTalkService.TopicId as nullable, mobile + "Other…" (D39) |
 | free-talk-feature picked | q2Source | box (y rel. chat) | 299,491.7 718×14 | 299,491.7 718×14 | ok | "(orchestrator)" |
 | free-talk-feature picked | q2Quote | box (y rel. chat) | 299,512.7 718×20.1 | 299,512.7 718×20.1 | ok | "“Web mocked FreeTalkService.TopicId as nullable, mobile as required.  |
-| free-talk-feature picked | q2Options | box (y rel. chat) | 299,539.9 718×31.4 | 299,539.9 718×31.4 | ok | "NullableRequiredCheck Confluence first" |
+| free-talk-feature picked | q2Options | box (y rel. chat) | 299,539.9 718×31.4 | 299,539.9 718×31.4 | ok | "NullableRequiredCheck Confluence first" + "Other…" (D39) |
 | free-talk-feature picked | q2Opt0 | box (y rel. chat) | 299,539.9 71.2×31.4 | 299,539.9 71.2×31.4 | ok | "Nullable" |
 | free-talk-feature picked | q2Opt1 | box (y rel. chat) | 376.2,539.9 75.3×31.4 | 376.2,539.9 75.3×31.4 | ok | "Required" |
 | free-talk-feature picked | foot | box (y rel. chat) | 299,583.2 718×34.1 | 299,583.2 718×34.1 | ok | "All answered. Each answer is written into the blocked brief word for  |
@@ -102,6 +102,52 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | free-talk-feature answered | answer1 | box (y rel. chat) | 826.5,268.6 193.5×20.9 | 826.5,268.6 193.5×20.9 | ok | "mobile: Use default size" |
 | free-talk-feature answered | answer2 | box (y rel. chat) | 826.5,292.5 193.5×20.9 | 826.5,292.5 193.5×20.9 | ok | "(orchestrator): Nullable" |
 | free-talk-feature answered | note | box (y rel. chat) | 282,339.5 752×16 | 282,339.5 752×16 | ok | "● Answers written into the briefs. Blocked agents are resuming…" |
+
+## D39 · Other… (an addition, checked on its own)
+| Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
+|---|---|---|---|---|---|---|
+| free-talk-feature | q0Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature | q0Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature | q0Options · D39 on the options' line | addition | — | 703.9,454.8 62.8×31.4 · first option 299,454.8 172×31.4 | ok | |
+| free-talk-feature | q0Options · D39 one row gap after the last option | addition | — | x 703.9 · last option ends 697.9 + gap 6 | ok | |
+| free-talk-feature | q0Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature | q0Options · D39 inside the row | addition | — | ends 766.7 · row ends 1017 | ok | |
+| free-talk-feature | q0Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| free-talk-feature | q1Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature | q1Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature | q1Options · D39 on the options' line | addition | — | 653.4,557.3 62.8×31.4 · first option 299,557.3 114.9×31.4 | ok | |
+| free-talk-feature | q1Options · D39 one row gap after the last option | addition | — | x 653.4 · last option ends 647.4 + gap 6 | ok | |
+| free-talk-feature | q1Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature | q1Options · D39 inside the row | addition | — | ends 716.2 · row ends 1017 | ok | |
+| free-talk-feature | q1Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| free-talk-feature | q2Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature | q2Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature | q2Options · D39 on the options' line | addition | — | 618.7,659.9 62.8×31.4 · first option 299,659.9 71.2×31.4 | ok | |
+| free-talk-feature | q2Options · D39 one row gap after the last option | addition | — | x 618.7 · last option ends 612.7 + gap 6 | ok | |
+| free-talk-feature | q2Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature | q2Options · D39 inside the row | addition | — | ends 681.5 · row ends 1017 | ok | |
+| free-talk-feature | q2Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| free-talk-feature picked | q0Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature picked | q0Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature picked | q0Options · D39 on the options' line | addition | — | 703.9,454.8 62.8×31.4 · first option 299,454.8 172×31.4 | ok | |
+| free-talk-feature picked | q0Options · D39 one row gap after the last option | addition | — | x 703.9 · last option ends 697.9 + gap 6 | ok | |
+| free-talk-feature picked | q0Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature picked | q0Options · D39 inside the row | addition | — | ends 766.7 · row ends 1017 | ok | |
+| free-talk-feature picked | q0Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| free-talk-feature picked | q1Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature picked | q1Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature picked | q1Options · D39 on the options' line | addition | — | 653.4,557.3 62.8×31.4 · first option 299,557.3 114.9×31.4 | ok | |
+| free-talk-feature picked | q1Options · D39 one row gap after the last option | addition | — | x 653.4 · last option ends 647.4 + gap 6 | ok | |
+| free-talk-feature picked | q1Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature picked | q1Options · D39 inside the row | addition | — | ends 716.2 · row ends 1017 | ok | |
+| free-talk-feature picked | q1Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
+| free-talk-feature picked | q2Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
+| free-talk-feature picked | q2Options · D39 copy | addition | — | "Other…" | ok | |
+| free-talk-feature picked | q2Options · D39 on the options' line | addition | — | 618.7,659.9 62.8×31.4 · first option 299,659.9 71.2×31.4 | ok | |
+| free-talk-feature picked | q2Options · D39 one row gap after the last option | addition | — | x 618.7 · last option ends 612.7 + gap 6 | ok | |
+| free-talk-feature picked | q2Options · D39 as high as the options | addition | — | 31.4 · option 31.4 | ok | |
+| free-talk-feature picked | q2Options · D39 inside the row | addition | — | ends 681.5 · row ends 1017 | ok | |
+| free-talk-feature picked | q2Options · D39 styled like an unpicked option | addition | — | color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, border-radius, border-top-color, border-top-width, padding-top, padding-right, padding-bottom, padding-left | ok | |
 
 ## Send opacity (question card)
 | State | Expected | Prototype | App | Result |
@@ -129,6 +175,7 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | send | rgb(232, 231, 227) rgb(17, 18, 20) 10px 500 | rgb(232, 231, 227) rgb(17, 18, 20) 10px 500 | ok |
 
 ## Known differences (not findings)
+- D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question and of its options row is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above).
 - The prototype's `•` note line (prod-monitoring only) shows as `✓` in the app: the demo seed turns every prototype tool line into a real step event, and a note has no event of its own (`docs/chat.md`). Not in the compared sessions.
 - After Send the prototype also flips its mock agent statuses; the app's demo answers are queued for the session's next run (no live process), which the chat does not show differently.
 

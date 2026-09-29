@@ -17,6 +17,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
+import { checkOtherPills, sameCopyBesidesOther } from './own-answer.ts';
 
 /**
  * Visual oracle for the Chat tab (M4.2, D10): the app (demo seed) against the
@@ -33,6 +34,11 @@ import {
  * Both chat areas are scrolled to the top before measuring (the app keeps the
  * newest item in view). Gate: boxes ±2 px, exact copy, equal computed styles,
  * SPEC tokens as computed styles. The pixel diff is advisory (`docs/visual/chat.md`).
+ * D39 (an addition, checked on its own like D18's Name row): each question's
+ * options end with an **Other…** pill the prototype does not have. The prototype's
+ * parts keep their boxes; a question's and its options row's text differ only by
+ * that pill at the end (`sameCopyBesidesOther`), and the pill is gated on its own
+ * (`own-answer.ts`), with the card open and once an option is picked.
  */
 
 interface PartSpec {
@@ -206,14 +212,16 @@ async function compare(
     const pBox = relative ? relativeTo(p.box, proto['__chat']?.box.y ?? 0) : p.box;
     const aBox = relative ? relativeTo(a.box, shot['__chat']?.box.y ?? 0) : a.box;
     const boxIssues = compareBoxes(`${label} ${name}`, pBox, aBox, spec.geometry);
-    const copyIssues = spec.copy && p.text !== a.text ? [`${label} ${name}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
+    // D39: the Other… pill ends a question's (and its options row's) text; it is checked on its own.
+    const besidesOther = sameCopyBesidesOther(p.text, a.text);
+    const copyIssues = spec.copy && p.text !== a.text && !besidesOther ? [`${label} ${name}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map(
       (prop) => `${label} ${name}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`,
     );
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
     rows.push(
-      `| ${label} | ${name} | ${relative ? `${spec.geometry} (y rel. chat)` : spec.geometry} | ${fmtBox(pBox)} | ${fmtBox(aBox)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`,
+      `| ${label} | ${name} | ${relative ? `${spec.geometry} (y rel. chat)` : spec.geometry} | ${fmtBox(pBox)} | ${fmtBox(aBox)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? `${JSON.stringify(besidesOther ? p.text : a.text).slice(0, 70)}${besidesOther ? ' + "Other…" (D39)' : ''}` : ''} |`,
     );
   }
   return { rows, app: shot };
@@ -295,6 +303,8 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
     opacities.push(`| ${state} | ${want} | ${p} | ${a} | ${p === want && a === want ? 'ok' : 'FAIL'} |`);
   };
   await sendOpacity('0 of 3 answered', '0.45');
+  const optionRows = { q0Options: [...CARD, 1, 2], q1Options: [...CARD, 2, 2], q2Options: [...CARD, 3, 2] };
+  const otherOpen = await checkOtherPills(protoPage, appPage, 'free-talk-feature', optionRows, failures);
   const protoOpen = await protoPage.screenshot({ clip: calendarClip });
   const appOpen = await appPage.screenshot({ clip: calendarClip });
   const openDiff = await pixelDiff(appPage, protoOpen, appOpen);
@@ -303,6 +313,7 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   await pickAll(appPage, 'app', 0, 3);
   await expect(appPage.getByTestId('question-status')).toHaveText('All answered. Each answer is written into the blocked brief word for word.');
   const picked = await compare(protoPage, appPage, 'free-talk-feature picked', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
+  const otherPicked = await checkOtherPills(protoPage, appPage, 'free-talk-feature picked', optionRows, failures);
   await sendOpacity('all answered', '1');
 
   // Send in both: the card becomes the answers bubble + note.
@@ -374,6 +385,10 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   await writeReport({
     'chat.md': report({
       rows: [calendarChat, ...calendar.rows, ...calendarComposer.rows, freeChat, ...freeMessages.rows, ...freeCard.rows, ...freeComposer.rows, ...picked.rows, ...answered.rows],
+      otherRows: [
+        ...otherOpen.map((check) => `| free-talk-feature | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
+        ...otherPicked.map((check) => `| free-talk-feature picked | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
+      ],
       opacities,
       computedRows,
       failures,
@@ -393,6 +408,7 @@ function fmtBox(box: Box): string {
 
 function report(input: {
   rows: string[];
+  otherRows: string[];
   opacities: string[];
   computedRows: string[];
   failures: string[];
@@ -416,6 +432,11 @@ Geometry: \`box\` = x, y, width, height; \`bottom\` = x, width and the bottom ed
 |---|---|---|---|---|---|---|
 ${input.rows.join('\n')}
 
+## D39 · Other… (an addition, checked on its own)
+| Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
+|---|---|---|---|---|---|---|
+${input.otherRows.join('\n')}
+
 ## Send opacity (question card)
 | State | Expected | Prototype | App | Result |
 |---|---|---|---|---|
@@ -427,6 +448,7 @@ ${input.opacities.join('\n')}
 ${input.computedRows.join('\n')}
 
 ## Known differences (not findings)
+- D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question and of its options row is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above).
 - The prototype's \`•\` note line (prod-monitoring only) shows as \`✓\` in the app: the demo seed turns every prototype tool line into a real step event, and a note has no event of its own (\`docs/chat.md\`). Not in the compared sessions.
 - After Send the prototype also flips its mock agent statuses; the app's demo answers are queued for the session's next run (no live process), which the chat does not show differently.
 
