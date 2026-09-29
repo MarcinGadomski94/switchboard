@@ -44,7 +44,7 @@ import {
   compactToken,
   type UsageSpec,
   type CompactSpec,
-  writeToken, autoModeSupported } from './scenarios.ts';
+  writeToken, autoModeSupported, ignoresInterrupt } from './scenarios.ts';
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
@@ -85,6 +85,8 @@ interface UserMessage {
   content: Json;
   text: string;
   uuid: string;
+  /** D50: the host stamped the stdin line with this `uuid` (the CLI lists only such messages in an interrupt's receipt). */
+  hostUuid?: string;
   fired?: boolean;
   resume?: { readonly steps: readonly PlayStep[]; readonly turn: TurnState };
 }
@@ -272,6 +274,8 @@ export class Runner {
   private finished = false;
   private waiter: Waiter | null = null;
   private pendingInterrupt: string | null = null;
+  /** D50: each interrupt's receipt (the `control_response` body), taken when the interrupt arrived. */
+  private readonly receipts = new Map<string, JsonObject>();
   private pendingSigint = false;
   private readonly unmatchedResponses = new Map<string, JsonObject>();
   private inbox: Promise<void> = Promise.resolve();
@@ -424,8 +428,8 @@ export class Runner {
     this.enqueue(prompt);
   }
 
-  private enqueue(text: string, content: Json = text): void {
-    this.queue.push({ content, text, uuid: randomUUID() });
+  private enqueue(text: string, content: Json = text, hostUuid?: string): void {
+    this.queue.push({ content, text, uuid: hostUuid ?? randomUUID(), ...(hostUuid !== undefined ? { hostUuid } : {}) });
     void this.pump();
   }
 
@@ -445,7 +449,7 @@ export class Runner {
     const type = parsed['type'];
     if (type === 'user') {
       const content = asObject(parsed['message'])?.['content'] ?? '';
-      this.enqueue(messageText(content), content);
+      this.enqueue(messageText(content), content, asString(parsed['uuid']));
     } else if (type === 'control_request') {
       await this.onControlRequest(parsed);
     } else if (type === 'control_response') {
@@ -484,6 +488,10 @@ export class Runner {
     const subtype = asString(request?.['subtype']) ?? '';
     switch (subtype) {
       case 'interrupt':
+        // D50 (`FAKE_CLAUDE_IGNORE_INTERRUPT=1`): a CLI that never acknowledges the interrupt.
+        if (ignoresInterrupt(this.o.env)) return;
+        // D50: the receipt is taken now, with the abort (CLI 2.1.284); `cancel_queued` drops the queued messages.
+        this.receipts.set(requestId, this.interruptReceipt(request?.['cancel_queued'] === true));
         if (this.waiter) this.waiter.resolve({ kind: 'interrupt', requestId });
         else if (this.running) this.pendingInterrupt = requestId;
         else this.writeAck(requestId);
@@ -1395,7 +1403,33 @@ export class Runner {
   }
 
   private writeAck(requestId: string): void {
-    this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: { still_queued: [] } } });
+    const receipt = this.receipts.get(requestId) ?? { still_queued: [] };
+    this.receipts.delete(requestId);
+    this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: receipt } });
+  }
+
+  /**
+   * D50: an interrupt's receipt, as CLI 2.1.284 builds it (read in the binary, not
+   * recorded): the stdin messages still queued survive a plain interrupt (listed
+   * under `still_queued`, and they run afterwards); with `cancel_queued: true` they
+   * are removed from the queue (never run) and listed under `cancelled`. Only
+   * messages the host stamped with a `uuid` are listed. The fake's own turns
+   * (`[fake:fire]`, a background task's end) are left alone.
+   */
+  private interruptReceipt(cancelQueued: boolean): JsonObject {
+    const listed = (msg: UserMessage): string[] => (msg.hostUuid !== undefined ? [msg.hostUuid] : []);
+    if (!cancelQueued) return { still_queued: this.queue.filter((msg) => !msg.fired && !msg.resume).flatMap(listed) };
+    const cancelled: string[] = [];
+    for (let i = 0; i < this.queue.length; ) {
+      const msg = this.queue[i] as UserMessage;
+      if (msg.fired || msg.resume) {
+        i += 1;
+        continue;
+      }
+      this.queue.splice(i, 1);
+      cancelled.push(...listed(msg));
+    }
+    return { still_queued: [], cancelled };
   }
 
   private writeReplay(msg: UserMessage): void {
