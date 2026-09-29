@@ -323,6 +323,8 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     worktrees: true,
     ultracode: false,
     branch: 'TOOL-7-fix-the-tool',
+    // D40: the Branching section's choices (no epic: a task only; the repo has no origin, so it is cut from HEAD).
+    branching: { epic: null, base: 'dev' },
   });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();

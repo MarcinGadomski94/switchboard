@@ -58,6 +58,12 @@ import {
  * `0 selected · leave empty to let the agent choose · read-only folders locked`.
  * Those three parts leave the prototype comparison and are checked on their own
  * ({@link d38Additions}); the draft state (solutions picked) is unchanged.
+ *
+ * D40 addition (not a finding): with Worktree on the form ends with the
+ * **Branching** section (epic key, summary, creation line, preflight table),
+ * after every prototype section, so no compared part moves; its inputs are left
+ * out of the draft's input list like D32's Branch field. Its behavior is
+ * `tests/e2e/branching.spec.ts`.
  */
 
 interface PartSpec {
@@ -656,7 +662,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   // D32: the Branch field is an addition, checked on its own (d32Additions).
   const inputs = async (page: Page) =>
     page.evaluate(() =>
-      [...(findPanelIn(document)?.querySelectorAll('input:not([data-testid="ns-branch"])') ?? [])].map((input) => ({ value: (input as HTMLInputElement).value, placeholder: (input as HTMLInputElement).placeholder })),
+      [...(findPanelIn(document)?.querySelectorAll('input:not([data-testid="ns-branch"]):not([data-section="branching"] input)') ?? [])].map((input) => ({ value: (input as HTMLInputElement).value, placeholder: (input as HTMLInputElement).placeholder })),
     );
   const protoInputs = await inputs(protoPage);
   const appInputs = await inputs(appPage);

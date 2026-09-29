@@ -155,8 +155,8 @@ export function BranchingSection({
   const note = problems.key ?? problems.epicBranch ?? problems.base;
 
   return (
-    <div className="sb-ns-section sb-ns-section--branching" data-testid="ns-section" data-section="branching">
-      <div className="sb-ns-label sb-ns-label--row">
+    <div className="sb-ns-section sb-ns-section--branching" data-testid="ns-branching" data-section="branching">
+      <div className="sb-br-label">
         Branching
         <span className="sb-ns-hint" data-testid="br-model">
           {epic ? 'epic/task · lazy' : 'task only · no epic'}

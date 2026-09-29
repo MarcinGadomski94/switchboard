@@ -1,3 +1,12 @@
+/* The section label: the form's section-label look (`.sb-ns-label`), under its own class since the section is not one of the prototype's. */
+.sb-br-label {
+  display: flex;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
 /*
  * D40 · the New-session form's Branching section (not in the prototype): the
  * epic key + summary row, the epic branch + base row, the muted lines and the
@@ -62,7 +71,7 @@
   text-overflow: ellipsis;
 }
 
-.sb-br-recheck {
+.sb-ns-browse.sb-br-recheck {
   padding: 4px 10px;
   font-size: 12px;
 }
@@ -117,7 +126,7 @@
   margin-top: var(--space-6);
 }
 
-.sb-br-choices .sb-ns-browse {
+.sb-br-choices .sb-ns-browse.sb-button {
   padding: 4px 10px;
   font-size: 12px;
 }
