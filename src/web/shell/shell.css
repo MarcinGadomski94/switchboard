@@ -471,6 +471,8 @@
  * pace): the bar is green (status done) below the day's allowance and yellow
  * (status need) at or above it, with a 2 px marker at the allowance. Without a
  * pace (unknown week or reset) the row keeps the D17 look: no color, no marker.
+ * D46: the Session row the same, against its allowance by the minute
+ * (docs/usage.md → Session pace).
  */
 .sb-usage .sb-meter[data-pace] .sb-meter-track {
   position: relative;

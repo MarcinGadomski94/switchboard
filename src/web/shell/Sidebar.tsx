@@ -21,7 +21,7 @@ import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { PANE_ID, PaneHideButton } from './Panes.tsx';
 import {
   type Meter,
-  type WeekPaceView,
+  type PaceView,
   conflictCount,
   cpuMeter,
   formatAge,
@@ -68,11 +68,11 @@ function isActive(route: Route, view: Route['view'], id?: string): boolean {
 }
 
 /**
- * One footer meter: label, 4 px bar, value. D23: with a `pace` (the known Week row)
- * the row carries `data-pace` (the bar's color, shell.css) and the pace `title`,
- * and the bar a 2 px marker at the allowance.
+ * One footer meter: label, 4 px bar, value. D23 / D46: with a `pace` (the known
+ * Week or Session row) the row carries `data-pace` (the bar's color, shell.css)
+ * and the pace `title`, and the bar a 2 px marker at the allowance.
  */
-export function MeterRow({ label, meter, name, model, pace }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string; readonly pace?: WeekPaceView }) {
+export function MeterRow({ label, meter, name, model, pace }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string; readonly pace?: PaceView }) {
   return (
     <div className="sb-meter" data-meter={name} data-model={model} data-pace={pace?.state} title={pace?.title}>
       <span>{label}</span>

@@ -133,13 +133,14 @@ describe('D23: the Week row shows its pace (src/web/shell/format.ts → usageRow
     expect(weekRow(system({ pct: 18.4 }), wed)?.pace?.title).toBe('On pace: 18.4% of 100% allowed until Thu 15:00');
   });
 
-  it('only the Week row: Session and model rows keep no pace, whatever their numbers', () => {
+  it('the Week pace is the Week row\'s own: model rows keep no pace, whatever their numbers; the Session row has its own (D46)', () => {
     const fable: UsageWindow = { key: 'model', label: 'Fable', model: 'Fable', pct: 93, resetsAt: RESET };
     const rows = usageRows(system({ pct: 62 }, [fable]), MON_1459);
-    expect(rows.map((row) => [row.key, row.pace?.state ?? null])).toEqual([
-      ['session', null],
-      ['week', 'ahead'],
-      ['model', null],
+    // The Session (62 %, reset at 16:48, 1h49 ahead: 191 minutes in, 63.67 % allowed) is on pace by its own rule.
+    expect(rows.map((row) => [row.key, row.pace?.state ?? null, row.pace?.markerPct ?? null])).toEqual([
+      ['session', 'on', 63.67],
+      ['week', 'ahead', 57.14],
+      ['model', null, null],
     ]);
   });
 
@@ -164,6 +165,77 @@ describe('D23: the Week row shows its pace (src/web/shell/format.ts → usageRow
     const unknown = weekRow(system(null), MON_1459);
     expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Week', name: 'week', meter: unknown }))).toBe(
       '<div class="sb-meter" data-meter="week"><span>Week</span><div class="sb-meter-track"><div class="sb-meter-fill" style="width:0%"></div></div><span class="sb-meter-value">unknown</span></div>',
+    );
+  });
+});
+
+describe('D46: the Session row shows its pace by the minute (src/web/shell/format.ts → usageRows, Sidebar MeterRow)', () => {
+  // Local times (the tooltip reads the local time), on a July day: no daylight-saving change anywhere.
+  // A 16:34 reset: the window runs 11:34 → 16:34, so 14:04 is 150 minutes in (50 % allowed) until the step at 14:05.
+  const RESET = new Date(2026, 6, 13, 16, 34).toISOString();
+  const at = (hours: number, minutes: number, seconds = 0): number => new Date(2026, 6, 13, hours, minutes, seconds).getTime();
+  const system = (session: Partial<UsageWindow> | null, extra: UsageWindow[] = []): SystemInfo => ({
+    ...SYSTEM,
+    usageWindows: [...(session ? [{ key: 'session' as const, label: 'Session', pct: 38, resetsAt: RESET, ...session }] : []), ...extra],
+  });
+  const sessionRow = (info: SystemInfo | null, now: number) => usageRows(info, now).find((row) => row.key === 'session');
+
+  it('below the allowance: on pace (green), the marker at the allowance, the tooltip with the next minute in local time', () => {
+    expect(sessionRow(system({ pct: 38 }), at(14, 4, 30))).toEqual({
+      key: 'session',
+      label: 'Session',
+      pct: 38,
+      text: '38% · 2h30',
+      pace: { state: 'on', markerPct: 50, title: 'On pace: 38% of 50% until 14:05' },
+    });
+  });
+
+  it('at or above the allowance: ahead of pace (yellow); the step a minute later moves the allowance and the marker', () => {
+    expect(sessionRow(system({ pct: 62 }), at(14, 4))?.pace).toEqual({ state: 'ahead', markerPct: 50, title: 'Ahead of pace: 62% of 50% until 14:05' });
+    expect(sessionRow(system({ pct: 50 }), at(14, 4, 59))?.pace).toEqual({ state: 'ahead', markerPct: 50, title: 'Ahead of pace: 50% of 50% until 14:05' });
+    expect(sessionRow(system({ pct: 50.2 }), at(14, 4, 59))?.pace?.state).toBe('ahead');
+    expect(sessionRow(system({ pct: 50.2 }), at(14, 5))?.pace).toEqual({ state: 'on', markerPct: 50.33, title: 'On pace: 50.2% of 50.33% until 14:06' });
+  });
+
+  it('from the window start (nothing allowed yet) to its last minute (99.67 % until the reset)', () => {
+    expect(sessionRow(system({ pct: 3 }), at(11, 34))?.pace).toEqual({ state: 'ahead', markerPct: 0, title: 'Ahead of pace: 3% of 0% until 11:35' });
+    expect(sessionRow(system({ pct: 3 }), at(11, 35))?.pace).toEqual({ state: 'ahead', markerPct: 0.33, title: 'Ahead of pace: 3% of 0.33% until 11:36' });
+    expect(sessionRow(system({ pct: 92.5 }), at(16, 33, 59))?.pace).toEqual({ state: 'on', markerPct: 99.67, title: 'On pace: 92.5% of 99.67% until 16:34' });
+  });
+
+  it('unknown stays unknown: no Session window, before /api/system answers, a reset past or more than 5 h ahead → the D17 row', () => {
+    expect(sessionRow(system(null), at(14, 4))).toEqual({ key: 'session', label: 'Session', pct: 0, text: 'unknown' });
+    expect(sessionRow(null, at(14, 4))).toEqual({ key: 'session', label: 'Session', pct: 0, text: UNKNOWN });
+    expect(sessionRow(system({ pct: 38 }), at(16, 34))).toEqual({ key: 'session', label: 'Session', pct: 38, text: '38% · 0m' });
+    expect(sessionRow(system({ pct: 38 }), at(11, 33, 59))).toEqual({ key: 'session', label: 'Session', pct: 38, text: '38% · 5h00' });
+    expect(sessionRow(system({ pct: 38 }), at(11, 0))?.pace).toBeUndefined();
+  });
+
+  it('the Week keeps its own D23 pace next to it; a model row gets none', () => {
+    const week: UsageWindow = { key: 'week', label: 'Week', pct: 18, resetsAt: new Date(2026, 6, 16, 15, 0).toISOString() };
+    const fable: UsageWindow = { key: 'model', label: 'Fable', model: 'Fable', pct: 93, resetsAt: RESET };
+    const rows = usageRows(system({ pct: 62 }, [week, fable]), at(14, 4));
+    expect(rows.map((row) => [row.key, row.pace?.title ?? null])).toEqual([
+      ['session', 'Ahead of pace: 62% of 50% until 14:05'],
+      ['week', 'On pace: 18% of 57.14% allowed until Mon 15:00'],
+      ['model', null],
+    ]);
+  });
+
+  it('MeterRow: the Session row with data-pace, the title and the marker; without a pace the D17 markup', async () => {
+    const { MeterRow } = (await import(/* @vite-ignore */ SIDEBAR)) as { MeterRow: (props: object) => unknown };
+    const known = sessionRow(system({ pct: 38 }), at(14, 4));
+    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: known, pace: known?.pace }))).toBe(
+      '<div class="sb-meter" data-meter="session" data-pace="on" title="On pace: 38% of 50% until 14:05"><span>Session</span>' +
+        '<div class="sb-meter-track"><div class="sb-meter-fill" style="width:38%"></div>' +
+        '<div class="sb-meter-marker" data-testid="pace-marker" style="left:calc(50% - 1px)"></div></div>' +
+        '<span class="sb-meter-value">38% · 2h30</span></div>',
+    );
+    const ahead = sessionRow(system({ pct: 62 }), at(14, 4));
+    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: ahead, pace: ahead?.pace }))).toContain('data-pace="ahead"');
+    const past = sessionRow(system({ pct: 38 }), at(16, 40));
+    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: past, ...(past?.pace ? { pace: past.pace } : {}) }))).toBe(
+      '<div class="sb-meter" data-meter="session"><span>Session</span><div class="sb-meter-track"><div class="sb-meter-fill" style="width:38%"></div></div><span class="sb-meter-value">38% · 0m</span></div>',
     );
   });
 });
