@@ -10,7 +10,8 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * above the quick replies, reads `Context 62% · 124k / 200k`, turns yellow at 60 %
  * and red at 80 % (the SPEC status tokens), updates live over `/hub`, resets after a
  * compaction with "compacted HH:MM" until the next turn, and survives a reload and a
- * Switchboard restart. Before any usage: an empty neutral bar, `Context —`.
+ * Switchboard restart. A tick marks where the CLI auto-compacts (ruling
+ * D49-autocompact-mark). Before any usage: an empty neutral bar, `Context —`.
  */
 
 let world: QuestionWorld;
@@ -76,7 +77,16 @@ test('the bar: live values and colors at the thresholds, a compaction resets it,
   const fillWidth = async (): Promise<number> =>
     bar.getByTestId('chat-context-fill').evaluate((el) => el.getBoundingClientRect().width / (el.parentElement as HTMLElement).getBoundingClientRect().width);
   expect(await fillWidth()).toBeCloseTo(0.62, 2);
-  await expect(bar).toHaveAttribute('title', 'Context window: 200,000 tokens · claude-haiku-4-5-20251001\nNot compacted yet');
+  // Ruling D49-autocompact-mark: a 2 px tick where the CLI auto-compacts (200 000 − min(32 000, 20 000) − 13 000 = 167 000 → 83.5 %).
+  const tickAt = async (): Promise<number> =>
+    bar.getByTestId('chat-context-tick').evaluate((el) => {
+      const track = (el.parentElement as HTMLElement).getBoundingClientRect();
+      const tick = el.getBoundingClientRect();
+      return (tick.x + tick.width / 2 - track.x) / track.width;
+    });
+  expect(await tickAt()).toBeCloseTo(0.835, 2);
+  await expect(bar.getByTestId('chat-context-tick')).toHaveCSS('width', '2px');
+  await expect(bar).toHaveAttribute('title', 'Context window: 200,000 tokens · claude-haiku-4-5-20251001\nAuto-compact at 84%\nNot compacted yet');
 
   // Live over /hub (no reload): red from 80 %, green below 60 %.
   await send(page, 'More. [fake:usage 170000]');
@@ -105,7 +115,7 @@ test('the bar: live values and colors at the thresholds, a compaction resets it,
   }, compactedAt);
   expect(clock).toMatch(/^\d\d:\d\d$/);
   await expect(page.getByTestId('chat-context-compacted')).toHaveText(`compacted ${clock}`);
-  await expect(bar).toHaveAttribute('title', `Context window: 200,000 tokens · claude-haiku-4-5-20251001\nLast compacted: ${clock} (auto)`);
+  await expect(bar).toHaveAttribute('title', `Context window: 200,000 tokens · claude-haiku-4-5-20251001\nAuto-compact at 84%\nLast compacted: ${clock} (auto)`);
   expect(await fillWidth()).toBeCloseTo(0.11, 2);
 
   // A reload: the same bar (stored on the session), still "compacted" (no turn since).
@@ -123,6 +133,9 @@ test('the bar: live values and colors at the thresholds, a compaction resets it,
   await send(page, 'Big. [fake:usage 820000 1000000]');
   await expect(text).toHaveText('Context 82% · 820k / 1M');
   await expect(bar).toHaveAttribute('data-band', 'high');
+  // 1 000 000 − 20 000 − 13 000 = 967 000 → 96.7 %.
+  await expect(bar).toHaveAttribute('title', /\nAuto-compact at 97%\n/);
+  expect(await tickAt()).toBeCloseTo(0.967, 2);
   await expect.poll(async () => (await detail(page, id)).status, { timeout: 15_000 }).toBe('done');
 
   // A Switchboard restart: the same values from SQLite.
@@ -141,7 +154,7 @@ test('before any usage: an empty neutral bar, "Context —"', async ({ page }) =
   await expect(page.getByTestId('chat-context-text')).toHaveText('Context —');
   await expect(bar).toHaveAttribute('data-band', 'unknown');
   expect(await bar.getByTestId('chat-context-fill').evaluate((el) => el.getBoundingClientRect().width)).toBe(0);
-  await expect(bar).toHaveAttribute('title', 'Context window: 200,000 tokens\nNot compacted yet');
+  await expect(bar).toHaveAttribute('title', 'Context window: 200,000 tokens\nAuto-compact at 84%\nNot compacted yet');
   // Its reply brings the first reading.
   await expect(page.getByTestId('chat-context-text')).toHaveText(/^Context \d+% · /, { timeout: 20_000 });
 });

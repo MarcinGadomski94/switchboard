@@ -20,7 +20,8 @@ import { type DemoApp, BOX_TOLERANCE_PX, hexToRgb, newVisualPage, openApp, round
  *   the fill `--status-done` / `--status-need` / `--status-fail` for ok / warn /
  *   high and 0 px wide while unknown; the text Geist Mono 11 px `--muted-2`
  *   (the machine footer's), "compacted HH:MM" in `--muted-3`;
- * - the fill's width is the percentage of the track.
+ * - the fill's width is the percentage of the track; ruling D49-autocompact-mark:
+ *   a 2 px `--muted-3` tick at the auto-compact point (83.5 %).
  * Report: `context-bar.md` + `context-bar-side-by-side.png` (seeded left, with the
  * bar right).
  */
@@ -35,7 +36,7 @@ const AT = '2026-09-29T12:05:00.000Z';
 function context(tokens: number | null, extra: Partial<SessionContext> = {}): SessionContext {
   const percent = tokens === null ? null : Math.round((tokens / 200_000) * 100);
   const band = percent === null ? 'unknown' : percent >= 80 ? 'high' : percent >= 60 ? 'warn' : 'ok';
-  return { tokens, window: 200_000, windowSource: 'reported', model: 'claude-opus-4-7', percent, band, updatedAt: AT, compaction: null, compactedRecently: false, ...extra };
+  return { tokens, window: 200_000, windowSource: 'reported', model: 'claude-opus-4-7', percent, band, updatedAt: AT, compaction: null, compactedRecently: false, autoCompactTokens: 167_000, autoCompactPercent: 83.5, ...extra };
 }
 
 interface Box {
@@ -54,6 +55,7 @@ interface Parts {
   readonly bar: Box | null;
   readonly track: Box | null;
   readonly fill: Box | null;
+  readonly tick: Box | null;
   readonly firstChild: string | null;
   readonly styles: Readonly<Record<string, string>>;
 }
@@ -80,11 +82,13 @@ async function parts(page: Page): Promise<Parts> {
       bar: box('[data-testid="chat-context"]'),
       track: box('.sb-chat-context-track'),
       fill: box('[data-testid="chat-context-fill"]'),
+      tick: box('[data-testid="chat-context-tick"]'),
       firstChild: (composer?.firstElementChild as HTMLElement | null)?.dataset['testid'] ?? null,
       styles: {
         trackBg: style('.sb-chat-context-track', 'background-color'),
         trackRadius: style('.sb-chat-context-track', 'border-radius'),
         fillBg: style('[data-testid="chat-context-fill"]', 'background-color'),
+        tickBg: style('[data-testid="chat-context-tick"]', 'background-color'),
         textFont: style('[data-testid="chat-context-text"]', 'font-family'),
         textSize: style('[data-testid="chat-context-text"]', 'font-size'),
         textColor: style('[data-testid="chat-context-text"]', 'color'),
@@ -182,6 +186,7 @@ test.describe('visual: context bar (D49 addition)', () => {
     check('track: 4 px, radius 2 px, --border-card', near(w.track?.height, 4, 0.01) && w.styles['trackRadius'] === '2px' && w.styles['trackBg'] === BORDER_CARD, `${fmt(w.track)} · ${w.styles['trackRadius']} · ${w.styles['trackBg']}`);
     check('fill: 62 % of the track', near(w.fill?.width, (w.track?.width ?? 0) * 0.62, 0.5), `${round(w.fill?.width ?? 0)} of ${round(w.track?.width ?? 0)}`);
     check('fill: ok --status-done, warn --status-need, high --status-fail', ok.styles['fillBg'] === colors.done && w.styles['fillBg'] === colors.need && high.styles['fillBg'] === colors.fail, `${ok.styles['fillBg']} · ${w.styles['fillBg']} · ${high.styles['fillBg']}`);
+    check('tick: 2 px --muted-3 at 83.5 % of the track (ruling D49-autocompact-mark)', near(w.tick?.width, 2, 0.01) && near((w.tick?.x ?? 0) + 1, (w.track?.x ?? 0) + (w.track?.width ?? 0) * 0.835, 0.5) && near(w.tick?.height, 4, 0.01) && w.styles['tickBg'] === MUTED_3, `${fmt(w.tick)} · ${w.styles['tickBg']}`);
     check('fill: unknown is empty (0 px)', near(unknown.fill?.width, 0, 0.01), fmt(unknown.fill));
     check('text: Geist Mono 11 px --muted-2 (the machine footer\'s)', (w.styles['textFont'] ?? '').includes('Geist Mono') && w.styles['textSize'] === '11px' && w.styles['textColor'] === MUTED_2, `${w.styles['textFont']} ${w.styles['textSize']} ${w.styles['textColor']}`);
     check('text: "compacted HH:MM" in --muted-3', w.styles['compactedColor'] === MUTED_3, w.styles['compactedColor'] ?? '');
