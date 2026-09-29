@@ -10,13 +10,15 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `sessions.worktrees` | editable | boolean | `true` | M5.1: pre-selects the Worktree toggle of the New-session form |
 | `sessions.ultracode` | editable | boolean | `false` | M5.1: pre-selects Ultracode |
 | `usage.warnAtPct` | editable | whole number 1–100 | `90` | M9.2: the usage warning threshold |
+| `ui.sidebarHidden` | editable | boolean | `false` | D41: the sidebar is slid out (`docs/panes.md`); read before the app's first paint, written by its hide button, reveal handle and ⌘B |
+| `ui.rightPanelHidden` | editable | boolean | `false` | D41: the session view's right panel is slid out, in every session; written by its hide button, reveal handle and ⌥⌘B |
 | `service.startAtLogin` | read-only | boolean | stored value, `false` until set | M9.1 owns the toggle and writes it when it installs the service |
 | `service.address` | read-only | string | `127.0.0.1:<port>` from the configuration | Claude Code → Background service |
 | `workspace.root` | read-only | string \| null | D14: the default saved folder's path (`docs/folders.md`), `null` while no folder is saved | not shown since the UI stage of D14 (Folders reads `GET /api/folders`); kept for compatibility |
 | `workspace.router` | read-only | string \| null | the first `# ` heading of `<default folder>/AGENTS.md` (first 16 KiB, read asynchronously), `AGENTS.md` without one, `null` without the file, without a default folder, or when the default folder is a repo (D14) | not shown since the UI stage of D14 (the check line of Folders names the router) |
 | `github.prPollMinutes` | read-only | number | the worktree manager's `DEFAULT_PR_POLL_MS` (5) | GitHub → PR merge detection |
 
-Nothing is stored until something is set; a stored value of the wrong type reads as the default. `GET` never returns other rows of the `settings` table (e.g. the demo marker `demo.seed`).
+Nothing is stored until something is set; a stored value of the wrong type reads as the default. `GET` never returns other rows of the `settings` table (e.g. the demo marker `demo.seed`). D42: the service's own `models.options` / `models.last` rows are read through `GET /api/models` instead (`docs/model-effort.md` → *At session start (D42)*).
 
 ## The sections (`src/web/views/SettingsView.tsx`, `views/settings/*`, `views/settings.css`)
 Values the API cannot tell read **unknown** (never invented).
@@ -38,3 +40,4 @@ The demo seed stores `service.startAtLogin: true` (`src/server/demo/data/setup.j
 - `tests/e2e/visual/settings.spec.ts`: D10 for all seven sections (`docs/visual/settings.md`); D14: Folders' nav label and title, the root row and scan table compared with the scan block by size, the saved-folder list recorded as an addition.
 - D34: `tests/web/install-app.test.ts` (the Install as app row's form and the install offer), `tests/e2e/install-app.spec.ts` (the row with a synthetic `beforeinstallprompt`, the Safari hint, neither in standalone) and `tests/e2e/visual/install-row.spec.ts` (the row checked on its own against the prototype's row template; the Settings visual spec never sees it: the test Chromium offers no installation). Install, update and uninstall: `docs/install-app.md`.
 - D14: `tests/e2e/folders.spec.ts` (Add… a repo, a Browse… workspace, a refused plain folder; Make default; Remove).
+- D41: `tests/server/api/settings.test.ts` (the two `ui.*` keys: defaults, persistence, 422, a stored mistyped value) and the pane tests listed in `docs/panes.md` → *Tests*. The Settings view shows no row for them: the panes' own controls change them.

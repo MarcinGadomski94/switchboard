@@ -79,6 +79,23 @@ export interface NewSession {
    * `session/{name}`.
    */
   readonly branch?: string | null;
+  /**
+   * Additive (D42): the model the session starts with, passed as `--model` on
+   * its first spawn (and every later one, D31). Omitted, `null`, blank or
+   * `"default"` = the CLI's default (no `--model`). Checked like D31's
+   * `PUT /api/sessions/{id}/model`: against the latest model list any claude
+   * process reported (`GET /api/models`) when there is one, else any model name
+   * (422 on field `model`). A start that names `model` or `effort` becomes the
+   * service's last choice ({@link ModelSettings.last}).
+   */
+  readonly model?: string | null;
+  /**
+   * Additive (D42): the effort level the session starts with (`--effort`);
+   * omitted, `null` or blank = the CLI's default. One of the chosen model's levels
+   * while the list is known (a model without levels takes none), else one of
+   * `low, medium, high, xhigh, max` (422 on field `effort`).
+   */
+  readonly effort?: string | null;
 }
 
 /**
@@ -100,6 +117,10 @@ export interface NewRepoSession {
   readonly title?: string | null;
   /** Additive (D32): as {@link NewSession.branch} (required with `worktrees: true`). */
   readonly branch?: string | null;
+  /** Additive (D42): as {@link NewSession.model}. */
+  readonly model?: string | null;
+  /** Additive (D42): as {@link NewSession.effort}. */
+  readonly effort?: string | null;
 }
 
 /**
@@ -142,24 +163,31 @@ export type ActivityState = 'thinking' | 'tool' | 'writing' | 'waiting' | 'backg
 
 /**
  * Additive (D30): what a pending background task is: a `Bash` run in the background,
- * an async `Agent` / `Task`, a `Monitor`, or a `ScheduleWakeup`.
+ * an async `Agent` / `Task`, a `Monitor`, or a `ScheduleWakeup`. Additive (D43): a
+ * `Workflow` run in the background (`workflow`), and `task` for any other task the
+ * CLI reports (a `system/task_started` of a type Switchboard does not know).
  */
-export type BackgroundTaskKind = 'bash' | 'agent' | 'monitor' | 'wakeup';
+export type BackgroundTaskKind = 'bash' | 'agent' | 'monitor' | 'wakeup' | 'workflow' | 'task';
 
 /**
  * Additive (D30): background work the main agent started and whose end the CLI has
  * not reported yet (`docs/derivations.md` → *Background work*). Derived in memory
- * from the stream-json, never stored.
+ * from the stream-json, never stored. D43: also every other background task the CLI
+ * reports (`system/task_started`).
  */
 export interface BackgroundTask {
-  /** The CLI's task id (the background command's, the async agent's, the monitor's); the `tool_use` id when the CLI gave none (a wake-up). */
+  /** The CLI's task id (the background command's, the async agent's, the monitor's, the workflow's); the `tool_use` id when the CLI gave none (a wake-up). */
   readonly id: string;
-  /** The `tool_use` that started it. */
+  /** The `tool_use` that started it; D43: the task id for a task the CLI reported without one (a `system/task_started` with no `tool_use_id`). */
   readonly toolUseId: string;
   readonly kind: BackgroundTaskKind;
-  /** Short literal text (D19's summaries; for a GitHub wait the `gh …` command, for a wake-up its reason); at most 80 characters. */
+  /**
+   * Short literal text (D19's summaries; for a GitHub wait the `gh …` command, for a
+   * wake-up its reason; D43: a workflow's `Summary:`, any other CLI-reported task's
+   * description); at most 80 characters.
+   */
   readonly summary: string;
-  /** When it started (ISO): its tool call. */
+  /** When it started (ISO): its tool call; D43: for a task known only from its `system/task_started`, that line's arrival. */
   readonly startedAt: string;
   /** `wakeup` only: when the CLI wakes the session (ISO): the call's time + `delaySeconds`. */
   readonly wakeAt?: string;
@@ -197,7 +225,7 @@ export interface SessionActivity {
   readonly state: ActivityState;
   /** When the top-level state began (ISO); for `tool`, when that tool call started; for `background`, when the oldest pending task started. */
   readonly since: string;
-  /** `tool`: the main agent's running tool; `background`: the tool that started the oldest pending task; otherwise `null`. */
+  /** `tool`: the main agent's running tool; `background`: the tool that started the oldest pending task (D43: `null` for a `task`, which no known tool started); otherwise `null`. */
   readonly tool: string | null;
   /** `tool` / `background`: that call's short summary; otherwise `null`. */
   readonly summary: string | null;
@@ -328,6 +356,28 @@ export interface SessionModelOption {
 export interface SessionModelInput {
   readonly model?: string | null;
   readonly effort?: string | null;
+}
+
+/** Additive (D42): a model and effort as stored (`null` = the CLI's default: no `--model` / `--effort`). */
+export interface SessionModelChoice {
+  readonly model: string | null;
+  readonly effort: string | null;
+}
+
+/**
+ * Additive (D42): `GET /api/models`, what the New-session form's Model row
+ * offers and starts on (`docs/model-effort.md` → *At session start (D42)*).
+ * - `options`: the latest model list any claude process reported in its
+ *   `initialize` reply (the service's `models.options`); `null` until one did
+ *   (the form offers the CLI's aliases then);
+ * - `last`: the last model and effort the developer chose, at a start
+ *   (`POST /api/sessions` with `model` / `effort`) or in a session header's
+ *   picker (`PUT /api/sessions/{id}/model`); `null` until one was chosen (the
+ *   form starts on the CLI's default then).
+ */
+export interface ModelSettings {
+  readonly options: readonly SessionModelOption[] | null;
+  readonly last: SessionModelChoice | null;
 }
 
 

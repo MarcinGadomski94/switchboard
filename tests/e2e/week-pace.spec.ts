@@ -17,7 +17,9 @@ import { stubToolProbes } from './probes.ts';
  * - one minute before the step into day 5 (day 4, 57.14 % allowed): yellow;
  * - at the step (day 5, 71.43 %): green, the marker moves;
  * - after the reset (the page still has the window): no color, no marker, no tooltip.
- * The Session row never changes.
+ * The Session row never takes the Week's pace. D46 gives it its own, so its reset
+ * here is 1 h after the seed: past on the page's clock at every moment above, it
+ * has no pace and keeps the D17 look (tests/e2e/session-pace.spec.ts drives it).
  */
 
 const MIN = 60_000;
@@ -86,7 +88,7 @@ test.beforeAll(async () => {
       subscription_type: 'max',
       rate_limits_available: true,
       rate_limits: {
-        five_hour: { utilization: 20, resets_at: iso(seededAt + 2 * 60 * MIN), limit_dollars: null, used_dollars: null, remaining_dollars: null, locked_reason: null },
+        five_hour: { utilization: 20, resets_at: iso(seededAt + 60 * MIN), limit_dollars: null, used_dollars: null, remaining_dollars: null, locked_reason: null },
         seven_day: { utilization: WEEK_PCT, resets_at: iso(reset), limit_dollars: null, used_dollars: null, remaining_dollars: null, locked_reason: null },
       },
     };
@@ -133,7 +135,8 @@ test('the Week bar is yellow at or above the day’s allowance, green below it, 
   await expectMarkerAt(week, 57.14);
   expect(await week.getByTestId('pace-marker').evaluate((marker) => getComputedStyle(marker).backgroundColor)).toBe(muted);
 
-  // The Session row is unchanged: no pace, the D17 bright fill, no marker, no tooltip.
+  // The Session row does not take the Week's pace: its reset has passed on the page's clock (no D46 pace either),
+  // so it keeps the D17 look: no pace, the bright fill, no marker, no tooltip.
   const session = page.getByTestId('usage-meters').locator('[data-meter="session"]');
   await expect(session).not.toHaveAttribute('data-pace');
   await expect(session).not.toHaveAttribute('title');

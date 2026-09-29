@@ -1,8 +1,9 @@
 /**
  * Pure rules of the worktree manager (M2.2; `docs/worktrees.md`): the gap #1
  * naming, which folders a solution name may be, parsing `git diff` output into
- * `FileDiff`s (gap #10), reading `gh pr view --json` and the gap #2 move message.
- * No processes, no file system: `src/server/worktrees/` runs git / gh.
+ * `FileDiff`s (gap #10), reading `gh pr view --json`, the gap #2 move message
+ * and (D38) reading `git worktree list --porcelain` to adopt a session's own
+ * worktrees. No processes, no file system: `src/server/worktrees/` runs git / gh.
  */
 import path from 'node:path';
 import type { FileDiff } from './api.ts';
@@ -255,4 +256,71 @@ export function moveToWorktreeMessage(input: MoveMessageInput): string {
     `From now on, make every change to ${input.repo} in ${input.worktreePath} (branch ${input.branch}, created from the current commit of ${input.base}). Do not edit files in ${input.repoPath} any more.`,
     `Anything you already changed in ${input.repoPath} was left where it is. Re-apply the changes you still need inside the worktree, for example by copying the files you edited. Do not stash, reset or check out anything in ${input.repoPath}: that working tree belongs to the developer.`,
   ].join('\n\n');
+}
+
+// ── D38: adopted worktrees ───────────────────────────────────────────────
+
+/** One worktree of a repository as `git worktree list --porcelain` reports it. */
+export interface ListedWorktree {
+  /** Absolute path, as git recorded it. */
+  readonly path: string;
+  /** The commit its HEAD points at; `null` when git printed none. */
+  readonly head: string | null;
+  /** Its branch without `refs/heads/`; `null` when HEAD is detached (or for a bare entry). */
+  readonly branch: string | null;
+  readonly bare: boolean;
+  /** git reports its folder gone (`prunable`). */
+  readonly prunable: boolean;
+}
+
+/**
+ * Parses `git worktree list --porcelain` (records separated by a blank line;
+ * `worktree <path>`, `HEAD <sha>`, `branch refs/heads/<name>`, `detached`,
+ * `bare`, `locked [reason]`, `prunable [reason]`). The first record is the
+ * repository's main worktree. Unknown lines are ignored.
+ */
+export function parseWorktreeList(stdout: string): ListedWorktree[] {
+  const list: ListedWorktree[] = [];
+  for (const record of stdout.replace(/\r\n/g, '\n').split(/\n\s*\n/)) {
+    let worktree: string | null = null;
+    let head: string | null = null;
+    let branch: string | null = null;
+    let bare = false;
+    let prunable = false;
+    for (const line of record.split('\n')) {
+      if (line.startsWith('worktree ')) worktree = line.slice('worktree '.length);
+      else if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length).trim() || null;
+      else if (line.startsWith('branch ')) branch = line.slice('branch '.length).trim().replace(/^refs\/heads\//, '') || null;
+      else if (line === 'bare') bare = true;
+      else if (line === 'prunable' || line.startsWith('prunable ')) prunable = true;
+    }
+    if (worktree !== null && worktree !== '') list.push({ path: worktree, head, branch, bare, prunable });
+  }
+  return list;
+}
+
+/** What a session's own worktree looks like (D38 adoption). */
+export interface SessionWorktreeMatch {
+  /** The session's short name: its worktree folders are `<repo>-wt-<name>` (gap #1). */
+  readonly sessionName: string;
+  /** The branch the session's worktrees are on (`sessions.branch`); `null` when it has none stored. */
+  readonly branch: string | null;
+  /** The repository's main checkout. */
+  readonly repoPath: string;
+  /** The solution's name (`mobile` for a nested `mobile/<clone>` checkout). */
+  readonly solution: string;
+}
+
+/**
+ * D38: `true` when a listed (non-main) worktree belongs to the session: it is on
+ * a branch (not detached, not bare, its folder not gone) and that branch is the
+ * session's branch, or its folder is named `<repo>-wt-<name>` (gap #1; `<repo>`
+ * = the repository's folder name or the solution's name).
+ */
+export function isSessionWorktree(entry: ListedWorktree, match: SessionWorktreeMatch): boolean {
+  if (entry.bare || entry.prunable || entry.branch === null) return false;
+  if (match.branch !== null && entry.branch === match.branch) return true;
+  const folder = path.basename(entry.path);
+  const solution = match.solution.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? match.solution;
+  return [path.basename(match.repoPath), solution].some((repo) => folder === `${repo}-wt-${match.sessionName}`);
 }

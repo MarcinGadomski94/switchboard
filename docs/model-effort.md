@@ -39,6 +39,21 @@ Not probed (D11 allows Haiku only and no model calls here): a change while a tur
 - Esc, a click outside or ✕ closes the popover; switching sessions closes it.
 - Sessions without model information (`model: null`, the demo's) show no picker, so the prototype's header and every visual spec are unchanged.
 
+## At session start (D42)
+Developer ruling D42 (`docs/decisions.md` → *Model at session start, remembered*): the New-session form has the same picker, and Switchboard remembers the last choice.
+
+| Part | What happens | Code |
+|---|---|---|
+| `models.options` | Every `initialize` reply with a usable list (where D31 stores the session's `model_options`) also replaces the service's `models.options` setting: the latest list any process reported. | `SessionSupervisor.#spawn` → `initialized`, `rememberModelOptions` (`src/server/settings/models.ts`) |
+| `models.last` | `{ model, effort }` (`null` = the CLI's default). Written by a `POST /api/sessions` whose body names `model` or `effort` (the form always does; a body with neither leaves it alone), and by every choice D31's `PUT /api/sessions/{id}/model` stores (also the model a CLI took before it refused the effort). Scheduled runs, teleports and moved conversations never write it. | `api/sessions.ts` (POST), `#setModelNow`, `rememberModelChoice` |
+| `GET /api/models` | `{ options, last }`, each `null` while unset (read defensively: `readModelOptions` / `readModelChoice`). Both are rows of the `settings` table that `GET/PUT /api/settings` do not carry. | `api/settings.ts`, `readModelSettings` |
+| `NewSession.model` / `effort` | Optional (also on `NewRepoSession` and schedule templates): text ≤ 100 characters or `null`, normalized like D31's route (blank / `default` = `null`), checked with `checkModelChoice` against `models.options` when known, else D31's rules (422 `invalid` on `model` / `effort`, nothing started). Stored on the session at creation (`sessions.model` / `effort`), so the first spawn passes `--model` / `--effort`. | `modelOf` in `sessions/validate.ts`, `startNewSession`, `SessionSupervisor.start` |
+| Schedules | The template keeps `model` / `effort` like any other field (checked on save); each run starts with them, checked again against the list of that moment (a model no longer offered fails the run with the 422 text). | `validateScheduleInput`, `Scheduler.save` / `#fire` |
+
+**The form's Model row** (`docs/new-session.md` → *Model (D42)*): D31's trigger and popover (`ModelChoicePicker`, shared with the header) over `models.options`, else the CLI's aliases (`CLI_MODEL_ALIASES`: `default`, `opus`, `sonnet`, `haiku`, no effort levels). It starts on the developer's pick or a prefill's (a schedule's Edit), else `models.last`, else the CLI's default, always fitted to what is offered (`fitModelChoice`: a model not listed → the default; an effort the model lacks → Default). Picks follow D31's rule (a new model keeps the effort when it has that level).
+
+Tests: `tests/web/model-at-start.test.ts` (options, the start choice, fitting, the effort list per model, picks, the summary line, bodies, schedules, the readers), `tests/server/api/model-at-start.test.ts` (real path: `models.options` from `initialize`, the stored choice and the first spawn's argv, `models.last` from a start and from D31's route, 422s with and without a list, a repo folder, a schedule's run), `tests/e2e/model-at-start.spec.ts` (real path: the aliases, the reported list, a start's argv, the form on the last choice and on a later header pick), the visual spec's `D42 …` rows (`docs/visual/new-session.md`).
+
 ## fake-claude
 `docs/fake-claude.md` → *Model and effort*: `initialize` lists the recorded models (`FAKE_CLAUDE_MODELS=none` leaves the list out); `set_model` and `apply_flag_settings` answer as probed (a bare success, `Model '<x>' not found` / `catalog_unknown`); `FAKE_CLAUDE_SET_MODEL_ERROR` / `FAKE_CLAUDE_EFFORT_ERROR` refuse them with a given text; `get_settings` and later `system/init` lines echo the choice; `--effort` is accepted; `FAKE_CLAUDE_LOG` records every spawn's argv, so tests assert `--model` / `--effort`.
 

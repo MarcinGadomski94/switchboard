@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **7.18%**, full page **5.13%**.
+Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **7.82%**, full page **5.56%**.
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `new-session-side-by-side.png` (the panel), `new-session-page-side-by-side.png` (page).
@@ -19,11 +19,17 @@ The Folder row above section 1 (saved-folder dropdown, Browse…, check line) an
 ## D32 additions (not findings)
 With Worktree on (the prototype's draft) the app's form has a **Branch row** inside section 1 under the name / task row (the name field's box and style, placeholder `PROJ-0001-short-description`, the ticket branch entered through the form like the draft's other values, since Start needs it), and the summary a **`branch` line** right after `# worktrees`. The prototype has neither: section 1 is compared with its height less the row's (`height − <n>` in the table), the sections below it with their y less that too, and the summary lines after `# worktrees` at the app's index + 2 with their y less both added lines. The added parts are checked on their own (`D32 …` rows).
 
+## D38 ruling (not findings)
+Picking solutions is optional (the agent determines them when none is picked). In the `empty` state the prototype's `⚠ pick at least one solution` line reads `solutions  chosen by the agent` in the app (a value line at the warning's place), Start is enabled (the app's Branch field holds the draft's ticket branch; the prototype shows it at 45%) and section 4's hint reads `0 selected · leave empty to let the agent choose · read-only folders locked`. Those three parts leave the prototype comparison and are checked on their own (`D38 …` rows): the hint has the prototype hint's styles, right edge, y and height; the line the warning line's box and style (color aside: a value line's); Start the prototype's box, copy and styles with opacity 1. The draft state (solutions picked) is compared as before.
+
+## D42 additions (not findings)
+The Launch area's **Model row** (the toggles block's third row: title `Model`, description `Starts on your last choice`, D31's model and effort picker where the switches sit) and the summary's **`model` line** right after `ultracode` are not in the prototype. The toggles block is compared with its height less the row's share (`height − <n>`), the summary label and the summary with their y less it (the side keeps its height: the summary is that much shorter, `height + <n>`), and the summary lines after `ultracode` at the app's index + 1 more with their y less the added line too. The added parts are checked on their own (`D42 …` rows): the row has the Ultracode row's box one toggles gap below it and the toggle rows' type, the picker sits at the switches' right edge in the header actions' look on the CLI's default (the demo reports no models), the summary line is a value line; in the draft the popover opens inside the side column with the CLI's aliases and Esc closes only the popover.
+
 ## D25 addition (not a finding)
 **From a remote session** (`⇣` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (`D25 …` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
 ## Boxes (±2 px), copy and computed styles
-Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the warning line, Start at 45%). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
+Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the prototype's warning line and Start at 45%, D38's line, Start and hint checked on their own). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -57,9 +63,9 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · phaseUi | size (y − 120) | 208,694 71.7×33 | 208,628 71.7×33 | ok | "UI-first" |
 | draft · phaseIntegration | size (y − 120) | 285.7,694 94.1×33 | 285.7,628 94.1×33 | ok | "Integration" |
 | draft · launchLabel | box | 901,50 359×44 | 901,50 359×44 | ok | "Launch" |
-| draft · toggles | box | 901,94 359×78 | 901,94 359×78 | ok |  |
-| draft · summaryLabel | box | 901,172 359×40 | 901,172 359×40 | ok | "Summary" |
-| draft · summary | box | 917,212 327×569 | 917,212 327×569 | ok |  |
+| draft · toggles | box (y − 0, height − 45) | 901,94 359×78 | 901,94 359×78 | ok |  |
+| draft · summaryLabel | box (y − 45) | 901,172 359×40 | 901,172 359×40 | ok | "Summary" |
+| draft · summary | box (y − 45, height + 45) | 917,212 327×569 | 917,212 327×569 | ok |  |
 | draft · actions | box | 901,781 359×69 | 901,781 359×69 | ok |  |
 | draft · cancel | box | 917,797 71.3×37 | 917,797 71.3×37 | ok | "Cancel" |
 | draft · start | box | 996.3,797 247.7×37 | 996.3,797 247.7×37 | ok | "Start session" |
@@ -77,18 +83,18 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · ultracodeDesc | box | 921,156 277×16 | 921,156 277×16 | ok | "Dispatch via the Workflow tool" |
 | draft · ultracodeSwitch | box | 1208,146.5 32×18 | 1208,146.5 32×18 | ok |  |
 | draft · ultracodeKnob | box | 1210,148.5 14×14 | 1210,148.5 14×14 | ok |  |
-| draft · summaryLine0 | box | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
-| draft · summaryLine1 | box (y − 20.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
-| draft · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      feature-building" |
-| draft · summaryLine3 | box (y − 20.1) | 932,285.4 297×20.1 | 932,285.4 297×20.1 | ok | "mode      workspace orchestrator" |
-| draft · summaryLine4 | box (y − 20.1) | 932,305.5 297×20.1 | 932,305.5 297×20.1 | ok | "phase     UI-first" |
-| draft · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
-| draft · summaryLine6 | box (y − 20.1) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
-| draft · summaryLine7 | box (y − 20.1) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
-| draft · summaryLine8 | box (y − 40.3) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "../acme-app-front-wt-free-talk-640" |
-| draft · summaryLine9 | box (y − 40.3) | 932,397.5 297×20.1 | 932,397.5 297×20.1 | ok | "../mobile-wt-free-talk-640" |
-| draft · summaryLine10 | box (y − 40.3) | 932,417.6 297×11.5 | 932,417.6 297×11.5 | ok | "" |
-| draft · summaryLine11 | box (y − 40.3) | 932,429.1 297×20.1 | 932,429.1 297×20.1 | ok | "✓ answers pre-filled → agent confirms, no re-ask" |
+| draft · summaryLine0 | box (y − 45) | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
+| draft · summaryLine1 | box (y − 65.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
+| draft · summaryLine2 | box (y − 65.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      feature-building" |
+| draft · summaryLine3 | box (y − 65.1) | 932,285.4 297×20.1 | 932,285.4 297×20.1 | ok | "mode      workspace orchestrator" |
+| draft · summaryLine4 | box (y − 65.1) | 932,305.5 297×20.1 | 932,305.5 297×20.1 | ok | "phase     UI-first" |
+| draft · summaryLine5 | box (y − 65.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
+| draft · summaryLine6 | box (y − 85.3) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
+| draft · summaryLine7 | box (y − 85.3) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
+| draft · summaryLine8 | box (y − 105.4) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "../acme-app-front-wt-free-talk-640" |
+| draft · summaryLine9 | box (y − 105.4) | 932,397.5 297×20.1 | 932,397.5 297×20.1 | ok | "../mobile-wt-free-talk-640" |
+| draft · summaryLine10 | box (y − 105.4) | 932,417.6 297×11.5 | 932,417.6 297×11.5 | ok | "" |
+| draft · summaryLine11 | box (y − 105.4) | 932,429.1 297×20.1 | 932,429.1 297×20.1 | ok | "✓ answers pre-filled → agent confirms, no re-ask" |
 | draft · inputs (value, placeholder) | — | [{"value":"free-talk-640","placeholder":"session-name"},{"va… | same | ok | |
 | draft · readOnlyFolder | size | 208,629 120×20 | 208,683 120×20 | ok | "read-only" |
 | draft · readOnlyChip1 | size | 338,629 108.4×26 | 338,683 108.4×26 | ok | "deprecated/*" |
@@ -121,13 +127,28 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | draft · D32 Branch note font (mono meta) | addition | — | 11px "Geist Mono", monospace | ok | |
 | draft · D32 summary branch line after # worktrees | addition | — | "branch    PROJ-640-free-talk" | ok | |
 | draft · D32 summary branch line = a value line | addition | — | value | ok | |
+| draft · D42 Model row = the toggles' third row | addition | — | 2 | ok | |
+| draft · D42 Model row = the Ultracode row's x, width, height | addition | — | 921,184 319×33 | ok | |
+| draft · D42 Model row one toggles gap below Ultracode | addition | — | 12 px vs 12 px | ok | |
+| draft · D42 title copy | addition | — | "Model" | ok | |
+| draft · D42 title style = the toggle titles' | addition | — | same | ok | |
+| draft · D42 description copy | addition | — | "Starts on your last choice" | ok | |
+| draft · D42 description style = the toggle descriptions' | addition | — | same | ok | |
+| draft · D42 picker on the CLI default (the demo reports no models) | addition | — | "Default▾" | ok | |
+| draft · D42 picker right edge = the switches', centered in the row | addition | — | 1240 vs 1240 · 28 px high | ok | |
+| draft · D42 picker look = the header actions' (12px, 1px, 6px; Cancel's line color) | addition | — | 12px 1px 6px same line | ok | |
+| draft · D42 summary model line after ultracode | addition | — | "model     Default" | ok | |
+| draft · D42 summary model line = a value line | addition | — | value | ok | |
+| draft · D42 popover inside the side column, above the actions | addition | — | 910,221 330×197 | ok | |
+| draft · D42 popover: the CLI aliases, no effort pills | addition | — | ["default","opus","sonnet","haiku"] | ok | |
+| draft · D42 Esc closes the popover, the modal stays | addition | — | {"popover":0,"modal":1} | ok | |
 | single · six | size (y − 120) | 208,745 664×54 | 208,679 664×54 | ok |  |
 | single · sixLabel | size (y − 120) | 208,745 664×14 | 208,679 664×14 | ok | "6 · Mobile coordination" |
 | single · sixPills | size (y − 120) | 208,766 664×33 | 208,700 664×33 | ok |  |
 | single · sixPill1 | size (y − 120) | 208,766 153.6×33 | 208,700 153.6×33 | ok | "Sequential follow-up" |
 | single · sixPill2 | size (y − 120) | 367.6,766 105.9×33 | 367.6,700 105.9×33 | ok | "Parallel-twin" |
 | single · sixPill3 | size (y − 120) | 479.5,766 162.9×33 | 479.5,700 162.9×33 | ok | "No mobile counterpart" |
-| single · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "mobile    sequential" |
+| single · summaryLine5 | box (y − 65.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "mobile    sequential" |
 | qa · six | size (y − 116) | 208,745 664×97 | 208,679 664×97 | ok |  |
 | qa · sixLabel | size (y − 116) | 208,745 664×14 | 208,679 664×14 | ok | "6 · QA contract" |
 | qa · sixPills | size (y − 116) | 208,767 664×33 | 208,701 664×33 | ok |  |
@@ -137,20 +158,17 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | qa · qaFields | size (y − 116) | 208,808 664×34 | 208,742 664×34 | ok |  |
 | qa · qaConfluence | size (y − 116) | 208,808 328×34 | 208,742 328×34 | ok |  |
 | qa · qaFigma | size (y − 116) | 544,808 328×34 | 544,742 328×34 | ok |  |
-| qa · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      test-authoring (QA)" |
-| qa · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "stack     both" |
-| empty · solutionsHint | box (y − 120) | 638.9,339 233.1×14 | 638.9,339 233.1×14 | ok | "0 selected · read-only folders locked" |
-| empty · start | box | 996.3,797 247.7×37 | 996.3,797 247.7×37 | ok | "Start session" |
-| empty · summaryLine0 | box | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
-| empty · summaryLine1 | box (y − 20.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
-| empty · summaryLine2 | box (y − 20.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      feature-building" |
-| empty · summaryLine3 | box (y − 20.1) | 932,285.4 297×20.1 | 932,285.4 297×20.1 | ok | "mode      single-solution" |
-| empty · summaryLine4 | box (y − 20.1) | 932,305.5 297×20.1 | 932,305.5 297×20.1 | ok | "phase     UI-first" |
-| empty · summaryLine5 | box (y − 20.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
-| empty · summaryLine6 | box (y − 20.1) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
-| empty · summaryLine7 | box (y − 20.1) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
-| empty · summaryLine8 | box (y − 40.3) | 932,377.4 297×20.1 | 932,377.4 297×20.1 | ok | "⚠ pick at least one solution" |
-| empty · summaryLine9 | box (y − 40.3) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
+| qa · summaryLine2 | box (y − 65.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      test-authoring (QA)" |
+| qa · summaryLine5 | box (y − 65.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "stack     both" |
+| empty · summaryLine0 | box (y − 45) | 932,225 297×20.1 | 932,225 297×20.1 | ok | "# claude code · background · Max" |
+| empty · summaryLine1 | box (y − 65.1) | 932,245.1 297×20.1 | 932,245.1 297×20.1 | ok | "cwd       D:\\acme" |
+| empty · summaryLine2 | box (y − 65.1) | 932,265.3 297×20.1 | 932,265.3 297×20.1 | ok | "work      feature-building" |
+| empty · summaryLine3 | box (y − 65.1) | 932,285.4 297×20.1 | 932,285.4 297×20.1 | ok | "mode      single-solution" |
+| empty · summaryLine4 | box (y − 65.1) | 932,305.5 297×20.1 | 932,305.5 297×20.1 | ok | "phase     UI-first" |
+| empty · summaryLine5 | box (y − 65.1) | 932,325.6 297×20.1 | 932,325.6 297×20.1 | ok | "ultracode off" |
+| empty · summaryLine6 | box (y − 85.3) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
+| empty · summaryLine7 | box (y − 85.3) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
+| empty · summaryLine9 | box (y − 105.4) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
 | empty · D14 Folder row between the head and section 1 | addition | — | 208,119 664×58 | ok | |
 | empty · D14 label copy | addition | — | "Folder" | ok | |
 | empty · D14 label style = section 1 label | addition | — | same | ok | |
@@ -168,6 +186,28 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · D32 Branch note font (mono meta) | addition | — | 11px "Geist Mono", monospace | ok | |
 | empty · D32 summary branch line after # worktrees | addition | — | "branch    PROJ-640-free-talk" | ok | |
 | empty · D32 summary branch line = a value line | addition | — | value | ok | |
+| empty · D38 hint copy | ruling | — | "0 selected · leave empty to let the agent choose · read-onl | ok | |
+| empty · D38 hint style = the prototype hint | ruling | — | same | ok | |
+| empty · D38 hint right edge, y and height = the prototype hint | ruling | — | 872 vs 872 | ok | |
+| empty · D38 summary line copy (the prototype warning's place) | ruling | — | "solutions  chosen by the agent" | ok | |
+| empty · D38 summary line = a value line | ruling | — | value rgb(191, 190, 184) | ok | |
+| empty · D38 summary line x, y and height = the warning line | ruling | — | 932,482.8 297×20.1 | ok | |
+| empty · D38 summary line style = the warning line (color aside) | ruling | — | same | ok | |
+| empty · D38 Start box and copy = the prototype | ruling | — | 996.3,797 247.7×37 "Start session" | ok | |
+| empty · D38 Start enabled (opacity 1; the prototype 0.45) | ruling | — | 1 vs 0.45 | ok | |
+| empty · D38 Start style = the prototype (opacity aside) | ruling | — | same | ok | |
+| empty · D42 Model row = the toggles' third row | addition | — | 2 | ok | |
+| empty · D42 Model row = the Ultracode row's x, width, height | addition | — | 921,184 319×33 | ok | |
+| empty · D42 Model row one toggles gap below Ultracode | addition | — | 12 px vs 12 px | ok | |
+| empty · D42 title copy | addition | — | "Model" | ok | |
+| empty · D42 title style = the toggle titles' | addition | — | same | ok | |
+| empty · D42 description copy | addition | — | "Starts on your last choice" | ok | |
+| empty · D42 description style = the toggle descriptions' | addition | — | same | ok | |
+| empty · D42 picker on the CLI default (the demo reports no models) | addition | — | "Default▾" | ok | |
+| empty · D42 picker right edge = the switches', centered in the row | addition | — | 1240 vs 1240 · 28 px high | ok | |
+| empty · D42 picker look = the header actions' (12px, 1px, 6px; Cancel's line color) | addition | — | 12px 1px 6px same line | ok | |
+| empty · D42 summary model line after ultracode | addition | — | "model     Default" | ok | |
+| empty · D42 summary model line = a value line | addition | — | value | ok | |
 
 ## SPEC tokens (computed)
 | Check | Expected | App | Result |

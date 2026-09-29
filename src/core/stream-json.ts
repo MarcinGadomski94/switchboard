@@ -161,7 +161,11 @@ export interface ControlResponseMessage extends Base {
   readonly error: string | null;
 }
 
-/** `system/task_started`: a subagent (`local_agent`) or a background shell (`local_bash`) started. */
+/**
+ * `system/task_started`: a subagent (`local_agent`), a background shell
+ * (`local_bash`), a workflow (`local_workflow`) or any other task the CLI runs
+ * (D43: `docs/derivations.md` → *Background work*).
+ */
 export interface TaskStartedMessage extends Base {
   readonly kind: 'task-started';
   readonly taskId: string;
@@ -169,7 +173,12 @@ export interface TaskStartedMessage extends Base {
   readonly description: string | null;
   readonly taskType: string | null;
   readonly subagentType: string | null;
-  readonly backgrounded: boolean;
+  /** `is_backgrounded`: `true` / `false`, `null` when the line has none (a workflow's has none). */
+  readonly backgrounded: boolean | null;
+  /** D43: `workflow_name` (a workflow's `meta.name`). */
+  readonly workflowName: string | null;
+  /** D43: `ambient: true`: a task the CLI keeps out of its own background list (a transcript-less or ambient watcher). */
+  readonly ambient: boolean;
 }
 
 /** `system/task_progress`. */
@@ -186,6 +195,8 @@ export interface TaskUpdatedMessage extends Base {
   readonly kind: 'task-updated';
   readonly taskId: string;
   readonly status: string | null;
+  /** D43: `patch.is_backgrounded` (`true` when a foreground task moved to the background), `null` when the patch has none. */
+  readonly backgrounded: boolean | null;
 }
 
 /** `system/task_notification`: the task's final summary. */
@@ -283,6 +294,10 @@ function rec(value: unknown): JsonRecord | null {
   return isRecord(value) ? value : null;
 }
 
+function bool(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
+}
+
 /** Text of a message `content`: the string itself, or the `text` blocks joined with `\n`. */
 export function contentText(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -357,7 +372,9 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         description: str(obj['description']),
         taskType: str(obj['task_type']),
         subagentType: str(obj['subagent_type']),
-        backgrounded: obj['is_backgrounded'] === true,
+        backgrounded: bool(obj['is_backgrounded']),
+        workflowName: str(obj['workflow_name']),
+        ambient: obj['ambient'] === true,
       };
     case 'task_progress':
       return {
@@ -368,8 +385,10 @@ function parseSystem(obj: JsonRecord, base: Base, subtype: string | null): Strea
         description: str(obj['description']),
         lastToolName: str(obj['last_tool_name']),
       };
-    case 'task_updated':
-      return { ...base, kind: 'task-updated', taskId: str(obj['task_id']) ?? '', status: str(rec(obj['patch'])?.['status']) };
+    case 'task_updated': {
+      const patch = rec(obj['patch']);
+      return { ...base, kind: 'task-updated', taskId: str(obj['task_id']) ?? '', status: str(patch?.['status']), backgrounded: bool(patch?.['is_backgrounded']) };
+    }
     case 'task_notification':
       return {
         ...base,

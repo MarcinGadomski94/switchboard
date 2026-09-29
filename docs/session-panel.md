@@ -87,3 +87,6 @@ D36: `overview-open` (the name link of a row whose subagent has a chat; the row 
 
 ## No sideways scrolling (D29, developer ruling 2026-09-28)
 The panel scrolls down only (`overflow-x: hidden`): agent names wrap as in the prototype; description, path and terminal lines are cut with …; a branch chip keeps its width up to 60% of the row, then is cut with …; each carries its full text as a tooltip. `tests/e2e/session-panel.spec.ts` checks `scrollWidth <= clientWidth`.
+
+## Hiding the panel (D41, developer ruling 2026-09-29)
+The overview's label row (the panel's first row) holds the panel's hide button at its right, out of the flow, so the row keeps its height and the prototype's parts their boxes. ⌥⌘B (Ctrl+Alt+B) does the same. A hidden panel slides out to the right, its column narrows to a 6 px rail with the reveal handle, and the header and tabs take the freed width; the state is stored by the service and applies to every session. While hidden the panel is `inert` and `aria-hidden`, and D27's "as printed" popover closes. Details: `docs/panes.md`.

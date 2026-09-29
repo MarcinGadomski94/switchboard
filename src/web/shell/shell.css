@@ -471,6 +471,8 @@
  * pace): the bar is green (status done) below the day's allowance and yellow
  * (status need) at or above it, with a 2 px marker at the allowance. Without a
  * pace (unknown week or reset) the row keeps the D17 look: no color, no marker.
+ * D46: the Session row the same, against its allowance by the minute
+ * (docs/usage.md → Session pace).
  */
 .sb-usage .sb-meter[data-pace] .sb-meter-track {
   position: relative;
@@ -500,4 +502,161 @@
 .sb-view {
   flex: 1;
   min-height: 0;
+}
+
+/*
+ * D41 · collapsible panes (docs/panes.md; not in the prototype, which always shows
+ * both). A hidden sidebar slides out to the left (transform, 180 ms) while its
+ * column narrows to a slim rail (`--pane-rail`); the main area takes the freed
+ * width. The sidebar keeps its own width meanwhile, so its content never reflows,
+ * and after the slide it is not painted (visibility). The grid children are placed
+ * explicitly, so the reveal handle can share the sidebar's cell without moving
+ * the main area. `prefers-reduced-motion`: no slide.
+ */
+.sb-shell {
+  --pane-rail: 6px;
+  --pane-slide: 180ms;
+  transition: grid-template-columns var(--pane-slide) ease;
+}
+
+.sb-shell[data-sidebar='hidden'] {
+  grid-template-columns: var(--pane-rail) minmax(0, 1fr);
+}
+
+.sb-shell > .sb-sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  box-sizing: border-box;
+  width: var(--sidebar-width);
+  transition:
+    transform var(--pane-slide) ease,
+    visibility 0s linear 0s;
+}
+
+.sb-shell[data-sidebar='hidden'] > .sb-sidebar {
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--pane-slide) ease,
+    visibility 0s linear var(--pane-slide);
+}
+
+.sb-shell > .sb-main {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/*
+ * The brand row's hide button: drawn before the ⌘K key (its DOM place is after
+ * it, so the prototype's child paths hold) in the row's free space; its auto
+ * margin keeps the key flush right, so the mark, the name and the key keep their
+ * boxes. 20 px, lower than the 22 px mark, so the row keeps its height. Muted, the
+ * text color on hover (like the session rows' ×).
+ */
+.sb-brand > .sb-brand-kbd {
+  order: 1;
+  margin-left: 0;
+}
+
+.sb-brand > .sb-brand-hide {
+  flex: none;
+  margin-left: auto;
+  margin-right: -3px;
+}
+
+.sb-pane-hide {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-pane-hide:hover {
+  color: var(--text);
+  background: var(--bg-selected-card);
+}
+
+/*
+ * A hidden pane's reveal handle: the rail in the pane's own column, full height,
+ * the pane's divider on its inner edge. On hover or keyboard focus it lights up
+ * (border-control) and shows its small button (the chip, 20 px, a bg-card button
+ * with a border-control line) just inside the main area, halfway down, where no
+ * header action or chat bubble sits (the views keep ≥ 22 px of padding there).
+ */
+.sb-shell > .sb-pane-handle,
+.sb-sv > .sb-pane-handle {
+  grid-row: 1;
+  position: relative;
+  z-index: 5;
+  display: block;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.sb-shell > .sb-pane-handle {
+  grid-column: 1;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-divider);
+}
+
+.sb-sv > .sb-pane-handle {
+  grid-column: 2;
+  background: var(--bg-main);
+  border-left: 1px solid var(--border-divider);
+}
+
+.sb-shell > .sb-pane-handle:hover,
+.sb-shell > .sb-pane-handle:focus-visible,
+.sb-sv > .sb-pane-handle:hover,
+.sb-sv > .sb-pane-handle:focus-visible {
+  background: var(--border-control);
+}
+
+.sb-pane-handle-chip {
+  position: absolute;
+  top: 50%;
+  margin-top: -10px;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: 5px;
+  background: var(--bg-card);
+  color: var(--text-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+/* 4 px beyond the rail: 100 % is the rail's padding box, 1 px narrower than the rail (its divider line). */
+.sb-pane-handle[data-side='left'] .sb-pane-handle-chip {
+  left: calc(100% + 5px);
+}
+
+.sb-pane-handle[data-side='right'] .sb-pane-handle-chip {
+  right: calc(100% + 5px);
+}
+
+.sb-pane-handle:hover .sb-pane-handle-chip,
+.sb-pane-handle:focus-visible .sb-pane-handle-chip {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sb-pane-handle:hover .sb-pane-handle-chip {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-shell,
+  .sb-shell > .sb-sidebar,
+  .sb-shell[data-sidebar='hidden'] > .sb-sidebar,
+  .sb-pane-handle-chip {
+    transition: none;
+  }
 }

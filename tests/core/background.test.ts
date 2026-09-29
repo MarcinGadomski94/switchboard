@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { ActivityTracker } from '../../src/core/derive/activity.ts';
 import {
   BackgroundTracker,
+  type TaskStart,
   backgroundSummary,
   endsTask,
   githubCommand,
   isGithubWait,
   parseTaskNotification,
+  startedSummary,
+  taskKind,
+  workflowSummary,
 } from '../../src/core/derive/background.ts';
 
 /**
@@ -248,5 +252,197 @@ describe('the live activity with background tasks (ActivityTracker.snapshot)', (
     expect(activity.snapshot()).toBeNull();
     activity.startTurn();
     expect(activity.snapshot()?.background).toEqual([]);
+  });
+});
+
+/**
+ * D43: background workflows and every other background task the CLI reports
+ * (`system/task_started`), CLI 2.1.284's wordings (read in its code).
+ */
+describe('every background task counts (D43)', () => {
+  const SUMMARY = 'Read-only audit of HubSpot contacts and deals';
+  /** The Workflow tool's result text for a background launch (its `mapToolResultToToolResultBlockParam`). */
+  const WORKFLOW_LAUNCHED = (id: string, summary: string | null = SUMMARY): string =>
+    `Workflow launched in background. Task ID: ${id}${summary ? `\nSummary: ${summary}` : ''}\nTranscript dir: /tmp/wf/transcripts\nScript file: /tmp/wf/hubspot-audit.js\n(Edit this file with Write/Edit and re-invoke Workflow with {scriptPath: "/tmp/wf/hubspot-audit.js"} to iterate without resending the script.)\n\nYou will be notified when it completes. Use /workflows to watch live progress.`;
+  const LAUNCH_DETAIL = (id: string) => ({ status: 'async_launched', taskId: id, taskType: 'local_workflow', workflowName: 'hubspot-audit', runId: 'wf_0123456789ab', summary: SUMMARY });
+  const SCRIPT = { script: "export const meta = { name: 'hubspot-audit', description: 'Read-only audit of HubSpot contacts and deals', phases: [] }" };
+  const start = (fields: Partial<TaskStart> & { taskId: string }): TaskStart => ({ toolUseId: null, taskType: null, description: null, backgrounded: null, ...fields });
+
+  it('taskKind maps the CLI\'s task types; startedSummary reads the description (a workflow\'s name, else the type, without one)', () => {
+    expect(taskKind('local_bash')).toBe('bash');
+    expect(taskKind('local_agent')).toBe('agent');
+    expect(taskKind('local_workflow')).toBe('workflow');
+    for (const other of ['remote_agent', 'monitor_mcp', 'monitor_ws', 'mcp_task', 'dream', 'in_process_teammate', 'fake_task', null]) expect(taskKind(other)).toBe('task');
+    expect(startedSummary(start({ taskId: 'k1', taskType: 'mcp_task', description: 'Export the report\nsecond line' }))).toBe('Export the report');
+    expect(startedSummary(start({ taskId: 'w1', taskType: 'local_workflow', workflowName: 'nightly-audit' }))).toBe('nightly-audit');
+    expect(startedSummary(start({ taskId: 'd1', taskType: 'dream' }))).toBe('dream');
+    expect(startedSummary(start({ taskId: 'b1', taskType: 'local_bash', description: 'cd x && gh run watch 42; echo ok' }))).toBe('gh run watch 42');
+    expect(startedSummary(start({ taskId: 'x1', description: 'y'.repeat(200) }))).toHaveLength(80);
+  });
+
+  it('workflowSummary: the result\'s Summary line, else its structured summary, the task_started description, the call\'s description or name', () => {
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1'), isError: false }, SCRIPT)).toBe(SUMMARY);
+    // The developer's evidence, as it read on screen (one line): the summary still comes from the text.
+    expect(workflowSummary({ text: `Workflow launched in background. Task ID: wbetnz0pi Summary: ${SUMMARY}`, isError: false }, SCRIPT)).toBe(SUMMARY);
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false, detail: { summary: 'From the detail' } }, SCRIPT)).toBe('From the detail');
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, SCRIPT, 'From task_started')).toBe('From task_started');
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, { description: 'Audit HubSpot', script: 'x' })).toBe('Audit HubSpot');
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, { name: 'deep-research' })).toBe('deep-research');
+    expect(workflowSummary({ text: WORKFLOW_LAUNCHED('w1', null), isError: false }, SCRIPT)).toBe('Workflow');
+    expect(backgroundSummary('Workflow', { name: 'deep-research', args: 'x' })).toBe('deep-research');
+  });
+
+  it('a workflow launch: held while the call runs, pending from its confirming result (id and summary from the text), gone on its notification', () => {
+    const w = world();
+    w.tracker.called('tw', 'Workflow', SCRIPT);
+    w.tick(1);
+    // The CLI registers the task during the call: its task_started comes before the result and is held for it.
+    expect(w.tracker.started(start({ taskId: 'wbetnz0pi', toolUseId: 'tw', taskType: 'local_workflow', description: SUMMARY, workflowName: 'hubspot-audit' }))).toBe(false);
+    expect(w.tracker.list()).toEqual([]);
+    expect(w.tracker.resulted('tw', { text: WORKFLOW_LAUNCHED('wbetnz0pi'), isError: false, detail: LAUNCH_DETAIL('wbetnz0pi') })).toBe(true);
+    expect(w.tracker.list()).toEqual([{ id: 'wbetnz0pi', toolUseId: 'tw', kind: 'workflow', summary: SUMMARY, startedAt: iso(0), github: false }]);
+    // A progress update (no terminal status) changes nothing; the notification ends it.
+    expect(w.tracker.updated('wbetnz0pi', 'running', null)).toBe(false);
+    expect(w.tracker.list()).toHaveLength(1);
+    expect(w.tracker.notified('wbetnz0pi', 'tw')).toBe(true);
+    expect(w.tracker.list()).toEqual([]);
+  });
+
+  it('a workflow without its task_started (the text alone), a remote launch, a terminal task_updated ends it; a failed compile or an error launches nothing', () => {
+    const w = world();
+    w.tracker.called('t1', 'Workflow', { name: 'nightly' });
+    expect(w.tracker.resulted('t1', { text: WORKFLOW_LAUNCHED('wa1', null), isError: false })).toBe(true);
+    w.tracker.called('t2', 'Workflow', SCRIPT);
+    const remote = `Workflow launched in a remote CCR session. Task ID: rq2\nSession: https://claude.ai/code/s\nSummary: ${SUMMARY}\n\nThe workflow runs against a fresh clone of the pushed branch; …`;
+    expect(w.tracker.resulted('t2', { text: remote, isError: false, detail: { status: 'remote_launched', taskId: 'rq2', taskType: 'remote_agent' } })).toBe(true);
+    expect(w.tracker.list()).toMatchObject([
+      { id: 'wa1', kind: 'workflow', summary: 'nightly' },
+      { id: 'rq2', kind: 'workflow', summary: SUMMARY },
+    ]);
+    // `system/task_updated` with a terminal status ends a task like its notification (by task id).
+    expect(w.tracker.updated('wa1', 'completed', null)).toBe(true);
+    expect(w.tracker.updated('rq2', 'killed', null)).toBe(true);
+    expect(w.tracker.list()).toEqual([]);
+
+    w.tracker.called('t3', 'Workflow', SCRIPT);
+    expect(w.tracker.resulted('t3', { text: 'Workflow script has a syntax error and was not launched:\nUnexpected token', isError: true, detail: { ...LAUNCH_DETAIL('wx3'), error: 'Unexpected token' } })).toBe(false);
+    w.tracker.called('t4', 'Workflow', { runId: 'wf_0123456789ab' });
+    expect(w.tracker.resulted('t4', { text: 'Workflow wf_0123456789ab: 3 of 5 agents done', isError: false })).toBe(false);
+    expect(w.tracker.list()).toEqual([]);
+  });
+
+  it('a task_started with an unknown type is pending (kind task, its description) until its notification; without a tool use id its task id stands in', () => {
+    const w = world();
+    expect(w.tracker.started(start({ taskId: 'k7', taskType: 'fake_task', description: 'Export the quarterly report' }))).toBe(true);
+    w.tick(5);
+    expect(w.tracker.started(start({ taskId: 'k8', toolUseId: 'toolu_mcp', taskType: 'mcp_task', description: 'mcp__drive__export' }))).toBe(true);
+    expect(w.tracker.list()).toEqual([
+      { id: 'k7', toolUseId: 'k7', kind: 'task', summary: 'Export the quarterly report', startedAt: iso(0), github: false },
+      { id: 'k8', toolUseId: 'toolu_mcp', kind: 'task', summary: 'mcp__drive__export', startedAt: iso(5), github: false },
+    ]);
+    // The same task reported again is no second entry.
+    expect(w.tracker.started(start({ taskId: 'k7', taskType: 'fake_task', description: 'again' }))).toBe(false);
+    expect(w.tracker.list()).toHaveLength(2);
+    expect(w.tracker.notified('k7', null)).toBe(true);
+    expect(w.tracker.notified(null, 'toolu_mcp')).toBe(true);
+    expect(w.tracker.list()).toEqual([]);
+    // A shell or a subagent the CLI reports without a known call: bash (with D30's GitHub flag) and agent.
+    w.tracker.started(start({ taskId: 'b9', toolUseId: 'toolu_sub', taskType: 'local_bash', description: 'gh run watch 42 --exit-status', backgrounded: true }));
+    w.tracker.started(start({ taskId: 'a9', toolUseId: 'toolu_sub2', taskType: 'local_agent', description: 'Review the diff', backgrounded: true }));
+    expect(w.tracker.list()).toMatchObject([
+      { id: 'b9', kind: 'bash', summary: 'gh run watch 42 --exit-status', github: true },
+      { id: 'a9', kind: 'agent', summary: 'Review the diff', github: false },
+    ]);
+  });
+
+  it('no double entry when both the tool result and task_started arrive, in either order', () => {
+    const w = world();
+    // task_started first (the CLI's order): held, then the result registers the call's task (D30's fields).
+    w.tracker.called('t1', 'Bash', { command: GH_WAIT, run_in_background: true });
+    w.tracker.started(start({ taskId: 'b1', toolUseId: 't1', taskType: 'local_bash', description: GH_WAIT, backgrounded: true }));
+    w.tracker.resulted('t1', { text: BASH_STARTED('b1'), isError: false, detail: { backgroundTaskId: 'b1' } });
+    // The result first: the later task_started of the same task (by tool use id, or by task id) adds nothing.
+    w.tick(2);
+    w.tracker.called('t2', 'Workflow', SCRIPT);
+    w.tracker.resulted('t2', { text: WORKFLOW_LAUNCHED('w2'), isError: false });
+    expect(w.tracker.started(start({ taskId: 'w2', toolUseId: 't2', taskType: 'local_workflow', description: SUMMARY }))).toBe(false);
+    expect(w.tracker.started(start({ taskId: 'w2', taskType: 'local_workflow', description: SUMMARY }))).toBe(false);
+    w.tracker.called('t3', 'Agent', { description: 'Review the diff', run_in_background: true });
+    w.tracker.resulted('t3', { text: AGENT_LAUNCHED('a3'), isError: false, detail: { status: 'async_launched', agentId: 'a3' } });
+    expect(w.tracker.started(start({ taskId: 'a3', toolUseId: 't3', taskType: 'local_agent', description: 'Review the diff', backgrounded: true }))).toBe(false);
+    expect(w.tracker.list()).toEqual([
+      { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'gh run view 4242 --json status --jq .status', startedAt: iso(0), github: true },
+      { id: 'w2', toolUseId: 't2', kind: 'workflow', summary: SUMMARY, startedAt: iso(2), github: false },
+      { id: 'a3', toolUseId: 't3', kind: 'agent', summary: 'Review the diff', startedAt: iso(2), github: false },
+    ]);
+  });
+
+  it('a reported start whose result wording is unknown still counts (the call\'s kind); an error or a command that ends with the turn does not', () => {
+    const w = world();
+    w.tracker.called('t1', 'Monitor', { description: 'Deploy log', command: 'tail -f deploy.log' });
+    w.tracker.started(start({ taskId: 'bm1', toolUseId: 't1', taskType: 'local_bash', description: 'Deploy log', backgrounded: true }));
+    expect(w.tracker.resulted('t1', { text: 'Watching deploy.log (a new wording)', isError: false })).toBe(true);
+    w.tracker.called('t2', 'Bash', { command: 'npm run dev', run_in_background: true });
+    w.tracker.started(start({ taskId: 'b2', toolUseId: 't2', taskType: 'local_bash', description: 'npm run dev', backgrounded: true }));
+    w.tracker.resulted('t2', { text: `${BASH_STARTED('b2')} It is terminated when you give your final response and no notification can follow that.`, isError: false });
+    w.tracker.called('t3', 'Bash', { command: 'sleep 9', run_in_background: true });
+    w.tracker.started(start({ taskId: 'b3', toolUseId: 't3', taskType: 'local_bash', description: 'sleep 9', backgrounded: true }));
+    w.tracker.resulted('t3', { text: 'Blocked', isError: true });
+    expect(w.tracker.list()).toEqual([{ id: 'bm1', toolUseId: 't1', kind: 'monitor', summary: 'Deploy log', startedAt: iso(0), github: false }]);
+  });
+
+  it('a foreground task counts once the CLI moves it to the background; an ambient one never; its end before the result cancels the start', () => {
+    const w = world();
+    // A foreground subagent: reported with is_backgrounded false, ended within the turn.
+    w.tracker.called('t1', 'Agent', { description: 'Read hello.txt' });
+    expect(w.tracker.started(start({ taskId: 'a1', toolUseId: 't1', taskType: 'local_agent', description: 'Read hello.txt', backgrounded: false }))).toBe(false);
+    expect(w.tracker.updated('a1', 'completed', null)).toBe(false);
+    w.tracker.resulted('t1', { text: '[Subagent hand-back] alpha line one', isError: false });
+    expect(w.tracker.list()).toEqual([]);
+    // A long foreground shell moved to the background after its timeout: held for the result, which registers it once.
+    w.tracker.called('t2', 'Bash', { command: 'npm run e2e' });
+    w.tracker.started(start({ taskId: 'b2', toolUseId: 't2', taskType: 'local_bash', description: 'npm run e2e', backgrounded: false }));
+    expect(w.tracker.updated('b2', null, true)).toBe(false);
+    w.tracker.resulted('t2', { text: 'Command did not complete within its 120s timeout and was moved to the background (ID: b2). Output is being written to: /tmp/x.', isError: false });
+    expect(w.tracker.list()).toMatchObject([{ id: 'b2', toolUseId: 't2', kind: 'bash', summary: 'npm run e2e' }]);
+    // A foreground task without a pending call moved to the background: pending from then, its start time kept.
+    w.tick(3);
+    w.tracker.started(start({ taskId: 'a4', toolUseId: 'toolu_sub', taskType: 'local_agent', description: 'Sub-review', backgrounded: false }));
+    w.tick(3);
+    expect(w.tracker.updated('a4', null, true)).toBe(true);
+    expect(w.tracker.list().at(-1)).toEqual({ id: 'a4', toolUseId: 'toolu_sub', kind: 'agent', summary: 'Sub-review', startedAt: iso(3), github: false });
+    // Ambient tasks (the CLI's own watchers) never count.
+    expect(w.tracker.started(start({ taskId: 's5', taskType: 'monitor_ws', description: 'Artifact comments', ambient: true }))).toBe(false);
+    // The end reported before the confirming result (by task id only, a terminal task_updated): nothing is added.
+    w.tracker.called('t6', 'Workflow', SCRIPT);
+    w.tracker.started(start({ taskId: 'w6', toolUseId: 't6', taskType: 'local_workflow', description: SUMMARY }));
+    expect(w.tracker.updated('w6', 'failed', null)).toBe(false);
+    expect(w.tracker.resulted('t6', { text: WORKFLOW_LAUNCHED('w6'), isError: false })).toBe(false);
+    expect(w.tracker.list().map((t) => t.id)).toEqual(['b2', 'a4']);
+  });
+
+  it('the process ending (exit, pause) clears every task, held and foreground ones included', () => {
+    const w = world();
+    w.tracker.called('t1', 'Workflow', SCRIPT);
+    w.tracker.resulted('t1', { text: WORKFLOW_LAUNCHED('w1'), isError: false });
+    w.tracker.started(start({ taskId: 'k2', taskType: 'fake_task', description: 'x' }));
+    w.tracker.called('t3', 'Workflow', SCRIPT);
+    w.tracker.started(start({ taskId: 'w3', toolUseId: 't3', taskType: 'local_workflow', description: SUMMARY }));
+    w.tracker.started(start({ taskId: 'a4', toolUseId: 'toolu_x', taskType: 'local_agent', description: 'fg', backgrounded: false }));
+    expect(w.tracker.list()).toHaveLength(2);
+    w.tracker.clear();
+    expect(w.tracker.list()).toEqual([]);
+    // Nothing held survives the exit.
+    expect(w.tracker.resulted('t3', { text: WORKFLOW_LAUNCHED('w3'), isError: false })).toBe(false);
+    expect(w.tracker.updated('a4', null, true)).toBe(false);
+    expect(w.tracker.list()).toEqual([]);
+  });
+
+  it('the live activity: a workflow shows its tool (Workflow), a reported task none', () => {
+    const activity = new ActivityTracker({ mainAgentId: 'main', now: () => new Date(T0) });
+    const workflow = { id: 'w1', toolUseId: 't1', kind: 'workflow' as const, summary: SUMMARY, startedAt: iso(0), github: false };
+    expect(activity.snapshot([workflow])).toMatchObject({ state: 'background', tool: 'Workflow', summary: SUMMARY, agents: { main: { state: 'background', tool: 'Workflow' } } });
+    const task = { id: 'k1', toolUseId: 'k1', kind: 'task' as const, summary: 'Export', startedAt: iso(0), github: false };
+    expect(activity.snapshot([task])).toMatchObject({ state: 'background', tool: null, summary: 'Export', agents: { main: { state: 'background', tool: null } } });
   });
 });

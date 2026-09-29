@@ -83,6 +83,8 @@ describe('sessions', () => {
       modelOptions: null,
       // D33 (0010): open.
       closedAt: null,
+      // D38 (0011): no worktree branch.
+      branch: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

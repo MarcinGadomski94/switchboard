@@ -3,6 +3,7 @@ import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import type { SessionTab } from '../../router.tsx';
+import { PaneHandle, usePanes } from '../../shell/Panes.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
 import { ChatTab } from './ChatTab.tsx';
 import { DiffTab } from './DiffTab.tsx';
@@ -23,6 +24,10 @@ const RELOAD_MS = 500;
  * (docs/lanes.md); since M4.3 the panel reads the same detail (agents, recent
  * events, status: `docs/session-panel.md`). D36: `agentId` (the address
  * `/sessions/{id}/agents/{agentId}`) turns the chat tab into that subagent's own chat.
+ * D41: a hidden right panel (the same state in every session) slides out, its
+ * column narrows to a slim rail with the reveal handle (after the panel, so the
+ * prototype's children keep their places), and the header and tab take the
+ * freed width (`docs/panes.md`).
  */
 export function SessionView({ sessionId, tab, agentId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null }) {
   const detail = useApi(() => api.getSession(sessionId), [sessionId]);
@@ -39,6 +44,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
   });
 
   const session = detail.data && detail.data.id === sessionId ? detail.data : null;
+  const panelHidden = usePanes().state.rightPanelHidden;
   return (
     <section
       className="sb-view sb-sv"
@@ -47,6 +53,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
       data-session-id={sessionId}
       data-tab={tab}
       data-agent-id={agentId ?? undefined}
+      data-panel={panelHidden ? 'hidden' : undefined}
     >
       <div className="sb-sv-main">
         <SessionHeader
@@ -63,7 +70,8 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}
       </div>
-      <RightPanel sessionId={sessionId} session={session} />
+      <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} />
+      {panelHidden ? <PaneHandle pane="rightPanel" /> : null}
     </section>
   );
 }

@@ -12,6 +12,11 @@ import { BOX_TOLERANCE_PX, type Box, type Part, measure, round } from './harness
  * - labels: `Session`, `Week` first;
  * - text styles equal to the app's RAM row (itself gated against the prototype);
  * - the bar: 4 px, the prototype Max bar's radius, track and fill colors;
+ *   D23 / D46: a row with a pace (`data-pace`: the Week, the Session) fills its bar
+ *   with SPEC status done (`on`) or status need (`ahead`) instead, and carries a
+ *   2 px `--muted-3` marker as high as the bar, inside it. The demo's Session
+ *   window (the prototype's `62% · 1h48`) is about 192 minutes into its 5 hours,
+ *   so it is on pace (about 64 % allowed) and green;
  * - the rhythm: each row as high as the prototype's Max row, 7 px below the row
  *   above it, the rows' x / width and the bars' and values' right edges equal to
  *   the RAM row's;
@@ -53,6 +58,40 @@ function near(a: number, b: number): boolean {
 const bottom = (box: Box): number => box.y + box.height;
 const right = (box: Box): number => box.x + box.width;
 
+/** D23 / D46: one usage row's pace as the app renders it (`data-pace`, `title`, the marker). */
+interface PaceFact {
+  readonly state: string | null;
+  readonly title: string | null;
+  /** The marker's inline `left` (`calc(64% - 1px)`), for the report. */
+  readonly markerLeft: string | null;
+  readonly marker: (Box & { readonly color: string }) | null;
+}
+
+/** The app's usage rows' paces, in row order, and the pace token colors as the page computes them. */
+async function paceFacts(appPage: Page): Promise<{ rows: PaceFact[]; done: string; need: string; markerColor: string }> {
+  return appPage.evaluate(() => {
+    const token = (name: string): string => {
+      const probe = document.createElement('div');
+      probe.style.background = `var(${name})`;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    };
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="usage-meters"] > .sb-meter')].map((row) => {
+      const marker = row.querySelector<HTMLElement>('.sb-meter-marker');
+      const rect = marker?.getBoundingClientRect();
+      return {
+        state: row.getAttribute('data-pace'),
+        title: row.getAttribute('title'),
+        markerLeft: marker?.style.left ?? null,
+        marker: marker && rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height, color: getComputedStyle(marker).backgroundColor } : null,
+      };
+    });
+    return { rows, done: token('--status-done'), need: token('--status-need'), markerColor: token('--muted-3') };
+  });
+}
+
 /**
  * Measures both footers and returns the D17 lines: `listed` (the new rows next to
  * the prototype's Max row) and gated (`ok` / `FAIL`, their failures also in
@@ -83,6 +122,7 @@ export async function usageRowChecks(protoPage: Page, appPage: Page, label: stri
     appPaths[`row${i}:value`] = [...USAGE_PATH, i, 2];
   }
   const app = await measure(appPage, appPaths);
+  const paces = await paceFacts(appPage);
   const checks: UsageRowCheck[] = [];
   const failures: string[] = [];
   const gate = (part: string, issues: string[], protoText: string, appText: string, ok: string): void => {
@@ -142,7 +182,19 @@ export async function usageRowChecks(protoPage: Page, appPage: Page, label: stri
     if (!near(track.box.height, maxTrack.box.height)) issues.push(`bar height ${round(track.box.height)} vs ${round(maxTrack.box.height)}`);
     if (track.style['border-radius'] !== maxTrack.style['border-radius']) issues.push(`bar radius ${track.style['border-radius']} vs ${maxTrack.style['border-radius']}`);
     if (track.style['background-color'] !== maxTrack.style['background-color']) issues.push(`track ${track.style['background-color']} vs ${maxTrack.style['background-color']}`);
-    if (fill.style['background-color'] !== maxFill.style['background-color']) issues.push(`fill ${fill.style['background-color']} vs ${maxFill.style['background-color']}`);
+    const pace = paces.rows[i];
+    const wantFill = pace?.state === 'on' ? paces.done : pace?.state === 'ahead' ? paces.need : maxFill.style['background-color'];
+    const fillRule = pace?.state ? `the ${pace.state === 'on' ? 'status done' : 'status need'} color (D23 / D46 pace ${pace.state})` : "the prototype Max bar's";
+    if (fill.style['background-color'] !== wantFill) issues.push(`fill ${fill.style['background-color']} vs ${wantFill}, ${fillRule}`);
+    if (pace?.state) {
+      const marker = pace.marker;
+      if (!marker) issues.push('pace marker missing');
+      else {
+        if (!near(marker.width, 2) || !near(marker.height, track.box.height)) issues.push(`pace marker ${round(marker.width)}×${round(marker.height)} vs 2×${round(track.box.height)}`);
+        if (marker.x < track.box.x - 1 || right(marker) > right(track.box) + 1) issues.push(`pace marker x ${round(marker.x)} outside the bar ${round(track.box.x)}–${round(right(track.box))}`);
+        if (marker.color !== paces.markerColor) issues.push(`pace marker ${marker.color} vs --muted-3 ${paces.markerColor}`);
+      }
+    } else if (pace?.marker) issues.push('a marker without a pace');
     if (!near(row.box.height, maxRow.box.height)) issues.push(`row height ${round(row.box.height)} vs the Max row's ${round(maxRow.box.height)}`);
     if (!near(row.box.y - bottom(above), ROW_GAP_PX)) issues.push(`gap above ${round(row.box.y - bottom(above))} vs ${ROW_GAP_PX}`);
     if (!near(row.box.x, ram.box.x) || !near(row.box.width, ram.box.width)) issues.push(`row x/width ${round(row.box.x)}/${round(row.box.width)} vs RAM ${round(ram.box.x)}/${round(ram.box.width)}`);
@@ -155,7 +207,7 @@ export async function usageRowChecks(protoPage: Page, appPage: Page, label: stri
       issues,
       `Max bar ${round(maxTrack.box.height)} px ${maxFill.style['background-color']}`,
       `${fmt(row)}, bar ${fmt(track)}`,
-      `text styles = RAM row; bar ${round(track.box.height)} px, radius ${track.style['border-radius']}, track ${track.style['background-color']}, fill ${fill.style['background-color']}; ${ROW_GAP_PX} px below the row above; x / width and right edges = RAM row`,
+      `text styles = RAM row; bar ${round(track.box.height)} px, radius ${track.style['border-radius']}, track ${track.style['background-color']}, fill ${fill.style['background-color']}${pace?.state ? ` (pace ${pace.state}, marker at ${pace.markerLeft}: ${JSON.stringify(pace.title)})` : ''}; ${ROW_GAP_PX} px below the row above; x / width and right edges = RAM row`,
     );
     if (i > 0) added += row.box.height + ROW_GAP_PX;
     above = row.box;

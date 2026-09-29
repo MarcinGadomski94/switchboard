@@ -1,4 +1,5 @@
-import type { Folder, NewRepoSession, NewSession, NewSessionPrefill, SolutionGroup } from '../../core/api.ts';
+import type { Folder, ModelSettings, NewRepoSession, NewSession, NewSessionPrefill, SessionModelOption, SolutionGroup } from '../../core/api.ts';
+import { CLI_MODEL_ALIASES, DEFAULT_MODEL_CHOICE, type ModelChoice, fitModelChoice, normalizeEffort, normalizeModel, readModelChoice, readModelOptions } from '../../core/model-choice.ts';
 import {
   COORDINATIONS,
   type Coordination,
@@ -16,6 +17,7 @@ import {
 import { TITLE_MAX, shortNameFromTitle } from '../../core/session-title.ts';
 import { type TicketBranchCheck, branchFromTitle, checkTicketBranch } from '../../core/ticket-branch.ts';
 import { FOLDER_KIND_LABEL, distinctFolderNames, sessionCwd } from '../folders/folders.ts';
+import { type ModelPicker, modelChoicePicker, modelPickBody } from '../views/session/session-header.ts';
 import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
 
 /**
@@ -29,7 +31,11 @@ import { baseName, workspaceRootOf } from '../views/solutions-format.ts';
  * (`docs/folders.md` → *UI*). D22: the name field takes free text as the
  * session's title; Start posts the short name derived from it ({@link startNames}).
  * D32: with a worktree, the **Branch** field names its branch after the ticket
- * ({@link formBranch}); Start waits for a valid one.
+ * ({@link formBranch}); Start waits for a valid one. D38: picking solutions is
+ * optional for a workspace folder; with none picked the agent determines them
+ * ({@link SOLUTIONS_BY_AGENT}). D42: the Launch area's **Model** row picks the
+ * model and effort the session starts with, starting on the last choice
+ * ({@link formModel}).
  */
 
 /** The form's state. `figmaUrls` is the raw text of its field (URLs separated by spaces, commas or new lines). */
@@ -58,6 +64,14 @@ export interface NewSessionForm {
    * it, so it follows the title ({@link formBranch}: `branchFromTitle`).
    */
   readonly branch: string | null;
+  /**
+   * D42: the Model row's choice (`null` = the CLI's default for either part);
+   * `null` while the developer has not picked one (nor a prefill named one), so
+   * the service's last choice applies ({@link formModel}). The body and the
+   * summary carry it only when it is set: the modal fills it in first
+   * ({@link withFormModel}).
+   */
+  readonly model: ModelChoice | null;
 }
 
 /**
@@ -98,6 +112,7 @@ export const DEFAULT_FORM: NewSessionForm = {
   ultracode: false,
   folder: null,
   branch: null,
+  model: null,
 };
 
 /** A pill option: value + the prototype's label. */
@@ -240,13 +255,30 @@ export function nameTaken(form: Pick<NewSessionForm, 'name'>, takenNames: readon
 }
 
 /**
- * Everything but the name is ready: at least one solution and, for QA, the stack
- * + both sources the fields mark "(required)". A repo folder (D14) has nothing
- * else to pick: the repo is the one solution and the router sections do not apply.
+ * Everything but the name is ready: for QA, the stack + both sources the fields
+ * mark "(required)". D38: solutions are optional (none picked = the agent
+ * determines them). A repo folder (D14) has nothing else to pick: the repo is the
+ * one solution and the router sections do not apply.
  */
 export function formComplete(form: NewSessionForm, folder: Pick<FormFolder, 'kind'> | null = null): boolean {
   if (isRepoFolder(folder)) return true;
-  return form.solutions.length > 0 && missingQa(form).length === 0;
+  return missingQa(form).length === 0;
+}
+
+/** D38: the summary line of a workspace session started without picked solutions (in place of the old warning). */
+export const SOLUTIONS_BY_AGENT = 'solutions  chosen by the agent';
+
+/** D38: section 4's hint while no solution is picked (the muted hint on the label line). */
+export const SOLUTIONS_HINT_NONE = '0 selected · leave empty to let the agent choose · read-only folders locked';
+
+/**
+ * Section 4's hint (prototype `nsSolHint`): `<n> selected · read-only folders
+ * locked`; D38: {@link SOLUTIONS_HINT_NONE} while none is picked; a repo folder's
+ * `1 selected · a git repo is one solution` (D14).
+ */
+export function solutionsHint(form: Pick<NewSessionForm, 'solutions'>, folder: Pick<FormFolder, 'kind'> | null = null): string {
+  if (isRepoFolder(folder)) return '1 selected · a git repo is one solution';
+  return form.solutions.length === 0 ? SOLUTIONS_HINT_NONE : `${form.solutions.length} selected · read-only folders locked`;
 }
 
 /**
@@ -279,7 +311,13 @@ export function toNewSession(form: NewSessionForm): NewSession {
     worktrees: form.worktrees,
     ultracode: form.ultracode,
     ...(form.folder ? { folder: form.folder } : {}),
+    ...modelFields(form),
   };
+}
+
+/** D42: the body's `model` / `effort` (`null` = the CLI's default), once the form has a choice. */
+function modelFields(form: Pick<NewSessionForm, 'model'>): { readonly model?: string | null; readonly effort?: string | null } {
+  return form.model ? { model: form.model.model, effort: form.model.effort } : {};
 }
 
 /** The `POST /api/sessions` body for a repo folder (D14, `NewRepoSession`): the repo is the one solution, no router fields. */
@@ -291,6 +329,7 @@ export function toNewRepoSession(form: NewSessionForm, folder: Pick<FormFolder, 
     solutions: [folder.name],
     worktrees: form.worktrees,
     ultracode: form.ultracode,
+    ...modelFields(form),
   };
 }
 
@@ -339,6 +378,11 @@ export function formFromPrefill(prefill: NewSessionPrefill | null | undefined): 
   if (typeof prefill.folder === 'string' && prefill.folder.trim() !== '') form.folder = prefill.folder.trim();
   // D32: a prefilled branch counts as typed (the title no longer replaces it).
   if (typeof prefill.branch === 'string' && prefill.branch.trim() !== '') form.branch = prefill.branch.trim();
+  // D42: a prefill's model / effort (a schedule's template) count as picked (the last choice no longer applies).
+  if (prefill.model !== undefined || prefill.effort !== undefined) {
+    const choice = readModelChoice({ model: prefill.model ?? null, effort: prefill.effort ?? null });
+    if (choice) form.model = choice;
+  }
   return form;
 }
 
@@ -523,7 +567,11 @@ function nameWarnings(form: NewSessionForm, takenNames: readonly string[], namin
  * the worktree folders use the short name derived from the field; when it is not
  * the field as typed and Worktree is off, a `name      <name>` line says so under
  * the worktree comment. D32: with Worktree on, a `branch    <branch>` line there
- * names the ticket branch (`—` until the field is valid, with a `⚠` line).
+ * names the ticket branch (`—` until the field is valid, with a `⚠` line). D38:
+ * with no solution picked, {@link SOLUTIONS_BY_AGENT} stands where the worktree
+ * folders go (it replaces the prototype's `⚠ pick at least one solution`). D42:
+ * once the form has a model choice, a `model     <model> · <effort>` line
+ * ({@link modelSummaryLine}, labels from `modelOptions`) follows `ultracode`.
  */
 export function summaryLines(
   form: NewSessionForm,
@@ -531,8 +579,9 @@ export function summaryLines(
   takenNames: readonly string[],
   folder: FormFolder | null = null,
   naming: SummaryNaming = 'start',
+  modelOptions: readonly SessionModelOption[] = CLI_MODEL_ALIASES,
 ): SummaryLine[] {
-  if (folder && isRepoFolder(folder)) return repoSummaryLines(form, folder, takenNames, naming);
+  if (folder && isRepoFolder(folder)) return repoSummaryLines(form, folder, takenNames, naming, modelOptions);
   const { name, line } = summaryName(form, takenNames, naming);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [{ text: '# claude code · background · Max', tone: 'comment' }];
@@ -545,11 +594,14 @@ export function summaryLines(
   );
   if (showsQa(form)) lines.push(value(`stack     ${form.stack ?? '—'}`));
   else if (showsCoordination(form)) lines.push(value(`mobile    ${COORDINATION_SUMMARY[form.coordination]}`));
-  lines.push(value(`ultracode ${form.ultracode ? 'on' : 'off'}`), value(' '));
+  lines.push(value(`ultracode ${form.ultracode ? 'on' : 'off'}`));
+  if (form.model) lines.push(modelSummaryLine(form.model, modelOptions));
+  lines.push(value(' '));
   lines.push({ text: form.worktrees ? '# worktrees' : '# no worktrees · edits in place', tone: 'comment' });
   if (line) lines.push(line);
   if (form.worktrees) for (const solution of form.solutions) lines.push({ text: worktreeFolder(solution, name), tone: 'path' });
-  if (form.solutions.length === 0) lines.push({ text: '⚠ pick at least one solution', tone: 'warn' });
+  // D38: none picked is no longer a reason to wait: the agent determines them.
+  if (form.solutions.length === 0) lines.push(value(SOLUTIONS_BY_AGENT));
   lines.push(...nameWarnings(form, takenNames, naming));
   const missing = missingQa(form);
   if (missing.includes('stack')) lines.push({ text: '⚠ pick the stack under test', tone: 'warn' });
@@ -564,9 +616,15 @@ export function summaryLines(
  * repo, or `<parent>/<repo>-wt-<name>` with Worktree on), ultracode, the worktree,
  * and the first message: the task alone, plus the worktree note with a worktree
  * (no router answers: a single repo has no router). D22: the short name as in
- * {@link summaryLines}.
+ * {@link summaryLines}; D42: the `model` line after `ultracode` likewise.
  */
-export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, takenNames: readonly string[], naming: SummaryNaming = 'start'): SummaryLine[] {
+export function repoSummaryLines(
+  form: NewSessionForm,
+  folder: FormFolder,
+  takenNames: readonly string[],
+  naming: SummaryNaming = 'start',
+  modelOptions: readonly SessionModelOption[] = CLI_MODEL_ALIASES,
+): SummaryLine[] {
   const { name, line } = summaryName(form, takenNames, naming);
   const value = (text: string): SummaryLine => ({ text, tone: 'value' });
   const lines: SummaryLine[] = [
@@ -574,6 +632,7 @@ export function repoSummaryLines(form: NewSessionForm, folder: FormFolder, taken
     value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`),
     value(`cwd       ${sessionCwd(folder, form.worktrees, name)}`),
     value(`ultracode ${form.ultracode ? 'on' : 'off'}`),
+    ...(form.model ? [modelSummaryLine(form.model, modelOptions)] : []),
     value(' '),
     { text: form.worktrees ? '# worktree' : '# no worktree · edits in place', tone: 'comment' },
   ];
@@ -601,4 +660,81 @@ export function startErrorText(status: number, body: unknown): string {
     if (typeof record.message === 'string' && record.message !== '') return `Not started: ${record.message}`;
   }
   return status === 0 ? 'Not started: Switchboard is not reachable.' : `Not started: HTTP ${status}`;
+}
+
+// ── D42: the Model row (`docs/new-session.md` → *Model (D42)*) ──────────
+
+/** D42: the Model row's title and description (a Launch row like the two toggles). */
+export const MODEL_ROW_TITLE = 'Model';
+export const MODEL_ROW_DESCRIPTION = 'Starts on your last choice';
+
+/** D42: the popover's note (where D31's says when a change applies). */
+export const MODEL_APPLIES_AT_START = 'The session starts with this choice (--model / --effort). New sessions start on your last choice.';
+
+/** D42: the trigger's tooltip while `GET /api/models` has not answered yet. */
+export const MODELS_LOADING = 'Loading the models…';
+
+/** D42: what the form uses when `GET /api/models` failed: no reported list, no last choice. */
+export const NO_MODEL_SETTINGS: ModelSettings = { options: null, last: null };
+
+/** D42: the key of the summary's model line (the value lines' 10-column key). */
+export const MODEL_LINE_KEY = 'model     ';
+
+/**
+ * D42: what the Model row offers: the latest model list any claude process
+ * reported (`GET /api/models` → `options`), else the CLI's aliases (`default`,
+ * `opus`, `sonnet`, `haiku`, no effort levels).
+ */
+export function formModelOptions(models: ModelSettings | null): readonly SessionModelOption[] {
+  return readModelOptions(models?.options ?? null) ?? CLI_MODEL_ALIASES;
+}
+
+/**
+ * D42: the model and effort the session starts with: the developer's pick (or
+ * a prefill's), else the service's last choice (`GET /api/models` → `last`),
+ * else the CLI's default; always fitted to what the row offers
+ * (`fitModelChoice`: a model it does not list falls back to the default, an
+ * effort the model lacks to Default). `null` while nothing is picked and
+ * `models` has not loaded yet (`null`).
+ */
+export function formModel(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null): ModelChoice | null {
+  const options = formModelOptions(models);
+  if (form.model) return fitModelChoice(form.model, options);
+  if (models === null) return null;
+  return fitModelChoice(readModelChoice(models.last) ?? DEFAULT_MODEL_CHOICE, options);
+}
+
+/** D42: the form with its model choice filled in ({@link formModel}): what the summary and the bodies read. */
+export function withFormModel(form: NewSessionForm, models: ModelSettings | null): NewSessionForm {
+  return { ...form, model: formModel(form, models) };
+}
+
+/**
+ * D42: the Model row's picker: D31's (`modelChoicePicker`) over the offered
+ * models, with the at-start note; disabled while the models load.
+ */
+export function formModelPicker(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null): ModelPicker {
+  const choice = formModel(form, models) ?? DEFAULT_MODEL_CHOICE;
+  const picker = modelChoicePicker({ current: choice.model, effort: choice.effort, available: formModelOptions(models) }, MODEL_APPLIES_AT_START);
+  return models === null && !form.model ? { ...picker, disabled: true, reason: MODELS_LOADING, title: MODELS_LOADING } : picker;
+}
+
+/**
+ * D42: the choice after a model is picked in the row: D31's rule (the effort is
+ * kept when the new model has that level, else Default); the same model changes nothing.
+ */
+export function pickFormModel(choice: ModelChoice, options: readonly SessionModelOption[], value: string): ModelChoice {
+  const body = modelPickBody({ current: choice.model, effort: choice.effort, available: options }, value);
+  return body ? { model: normalizeModel(body.model ?? null), effort: normalizeEffort(body.effort ?? null) } : choice;
+}
+
+/** D42: the choice after an effort is picked (`null` = Default). */
+export function pickFormEffort(choice: ModelChoice, effort: string | null): ModelChoice {
+  return { model: choice.model, effort: normalizeEffort(effort) };
+}
+
+/** D42: the summary's model line: `model     <model> · <effort>`, the trigger's text (`model     Default`, `model     Opus 5.5 · high`). */
+export function modelSummaryLine(choice: ModelChoice, options: readonly SessionModelOption[]): SummaryLine {
+  const picker = modelChoicePicker({ current: choice.model, effort: choice.effort, available: options }, MODEL_APPLIES_AT_START);
+  return { text: `${MODEL_LINE_KEY}${picker.label}`, tone: 'value' };
 }

@@ -17,6 +17,10 @@ export interface KnownSettings {
   readonly 'sessions.ultracode': boolean;
   /** Usage warning threshold in % of either Max window (M9.2). Editable, default 90. */
   readonly 'usage.warnAtPct': number;
+  /** D41: the sidebar is slid out (the shell's reveal handle brings it back). Editable, default `false`. */
+  readonly 'ui.sidebarHidden': boolean;
+  /** D41: the session view's right panel is slid out, in every session. Editable, default `false`. */
+  readonly 'ui.rightPanelHidden': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -37,7 +41,7 @@ export interface KnownSettings {
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -45,11 +49,13 @@ export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
 /** The editable settings. */
 export type EditableSettings = Pick<KnownSettings, EditableSettingKey>;
 
-/** Defaults of the editable settings: the prototype's values (Settings → Sessions & worktrees, Notifications & usage). */
+/** Defaults of the editable settings: the prototype's values (Settings → Sessions & worktrees, Notifications & usage; D41: both panes shown). */
 export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.worktrees': true,
   'sessions.ultracode': false,
   'usage.warnAtPct': 90,
+  'ui.sidebarHidden': false,
+  'ui.rightPanelHidden': false,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -71,6 +77,8 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.worktrees': bool('sessions.worktrees', SETTING_DEFAULTS['sessions.worktrees']),
     'sessions.ultracode': bool('sessions.ultracode', SETTING_DEFAULTS['sessions.ultracode']),
     'usage.warnAtPct': num('usage.warnAtPct', SETTING_DEFAULTS['usage.warnAtPct']),
+    'ui.sidebarHidden': bool('ui.sidebarHidden', SETTING_DEFAULTS['ui.sidebarHidden']),
+    'ui.rightPanelHidden': bool('ui.rightPanelHidden', SETTING_DEFAULTS['ui.rightPanelHidden']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

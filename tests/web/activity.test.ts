@@ -269,4 +269,29 @@ describe('background work (D30)', () => {
     expect(chatActivityLine(running, at(60))).toEqual({ state: 'tool', glyph: '●', text: 'Bash: npm test', time: '0:42', tokens: null });
     expect(sessionActivityLabel(running, at(60))).toEqual({ state: 'tool', text: 'Bash: npm test', time: '0:42' });
   });
+
+  it('D43: a workflow reads `Running a workflow: <summary>`, a task the CLI reported `Waiting for a background task: <summary>`, in every view', () => {
+    const AUDIT = 'Read-only audit of HubSpot contacts and deals';
+    const workflow = task({ id: 'wbetnz0pi', toolUseId: 't9', kind: 'workflow', github: false, summary: AUDIT });
+    const reported = task({ id: 'k7', toolUseId: 'k7', kind: 'task', github: false, summary: 'Export the quarterly report', startedAt: iso(30) });
+    expect(backgroundText(workflow)).toBe(`Running a workflow: ${AUDIT}`);
+    expect(backgroundText(reported)).toBe('Waiting for a background task: Export the quarterly report');
+    const both = activity({
+      state: 'background',
+      turnStartedAt: iso(0),
+      since: iso(0),
+      tool: 'Workflow',
+      summary: AUDIT,
+      agents: { main: { state: 'background', since: iso(0), startedAt: iso(0), tool: 'Workflow', summary: AUDIT } },
+      background: [reported, workflow],
+    });
+    expect(chatActivityLine(both, at(75))).toEqual({ state: 'background', glyph: '⏳', text: `Running a workflow: ${AUDIT}`, time: '1:15', tokens: null, more: '+1 more' });
+    expect(sessionActivityLabel(both, at(75))).toEqual({ state: 'background', text: `Running a workflow: ${AUDIT}`, time: '1:15', more: '+1 more' });
+    const main = both.agents['main']!;
+    expect(cardActivityLabel(main, both.turnStartedAt, at(75), both.background)).toEqual({ state: 'background', text: `Running a workflow: ${AUDIT}`, time: '1:15', more: '+1 more' });
+    expect(overviewActivityLabel(main, both.turnStartedAt, at(75), both.background)).toEqual({ state: 'background', text: `⏳ Running a workflow: ${AUDIT}`, time: '1:15', more: '+1 more' });
+    // Only the reported task left (the workflow ended): its words and its own time.
+    const alone = activity({ state: 'background', turnStartedAt: iso(30), since: iso(30), tool: null, summary: reported.summary, background: [reported] });
+    expect(chatActivityLine(alone, at(75))).toEqual({ state: 'background', glyph: '⏳', text: 'Waiting for a background task: Export the quarterly report', time: '0:45', tokens: null });
+  });
 });

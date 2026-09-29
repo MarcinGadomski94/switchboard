@@ -1,4 +1,5 @@
-import type { NewSession } from '../../core/api.ts';
+import type { NewSession, SessionModelOption } from '../../core/api.ts';
+import { MODEL_VALUE_MAX, checkModelChoice, normalizeEffort, normalizeModel } from '../../core/model-choice.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import { checkTicketBranch } from '../../core/ticket-branch.ts';
 import { COORDINATIONS, type FolderKind, PHASES, type Phase, QA_STACKS, SESSION_MODES, type SessionMode, WORK_TYPES, type WorkType, isOneOf } from '../../core/model.ts';
@@ -13,7 +14,9 @@ export interface FieldError {
  * A validated NewSession (D14: without `folder`, which the caller resolved; the
  * router-only fields `workType`, `mode`, `phase` are `null` for a repo folder).
  * D22: `title` is present (trimmed) only when the body had one. D32: `branch` is
- * present only when the session creates worktrees under the ticket rule.
+ * present only when the session creates worktrees under the ticket rule. D42:
+ * `model` and `effort` are both present (normalized, `null` = the CLI's default)
+ * only when the body named either.
  */
 export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder'> & {
   readonly workType: WorkType | null;
@@ -53,6 +56,13 @@ export interface NewSessionChecks {
   readonly folder?: ValidationFolder;
   /** D32: how the worktree branch is named. Default: `ticket`. */
   readonly worktreeBranch?: WorktreeBranchRule;
+  /**
+   * D42: the latest model list any claude process reported (the service's
+   * `models.options`): `model` / `effort` are checked against it like D31's
+   * route (`checkModelChoice`); absent or `null` = unknown (D31's rules: any
+   * model name, one of the CLI's effort levels).
+   */
+  readonly modelOptions?: readonly SessionModelOption[] | null;
 }
 
 /** Session names: kebab-case (contract), at most 64 characters. */
@@ -99,12 +109,43 @@ function branchOf(body: Record<string, unknown>, worktrees: unknown, checks: New
 }
 
 /**
+ * D42: the optional `model` / `effort` (each text of at most {@link MODEL_VALUE_MAX}
+ * characters, or `null`; normalized: blank / `default` = `null`), checked like
+ * D31's route against {@link NewSessionChecks.modelOptions} (`checkModelChoice`),
+ * else a failure on that field. `null` when the body names neither (the session
+ * starts on the CLI's defaults and is no "choice").
+ */
+function modelOf(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void): { readonly model: string | null; readonly effort: string | null } | null {
+  const rawModel = body['model'];
+  const rawEffort = body['effort'];
+  if (rawModel === undefined && rawEffort === undefined) return null;
+  let ok = true;
+  for (const [field, raw] of [
+    ['model', rawModel],
+    ['effort', rawEffort],
+  ] as const) {
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.length <= MODEL_VALUE_MAX)) continue;
+    fail(field, `${field} must be text of at most ${MODEL_VALUE_MAX} characters, or null for the CLI default`);
+    ok = false;
+  }
+  if (!ok) return null;
+  const choice = { model: normalizeModel((rawModel as string | null | undefined) ?? null), effort: normalizeEffort((rawEffort as string | null | undefined) ?? null) };
+  const problem = checkModelChoice(choice, checks.modelOptions ?? null);
+  if (problem) {
+    fail(problem.field, problem.message);
+    return null;
+  }
+  return choice;
+}
+
+/**
  * Validates a `POST /api/sessions` body (contract → NewSession): name unique and
- * kebab-case; solutions not empty; read-only solutions rejected; `qa` required
+ * kebab-case; D38: solutions may be empty or omitted (the agent determines
+ * them), a non-empty list is checked as before; read-only solutions rejected; `qa` required
  * when `workType` is `qa`; every enum from the contract; D22: an optional `title`
  * of 1–80 characters (trimmed); D32: with `worktrees: true` a ticket `branch`
- * ({@link branchOf}). Unknown fields (and `folder`, which the caller resolves)
- * are ignored.
+ * ({@link branchOf}); D42: an optional `model` / `effort` ({@link modelOf}).
+ * Unknown fields (and `folder`, which the caller resolves) are ignored.
  *
  * D14, a **repo** folder ({@link NewSessionChecks.folder}): the router-only
  * fields (`workType`, `mode`, `phase`, `coordination`, `qa`) are not read and come
@@ -141,9 +182,10 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
     fail('coordination', `coordination must be null or one of ${COORDINATIONS.join(', ')}`);
   }
 
-  const solutions = body['solutions'];
-  if (!Array.isArray(solutions) || solutions.length === 0) {
-    fail('solutions', 'choose at least one solution');
+  // D38: a workspace session may start without solutions (empty or omitted): the agent determines them.
+  const solutions = body['solutions'] ?? [];
+  if (!Array.isArray(solutions)) {
+    fail('solutions', 'solutions must be a list of solution names');
   } else if (!solutions.every((s): s is string => typeof s === 'string' && s.trim() !== '' && s === s.trim())) {
     fail('solutions', 'every solution must be a non-empty name');
   } else if (new Set(solutions).size !== solutions.length) {
@@ -181,6 +223,7 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
   const branch = branchOf(body, worktrees, checks, fail);
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
+  const model = modelOf(body, checks, fail);
 
   if (errors.length > 0) return { ok: false, errors };
   return {
@@ -198,11 +241,12 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
       ...(branch !== null ? { branch } : {}),
+      ...(model ?? {}),
     },
   };
 }
 
-/** The fields every folder kind validates the same way: name, task, worktrees, ultracode (D22: and the title; D32: the branch). */
+/** The fields every folder kind validates the same way: name, task, worktrees, ultracode (D22: and the title; D32: the branch; D42: the model and effort). */
 async function commonFields(body: Record<string, unknown>, checks: NewSessionChecks, fail: (field: string, message: string) => void) {
   const name = body['name'];
   if (typeof name !== 'string' || !SESSION_NAME.test(name) || name.length > 64) {
@@ -218,7 +262,8 @@ async function commonFields(body: Record<string, unknown>, checks: NewSessionChe
   const ultracode = body['ultracode'];
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
   const title = titleOf(body, fail);
-  return { name, task, worktrees, ultracode, title, branch };
+  const model = modelOf(body, checks, fail);
+  return { name, task, worktrees, ultracode, title, branch, model };
 }
 
 /** {@link validateNewSession} for a repo folder (D14): one solution, no router fields. */
@@ -228,7 +273,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
     errors.push({ field, message });
   };
   if (!isRecord(body)) return { ok: false, errors: [{ field: '', message: 'the body must be a NewSession object' }] };
-  const { name, task, worktrees, ultracode, title, branch } = await commonFields(body, checks, fail);
+  const { name, task, worktrees, ultracode, title, branch, model } = await commonFields(body, checks, fail);
   const solutions = body['solutions'] ?? [];
   if (!Array.isArray(solutions) || !solutions.every((s) => typeof s === 'string')) {
     fail('solutions', 'solutions must be a list of names');
@@ -251,6 +296,7 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
       ultracode: ultracode as boolean,
       ...(title !== null ? { title } : {}),
       ...(branch !== null ? { branch } : {}),
+      ...(model ?? {}),
     },
   };
 }

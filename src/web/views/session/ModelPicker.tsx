@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Session, SessionModelInput } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
-import { EFFORT_SECTION, MODEL_SECTION, actionErrorText, effortPickBody, modelPickBody, modelPicker } from './session-header.ts';
+import { EFFORT_SECTION, MODEL_SECTION, type ModelPicker as ModelPickerView, actionErrorText, effortPickBody, modelPickBody, modelPicker } from './session-header.ts';
 
 /** Props of {@link ModelPicker}. */
 export interface ModelPickerProps {
@@ -21,36 +21,17 @@ export interface ModelPickerProps {
  * refusal shows the server's text (the CLI's, verbatim) in the popover. Disabled,
  * with the reason as its tooltip, while no process has reported the models.
  * Sessions without model information (`model: null`, the demo's) show nothing.
- * Esc, a click outside or Close closes the popover.
+ * Esc, a click outside or Close closes the popover. The trigger and the popover
+ * are {@link ModelChoicePicker}, which D42's New-session Model row shares.
  */
 export function ModelPicker({ sessionId, session, onChanged }: ModelPickerProps) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const box = useRef<HTMLDivElement | null>(null);
 
-  // A switch to another session never leaves the old popover (or its error) open.
+  // A switch to another session never leaves the old error behind (the popover closes through `resetKey`).
   useEffect(() => {
-    setOpen(false);
     setError(null);
   }, [sessionId]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    const onDown = (event: MouseEvent): void => {
-      const target = event.target as Node | null;
-      if (target && box.current && !box.current.contains(target)) setOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDown);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDown);
-    };
-  }, [open]);
 
   const picker = modelPicker(session);
   const model = session.model;
@@ -71,11 +52,87 @@ export function ModelPicker({ sessionId, session, onChanged }: ModelPickerProps)
   };
 
   return (
-    <div className="sb-sv-model" data-testid="session-model" ref={box}>
+    <ModelChoicePicker
+      testId="session-model"
+      picker={picker}
+      busy={busy}
+      error={error}
+      resetKey={sessionId}
+      onToggle={() => setError(null)}
+      onPickModel={(value) => void change(modelPickBody(model, value))}
+      onPickEffort={(value) => void change(effortPickBody(model, value))}
+    />
+  );
+}
+
+/** Props of {@link ModelChoicePicker}. */
+export interface ModelChoicePickerProps {
+  /** The root's `data-testid`; the trigger's is `<testId>-button`. */
+  readonly testId: string;
+  /** What it shows (`modelChoicePicker` / `modelPicker` in session-header.ts). */
+  readonly picker: ModelPickerView;
+  /** A pick is being applied: the options wait (progress cursor). */
+  readonly busy?: boolean;
+  /** A refusal, shown in the popover (`model-error`). */
+  readonly error?: string | null;
+  /** The popover closes whenever this changes (the header: the session's id). */
+  readonly resetKey?: string;
+  /** The trigger was clicked (before the popover opens or closes). */
+  readonly onToggle?: () => void;
+  /** A model was picked in the list (its `value`; `default` = the CLI's default). */
+  readonly onPickModel: (value: string) => void;
+  /** An effort was picked (`null` = Default). */
+  readonly onPickEffort: (value: string | null) => void;
+  /**
+   * D42: Esc on the open popover closes only the popover (inside the New-session
+   * modal, whose own Esc would close the whole form). Off in the header: Esc
+   * reaches the page there too, as before.
+   */
+  readonly keepEscape?: boolean;
+}
+
+/**
+ * The model and effort picker itself (D31's header picker, shared by D42's
+ * New-session Model row): the trigger (`<model> · <effort> ▾`, in the header
+ * actions' look) and its popover with the **model** list (✓ + name + the muted
+ * description), the **effort** pills (Default + the chosen model's levels;
+ * hidden when it has none), the error line and the note. Esc, a click outside or
+ * ✕ closes the popover; a pick leaves it open.
+ */
+export function ModelChoicePicker({ testId, picker, busy = false, error = null, resetKey, onToggle, onPickModel, onPickEffort, keepEscape = false }: ModelChoicePickerProps) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [resetKey]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      // The document hears it before the window, where the modal host closes the modal.
+      if (keepEscape) event.stopPropagation();
+    };
+    const onDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null;
+      if (target && box.current && !box.current.contains(target)) setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [open, keepEscape]);
+
+  return (
+    <div className="sb-sv-model" data-testid={testId} ref={box}>
       <button
         type="button"
         className="sb-button sb-sv-action sb-sv-model-button"
-        data-testid="session-model-button"
+        data-testid={`${testId}-button`}
         data-reason={picker.reason ?? undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -83,7 +140,7 @@ export function ModelPicker({ sessionId, session, onChanged }: ModelPickerProps)
         disabled={picker.disabled}
         title={picker.title}
         onClick={() => {
-          setError(null);
+          onToggle?.();
           setOpen((was) => !was);
         }}
       >
@@ -112,7 +169,7 @@ export function ModelPicker({ sessionId, session, onChanged }: ModelPickerProps)
                 data-value={item.value}
                 disabled={busy}
                 title={item.description ?? item.label}
-                onClick={() => void change(modelPickBody(model, item.value))}
+                onClick={() => onPickModel(item.value)}
               >
                 <span className="sb-sv-model-check" aria-hidden="true">
                   {item.selected ? '✓' : ''}
@@ -136,7 +193,7 @@ export function ModelPicker({ sessionId, session, onChanged }: ModelPickerProps)
                     data-testid="effort-option"
                     data-value={item.value ?? 'default'}
                     disabled={busy}
-                    onClick={() => void change(effortPickBody(model, item.value))}
+                    onClick={() => onPickEffort(item.value)}
                   >
                     {item.label}
                   </button>

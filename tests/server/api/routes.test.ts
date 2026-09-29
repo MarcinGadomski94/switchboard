@@ -54,6 +54,7 @@ const IMPLEMENTED: ReadonlyArray<['GET' | 'POST' | 'PUT' | 'DELETE', string, str
   ['POST', '/api/codebase-memory/reindex', 'M8.1'], // additive; no saved folder here → 409 no-folder, nothing starts
   ['GET', '/api/settings', 'M8.2'],
   ['PUT', '/api/settings', 'M8.2'], // no body here → 422, nothing stored (tests/server/api/settings.test.ts)
+  ['GET', '/api/models', 'D42'], // additive: the reported model list + the last choice (tests/server/api/model-at-start.test.ts)
   ['GET', '/api/artifacts?type=PR&q=x', 'M7.3'], // tests/server/api/artifacts.test.ts
   ['GET', '/api/history?q=x', 'M7.4'], // no folder here → stored sessions only (tests/server/api/history.test.ts)
   ['POST', '/api/history/bad%20id/continue', 'D16'], // additive; a malformed id → 404, nothing is read (tests/server/history/continue.test.ts)

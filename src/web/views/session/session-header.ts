@@ -1,4 +1,4 @@
-import type { AttachWarningReason, Session, SessionModelInput } from '../../../core/api.ts';
+import type { AttachWarningReason, Session, SessionModel, SessionModelInput } from '../../../core/api.ts';
 import { CLI_EFFORT_LEVELS, DEFAULT_MODEL_VALUE, effortLevelsFor, modelOptionFor, normalizeModel } from '../../../core/model-choice.ts';
 import { folderName, samePath } from '../../folders/folders.ts';
 
@@ -244,6 +244,15 @@ export function shortModelLabel(label: string): string {
 export function modelPicker(session: Pick<Session, 'model' | 'live'>): ModelPicker | null {
   const model = session.model;
   if (!model) return null;
+  return modelChoicePicker(model, session.live ? MODEL_APPLIES_LIVE : MODEL_APPLIES_LATER);
+}
+
+/**
+ * The picker for a model choice and the models on offer (D31's header picker;
+ * D42: the New-session form's Model row too), with `note` saying when a choice
+ * applies. See {@link modelPicker} for the rules.
+ */
+export function modelChoicePicker(model: SessionModel, note: string): ModelPicker {
   const { current, effort, available } = model;
   const option = modelOptionFor(available, current);
   const name = option ? shortModelLabel(option.label) : current === null ? 'Default' : current;
@@ -261,7 +270,6 @@ export function modelPicker(session: Pick<Session, 'model' | 'live'>): ModelPick
     selected: item.value === selectedValue,
   }));
   if (available !== null && current !== null && !option) models.push({ value: current, label: current, description: null, selected: true });
-  const note = session.live ? MODEL_APPLIES_LIVE : MODEL_APPLIES_LATER;
   const reason = available === null ? MODELS_UNKNOWN_REASON : null;
   return {
     label: shownEffort === null ? name : `${name} · ${shownEffort}`,

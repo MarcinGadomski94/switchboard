@@ -17,6 +17,7 @@ import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
 import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
+import { WorktreeAdoption } from './worktrees/adopt.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 
 /** Options for {@link buildApp}. */
@@ -130,6 +131,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('preClose', async () => {
     await sweeping;
     await loops.close();
+  });
+  // D38: worktrees a session's agent creates itself (`git worktree add`, or found at a turn's end) become the session's.
+  const adoption = new WorktreeAdoption({ store: options.store, sessions: supervisor, worktrees });
+  app.addHook('preClose', async () => {
+    await adoption.close();
   });
   // Open streams would keep the server from closing: end them before it stops listening.
   app.addHook('preClose', async () => {
