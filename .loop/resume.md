@@ -13,12 +13,18 @@ Everything is local to `other/switchboard`. Nothing is pushed.
 | Item | Worktree · branch | Ports |
 |---|---|---|
 | D38 solutions chosen by the agent | `.worktrees/agent-solutions` · `feature/agent-solutions` | 4920-4929 |
-| D39 own answers (Other…) on question cards | `.worktrees/own-answers` · `feature/own-answers` | 4930-4939 |
-| D41 collapsible sidebar / right panel, remembered | `.worktrees/collapsible-panes` · `feature/collapsible-panes` | 4940-4949 |
-| D40 epic/task branching in the New-session form | **not started: dispatch after D38 merges** (same form, first message and worktree code) | 4950-4959 |
-| D42 model + effort in the New-session form, last choice remembered | **not started: dispatch after D38 merges**, alongside D40 | 4960-4969 |
+| D41 collapsible sidebar / right panel | `.worktrees/collapsible-panes` · `feature/collapsible-panes` | 4940-4949 |
+| D43 background workflows + any CLI task show as working | `.worktrees/bg-workflows` · `feature/bg-workflows` | 4910-4919 |
+| D44 clock on queued chat messages | `.worktrees/queued-messages` · `feature/queued-messages` | 4900-4909 |
+| D45 session loading skeleton + instant revisit | `.worktrees/session-loading` · `feature/session-loading` | 4890-4899 |
+| D46 Session-bar pace (5 h), every minute | `.worktrees/session-pace` · `feature/session-pace` | 4880-4889 |
+| D40 epic/task branching | **after D38 merges** | 4950-4959 |
+| D42 model + effort in the form, remembered | **after D38 merges** | 4960-4969 |
 
-The repo lives in ~/RiderProjects/Personal/switchboard; its default port is 13001; the developer's own launchd service (com.switchboard) runs `npm ci` on start. Never run anything in the main checkout while it may restart; use worktrees.
+- D39 is merged (`97b74a8`) and verified in `.worktrees/verify` (a detached worktree at master): e2e 149/149; 10 unit timeouts under load average ~39 passed on rerun (49/49).
+- The main branch is **`master`**; there is a GitHub remote (`MarcinGadomski94/switchboard`). Never push.
+- Verify merges in `.worktrees/verify` (`git -C .worktrees/verify checkout --detach master`), never in the main checkout (the developer's launchd service runs from it and does `npm ci` on start).
+- Open question for the developer: several picks on multi-select questions together with an own answer (D39 allows one pick per question).
 
 ## The developer's next steps
 - `npm run build`, then restart their Switchboard (127.0.0.1:4870). Never restart it for them.
