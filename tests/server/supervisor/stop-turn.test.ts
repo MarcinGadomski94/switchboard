@@ -398,3 +398,40 @@ describe('stop · real path (fake-claude, D50)', () => {
     await until(async () => !w.supervisor.isLive(session.id) || undefined, 'the process ended');
   });
 });
+
+describe('stop background tasks · real path (fake-claude, D50 ruling)', () => {
+  it('stop_task for each pending task: the tasks end as stopped, the wait goes; a wake-up is not stoppable', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Start the dev server. [fake:background 60 npm run dev]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const task = await until(async () => w.supervisor.activity(session.id)?.background[0], 'the pending background task');
+    expect(w.supervisor.activity(session.id)?.state).toBe('background');
+    // Nothing to interrupt: no turn runs.
+    expect((await w.supervisor.interrupt(session.id)).outcome).toBe('idle');
+
+    const reply = await w.supervisor.stopBackground(session.id);
+    expect(reply).toMatchObject({ stopped: [task.id], failed: [] });
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    const sent = (await stdinOf(w.logFile, w.supervisor.pid(session.id) ?? -1)).filter((l) => (l['request'] as { subtype?: string } | undefined)?.subtype === 'stop_task');
+    expect(sent.map((l) => l['request'])).toEqual([{ subtype: 'stop_task', task_id: task.id }]);
+    expect(reply.record.status).toBe('done');
+    // Nothing more comes for it (its end played as stopped, no turn of its own).
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(await resultEvents(w, session.id)).toHaveLength(1);
+    // Again: nothing left to stop.
+    expect(await w.supervisor.stopBackground(session.id)).toMatchObject({ stopped: [], failed: [] });
+  });
+
+  it('only the named tasks; a wake-up (no CLI task) is left alone', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Wait a bit. [fake:wakeup 60]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const wakeup = await until(async () => w.supervisor.activity(session.id)?.background[0], 'the wake-up');
+    expect(wakeup.kind).toBe('wakeup');
+    expect(await w.supervisor.stopBackground(session.id)).toMatchObject({ stopped: [], failed: [] });
+    expect(await w.supervisor.stopBackground(session.id, [wakeup.id])).toMatchObject({ stopped: [], failed: [] });
+    expect(w.supervisor.activity(session.id)?.background).toHaveLength(1);
+  });
+});

@@ -78,7 +78,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff)$/],
-  ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen)$/],
+  // D50: Stop (interrupt) and the background-task stop work on a peer's session too.
+  ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model)$/],
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/questions\/batch\/[^/]+\/answers$/],

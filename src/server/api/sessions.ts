@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -67,6 +67,9 @@ function notFound(reply: FastifyReply, id: string): FastifyReply {
 export const HOOKED_UNAVAILABLE: Readonly<Record<string, string>> = {
   pause: 'Pause and interrupt stay in the terminal: Switchboard never runs this session\'s process, it only follows it through its hooks.',
   resume: 'Resume stays in the terminal: Switchboard never runs this session\'s process.',
+  // D50: hooks cannot interrupt a turn (Esc or Ctrl+C in the terminal can), nor stop its background tasks.
+  interrupt: 'Stop stays in the terminal (Esc there): hooks cannot interrupt a turn of a process Switchboard does not run.',
+  background: 'Background tasks are stopped in the terminal: hooks cannot stop them.',
   model: 'Model and effort changes stay in the terminal (/model there): hooks cannot change them.',
   remote: 'Remote Control is the terminal\'s own (/remote-control there): hooks cannot switch it.',
   detach: 'The session already runs in its terminal.',
@@ -76,6 +79,16 @@ export const HOOKED_UNAVAILABLE: Readonly<Record<string, string>> = {
 /** D48 P4: 409 `hooked-unavailable` for an action a hooked session does not take. */
 function hookedRefusal(reply: FastifyReply, action: keyof typeof HOOKED_UNAVAILABLE): FastifyReply {
   return reply.code(409).send({ error: 'hooked-unavailable', message: HOOKED_UNAVAILABLE[action] });
+}
+
+/** D50 background: the body's `taskIds` (`undefined` = all), or `null` when the body is not `{ taskIds?: string[] }`. */
+export function parseStopBackground(body: unknown): readonly string[] | undefined | null {
+  if (body === undefined || body === null) return undefined;
+  if (typeof body !== 'object' || Array.isArray(body)) return null;
+  const taskIds = (body as { taskIds?: unknown }).taskIds;
+  if (taskIds === undefined) return undefined;
+  if (!Array.isArray(taskIds) || !taskIds.every((id) => typeof id === 'string' && id !== '' && id.length <= 200)) return null;
+  return taskIds as string[];
 }
 
 /** `true` when the session is a hooked terminal session (D48 P4). */
@@ -216,9 +229,24 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   // D50 (additive): Stop the current turn (the process stays alive; the session becomes idle). The reply carries the
   // outcome (`stopped` / `idle` / `timeout`) and the texts of the messages the Stop took back, for the composer.
   app.post<{ Params: IdParams }>('/api/sessions/:id/interrupt', async (request, reply): Promise<InterruptResult | FastifyReply> => {
+    // D50 + D48 P4: a hooked terminal session's turn is stopped in its terminal.
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'interrupt');
     try {
       const result = await supervisor.interrupt(request.params.id);
       return { session: await toSession(store, result.record, supervisor.activity(result.record.id)), outcome: result.outcome, withdrawn: result.withdrawn };
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D50 ruling (additive): stop the session's background tasks (`stop_task` per task). Body: optional `{ taskIds }`.
+  app.post<{ Params: IdParams }>('/api/sessions/:id/background/stop', async (request, reply): Promise<StopBackgroundResult | FastifyReply> => {
+    const taskIds = parseStopBackground(request.body);
+    if (taskIds === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'taskIds', message: 'taskIds must be a list of task ids' }] });
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'background');
+    try {
+      const result = await supervisor.stopBackground(request.params.id, taskIds);
+      return { session: await toSession(store, result.record, supervisor.activity(result.record.id)), stopped: result.stopped, failed: result.failed };
     } catch (error) {
       return sendError(reply, error);
     }

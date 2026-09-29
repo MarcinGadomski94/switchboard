@@ -3,7 +3,9 @@
  * ■ Stop button replaces Send, and when Esc stops the turn. Pure, so it can be
  * unit-tested; ChatTab reads the page and calls these.
  */
+import type { BackgroundTask } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
+import { stoppableTask } from '../../../core/stop-turn.ts';
 
 /** What {@link canStop} reads of the session. */
 export interface StoppableSession {
@@ -11,7 +13,9 @@ export interface StoppableSession {
   readonly live: boolean;
   readonly status: SessionStatus;
   /** D19 / D30: what the running turn does; state `background` = no turn runs, only background work waits. */
-  readonly activity?: { readonly state: string } | null;
+  readonly activity?: { readonly state: string; readonly background?: readonly BackgroundTask[] } | null;
+  /** D48 P4: a hooked terminal session: its turns are stopped in the terminal, never from here. */
+  readonly hooked?: boolean;
 }
 
 /**
@@ -22,7 +26,7 @@ export interface StoppableSession {
  * paused, idle, done or failed session.
  */
 export function canStop(session: StoppableSession | null): boolean {
-  if (!session || !session.live) return false;
+  if (!session || !session.live || session.hooked === true) return false;
   if (session.status !== 'run' && session.status !== 'need') return false;
   return session.activity?.state !== 'background';
 }
@@ -62,4 +66,18 @@ export function escStops(press: StopKeyPress, context: StopKeyContext): boolean 
   if (press.altKey || press.ctrlKey || press.metaKey || press.shiftKey) return false;
   if (!context.stoppable || context.stopping) return false;
   return !context.overlayOpen && !context.editingElsewhere;
+}
+
+/**
+ * D50 ruling (background): the background tasks the composer offers to stop: when
+ * no turn runs (nothing for Stop) but the live session waits on background work
+ * (activity `background`, D30 / D43), its pending tasks, oldest first; `[]`
+ * otherwise, and for a hooked session. Only tasks `stop_task` can end count
+ * (`stoppableTask`: not a wake-up); with none there is no offer.
+ */
+export function stoppableBackground(session: StoppableSession | null): readonly BackgroundTask[] {
+  if (!session || !session.live || session.hooked === true || canStop(session)) return [];
+  if (session.activity?.state !== 'background') return [];
+  const tasks = session.activity.background ?? [];
+  return tasks.some(stoppableTask) ? tasks : [];
 }

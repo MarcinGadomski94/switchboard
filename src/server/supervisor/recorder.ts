@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { SessionActivity } from '../../core/api.ts';
+import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
 import type { ArtifactType, EventKind, SessionStatus } from '../../core/model.ts';
 import {
   type EventPayload,
@@ -286,6 +286,22 @@ export class StreamRecorder {
     }
     this.#syncActivity();
     return closed;
+  }
+
+  /** D50 background: the main agent's pending background tasks (D30 / D43), oldest first. */
+  backgroundTasks(): BackgroundTask[] {
+    return this.#background.list();
+  }
+
+  /**
+   * D50 background: the CLI answered a `stop_task` for this task but reported no
+   * end within the wait: the task ends here as stopped (the background wait and, for
+   * a background agent, its card).
+   */
+  async endBackgroundTask(taskId: string): Promise<void> {
+    this.#taskNotified(taskId, null);
+    await this.#onTaskEnd(taskId, 'stopped');
+    this.#syncActivity();
   }
 
   /** D50: the CLI did not acknowledge a Stop in time (or its turn did not end): the chat's error line. */
