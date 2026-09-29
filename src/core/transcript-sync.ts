@@ -23,8 +23,10 @@
  *   file at all, nothing is imported (never guessed).
  * - Skipped: `model:"<synthetic>"` assistant lines (`No response requested.` after
  *   an interrupted turn), `isMeta` user lines, interrupt markers, thinking blocks,
- *   `attachment` / `system` entries.
+ *   `attachment` / `system` entries (D48 P4: except a `queued_command` attachment
+ *   carrying a message Switchboard woke a hooked session with).
  */
+import { switchboardMessageText } from './hooks.ts';
 import { type JsonRecord, parseStreamObject } from './stream-json.ts';
 
 /** One parsed transcript line. */
@@ -148,8 +150,12 @@ export function entriesSince(entries: readonly TranscriptEntry[], syncUuid: stri
 
 /** One thing a transcript entry adds to the session's events. */
 export type TranscriptItem =
-  /** A prompt typed in the terminal (or a slash command, as `/name args`). */
-  | { readonly kind: 'prompt'; readonly uuid: string; readonly ts: string | null; readonly text: string }
+  /**
+   * A prompt typed in the terminal (or a slash command, as `/name args`). D48 P4:
+   * `from: 'switchboard'` = the developer's message Switchboard woke a hooked
+   * session with (a task notification, `switchboardMessageText`), its text only.
+   */
+  | { readonly kind: 'prompt'; readonly uuid: string; readonly ts: string | null; readonly text: string; readonly from?: 'switchboard' }
   /** Assistant text; blocks of one `messageId` belong to one message. */
   | { readonly kind: 'text'; readonly uuid: string; readonly ts: string | null; readonly messageId: string | null; readonly text: string }
   | {
@@ -188,8 +194,14 @@ export function transcriptItems(entries: readonly TranscriptEntry[]): Transcript
     const ts = typeof entry['timestamp'] === 'string' && !Number.isNaN(Date.parse(entry['timestamp'])) ? new Date(entry['timestamp']).toISOString() : null;
     const type = entry['type'];
     if (type === 'user') {
-      if (entry['isMeta'] === true) continue;
       const message = parseStreamObject({ ...entry });
+      // D48 P4: a wake-up's user line is taken whatever its flags say.
+      const woken = message.kind === 'user-text' ? switchboardMessageText(message.text) : null;
+      if (woken !== null) {
+        items.push({ kind: 'prompt', uuid, ts, text: woken, from: 'switchboard' });
+        continue;
+      }
+      if (entry['isMeta'] === true) continue;
       if (message.kind === 'tool-result') {
         for (const result of message.results) {
           if (result.toolUseId) items.push({ kind: 'tool-result', uuid, ts, toolUseId: result.toolUseId, text: result.text, isError: result.isError });
@@ -197,6 +209,14 @@ export function transcriptItems(entries: readonly TranscriptEntry[]): Transcript
       } else if (message.kind === 'user-text' && !message.interrupt) {
         const text = promptText(message.text);
         if (text !== null) items.push({ kind: 'prompt', uuid, ts, text });
+      }
+    } else if (type === 'attachment') {
+      // D48 P4: a wake-up folded into a running turn is a `queued_command` attachment (CLI 2.1.284, probe b).
+      const attachment = entry['attachment'];
+      if (attachment && typeof attachment === 'object' && !Array.isArray(attachment)) {
+        const record = attachment as Record<string, unknown>;
+        const text = record['type'] === 'queued_command' && typeof record['prompt'] === 'string' ? switchboardMessageText(record['prompt']) : null;
+        if (text !== null) items.push({ kind: 'prompt', uuid, ts, text, from: 'switchboard' });
       }
     } else if (type === 'assistant') {
       const message = parseStreamObject({ ...entry });

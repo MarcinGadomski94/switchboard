@@ -13,6 +13,7 @@ import {
   ATTACH_ANYWAY,
   ATTACH_HERE,
   CANCEL,
+  HOOKED_NOTE,
   CONTINUE_IN_TERMINAL,
   REMOTE_LABEL,
   REMOTE_LINK_LABEL,
@@ -107,9 +108,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
     }
   };
 
-  const pause = session ? pauseButton(session) : null;
+  // D48 P4: a hooked terminal session: what hooks cannot do is not offered (the note says where it stays).
+  const hooked = session?.hooked === true;
+  const pause = session && !hooked ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
-  const remote = session ? remoteToggle(session) : null;
+  const remote = session && !hooked ? remoteToggle(session) : null;
 
   // D24: on → off (or on and back) never leaves the popover of an old link open.
   const remoteUrl = remote?.url ?? null;
@@ -154,7 +157,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
         <div className="sb-sv-actions">
-          {session ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
+          {session && !hooked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -203,6 +206,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               {popover && remote.url ? <RemotePopover url={remote.url} onClose={() => setPopover(false)} /> : null}
             </div>
           ) : null}
+          {hooked ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -217,8 +221,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           >
             {pause?.label ?? 'Pause'}
           </button>
+          )}
           {/* D48: the terminal handoff is on the machine the session runs on; not offered for a peer's session. */}
-          {session?.machine ? null : (
+          {session?.machine || hooked ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -233,6 +238,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           )}
         </div>
       </div>
+      {hooked ? (
+        <div className="sb-sv-remote-copy" data-testid="session-hooked-note">
+          {HOOKED_NOTE}
+        </div>
+      ) : null}
       {session?.remoteSource ? (
         <div className="sb-sv-remote-copy" data-testid="session-remote-copy-note">
           <span>{REMOTE_COPY_NOTE}</span>

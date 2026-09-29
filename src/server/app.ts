@@ -5,11 +5,14 @@ import { FolderService } from './folders/service.ts';
 import { HubBus } from './hub/bus.ts';
 import { type HubTimingOptions, SseHub } from './hub/hub.ts';
 import { forwardServiceEvents } from './hub/wire.ts';
-import { QuestionPipeline } from './inbox/pipeline.ts';
+import { QuestionPipeline, type QuestionSessions } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { LoopTracker } from './loops/tracker.ts';
 import { registerPeerForwarding } from './api/machines.ts';
 import { PeerService } from './peers/service.ts';
+import { HookService } from './hooks/service.ts';
+import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
+import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
@@ -95,6 +98,14 @@ export interface AppOptions {
    * connections: the routes still answer) and closes with the app.
    */
   readonly peers?: PeerService;
+  /**
+   * Hooked terminal sessions (D48 P4). A caller that passes one owns it (main.ts
+   * starts its polls and closes it) and passes its `hookToken`; without one the app
+   * makes its own (no polls) with the hook token of `config.dataDir`.
+   */
+  readonly hooks?: HookService;
+  /** D48 P4: the hook token `/hook/*` takes (with {@link hooks}). */
+  readonly hookToken?: string;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -106,7 +117,9 @@ export interface AppOptions {
  */
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
-  registerSecurity(app, { port: options.config.port, token: options.token });
+  // D48 P4: the hook script presents this token to `/hook/*` (a file only the user can read).
+  const hookToken = options.hookToken ?? (await loadOrCreateToken(options.config.dataDir, HOOK_TOKEN_FILE));
+  registerSecurity(app, { port: options.config.port, token: options.token, hookToken });
   const bus = options.bus ?? new HubBus();
   let supervisor = options.supervisor;
   let questions = options.questions;
@@ -176,9 +189,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     peers = own;
   }
   peers.useApp(app);
+  let hooks = options.hooks;
+  if (!hooks) {
+    const own = new HookService({ config, store: options.store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    hooks = own;
+  }
+  // D48 P4: answers and messages of a hooked session go through its hooks; everything else through the supervisor.
+  questions.bind(sessionsWithHooks(supervisor, hooks));
   // D48: a request that names a peer's id goes to that peer (before any route handler reads the local store).
   registerPeerForwarding(app, peers);
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
@@ -214,4 +237,18 @@ export function createWorktreeManager(config: ServerConfig, store: Store, superv
     ghCommand: config.ghCommand,
     sessions: supervisor,
   });
+}
+
+/**
+ * D48 P4: what the question pipeline answers through: a hooked terminal session's
+ * requests and stale answers go to its hooks (`HookService`), every other
+ * session's to the supervisor.
+ */
+export function sessionsWithHooks(supervisor: SessionSupervisor, hooks: HookService): QuestionSessions {
+  return {
+    respond: async (sessionId, requestId, decision) =>
+      (await hooks.isHooked(sessionId)) ? hooks.respond(sessionId, requestId, decision) : supervisor.respond(sessionId, requestId, decision),
+    sendToLive: async (sessionId, text, origin) => ((await hooks.isHooked(sessionId)) ? hooks.sendToLive(sessionId, text) : supervisor.sendToLive(sessionId, text, origin)),
+    activity: (sessionId) => supervisor.activity(sessionId),
+  };
 }

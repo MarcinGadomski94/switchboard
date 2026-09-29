@@ -115,11 +115,16 @@ interface DetailProps {
   readonly busy: boolean;
   readonly error: string | null;
   readonly onAnswers: (body: AnswerBatch) => void;
-  readonly onAction: (action: InboxAction) => void;
+  /** D48 P4: `message` = a hooked session's Deny message (empty = the fixed text). */
+  readonly onAction: (action: InboxAction, message?: string) => void;
 }
 
 function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAction }: DetailProps) {
   const body = detailBody(item);
+  // D48 P4: a hooked terminal session's Deny can tell Claude why.
+  const [denyText, setDenyText] = useState('');
+  useEffect(() => setDenyText(''), [item.id]);
+  const denyMessage = item.permission?.hook?.denyMessage === true;
   return (
     <>
       <div className="sb-inbox__meta" data-testid="inbox-meta">
@@ -167,7 +172,22 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
           </pre>
         </div>
       ) : null}
-      {body !== 'questions' ? <Actions item={item} busy={busy} onAction={onAction} /> : null}
+      {body === 'permission' && denyMessage ? (
+        <textarea
+          className="sb-inbox__deny-message"
+          data-testid="permission-deny-message"
+          aria-label="Message with Deny"
+          placeholder="Tell Claude why, with Deny (optional)"
+          rows={2}
+          maxLength={2000}
+          value={denyText}
+          disabled={busy}
+          onChange={(event) => setDenyText(event.target.value)}
+        />
+      ) : null}
+      {body !== 'questions' ? (
+        <Actions item={item} busy={busy} onAction={(action) => onAction(action, action.id === 'deny' && denyMessage && denyText.trim() !== '' ? denyText.trim() : undefined)} />
+      ) : null}
       {body !== 'questions' && error ? (
         <div className="sb-inbox__error" data-testid="inbox-error">
           {error}
@@ -261,10 +281,10 @@ export function InboxView() {
             busy={busyId === current.id}
             error={errors[current.id] ?? null}
             onAnswers={(body) => void run(current, () => api.answerBatch(current.id, body))}
-            onAction={(action) => {
+            onAction={(action, message) => {
               // "Open fix session" (M3.3): once the item is closed, the New-session modal opens with its prefill.
               const prefill = newSessionAfter(current, action.id);
-              void run(current, () => api.inboxAction(current.id, action.id), prefill ? () => modals.open('new-session', { prefill }) : undefined);
+              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), prefill ? () => modals.open('new-session', { prefill }) : undefined);
             }}
           />
         ) : null}

@@ -4,6 +4,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText } from './machines.ts';
 import { Row, SectionTitle } from './rows.tsx';
+import { MachineHooks } from './MachineHooks.tsx';
 import './machines.css';
 
 /** Refreshes the state dots while the section is open. */
@@ -18,7 +19,8 @@ function errorText(caught: unknown, fallback: string): string {
  * switch (off by default; binds only the Tailscale address), "Allow a new peer"
  * (a one-time code), "Add machine" (the other machine's Tailscale address and its
  * code), and the paired machines with their state (online / offline / auth failed
- * / no address), Rename and Remove.
+ * / no address), Rename and Remove; D48 P4: for this machine and each online
+ * one, its terminal hooks and "Hook into…" (`MachineHooks`).
  */
 export function MachinesSection() {
   const view = useApi(api.machines);
@@ -65,7 +67,17 @@ export function MachinesSection() {
       </div>
       {data ? (
         <>
-          <Row id="self" label="This machine" description={<span data-testid="machines-self-id">{`id ${data.self.id}`}</span>}>
+          <Row
+            id="self"
+            label="This machine"
+            description={
+              <>
+                <span data-testid="machines-self-id">{`id ${data.self.id}`}</span>
+                {/* D48 P4: this machine's own terminal sessions and hooks. */}
+                <MachineHooks machine={null} name={data.self.name} />
+              </>
+            }
+          >
             <span className="sb-set-value" data-testid="machines-self-name">
               {data.self.name}
             </span>
@@ -194,6 +206,8 @@ function MachineRow({
         <div className="sb-set-row-desc" data-mono="" data-testid="machine-detail">
           {machineDetail(machine)}
         </div>
+        {/* D48 P4: that machine's terminal sessions and hooks, through its peer API. */}
+        {machine.state === 'online' ? <MachineHooks machine={machine.id} name={machine.name} /> : null}
       </div>
       <div className="sb-set-folder-actions">
         {renaming ? (

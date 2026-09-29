@@ -95,6 +95,8 @@ const SESSION_KEYS = keys<Session>()([
   'context',
   // additive, D48 (a peer's session: its machine; null here)
   'machine',
+  // additive, D48 P4 (a hooked terminal session)
+  'hooked',
 ]);
 const AGENT_KEYS = keys<Agent>()([
   'id',

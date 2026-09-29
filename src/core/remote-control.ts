@@ -9,8 +9,11 @@
 /** Where a request answered outside Switchboard was answered (`Question.answeredOn`, the request events). */
 export const ANSWERED_ON_CLAUDE_AI = 'claude.ai';
 
-/** The one value {@link ANSWERED_ON_CLAUDE_AI} gives today. */
-export type AnsweredOn = typeof ANSWERED_ON_CLAUDE_AI;
+/** D48 P4: a hooked terminal session's request answered in its own terminal first. */
+export const ANSWERED_IN_TERMINAL = 'terminal';
+
+/** Where a request answered outside Switchboard was answered: the phone (D24) or, D48 P4, a hooked session's terminal. */
+export type AnsweredOn = typeof ANSWERED_ON_CLAUDE_AI | typeof ANSWERED_IN_TERMINAL;
 
 /** A parsed JSON object. */
 type JsonRecord = Record<string, unknown>;

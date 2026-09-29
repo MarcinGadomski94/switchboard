@@ -1,8 +1,11 @@
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test';
 import { freeTestPorts, makeTempDir, removeTempDir } from '../helpers/net.ts';
 import type { MachinesView } from '../../src/core/peers.ts';
 import { remoteId } from '../../src/core/peers.ts';
 import { type PeerNode, enableListener, machineOn, pairedNodes, startPeerNode, waitFor } from '../helpers/peers.ts';
+import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '../helpers/transcripts.ts';
 
 /**
  * D48 "Switchboard peers" oracle (`docs/peers.md`): two real Switchboard
@@ -197,4 +200,92 @@ test('P3: the New-session form starts a session on a peer: its folders and model
   const onA = (await a.call('GET', '/api/sessions')).body as Array<{ title: string; folder: string }>;
   expect(onA).toMatchObject([{ title: 'Started from B', folder: a.folderId }]);
   expect(((await b.call('GET', '/api/sessions')).body as Array<{ machine: unknown }>).every((session) => session.machine !== null)).toBe(true);
+});
+
+/** A hand-started terminal session on `node` (a live pid in its registry + its transcript), as `claude agents --json` (fake-claude) lists it. */
+async function fakeTerminal(target: PeerNode, id: string): Promise<{ cwd: string; transcript: string; lines: Record<string, unknown>[] }> {
+  const cwd = target.repo as string;
+  await mkdir(path.join(target.configDir, 'sessions'), { recursive: true });
+  await writeFile(
+    path.join(target.configDir, 'sessions', `${process.pid}.json`),
+    JSON.stringify({ pid: process.pid, sessionId: id, cwd, kind: 'interactive', entrypoint: 'cli', startedAt: Date.now() - 60_000, name: 'pc-terminal', status: 'idle' }),
+  );
+  const lines = [terminalUserLine({ sessionId: id, cwd, content: 'Refactor the parser.', parentUuid: null, timestamp: '2026-09-29T10:00:00.000Z' })];
+  lines.push(assistantTextLine({ sessionId: id, cwd, text: 'Parser split in two.', parentUuid: lastUuid(lines), timestamp: '2026-09-29T10:00:30.000Z' }));
+  return { cwd, transcript: await writeTranscript(target.configDir, cwd, id, lines), lines };
+}
+
+/** A call of the hook script against `target` (its hook token), as the CLI would make it. */
+async function hookCall(target: PeerNode, kind: 'event' | 'permission' | 'waiter', event: Record<string, unknown>): Promise<{ status: number; body: any }> {
+  const token = (await readFile(path.join(target.dataDir, 'hook-token'), 'utf8')).trim();
+  const response = await fetch(`${target.baseUrl}/hook/v1/${kind}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ event, claudePid: process.pid, entrypoint: 'cli' }),
+  });
+  const text = await response.text();
+  return { status: response.status, body: text ? JSON.parse(text) : null };
+}
+
+test('P4: hook into a terminal session on the peer from Settings → Machines; chat, a message that wakes it, Deny with a message', async ({ browser }) => {
+  const { a, b, aId, aName } = await paired();
+  const id = '7b6d7a38-aaaa-4bbb-8ccc-0123456789ab';
+  const { cwd, transcript, lines } = await fakeTerminal(a, id);
+  const base = { session_id: id, cwd, transcript_path: transcript };
+
+  const page = await pageOf(browser, b, '/settings/machines');
+  const machine = page.locator(`[data-testid="machine"][data-machine-id="${aId}"]`);
+  const hooks = machine.getByTestId('machine-hooks');
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'none', { timeout: 15_000 });
+  await hooks.getByTestId('hooks-install').click();
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'installed');
+  expect(JSON.parse(await readFile(path.join(a.configDir, 'settings.json'), 'utf8')).hooks.PermissionRequest).toHaveLength(1);
+
+  await hooks.getByTestId('hook-into').click();
+  const terminal = hooks.getByTestId('terminal-session');
+  await expect(terminal).toHaveCount(1);
+  await expect(terminal).toContainText('pc-terminal');
+  await expect(terminal).toContainText(cwd);
+  await terminal.getByTestId('terminal-hook').click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/r~${aId}~`));
+  await expect(page.getByTestId('session-machine')).toHaveText(aName);
+  await expect(page.getByTestId('session-hooked-note')).toContainText('stay in the terminal');
+  await expect(page.getByTestId('session-pause')).toHaveCount(0);
+  const view = page.getByTestId('view-session');
+  await expect(view.getByTestId('chat-text')).toHaveText(['Refactor the parser.', 'Parser split in two.']);
+  await expect(page.locator('.sb-session', { hasText: 'pc-terminal' }).getByTestId('machine-tag')).toHaveText(aName);
+
+  // A message: queued (the clock) until the terminal's waiter takes it and the transcript shows it.
+  await page.getByTestId('chat-input').fill('Also add a test for empty input.');
+  await page.getByTestId('chat-input').press('Enter');
+  const bubble = view.getByTestId('chat-message').filter({ hasText: 'Also add a test for empty input.' });
+  await expect(bubble.getByTestId('chat-queued')).toBeVisible();
+  const waiter = await hookCall(a, 'waiter', { ...base, hook_event_name: 'SessionStart', source: 'startup' });
+  expect(waiter.status).toBe(200);
+  expect(waiter.body.message).toContain('Also add a test for empty input.');
+  const woken = {
+    type: 'user',
+    uuid: 'wake-e2e',
+    parentUuid: lastUuid(lines),
+    timestamp: new Date().toISOString(),
+    message: { role: 'user', content: `<task-notification>\n<summary>Message from Switchboard</summary>\n</task-notification>\n<system-reminder>\nThe developer sent this message from Switchboard: Also add a test for empty input.\n</system-reminder>` },
+    origin: { kind: 'task-notification', producer: 'session-task' },
+  };
+  const reply = assistantTextLine({ sessionId: id, cwd, text: 'Added the empty-input test.', parentUuid: 'wake-e2e', timestamp: new Date().toISOString() });
+  await appendFile(transcript, `${JSON.stringify(woken)}\n${JSON.stringify(reply)}\n`);
+  await hookCall(a, 'event', { ...base, hook_event_name: 'UserPromptSubmit' });
+  await hookCall(a, 'event', { ...base, hook_event_name: 'Stop' });
+  await expect(view.getByTestId('chat-text')).toHaveText(['Refactor the parser.', 'Parser split in two.', 'Also add a test for empty input.', 'Added the empty-input test.'], { timeout: 15_000 });
+  await expect(bubble.getByTestId('chat-queued')).toHaveCount(0);
+
+  // A permission request in A's terminal: B's Inbox, Deny with a message.
+  const asked = hookCall(a, 'permission', { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } });
+  await page.getByTestId('nav-inbox').click();
+  const item = page.getByTestId('inbox-item').filter({ hasText: 'pc-terminal' });
+  await expect(item).toHaveAttribute('data-kind', 'permission', { timeout: 15_000 });
+  await item.click();
+  await expect(page.getByTestId('inbox-action')).toHaveText(['Allow once', 'Deny']);
+  await page.getByTestId('permission-deny-message').fill('Keep dist, it is the release.');
+  await page.getByTestId('inbox-action').filter({ hasText: 'Deny' }).click();
+  expect((await asked).body).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Keep dist, it is the release.' } } });
 });

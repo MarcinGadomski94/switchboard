@@ -13,6 +13,7 @@ import type {
   FolderListing,
   FrameHelperInfo,
   HistoryItem,
+  HooksStatus,
   InboxItem,
   IsolateRequest,
   ModelSettings,
@@ -32,6 +33,7 @@ import type {
   SolutionGroup,
   SystemInfo,
   TeleportSession,
+  TerminalSession,
   Tool,
   ToolProbe,
   Worktree,
@@ -141,7 +143,8 @@ export const api = {
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),
-  inboxAction: (id: string, action: string) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`),
+  /** D48 P4: a hooked session's Deny takes `{ message }`. */
+  inboxAction: (id: string, action: string, body?: { readonly message: string }) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`, body),
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
@@ -237,6 +240,13 @@ export function machineApi(machine: string | null) {
     solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
     branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
     createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
+    // D48 P4: the machine's terminal sessions and its hooks.
+    terminalSessions: () => request<TerminalSession[]>('GET', onMachine(machine, '/api/terminal-sessions')),
+    /** 201 a new hooked session (200 one that existed); 404, 409 `already-in-switchboard`. */
+    hookTerminal: (id: string) => request<Session>('POST', onMachine(machine, `/api/terminal-sessions/${enc(id)}/hook`)),
+    hooks: () => request<HooksStatus>('GET', onMachine(machine, '/api/hooks')),
+    installHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/install')),
+    removeHooks: () => request<HooksStatus>('POST', onMachine(machine, '/api/hooks/remove')),
   } as const;
 }
 

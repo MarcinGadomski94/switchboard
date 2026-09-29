@@ -5,6 +5,7 @@ import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
+import { HookError } from '../hooks/service.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
@@ -60,6 +61,26 @@ function sendError(reply: FastifyReply, error: unknown): FastifyReply {
 
 function notFound(reply: FastifyReply, id: string): FastifyReply {
   return reply.code(404).send({ error: 'not-found', message: `no session ${id}` });
+}
+
+/** D48 P4: what a hooked terminal session cannot do from Switchboard, and why (shown as the refusal's message). */
+export const HOOKED_UNAVAILABLE: Readonly<Record<string, string>> = {
+  pause: 'Pause and interrupt stay in the terminal: Switchboard never runs this session\'s process, it only follows it through its hooks.',
+  resume: 'Resume stays in the terminal: Switchboard never runs this session\'s process.',
+  model: 'Model and effort changes stay in the terminal (/model there): hooks cannot change them.',
+  remote: 'Remote Control is the terminal\'s own (/remote-control there): hooks cannot switch it.',
+  detach: 'The session already runs in its terminal.',
+  attach: 'Attaching would start a second process on the same conversation while the terminal holds it.',
+};
+
+/** D48 P4: 409 `hooked-unavailable` for an action a hooked session does not take. */
+function hookedRefusal(reply: FastifyReply, action: keyof typeof HOOKED_UNAVAILABLE): FastifyReply {
+  return reply.code(409).send({ error: 'hooked-unavailable', message: HOOKED_UNAVAILABLE[action] });
+}
+
+/** `true` when the session is a hooked terminal session (D48 P4). */
+async function isHooked(context: ApiContext, id: string): Promise<boolean> {
+  return (await context.store.sessions.get(id))?.hooked === true;
 }
 
 /**
@@ -136,6 +157,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   app.put<{ Params: IdParams }>('/api/sessions/:id/remote', async (request, reply): Promise<Session | FastifyReply> => {
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
+    if (record.hooked) return hookedRefusal(reply, 'remote');
     const enabled = parseRemoteInput(request.body);
     if (enabled === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'enabled', message: 'the body must be { enabled: true | false }' }] });
     try {
@@ -151,6 +173,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   app.put<{ Params: IdParams }>('/api/sessions/:id/model', async (request, reply): Promise<Session | FastifyReply> => {
     const record = await store.sessions.get(request.params.id);
     if (!record) return notFound(reply, request.params.id);
+    if (record.hooked) return hookedRefusal(reply, 'model');
     const parsed = parseModelInput(request.body);
     if (!parsed.ok) return reply.code(422).send({ error: 'invalid', errors: parsed.errors });
     try {
@@ -168,14 +191,18 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       return reply.code(422).send({ error: 'invalid', errors: [{ field: 'text', message: 'the message must be non-empty text' }] });
     }
     try {
-      await supervisor.sendMessage(request.params.id, text);
+      // D48 P4: a hooked terminal session's message waits in its mailbox for its next idle waiter.
+      if (await isHooked(context, request.params.id)) await context.hooks.sendMessage(request.params.id, text);
+      else await supervisor.sendMessage(request.params.id, text);
       return reply.code(202).send();
     } catch (error) {
+      if (error instanceof HookError) return reply.code(error.status).send({ error: error.code, message: error.message });
       return sendError(reply, error);
     }
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/pause', async (request, reply) => {
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'pause');
     try {
       const record = await supervisor.pause(request.params.id);
       return await toSession(store, record, supervisor.activity(record.id));
@@ -185,6 +212,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/resume', async (request, reply) => {
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'resume');
     try {
       const record = await supervisor.resume(request.params.id);
       return await toSession(store, record, supervisor.activity(record.id));
@@ -200,6 +228,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (confirm === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'confirm', message: 'the body must be empty or { confirm: true | false }' }] });
     try {
       const record = await supervisor.close(request.params.id, { confirm, beforePublish: (id) => context.questions.closeSession(id) });
+      // D48 P4: closing a hooked terminal session unhooks it (the terminal keeps running; its held hook calls get no decision).
+      if (record.hooked) await context.hooks.unhooked(record.id);
       return await toSession(store, record, supervisor.activity(record.id));
     } catch (error) {
       return sendError(reply, error);
@@ -217,6 +247,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/detach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'detach');
     try {
       return await supervisor.detach(request.params.id);
     } catch (error) {
@@ -228,6 +259,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   app.post<{ Params: IdParams }>('/api/sessions/:id/attach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
     const body = request.body as AttachRequest | null | undefined;
     const confirm = typeof body === 'object' && body !== null && body.confirm === true;
+    if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'attach');
     try {
       return await supervisor.attach(request.params.id, { confirm });
     } catch (error) {

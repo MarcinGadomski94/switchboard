@@ -1,3 +1,4 @@
+import type { HooksStatus, TerminalSession } from '../../../core/api.ts';
 import type { Machine, MachineState, PeerListenerState } from '../../../core/peers.ts';
 
 /**
@@ -58,4 +59,27 @@ export function codeTimeLeft(expiresAt: string, now: number): string | null {
 export function refusalText(body: unknown, fallback: string): string {
   const message = typeof body === 'object' && body !== null ? (body as { message?: unknown }).message : null;
   return typeof message === 'string' && message !== '' ? message : fallback;
+}
+
+/** D48 P4: the hooks' state line. */
+export function hooksStateLabel(status: HooksStatus): string {
+  switch (status.state) {
+    case 'installed':
+      return status.rewake === 'internal' ? 'Terminal hooks: installed' : 'Terminal hooks: installed (plain wake-up wording)';
+    case 'outdated':
+      return 'Terminal hooks: outdated (install again)';
+    case 'none':
+      return 'Terminal hooks: not installed';
+    case 'unreadable':
+      return `Terminal hooks: ${status.error ?? 'the settings file cannot be read'}`;
+  }
+}
+
+/** D48 P4: a terminal session's line in the picker: its name, folder and status. */
+export function terminalLine(terminal: TerminalSession): string {
+  const parts = [terminal.name ?? terminal.id.slice(0, 8), terminal.cwd ?? 'folder unknown'];
+  const status = terminal.waitingFor ? `waiting (${terminal.waitingFor})` : terminal.status;
+  if (status) parts.push(status);
+  if (!terminal.hookSeen) parts.push('hooks not seen yet: messages wake it after its next turn');
+  return parts.join(' · ');
 }

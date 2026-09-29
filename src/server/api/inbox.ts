@@ -83,7 +83,8 @@ export async function registerInboxRoutes(app: FastifyInstance, context: ApiCont
     const { id, action } = request.params;
     try {
       if (await questions.isPermissionItem(id)) {
-        await questions.decide(id, action);
+        // D48 P4: a hooked session's Deny may carry `{ message }`.
+        await questions.decide(id, action, request.body);
         return reply.code(204).send();
       }
       if (await systemItems.isSystemItem(id)) {

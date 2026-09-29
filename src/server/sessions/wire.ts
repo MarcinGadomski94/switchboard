@@ -127,6 +127,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     context: toSessionContext(record),
     // D48: this machine's own session (a peer's carries its machine, core/peer-wire.ts).
     machine: null,
+    // D48 P4: a hand-started terminal session Switchboard hooked into.
+    hooked: record.hooked,
   };
 }
 

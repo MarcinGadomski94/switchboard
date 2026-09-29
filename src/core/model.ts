@@ -73,7 +73,8 @@ export type AgentKind = 'main' | 'subagent' | 'workflow';
 export type PermissionState = 'open' | 'decided' | 'stale';
 
 /** Permission decision (D6: Allow once / Deny). */
-export type PermissionDecision = 'allow-once' | 'deny';
+/** D6: Allow once / Deny; D48 P4: `always-allow` for a hooked terminal session's request (its `updatedPermissions`). */
+export type PermissionDecision = 'allow-once' | 'always-allow' | 'deny';
 
 /** System Inbox item state. */
 export type SystemItemState = 'open' | 'closed';

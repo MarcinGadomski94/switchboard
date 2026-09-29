@@ -32,7 +32,12 @@ export interface ControlResponseLine {
  * `updatedPermissions` (D6); deny carries a fixed message.
  */
 export type ToolDecision =
-  | { readonly behavior: 'allow'; readonly updatedInput: Readonly<Record<string, unknown>> }
+  | {
+      readonly behavior: 'allow';
+      readonly updatedInput: Readonly<Record<string, unknown>>;
+      /** D48 P4 only (a hooked session's "Always allow"); never sent to a supervised process (D6). */
+      readonly updatedPermissions?: readonly unknown[];
+    }
   | { readonly behavior: 'deny'; readonly message: string };
 
 /** `{"type":"user","message":{"role":"user","content":<text>}}`. */
