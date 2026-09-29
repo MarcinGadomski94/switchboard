@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   type ContextState,
+  DEFAULT_AUTO_COMPACT,
+  autoCompactConfig,
+  autoCompactThreshold,
+  parseAutoCompactWindow,
   DEFAULT_CONTEXT_WINDOW,
   EMPTY_CONTEXT,
   ONE_M_CONTEXT_WINDOW,
@@ -176,6 +180,8 @@ describe('percent and band', () => {
       updatedAt: T0,
       compaction: null,
       compactedRecently: false,
+      autoCompactTokens: 967_000,
+      autoCompactPercent: 96.7,
     });
   });
 });
@@ -228,5 +234,46 @@ describe('contextFromTranscript (a terminal\'s turns, Attach here)', () => {
     expect(later).toMatchObject({ tokens: 14_003, compactedRecently: false, compaction: { trigger: 'manual' } });
     const stored = { ...EMPTY_CONTEXT, tokens: 42 };
     expect(contextFromTranscript(stored, [prompt('p1', 'hi')])).toBe(stored);
+  });
+});
+
+describe('auto-compact threshold (ruling D49-autocompact-mark; CLI 2.1.284 kK + _Q)', () => {
+  it('window − min(maxOutputTokens, 20 000) − 13 000', () => {
+    expect(autoCompactThreshold(200_000, 32_000)).toBe(167_000);
+    expect(autoCompactThreshold(200_000, null)).toBe(167_000);
+    expect(autoCompactThreshold(200_000, 8_192)).toBe(178_808);
+    expect(autoCompactThreshold(1_000_000, 64_000)).toBe(967_000);
+  });
+
+  it('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE lowers it (never raises), the window override clamps, max output override, off → null', () => {
+    const cfg = (env: Record<string, string>, settings: unknown[] = []) => autoCompactConfig(env, settings);
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' }))).toBe(90_000);
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '99' }))).toBe(167_000);
+    expect(cfg({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '0' }).pctOverride).toBeNull();
+    expect(cfg({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '150' }).pctOverride).toBeNull();
+    expect(autoCompactThreshold(1_000_000, 64_000, cfg({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400k' }))).toBe(367_000);
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ CLAUDE_CODE_AUTO_COMPACT_WINDOW: '1m' }))).toBe(167_000);
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ CLAUDE_CODE_MAX_OUTPUT_TOKENS: '4000' }))).toBe(183_000);
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ DISABLE_AUTO_COMPACT: '1' }))).toBeNull();
+    expect(autoCompactThreshold(200_000, 32_000, cfg({ DISABLE_COMPACT: 'true' }))).toBeNull();
+    expect(autoCompactThreshold(200_000, 32_000, cfg({}, [{ autoCompactEnabled: false }]))).toBeNull();
+    // Later settings files win; their `env` block counts like the process env.
+    expect(cfg({}, [{ autoCompactEnabled: false }, { autoCompactEnabled: true }]).enabled).toBe(true);
+    expect(cfg({}, [{ env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '70' } }]).pctOverride).toBe(70);
+    expect(cfg({})).toEqual(DEFAULT_AUTO_COMPACT);
+    expect([parseAutoCompactWindow('auto'), parseAutoCompactWindow('600'), parseAutoCompactWindow('1.5m'), parseAutoCompactWindow('250000')]).toEqual([null, 600_000, 1_500_000, 250_000]);
+  });
+
+  it('resolveContext: the tick follows the reported maxOutputTokens, the window and the stored config', () => {
+    const state = feed(
+      EMPTY_CONTEXT,
+      { kind: 'usage', model: 'claude-haiku-4-5', usage: usage(3, 50_000, 50_000), at: T0 },
+      { kind: 'result', modelUsage: { 'claude-haiku-4-5': { contextWindow: 200_000, maxOutputTokens: 8_192 } } },
+    );
+    expect(resolveContext(state, null)).toMatchObject({ autoCompactTokens: 178_808, autoCompactPercent: 89.4 });
+    const off = reduceContext(state, { kind: 'config', autoCompact: { ...DEFAULT_AUTO_COMPACT, enabled: false } });
+    expect(resolveContext(off, null)).toMatchObject({ autoCompactTokens: null, autoCompactPercent: null });
+    expect(reduceContext(off, { kind: 'config', autoCompact: { ...DEFAULT_AUTO_COMPACT, enabled: false } })).toBe(off);
+    expect(readContextState(JSON.parse(JSON.stringify(off)))).toEqual(off);
   });
 });

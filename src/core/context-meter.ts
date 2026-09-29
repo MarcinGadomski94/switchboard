@@ -58,6 +58,92 @@ export interface ContextState {
   readonly compactedRecently: boolean;
   /** Internal: a turn ended since the compaction (the next turn's start clears {@link compactedRecently}). */
   readonly compactTurnEnded: boolean;
+  /** Ruling D49-autocompact-mark: `modelUsage` keys → `maxOutputTokens` (the CLI reserves `min(that, 20 000)` of the window). Optional: states stored before it have none. */
+  readonly maxOutputs?: Readonly<Record<string, number>>;
+  /** Ruling D49-autocompact-mark: the auto-compact settings the session's process runs with; `null` / absent = the CLI's defaults (on, no overrides). */
+  readonly autoCompact?: AutoCompactConfig | null;
+}
+
+/**
+ * Ruling D49-autocompact-mark: what decides where the CLI auto-compacts (CLI 2.1.284, `RTe` / `Bf` / `Wdt` / `zC` / `cst`):
+ * - `enabled`: the `autoCompactEnabled` setting (default on), off when `DISABLE_COMPACT` or `DISABLE_AUTO_COMPACT` is set;
+ * - `pctOverride`: `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` (a percentage, 0 < p ≤ 100) or `null`;
+ * - `windowOverride`: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in tokens (`auto` / unset = `null`);
+ * - `maxOutputOverride`: `CLAUDE_CODE_MAX_OUTPUT_TOKENS` or `null`.
+ */
+export interface AutoCompactConfig {
+  readonly enabled: boolean;
+  readonly pctOverride: number | null;
+  readonly windowOverride: number | null;
+  readonly maxOutputOverride: number | null;
+}
+
+/** The CLI's defaults: auto-compact on, no overrides. */
+export const DEFAULT_AUTO_COMPACT: AutoCompactConfig = { enabled: true, pctOverride: null, windowOverride: null, maxOutputOverride: null };
+/** The most of the window the CLI keeps free for the reply (`fct`): `min(maxOutputTokens, 20 000)`. */
+export const AUTO_COMPACT_OUTPUT_RESERVE = 20_000;
+/** The CLI's buffer below the effective window (`_Q`: `effective - 13 000`). */
+export const AUTO_COMPACT_BUFFER = 13_000;
+
+/** An env value the CLI reads as true (`DISABLE_COMPACT=1`, `true`, `yes`, `on`). */
+function envTrue(value: string | undefined): boolean {
+  return value !== undefined && ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
+/** `CLAUDE_CODE_AUTO_COMPACT_WINDOW` as the CLI parses it (`Oxt`): `auto` → none, `1m` / `600k` / `600` (100–1000 → thousands) / a token count. */
+export function parseAutoCompactWindow(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  const text = value.trim().toLowerCase();
+  if (text === '' || text === 'auto') return null;
+  let tokens: number;
+  if (text.endsWith('m')) tokens = Number.parseFloat(text) * 1e6;
+  else if (text.endsWith('k')) tokens = Number.parseFloat(text) * 1000;
+  else {
+    const n = Number(text);
+    tokens = n >= 100 && n <= 1000 ? n * 1000 : n;
+  }
+  return Number.isFinite(tokens) && tokens > 0 ? Math.round(tokens) : null;
+}
+
+/**
+ * The auto-compact config from the process's environment and its settings files
+ * (`settings`: the parsed JSON objects, lowest precedence first; each may carry
+ * `autoCompactEnabled` and an `env` block, which the CLI applies to its own env).
+ */
+export function autoCompactConfig(env: Readonly<Record<string, string | undefined>>, settings: readonly unknown[] = []): AutoCompactConfig {
+  let enabledSetting = true;
+  const merged: Record<string, string | undefined> = { ...env };
+  for (const file of settings) {
+    if (!isRecord(file)) continue;
+    if (typeof file['autoCompactEnabled'] === 'boolean') enabledSetting = file['autoCompactEnabled'];
+    if (isRecord(file['env'])) for (const [key, value] of Object.entries(file['env'])) if (typeof value === 'string' || typeof value === 'number') merged[key] = String(value);
+  }
+  const pct = merged['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'] === undefined ? Number.NaN : Number.parseFloat(merged['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']);
+  const maxOut = merged['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] === undefined ? Number.NaN : Number.parseInt(merged['CLAUDE_CODE_MAX_OUTPUT_TOKENS'], 10);
+  return {
+    enabled: enabledSetting && !envTrue(merged['DISABLE_COMPACT']) && !envTrue(merged['DISABLE_AUTO_COMPACT']),
+    pctOverride: pct > 0 && pct <= 100 ? pct : null,
+    windowOverride: parseAutoCompactWindow(merged['CLAUDE_CODE_AUTO_COMPACT_WINDOW']),
+    maxOutputOverride: Number.isFinite(maxOut) && maxOut > 0 ? maxOut : null,
+  };
+}
+
+/**
+ * Where the CLI auto-compacts, in tokens (CLI 2.1.284 `kK` + `_Q`, the threshold its
+ * "% until auto-compact" counts down to): `effective = window - min(maxOutputTokens, 20 000)`,
+ * `threshold = effective - 13 000`, lowered to `floor(effective × pct / 100)` by
+ * `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`. `window` is the context window, clamped to
+ * `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when that is set and smaller. `null` when auto-compact is off.
+ */
+export function autoCompactThreshold(window: number, maxOutputTokens: number | null, config: AutoCompactConfig = DEFAULT_AUTO_COMPACT): number | null {
+  if (!config.enabled) return null;
+  const base = config.windowOverride !== null ? Math.min(config.windowOverride, window) : window;
+  const reserve = Math.min(config.maxOutputOverride ?? maxOutputTokens ?? AUTO_COMPACT_OUTPUT_RESERVE, AUTO_COMPACT_OUTPUT_RESERVE);
+  const effective = base - reserve;
+  const threshold = effective - AUTO_COMPACT_BUFFER;
+  const pct = config.pctOverride;
+  const value = pct !== null ? Math.min(Math.floor(effective * (pct / 100)), threshold) : threshold;
+  return value > 0 ? value : null;
 }
 
 /** One compaction (`system/compact_boundary`). */
@@ -88,6 +174,8 @@ export type ContextInput =
   | { readonly kind: 'turn-start'; readonly model?: string | null }
   /** A main-agent assistant message with its `message.usage`. */
   | { readonly kind: 'usage'; readonly model: string | null; readonly usage: unknown; readonly at: string }
+  /** Ruling D49-autocompact-mark: the process's auto-compact config (at spawn). */
+  | { readonly kind: 'config'; readonly autoCompact: AutoCompactConfig }
   /** A turn's `result`, with its `modelUsage`. */
   | { readonly kind: 'result'; readonly modelUsage: unknown }
   /** `system/compact_boundary`. */
@@ -136,6 +224,17 @@ export function reportedWindows(modelUsage: unknown): Record<string, number> {
   return out;
 }
 
+/** The `modelUsage` `maxOutputTokens` of a result, positive whole numbers only. */
+export function reportedMaxOutputs(modelUsage: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isRecord(modelUsage)) return out;
+  for (const [model, entry] of Object.entries(modelUsage)) {
+    const value = isRecord(entry) ? count(entry['maxOutputTokens']) : null;
+    if (value !== null && value > 0) out[model] = value;
+  }
+  return out;
+}
+
 /** Applies one input; returns the same object when nothing changed. */
 export function reduceContext(state: ContextState, input: ContextInput): ContextState {
   switch (input.kind) {
@@ -158,8 +257,13 @@ export function reduceContext(state: ContextState, input: ContextInput): Context
       if (next.compactedRecently && !next.compactTurnEnded) next = { ...next, compactTurnEnded: true };
       const reported = reportedWindows(input.modelUsage);
       if (Object.keys(reported).some((key) => next.windows[key] !== reported[key])) next = { ...next, windows: { ...next.windows, ...reported } };
+      const outputs = reportedMaxOutputs(input.modelUsage);
+      const known = next.maxOutputs ?? {};
+      if (Object.keys(outputs).some((key) => known[key] !== outputs[key])) next = { ...next, maxOutputs: { ...known, ...outputs } };
       return next;
     }
+    case 'config':
+      return JSON.stringify(state.autoCompact ?? null) === JSON.stringify(input.autoCompact) ? state : { ...state, autoCompact: input.autoCompact };
     case 'compact':
       return {
         ...state,
@@ -245,6 +349,13 @@ export interface ResolvedContext {
   readonly compaction: ContextCompaction | null;
   /** From a compaction until the next turn starts. */
   readonly compactedRecently: boolean;
+  /**
+   * Ruling D49-autocompact-mark: where the CLI auto-compacts, in tokens of the same
+   * count the bar shows ({@link autoCompactThreshold}); `null` when auto-compact is off.
+   */
+  readonly autoCompactTokens: number | null;
+  /** The same as a percentage of {@link window} (one decimal), where the bar's tick sits; `null` when off. */
+  readonly autoCompactPercent: number | null;
 }
 
 /** The stored state resolved against the session's model choice (the window follows it). */
@@ -261,7 +372,22 @@ export function resolveContext(state: ContextState, choice: string | null): Reso
     updatedAt: state.updatedAt,
     compaction: state.compaction,
     compactedRecently: state.compactedRecently,
+    ...autoCompactOf(state, window),
   };
+}
+
+/** The reading's model's `maxOutputTokens` (the key equal to the model, or to it with `[1m]`). */
+function maxOutputOf(state: ContextState, model: string | null): number | null {
+  const outputs = state.maxOutputs ?? {};
+  if (model === null) return null;
+  const base = stripOneM(model);
+  const key = Object.keys(outputs).find((k) => k === model) ?? Object.keys(outputs).find((k) => stripOneM(k) === base);
+  return key !== undefined ? (outputs[key] ?? null) : null;
+}
+
+function autoCompactOf(state: ContextState, window: number): { autoCompactTokens: number | null; autoCompactPercent: number | null } {
+  const tokens = autoCompactThreshold(window, maxOutputOf(state, state.model), state.autoCompact ?? DEFAULT_AUTO_COMPACT);
+  return { autoCompactTokens: tokens, autoCompactPercent: tokens === null ? null : Math.round((tokens / window) * 1000) / 10 };
 }
 
 function storedWindows(value: unknown): Record<string, number> {
@@ -295,7 +421,14 @@ export function readContextState(value: unknown): ContextState {
     compaction,
     compactedRecently: value['compactedRecently'] === true && compaction !== null,
     compactTurnEnded: value['compactTurnEnded'] === true,
+    ...(isRecord(value['maxOutputs']) ? { maxOutputs: storedWindows(value['maxOutputs']) } : {}),
+    ...(isRecord(value['autoCompact']) ? { autoCompact: readAutoCompact(value['autoCompact']) } : {}),
   };
+}
+
+function readAutoCompact(value: Record<string, unknown>): AutoCompactConfig {
+  const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+  return { enabled: value['enabled'] !== false, pctOverride: n(value['pctOverride']), windowOverride: n(value['windowOverride']), maxOutputOverride: n(value['maxOutputOverride']) };
 }
 
 /**

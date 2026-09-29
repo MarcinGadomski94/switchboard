@@ -1,11 +1,14 @@
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Session } from '../../../src/core/api.ts';
 import { parseStreamLine } from '../../../src/core/stream-json.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { toSessionContext } from '../../../src/server/sessions/wire.ts';
 import { StreamRecorder } from '../../../src/server/supervisor/recorder.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
  * D49: the recorder's context meter (`sessions.context`): main-agent usages only,
@@ -113,5 +116,76 @@ describe('StreamRecorder · context meter (D49)', () => {
     if (!record) throw new Error('no session');
     expect(toSessionContext({ ...record, remoteAvailable: null, context: null })).toBeNull();
     expect(toSessionContext({ ...record, remoteAvailable: false, context: null })).toMatchObject({ tokens: null });
+  });
+});
+
+describe('D49 rulings on the real supervisor (fake-claude)', () => {
+  let sworld: SupervisorWorld | undefined;
+  afterEach(async () => {
+    await sworld?.cleanup();
+    sworld = undefined;
+  });
+
+  /** A session that ran one turn and was paused (no live process). */
+  async function pausedSession(parentEnv: Record<string, string> = {}) {
+    sworld = await makeSupervisorWorld({ parentEnv });
+    const w = sworld;
+    const session = await w.supervisor.start(newSession({ task: 'Reply with just OK. [fake:usage 124000]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    await w.supervisor.pause(session.id);
+    return { w, session };
+  }
+
+  it('D49-backfill: a session without a stored meter reads it from its transcript once, stores it and publishes sessionUpdated', async () => {
+    const { w, session } = await pausedSession();
+    await w.store.sessions.update(session.id, { context: null });
+    const updates: Array<Session['context']> = [];
+    w.supervisor.on('sessionUpdated', (s) => {
+      if (s.id === session.id) updates.push(s.context);
+    });
+    await Promise.all([w.supervisor.backfillContext(session.id), w.supervisor.backfillContext(session.id)]);
+    const stored = await w.store.sessions.get(session.id);
+    expect(stored?.context).toMatchObject({ tokens: 124_000, model: 'claude-haiku-4-5-20251001' });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ tokens: 124_000, percent: 62 });
+    // Read once: a stored meter is never read again.
+    await w.supervisor.backfillContext(session.id);
+    expect(updates).toHaveLength(1);
+    expect(w.errors).toEqual([]);
+  });
+
+  it('D49-backfill: a missing transcript stores the empty meter (Context —); the demo-like session without a process is skipped', async () => {
+    const { w, session } = await pausedSession();
+    await w.store.sessions.update(session.id, { context: null, claudeSessionId: '00000000-0000-4000-8000-000000000000' });
+    await w.supervisor.backfillContext(session.id);
+    expect((await w.store.sessions.get(session.id))?.context).toMatchObject({ tokens: null, compaction: null });
+    await w.store.sessions.update(session.id, { context: null, remoteAvailable: null });
+    await w.supervisor.backfillContext(session.id);
+    expect((await w.store.sessions.get(session.id))?.context).toBeNull();
+  });
+
+  it('D49-backfill at resume: a pre-D49 session starts from its transcript meter', async () => {
+    const { w, session } = await pausedSession();
+    await w.store.sessions.update(session.id, { context: null });
+    await w.supervisor.sendMessage(session.id, 'Hold on. [fake:hold 3]');
+    const record = await until(async () => {
+      const r = await w.store.sessions.get(session.id);
+      return r?.context ? r : undefined;
+    }, 'the meter at resume');
+    expect(record.context?.tokens).toBe(124_000);
+  });
+
+  it('D49-autocompact-mark: the process env / settings decide the tick (DISABLE_AUTO_COMPACT → none; a pct override lowers it)', async () => {
+    const off = await pausedSession({ DISABLE_AUTO_COMPACT: '1' });
+    expect(toSessionContext((await off.w.store.sessions.get(off.session.id)) as NonNullable<Awaited<ReturnType<Store['sessions']['get']>>>)).toMatchObject({ autoCompactTokens: null, autoCompactPercent: null });
+    await off.w.cleanup();
+    sworld = undefined;
+    const pct = await pausedSession();
+    await writeFile(path.join(pct.w.configDir, 'settings.json'), JSON.stringify({ env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' } }));
+    await pct.w.supervisor.sendMessage(pct.session.id, 'Again.');
+    await waitForStatus(pct.w.store, pct.session.id, ['done']);
+    const record = await pct.w.store.sessions.get(pct.session.id);
+    if (!record) throw new Error('no session');
+    expect(toSessionContext(record)).toMatchObject({ window: 200_000, autoCompactTokens: 90_000, autoCompactPercent: 45 });
   });
 });
