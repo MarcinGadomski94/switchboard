@@ -230,3 +230,18 @@
 .sb-overview-row--nested .sb-overview-agent {
   padding-left: 16px;
 }
+
+/* D51 ruling D51-resume: the actions row under a stopped or failed run ("Resume run" and its note). */
+.sb-overview-workflow-actions td {
+  padding: 3px 6px 3px 16px;
+}
+
+.sb-overview-resume {
+  padding: 1px 8px;
+  font: 400 11px var(--font-mono);
+}
+
+.sb-overview-resume-note {
+  margin-left: 8px;
+  color: var(--muted-2);
+}

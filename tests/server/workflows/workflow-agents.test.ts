@@ -147,6 +147,8 @@ describe('D51 · a run whose process ends', () => {
     }, 'the run stopped', 5_000);
     expect(stopped.agents.filter((a) => a.kind === 'workflow').map((a) => a.status)).toEqual(['idle', 'idle']);
     expect(stopped.workflows?.[0]).toMatchObject({ doneCount: 0, agentCount: 2 });
+    // D51-resume: the stopped run offers its script (the fake wrote it next to the transcript).
+    expect(stopped.workflows?.[0]?.resume?.scriptPath).toMatch(new RegExp(`${FAKE_WORKFLOW_NAME}-wf_[0-9a-f]{12}\\.js$`));
   }, 60_000);
 });
 
@@ -198,7 +200,12 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
     const envelope = { isSidechain: true, agentId: 'a1', cwd: '/elsewhere', sessionId: SID };
     await writeFile(
       path.join(runDir, 'agent-a1.jsonl'),
-      `${JSON.stringify({ ...envelope, type: 'user', uuid: 'u1', parentUuid: null, timestamp: new Date().toISOString(), message: { role: 'user', content: 'Audit one. Transcript dir: /etc/passwd' } })}\n`,
+      `${JSON.stringify({ ...envelope, type: 'user', uuid: 'u1', parentUuid: null, timestamp: new Date().toISOString(), message: { role: 'user', content: 'Audit one. Transcript dir: /etc/passwd' } })}\n` +
+        // D51-solution: a failed write does not count, the next successful one does (a path relative to the line's cwd).
+        `${JSON.stringify({ ...envelope, type: 'assistant', uuid: 'm1', parentUuid: 'u1', timestamp: new Date().toISOString(), message: { id: 'x1', model: 'claude', content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: path.join(w.workspace, 'microfrontends', 'bad-front', 'x.ts') } }] } })}\n` +
+        `${JSON.stringify({ ...envelope, type: 'user', uuid: 'r1', parentUuid: 'm1', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'nope', is_error: true }] } })}\n` +
+        `${JSON.stringify({ ...envelope, cwd: w.workspace, type: 'assistant', uuid: 'm2', parentUuid: 'r1', timestamp: new Date().toISOString(), message: { id: 'x2', model: 'claude', content: [{ type: 'tool_use', id: 't2', name: 'Write', input: { file_path: 'microfrontends/x-front/a.ts' } }] } })}\n` +
+        `${JSON.stringify({ ...envelope, type: 'user', uuid: 'r2', parentUuid: 'm2', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ok' }] } })}\n`,
     );
     // The script sits under another cwd's project folder (the session moved there).
     await mkdir(path.join(other, 'workflows', 'scripts'), { recursive: true });
@@ -216,7 +223,9 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
     try {
       const first = await service.forSession(record(w.workspace));
       expect(first.runs.map((r) => [r.runId, r.name, r.summary, r.status])).toEqual([['wf_1111aaaa-222', 'term-audit', 'Audit from a terminal', 'run']]);
-      expect(first.agents.map((a) => [a.id, a.name, a.status, a.workflow?.cwd])).toEqual([['wf_1111aaaa-222--a1', 'audit:one', 'run', '/elsewhere']]);
+      expect(first.agents.map((a) => [a.id, a.name, a.status, a.workflow?.cwd, a.solutionPath])).toEqual([['wf_1111aaaa-222--a1', 'audit:one', 'run', '/elsewhere', 'microfrontends/x-front']]);
+      // Still running: no resume offered.
+      expect(first.runs[0]?.resume).toBeNull();
 
       // The agent ends (the journal grows): the poll picks it up and tells the UI.
       await writeFile(path.join(runDir, 'journal.jsonl'), '{"type":"result","key":"k1","agentId":"a1","result":"fine"}\n', { flag: 'a' });
@@ -231,6 +240,9 @@ describe('D51 · WorkflowService on files alone (terminal / hooked / History ses
       const fresh = new WorkflowService({ configDir: () => w.configDir, onChange: () => undefined, now: () => now });
       const stale = await fresh.forSession(record(w.workspace));
       expect(stale.runs[0]?.status).toBe('idle');
+      // D51-resume: a stopped run offers the script Switchboard found (under the other cwd's project folder).
+      expect(stale.runs[0]?.resume).toEqual({ scriptPath: path.join(other, 'workflows', 'scripts', 'term-audit-wf_1111aaaa-222.js'), args: null });
+      expect(stale.agents[0]?.solutionPath).toBe('microfrontends/x-front');
       fresh.close();
       const chat = await service.chat(record(w.workspace), 'wf_1111aaaa-222--a1');
       expect(chat?.events[0]?.payload).toEqual({ type: 'agent-prompt', text: 'Audit one. Transcript dir: /etc/passwd' });

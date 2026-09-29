@@ -25,7 +25,8 @@ import {
 } from './agent-overview.ts';
 import { isFinishedSubagent } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
-import { agentActivity, overviewEntries } from './workflow-agents.ts';
+import { RESUME_RUN, agentActivity, overviewEntries, resumeBlocked, resumeRunMessage } from './workflow-agents.ts';
+import { api } from '../../api/client.ts';
 import './agent-overview.css';
 
 /** The printed table's age refreshes as often as the sidebar's ages. */
@@ -89,7 +90,7 @@ export function AgentOverview({
         </thead>
         <tbody>
           {entries.map((entry) => {
-            if (entry.kind === 'workflow') return <WorkflowRowView key={`wf:${entry.run.runId}`} run={entry.run} status={entry.status} statusText={entry.statusText} />;
+            if (entry.kind === 'workflow') return <WorkflowRowView key={`wf:${entry.run.runId}`} session={session} run={entry.run} status={entry.status} statusText={entry.statusText} />;
             const row = rows.get(entry.agent.id);
             return row ? (
               <OverviewRowView key={row.id} sessionId={session.id} row={row} agent={entry.agent} depth={entry.depth} activity={activity} opensChat={chats.has(row.id)} />
@@ -106,8 +107,10 @@ export function AgentOverview({
  * D51: a Workflow run's row: its name, summary and progress (`3/7 done · phase
  * Review`); its agents follow it, indented.
  */
-function WorkflowRowView({ run, status, statusText }: { readonly run: WorkflowRun; readonly status: SessionStatus; readonly statusText: string }) {
+function WorkflowRowView({ session, run, status, statusText }: { readonly session: SessionDetail; readonly run: WorkflowRun; readonly status: SessionStatus; readonly statusText: string }) {
+  const message = resumeRunMessage(run);
   return (
+    <>
     <tr className="sb-overview-workflow" data-testid="overview-workflow" data-run-id={run.runId} data-status={status}>
       <td className="sb-overview-agent" data-testid="overview-workflow-name" title={run.name}>
         {run.name}
@@ -118,6 +121,47 @@ function WorkflowRowView({ run, status, statusText }: { readonly run: WorkflowRu
       <td className="sb-overview-solution">{UNKNOWN}</td>
       <td className="sb-overview-status" data-testid="overview-workflow-status" style={{ color: statusColor(status) }} title={statusText}>
         {statusText}
+      </td>
+    </tr>
+    {message !== null ? <ResumeRunRow sessionId={session.id} runId={run.runId} message={message} blocked={resumeBlocked(session)} /> : null}
+    </>
+  );
+}
+
+/**
+ * D51 ruling D51-resume: under a stopped or failed run's row, "Resume run": it sends
+ * the session's agent the message that resumes the run (`resumeRunMessage`) through
+ * the normal message path; disabled, with the reason, when the session cannot take
+ * a message now (`resumeBlocked`). Switchboard never runs the script itself.
+ */
+function ResumeRunRow({ sessionId, runId, message, blocked }: { readonly sessionId: string; readonly runId: string; readonly message: string; readonly blocked: string | null }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const resume = (): void => {
+    setState('sending');
+    api.sendMessage(sessionId, message).then(
+      () => setState('sent'),
+      () => setState('failed'),
+    );
+  };
+  const note = blocked ?? (state === 'sent' ? 'Asked the agent to resume it' : state === 'failed' ? 'Could not send the message' : null);
+  return (
+    <tr className="sb-overview-workflow-actions" data-testid="overview-workflow-actions" data-run-id={runId}>
+      <td colSpan={4}>
+        <button
+          type="button"
+          className="sb-button sb-overview-resume"
+          data-testid="overview-workflow-resume"
+          disabled={blocked !== null || state === 'sending' || state === 'sent'}
+          title={blocked ?? 'Ask the agent to resume this run (its finished agents replay from the cache)'}
+          onClick={resume}
+        >
+          {RESUME_RUN}
+        </button>
+        {note ? (
+          <span className="sb-overview-resume-note" data-testid="overview-workflow-resume-note" title={note}>
+            {note}
+          </span>
+        ) : null}
       </td>
     </tr>
   );

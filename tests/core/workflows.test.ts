@@ -3,6 +3,7 @@ import {
   type AgentMeta,
   type AgentTranscriptFacts,
   NO_TRANSCRIPT,
+  NO_WRITES,
   type WorkflowRunInput,
   cleanWorkflowBrief,
   deriveWorkflowRun,
@@ -15,6 +16,7 @@ import {
   resultText,
   runStatus,
   scanAgentEntries,
+  scanWrites,
   scriptFileName,
   workflowAgentEvents,
   workflowAgentKey,
@@ -40,7 +42,7 @@ function agentEntry(fields: Record<string, unknown>): Record<string, unknown> {
 function base(overrides: Partial<WorkflowRunInput> = {}): WorkflowRunInput {
   return {
     runId: 'wf_abc123-def',
-    launch: { runId: 'wf_abc123-def', taskId: 'wk1', name: 'audit', summary: 'Audit the repos' },
+    launch: { runId: 'wf_abc123-def', taskId: 'wk1', name: 'audit', summary: 'Audit the repos', scriptPath: null },
     runFile: null,
     progress: null,
     journal: [],
@@ -55,14 +57,15 @@ function base(overrides: Partial<WorkflowRunInput> = {}): WorkflowRunInput {
 
 describe('workflowLaunch', () => {
   it('takes the structured result, else the text; never launches on an error or a bad run id', () => {
-    const text = 'Workflow launched in background. Task ID: wk1\nSummary: Audit the repos\nTranscript dir: /x/sess/subagents/workflows/wf_abc123-def\nRun ID: wf_abc123-def\n';
-    expect(workflowLaunch(text, { status: 'async_launched', taskId: 'wk1', workflowName: 'audit', runId: 'wf_abc123-def', summary: 'Audit the repos' })).toEqual({
+    const text = 'Workflow launched in background. Task ID: wk1\nSummary: Audit the repos\nTranscript dir: /x/sess/subagents/workflows/wf_abc123-def\nScript file: /x/sess/workflows/scripts/audit-wf_abc123-def.js\nRun ID: wf_abc123-def\n';
+    expect(workflowLaunch(text, { status: 'async_launched', taskId: 'wk1', workflowName: 'audit', runId: 'wf_abc123-def', summary: 'Audit the repos', scriptPath: '/p/audit-wf_abc123-def.js' })).toEqual({
       runId: 'wf_abc123-def',
       taskId: 'wk1',
       name: 'audit',
       summary: 'Audit the repos',
+      scriptPath: '/p/audit-wf_abc123-def.js',
     });
-    expect(workflowLaunch(text, undefined)).toEqual({ runId: 'wf_abc123-def', taskId: 'wk1', name: null, summary: 'Audit the repos' });
+    expect(workflowLaunch(text, undefined)).toEqual({ runId: 'wf_abc123-def', taskId: 'wk1', name: null, summary: 'Audit the repos', scriptPath: '/x/sess/workflows/scripts/audit-wf_abc123-def.js' });
     // An older text without `Run ID:`: the run folder at the end of `Transcript dir:`.
     expect(workflowLaunch('Workflow launched in background. Task ID: wk2\nTranscript dir: /x/y/wf_0001-aaa\n', undefined)?.runId).toBe('wf_0001-aaa');
     expect(workflowLaunch(text, { error: 'script failed to compile' })).toBeNull();
@@ -104,7 +107,8 @@ describe('the files and the stream', () => {
       defaultModel: 'claude-opus-5-5',
       workflowProgress: [agentEntry({ index: 1, label: 'audit:a', agentId: 'a1', state: 'done', startedAt: at(1), durationMs: 30_000 })],
     });
-    expect(file).toMatchObject({ runId: 'wf_abc123-def', taskId: 'wk1', name: 'audit', status: 'completed', startedAt: iso(0), endedAt: iso(90), phases: ['Audit', 'Review'], defaultModel: 'claude-opus-5-5' });
+    expect(file).toMatchObject({ runId: 'wf_abc123-def', taskId: 'wk1', name: 'audit', status: 'completed', startedAt: iso(0), endedAt: iso(90), phases: ['Audit', 'Review'], defaultModel: 'claude-opus-5-5', scriptPath: null, args: null });
+    expect(parseRunFile({ runId: 'wf_abc123-def', scriptPath: '/p/s.js', args: { inventory: 'x' } })).toMatchObject({ scriptPath: '/p/s.js', args: { inventory: 'x' } });
     expect(file?.progress.agents).toHaveLength(1);
     expect(parseRunFile({ runId: '../x' })).toBeNull();
     expect(parseRunFile(null)).toBeNull();
@@ -189,6 +193,7 @@ describe('deriveWorkflowRun', () => {
       failedCount: 0,
       startedAt: iso(0),
       endedAt: null,
+      resume: null,
     });
     expect(agents.map((a) => [a.id, a.label, a.status, a.statusText, a.workflow.phase])).toEqual([
       ['wf_abc123-def--1', 'audit:a', 'done', null, 'Audit'],
@@ -242,6 +247,10 @@ describe('deriveWorkflowRun', () => {
 
     const stopped = deriveWorkflowRun(base({ launch: null, journal, metas, script, running: false }));
     expect(stopped.run.status).toBe('idle');
+    // D51-resume: offered only with a script the server found.
+    expect(stopped.run.resume).toBeNull();
+    expect(deriveWorkflowRun(base({ launch: null, journal, running: false, scriptPath: '/p/s-wf_abc123-def.js' })).run.resume).toEqual({ scriptPath: '/p/s-wf_abc123-def.js', args: null });
+    expect(deriveWorkflowRun(base({ launch: null, journal, running: true, scriptPath: '/p/s-wf_abc123-def.js' })).run.resume).toBeNull();
     expect(stopped.agents.map((a) => a.status)).toEqual(['done', 'idle', 'fail', 'idle']);
   });
 
@@ -264,6 +273,10 @@ describe('deriveWorkflowRun', () => {
     expect(killed.agents.map((a) => a.status)).toEqual(['done', 'done', 'idle', 'idle']);
     expect(killed.agents[3]?.statusText).toBeNull();
     expect(deriveWorkflowRun(base({ progress: snapshot, ended: 'failed' })).run.status).toBe('fail');
+    // A failed run can be resumed too (its args kept); a done one cannot.
+    const failedFile = parseRunFile({ runId: 'wf_abc123-def', status: 'failed', args: { n: 1 } });
+    expect(deriveWorkflowRun(base({ runFile: failedFile, scriptPath: '/p/s.js' })).run.resume).toEqual({ scriptPath: '/p/s.js', args: { n: 1 } });
+    expect(deriveWorkflowRun(base({ runFile, scriptPath: '/p/s.js' })).run.resume).toBeNull();
   });
 
   it('an error entry fails its agent with the CLI\'s error as its result', () => {
@@ -274,8 +287,8 @@ describe('deriveWorkflowRun', () => {
   });
 
   it('workflowAgents: `Session.agents` entries named by label, described by phase, placed by the cwd', () => {
-    const { agents } = deriveWorkflowRun(base({ progress: snapshot, transcripts: new Map([['a3', { ...NO_TRANSCRIPT, cwd: '/ws/x-front' }]]) }));
-    const api = workflowAgents(agents, (cwd) => (cwd.endsWith('x-front') ? 'x-front/' : null));
+    const { agents } = deriveWorkflowRun(base({ progress: snapshot, transcripts: new Map([['a3', { ...NO_TRANSCRIPT, cwd: '/ws/x-front' }]]), writes: new Map([['a2', '/ws/y-front/src/a.ts']]) }));
+    const api = workflowAgents(agents, (file) => (file.startsWith('/ws/x-front/') ? 'x-front/' : file.startsWith('/ws/y-front/') ? 'y-front/' : null));
     expect(api[2]).toEqual({
       id: 'wf_abc123-def--3',
       kind: 'workflow',
@@ -289,9 +302,27 @@ describe('deriveWorkflowRun', () => {
       workflow: agents[2]?.workflow,
     });
     expect(api[0]?.solutionPath).toBeNull();
+    // D51-solution: the first successful write wins over the cwd.
+    expect(api[1]?.solutionPath).toBe('y-front/');
     expect(workflowAgentKey('wf_a', 'a7', 7)).toBe('wf_a--7');
     expect(workflowAgentKey('wf_a', null, 7)).toBe('wf_a--7');
     expect(workflowAgentKey('wf_a', 'a7', null)).toBe('wf_a--a7');
+  });
+});
+
+describe('scanWrites (D51-solution)', () => {
+  it('the first write whose result is not an error, resolved against the line\'s cwd; a failed one does not count', () => {
+    const use = (id: string, name: string, input: Record<string, unknown>, cwd = '/ws') => ({ type: 'assistant', cwd, message: { content: [{ type: 'tool_use', id, name, input }] } });
+    const result = (id: string, isError = false) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'x', ...(isError ? { is_error: true } : {}) }] } });
+    let scan = scanWrites(NO_WRITES, [use('t0', 'Read', { file_path: '/ws/a/r.md' }), result('t0'), use('t1', 'Edit', { file_path: '/ws/a/x.ts' })]);
+    expect(scan.first).toBeNull();
+    expect([...scan.pending]).toEqual([['t1', '/ws/a/x.ts']]);
+    scan = scanWrites(scan, [result('t1', true), use('t2', 'Write', { file_path: 'b/y.ts' }, '/ws/micro'), use('t3', 'NotebookEdit', { notebook_path: '/ws/c/n.ipynb' })]);
+    expect(scan.first).toBeNull();
+    scan = scanWrites(scan, [result('t3'), result('t2')]);
+    expect(scan.first).toBe('/ws/c/n.ipynb');
+    // Once found, nothing changes it.
+    expect(scanWrites(scan, [use('t9', 'Write', { file_path: '/z' }), result('t9')])).toBe(scan);
   });
 });
 

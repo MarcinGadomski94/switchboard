@@ -12,10 +12,13 @@ import { PanelSkeleton } from './SessionSkeletons.tsx';
 import { type AgentCard, agentCards, agentSummary, finishedLine, panelAgents, terminalLines } from './right-panel.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import { TerminalTail } from './TerminalTail.tsx';
-import { agentActivity, cappedCards, moreCardsLine } from './workflow-agents.ts';
+import { agentActivity, cappedCards, fewerCardsLine, moreCardsLine } from './workflow-agents.ts';
 
 /** D37: whether a session's finished subagents are expanded, kept in memory per session for this page's life. */
 const finishedExpanded = new Map<string, boolean>();
+
+/** D51 ruling D51-card-cap: the runs whose cards were opened ("+N more"), per session, for this page's life. */
+const openedRuns = new Map<string, ReadonlySet<string>>();
 
 /**
  * Right panel (M4.3, SPEC → Session → Right panel; prototype right column): the
@@ -55,8 +58,16 @@ export function RightPanel({
     setExpanded(!expanded);
   };
   const panel = session ? panelAgents(session.agents, expanded) : null;
-  // D51: a Workflow that fans out shows at most a few cards; the overview lists every agent.
-  const capped = session && panel ? cappedCards(panel.shown, session.workflows ?? [], expanded) : null;
+  // D51: a Workflow that fans out shows at most a few cards until its "+N more" line opens them.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => openedRuns.get(sessionId) ?? new Set());
+  const toggleRun = (runId: string): void => {
+    const next = new Set(open);
+    if (next.has(runId)) next.delete(runId);
+    else next.add(runId);
+    openedRuns.set(sessionId, next);
+    setOpen(next);
+  };
+  const capped = session && panel ? cappedCards(panel.shown, session.workflows ?? [], expanded, open) : null;
   return (
     <aside
       className="sb-sv-panel"
@@ -91,9 +102,32 @@ export function RightPanel({
               );
             })}
             {capped.more.map((more) => (
-              <div key={`more:${more.runId}`} className="sb-agents-more" data-testid="agents-more" data-run-id={more.runId} title={more.name}>
+              <button
+                type="button"
+                key={`more:${more.runId}`}
+                className="sb-button sb-agents-more"
+                data-testid="agents-more"
+                data-run-id={more.runId}
+                aria-expanded={false}
+                title={more.name}
+                onClick={() => toggleRun(more.runId)}
+              >
                 {moreCardsLine(more)}
-              </div>
+              </button>
+            ))}
+            {capped.fewer.map((more) => (
+              <button
+                type="button"
+                key={`fewer:${more.runId}`}
+                className="sb-button sb-agents-more"
+                data-testid="agents-fewer"
+                data-run-id={more.runId}
+                aria-expanded={true}
+                title={more.name}
+                onClick={() => toggleRun(more.runId)}
+              >
+                {fewerCardsLine(more)}
+              </button>
             ))}
             {panel.finished > 0 ? (
               <button

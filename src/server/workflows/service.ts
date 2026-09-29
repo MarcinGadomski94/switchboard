@@ -31,6 +31,8 @@ import {
   type AgentTranscriptFacts,
   type JournalEntry,
   NO_TRANSCRIPT,
+  NO_WRITES,
+  type WriteScan,
   type RunFileFacts,
   type ScriptMeta,
   WORKFLOW_RUN_ID,
@@ -44,6 +46,7 @@ import {
   parseScriptMeta,
   parseWorkflowProgress,
   scanAgentEntries,
+  scanWrites,
   scriptFileName,
   workflowAgentEvents,
   workflowAgents,
@@ -62,6 +65,9 @@ export const CHAT_MAX_BYTES = 32 * 1024 * 1024;
 export const RECENT_MS = 2 * 60_000;
 /** The default poll interval while a run runs. */
 export const POLL_MS = 1_500;
+/** D51-solution: how much of a transcript one load scans for its first write, and at most in all (then it gives up). */
+export const WRITE_SCAN_CHUNK = 4 * 1024 * 1024;
+export const WRITE_SCAN_MAX = 32 * 1024 * 1024;
 /** How long the project folders' index and a session's run list are reused before they are listed again. */
 export const LIST_TTL_MS = 10_000;
 
@@ -92,6 +98,11 @@ interface TranscriptState {
   facts: AgentTranscriptFacts;
   /** Bytes consumed (complete lines). */
   offset: number;
+  /** D51-solution: the scan for its first write, from the start, in order. */
+  writes: WriteScan;
+  writeOffset: number;
+  /** The scan found a write or gave up ({@link WRITE_SCAN_MAX}). */
+  writesDone: boolean;
 }
 
 interface RunState {
@@ -113,6 +124,8 @@ interface RunState {
   readonly metas: Map<string, AgentMeta>;
   readonly transcripts: Map<string, TranscriptState>;
   script: ScriptMeta | null;
+  /** D51-resume: its script file as found by listing (a path Switchboard built), `null` before. */
+  scriptFile: string | null;
   /** Newest mtime seen in its files (epoch ms). */
   touchedAt: number;
   /** The run file was read and every transcript once after it: nothing changes any more. */
@@ -361,6 +374,7 @@ export class WorkflowService implements WorkflowSource {
         metas: new Map(),
         transcripts: new Map(),
         script: null,
+        scriptFile: null,
         touchedAt: 0,
         settled: false,
       };
@@ -387,9 +401,13 @@ export class WorkflowService implements WorkflowSource {
 
   /** Lists the session's runs (when due), reads what changed, derives, publishes a change, and polls on while a run runs. */
   async #load(state: SessionState, notify: boolean): Promise<void> {
-    if (this.#now() - state.listedAt > LIST_TTL_MS || state.listedAt === 0) await this.#listRuns(state);
+    // A run known from the stream whose folder was not there yet (the CLI creates it just after the launch): list again soon, not after the TTL.
+    const missing = [...state.runs.values()].some((run) => run.dir === null && run.live && run.ended === null);
+    const due = missing ? this.#pollMs : LIST_TTL_MS;
+    if (missing && this.#now() - this.#index.at > this.#pollMs) this.#index.at = 0;
+    if (this.#now() - state.listedAt > due || state.listedAt === 0) await this.#listRuns(state);
     for (const run of state.runs.values()) await this.#readRun(state, run);
-    const changed = this.#derive(state);
+    const changed = await this.#derive(state);
     state.loaded = true;
     // A load a reader asked for returns its result to that reader; the others are news.
     if (changed && notify) this.#options.onChange(state.sessionId);
@@ -449,17 +467,20 @@ export class WorkflowService implements WorkflowSource {
         }
       }
     }
-    // Scripts (their meta) of runs whose name is not known otherwise.
+    // Scripts: the file (D51-resume) of every run, and its meta for runs whose name is not known otherwise.
     for (const run of state.runs.values()) {
-      if (run.script !== null || run.runFile !== null) continue;
+      if (run.scriptFile !== null) continue;
       for (const dir of this.#index.dirs.get(state.claudeSessionId) ?? []) {
         const scripts = path.join(dir, 'workflows', 'scripts');
         const hit = (await list(scripts)).find((entry) => entry.isFile() && scriptFileName(entry.name, run.runId) !== null);
         if (!hit) continue;
         const file = path.join(scripts, hit.name);
-        const info = await fileInfo(file);
-        const meta = info && info.size <= 1024 * 1024 ? parseScriptMeta(await readFile(file, 'utf8').catch(() => '')) : null;
-        run.script = { name: meta?.name ?? scriptFileName(hit.name, run.runId), summary: meta?.summary ?? null, phases: meta?.phases ?? [] };
+        run.scriptFile = file;
+        if (run.script === null && run.runFile === null) {
+          const info = await fileInfo(file);
+          const meta = info && info.size <= 1024 * 1024 ? parseScriptMeta(await readFile(file, 'utf8').catch(() => '')) : null;
+          run.script = { name: meta?.name ?? scriptFileName(hit.name, run.runId), summary: meta?.summary ?? null, phases: meta?.phases ?? [] };
+        }
         break;
       }
     }
@@ -508,7 +529,8 @@ export class WorkflowService implements WorkflowSource {
       }
       await this.#readTranscript(run, agentId, file);
     }
-    if (run.runFile !== null) run.settled = true;
+    // Settled: final, every transcript read, every write scan over.
+    if (run.runFile !== null && [...run.transcripts.values()].every((t) => t.writesDone || t.writeOffset >= t.facts.bytes)) run.settled = true;
   }
 
   /** An agent's transcript: its head once, then what was appended (at most {@link TAIL_BYTES} of it). */
@@ -516,13 +538,14 @@ export class WorkflowService implements WorkflowSource {
     const info = await fileInfo(file);
     if (!info) return;
     let state = run.transcripts.get(agentId);
-    if (state && info.size <= state.offset) return;
+    if (state && info.size <= state.offset && (state.writesDone || info.size <= state.writeOffset)) return;
     run.touchedAt = Math.max(run.touchedAt, info.mtimeMs);
     if (!state) {
       const head = completeLines(await readRange(file, 0, Math.min(info.size, HEAD_BYTES)));
-      state = { facts: scanAgentEntries(NO_TRANSCRIPT, head.entries, head.consumed), offset: head.consumed };
+      state = { facts: scanAgentEntries(NO_TRANSCRIPT, head.entries, head.consumed), offset: head.consumed, writes: NO_WRITES, writeOffset: 0, writesDone: false };
       run.transcripts.set(agentId, state);
     }
+    await this.#scanWrites(state, file, info.size);
     if (info.size <= state.offset) {
       state.facts = { ...state.facts, bytes: info.size };
       return;
@@ -546,18 +569,52 @@ export class WorkflowService implements WorkflowSource {
     state.facts = scanAgentEntries(state.facts, entries, info.size);
   }
 
+  /**
+   * D51-solution: scans a transcript from where it stopped for the agent's first
+   * successful write, at most {@link WRITE_SCAN_CHUNK} per load and
+   * {@link WRITE_SCAN_MAX} in all; once found (or given up) never again.
+   */
+  async #scanWrites(state: TranscriptState, file: string, size: number): Promise<void> {
+    if (state.writesDone || size <= state.writeOffset) return;
+    const end = Math.min(size, state.writeOffset + WRITE_SCAN_CHUNK);
+    const { entries, consumed } = completeLines(await readRange(file, state.writeOffset, end));
+    // A single line longer than the chunk: skip past it.
+    state.writeOffset += consumed > 0 ? consumed : end - state.writeOffset;
+    state.writes = scanWrites(state.writes, entries);
+    if (state.writes.first !== null || state.writeOffset >= WRITE_SCAN_MAX) state.writesDone = true;
+  }
+
+  /** D51-resume: the run's script, as found by listing, else the path its run file or launch names when that is a script file of this run under the projects folder. */
+  async #scriptPath(run: RunState): Promise<string | null> {
+    if (run.scriptFile !== null) return run.scriptFile;
+    const projects = path.join(this.#options.configDir(), 'projects');
+    for (const candidate of [run.runFile?.scriptPath ?? null, run.launch?.scriptPath ?? null]) {
+      if (candidate === null) continue;
+      const resolved = path.resolve(candidate);
+      if (!resolved.startsWith(projects + path.sep) || scriptFileName(path.basename(resolved), run.runId) === null) continue;
+      if (await fileInfo(resolved)) return (run.scriptFile = resolved);
+    }
+    return null;
+  }
+
   /** Derives the session's runs and agents; `true` when they changed. */
-  #derive(state: SessionState): boolean {
+  async #derive(state: SessionState): Promise<boolean> {
     const now = this.#now();
     const runs: WorkflowRun[] = [];
     const agents: Agent[] = [];
     const byAgent = new Map<string, { run: RunState; view: WorkflowAgentView }>();
     const place = state.place;
-    const solutionOf = (cwd: string): string | null => (place ? sessionSolutionFolder(place, path.join(cwd, '_'), state.name) : null);
+    const solutionOf = (file: string): string | null => (place ? sessionSolutionFolder(place, file, state.name) : null);
     const ordered = [...state.runs.values()].filter((run) => run.dir !== null || run.launch !== null);
+    const scripts = new Map<RunState, string | null>();
+    for (const run of ordered) scripts.set(run, await this.#scriptPath(run));
     const derived = ordered.map((run) => {
       const transcripts = new Map<string, AgentTranscriptFacts>();
-      for (const [agentId, transcript] of run.transcripts) transcripts.set(agentId, transcript.facts);
+      const writes = new Map<string, string>();
+      for (const [agentId, transcript] of run.transcripts) {
+        transcripts.set(agentId, transcript.facts);
+        if (transcript.writes.first !== null) writes.set(agentId, transcript.writes.first);
+      }
       const recent = run.touchedAt > 0 && now - run.touchedAt < this.#recentMs;
       return {
         run,
@@ -570,6 +627,8 @@ export class WorkflowService implements WorkflowSource {
           journal: run.journal,
           metas: run.metas,
           transcripts,
+          writes,
+          scriptPath: scripts.get(run) ?? null,
           script: run.script,
           ended: run.ended,
           running: !run.stopped && run.ended === null && (run.live || recent),

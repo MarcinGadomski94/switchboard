@@ -9,6 +9,9 @@ import {
   agentActivity,
   cappedCards,
   moreCardsLine,
+  fewerCardsLine,
+  resumeBlocked,
+  resumeRunMessage,
   overviewEntries,
   workflowActivity,
   workflowBackgroundProgress,
@@ -113,8 +116,14 @@ describe('the agent cards', () => {
     expect(capped.cards.slice(1).every((a) => a.status === 'run')).toBe(true);
     expect(capped.more).toEqual([{ runId: RUN, name: 'fan-out', count: 3 }]);
     expect(moreCardsLine(capped.more[0] ?? { runId: '', name: '', count: 0 })).toBe('+3 more in fan-out');
-    expect(cappedCards(shown, [run()], true)).toEqual({ cards: shown, more: [] });
-    expect(cappedCards([MAIN, agent('x')], [run()], false)).toEqual({ cards: [MAIN, agent('x')], more: [] });
+    expect(cappedCards(shown, [run()], true)).toEqual({ cards: shown, more: [], fewer: [] });
+    expect(cappedCards([MAIN, agent('x')], [run()], false)).toEqual({ cards: [MAIN, agent('x')], more: [], fewer: [] });
+    // D51-card-cap ruling: "+N more" opens the run's cards in place; "Show fewer" cuts them again.
+    const opened = cappedCards(shown, [run({ name: 'fan-out' })], false, new Set([RUN]));
+    expect(opened.cards).toEqual(shown);
+    expect(opened.more).toEqual([]);
+    expect(opened.fewer).toEqual([{ runId: RUN, name: 'fan-out', count: 3 }]);
+    expect(fewerCardsLine(opened.fewer[0] ?? { runId: '', name: '', count: 0 })).toBe('Show fewer · fan-out');
     // D37: finished workflow agents fold under "✓ N finished" like subagents; the summary counts them all.
     expect(panelAgents([MAIN, agent('d', { status: 'done' }), agent('r')], false)).toEqual({ shown: [MAIN, agent('r')], finished: 1 });
   });
@@ -133,5 +142,23 @@ describe('chats and the background line', () => {
     expect(backgroundText(task)).toBe('Running a workflow: Audit every repo');
     expect(backgroundText({ ...task, workflow: { runId: RUN, doneCount: 0, agentCount: 0, phase: null } })).toBe('Running a workflow: Audit every repo');
     expect(backgroundText({ ...task, workflow: { runId: RUN, doneCount: 3, agentCount: 7, phase: 'Review' } })).toBe('Running a workflow: Audit every repo · 3/7 agents done · phase Review');
+  });
+});
+
+describe('Resume run (D51-resume)', () => {
+  it('the message asks for the Workflow call with the run\'s script, its id and its args; none without a resume', () => {
+    const message = resumeRunMessage(run({ status: 'idle', resume: { scriptPath: '/p/proj-audit-wf_aaaa1111-bbb.js', args: null } }));
+    expect(message).toContain('Workflow({ scriptPath: "/p/proj-audit-wf_aaaa1111-bbb.js", resumeFromRunId: "wf_aaaa1111-bbb" })');
+    expect(message).toContain('Do not edit the script.');
+    expect(resumeRunMessage(run({ status: 'fail', resume: { scriptPath: '/p/s.js', args: { n: 1 } } }))).toContain('resumeFromRunId: "wf_aaaa1111-bbb", args: {"n":1} })');
+    expect(resumeRunMessage(run({ resume: null }))).toBeNull();
+    expect(resumeRunMessage(run())).toBeNull();
+  });
+
+  it('blocked for a closed session or an unreachable machine; a hooked or live session can take it', () => {
+    expect(resumeBlocked({ closedAt: null })).toBeNull();
+    expect(resumeBlocked({ closedAt: '2026-09-29T10:00:00.000Z' })).toBe('Reopen the session to resume the run');
+    expect(resumeBlocked({ closedAt: null, machine: { id: 'm', name: 'PC', state: 'offline' } })).toBe('PC is unreachable');
+    expect(resumeBlocked({ closedAt: null, machine: { id: 'm', name: 'PC', state: 'online' } })).toBeNull();
   });
 });

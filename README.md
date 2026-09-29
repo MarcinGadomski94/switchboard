@@ -139,7 +139,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 **Right panel**
 - **Agent overview:** a table of Agent · Description · Solution · Status for every agent. The newest status table the agent printed appears under it as a readable table ("as printed" shows the original).
 - **Agent cards** with each agent's current action. Finished subagents fold into a "✓ N finished" line, which you click to show them again.
-- **Workflow agents:** the agents a Workflow runs (orchestrator mode) are listed too: a row per workflow (its progress, e.g. "3/7 done · phase Review") with its agents under it, cards for the running ones, and "⏳ Running a workflow: … · 3/7 agents done · phase Review" in the chat. Click one to open its chat. They survive a reload and a restart (read from Claude Code's own files).
+- **Workflow agents:** the agents a Workflow runs (orchestrator mode) are listed too: a row per workflow (its progress, e.g. "3/7 done · phase Review") with its agents under it, cards for the running ones, and "⏳ Running a workflow: … · 3/7 agents done · phase Review" in the chat. Click one to open its chat. A workflow with many agents shows six cards and a "+N more" line that opens the rest. A stopped or failed run has **Resume run**, which asks the agent to resume it. They survive a reload and a restart (read from Claude Code's own files).
 - **The terminal tail** and the **handoff** command.
 
 **Subagent chats**

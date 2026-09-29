@@ -548,14 +548,20 @@ a.sb-agent--link:focus-visible {
   color: var(--muted-2);
 }
 
-/* D51: the cards a Workflow that fans out leaves out ("+N more in <workflow>"), like the finished line. */
+/* D51: the cards a Workflow that fans out leaves out ("+N more in <workflow>", a button that opens them; "Show fewer"), like the finished line. */
 .sb-agents .sb-agents-more {
+  align-self: flex-start;
+  max-width: 100%;
   padding: 2px 11px;
   font: 400 11px var(--font-mono);
   color: var(--muted-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sb-agents .sb-agents-more:hover {
+  color: var(--muted-2);
 }
 
 .sb-agent-top {
