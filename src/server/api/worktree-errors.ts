@@ -17,6 +17,10 @@ export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
   uncommitted: 409,
   unpushed: 409,
   'git-failed': 409,
+  // D40: a new session's task worktrees.
+  'fetch-failed': 409,
+  'base-missing': 409,
+  'branch-checked-out': 409,
 };
 
 /**

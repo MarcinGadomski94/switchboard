@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { SessionModelOption } from '../../../core/api.ts';
+import type { SessionBranching } from '../../../core/branching.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
@@ -96,6 +97,13 @@ export interface SessionRecord {
    * this branch are adopted as the session's (`docs/worktrees.md` → *Adopted worktrees*).
    */
   readonly branch: string | null;
+  /**
+   * D40 (0012): how the session's task worktrees are branched (the epic, its base,
+   * per-repo base overrides, dropped repos), stored when it starts with Worktrees
+   * on under the ticket rule; `null` otherwise (and before 0012). Adoption (D38)
+   * reads it for the base an agent-created worktree was cut from.
+   */
+  readonly branching: SessionBranching | null;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -159,6 +167,7 @@ const SPEC: TableSpec<SessionRecord> = {
     modelOptions: ['model_options', 'json'],
     closedAt: ['closed_at', 'text'],
     branch: ['branch', 'text'],
+    branching: ['branching', 'json'],
   },
 };
 

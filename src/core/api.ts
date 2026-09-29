@@ -78,6 +78,83 @@ export interface NewSession {
    * `session/{name}`.
    */
   readonly branch?: string | null;
+  /**
+   * Additive (D40): the epic/task branching of the worktrees, read only with
+   * `worktrees: true` (never for a schedule's runs). Omitted or `null` = a task
+   * without an epic and no per-repo choices ({@link NewSessionBranching}).
+   */
+  readonly branching?: NewSessionBranching | null;
+}
+
+/**
+ * Additive (D40, `docs/new-session.md` → *Branching (D40)*): how the session's
+ * task worktrees are branched (lazy: Switchboard never creates the epic branch
+ * and never pushes). Each worktree is cut, after a `git fetch origin`, from
+ * `origin/<epic>` when the epic is on origin, else from `origin/<base>` (the
+ * repo's override when set); without an epic from the repo's origin default
+ * branch (`origin/HEAD`). An existing task branch is reused (tracking
+ * `origin/<task>` when it is there, else the local branch).
+ */
+export interface NewSessionBranching {
+  /**
+   * The epic: its ticket key (`PROJ-3010`), summary (free text, may be empty) and
+   * branch (`feature/<KEY>-<Summary>`, `epicBranchName`; a valid git branch
+   * name; omitted or blank = derived from the key and summary). Omitted or `null`
+   * = a task without an epic.
+   */
+  readonly epic?: { readonly key: string; readonly summary?: string; readonly branch?: string | null } | null;
+  /** The epic's base branch on origin; omitted or blank = `dev`. Not read without an epic. */
+  readonly base?: string | null;
+  /** Per solution (as in `solutions`): the base branch used instead in that repo (the preflight's "Use other base"). */
+  readonly bases?: Readonly<Record<string, string>> | null;
+  /** Solutions dropped from the task (the preflight's "Drop from task"): no worktree, and they leave the session's solutions. */
+  readonly dropped?: readonly string[] | null;
+}
+
+/** Additive (D40): `POST /api/branching/preflight` body. */
+export interface BranchingPreflightRequest {
+  /** A saved folder's id; omitted or `null` = the default folder. */
+  readonly folder?: string | null;
+  /** The solutions to check (a repo folder checks its repo whatever is sent). Empty = no rows. */
+  readonly solutions: readonly string[];
+  /** The epic branch; omitted, `null` or blank = a task without an epic (the rows check the origin default branch). */
+  readonly epicBranch?: string | null;
+  /** The epic's base; omitted or blank = `dev`. */
+  readonly base?: string | null;
+  /** The task branch to look for on origin; omitted, blank or not a valid branch name = not checked. */
+  readonly taskBranch?: string | null;
+  /** Per-solution base overrides (as in {@link NewSessionBranching.bases}). */
+  readonly bases?: Readonly<Record<string, string>> | null;
+}
+
+/** Additive (D40): one repo of a preflight. `null` values are unknown (the repo could not be read or fetched). */
+export interface BranchingPreflightRow {
+  /** The solution as sent (a repo folder: the repo's name). */
+  readonly solution: string;
+  /** Its main checkout; `null` when it does not resolve to a git repository. */
+  readonly repoPath: string | null;
+  /**
+   * Why the refs could not be checked, e.g. `no origin remote: the worktree starts
+   * from the repo's current HEAD`, `git fetch origin failed: …`; `null` when they were.
+   */
+  readonly error: string | null;
+  /** The base checked (without `origin/`): the override, the epic's base, or the origin default branch; `null` when unknown. */
+  readonly base: string | null;
+  /** Where {@link base} comes from. */
+  readonly baseSource: 'epic' | 'override' | 'default';
+  /** `origin/<base>` exists after the fetch. */
+  readonly baseExists: boolean | null;
+  /** The epic on origin (`null` without an epic). `behind` = commits of `origin/<base>` it lacks (`null` when either is missing). */
+  readonly epic: { readonly branch: string; readonly exists: boolean | null; readonly behind: number | null } | null;
+  /** The task branch on origin and locally (`null` when no valid task branch was sent). */
+  readonly task: { readonly branch: string; readonly exists: boolean | null; readonly local: boolean | null } | null;
+  /** The branch the task worktree would be cut from (`origin/<x>`), `null` when there is none yet. */
+  readonly cutFrom: string | null;
+}
+
+/** Additive (D40): `POST /api/branching/preflight` answer. */
+export interface BranchingPreflight {
+  readonly rows: readonly BranchingPreflightRow[];
 }
 
 /**
@@ -99,6 +176,8 @@ export interface NewRepoSession {
   readonly title?: string | null;
   /** Additive (D32): as {@link NewSession.branch} (required with `worktrees: true`). */
   readonly branch?: string | null;
+  /** Additive (D40): as {@link NewSession.branching} (a repo folder's one repo cannot be dropped). */
+  readonly branching?: NewSessionBranching | null;
 }
 
 /**

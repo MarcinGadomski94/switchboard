@@ -119,7 +119,7 @@ describe('POST /api/sessions · D38: no picked solutions', () => {
     expect((await g.gitCalls()).some((c) => c.argv.includes('worktree') && c.argv.includes('add'))).toBe(false);
     const message = await firstMessage(s, session.id);
     expect(message).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
-    expect(message).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-38-agent-picks', 'agent-picks')}`);
+    expect(message).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-38-agent-picks', 'agent-picks', { epic: null, base: 'dev' })}`);
     expect(message).not.toContain('Mobile coordination');
 
     // `solutions` omitted, worktrees off: accepted too; edits in place.

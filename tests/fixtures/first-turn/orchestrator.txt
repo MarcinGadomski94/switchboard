@@ -8,6 +8,7 @@ Take them as the answers to the session-start questions: confirm them back in on
 - Solutions in scope: microfrontends/web-front, mobile
 - Phase: integration
 - Ultracode: on
+- Branching model: task only: PROJ-0641-free-talk-gateway (base: origin/main)
 - Worktrees (one per solution; make every change there, not in the main checkout):
-  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-orchestrator-run (branch PROJ-0641-free-talk-gateway)
+  - microfrontends/web-front: <workspace>/microfrontends/web-front-wt-orchestrator-run (branch PROJ-0641-free-talk-gateway, from origin/main)
   - mobile: <workspace>/mobile-wt-orchestrator-run (branch PROJ-0641-free-talk-gateway)
