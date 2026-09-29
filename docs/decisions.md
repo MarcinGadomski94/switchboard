@@ -236,6 +236,41 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - The answers bubble and the chat show the typed text verbatim.
   - The answer API gains an additive `text` next to `answerIndex`: one of the two per question.
 
+## Epic/task branching (added 2026-09-29)
+- **D40 The New-session form supports the epic/task branching model (lazy).** Developer spec, 2026-09-29.
+  - **The model:** `origin/<base>` (default `dev`) → `feature/<EPIC-KEY>-<Epic-Summary-Slug>` (the epic branch) → `<TASK-KEY>-<task-summary-slug>` (the task branch, D32's name). Local and remote names are the same.
+  - **Lazy creation (HARD):** the epic and task branches reach origin, and the epic branch even exists locally, only in a repo that actually gets a code change, at that first change. The agent then:
+    1. cuts the epic from the current `origin/<base>`, or reuses it if it is on origin;
+    2. moves the still-untouched task branch onto it;
+    3. pushes both with `git push -u origin <same name>`.
+    Repos never changed get no new branch anywhere.
+  - **Form, "Branching" section** (shown with Worktrees on, like D32's Branch field):
+    - **Epic** (optional): key and summary, typed in by the developer (no Jira lookup).
+    - **Epic branch:** derived as `feature/<KEY>-<Summary>`, keeping the summary's casing, spaces → `-`, characters git forbids dropped, runs of `-` merged; editable.
+    - **Epic base branch:** default `dev`.
+    - **Task branch:** D32's field.
+    - **Creation policy:** a read-only line, "lazy: on first code change".
+  - **Preflight table:** one row per selected solution (or the repo of a repo folder). It runs automatically, shortly after the solutions, epic or base change, and has a **Re-check** button. It uses `git fetch origin --prune` per repo, then:
+    - `origin/<base>` present? If not, a warning with **Drop from task** / **Use other base: ___** (per repo);
+    - epic branch on origin? (yes/no; if yes, how many commits it is behind `origin/<base>`);
+    - task branch on origin? (yes/no).
+  - **Worktree creation with an epic:**
+    - always `git fetch origin` first;
+    - the task branch worktree is cut from `origin/<epic>` when that exists, else from `origin/<base>` (the repo's own base when overridden), never from local `master`;
+    - an **existing task branch is reused** (tracking `origin/<task>` when there, else the local branch), replacing D32's refusal;
+    - nothing is pushed and the epic branch is not created at session start;
+    - dropped repos get no worktree.
+  - **Tasks without an epic:** unchanged (as today).
+  - **Hand-off:** the session-start answers block gains:
+    - `- Branching model: epic/task (lazy)`;
+    - the Epic line (key, epic branch, base);
+    - the Task branch line (base: epic branch);
+    - the Rule line (create and push the epic + task branches with `git push -u origin <same name>` only in a repo at its first code change; cut the epic from the current `origin/<base>` when it is missing on origin; never create either branch in repos that are not changed);
+    - `Dropped repos (no base branch): …` and per-repo base overrides, when any.
+    With no picked solutions (D38), the same rule applies to the worktrees the agent creates.
+  - **Unchanged:** scheduled runs keep `session/{name}`.
+  - **Built after D38**, on top of it.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
