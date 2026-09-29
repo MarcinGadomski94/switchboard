@@ -22,6 +22,7 @@ import { registerHookSource, toEvent, toSession } from '../sessions/wire.ts';
 import { claudeConfigDir, findTranscriptFile, importTerminalTurns } from '../supervisor/attach.ts';
 import { childEnv } from '../supervisor/argv.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
+import { LatestThrottle } from '../supervisor/activity-throttle.ts';
 import type { LoopEventInput } from '../../core/derive/loops.ts';
 import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
@@ -67,6 +68,9 @@ export const ACTIVE_POLL_MS = 500;
 
 /** D53: how much of a transcript's end is read for the live activity (a turn longer than this starts at the tail's first line). */
 export const ACTIVITY_TAIL_BYTES = 256 * 1024;
+
+/** D53: a hooked session's `/hub` `activity` events go out at most this often (the newest value always goes out). */
+export const ACTIVITY_EVENT_MS = 1_000;
 
 /** How often `claude agents --json` is asked while anything is hooked or waiting. */
 export const LIVENESS_POLL_MS = 10_000;
@@ -219,6 +223,8 @@ export class HookService {
   readonly #turns = new Map<string, { readonly key: string; readonly turn: TranscriptTurn; readonly mtimeMs: number }>();
   /** D53: each hooked session's delivery state as last published (a change publishes the session). */
   readonly #statusJson = new Map<string, string>();
+  /** D53: the `/hub` `activity` events per session, at most one a second (the contract's limit, as for a supervised session). */
+  readonly #activityEvents = new Map<string, LatestThrottle<SessionActivity | null>>();
   #activeTimer: NodeJS.Timeout | undefined;
 
   constructor(options: HookServiceOptions) {
@@ -260,6 +266,7 @@ export class HookService {
     clearInterval(this.#syncTimer);
     clearInterval(this.#livenessTimer);
     clearInterval(this.#activeTimer);
+    for (const throttle of this.#activityEvents.values()) throttle.cancel();
     for (const timer of this.#pumpTimers.values()) clearTimeout(timer);
     for (const request of [...this.#requests.values()]) this.#finishRequest(request, { status: 204, body: null });
     for (const waiter of [...this.#waiters.values()]) this.#finishWaiter(waiter, { status: 204, body: null });
@@ -573,7 +580,12 @@ export class HookService {
     const json = JSON.stringify(value);
     if (this.#activity.get(sessionId)?.json !== json) {
       this.#activity.set(sessionId, { value, json });
-      this.#bus.publish('activity', { sessionId, activity: value });
+      let throttle = this.#activityEvents.get(sessionId);
+      if (!throttle) {
+        throttle = new LatestThrottle<SessionActivity | null>({ intervalMs: ACTIVITY_EVENT_MS, send: (activity) => this.#bus.publish('activity', { sessionId, activity }) });
+        this.#activityEvents.set(sessionId, throttle);
+      }
+      throttle.push(value);
     }
     await this.#refreshStatus(record);
   }

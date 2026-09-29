@@ -166,7 +166,8 @@ describe('D53 live activity of a hooked session', () => {
       return a?.state === 'thinking' ? a : null;
     });
     expect(thinking.quietSince).toBeTruthy();
-    expect(r.activities.some((event) => event.sessionId === session.id && event.activity?.state === 'thinking')).toBe(true);
+    // The /hub events: at most one a second per session, the newest value always goes out.
+    await until('the thinking event', async () => r.activities.some((event) => event.sessionId === session.id && event.activity?.state === 'thinking'));
 
     // The CLI writes the tool_use line when the tool starts: no hook needed, the poll sees it.
     const toolAt = Date.now();
@@ -176,6 +177,7 @@ describe('D53 live activity of a hooked session', () => {
       return a?.state === 'tool' ? a : null;
     });
     expect(running).toMatchObject({ tool: 'Bash', summary: 'npm test', since: iso(toolAt) });
+    await until('the tool event', async () => r.activities.at(-1)?.activity?.state === 'tool');
     expect(r.activities.at(-1)).toMatchObject({ sessionId: session.id, activity: { state: 'tool', tool: 'Bash' } });
 
     // A permission prompt in the terminal: "Waiting for permission: Bash".
@@ -192,6 +194,7 @@ describe('D53 live activity of a hooked session', () => {
     await append(r, assistantTextLine({ sessionId: CS, cwd: r.cwd, text: 'All green.', parentUuid: lastUuid(r.lines), timestamp: iso(Date.now()) }));
     await hookCall(r, 'event', { hook_event_name: 'Stop' });
     await until('idle', async () => (await detail(r, session.id)).activity === null);
+    await until('the idle event', async () => r.activities.at(-1)?.activity === null);
     expect(r.activities.at(-1)).toEqual({ sessionId: session.id, activity: null });
     // The sidebar list carries it too (the same derivation).
     const listed = ((await api(r, 'GET', '/api/sessions')).json() as Session[]).find((entry) => entry.id === session.id);
