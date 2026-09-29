@@ -40,6 +40,8 @@ export interface WorktreeRecord {
   readonly parentMerge: string | null;
   /** D47: when the parent's PR was seen `MERGED` (the Inbox item and the session message follow once). */
   readonly parentMergedAt: string | null;
+  /** D47 ruling (0014): when the parent's PR was seen turning `CLOSED` without a merge (the "Parent … closed" Inbox item follows once). */
+  readonly parentClosedAt: string | null;
 }
 
 /** Input of {@link WorktreeRepository.create}. */
@@ -48,7 +50,7 @@ export type WorktreeCreate = CreateInput<WorktreeRecord, 'repo' | 'repoPath' | '
 /** The D47 parent fields of a record. */
 export type WorktreeParentFields = Pick<
   WorktreeRecord,
-  'parentBranch' | 'parentPrNumber' | 'parentPrUrl' | 'parentPrState' | 'parentBase' | 'parentHeadOid' | 'parentMerge' | 'parentMergedAt'
+  'parentBranch' | 'parentPrNumber' | 'parentPrUrl' | 'parentPrState' | 'parentBase' | 'parentHeadOid' | 'parentMerge' | 'parentMergedAt' | 'parentClosedAt'
 >;
 
 /** Input of {@link WorktreeRepository.update}. */
@@ -89,6 +91,7 @@ const SPEC: TableSpec<WorktreeRecord> = {
     parentHeadOid: ['parent_head_oid', 'text'],
     parentMerge: ['parent_merge', 'text'],
     parentMergedAt: ['parent_merged_at', 'text'],
+    parentClosedAt: ['parent_closed_at', 'text'],
   },
 };
 

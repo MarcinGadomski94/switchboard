@@ -97,6 +97,13 @@ export interface WorktreeEvents {
  */
 export type ParentMergedListener = (worktree: WorktreeRecord) => void;
 
+/**
+ * D47 ruling D47-closed-parent: a stacked worktree's parent PR turned `CLOSED`
+ * without a merge (once per worktree; `parentClosedAt` set). The system items
+ * raise the "Parent … closed" Inbox item; the session gets no message.
+ */
+export type ParentClosedListener = (worktree: WorktreeRecord) => void;
+
 /** Options for {@link WorktreeManager}. */
 export interface WorktreeManagerOptions {
   readonly store: Store;
@@ -309,6 +316,8 @@ export class WorktreeManager implements DiffProvider {
   readonly #listeners = new Set<Listener>();
   /** D47: `parentMerged` listeners. */
   readonly #parentListeners = new Set<ParentMergedListener>();
+  /** D47 ruling: `parentClosed` listeners. */
+  readonly #closedListeners = new Set<ParentClosedListener>();
   /** D40: network git calls per repository, one at a time (a preflight and a Start never fetch one repo at once). */
   readonly #fetching = new Map<string, Promise<unknown>>();
   /** D40: worktrees whose branch existed before (reused): {@link discard} never deletes it. */
@@ -342,6 +351,12 @@ export class WorktreeManager implements DiffProvider {
   onParentMerged(listener: ParentMergedListener): () => void {
     this.#parentListeners.add(listener);
     return () => this.#parentListeners.delete(listener);
+  }
+
+  /** D47 ruling: subscribes to a stacked worktree's parent closing without a merge ({@link ParentClosedListener}). */
+  onParentClosed(listener: ParentClosedListener): () => void {
+    this.#closedListeners.add(listener);
+    return () => this.#closedListeners.delete(listener);
   }
 
   // ── solutions ─────────────────────────────────────────────────────────
@@ -1077,8 +1092,11 @@ export class WorktreeManager implements DiffProvider {
    * head is an ancestor of `origin/<base>`: `merge`, else `squash`; `unknown` when
    * the fetch fails or the head is not known), `parent_merged_at`, and the row's
    * `base_ref` becomes `origin/<base>` (where the branch goes after its rebase);
-   * then `parentMerged` fires, once per worktree. Switchboard never retargets,
-   * rebases or pushes anything itself.
+   * then `parentMerged` fires, once per worktree. D47 ruling D47-closed-parent:
+   * a PR that turns `CLOSED` (from any other reported state, or none) sets
+   * `parent_closed_at` and `parentClosed` fires, once per worktree (a parent
+   * already closed when the worktree was made does not). Switchboard never
+   * retargets, rebases or pushes anything itself.
    */
   async #checkParent(record: WorktreeRecord): Promise<void> {
     const parent = record.parentBranch;
@@ -1100,12 +1118,23 @@ export class WorktreeManager implements DiffProvider {
       parentHeadOid,
     };
     const merged = pr.state === 'MERGED' && parentBase !== null;
+    const closed = pr.state === 'CLOSED' && record.parentPrState !== 'CLOSED' && record.parentClosedAt === null;
+    if (closed) patch.parentClosedAt = new Date().toISOString();
     if (merged) {
       patch.parentMerge = await this.#mergeKind(record.repoPath, parentHeadOid, parentBase);
       patch.parentMergedAt = new Date().toISOString();
       patch.baseRef = `origin/${parentBase}`;
     }
     const updated = await this.#store.worktrees.update(record.id, patch);
+    if (closed && updated) {
+      for (const listener of this.#closedListeners) {
+        try {
+          listener(updated);
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
+    }
     if (merged && updated) {
       for (const listener of this.#parentListeners) {
         try {

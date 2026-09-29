@@ -9,6 +9,7 @@ import {
   preflightCells,
   preflightKey,
   preflightRequest,
+  prTargetCell,
   formParent,
   parentFromTaskShown,
   stackedCells,
@@ -173,5 +174,13 @@ describe('Parent (D47)', () => {
     expect(stackedCells(open)?.status).toEqual({ text: '✓ PR #1080 open', tone: 'ok' });
     expect(stackedCells(row({ cutFrom: `origin/${PARENT}`, prTarget: PARENT, parent: { typed: PARENT, branch: PARENT, matches: [PARENT], error: null, pr: null, noPr: true, prError: null } }))?.status).toEqual({ text: 'no PR', tone: 'muted' });
     expect(stackedCells(row({}))).toBeNull();
+  });
+
+  it('ruling D47-columns: the PR target cell of every row, stacked or not', () => {
+    expect(prTargetCell(row({ prTarget: EPIC }))).toEqual({ text: `${EPIC} (epic, created lazily)`, tone: 'muted' });
+    expect(prTargetCell(row({ prTarget: EPIC, epic: { branch: EPIC, exists: true, behind: 0 } }))).toEqual({ text: `${EPIC} (epic)`, tone: 'muted' });
+    expect(prTargetCell(row({ epic: null, prTarget: 'master' }))).toEqual({ text: 'master', tone: 'muted' });
+    expect(prTargetCell(row({ prTarget: null, cutFrom: null }))).toEqual({ text: '—', tone: 'muted' });
+    expect(prTargetCell(row({ error: 'no origin remote: x' }))).toBeNull();
   });
 });

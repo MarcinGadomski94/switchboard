@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { UserMessageOrigin } from '../../../src/core/event-payload.ts';
 import type { Store } from '../../../src/server/db/store.ts';
-import { PARENT_MERGED, PARENT_MERGED_KIND, SystemItemService, parentMergedItem, parentMergedOf } from '../../../src/server/inbox/system-items.ts';
+import { PARENT_CLOSED, PARENT_MERGED, PARENT_MERGED_KIND, SystemItemService, parentMergedItem, parentMergedOf } from '../../../src/server/inbox/system-items.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 
@@ -29,7 +29,7 @@ const EPIC = 'feature/PROJ-3010-Platform';
 const PARENT = 'PROJ-3013-cookie-banner';
 const TASK = 'PROJ-3014-kpi-events';
 
-async function world(options: { readonly closed?: boolean; readonly fail?: boolean } = {}) {
+async function world(options: { readonly closed?: boolean; readonly fail?: boolean; readonly parentClosed?: boolean } = {}) {
   dir = await makeTempDir('switchboard-parent-merged-');
   store = await openTempStore(dir);
   const session = await store.sessions.create({ name: 'kpi-events', claudeSessionId: randomUUID(), solutions: ['web-front'], worktrees: true });
@@ -47,8 +47,9 @@ async function world(options: { readonly closed?: boolean; readonly fail?: boole
     parentPrState: 'MERGED',
     parentBase: EPIC,
     parentHeadOid: 'abc1234',
-    parentMerge: 'squash',
-    parentMergedAt: '2026-09-29T12:00:00.000Z',
+    ...(options.parentClosed
+      ? { parentPrState: 'CLOSED', parentMerge: null, parentMergedAt: null, parentClosedAt: '2026-09-29T12:30:00.000Z' }
+      : { parentMerge: 'squash', parentMergedAt: '2026-09-29T12:00:00.000Z' }),
   });
   const sent: Array<{ sessionId: string; text: string; origin: UserMessageOrigin }> = [];
   const service = new SystemItemService({
@@ -106,6 +107,28 @@ describe('SystemItemService · D47 parent merged', () => {
     expect(await w.store.pendingMessages.pending(w.session.id)).toEqual([]);
   });
 
+  it('ruling D47-closed-parent: a parent closed without merging raises its item once, with no message to the session', async () => {
+    const w = await world({ parentClosed: true });
+    await w.store.sessions.update(w.session.id, { branching: { epic: { key: 'PROJ-3010', summary: 'Platform', branch: EPIC }, base: 'dev', bases: {}, dropped: [], parent: 'PROJ-3013' } });
+    const [item] = await w.service.sync();
+    expect(item).toMatchObject({
+      kind: PARENT_CLOSED,
+      source: 'worktrees',
+      status: 'need',
+      title: `Parent ${PARENT} closed — retarget ${TASK} to ${EPIC}`,
+      worktreeId: w.worktree.id,
+      actions: [{ id: 'dismiss', label: 'Dismiss' }],
+      createdAt: '2026-09-29T12:30:00.000Z',
+    });
+    expect(item?.detail).toBe(
+      `web-front · PR #306 ${PARENT} was closed without merging. Nothing was sent to the session: retarget the PR of ${TASK} to ${EPIC} (gh pr edit ${TASK} --base ${EPIC}) and take the parent's commits out of it, or ask the session to.`,
+    );
+    expect(await w.service.sync()).toEqual([]);
+    expect(await w.service.parentClosed(w.worktree.id)).toBeNull();
+    expect(w.sent).toEqual([]);
+    expect(await w.store.pendingMessages.pending(w.session.id)).toEqual([]);
+  });
+
   it('builds the item from the stored row (pure)', () => {
     const row = {
       id: 'w1',
@@ -131,6 +154,7 @@ describe('SystemItemService · D47 parent merged', () => {
       parentHeadOid: null,
       parentMerge: null,
       parentMergedAt: null,
+      parentClosedAt: null,
     };
     const merged = parentMergedOf(row);
     expect(merged).toMatchObject({ merge: 'unknown', oldTip: null, childPr: null, parentPr: null });

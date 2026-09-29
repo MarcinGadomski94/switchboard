@@ -136,6 +136,9 @@ test('an epic: the derived epic branch, the preflight table, Drop from task, Sta
   await expect(alphaRow.getByTestId('br-cell-base')).toHaveText('✓ origin/dev');
   await expect(alphaRow.getByTestId('br-cell-epic')).toHaveText('— not on origin (cut lazily)');
   await expect(alphaRow.getByTestId('br-cell-task')).toHaveText('— new');
+  // Ruling D47-columns: the PR target shows for every branching session (here the epic, not on origin yet).
+  await expect(alphaRow.getByTestId('br-cell-target')).toHaveText(`${EPIC} (epic, created lazily)`);
+  await expect(alphaRow.getByTestId('br-cell-resolved')).toHaveCount(0);
   await expect(betaRow.getByTestId('br-cell-base')).toContainText('⚠ no origin/dev');
   await expect(betaRow.getByTestId('br-drop')).toBeVisible();
   await expect(betaRow.getByTestId('br-other-base')).toBeVisible();

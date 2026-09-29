@@ -176,6 +176,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'worktree-removable': 'PR merged',
   // D47: a stacked task's parent PR merged.
   'parent-merged': 'Parent merged',
+  // D47 ruling: a stacked task's parent PR closed without a merge.
+  'parent-closed': 'Parent closed',
 };
 
 /**
