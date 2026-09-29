@@ -4,7 +4,7 @@ import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import type { AnswerDelivery, PermissionDecision } from '../../core/model.ts';
 import { checkOwnAnswer } from '../../core/own-answer.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
-import { SESSION_CLOSED_REASON } from '../../core/session-close.ts';
+import { SESSION_CLOSED_REASON, TURN_STOPPED_REASON } from '../../core/session-close.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
@@ -179,6 +179,27 @@ export class QuestionPipeline implements ControlRequestHandler {
   async orphaned(sessionId: string, requestIds: readonly string[]): Promise<void> {
     for (const requestId of requestIds) await this.#markStale(sessionId, requestId);
     await this.#publishInbox();
+  }
+
+  /**
+   * D50: the developer stopped the turn these requests belonged to (the CLI
+   * withdrew them): a question batch closes without answers with the label
+   * {@link TURN_STOPPED_REASON} (`closeUnanswered`), a permission request goes
+   * stale; both leave the Inbox, and the chat's card shows the batch as closed.
+   * Publishes `inboxChanged` and the session.
+   */
+  async stopped(sessionId: string, requestIds: readonly string[]): Promise<void> {
+    for (const requestId of requestIds) {
+      const batch = await this.#store.questions.getBatch(requestId);
+      if (batch && batch.sessionId === sessionId) {
+        await this.#store.questions.closeUnanswered(requestId, TURN_STOPPED_REASON);
+        continue;
+      }
+      const permission = await this.#store.permissions.getByRequestId(sessionId, requestId);
+      if (permission && permission.state === 'open') await this.#store.permissions.markStale(permission.id);
+    }
+    await this.#publishInbox();
+    await this.#publishSession(sessionId);
   }
 
   /**
