@@ -9,6 +9,7 @@ import { EventRepository } from './repos/events.ts';
 import { FolderRepository } from './repos/folders.ts';
 import { HistoryCacheRepository } from './repos/history-cache.ts';
 import { LoopRepository } from './repos/loops.ts';
+import { MachineRepository } from './repos/machines.ts';
 import { PendingMessageRepository } from './repos/pending-messages.ts';
 import { PermissionRepository } from './repos/permissions.ts';
 import { QuestionRepository } from './repos/questions.ts';
@@ -47,6 +48,8 @@ export interface Store {
   readonly pendingMessages: PendingMessageRepository;
   /** Saved folders (D14, `docs/folders.md`). */
   readonly folders: FolderRepository;
+  /** Paired Switchboard machines (D48, `docs/peers.md`). */
+  readonly machines: MachineRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -103,6 +106,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     historyCache: new HistoryCacheRepository(ctx),
     pendingMessages: new PendingMessageRepository(ctx),
     folders: new FolderRepository(ctx),
+    machines: new MachineRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

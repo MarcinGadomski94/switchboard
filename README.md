@@ -88,6 +88,7 @@ Settings are environment variables, read at start. An invalid value makes `npm s
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI. |
 | `SWITCHBOARD_SETUP_WIZARD` | on | `off` stops the wizard from opening by itself. |
 | `SWITCHBOARD_CLAUDE_EXTRA_ARGS` | none | Dev only: a JSON array of extra flags for every `claude` spawn. |
+| `SWITCHBOARD_TAILSCALE_BIN` | `tailscale` | The Tailscale CLI; `tailscale ip -4` gives the address of the optional peer listener (Machines). |
 
 Everything else, such as saved folders, tools, notification and usage settings, lives in the database and is edited in **Settings**. The full list, with test-only variables, is in [`docs/configuration.md`](docs/configuration.md).
 
@@ -185,6 +186,13 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 [`docs/remote-control.md`](docs/remote-control.md) · [`docs/spike-remote.md`](docs/spike-remote.md)
 
+### Machines (peers)
+Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Machines**:
+- **Peer listener** (off by default): lets paired machines reach this one on its **Tailscale address** only (port 13002). The UI itself stays on 127.0.0.1.
+- **Allow a new peer** shows a one-time code (10 minutes, single use); on the other machine, **Add machine** with this machine's Tailscale address and the code. One pairing works both ways; each machine shows the other as online / offline / auth failed / no address, reconnects by itself, and can be renamed or removed (which revokes it on both sides).
+
+[`docs/peers.md`](docs/peers.md)
+
 ### Embedded tools
 Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them in Settings → Embedded tools. Codebase Memory is built in, including its "reindex n now" strip.
 
@@ -220,6 +228,7 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 ## Security model
 - The server listens on **127.0.0.1 only**. Every request must name `127.0.0.1:<port>` or `localhost:<port>` as its Host (this stops DNS rebinding). A browser Origin must be exactly Switchboard's own.
 - Every API call needs the **`sb_token` cookie**. It is `HttpOnly`, `SameSite=Strict`, and only set when you open the page yourself (typed URL, bookmark, reload), never from another site.
+- The optional **peer listener** (Machines) is a second socket bound only to the Tailscale address. It serves only the peer API, and every call needs that machine's own pairing token (stored hashed); no page, no settings, no folders, no tools.
 - Child processes are spawned with argument arrays, never through a shell.
 - Switchboard never reads or passes on your claude.ai credentials. It only runs the `claude` CLI you signed in to.
 

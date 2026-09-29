@@ -8,6 +8,8 @@ import { forwardServiceEvents } from './hub/wire.ts';
 import { QuestionPipeline } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { LoopTracker } from './loops/tracker.ts';
+import { registerPeerForwarding } from './api/machines.ts';
+import { PeerService } from './peers/service.ts';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
@@ -86,6 +88,13 @@ export interface AppOptions {
    * reads usage only while someone sees the meter.
    */
   readonly usage?: UsageMeter;
+  /**
+   * Paired machines and the peer listener (D48, `docs/peers.md`). A caller that
+   * passes one owns it (main.ts starts it once the UI port is ours and closes it);
+   * without one the app makes its own, which is never started (no listener, no
+   * connections: the routes still answer) and closes with the app.
+   */
+  readonly peers?: PeerService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -158,7 +167,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!options.systemItems) systemItems.useScheduleRunner(scheduleRunnerFor(own));
     scheduler = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler });
+  let peers = options.peers;
+  if (!peers) {
+    const own = new PeerService({ config, store: options.store, bus, token: options.token });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    peers = own;
+  }
+  peers.useApp(app);
+  // D48: a request that names a peer's id goes to that peer (before any route handler reads the local store).
+  registerPeerForwarding(app, peers);
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

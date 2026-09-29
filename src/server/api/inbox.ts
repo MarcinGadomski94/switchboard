@@ -3,6 +3,7 @@ import { InboxError, type InboxErrorCode } from '../inbox/pipeline.ts';
 import { SystemItemError, type SystemItemErrorCode } from '../inbox/system-items.ts';
 import { listInbox } from '../inbox/wire.ts';
 import type { ApiContext } from '../routes.ts';
+import { isPeerRequest } from './machines.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 import { sendWorktreeError } from './worktree-errors.ts';
@@ -61,7 +62,11 @@ export async function registerInboxRoutes(app: FastifyInstance, context: ApiCont
   const { questions, store, systemItems } = context;
 
   // Contract: InboxItem[] (question batches, permission items, system items).
-  app.get('/api/inbox', async () => listInbox(store));
+  // D48: the reachable paired machines' items follow (tagged, namespaced); a peer asking gets this machine's only.
+  app.get('/api/inbox', async (request) => {
+    const local = await listInbox(store);
+    return isPeerRequest(request) ? local : [...local, ...context.peers.remoteInbox()];
+  });
 
   // Contract: 204, 400 unless every question is answered; D39: 422 for an entry with both / neither or a bad own answer.
   app.post<{ Params: { batchId: string } }>('/api/questions/batch/:batchId/answers', async (request, reply) => {

@@ -77,6 +77,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   usage_readings: ['five_hour_pct', 'five_hour_resets_at', 'seven_day_pct', 'seven_day_resets_at', 'source', 'received_at'],
   history_cache: ['transcript_path', 'size', 'mtime_ms', 'item'],
   pending_messages: ['session_id', 'kind', 'text', 'delivered_at'],
+  // D48: paired machines.
+  machines: ['id', 'name', 'address', 'outbound_token', 'inbound_token_hash', 'paired_at', 'last_seen_at'],
 };
 
 describe('shipped migrations', () => {

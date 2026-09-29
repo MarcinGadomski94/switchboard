@@ -16,6 +16,8 @@ describe('loadConfig', () => {
       ghCommand: ['gh'],
       demo: false,
       openCommand: null,
+      tailscaleCommand: ['tailscale'],
+      peerTestLoopback: false,
     });
     expect(DEFAULT_PORT).toBe(13001);
     expect(LOOPBACK_HOST).toBe('127.0.0.1');

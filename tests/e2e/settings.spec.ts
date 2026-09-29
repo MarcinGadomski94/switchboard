@@ -132,6 +132,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Schedules',
     'Embedded tools',
     'GitHub',
+    // D48: after the prototype's seven.
+    'Machines',
   ]);
   await expect(page.getByTestId('settings-nav-claude')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');
@@ -156,6 +158,7 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     ['schedules', 'Schedules'],
     ['tools', 'Embedded tools'],
     ['github', 'GitHub'],
+    ['machines', 'Machines'],
     ['claude', 'Claude Code'],
   ];
   for (const [key, title] of sections) {

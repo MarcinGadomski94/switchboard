@@ -8,7 +8,7 @@ import type { ToolState } from '../../tools/probe.ts';
  */
 
 /**
- * The seven sections, in the prototype's order (`SN`); the key is the URL segment
+ * The seven sections, in the prototype's order (`SN`), then D48's Machines; the key is the URL segment
  * (`/settings/<key>`). D14: *Workspace & solutions* became *Folders* (the key
  * stays, so old links keep working; `/settings/folders` opens it too).
  */
@@ -20,6 +20,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'schedules', label: 'Schedules' },
   { key: 'tools', label: 'Embedded tools' },
   { key: 'github', label: 'GitHub' },
+  // D48 (docs/peers.md): paired machines; after the prototype's seven.
+  { key: 'machines', label: 'Machines' },
 ] as const;
 
 /** A section key. */

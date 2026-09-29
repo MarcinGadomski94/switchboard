@@ -4,6 +4,7 @@ import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
+import { isPeerRequest } from './machines.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
@@ -84,7 +85,9 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     }
     // D25: a teleport that has not reported its local session yet is not listed (a refusal deletes it again).
     const records = (await store.sessions.list(closed === 'include' ? {} : { closed: false })).filter((record) => !supervisor.isStarting(record.id));
-    return Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
+    const local = await Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
+    // D48: the paired machines' open sessions follow (tagged, namespaced); a peer asking gets this machine's only.
+    return isPeerRequest(request) ? local : [...local, ...context.peers.remoteSessions()];
   });
 
   app.post('/api/sessions', async (request, reply) => {

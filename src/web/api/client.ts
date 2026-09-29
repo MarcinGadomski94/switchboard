@@ -37,6 +37,7 @@ import type {
   Worktree,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
+import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
 
 /**
  * Typed client for the local API (`docs/handoff/contracts/local-api.md`). Every
@@ -206,7 +207,38 @@ export const api = {
   /** The list left; 409 `folder-in-use` (`FolderInUse`) while schedules start their runs there. */
   removeFolder: (id: string) => request<Folder[]>('DELETE', `/api/folders/${enc(id)}`),
   setDefaultFolder: (id: string) => request<Folder[]>('PUT', `/api/folders/${enc(id)}/default`),
+
+  // D48, additive (docs/peers.md): Settings → Machines.
+  machines: () => request<MachinesView>('GET', '/api/machines'),
+  renameSelf: (name: string) => request<{ id: string; name: string }>('PUT', '/api/machines/self', { name }),
+  setListener: (body: PeerListenerInput) => request<PeerListenerState>('PUT', '/api/machines/listener', body),
+  /** "Allow a new peer": a one-time code for the other machine. */
+  pairingCode: () => request<PairingCode>('POST', '/api/machines/pairing-code'),
+  /** "Add machine": 201; 409 `pairing-refused` (wrong / expired / used code), 502 `peer-unreachable`, 422 `invalid`. */
+  addMachine: (body: AddMachineInput) => request<Machine>('POST', '/api/machines', body),
+  renameMachine: (id: string, name: string) => request<Machine>('PUT', `/api/machines/${enc(id)}`, { name }),
+  removeMachine: (id: string) => request<null>('DELETE', `/api/machines/${enc(id)}`),
 } as const;
+
+/**
+ * D48: a route on machine `machine` (`null` = this machine): the path as it is, or
+ * through that machine's peer API (`/api/machines/{id}/api/…`); answers come back
+ * namespaced (remote ids, `docs/peers.md` → *Proxy*).
+ */
+export function onMachine(machine: string | null, path: string): string {
+  return machine ? `/api/machines/${enc(machine)}${path}` : path;
+}
+
+/** D48 (P3): the New-session form's calls on the chosen machine (`null` = this one). */
+export function machineApi(machine: string | null) {
+  return {
+    savedFolders: () => request<Folder[]>('GET', onMachine(machine, '/api/folders')),
+    models: () => request<ModelSettings>('GET', onMachine(machine, '/api/models')),
+    solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
+    branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
+    createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
+  } as const;
+}
 
 /** The client's type (for test doubles). */
 export type Api = typeof api;

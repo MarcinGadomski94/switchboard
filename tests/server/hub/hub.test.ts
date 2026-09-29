@@ -91,6 +91,8 @@ const SESSION_KEYS = keys<Session>()([
   'model',
   // additive, D33 (closed sessions)
   'closedAt',
+  // additive, D48 (a peer's session: its machine; null here)
+  'machine',
 ]);
 const AGENT_KEYS = keys<Agent>()([
   'id',

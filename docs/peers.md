@@ -1,0 +1,36 @@
+# Switchboard peers (D48)
+
+"Ultimately, any Switchboard should be able to connect to any other Switchboard." (developer, D48). Each install can **serve** (an optional peer listener on its Tailscale address) and **connect** (to every machine it paired with). There is no "host" or "client" build: the Mac and each Windows PC run the same Switchboard.
+
+Code: `src/core/peers.ts` (ids, addresses, codes), `src/core/peer-wire.ts` (namespacing), `src/server/peers/` (the service, the listener, connections, pairing, tokens), `src/server/api/machines.ts` (routes and forwarding), `src/web/views/settings/MachinesSection.tsx`. Rulings: `docs/decisions.md` → D48. Choices where the rulings are silent: `.loop/questions.md` → *D48 · Switchboard peers*.
+
+## Machines and pairing (P1)
+
+- **This machine** has a random **machine id** (12 characters, `a-z2-7`, made once and kept in the settings table as `peers.self`) and a **name** (the host name without `.local`). The id is the namespace other machines use for its ids.
+- **Peer listener** (Settings → Machines → *Peer listener*, off by default): a second socket that serves only the peer API. It binds only the machine's **Tailscale IPv4** (`tailscale ip -4`, the first IPv4 line; with the default command the macOS app's CLI `/Applications/Tailscale.app/Contents/MacOS/Tailscale` is tried when `tailscale` is not on `PATH`) or an address typed in the settings, which must itself be a Tailscale address (100.64.0.0/10). Port **13002** unless changed (never the UI's port). When no address is found, or the bind is refused, the row says why and nothing listens. The UI listener stays on 127.0.0.1 exactly as before.
+- **Pairing** (both on Settings → Machines):
+  1. On machine A (listener on): **Allow a new peer** shows a one-time code `XXXX-XXXX` (8 characters of Crockford base32, 40 bits), valid **10 minutes**, **single use**, burned after **5 wrong tries**, held in memory only (a restart forgets it; a new code replaces the old one). Typed codes are read leniently (case, spaces, `O`→`0`, `I`/`L`→`1`).
+  2. On machine B: **Add machine** with A's address (`100.x.y.z`, optionally `:port`) and the code. B sends `POST /peer/v1/pair` `{ code, id, name, address, token }` to A: its own id and name, its own listener address (or `null`), and a fresh token **A** will present to B. A answers `{ id, name, token }` with a fresh token **B** will present to A.
+  3. Each side stores the other's id, name, address, the token it **presents** (`outbound_token`) and only the **sha256** of the token it **checks** (`inbound_token_hash`), in the `machines` table (migration 0015).
+  - **One pairing works both ways** (ASSUMED D48-both-directions): A can call B as soon as it knows B's address. When B's listener is off at pairing time A shows B as **no address**; B tells its address with every hello (`POST /peer/v1/hello` `{ address }`), so switching B's listener on later is enough.
+  - Pairing again replaces both tokens (the old ones stop working). Names are local tags: renaming a machine changes only this side.
+- **Remove** revokes: the machine's row (and its tokens) goes, its streams close, and the other machine is told (`DELETE /peer/v1/pair`, best effort) so it forgets this one too.
+- **Connections** (`src/server/peers/client.ts`): per paired machine with an address, `POST /peer/v1/hello`, then `GET /peer/v1/api/sessions` (the cache), then the event stream `GET /peer/v1/events` held open. States: **online** (the stream is open), **offline** (connecting, or reconnecting after a drop, a refused connection, a timeout), **auth failed** (401: revoked there; pair again), **no address**. Reconnects back off 1 s, doubling to 60 s, back to 1 s after a successful stream. The UI polls `GET /api/machines` every 3 s while the section is open.
+
+## The peer API (listener)
+
+Served only on the peer listener (`src/server/peers/listener.ts`), never on the UI port:
+
+| Route | Auth | What |
+|---|---|---|
+| `POST /peer/v1/pair` | the one-time code | the exchange above; 403 `{ error: "pairing-refused", reason: no-code \| expired \| wrong-code \| too-many-tries }` |
+| `POST /peer/v1/hello` | bearer | `{ id, name, version }`; the caller's `{ address }` is remembered |
+| `DELETE /peer/v1/pair` | bearer | the caller removed us: forget it too (204) |
+| `GET /peer/v1/events` | bearer | Server-Sent Events: this machine's `sessionUpdated`, `event`, `questionBatch`, `activity` and `inboxChanged` (its own count), never a peer's; `: keepalive` every 10 s |
+| `GET/POST/PUT/DELETE /peer/v1/api/*` | bearer | the allow-listed local API (below), answered as the local UI would get it |
+
+Guard (first hook, every request and every 404): `Host` must be exactly `<bound address>:<port>` (403 `forbidden-host`); any `Origin` header is refused (403 `forbidden-origin`: no browser page ever talks to it); every route but the pairing exchange needs `Authorization: Bearer <token>` whose sha256 matches a paired machine's inbound hash (constant-time; 401 `unauthorized`). The UI cookie is no credential here. Bodies are limited to 1 MiB.
+
+## Tests
+
+Two real Switchboard processes on loopback test ports act as peers: `SWITCHBOARD_PEER_TEST_LOOPBACK=1` (tests only) lets the peer listener bind 127.0.0.1, and `tools/fake-tailscale` answers `tailscale ip -4` (a default of every test server, `FAKE_TAILSCALE_IP`, default `127.0.0.1`; `none` = no address). Helpers: `tests/helpers/peers.ts`. Unit: `tests/core/peers.test.ts`, `tests/server/peers/units.test.ts`; two processes: `tests/server/peers/pairing.test.ts`; E2E: `tests/e2e/peers.spec.ts` (each machine's UI in its own browser context: the `sb_token` cookies of two ports on one host would overwrite each other).

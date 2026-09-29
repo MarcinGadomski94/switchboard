@@ -15,6 +15,7 @@ import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { AnsweredOn } from './remote-control.ts';
 import type { QueuedReason } from './event-payload.ts';
+import type { SessionMachine } from './peers.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -452,6 +453,13 @@ export interface Session {
    * type-check.
    */
   readonly closedAt?: string | null;
+  /**
+   * Additive (D48, `docs/peers.md`): the paired machine the session runs on, only
+   * on a peer's session (its `id` is then a remote id, `r~<machine>~<id>`); absent
+   * for this machine's own sessions. `state` other than `online` = unreachable now
+   * (the session is shown, not deleted; the peer keeps running it).
+   */
+  readonly machine?: SessionMachine | null;
 }
 
 /**
@@ -805,6 +813,8 @@ export interface InboxItem {
   readonly permission?: PermissionRequest;
   /** Additive (M3.3): what "Open fix session" (action `open-fix-session`) opens the New-session modal with. */
   readonly prefill?: NewSessionPrefill;
+  /** Additive (D48): the paired machine the item comes from (a peer's item; its ids are remote ids); absent for this machine's own. */
+  readonly machine?: SessionMachine | null;
 }
 
 /** A permission request as the Inbox shows it (D6: tool + input verbatim). Provisional: M3.1 / M3.2. */
