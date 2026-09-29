@@ -125,6 +125,35 @@ describe('queued messages · the recorder over the M0 recordings (D44)', () => {
     expect(w.recorder.statusInput()).toMatchObject({ turnRunning: false, lastOutcome: 'success' });
   });
 
+  it('a turn the CLI runs on its own (a background task ended) absorbs a message: the one result leaves nothing running', async () => {
+    const w = await recorderWorld();
+    const lines = await fixtureLines('bg-bash');
+    const firstResult = lines.findIndex((l) => l.includes('"type":"result"'));
+    const ownInit = lines.findIndex((l, i) => i > firstResult && l.includes('"subtype":"init"'));
+    const recordedTask = (JSON.parse(lines.find((l) => l.includes('"isReplay":true')) as string) as { message: { content: string } }).message.content;
+    const first = await w.recorder.recordUserMessage(recordedTask, 'task');
+    expect(first.payload).not.toHaveProperty('queued');
+    // The first turn, then the task's end and the CLI's own turn starts (no message of ours).
+    await w.feed(lines.slice(0, ownInit + 1));
+    expect(w.recorder.statusInput().turnRunning).toBe(true);
+    const message = await w.recorder.recordUserMessage('And then?', 'user');
+    expect((await w.payload(message.id)).queued).toBe('turn');
+    const echo = { type: 'user', message: { role: 'user', content: 'And then?' }, parent_tool_use_id: null, session_id: 's', uuid: 'u-own', isReplay: true };
+    await w.feed([JSON.stringify(echo)]);
+    expect(await w.payload(message.id)).toEqual({ type: 'user', text: 'And then?', origin: 'user', delivered: true });
+    await w.feed(lines.slice(ownInit + 1));
+    expect(w.recorder.statusInput().turnRunning).toBe(false);
+  });
+
+  it('a replay that comes before its turn\'s init (not seen: the CLI writes init first) never costs a running turn its count', async () => {
+    const w = await recorderWorld();
+    const message = await w.recorder.recordUserMessage(FIRST, 'task');
+    const echo = { type: 'user', message: { role: 'user', content: FIRST }, parent_tool_use_id: null, session_id: 's', uuid: 'u-early', isReplay: true };
+    await w.feed([JSON.stringify(echo)]);
+    expect((await w.payload(message.id)).delivered).toBe(true);
+    expect(w.recorder.statusInput().turnRunning).toBe(true);
+  });
+
   it('resume: a message written to a process started for it is queued (resume) until that process starts its turn', async () => {
     const w = await recorderWorld();
     const lines = await fixtureLines('multiturn');

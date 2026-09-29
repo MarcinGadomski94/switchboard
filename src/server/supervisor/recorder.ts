@@ -487,7 +487,8 @@ export class StreamRecorder {
     const taken = this.#queue.replayed(message.text);
     if (taken) await this.#clearQueued(taken.eventId, { delivered: true, ...(message.uuid ? { uuid: message.uuid } : {}) });
     // D44: absorbed into a running turn (or taken with the message ahead of it): no `result` of its own will come.
-    if (taken?.absorbed && this.#pendingTurns > 0) this.#pendingTurns--;
+    // Only while another turn is accounted for (its own message's, or the CLI's), so a turn never loses its count.
+    if (taken?.absorbed && (this.#pendingTurns > 1 || (this.#cliTurn && this.#pendingTurns > 0))) this.#pendingTurns--;
     await this.#setTranscriptUuid(message.uuid, null);
   }
 
