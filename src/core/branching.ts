@@ -75,23 +75,21 @@ export function checkEpicKey(value: unknown): BranchingCheck {
 }
 
 /**
- * Text as one part of a branch name: whitespace runs → `-`, the characters git
- * forbids dropped (control characters, `~ ^ : ? * [ \`), a `/` → `-` (it would
- * open a sub-folder of refs), `@{` → `@`, runs of `.` → one `.`, runs of `-`
- * merged, no `-` or `.` at either end and no `.lock` at the end. The letters'
- * case is kept.
+ * Text as one part of a branch name (developer ruling on D40, 2026-09-29): only
+ * letters, digits, `-`, `_` and `.` are kept; every run of anything else (spaces,
+ * `/`, `[ ] ( ) & ! : ?`, quotes, …) becomes one `-`; runs of `.` → one `.`, runs
+ * of `-` merged, no `-`, `_` or `.` at either end and no `.lock` at the end, so
+ * the result is always a valid ref part and needs no shell quoting. The letters'
+ * case is kept (`[FE] Login & signup` → `FE-Login-signup`).
  */
 export function branchPart(text: string): string {
   let part = text
     .trim()
-    .replace(/\s+/g, '-')
-    .replace(FORBIDDEN_CHARS, '')
-    .replace(/\//g, '-')
-    .replace(/@\{/g, '@')
+    .replace(/[^\p{L}\p{M}\p{N}._-]+/gu, '-')
     .replace(/\.{2,}/g, '.')
     .replace(/-{2,}/g, '-');
   for (;;) {
-    const trimmed = part.replace(/^[-.]+|[-.]+$/g, '').replace(/\.lock$/i, '');
+    const trimmed = part.replace(/^[-._]+|[-._]+$/g, '').replace(/\.lock$/i, '').replace(/-{2,}/g, '-');
     if (trimmed === part) return part;
     part = trimmed;
   }
@@ -105,7 +103,7 @@ export function tidyEpicKey(text: string): string {
 /**
  * The epic branch a key and summary derive (D40): `feature/<KEY>-<Summary>`,
  * the key tidied ({@link tidyEpicKey}) and the summary kept in its casing with
- * spaces → `-`, the characters git forbids dropped and runs of `-` merged
+ * every character other than a letter, a digit, `-`, `_` or `.` a separator and runs of `-` merged
  * ({@link branchPart}). `PROJ-3010` + "Platform tracking and KPI delivery process
  * development" → `feature/PROJ-3010-Platform-tracking-and-KPI-delivery-process-development`.
  * An empty summary gives `feature/<KEY>`; an empty key gives `''` (no epic).

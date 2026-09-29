@@ -24,14 +24,17 @@ describe('epicBranchName (D40)', () => {
     expect(epicBranchName('PROJ-3010', '  Mixed CASE  summary ')).toBe('feature/PROJ-3010-Mixed-CASE-summary');
   });
 
-  it('drops the characters git forbids, merges runs of -, trims', () => {
-    expect(epicBranchName('PROJ-1', 'Fix: login ~ flow? * [beta] ^caret\\slash')).toBe('feature/PROJ-1-Fix-login-flow-beta]-caretslash');
+  it('developer ruling: keeps only letters, digits, -, _ and . (anything else a separator), runs of - merged, trimmed', () => {
+    expect(epicBranchName('PROJ-1', '[FE] Login & signup')).toBe('feature/PROJ-1-FE-Login-signup');
+    expect(epicBranchName('PROJ-1', 'Fix: login ~ flow? * [beta] ^caret\\slash')).toBe('feature/PROJ-1-Fix-login-flow-beta-caret-slash');
+    expect(epicBranchName('PROJ-1', "It's (v2)! #1, \"quoted\" $var `tick` |pipe; <x>")).toBe('feature/PROJ-1-It-s-v2-1-quoted-var-tick-pipe-x');
     expect(epicBranchName('PROJ-1', 'a..b...c')).toBe('feature/PROJ-1-a.b.c');
-    expect(epicBranchName('PROJ-1', 'x @{upstream}')).toBe('feature/PROJ-1-x-@upstream}');
+    expect(epicBranchName('PROJ-1', 'x @{upstream}')).toBe('feature/PROJ-1-x-upstream');
     expect(epicBranchName('PROJ-1', 'A/B testing')).toBe('feature/PROJ-1-A-B-testing');
+    expect(epicBranchName('PROJ-1', 'snake_case and v1.2')).toBe('feature/PROJ-1-snake_case-and-v1.2');
     expect(epicBranchName('PROJ-1', '--- lead - - trail ---')).toBe('feature/PROJ-1-lead-trail');
     expect(epicBranchName('PROJ-1', 'ends with.lock')).toBe('feature/PROJ-1-ends-with');
-    expect(epicBranchName('PROJ-1', 'tab\tand\u0007bell')).toBe('feature/PROJ-1-tab-andbell');
+    expect(epicBranchName('PROJ-1', 'tab\tand\u0007bell')).toBe('feature/PROJ-1-tab-and-bell');
     expect(epicBranchName('PROJ-1', 'trailing dot.')).toBe('feature/PROJ-1-trailing-dot');
     expect(epicBranchName('PROJ-1', 'Zażółć gęślą')).toBe('feature/PROJ-1-Zażółć-gęślą');
   });
