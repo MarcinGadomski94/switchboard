@@ -1,13 +1,15 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import type { SessionDetail } from '../../src/core/api.ts';
 import { THINKING_VERBS } from '../../src/web/activity/activity.ts';
+import { FAKE_WORKFLOW_SUMMARY } from '../../tools/fake-claude/scenarios.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
  * D19 live activity on the real path (D13, no demo seed): `node src/server/main.ts`
  * with fake-claude as the CLI. D30: a session whose turn ended while background work
  * it started still runs (a `gh run view` wait, `[fake:background-gh]`) shows that wait
- * the same way until the CLI reports its end and runs its own turn. A turn that
+ * the same way until the CLI reports its end and runs its own turn. D43: so does a
+ * background workflow (`[fake:workflow]`: "Running a workflow: …"). A turn that
  * stays running shows, live over `/hub`:
  * - the chat line above the composer (`● Bash: <command>  0:0n` for the recorded
  *   slow Bash call, `interrupt-tool`; the rotating verb, the turn's time and the
@@ -223,6 +225,55 @@ test('D30: a background GitHub Actions wait after the turn: chat line, sidebar r
   expect(after.activity).toBeNull();
   expect(after.status).toBe('done');
   expect(after.events.some((event) => (event.payload as { taskNotification?: boolean }).taskNotification === true)).toBe(true);
+});
+
+test('D43: a background workflow after the turn: "Running a workflow: …" in the chat line and the sidebar row with a growing time; gone once its notification\'s turn ran', async ({ page }) => {
+  test.setTimeout(60_000);
+  const RUNNING = `Running a workflow: ${FAKE_WORKFLOW_SUMMARY}`;
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'workflow-e2e', 'Audit the fixtures in the background. [fake:workflow 15]');
+  await expect.poll(async () => (await detail(page, id)).activity?.state).toBe('background');
+  const waiting = await detail(page, id);
+  expect(waiting.status).toBe('done');
+  expect(waiting.activity).toMatchObject({ state: 'background', tool: 'Workflow', summary: FAKE_WORKFLOW_SUMMARY, thinkingTokens: null });
+  // One task, though the CLI reported it twice (its task_started and the Workflow call's launch result).
+  expect(waiting.activity?.background).toMatchObject([{ kind: 'workflow', github: false, summary: FAKE_WORKFLOW_SUMMARY }]);
+
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  await expect(page.getByTestId('session-chat')).toContainText('STARTED');
+
+  // Chat: ⏳, the workflow's words and the time since it was launched, above the composer.
+  const line = page.getByTestId('chat-activity');
+  await expect(line).toHaveAttribute('data-state', 'background');
+  await expect(page.getByTestId('chat-activity-glyph')).toHaveText('⏳');
+  await expect(page.getByTestId('chat-activity-text')).toHaveText(RUNNING);
+  await expect(page.getByTestId('chat-activity-time')).toHaveText(/^0:\d{2}$/);
+  await expect(page.getByTestId('chat-activity-more')).toHaveCount(0);
+  await expectGrowing(page.getByTestId('chat-activity-time'), 'the workflow clock');
+
+  // Sidebar: the same words and a growing time in place of the mode line; the dot pulses in the running color.
+  const row = page.getByTestId('sidebar-sessions').locator('a').filter({ hasText: 'workflow-e2e' });
+  await expect(row.getByTestId('session-activity')).toHaveAttribute('data-state', 'background');
+  await expect(row.getByTestId('session-activity')).toContainText(RUNNING);
+  await expectGrowing(row.getByTestId('session-activity-time'), 'the sidebar time');
+  const dot = row.locator('.sb-session-dot');
+  await expect(dot).toHaveAttribute('data-activity', 'background');
+  await expect(dot).toHaveCSS('background-color', await tokenColor(page, '--status-run'));
+
+  // The main agent's card and its overview row read the same.
+  const card = page.getByTestId('session-right-panel').getByTestId('agent-card').first();
+  await expect(card.getByTestId('agent-activity')).toContainText(RUNNING);
+  await expect(page.getByTestId('overview-row').first().getByTestId('overview-activity')).toContainText(`⏳ ${RUNNING}`);
+
+  // The workflow ends: the CLI's own turn runs (its reply lands in the chat) and every indicator goes.
+  await expect(page.getByTestId('session-chat')).toContainText('FINISHED', { timeout: 40_000 });
+  await expect(line).toHaveCount(0);
+  await expect(row.getByTestId('session-activity')).toHaveCount(0);
+  await expect(dot).not.toHaveAttribute('data-activity');
+  await expect(card.getByTestId('agent-activity')).toHaveCount(0);
+  const after = await detail(page, id);
+  expect(after.activity).toBeNull();
+  expect(after.status).toBe('done');
 });
 
 test('an idle session: no activity line, the mode line and a still dot, as before', async ({ page }) => {

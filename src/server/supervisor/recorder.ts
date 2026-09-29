@@ -382,10 +382,14 @@ export class StreamRecorder {
       case 'control-cancel':
         return this.#onCancel(message.requestId);
       case 'task-started':
+        // D43: every background task the CLI reports counts, whatever its type.
+        this.#background.started(message);
         return this.#onTaskStarted(message);
       case 'task-progress':
         return this.#onTaskProgress(message);
       case 'task-updated':
+        // D43: a terminal status ends a background task; `is_backgrounded: true` moves a foreground one there.
+        this.#background.updated(message.taskId, message.status, message.backgrounded);
         return this.#onTaskEnd(message.taskId, message.status);
       case 'task-notification':
         this.#taskNotified(message.taskId || null, message.toolUseId);
