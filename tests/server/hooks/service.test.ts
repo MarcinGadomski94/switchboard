@@ -155,11 +155,16 @@ describe('D48 P4 hooking a terminal session', () => {
     expect((await api(r, 'POST', `/api/terminal-sessions/${CS}/hook`)).statusCode).toBe(200);
     expect(((await api(r, 'GET', '/api/terminal-sessions')).json() as TerminalSession[])[0]).toMatchObject({ hooked: true, sessionId: session.id });
     // What hooks cannot do.
-    for (const [method, route] of [['POST', 'pause'], ['POST', 'resume'], ['PUT', 'model'], ['PUT', 'remote'], ['POST', 'detach'], ['POST', 'attach']] as const) {
+    // D50: Stop (interrupt) and the background-task stop too.
+    for (const [method, route] of [['POST', 'pause'], ['POST', 'resume'], ['PUT', 'model'], ['PUT', 'remote'], ['POST', 'detach'], ['POST', 'attach'], ['POST', 'interrupt'], ['POST', 'background/stop']] as const) {
       const answer = await api(r, method, `/api/sessions/${session.id}/${route}`, method === 'PUT' ? (route === 'model' ? { model: 'opus' } : { enabled: true }) : undefined);
       expect(answer.statusCode, route).toBe(409);
       expect(answer.json()).toMatchObject({ error: 'hooked-unavailable' });
     }
+    expect((await api(r, 'POST', `/api/sessions/${session.id}/interrupt`)).json()).toEqual({
+      error: 'hooked-unavailable',
+      message: 'Stop stays in the terminal (Esc there): hooks cannot interrupt a turn of a process Switchboard does not run.',
+    });
     // A turn on the PC: the hook events bring the new lines in.
     await append(r, terminalUserLine({ sessionId: CS, cwd: r.cwd, content: 'Now run it.', parentUuid: lastUuid(r.lines), timestamp: '2026-09-29T10:01:00.000Z' }));
     await hookCall(r, 'event', { hook_event_name: 'UserPromptSubmit' });

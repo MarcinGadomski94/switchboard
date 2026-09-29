@@ -435,6 +435,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Out of scope:** peer / hooked sessions (D48, another lane).
   - Details: `docs/supervisor.md` → *Stop the current turn (D50)*, `docs/chat.md` → *Stop (D50)*; choices where the ruling is silent: `.loop/questions.md` → *D50 · Stop the current turn*.
 
+## Rulings on D50 (added 2026-09-29)
+- **D50-probe: yes.** One D11 probe on the real CLI (2.1.284, Haiku, `--max-turns 3`, `.spike/sandbox/`, no user settings) confirmed the Stop: the receipt `{still_queued: [], cancelled: []}` came before the result, then the tool's rejection, `[Request interrupted by user for tool use]` and `result/error_during_execution` with `terminal_reason: "aborted_tools"`; the message queued before the interrupt never ran (nothing for 20 s, then EOF). Details: `.loop/questions.md` → *D50*.
+- **D50-background: offer it when only background work runs.** When a session runs no turn but background tasks do (D30 / D43, workflows and background agents included), the composer offers **Stop background tasks**, with a confirmation that lists them; confirming sends the CLI's `stop_task` control request for each, and the tasks end as stopped. Esc never does this (only the button and the confirmation). Additive route `POST /api/sessions/{id}/background/stop`.
+- **D50-other-tabs: keep as built.** Only the tab that pressed Stop gets the withdrawn texts.
+- **With D48 (found at the merge):** Stop and the background stop work on a peer's session through the proxy (both routes on the peer API's allow-list). A hooked terminal session cannot be interrupted through hooks: both routes answer 409 `hooked-unavailable` with the reason, and the composer offers neither (Esc does nothing there).
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

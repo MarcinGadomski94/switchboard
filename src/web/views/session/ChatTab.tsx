@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AnswerBatch, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
@@ -14,7 +14,8 @@ import { SubagentChatView, isEditing } from './SubagentChat.tsx';
 import { OVERLAY_SELECTOR, mainChatPlace, rememberMainChat } from './subagent-chat.ts';
 import { offlineReason } from '../../../core/peers.ts';
 import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPING_LABEL, withdrawnDraft } from '../../../core/stop-turn.ts';
-import { canStop, escStops } from './stop.ts';
+import { canStop, escStops, stoppableBackground } from './stop.ts';
+import { StopBackground } from './StopBackground.tsx';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -172,7 +173,10 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         sessionId={sessionId}
         blocked={blocked}
         // D50: while a turn runs, Send becomes ■ Stop (and Esc stops it).
-        stoppable={session !== null && blocked === null && canStop({ live: session.live, status: session.status, activity })}
+        stoppable={session !== null && blocked === null && canStop({ live: session.live, status: session.status, activity, hooked: session.hooked === true })}
+        // D50 ruling: no turn, but background tasks: "Stop background tasks" beside Send (button + confirmation only).
+        // D48 ruling D48-cache-persist: none for an offline peer's session (nothing can reach it).
+        background={session && blocked === null ? stoppableBackground({ live: session.live, status: session.status, activity, hooked: session.hooked === true }) : []}
         // D49: the context bar above the quick replies (none for a session without meter data: the demo seed).
         context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
@@ -232,6 +236,7 @@ function Composer({
   sessionId,
   blocked,
   stoppable: turnRuns,
+  background,
   context,
   placeholder,
   onSent,
@@ -241,6 +246,7 @@ function Composer({
   readonly stoppable: boolean;
   /** D48 ruling D48-cache-persist: why nothing can be sent now (the machine is offline); `null` = send as usual. */
   readonly blocked: string | null;
+  readonly background: readonly BackgroundTask[];
   readonly context: SessionContext | null;
   readonly placeholder: string;
   readonly onSent: () => void;
@@ -418,6 +424,7 @@ function Composer({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
+        {!stoppable && !stopping && background.length > 0 ? <StopBackground sessionId={sessionId} tasks={background} /> : null}
         {stoppable || stopping ? (
           <button
             type="button"

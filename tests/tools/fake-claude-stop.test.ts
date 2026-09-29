@@ -129,4 +129,24 @@ describe('fake-claude · interrupt mid-turn (D50)', () => {
     expect(result).toMatchObject({ subtype: 'success' });
     expect(receiptOf(run, 'ignored-1')).toBeUndefined();
   });
+
+  it('stop_task ends a pending background task at once (killed / stopped), empty success; an unknown id is a success too, no task_id an error', async () => {
+    const run = start();
+    run.send(userLine('Start it. [fake:background 60 npm run dev]'));
+    await run.waitFor(isResult);
+    const started = run.lines.find((l) => l['type'] === 'system' && l['subtype'] === 'task_started') as JsonObject;
+    const taskId = started['task_id'] as string;
+    run.send({ type: 'control_request', request_id: 'st-1', request: { subtype: 'stop_task', task_id: taskId } });
+    const note = await run.waitFor((l) => l['type'] === 'system' && l['subtype'] === 'task_notification');
+    expect(note).toMatchObject({ task_id: taskId, status: 'stopped' });
+    expect(run.lines.find((l) => l['type'] === 'system' && l['subtype'] === 'task_updated')).toMatchObject({ task_id: taskId, patch: { status: 'killed' } });
+    expect(receiptOf(run, 'st-1')?.['response']).toEqual({ subtype: 'success', request_id: 'st-1' });
+    run.send({ type: 'control_request', request_id: 'st-2', request: { subtype: 'stop_task', task_id: 'b-unknown' } });
+    run.send({ type: 'control_request', request_id: 'st-3', request: { subtype: 'stop_task' } });
+    await run.waitFor((l) => l['type'] === 'control_response' && (l['response'] as JsonObject)['request_id'] === 'st-3');
+    expect((receiptOf(run, 'st-2')?.['response'] as JsonObject)['subtype']).toBe('success');
+    expect(receiptOf(run, 'st-3')?.['response']).toMatchObject({ subtype: 'error', error: 'stop_task: task_id must be a string' });
+    await delay(300);
+    expect(run.lines.filter(isResult)).toHaveLength(1);
+  });
 });

@@ -28,6 +28,34 @@ export const STOP_TIMEOUT_NOTE = 'The agent did not stop in time. Pause ends the
 /** The composer's offer next to {@link STOP_TIMEOUT_NOTE}. */
 export const STOP_TIMEOUT_PAUSE = 'Pause';
 
+/** D50 background: the composer's button while no turn runs but background tasks do. */
+export const STOP_BACKGROUND_LABEL = 'Stop background tasks';
+
+/** D50 background: the button's tooltip. */
+export const STOP_BACKGROUND_TOOLTIP = 'Stop the background tasks this session is waiting for';
+
+/** D50 background: the confirmation's title, its confirm and cancel buttons. */
+export const STOP_BACKGROUND_TITLE = 'Stop these background tasks?';
+export const STOP_BACKGROUND_CONFIRM = 'Stop tasks';
+export const STOP_BACKGROUND_CANCEL = 'Cancel';
+
+/** D50 background: a line of the confirmation for a wake-up, which the CLI has no task for (it is not stopped). */
+export const WAKEUP_NOT_STOPPED = 'a timer the CLI cannot stop; it stays';
+
+/** What {@link stoppableTask} reads of a background task. */
+export interface BackgroundTaskShape {
+  readonly kind: string;
+}
+
+/**
+ * D50 background: `true` for a task `stop_task` can end: a background command, agent,
+ * workflow, monitor or any other task the CLI reported. A wake-up (`ScheduleWakeup`)
+ * has no CLI task (its id is the tool call's), so it is not stoppable.
+ */
+export function stoppableTask(task: BackgroundTaskShape): boolean {
+  return task.kind !== 'wakeup';
+}
+
 /** How the stopped turn's result reads, for {@link isInterruptedResult}. */
 export interface ResultShape {
   readonly subtype: string;

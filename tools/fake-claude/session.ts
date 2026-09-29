@@ -274,6 +274,8 @@ export class Runner {
   private finished = false;
   private waiter: Waiter | null = null;
   private pendingInterrupt: string | null = null;
+  /** D50: the pending background tasks a `stop_task` can end (task id → its timer and the rest of its recording). */
+  private readonly stoppable = new Map<string, { readonly timer: NodeJS.Timeout; readonly steps: readonly Step[]; readonly turn: TurnState }>();
   /** D50: each interrupt's receipt (the `control_response` body), taken when the interrupt arrived. */
   private readonly receipts = new Map<string, JsonObject>();
   private pendingSigint = false;
@@ -496,6 +498,8 @@ export class Runner {
         else if (this.running) this.pendingInterrupt = requestId;
         else this.writeAck(requestId);
         return;
+      case 'stop_task':
+        return this.stopTask(requestId, request ?? {});
       case 'get_usage':
         return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_usage', -1] : ['usage-ctl', 'get_usage', 0]);
       case 'get_session_cost':
@@ -835,20 +839,61 @@ export class Runner {
     const outcome = await this.play(typeof hold === 'number' ? withHold(steps, hold) : steps, turn);
     this.live?.setStatus('idle');
     if (fire && outcome === 'done') this.scheduleFires(fire.count, fire.everyMs);
-    if (later && outcome === 'done') this.scheduleBackground(later.delayMs, { content: '', text: '', uuid: randomUUID(), resume: { steps: later.steps, turn } });
+    if (later && outcome === 'done') {
+      const timer = this.scheduleBackground(later.delayMs, { content: '', text: '', uuid: randomUUID(), resume: { steps: later.steps, turn } });
+      // D50: the task can be stopped (`stop_task`) until its end plays.
+      const taskId = extra.find(([recorded]) => recorded === RECORDED_BACKGROUND_TASK)?.[1];
+      if (taskId !== undefined) this.stoppable.set(taskId, { timer, steps: later.steps, turn });
+    }
     if (wakeAfterMs !== null && outcome === 'done') this.scheduleBackground(wakeAfterMs, { content: FIRE_PROMPT, text: FIRE_PROMPT, uuid: randomUUID(), fired: true });
     return outcome;
   }
 
   /** D30: queues `msg` (a background task's end, a wake-up) after `delayMs` (stops at EOF / exit). */
-  private scheduleBackground(delayMs: number, msg: UserMessage): void {
+  private scheduleBackground(delayMs: number, msg: UserMessage): NodeJS.Timeout {
     const timer = setTimeout(() => {
       this.backgroundTimers.delete(timer);
+      for (const [taskId, task] of this.stoppable) if (task.timer === timer) this.stoppable.delete(taskId);
       if (this.finished || this.eof) return;
       this.queue.push(msg);
       void this.pump();
     }, delayMs);
     this.backgroundTimers.add(timer);
+    return timer;
+  }
+
+  /**
+   * D50 `stop_task` (`{subtype:"stop_task", task_id}`, CLI 2.1.284 read-only: "Stops a
+   * running task"; an unknown or finished task is a success too, a missing `task_id`
+   * an error). A pending background task of the fake ends at once: its recorded
+   * `task_updated` with status `killed` and `task_notification` with status `stopped`
+   * (the CLI's user stop), and no turn of its own follows; the reply is an empty success.
+   */
+  private stopTask(requestId: string, request: JsonObject): void {
+    const taskId = request['task_id'];
+    if (typeof taskId !== 'string') {
+      this.writeControlReply(requestId, { ok: false, error: 'stop_task: task_id must be a string' });
+      return;
+    }
+    const task = this.stoppable.get(taskId);
+    this.writeControlReply(requestId, { ok: true });
+    if (!task) return;
+    this.stoppable.delete(taskId);
+    clearTimeout(task.timer);
+    this.backgroundTimers.delete(task.timer);
+    for (const step of task.steps) {
+      if (step.t !== 'line' || step.line['type'] !== 'system') continue;
+      if (step.line['subtype'] === 'task_updated') {
+        this.emit(step.line, task.turn, (line) => {
+          line['patch'] = { ...(asObject(line['patch']) ?? {}), status: 'killed' };
+        });
+      } else if (step.line['subtype'] === 'task_notification') {
+        this.emit(step.line, task.turn, (line) => {
+          line['status'] = 'stopped';
+          line['summary'] = `Task "${String(line['task_id'])}" was stopped`;
+        });
+      }
+    }
   }
 
   /** `[fake:fire n ms]`: `count` turns of the fake's own, one every `everyMs` (stops at EOF / exit). */
@@ -875,6 +920,7 @@ export class Runner {
     this.remoteTimers.clear();
     for (const timer of this.backgroundTimers) clearTimeout(timer);
     this.backgroundTimers.clear();
+    this.stoppable.clear();
   }
 
   private async play(steps: readonly PlayStep[], turn: TurnState): Promise<Outcome> {
