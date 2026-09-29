@@ -301,6 +301,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - Every `system/task_started` the CLI streams starts a pending task too, whatever its type, unless the tool call already registered it (matched by task id or `tool_use_id`). `system/task_notification` and a terminal `system/task_updated` end it.
     - Unknown task types are kept, as kind `task` with the CLI's description.
   - **Display:** "⏳ Running a workflow: <summary>", or "⏳ Waiting for a background task: <description>" for other kinds, next to D30's lines. Everything else is as D30 has it.
+  - **Developer ruling (2026-09-29):** long-lived tasks (agent-team teammates, remote agents, dream runs, paused workflows) count too, as built: the session shows as working while any task is alive.
 
 ## Queued messages (added 2026-09-29)
 - **D44 The developer's own chat messages show a clock while they are queued.**
