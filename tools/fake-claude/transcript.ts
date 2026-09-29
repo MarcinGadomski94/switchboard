@@ -309,6 +309,33 @@ export class Transcript {
     }
   }
 
+  /**
+   * D49 `[fake:compact]`: the CLI's boundary entry (its shape in CLI 2.1.284:
+   * `content: "Conversation compacted"`, `level: "info"`, `compactMetadata`
+   * camelCase, a fresh physical chain (`parentUuid: null`) linked back by
+   * `logicalParentUuid`). Later lines chain onto it.
+   */
+  onCompact(line: JsonObject, spec: { readonly trigger: string; readonly preTokens: number; readonly postTokens: number | null }): void {
+    if (!this.started || typeof line['uuid'] !== 'string') return;
+    const logicalParentUuid = this.chainTip;
+    this.append([
+      this.chain({
+        ...this.envelope({
+          type: 'system',
+          subtype: 'compact_boundary',
+          content: 'Conversation compacted',
+          isMeta: false,
+          timestamp: this.options.now(),
+          uuid: line['uuid'],
+          level: 'info',
+          compactMetadata: { trigger: spec.trigger, preTokens: spec.preTokens, ...(spec.postTokens !== null ? { postTokens: spec.postTokens } : {}) },
+          ...(logicalParentUuid !== null ? { logicalParentUuid } : {}),
+        }),
+        parentUuid: null,
+      }),
+    ]);
+  }
+
   /** A turn's `result` arrived: `last-prompt` (+ the title lines of a named new session). */
   endTurn(): void {
     if (!this.started) return;

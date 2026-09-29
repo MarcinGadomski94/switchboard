@@ -193,6 +193,22 @@ describe('Attach here · sync back of the terminal turns (M0.4)', () => {
     expect((tool.payload as ToolPayload).isError).toBe(false);
   });
 
+  it('D49: the context meter reads what the terminal did (its last usage, its compaction)', async () => {
+    const { w, session } = await detachedSession();
+    const before = await w.store.sessions.get(session.id);
+    expect(before?.context?.tokens).toBeGreaterThan(0);
+    const result = await runFake(['-p', '--resume', session.claudeSessionId, 'Compact it. [fake:compact manual 50000 9000] [fake:usage 30000]'], {
+      cwd: w.workspace,
+      env: envOf(w),
+    });
+    expect(result.code, result.stderr).toBe(0);
+    await w.supervisor.attach(session.id, { confirm: true });
+    const attached = await waitForStatus(w.store, session.id, ['idle']);
+    expect(attached.context).toMatchObject({ tokens: 30_000, compaction: { trigger: 'manual', preTokens: 50_000, postTokens: 9_000 }, compactedRecently: true, compactTurnEnded: true });
+    // The reported windows the stream saw are kept.
+    expect(Object.keys(attached.context?.windows ?? {})).not.toHaveLength(0);
+  });
+
   it('two concurrent attaches spawn one process', async () => {
     const { w, session } = await detachedSession();
     await Promise.all([w.supervisor.attach(session.id, { confirm: true }), w.supervisor.attach(session.id, { confirm: true })]);

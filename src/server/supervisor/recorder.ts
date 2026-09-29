@@ -11,6 +11,7 @@ import {
   clip,
   clipInput,
 } from '../../core/event-payload.ts';
+import { type ContextInput, type ContextState, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { ActivityTracker } from '../../core/derive/activity.ts';
 import { QueueTracker, queuedReason, withoutQueued } from '../../core/derive/queued.ts';
 import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
@@ -81,6 +82,12 @@ export interface RecorderOptions {
    * supervisor adds it to `Session.solutions` when it is missing. Awaited in order.
    */
   readonly onSolutionWritten?: (solution: string) => Promise<void>;
+  /**
+   * D49: the context meter changed (a main-agent usage, a result's windows, a
+   * compaction, a turn start) and is stored on the session: the supervisor
+   * publishes `sessionUpdated`.
+   */
+  readonly onContext?: () => void;
 }
 
 interface ToolEntry {
@@ -161,6 +168,10 @@ export class StreamRecorder {
   /** D25: the next `init` may be the startup one ({@link RecorderOptions.startupInit}). */
   #startupInit: boolean;
   readonly #onSolutionWritten: ((solution: string) => Promise<void>) | undefined;
+  /** D49: the context meter (`sessions.context`), as stored. */
+  #context: ContextState;
+  readonly #onContext: (() => void) | undefined;
+  readonly #now: () => Date;
 
   constructor(options: RecorderOptions) {
     this.#store = options.store;
@@ -181,6 +192,9 @@ export class StreamRecorder {
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
     this.#startupInit = options.startupInit ?? false;
     this.#onSolutionWritten = options.onSolutionWritten;
+    this.#context = readContextState(options.session.context);
+    this.#onContext = options.onContext;
+    this.#now = options.now ?? (() => new Date());
   }
 
   /** The inputs of the live status derivation. */
@@ -405,7 +419,46 @@ export class StreamRecorder {
     this.#syncActivity();
   }
 
+  /**
+   * D49: what a stdout message changes in the context meter (`src/core/context-meter.ts`):
+   * a turn's `init` (its model; the turn after a compaction's clears "compacted"),
+   * a **main-agent** assistant line's usage (subagent lines carry a
+   * `parent_tool_use_id` and never count), a result's `modelUsage` windows, a
+   * main-chain `compact_boundary`.
+   */
+  #contextInput(message: StreamMessage): ContextInput | null {
+    const at = this.#now().toISOString();
+    switch (message.kind) {
+      case 'init':
+        return { kind: 'turn-start', model: message.model };
+      case 'assistant': {
+        if (message.parentToolUseId !== null) return null;
+        const body = message.raw['message'];
+        const usage = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>)['usage'] : undefined;
+        return { kind: 'usage', model: message.model, usage, at };
+      }
+      case 'result':
+        return { kind: 'result', modelUsage: message.raw['modelUsage'] };
+      case 'compact-boundary':
+        if (message.parentToolUseId !== null) return null;
+        return { kind: 'compact', trigger: message.trigger, preTokens: message.preTokens, postTokens: message.postTokens, at };
+      default:
+        return null;
+    }
+  }
+
+  async #updateContext(message: StreamMessage): Promise<void> {
+    const input = this.#contextInput(message);
+    if (input === null) return;
+    const next = reduceContext(this.#context, input);
+    if (next === this.#context) return;
+    this.#context = next;
+    await this.#store.sessions.update(this.#sessionId, { context: next });
+    this.#onContext?.();
+  }
+
   async #dispatch(message: StreamMessage): Promise<void> {
+    await this.#updateContext(message);
     switch (message.kind) {
       case 'init':
         return this.#onInit(message);

@@ -429,6 +429,16 @@ Event    { …, "payload": { "type": "user", "text": "Keep it short.", "origin":
 Question { …, "state": "stale", "answeredAt": "2026-09-29T10:00:00.000Z", "queued": "resume" | null }
 ```
 
+## Context window meter (D49, 2026-09-29, additive)
+Developer request D49 (`docs/decisions.md` → *Context window meter*): the composer shows how full the session's context window is. No new route or event name; migration `0015_session_context.sql`. Details: `docs/chat.md` → *Context bar*.
+
+- **Session** gains `context: SessionContext | null` (so do `SessionDetail` and `/hub` `sessionUpdated`, which is published whenever it changes). It is `null` for a session Switchboard never ran a process for and has no reading of (the demo seed). Optional in `src/core/api.ts` so older fixtures type-check; the server always sends it.
+- **SessionContext:** `tokens` (the main agent's input + cache creation + cache read tokens of its latest reply; `null` = unknown), `window`, `windowSource` (`reported` = the CLI's `modelUsage[…].contextWindow`, `model` = derived from the model name), `model`, `percent` (0–100 or `null`), `band` (`ok` < 60 ≤ `warn` < 80 ≤ `high`, `unknown`), `updatedAt`, `compaction` (`{at, trigger, preTokens, postTokens}` of the last compaction, or `null`), `compactedRecently` (from a compaction until the next turn starts).
+
+```json
+Session { …, "context": { "tokens": 124000, "window": 200000, "windowSource": "reported", "model": "claude-opus-4-7", "percent": 62, "band": "warn", "updatedAt": "2026-09-29T12:05:00.000Z", "compaction": { "at": "2026-09-29T12:05:00.000Z", "trigger": "auto", "preTokens": 167000, "postTokens": 18000 }, "compactedRecently": false } | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

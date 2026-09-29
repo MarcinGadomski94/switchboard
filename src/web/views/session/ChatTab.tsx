@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AnswerBatch, SessionActivity, SessionDetail, SessionEvent } from '../../../core/api.ts';
+import type { AnswerBatch, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
@@ -7,6 +7,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
 import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, draftToSend } from './chat.ts';
+import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
 import { SubagentChatView } from './SubagentChat.tsx';
@@ -156,6 +157,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <ChatActivityLine activity={activity} />
       <Composer
         sessionId={sessionId}
+        // D49: the context bar above the quick replies (none for a session without meter data: the demo seed).
+        context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
         placeholder={composerPlaceholder(session ? displayTitle(session) : '')}
         onSent={() => {
@@ -166,8 +169,51 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   );
 }
 
-/** The composer (prototype): quick replies, then the message field and Send. */
-function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: string; readonly placeholder: string; readonly onSent: () => void }) {
+/**
+ * D49 · the context bar (`docs/chat.md` → *Context bar*): a thin bar with
+ * `Context 62% · 124k / 200k`, green / yellow / red at 60 % and 80 %, and
+ * `compacted 14:05` after a compaction until the next turn; the tooltip names the
+ * window and the last compaction. `Context —` with an empty bar before a reading.
+ */
+export function ContextBar({ context }: { readonly context: SessionContext }) {
+  const view = contextBarView(context);
+  return (
+    <div className="sb-chat-context" data-testid="chat-context" data-band={view.band} title={view.tooltip}>
+      <div
+        className="sb-chat-context-track"
+        role="meter"
+        aria-label="Context window used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={view.fill}
+        aria-valuetext={view.text}
+      >
+        <div className="sb-chat-context-fill" data-testid="chat-context-fill" style={{ width: `${view.fill}%` }} />
+      </div>
+      <span className="sb-chat-context-text" data-testid="chat-context-text">
+        {view.text}
+      </span>
+      {view.compacted ? (
+        <span className="sb-chat-context-compacted" data-testid="chat-context-compacted">
+          {view.compacted}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** The composer (prototype): D49 the context bar, quick replies, then the message field and Send. */
+function Composer({
+  sessionId,
+  context,
+  placeholder,
+  onSent,
+}: {
+  readonly sessionId: string;
+  readonly context: SessionContext | null;
+  readonly placeholder: string;
+  readonly onSent: () => void;
+}) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,6 +287,7 @@ function Composer({ sessionId, placeholder, onSent }: { readonly sessionId: stri
 
   return (
     <div className="sb-chat-composer" data-testid="chat-composer">
+      {context ? <ContextBar context={context} /> : null}
       <div className="sb-chat-quick">
         <span className="sb-chat-quick-label">{QUICK_REPLIES_LABEL}</span>
         {QUICK_REPLIES.map((reply) => (

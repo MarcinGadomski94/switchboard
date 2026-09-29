@@ -1,5 +1,6 @@
-import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
+import { readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
 import type { ArtifactRecord } from '../db/repos/artifacts.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -122,7 +123,20 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     remote: toSessionRemote(record),
     model: toSessionModel(record),
     closedAt: record.closedAt,
+    context: toSessionContext(record),
   };
+}
+
+/**
+ * D49 (`docs/chat.md` → *Context bar*): `Session.context`, the stored meter
+ * resolved against the session's model choice (the window follows D31 / D42
+ * changes). `null` when Switchboard never ran a process for the session
+ * (`remoteAvailable` is `null`, as for {@link toSessionModel}) and nothing is
+ * stored, i.e. the demo seed, whose composer shows no bar.
+ */
+export function toSessionContext(record: Pick<SessionRecord, 'remoteAvailable' | 'context' | 'model'>): SessionContext | null {
+  if (record.remoteAvailable === null && record.context === null) return null;
+  return resolveContext(readContextState(record.context), record.model);
 }
 
 /**

@@ -254,6 +254,51 @@ export function remoteAnswerToken(text: string): number | null {
   return match ? Math.min(Number(match[1]), 600_000) : null;
 }
 
+/** D49 `[fake:usage <tokens> [<window>]]`: the main agent's context size (and the result's reported window). */
+export interface UsageSpec {
+  /** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens` of every main-agent assistant line. */
+  readonly tokens: number;
+  /** The result's `modelUsage[<model>].contextWindow`; `null` keeps the recorded one (200 000). */
+  readonly window: number | null;
+}
+
+/**
+ * D49 `[fake:usage <tokens> [<window>]]` in a stdin user message: the turn's
+ * main-agent assistant lines carry a usage whose context tokens (input + cache
+ * creation + cache read) are `<tokens>` (their `iterations` dropped), and with
+ * `<window>` the result's `modelUsage` reports that `contextWindow` for every model.
+ * Orthogonal to the other tokens: it changes neither the scenario nor its turn counter.
+ * @returns the spec, `{ error }` for a malformed token, `null` without one.
+ */
+export function usageToken(text: string): UsageSpec | { error: string } | null {
+  const match = /\[fake:usage\s+(\d+)(?:\s+(\d+))?\]/.exec(text);
+  if (match) return { tokens: Number(match[1]), window: match[2] === undefined ? null : Number(match[2]) };
+  return /\[fake:usage(?:\s|\])/.test(text) ? { error: 'expected [fake:usage <tokens> [<window>]]' } : null;
+}
+
+/** D49 `[fake:compact <auto|manual> <pre> [<post>]]`: a compaction at the turn's start. */
+export interface CompactSpec {
+  readonly trigger: 'auto' | 'manual';
+  readonly preTokens: number;
+  readonly postTokens: number | null;
+}
+
+/**
+ * D49 `[fake:compact <auto|manual> <pre> [<post>]]` in a stdin user message: right
+ * after the turn's `system/init` the fake writes a `system/compact_boundary` as CLI
+ * 2.1.284 streams one (read in its code, never recorded): `{type:"system",
+ * subtype:"compact_boundary", session_id, uuid, compact_metadata:{trigger,
+ * pre_tokens, post_tokens?}}`, and the transcript gets the CLI's boundary entry
+ * (`content:"Conversation compacted"`, `compactMetadata`, `parentUuid: null`,
+ * `logicalParentUuid` = the chain tip). Orthogonal like `[fake:usage]`.
+ * @returns the spec, `{ error }` for a malformed token, `null` without one.
+ */
+export function compactToken(text: string): CompactSpec | { error: string } | null {
+  const match = /\[fake:compact\s+(auto|manual)\s+(\d+)(?:\s+(\d+))?\]/.exec(text);
+  if (match) return { trigger: match[1] as 'auto' | 'manual', preTokens: Number(match[2]), postTokens: match[3] === undefined ? null : Number(match[3]) };
+  return /\[fake:compact(?:\s|\])/.test(text) ? { error: 'expected [fake:compact <auto|manual> <pre> [<post>]]' } : null;
+}
+
 /**
  * The fake's Remote Control (D24), from `FAKE_CLAUDE_REMOTE_CONTROL`:
  * - unset / anything else: `initialize` reports `remote_control_available: true`
