@@ -18,6 +18,8 @@
  *   the threshold warns like the other two.
  * - D23: `weeklyPace` places the Week window against its daily allowance
  *   (7 days of 24 h back from its reset, `day × 100 / 7` % during day *n*).
+ * - D46: `sessionPace` places the 5-hour Session window against its allowance by
+ *   the minute (300 minutes back from its reset; during minute *n*, 1–300, `n × 100 / 300` %).
  */
 import type { SystemInfo, UsageWarning, UsageWindow, UsageWindowName } from './api.ts';
 import type { UsageSource } from './model.ts';
@@ -350,16 +352,70 @@ export const WEEK_DAYS = 7;
  */
 export const PACE_DAY_MS = 24 * 60 * 60_000;
 
-/** D23: where the weekly usage stands against its daily allowance at a moment ({@link weeklyPace}). */
-export interface WeeklyPace {
-  /** The window's current day, 1–7: day 1 starts 7 × 24 h before the reset, each day at the reset's time. */
-  readonly day: number;
-  /** The allowance during this day, `day × 100 / 7` rounded to 2 decimals like the utilization: 14.29, …, 57.14, 71.43, 85.71, 100. */
+/** D46: the 5-hour Session window is this many pace minutes long. */
+export const SESSION_MINUTES = 300;
+
+/** D46: one pace minute, counted from the Session window's start (its reset minus 5 h), not from the clock's minutes. */
+export const PACE_MINUTE_MS = 60_000;
+
+/**
+ * D23 / D46: where a usage window stands against its allowance at a moment, as
+ * {@link weeklyPace} and {@link sessionPace} give it.
+ */
+export interface UsagePace {
+  /** The allowance now, 0–100, rounded to 2 decimals like the utilization (Week: `57.14`; Session: `50`, `0.33`). */
   readonly allowancePct: number;
-  /** When the allowance steps up next: the end of this day, ISO 8601 UTC (on day 7 the reset itself). */
+  /** When the allowance steps up next, ISO 8601 UTC (on the window's last step, the reset itself). */
   readonly nextStepAt: string;
   /** `pct < allowancePct`: on pace (green); at or above the allowance it is not (yellow). */
   readonly onPace: boolean;
+}
+
+/**
+ * D23: where the weekly usage stands against its daily allowance at a moment
+ * ({@link weeklyPace}): `allowancePct` is `day × 100 / 7` (14.29, …, 57.14, 71.43,
+ * 85.71, 100) and `nextStepAt` the end of this day.
+ */
+export interface WeeklyPace extends UsagePace {
+  /** The window's current day, 1–7: day 1 starts 7 × 24 h before the reset, each day at the reset's time. */
+  readonly day: number;
+}
+
+/**
+ * D46: where the 5-hour Session usage stands against its allowance at a moment
+ * ({@link sessionPace}): `allowancePct` is `(minutes + 1) × 100 / 300` (0.33 in the
+ * window's first minute, 50 in its 150th, 100 in its last) and `nextStepAt` the end of this minute.
+ */
+export interface SessionPace extends UsagePace {
+  /** Whole minutes elapsed since the window's start (its reset minus 5 h), 0–299. */
+  readonly minutes: number;
+}
+
+/**
+ * D23 / D46: the step a pace window is in at `now`. The window is `steps` ×
+ * `stepMs` long and ends at the reset; `step` counts the whole steps elapsed since
+ * its start (0 in the first). `null` (unknown, never guessed) when `pct` or
+ * `resetsAt` is not usable, when the reset is not ahead of `now`, or when `now` is
+ * before the window's start (the reset is further ahead than the window is long).
+ */
+function paceStep(window: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date, steps: number, stepMs: number): { readonly pct: number; readonly start: number; readonly step: number } | null {
+  const pct = normalizePct(window.pct);
+  const reset = Date.parse(window.resetsAt);
+  const at = now.getTime();
+  if (pct === null || !Number.isFinite(reset) || !Number.isFinite(at) || reset <= at) return null;
+  const start = reset - steps * stepMs;
+  if (at < start) return null;
+  return { pct, start, step: Math.floor((at - start) / stepMs) };
+}
+
+/**
+ * D23 / D46: the verdict against an allowance: the allowance rounded to 2 decimals
+ * like the utilization, and on pace only **below** that rounded value (a usage at
+ * exactly the allowance the tooltip shows is not on pace).
+ */
+function paceAgainst(pct: number, allowance: number, nextStepAt: number): UsagePace {
+  const allowancePct = Math.round(allowance * 100) / 100;
+  return { allowancePct, nextStepAt: new Date(nextStepAt).toISOString(), onPace: pct < allowancePct };
 }
 
 /**
@@ -371,15 +427,27 @@ export interface WeeklyPace {
  * when it is more than 7 days ahead (then `now` is outside the window it closes).
  */
 export function weeklyPace(week: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date): WeeklyPace | null {
-  const pct = normalizePct(week.pct);
-  const reset = Date.parse(week.resetsAt);
-  const at = now.getTime();
-  if (pct === null || !Number.isFinite(reset) || !Number.isFinite(at) || reset <= at) return null;
-  const start = reset - WEEK_DAYS * PACE_DAY_MS;
-  if (at < start) return null;
-  const day = Math.floor((at - start) / PACE_DAY_MS) + 1;
-  const allowancePct = Math.round(((day * 100) / WEEK_DAYS) * 100) / 100;
-  return { day, allowancePct, nextStepAt: new Date(start + day * PACE_DAY_MS).toISOString(), onPace: pct < allowancePct };
+  const at = paceStep(week, now, WEEK_DAYS, PACE_DAY_MS);
+  if (!at) return null;
+  const day = at.step + 1;
+  return { day, ...paceAgainst(at.pct, (day * 100) / WEEK_DAYS, at.start + day * PACE_DAY_MS) };
+}
+
+/**
+ * D46: the 5-hour Session window's pace at `now`. The window started 5 h before
+ * `resetsAt` and its allowance grows evenly by the minute: each minute's share is
+ * available from the start of that minute (like D23's days, developer ruling
+ * 2026-09-29), so during minute *n* (1–300) it is *n* × 100 / 300 % (rounded like
+ * {@link weeklyPace}'s), stepping up at the end of each minute counted from the
+ * window's start. Returns `null` (unknown,
+ * never guessed) when `pct` or `resetsAt` is not usable, when the reset is not
+ * ahead of `now`, or when it is more than 5 h ahead.
+ */
+export function sessionPace(session: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date): SessionPace | null {
+  const at = paceStep(session, now, SESSION_MINUTES, PACE_MINUTE_MS);
+  if (!at) return null;
+  // Developer ruling 2026-09-29: a minute counts as soon as it starts (like D23's days), so minute 1 already allows 1/300.
+  return { minutes: at.step, ...paceAgainst(at.pct, ((at.step + 1) * 100) / SESSION_MINUTES, at.start + (at.step + 1) * PACE_MINUTE_MS) };
 }
 
 /**

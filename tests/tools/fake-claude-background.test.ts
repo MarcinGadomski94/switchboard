@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { JsonObject } from '../../tools/fake-claude/json.ts';
 import {
+  FAKE_TASK_DESCRIPTION,
+  FAKE_TASK_TYPE,
+  FAKE_WORKFLOW_NAME,
+  FAKE_WORKFLOW_SCRIPT,
+  FAKE_WORKFLOW_SUMMARY,
   GH_WAIT_COMMAND,
   RECORDED_BACKGROUND_TASK,
   WAKEUP_REASON,
@@ -68,6 +73,14 @@ describe('fake-claude · background tokens (parser)', () => {
     expect(backgroundToken('[fake:background 5]')).toMatchObject({ error: expect.any(String) });
     expect(backgroundToken('[fake:wakeup soon]')).toMatchObject({ error: expect.any(String) });
   });
+
+  it('D43: [fake:workflow <s>], [fake:bg-task <s> [<type>]]', () => {
+    expect(backgroundToken('Audit it [fake:workflow 5]')).toEqual({ kind: 'workflow', seconds: 5 });
+    expect(backgroundToken('[fake:bg-task 0.5]')).toEqual({ kind: 'task', seconds: 0.5, taskType: FAKE_TASK_TYPE });
+    expect(backgroundToken('[fake:bg-task 2 mcp_task]')).toEqual({ kind: 'task', seconds: 2, taskType: 'mcp_task' });
+    expect(backgroundToken('[fake:workflow]')).toMatchObject({ error: expect.stringContaining('[fake:workflow <seconds>]') });
+    expect(backgroundToken('[fake:bg-task soon]')).toMatchObject({ error: expect.stringContaining('[fake:bg-task <seconds> [<type>]]') });
+  });
 });
 
 describe('fake-claude · background tokens (process)', () => {
@@ -124,6 +137,56 @@ describe('fake-claude · background tokens (process)', () => {
     const fired = await run.waitFor(isResult, 4, 5_000);
     expect(origin(fired)).toBeNull();
     expect(run.lines.filter((l) => l['type'] === 'user' && l['isReplay'] === true)).toHaveLength(2);
+    run.end();
+    expect((await run.exited).code).toBe(0);
+  });
+
+  it('D43 [fake:workflow]: a Workflow call, its local_workflow task_started and the CLI\'s launch result; seconds later its notification and the CLI\'s own turn', async () => {
+    const run = start();
+    run.send(userLine('Audit the fixtures in the background [fake:workflow 1]'));
+    await run.waitFor(isResult, 1);
+    const [call] = toolUses(run.lines);
+    expect(call).toMatchObject({ name: 'Workflow', input: { script: FAKE_WORKFLOW_SCRIPT } });
+    const { block, line } = toolResultOf(run.lines, call?.['id']);
+    const text = String(block['content']);
+    const id = /^Workflow launched in background\. Task ID: (w[a-z0-9]{8})\nSummary: (.*)$/m.exec(text);
+    expect(id?.[2]).toBe(FAKE_WORKFLOW_SUMMARY);
+    expect(text).toContain('You will be notified when it completes.');
+    expect(line['tool_use_result']).toMatchObject({ status: 'async_launched', taskId: id?.[1], taskType: 'local_workflow', workflowName: FAKE_WORKFLOW_NAME, summary: FAKE_WORKFLOW_SUMMARY });
+    const started = run.lines.find((l) => l['type'] === 'system' && l['subtype'] === 'task_started');
+    expect(started).toMatchObject({ task_id: id?.[1], tool_use_id: call?.['id'], task_type: 'local_workflow', workflow_name: FAKE_WORKFLOW_NAME, description: FAKE_WORKFLOW_SUMMARY });
+    expect(started).not.toHaveProperty('is_backgrounded');
+    // The CLI registers the task during the call: task_started comes before the result.
+    expect(run.lines.indexOf(started as JsonObject)).toBeLessThan(run.lines.indexOf(line));
+    expect(run.lines.some(isNotification)).toBe(false);
+
+    const notification = await run.waitFor(isNotification, 1, 5_000);
+    expect(notification).toMatchObject({ task_id: id?.[1], tool_use_id: call?.['id'], status: 'completed', summary: FAKE_WORKFLOW_SUMMARY });
+    const second = await run.waitFor(isResult, 2, 5_000);
+    expect(origin(second)).toBe('task-notification');
+    run.end();
+    expect((await run.exited).code).toBe(0);
+  });
+
+  it('D43 [fake:bg-task]: no tool call, only a task_started of an unknown type without a tool use id, then its end and the CLI\'s own turn', async () => {
+    const run = start();
+    run.send(userLine('Something runs in the background [fake:bg-task 0.3]'));
+    await run.waitFor(isResult, 1);
+    expect(toolUses(run.lines)).toEqual([]);
+    expect(run.lines.some((l) => l['type'] === 'user' && l['isReplay'] !== true)).toBe(false);
+    const started = run.lines.find((l) => l['type'] === 'system' && l['subtype'] === 'task_started');
+    expect(started).toMatchObject({ task_type: FAKE_TASK_TYPE, description: FAKE_TASK_DESCRIPTION });
+    expect(started).not.toHaveProperty('tool_use_id');
+    expect(String(started?.['task_id'])).toMatch(/^k[a-z0-9]{8}$/);
+    const notification = await run.waitFor(isNotification, 1, 5_000);
+    expect(notification).toMatchObject({ task_id: started?.['task_id'], status: 'completed', summary: FAKE_TASK_DESCRIPTION });
+    expect(notification).not.toHaveProperty('tool_use_id');
+    expect(origin(await run.waitFor(isResult, 2, 5_000))).toBe('task-notification');
+
+    run.send(userLine('And another [fake:bg-task 0.2 mcp_task]'));
+    await run.waitFor(isResult, 3, 5_000);
+    expect(run.lines.filter((l) => l['type'] === 'system' && l['subtype'] === 'task_started').at(-1)).toMatchObject({ task_type: 'mcp_task' });
+    await run.waitFor(isResult, 4, 5_000);
     run.end();
     expect((await run.exited).code).toBe(0);
   });

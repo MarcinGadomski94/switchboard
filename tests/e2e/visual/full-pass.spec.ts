@@ -869,7 +869,7 @@ ${table.join('\n')}
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on \`${first ?? '—'}\`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
-Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · \`none\` = copy and styles only · \`listed\` = recorded, not gated · \`D17 rules\` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
+Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · \`none\` = copy and styles only · \`listed\` = recorded, not gated · \`D17 rules\` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, D23 / D46: status done / need and the allowance marker on a row with a pace, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|

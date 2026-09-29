@@ -141,24 +141,31 @@ export type ActivityState = 'thinking' | 'tool' | 'writing' | 'waiting' | 'backg
 
 /**
  * Additive (D30): what a pending background task is: a `Bash` run in the background,
- * an async `Agent` / `Task`, a `Monitor`, or a `ScheduleWakeup`.
+ * an async `Agent` / `Task`, a `Monitor`, or a `ScheduleWakeup`. Additive (D43): a
+ * `Workflow` run in the background (`workflow`), and `task` for any other task the
+ * CLI reports (a `system/task_started` of a type Switchboard does not know).
  */
-export type BackgroundTaskKind = 'bash' | 'agent' | 'monitor' | 'wakeup';
+export type BackgroundTaskKind = 'bash' | 'agent' | 'monitor' | 'wakeup' | 'workflow' | 'task';
 
 /**
  * Additive (D30): background work the main agent started and whose end the CLI has
  * not reported yet (`docs/derivations.md` → *Background work*). Derived in memory
- * from the stream-json, never stored.
+ * from the stream-json, never stored. D43: also every other background task the CLI
+ * reports (`system/task_started`).
  */
 export interface BackgroundTask {
-  /** The CLI's task id (the background command's, the async agent's, the monitor's); the `tool_use` id when the CLI gave none (a wake-up). */
+  /** The CLI's task id (the background command's, the async agent's, the monitor's, the workflow's); the `tool_use` id when the CLI gave none (a wake-up). */
   readonly id: string;
-  /** The `tool_use` that started it. */
+  /** The `tool_use` that started it; D43: the task id for a task the CLI reported without one (a `system/task_started` with no `tool_use_id`). */
   readonly toolUseId: string;
   readonly kind: BackgroundTaskKind;
-  /** Short literal text (D19's summaries; for a GitHub wait the `gh …` command, for a wake-up its reason); at most 80 characters. */
+  /**
+   * Short literal text (D19's summaries; for a GitHub wait the `gh …` command, for a
+   * wake-up its reason; D43: a workflow's `Summary:`, any other CLI-reported task's
+   * description); at most 80 characters.
+   */
   readonly summary: string;
-  /** When it started (ISO): its tool call. */
+  /** When it started (ISO): its tool call; D43: for a task known only from its `system/task_started`, that line's arrival. */
   readonly startedAt: string;
   /** `wakeup` only: when the CLI wakes the session (ISO): the call's time + `delaySeconds`. */
   readonly wakeAt?: string;
@@ -196,7 +203,7 @@ export interface SessionActivity {
   readonly state: ActivityState;
   /** When the top-level state began (ISO); for `tool`, when that tool call started; for `background`, when the oldest pending task started. */
   readonly since: string;
-  /** `tool`: the main agent's running tool; `background`: the tool that started the oldest pending task; otherwise `null`. */
+  /** `tool`: the main agent's running tool; `background`: the tool that started the oldest pending task (D43: `null` for a `task`, which no known tool started); otherwise `null`. */
   readonly tool: string | null;
   /** `tool` / `background`: that call's short summary; otherwise `null`. */
   readonly summary: string | null;

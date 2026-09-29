@@ -257,6 +257,20 @@ export function createdBranches(command: string): CreatedBranch[] {
   return found;
 }
 
+/**
+ * D38: `true` when a Bash command adds a git worktree: it contains `git worktree
+ * add`, or one of its statements is `git [-C <dir>] [-c <k=v>] [--opt] worktree add …`.
+ */
+export function addsWorktree(command: string): boolean {
+  if (command.includes('git worktree add')) return true;
+  return splitStatements(command).some((words) => {
+    if (words[0] !== 'git') return false;
+    let i = 1;
+    while (i < words.length && (words[i] ?? '').startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
+    return words[i] === 'worktree' && words[i + 1] === 'add';
+  });
+}
+
 /** DIFF artifact name: the changed files' common folder inside the solution, then the file count ("Pages/FreeTalk · 6 files"). */
 export function diffArtifactName(files: readonly string[]): string {
   const count = `${files.length} ${files.length === 1 ? 'file' : 'files'}`;

@@ -47,6 +47,8 @@ export const WAITING = 'Waiting for you';
 export const WAITING_GITHUB = 'Waiting for GitHub Actions';
 export const WAITING_BACKGROUND = 'Waiting for a background task';
 export const WAKING_UP = 'Waking up at';
+/** D43: a background workflow's words (`Running a workflow: <summary>`). */
+export const RUNNING_WORKFLOW = 'Running a workflow';
 
 /** Milliseconds from `iso` to `now`, never negative (0 for an unreadable time). */
 export function elapsedMs(iso: string, now: number): number {
@@ -128,11 +130,13 @@ export function oldestBackgroundTask(tasks: readonly BackgroundTask[]): Backgrou
 
 /**
  * D30: one background task's words: a wake-up → `Waking up at 18:40`; a GitHub wait
- * → `Waiting for GitHub Actions: <summary>`; anything else → `Waiting for a
- * background task: <summary>`.
+ * → `Waiting for GitHub Actions: <summary>`; D43: a workflow → `Running a workflow:
+ * <summary>`; anything else (D43: a `task` the CLI reported included) → `Waiting for
+ * a background task: <summary>`.
  */
 export function backgroundText(task: Pick<BackgroundTask, 'kind' | 'summary' | 'wakeAt' | 'github'>): string {
   if (task.kind === 'wakeup' && task.wakeAt) return `${WAKING_UP} ${formatClockTime(task.wakeAt)}`;
+  if (task.kind === 'workflow') return `${RUNNING_WORKFLOW}: ${task.summary}`;
   return `${task.github ? WAITING_GITHUB : WAITING_BACKGROUND}: ${task.summary}`;
 }
 

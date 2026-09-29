@@ -141,7 +141,9 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 **Tabs:** Timeline, Diff (per worktree), Artifacts.
 
-[`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md)
+**More room:** slide the sidebar (**⌘B**) or the right panel (**⌥⌘B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
+
+[`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md) · [`docs/panes.md`](docs/panes.md)
 
 ### Inbox and notifications
 - Every question batch and permission request from every session lands in the **Inbox**. Answer it there or in the session's chat.

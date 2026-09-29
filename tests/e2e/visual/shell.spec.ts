@@ -263,7 +263,7 @@ Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height (y depend
 ${input.rows.join('\n')}
 
 ## D17 usage rows (listed, not compared with the prototype)
-The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. \`listed\` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors, 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
+The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. \`listed\` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a row with a pace, the demo's Session, fills with status done / need and carries the allowance marker), 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
 
 | Part | Prototype | App | Result | Notes |
 |---|---|---|---|---|

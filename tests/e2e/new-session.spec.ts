@@ -23,14 +23,15 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * 1. The form: sections 1–6 in order, pills, chips from the scanner (read-only
  *    locked at 40%), coordination only for feature + single + a *-front, the QA
  *    contract for test-authoring, the toggles, the live summary with the worktree
- *    folders (gap #1), Start disabled without solutions. D22: the name field takes
+ *    folders (gap #1); D38: no solution picked reads `solutions  chosen by the
+ *    agent` and does not disable Start (the Branch does). D22: the name field takes
  *    free text as the title; the summary shows the short name derived from it,
  *    and a taken one gets -2 instead of disabling Start.
  * 2. Start session → `POST /api/sessions` → the session view; the stored session
  *    and the worktrees on disk match the form.
  * 3. A server refusal (422) stays in the modal as one line.
  * 4. The contract's validation through the API: 422 for read-only paths, a
- *    duplicate name, missing solutions, a QA session without `qa`.
+ *    duplicate name, a QA session without `qa`; D38: no solutions is accepted.
  * 5. "Open fix session" opens the form prefilled; Start creates that session.
  * D14: the Folder row sits above section 1 (the saved workspace, preselected as
  * the default); the summary names the folder; Start posts its id. Switching
@@ -191,7 +192,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
     '1 · Task definition',
     '2 · Work type',
     '3 · Mode',
-    '4 · Solutions in scope0 selected · read-only folders locked',
+    '4 · Solutions in scope0 selected · leave empty to let the agent choose · read-only folders locked',
     '5 · Phase',
   ]);
   await expect(modal.getByTestId('ns-name')).toHaveAttribute('placeholder', 'session-name');
@@ -239,9 +240,11 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   }
   await locked.nth(0).click({ force: true });
   await expect(locked.nth(0)).toHaveAttribute('data-selected', 'false');
-  await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · read-only folders locked');
+  // D38: picking solutions is optional; the hint says so in its muted style.
+  await expect(modal.getByTestId('ns-solutions-hint')).toHaveText('0 selected · leave empty to let the agent choose · read-only folders locked');
+  await expect(modal.getByTestId('ns-solutions-hint')).toHaveCSS('color', 'rgb(109, 108, 103)');
 
-  // Nothing picked: Start disabled at 45%, the summary says why.
+  // Nothing picked: the agent chooses them (D38); Start waits only for the branch (D32, Worktree on), at 45%.
   const start = modal.getByTestId('ns-start');
   await expect(start).toBeDisabled();
   await expect(start).toHaveCSS('opacity', '0.45');
@@ -256,7 +259,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
     ' ',
     '# worktrees',
     'branch    —',
-    '⚠ pick at least one solution',
+    'solutions  chosen by the agent',
     '⚠ name the branch after its ticket',
     ' ',
     '✓ answers pre-filled → agent confirms, no re-ask',
@@ -502,7 +505,7 @@ test('a refusal from POST /api/sessions stays in the modal as one line', async (
   expect((await listSessions(page)).some((s) => s.name.startsWith('taken-branch'))).toBe(false);
 });
 
-test('POST /api/sessions validates the contract: read-only paths 422, duplicate name, no solutions, qa for QA', async ({ page }) => {
+test('POST /api/sessions validates the contract: read-only paths 422, duplicate name, qa for QA; D38: no solutions is accepted', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
   const base = { task: '', workType: 'feature', mode: 'single', phase: 'ui-first', coordination: null, qa: null, worktrees: false, ultracode: false };
   const field = (body: unknown, name: string): string[] =>
@@ -516,9 +519,13 @@ test('POST /api/sessions validates the contract: read-only paths 422, duplicate 
   const duplicate = await postSession(page, { ...base, name: 'existing-one', solutions: ['billing-front'] });
   expect(duplicate.status).toBe(422);
   expect(field(duplicate.body, 'name')).toEqual(['a session named "existing-one" already exists']);
+  // D38: a workspace session may start without solutions (the agent determines them); a list that is no list is still refused.
   const empty = await postSession(page, { ...base, name: 'no-solutions', solutions: [] });
-  expect(empty.status).toBe(422);
-  expect(field(empty.body, 'solutions')).toEqual(['choose at least one solution']);
+  expect(empty.status).toBe(201);
+  expect((empty.body as Session).solutions).toEqual([]);
+  const notList = await postSession(page, { ...base, name: 'not-a-list', solutions: 'billing-front' });
+  expect(notList.status).toBe(422);
+  expect(field(notList.body, 'solutions')).toEqual(['solutions must be a list of solution names']);
   const qa = await postSession(page, { ...base, name: 'qa-without-contract', workType: 'qa', solutions: ['billing-front'] });
   expect(qa.status).toBe(422);
   expect(field(qa.body, 'qa')).toEqual(['qa is required for a QA session']);
@@ -528,7 +535,7 @@ test('POST /api/sessions validates the contract: read-only paths 422, duplicate 
   expect(field(noBranch.body, 'branch')).toEqual([BRANCH_REQUIRED]);
   const badBranch = await postSession(page, { ...base, name: 'bad-branch', solutions: ['billing-front'], worktrees: true, branch: 'feature/x' });
   expect(field(badBranch.body, 'branch')).toEqual([BRANCH_RULE]);
-  expect((await listSessions(page)).map((s) => s.name).sort()).toEqual(['existing-one', 'free-talk-640', 'proj-1984-purchase-complete']);
+  expect((await listSessions(page)).map((s) => s.name).sort()).toEqual(['existing-one', 'free-talk-640', 'no-solutions', 'proj-1984-purchase-complete']);
 });
 
 test('"Open fix session" opens the form prefilled (M3.3); Start creates that session', async ({ page }) => {

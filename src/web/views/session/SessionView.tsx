@@ -1,6 +1,7 @@
 import { useHubEvent } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import type { SessionTab } from '../../router.tsx';
+import { PaneHandle, usePanes } from '../../shell/Panes.tsx';
 import { ArtifactsTab } from './ArtifactsTab.tsx';
 import { ChatTab } from './ChatTab.tsx';
 import { DiffTab } from './DiffTab.tsx';
@@ -34,6 +35,11 @@ const RELOAD_MS = 500;
  * the header, the chat and the right panel show skeleton placeholders and a
  * visually hidden "Loading session…". A failed load shows the missing state
  * (404) or the header's error line, never a placeholder.
+ *
+ * D41: a hidden right panel (the same state in every session) slides out, its
+ * column narrows to a slim rail with the reveal handle (after the panel, so the
+ * prototype's children keep their places), and the header and tab take the
+ * freed width (`docs/panes.md`).
  */
 export function SessionView({ sessionId, tab, agentId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null }) {
   const data = useSessionData(sessionId, tab === 'chat');
@@ -54,6 +60,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
   const loading = loadingParts(data.detailState, data.eventsState, tab === 'chat');
   const busy = anyLoading(loading);
   const placeholders = usePlaceholderDelay(sessionId, busy) ? loading : NOTHING_LOADING;
+  const panelHidden = usePanes().state.rightPanelHidden;
   return (
     <section
       className="sb-view sb-sv"
@@ -63,6 +70,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
       data-tab={tab}
       data-agent-id={agentId ?? undefined}
       aria-busy={busy || undefined}
+      data-panel={panelHidden ? 'hidden' : undefined}
     >
       <div className="sb-sv-main">
         <SessionHeader
@@ -91,7 +99,8 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}
       </div>
-      <RightPanel sessionId={sessionId} session={session} placeholder={placeholders.panel} />
+      <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} placeholder={placeholders.panel} />
+      {panelHidden ? <PaneHandle pane="rightPanel" /> : null}
       {anyLoading(placeholders) ? <LoadingNote /> : null}
     </section>
   );

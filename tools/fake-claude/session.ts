@@ -10,6 +10,10 @@ import { IdMap, type RewriteContext, rewriteLine, sortReplacements } from './rew
 import {
   BUILT_IN_SCENARIOS,
   DEFAULT_FIXTURE,
+  FAKE_TASK_DESCRIPTION,
+  FAKE_WORKFLOW_NAME,
+  FAKE_WORKFLOW_SCRIPT,
+  FAKE_WORKFLOW_SUMMARY,
   FIRE_PROMPT,
   KEEP_RECORDED_PERMISSION_MODE,
   RECORDED_BACKGROUND_COMMAND,
@@ -29,6 +33,7 @@ import {
   scenarioToken,
   toolResultText,
   toolToken,
+  workflowLaunchText,
   remoteAnswerToken,
   remoteControlError,
   remoteControlMode,
@@ -36,6 +41,7 @@ import {
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
+import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts';
 
 /** How a turn playback ended. */
 type Outcome = 'done' | 'sigint' | 'crash';
@@ -78,7 +84,18 @@ interface UserMessage {
 interface ToolSpec {
   name: string;
   input: JsonObject;
+  /** D38 `[fake:worktree-add]`: the real result of the call (default: `toolResultText`, no error). */
+  result?: { readonly text: string; readonly isError: boolean };
 }
+
+/**
+ * D43 `[fake:workflow]` / `[fake:bg-task]`: how the `bg-bash` recording is reshaped: a
+ * background `Workflow` launch, or a task of `taskType` the CLI reports without a
+ * tool call (the recording's Bash call and its result are left out).
+ */
+type LaunchSpec =
+  | { readonly kind: 'workflow'; readonly taskId: string; readonly runId: string }
+  | { readonly kind: 'task'; readonly taskId: string; readonly taskType: string };
 
 /** A `[fake:write]` in progress. */
 interface WriteSpec {
@@ -102,6 +119,8 @@ interface TurnState {
   readonly say: string | null;
   /** D24 `[fake:remote-answer <ms>]`: "the phone" answers this turn's request after that many ms. */
   readonly remoteAnswerMs: number | null;
+  /** D43 `[fake:workflow]` / `[fake:bg-task]`: the reshaped `bg-bash` recording (its end included). */
+  readonly launch: LaunchSpec | null;
   open: OpenRequest | null;
 }
 
@@ -133,6 +152,15 @@ interface Core {
 
 function firstStep<T extends Step['t']>(steps: readonly Step[], t: T): Extract<Step, { t: T }> | undefined {
   return steps.find((s): s is Extract<Step, { t: T }> => s.t === t);
+}
+
+/** D43: a recorded line with a tool call or a tool result (`[fake:bg-task]` leaves the `bg-bash` call out). */
+function isCallStep(step: Step): boolean {
+  if (step.t !== 'line') return false;
+  const type = step.line['type'];
+  if (type !== 'assistant' && type !== 'user') return false;
+  const content = asArray(asObject(step.line['message'])?.['content']);
+  return content.some((block) => isObject(block) && (block['type'] === 'tool_use' || block['type'] === 'tool_result'));
 }
 
 function stepsAfterWait(steps: readonly Step[]): readonly Step[] {
@@ -609,14 +637,16 @@ export class Runner {
     let steps: readonly Step[];
     let write: WriteSpec | null = null;
     let tool: ToolSpec | null = null;
+    let launch: LaunchSpec | null = null;
     let scenario: string;
     let turnIndex: number;
 
-    const writePath = msg.fired ? null : writeToken(msg.text);
-    const toolCall = msg.fired || writePath !== null ? null : toolToken(msg.text);
+    const worktreeAdd = msg.fired ? null : worktreeAddToken(msg.text, this.o.cwd);
+    const writePath = msg.fired || worktreeAdd !== null ? null : writeToken(msg.text);
+    const toolCall = msg.fired || writePath !== null || worktreeAdd !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
-    const background = msg.fired || writePath !== null || toolCall !== null ? null : backgroundToken(msg.text);
-    const said = msg.fired || writePath !== null || toolCall !== null || background !== null ? null : sayToken(msg.text);
+    const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null ? null : backgroundToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : sayToken(msg.text);
     /** D30: the recording's rest after this turn's result, played `delayMs` later. */
     let later: { readonly steps: readonly Step[]; readonly delayMs: number } | null = null;
     /** D30: a `[fake:wakeup]` fires a turn of its own this many ms after the turn. */
@@ -627,6 +657,16 @@ export class Runner {
       // A turn of its own (a cron firing): no stdin message, so no replay echo.
       steps = (this.core.base.turns[0] ?? []).filter((s) => s.t !== 'replay');
       scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
+    } else if (worktreeAdd !== null && 'error' in worktreeAdd) {
+      await this.crash(`fake-claude: [fake:worktree-add]: ${worktreeAdd.error}`);
+      return 'crash';
+    } else if (worktreeAdd !== null) {
+      // D38: the agent adds a git worktree itself (a Bash call), and the fake really runs it.
+      const result = await addWorktree(worktreeAdd, this.o.env);
+      steps = (await this.o.store.fixture('tx-main')).turns[0] ?? [];
+      tool = { name: 'Bash', input: { command: worktreeAddCommand(worktreeAdd), description: 'Create the git worktree' }, result };
+      scenario = 'tx-main';
       turnIndex = 0;
     } else if (toolCall !== null && 'error' in toolCall) {
       await this.crash(`fake-claude: [fake:tool]: ${toolCall.error}`);
@@ -661,6 +701,20 @@ export class Runner {
       steps = recorded.slice(0, end + 1);
       later = { steps: recorded.slice(end + 1), delayMs: background.seconds * 1000 };
       extra.push([RECORDED_BACKGROUND_COMMAND, background.command], [RECORDED_BACKGROUND_TASK, `b${randomBytes(6).toString('hex').slice(0, 8)}`]);
+      scenario = 'bg-bash';
+      turnIndex = 0;
+    } else if (background !== null && (background.kind === 'workflow' || background.kind === 'task')) {
+      // D43: the probe's turn as a background Workflow, or as a task the CLI reports without a tool call; its end waits.
+      const recorded = (await this.o.store.fixture('bg-bash')).turns[0] ?? [];
+      const end = recorded.findIndex((s) => s.t === 'line' && s.line['type'] === 'result' && !isTaskNotificationResult(s.line));
+      const suffix = randomBytes(6).toString('hex').slice(0, 8);
+      launch = background.kind === 'workflow'
+        ? { kind: 'workflow', taskId: `w${suffix}`, runId: `wf_${randomBytes(6).toString('hex')}` }
+        : { kind: 'task', taskId: `k${suffix}`, taskType: background.taskType };
+      const first = recorded.slice(0, end + 1);
+      steps = launch.kind === 'task' ? first.filter((s) => !isCallStep(s)) : first;
+      later = { steps: recorded.slice(end + 1), delayMs: background.seconds * 1000 };
+      extra.push([RECORDED_BACKGROUND_TASK, launch.taskId]);
       scenario = 'bg-bash';
       turnIndex = 0;
     } else if (background !== null) {
@@ -705,7 +759,7 @@ export class Runner {
       if (template) steps = applyMaxTurns(steps, this.args.maxTurns, template);
     }
 
-    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, open: null };
+    const turn: TurnState = { msg, scenario, turnIndex, ids: new IdMap(), extra, write, tool, say, remoteAnswerMs, launch, open: null };
     this.transcript?.beginTurn(msg.content, msg.uuid, this.permissionMode);
     this.live?.setStatus('busy');
     const outcome = await this.play(steps, turn);
@@ -1024,7 +1078,7 @@ export class Runner {
   }
 
   private bareTurn(ids: IdMap): TurnState {
-    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, say: null, remoteAnswerMs: null, open: null };
+    return { msg: { content: '', text: '', uuid: '' }, scenario: '', turnIndex: 0, ids, extra: [], write: null, tool: null, say: null, remoteAnswerMs: null, launch: null, open: null };
   }
 
   private passes(line: JsonObject): boolean {
@@ -1044,6 +1098,7 @@ export class Runner {
     if (line['type'] === 'system' && line['subtype'] === 'init') this.patchInit(line, turn);
     if (turn.write) this.patchWrite(line, turn.write);
     if (turn.tool) this.patchTool(line, turn.tool);
+    if (turn.launch) this.patchLaunch(line, turn.launch);
     if (turn.say !== null) this.patchSay(line, turn.say);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
@@ -1095,11 +1150,82 @@ export class Runner {
       return;
     }
     if (line['type'] !== 'user') return;
-    const text = toolResultText(tool.name);
+    const text = tool.result?.text ?? toolResultText(tool.name);
     for (const block of asArray(asObject(line['message'])?.['content'])) {
-      if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;
+      if (!isObject(block) || block['type'] !== 'tool_result') continue;
+      block['content'] = text;
+      if (tool.result?.isError) block['is_error'] = true;
     }
-    if ('tool_use_result' in line) line['tool_use_result'] = text;
+    if ('tool_use_result' in line) line['tool_use_result'] = tool.result?.isError ? `Error: ${text}` : text;
+  }
+
+  /**
+   * D43 `[fake:workflow]` / `[fake:bg-task]`: the `bg-bash` recording's background
+   * shell becomes a `Workflow` launch (the call, its result and structured result as
+   * CLI 2.1.284 has them, a `local_workflow` `task_started` with `workflow_name`), or a
+   * task of another type the CLI reports without a `tool_use_id`; its description and
+   * notification summary follow.
+   */
+  private patchLaunch(line: JsonObject, launch: LaunchSpec): void {
+    const workflow = launch.kind === 'workflow';
+    const description = workflow ? FAKE_WORKFLOW_SUMMARY : FAKE_TASK_DESCRIPTION;
+    const taskType = workflow ? 'local_workflow' : launch.taskType;
+    if (line['type'] === 'assistant' && workflow) {
+      for (const block of asArray(asObject(line['message'])?.['content'])) {
+        if (isObject(block) && block['type'] === 'tool_use' && block['name'] === 'Bash') {
+          block['name'] = 'Workflow';
+          block['input'] = { script: FAKE_WORKFLOW_SCRIPT };
+        }
+      }
+      const wire = asObject(line['wire_tool_inputs']);
+      if (wire) for (const key of Object.keys(wire)) wire[key] = { script: FAKE_WORKFLOW_SCRIPT };
+      return;
+    }
+    if (line['type'] === 'system') {
+      if (line['subtype'] === 'background_tasks_changed') {
+        for (const task of asArray(line['tasks'])) {
+          if (!isObject(task)) continue;
+          task['task_type'] = taskType;
+          task['description'] = description;
+        }
+      } else if (line['subtype'] === 'task_started') {
+        line['task_type'] = taskType;
+        line['description'] = description;
+        delete line['is_backgrounded'];
+        if (workflow) {
+          line['workflow_name'] = FAKE_WORKFLOW_NAME;
+          line['prompt'] = FAKE_WORKFLOW_SCRIPT;
+        } else {
+          delete line['tool_use_id'];
+        }
+      } else if (line['subtype'] === 'task_notification') {
+        line['summary'] = description;
+        if (!workflow) delete line['tool_use_id'];
+      }
+      return;
+    }
+    if (line['type'] === 'user' && launch.kind === 'workflow') {
+      // Text only (nothing is written there): the real CLI's paths are under the session's folder.
+      const dir = path.posix.join('/tmp/fake-claude/workflows', launch.runId);
+      const scriptPath = path.posix.join(dir, `${FAKE_WORKFLOW_NAME}.js`);
+      const transcriptDir = path.posix.join(dir, 'transcripts');
+      const text = workflowLaunchText(launch.taskId, launch.runId, scriptPath, transcriptDir);
+      for (const block of asArray(asObject(line['message'])?.['content'])) {
+        if (isObject(block) && block['type'] === 'tool_result') block['content'] = text;
+      }
+      if ('tool_use_result' in line) {
+        line['tool_use_result'] = {
+          status: 'async_launched',
+          taskId: launch.taskId,
+          taskType: 'local_workflow',
+          workflowName: FAKE_WORKFLOW_NAME,
+          runId: launch.runId,
+          summary: FAKE_WORKFLOW_SUMMARY,
+          transcriptDir,
+          scriptPath,
+        };
+      }
+    }
   }
 
   /** `[fake:say]`: the main agent's reply text (and the result's) becomes `text`. */

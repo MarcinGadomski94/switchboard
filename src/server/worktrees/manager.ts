@@ -7,9 +7,11 @@ import {
   type PatchFile,
   type PullRequestInfo,
   isNoPullRequest,
+  isSessionWorktree,
   moveToWorktreeMessage,
   parsePatch,
   parsePullRequest,
+  parseWorktreeList,
   solutionCandidates,
   splitNulList,
   toFileDiff,
@@ -17,6 +19,7 @@ import {
   worktreeBranch,
   worktreePath,
 } from '../../core/worktrees.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreePatch, WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { Store } from '../db/store.ts';
 import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/ref.ts';
@@ -119,6 +122,17 @@ export interface WorktreeBranchOptions {
   readonly branch?: string;
 }
 
+/** A repository of a folder's solution that {@link WorktreeManager.adopt} looks in (D38). */
+export interface AdoptionRepo {
+  /** The solution's name, as `Session.solutions` and the worktree row name it (`web-front`, `mobile`). */
+  readonly solution: string;
+  /** Its main checkout. */
+  readonly repoPath: string;
+}
+
+/** The session {@link WorktreeManager.adopt} registers worktrees for (D38). */
+export type AdoptionSession = Pick<SessionRecord, 'id' | 'name' | 'branch'>;
+
 /** Result of {@link WorktreeManager.isolate}. */
 export interface IsolateResult {
   readonly worktree: WorktreeRecord;
@@ -203,6 +217,8 @@ export class WorktreeManager implements DiffProvider {
   readonly #onError: (error: unknown) => void;
   readonly #listeners = new Set<Listener>();
   #checking: Promise<PullRequestCheck[]> | null = null;
+  /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
+  #adopting: Promise<unknown> = Promise.resolve();
   #timer: NodeJS.Timeout | undefined;
   #polling = false;
 
@@ -358,6 +374,71 @@ export class WorktreeManager implements DiffProvider {
       if (succeeded(removed)) await this.#runGit(plan.repoPath, ['branch', '-d', plan.branch]);
       throw error;
     }
+  }
+
+  // ── adopt (D38) ───────────────────────────────────────────────────────
+
+  /**
+   * D38 (`docs/worktrees.md` → *Adopted worktrees*): registers the worktrees the
+   * session's agent created itself as the session's, exactly like the ones
+   * {@link createForSession} makes (same rows, `sessionId` set: the Diff tab, PR
+   * checks, removal and the Solutions chips follow). For each repository (each
+   * once) it runs `git worktree list --porcelain` in the main checkout, the only
+   * git call made there (read-only), and adopts every other worktree on a branch
+   * whose branch is the session's (`sessions.branch`) or whose folder is
+   * `<repo>-wt-<name>` ({@link isSessionWorktree}). A worktree that already has a
+   * live row (the session's own, or another session's) is left alone, so a call
+   * is idempotent. The base the Diff compares against is the main worktree's
+   * branch (else its commit) at the time of adoption. A repository git cannot
+   * list is skipped (reported through `onError`). Calls run one at a time.
+   * @returns the rows created by this call.
+   */
+  adopt(session: AdoptionSession, repos: readonly AdoptionRepo[]): Promise<WorktreeRecord[]> {
+    const run = this.#adopting.catch(() => undefined).then(() => this.#adoptNow(session, repos));
+    this.#adopting = run;
+    return run;
+  }
+
+  async #adoptNow(session: AdoptionSession, repos: readonly AdoptionRepo[]): Promise<WorktreeRecord[]> {
+    const adopted: WorktreeRecord[] = [];
+    const seen = new Set<string>();
+    for (const repo of repos) {
+      let repoPath: string;
+      try {
+        repoPath = await realpath(repo.repoPath);
+      } catch {
+        continue;
+      }
+      if (seen.has(repoPath)) continue;
+      seen.add(repoPath);
+      const listed = await this.#runGit(repoPath, ['worktree', 'list', '--porcelain']);
+      if (!succeeded(listed)) {
+        this.#onError(new Error(`git worktree list failed in ${repoPath}: ${failureText(listed)}`));
+        continue;
+      }
+      const [main, ...others] = parseWorktreeList(listed.stdout);
+      for (const entry of others) {
+        if (!isSessionWorktree(entry, { sessionName: session.name, branch: session.branch, repoPath, solution: repo.solution })) continue;
+        let worktreePath: string;
+        try {
+          worktreePath = await realpath(entry.path);
+        } catch {
+          continue;
+        }
+        if (worktreePath === repoPath || (await this.#store.worktrees.getLiveByPath(worktreePath))) continue;
+        adopted.push(
+          await this.#store.worktrees.create({
+            repo: repo.solution,
+            repoPath,
+            branch: entry.branch as string,
+            baseRef: main?.branch ?? main?.head ?? null,
+            path: worktreePath,
+            sessionId: session.id,
+          }),
+        );
+      }
+    }
+    return adopted;
   }
 
   // ── isolate (gap #2) ──────────────────────────────────────────────────

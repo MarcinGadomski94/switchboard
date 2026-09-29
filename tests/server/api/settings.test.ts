@@ -77,6 +77,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.worktrees': true,
       'sessions.ultracode': false,
       'usage.warnAtPct': 90,
+      'ui.sidebarHidden': false,
+      'ui.rightPanelHidden': false,
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,
@@ -176,6 +178,38 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'usage.warnAtPct': 90,
       'sessions.worktrees': true,
     });
+  });
+
+  it('D41: stores which panes are hidden (sidebar, right panel); the choice survives a restart and a mistyped value is refused', async () => {
+    const { dir, workspace } = await setup();
+    const hide = await call('PUT', '/api/settings', { 'ui.sidebarHidden': true });
+    expect(hide.statusCode).toBe(200);
+    expect(hide.json()).toMatchObject({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': false, 'sessions.worktrees': true });
+    const panel = await call('PUT', '/api/settings', { 'ui.rightPanelHidden': true });
+    expect(panel.json()).toMatchObject({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
+
+    // A new process on the same database (SQLite, the `settings` table).
+    await close();
+    await open(dir, workspace);
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
+    expect(await store!.settings.getAll()).toEqual({ 'ui.sidebarHidden': true, 'ui.rightPanelHidden': true });
+
+    // Shown again: stored as false, not removed.
+    const shown = await call('PUT', '/api/settings', { 'ui.sidebarHidden': false });
+    expect(shown.json()).toMatchObject({ 'ui.sidebarHidden': false, 'ui.rightPanelHidden': true });
+
+    for (const body of [{ 'ui.sidebarHidden': 'yes' }, { 'ui.rightPanelHidden': 1 }, { 'ui.rightPanelHidden': null }]) {
+      const refused = await call('PUT', '/api/settings', body);
+      expect(refused.statusCode, JSON.stringify(body)).toBe(422);
+      expect((refused.json() as { errors: Array<{ field: string; message: string }> }).errors).toEqual([
+        { field: Object.keys(body)[0], message: `${Object.keys(body)[0]} must be true or false` },
+      ]);
+    }
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.sidebarHidden': false, 'ui.rightPanelHidden': true });
+
+    // A stored value of the wrong type reads as the default (shown).
+    await store!.settings.setMany({ 'ui.rightPanelHidden': 'hidden' });
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.rightPanelHidden': false });
   });
 
   it('stays behind the cookie guard', async () => {

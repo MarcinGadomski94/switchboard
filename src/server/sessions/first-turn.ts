@@ -12,6 +12,12 @@ export interface FirstTurnSources {
   readonly worktrees: readonly WorktreeRecord[];
   /** The main checkout a solution name means in the session's folder (`WorktreeManager.resolveRepo`). */
   readonly resolveRepo: (solution: string) => Promise<RepoLocation>;
+  /**
+   * D38: the branch the agent's own worktrees get (a workspace session with
+   * Worktrees on and no solutions picked): the D32 ticket branch, else
+   * `session/{name}` (scheduled runs). `null` / omitted without worktrees.
+   */
+  readonly agentBranch?: string | null;
 }
 
 /** `repoPath` relative to `root`, `/`-separated, or `null` when it is not inside it. */
@@ -47,7 +53,7 @@ export async function sessionStartAnswers(session: FirstTurnSession, sources: Fi
     const index = session.solutions.indexOf(record.repo);
     return { folder: folders[index] ?? record.repo, path: record.path, branch: record.branch };
   });
-  return { session, folders, worktrees };
+  return { session, folders, worktrees, agentBranch: sources.agentBranch ?? null };
 }
 
 /** The first stdin message and the block appended to the task (see `src/core/first-turn.ts`). */

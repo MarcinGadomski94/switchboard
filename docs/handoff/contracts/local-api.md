@@ -33,7 +33,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
   "coordination": "sequential|parallel-twin|none|null", "qa": { "stack": "web|mobile|both", "confluenceUrl": "", "figmaUrls": [] } ,
   "worktrees": true, "ultracode": false }
 ```
-Validation: name unique and kebab-case; solutions not empty; read-only paths are rejected (422); `qa` is required when workType = qa.
+Validation: name unique and kebab-case; solutions not empty (D38: an empty list is allowed for a workspace folder, see below); read-only paths are rejected (422); `qa` is required when workType = qa.
 
 ## Folders per session (D14, 2026-09-28, additive)
 Developer ruling D14 (`docs/decisions.md`): there is no single configured workspace root. Sessions start in **saved folders**, each a *workspace* (a folder with a router `AGENTS.md` that is not itself a git main checkout) or a *repo* (a git main checkout). Everything below is additive; the rows and payloads above keep their meaning. Details: `docs/folders.md`.
@@ -133,6 +133,16 @@ BackgroundTask  { "id": "<CLI task id | tool_use id>", "toolUseId": "toolu_…",
                   "summary": "<short text>", "startedAt": "ISO", "wakeAt"?: "ISO", "github": true|false }
 ```
 `id` = the CLI's task id (the background command's, the async agent's, the monitor's), the `tool_use` id when there is none (a wake-up); `summary` = D19's short text (a GitHub wait: its `gh …` command; a wake-up: its reason); `startedAt` = its tool call; `wakeAt` only on a wake-up (the call's time + `delaySeconds`); `github` = the command uses `gh run`, `gh pr checks` or `gh workflow`. A task ends with the CLI's `system/task_notification` for it, a wake-up when the next turn starts, all of them when the process ends (exit, pause, detach).
+
+**D43 (2026-09-29, additive): every background task counts.** Developer ruling D43 (`docs/decisions.md`): a background **Workflow**, and every other background task the CLI reports (`system/task_started`), keeps a session working like D30's tasks. Nothing above changes meaning; no new route, event or field.
+- **`BackgroundTask.kind`** gains `workflow` (a `Workflow` call whose result confirms a background launch; `summary` = the result's `Summary:` line, else the call's description / name) and `task` (a task the CLI reported of a type Switchboard does not map; `summary` = its description). A background shell or subagent the CLI reports without a known call has kind `bash` / `agent`.
+- For a task the CLI reported without a `tool_use_id`, **`toolUseId`** is its task id; **`startedAt`** of a task known only from its `system/task_started` is that line's arrival.
+- In state `background`, **`SessionActivity.tool`** is `Workflow` for a workflow and `null` for a `task`.
+- A task also ends with a `system/task_updated` whose status is terminal. Details: `docs/derivations.md` → *Background work* → *Every background task counts (D43)*.
+
+```json
+BackgroundTask  { …D30 fields, "kind": "bash|agent|monitor|wakeup|workflow|task" }
+```
 
 ## Session titles (D22, 2026-09-28, additive)
 Developer ruling D22 (`docs/decisions.md`): a session keeps its technical short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` and branch `session/{name}` are built from it, so it never changes) and may have a free-text **title**, which the UI shows wherever the session is named. Additive; the rows and payloads above keep their meaning. Details: `docs/derivations.md` → *Session titles*.
@@ -321,6 +331,33 @@ Developer ruling D39 (`docs/decisions.md` → *Own answers*): a question can be 
 AnswerBatch   { "answers": [{ "questionId": "q1", "answerIndex": 2 }, { "questionId": "q2", "text": "Medium, with rounded corners" }] }
 AnswerRefusal { "error": "invalid", "message": "question q2: an own answer must be text of 1–2000 characters", "errors": [{ "questionId": "q2", "field": "text", "message": "question q2: an own answer must be text of 1–2000 characters" }] }
 Question      { …, "answerIndex": null, "answerText": "Medium, with rounded corners" | null }
+```
+
+## Collapsible panes (D41, 2026-09-29, additive)
+Developer ruling D41 (`docs/decisions.md` → *Collapsible panes*): the sidebar and the session view's right panel slide out and back in on request, and the choice is kept by the service, per install. Additive; no new route or `/hub` event, and the rows above keep their meaning. Details: `docs/panes.md`, `docs/settings.md`.
+
+- **Settings** (`GET/PUT /api/settings`) gains two editable keys: `ui.sidebarHidden` and `ui.rightPanelHidden`, booleans, default `false` (both panes shown). `PUT` takes either or both like any editable key (a value that is not a boolean → 422 `invalid` on that key; nothing stored); `GET` always returns both (a stored value of the wrong type reads as `false`).
+- The right panel's value applies to every session. Other open pages read the stored state on their next load (no live event).
+
+```json
+Settings { …, "ui.sidebarHidden": false, "ui.rightPanelHidden": true }
+```
+
+## Solutions chosen by the agent (D38, 2026-09-29, additive)
+Developer ruling D38 (`docs/decisions.md` → *Solutions chosen by the agent*): a workspace session can start without picked solutions; the agent determines them. Additive: an empty list is now allowed; the rows and payloads above keep their meaning. Details: `docs/new-session.md` → *Solutions chosen by the agent (D38)*, `docs/worktrees.md` → *Adopted worktrees (D38)*, `docs/derivations.md` → *Session solutions (D38)*.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | /api/sessions | NewSession with `solutions: []` (or without `solutions`) for a **workspace** folder | 201 Session with `solutions: []` · the other validation is unchanged (a non-empty list: every name non-empty, not twice, never read-only, else 422 on `solutions`; a `solutions` that is not a list is 422 "solutions must be a list of solution names") |
+
+- **NewSession.solutions** may be empty or omitted for a workspace folder (it was "not empty", 422 "choose at least one solution"). A repo folder is unchanged (its repo is the one solution). A schedule's template follows the same rule (`POST /api/schedules`).
+- **No worktree up front:** with `worktrees: true` and no solutions nothing is created (the D32 `branch` is still required and validated); the first message tells the agent to create one worktree per solution it changes on that branch at `<repo>-wt-<name>` (scheduled runs: `session/{run name}`). Switchboard **adopts** each such worktree when it appears (after a main-agent `git worktree add`, and on a sweep at each turn's end): it becomes a normal `Worktree` of the session (`sessionId` set; Diff, PR checks, removal and the Solutions chips as before). No new route.
+- **Session.solutions** (so also SessionDetail, `sessionUpdated`, `ConflictSession`s and the Solutions view) starts empty and **fills in** with every solution an agent of the session writes into or Switchboard adopts a worktree in, in the order they appear; each change is stored and published as `sessionUpdated` (no new `/hub` event). This applies to every workspace session, so one that picked solutions gains the others it writes into.
+- The session's worktree branch is stored (`sessions.branch`, migration `0011_session_branch.sql`); it is not on the wire.
+
+```json
+NewSession { "name": "proj-38-agent-worktree", "title": "PROJ-38 Agent worktree", "task": "…", "workType": "feature", "mode": "single", "solutions": [], "phase": "ui-first", "coordination": null, "qa": null, "worktrees": true, "ultracode": false, "branch": "PROJ-38-agent-worktree" }
+Session    { …, "solutions": [] }  →  sessionUpdated { …, "solutions": ["acme-app-front"] }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)

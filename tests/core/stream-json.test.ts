@@ -112,6 +112,15 @@ describe('parseStreamLine (M0 fixtures)', () => {
     });
   });
 
+  it('D43: task_started of any type (is_backgrounded true / false / absent, workflow_name, ambient); task_updated\'s is_backgrounded', async () => {
+    expect(only(await fixture('bg-bash'), 'task-started')[0]).toMatchObject({ taskType: 'local_bash', backgrounded: true, workflowName: null, ambient: false });
+    const workflow = '{"type":"system","subtype":"task_started","task_id":"wbetnz0pi","tool_use_id":"toolu_1","description":"Audit HubSpot","task_type":"local_workflow","workflow_name":"hubspot-audit","session_id":"s","uuid":"u"}';
+    expect(parseStreamLine(workflow)).toMatchObject({ kind: 'task-started', taskId: 'wbetnz0pi', toolUseId: 'toolu_1', taskType: 'local_workflow', description: 'Audit HubSpot', backgrounded: null, workflowName: 'hubspot-audit', ambient: false });
+    expect(parseStreamLine('{"type":"system","subtype":"task_started","task_id":"s1","task_type":"monitor_ws","ambient":true}')).toMatchObject({ toolUseId: null, ambient: true });
+    expect(parseStreamLine('{"type":"system","subtype":"task_updated","task_id":"b1","patch":{"is_backgrounded":true}}')).toMatchObject({ kind: 'task-updated', taskId: 'b1', status: null, backgrounded: true });
+    expect(parseStreamLine('{"type":"system","subtype":"task_updated","task_id":"b1","patch":{"status":"completed"}}')).toMatchObject({ status: 'completed', backgrounded: null });
+  });
+
   it('never throws: non-JSON, arrays and unknown types', () => {
     expect(parseStreamLine('not json').kind).toBe('invalid');
     expect(parseStreamLine('{broken').kind).toBe('invalid');

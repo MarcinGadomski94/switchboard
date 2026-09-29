@@ -10,6 +10,7 @@ import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
 import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
+import { PaneHandle, usePanes } from './Panes.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import './shell.css';
 
@@ -37,15 +38,20 @@ function View({ route }: { readonly route: Route }) {
 /**
  * The app shell (SPEC → Shell): grid `256px | 1fr`, full height; the sidebar on
  * the left, the current view in the main area, the toast and the modals on top.
+ * D41: a hidden sidebar slides out, its column narrows to a slim rail, the reveal
+ * handle (after the main area, so the prototype's children keep their places),
+ * and the main area takes the freed width (`docs/panes.md`).
  */
 export function Shell() {
   const { route } = useRouter();
+  const { state } = usePanes();
   return (
-    <div className="sb-shell" data-testid="shell">
-      <Sidebar />
+    <div className="sb-shell" data-testid="shell" data-sidebar={state.sidebarHidden ? 'hidden' : undefined}>
+      <Sidebar hidden={state.sidebarHidden} />
       <main className="sb-main" data-testid="main">
         <View route={route} />
       </main>
+      {state.sidebarHidden ? <PaneHandle pane="sidebar" /> : null}
       <ToastHost />
       <ModalHost />
       <FirstRunGate />
