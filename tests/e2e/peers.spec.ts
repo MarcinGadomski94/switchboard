@@ -166,6 +166,15 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   // A stops: its session stays listed, tagged unreachable.
   await a.server.stop();
   await expect(row.getByTestId('machine-tag')).toHaveText(`${aName} · unreachable`, { timeout: 15_000 });
+  // Ruling D48-cache-persist: its last known state stays readable; nothing can be done until A is back.
+  await row.click();
+  await expect(page.getByTestId('session-offline-note')).toHaveText(`${aName} is offline — reconnect to continue`);
+  await expect(page.getByTestId('view-session').getByTestId('chat-text').first()).toBeVisible();
+  await expect(page.getByTestId('chat-input')).toBeDisabled();
+  await expect(page.getByTestId('chat-send')).toBeDisabled();
+  await expect(page.getByTestId('chat-blocked')).toHaveText(`${aName} is offline — reconnect to continue`);
+  await expect(page.getByTestId('session-pause')).toBeDisabled();
+  await expect(page.getByTestId('session-close')).toBeDisabled();
 });
 
 test('P3: the New-session form starts a session on a peer: its folders and models, then the remote session opens', async ({ browser }) => {
@@ -288,4 +297,22 @@ test('P4: hook into a terminal session on the peer from Settings → Machines; c
   await page.getByTestId('permission-deny-message').fill('Keep dist, it is the release.');
   await page.getByTestId('inbox-action').filter({ hasText: 'Deny' }).click();
   expect((await asked).body).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Keep dist, it is the release.' } } });
+
+  // Ruling D48-hooked-subagents: the session's subagent (its own transcript + meta) shows with its chat.
+  const subDir = path.join(path.dirname(transcript), id, 'subagents');
+  await mkdir(subDir, { recursive: true });
+  await writeFile(path.join(subDir, 'agent-a015af7abcb52ccc2.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Find the parser tests', toolUseId: 'toolu_agent_e2e' }));
+  const brief: Record<string, unknown> = { ...terminalUserLine({ sessionId: id, cwd, content: 'List the parser tests.', parentUuid: null, timestamp: new Date().toISOString() }), isSidechain: true };
+  const found: Record<string, unknown> = { ...assistantTextLine({ sessionId: id, cwd, text: 'parser.test.ts and lexer.test.ts.', parentUuid: brief['uuid'] as string, timestamp: new Date().toISOString() }), isSidechain: true };
+  await writeFile(path.join(subDir, 'agent-a015af7abcb52ccc2.jsonl'), `${JSON.stringify(brief)}\n${JSON.stringify(found)}\n`);
+  await hookCall(a, 'event', { ...base, hook_event_name: 'Stop' });
+  const sessionUrl = new URL(page.url());
+  const hookedId = decodeURIComponent((await b.call('GET', '/api/sessions')).body.find((entry: { hooked?: boolean }) => entry.hooked).id as string);
+  const agent = await waitFor('the subagent on B', async () =>
+    (((await b.call('GET', `/api/sessions/${encodeURIComponent(hookedId)}`)).body as { agents: Array<{ id: string; kind: string }> }).agents.find((entry) => entry.kind === 'subagent') ?? null),
+  );
+  await page.goto(`${sessionUrl.origin}/sessions/${encodeURIComponent(hookedId)}/agents/${encodeURIComponent(agent.id)}`);
+  await expect(page.getByTestId('subagent-bar').getByTestId('subagent-title')).toHaveText('Explore: Find the parser tests');
+  await expect(page.getByTestId('subagent-chat')).toContainText('List the parser tests.');
+  await expect(page.getByTestId('subagent-chat')).toContainText('parser.test.ts and lexer.test.ts.');
 });

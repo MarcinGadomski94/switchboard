@@ -12,6 +12,7 @@ import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
 import { SubagentChatView, isEditing } from './SubagentChat.tsx';
 import { OVERLAY_SELECTOR, mainChatPlace, rememberMainChat } from './subagent-chat.ts';
+import { offlineReason } from '../../../core/peers.ts';
 import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPING_LABEL, withdrawnDraft } from '../../../core/stop-turn.ts';
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
@@ -137,6 +138,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
   };
 
+  // D48 ruling D48-cache-persist: an unreachable machine's session is readable (its last known state), nothing more.
+  const blocked = offlineReason(session?.machine);
   const answer = async (batchId: string, body: AnswerBatch): Promise<void> => {
     setAnswering({ batchId, busy: true, error: null });
     stick.current = true;
@@ -154,16 +157,26 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <div className="sb-chat" data-testid="session-chat" data-session-id={sessionId} ref={scroller} onScroll={onScroll}>
         {placeholder ? <ChatSkeleton /> : null}
         {items.map((item) => (
-          <ChatItemView key={item.key} sessionId={sessionId} item={item} answering={answering} onAnswer={answer} />
+          <ChatItemView
+            key={item.key}
+            sessionId={sessionId}
+            item={item}
+            answering={answering}
+            onAnswer={answer}
+            // D48 ruling D48-cache-persist: an unreachable machine's waiting questions are shown, not answerable.
+            {...(blocked ? { readOnlyNote: () => blocked } : {})}
+          />
         ))}
       </div>
       <ChatActivityLine activity={activity} />
       <Composer
         sessionId={sessionId}
+        blocked={blocked}
         // D50: while a turn runs, Send becomes ■ Stop (and Esc stops it).
-        stoppable={session !== null && canStop({ live: session.live, status: session.status, activity, hooked: session.hooked === true })}
+        stoppable={session !== null && blocked === null && canStop({ live: session.live, status: session.status, activity, hooked: session.hooked === true })}
         // D50 ruling: no turn, but background tasks: "Stop background tasks" beside Send (button + confirmation only).
-        background={session ? stoppableBackground({ live: session.live, status: session.status, activity, hooked: session.hooked === true }) : []}
+        // D48 ruling D48-cache-persist: none for an offline peer's session (nothing can reach it).
+        background={session && blocked === null ? stoppableBackground({ live: session.live, status: session.status, activity, hooked: session.hooked === true }) : []}
         // D49: the context bar above the quick replies (none for a session without meter data: the demo seed).
         context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
@@ -221,6 +234,7 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
  */
 function Composer({
   sessionId,
+  blocked,
   stoppable: turnRuns,
   background,
   context,
@@ -230,6 +244,8 @@ function Composer({
 }: {
   readonly sessionId: string;
   readonly stoppable: boolean;
+  /** D48 ruling D48-cache-persist: why nothing can be sent now (the machine is offline); `null` = send as usual. */
+  readonly blocked: string | null;
   readonly background: readonly BackgroundTask[];
   readonly context: SessionContext | null;
   readonly placeholder: string;
@@ -349,7 +365,7 @@ function Composer({
 
   const send = async (): Promise<void> => {
     const text = draftToSend(draft);
-    if (text === null || sending) return;
+    if (text === null || sending || blocked !== null) return;
     const sent = draft;
     setStopped(false);
     setSending(true);
@@ -384,6 +400,7 @@ function Composer({
             type="button"
             className="sb-button sb-chat-quick-reply"
             data-testid="chat-quick-reply"
+            disabled={blocked !== null}
             onClick={() => {
               setDraft(reply.text);
               setError(null);
@@ -402,7 +419,8 @@ function Composer({
           aria-label="Message"
           rows={1}
           value={draft}
-          placeholder={placeholder}
+          placeholder={blocked ?? placeholder}
+          disabled={blocked !== null}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
@@ -425,7 +443,8 @@ function Composer({
             type="button"
             className="sb-button sb-chat-send"
             data-testid="chat-send"
-            disabled={sending}
+            disabled={sending || blocked !== null}
+            title={blocked ?? undefined}
             aria-busy={sending}
             style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
             onClick={() => void send()}
@@ -434,6 +453,11 @@ function Composer({
           </button>
         )}
       </div>
+      {blocked ? (
+        <div className="sb-chat-error" data-testid="chat-blocked" role="note">
+          {blocked}
+        </div>
+      ) : null}
       {stopTimedOut ? (
         <div className="sb-chat-error" data-testid="chat-stop-timeout" role="alert">
           {STOP_TIMEOUT_NOTE}{' '}

@@ -310,4 +310,4 @@ export function effortPickBody(model: NonNullable<Session['model']>, value: stri
  * terminal sessions*): what works from here, and what stays in the terminal.
  */
 export const HOOKED_NOTE =
-  'Hooked terminal session: your messages go in when its turn ends; interrupt, / commands, model changes and pause stay in the terminal (hooks cannot do them).';
+  'Hooked terminal session: your messages reach it at its next step, or wake it when idle; interrupt, / commands, model changes and pause stay in the terminal (hooks cannot do them).';

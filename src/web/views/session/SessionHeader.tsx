@@ -7,6 +7,7 @@ import { useCloseSession } from '../../components/CloseSession.tsx';
 import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../../components/PhoneGlyph.tsx';
 import { MachineTag } from '../../components/MachineTag.tsx';
+import { offlineReason } from '../../../core/peers.ts';
 import { Link, type SessionTab, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
@@ -110,6 +111,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
 
   // D48 P4: a hooked terminal session: what hooks cannot do is not offered (the note says where it stays).
   const hooked = session?.hooked === true;
+  // D48 ruling D48-cache-persist: an unreachable machine's session shows its last known state; every action waits for the reconnection.
+  const blocked = offlineReason(session?.machine);
   const pause = session && !hooked ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
   const remote = session && !hooked ? remoteToggle(session) : null;
@@ -157,13 +160,14 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
         <div className="sb-sv-actions">
-          {session && !hooked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
+          {session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
           <button
             type="button"
             className="sb-button sb-sv-action"
             data-testid="session-close"
             data-action={closed ? 'reopen' : 'close'}
-            disabled={!session || busy !== null || closer.busyId !== null}
+            disabled={!session || blocked !== null || busy !== null || closer.busyId !== null}
+            title={blocked ?? undefined}
             aria-busy={busy === 'reopen' || closer.busyId === sessionId || undefined}
             onClick={() => {
               if (!session) return;
@@ -183,7 +187,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
                 data-testid="session-remote-toggle"
                 data-state={remote.on ? 'on' : 'off'}
                 data-reason={remote.reason ?? undefined}
-                disabled={remote.disabled || busy !== null}
+                disabled={remote.disabled || blocked !== null || busy !== null}
                 aria-busy={busy === 'remote' || undefined}
                 title={remote.title}
                 onClick={() => void toggleRemote()}
@@ -212,9 +216,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             className="sb-button sb-sv-action"
             data-testid="session-pause"
             data-action={pause?.action}
-            disabled={!session || pause?.disabled || busy !== null}
+            disabled={!session || pause?.disabled || blocked !== null || busy !== null}
             aria-busy={busy === 'pause' || busy === 'resume' || undefined}
-            title={pause?.disabled ? 'Attach here first: a terminal owns the session' : undefined}
+            title={blocked ?? (pause?.disabled ? 'Attach here first: a terminal owns the session' : undefined)}
             onClick={() =>
               pause && void run(pause.action, () => (pause.action === 'pause' ? api.pauseSession(sessionId) : api.resumeSession(sessionId)))
             }
@@ -238,6 +242,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           )}
         </div>
       </div>
+      {blocked ? (
+        <div className="sb-sv-remote-copy" data-testid="session-offline-note">
+          {blocked}
+        </div>
+      ) : null}
       {hooked ? (
         <div className="sb-sv-remote-copy" data-testid="session-hooked-note">
           {HOOKED_NOTE}

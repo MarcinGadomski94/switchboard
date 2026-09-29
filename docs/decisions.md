@@ -399,6 +399,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **P5 (the developer):** a live test on the Windows PC, from the checklist in `docs/peers.md` → *Windows setup and live test*.
   - Details: `docs/peers.md`; choices where the spec is silent: `.loop/questions.md` → *D48 · Switchboard peers*.
 
+## Rulings on D48 (added 2026-09-29)
+- **Mid-turn delivery (D48-midturn-policy):** "Deliver mid-turn." A message to a hooked terminal session goes out as soon as possible, also while a turn runs (the CLI folds it in at the next tool boundary, VERIFIED D48-midturn), instead of waiting for the turn to end. Exactly once and the rate limit stay (one wake-up in flight at a time; at most 3 a minute). The bubble's D44 clock clears when the transcript shows the message taken up (the `queued_command` attachment / the absorbed line).
+- **Hooked subagents (D48-hooked-subagents):** "Import them too." A hooked session's subagents (plain Agent / Task subagents, background ones included, from `<session>/subagents/agent-*.jsonl` + `.meta.json`) appear in its agent overview and cards, and their chats open, as for local sessions. Workflow agents are D51's; a clear seam is left for them.
+- **Offline peers (D48-cache-persist):** "Keep the snapshot but block interaction until reconnection." Each peer's last known open sessions (and the detail the sidebar and the view need) are persisted, so after a restart of this Switchboard an unreachable peer's sessions stay listed, marked unreachable, readable on the last snapshot, but every interaction is blocked (composer, Stop, pause, answers, Inbox actions disabled with "<machine> is offline — reconnect to continue"; the server refuses with 502 `peer-unreachable` anyway). On reconnection the snapshot is replaced by live data. Offline Inbox items stay hidden as built, unless showing them read-only is clearer (ours to record).
+- Details: `docs/peers.md` → *Replies (the mailbox)*, *Following a session*, *Remote sessions* → *Offline*; `.loop/questions.md` → *D48 · Switchboard peers*.
+
 ## Context window meter (added 2026-09-29)
 - **D49 A context window meter above the quick replies.** Developer request, 2026-09-29: "An embedded progress bar above quick replies to see how much of the context window for the current session is filled in. It should detect context compression and then reset accordingly."
   - **Placement (ruling):** a thin bar directly above the quick-replies row of the session composer (main chat). Subagent chats have no composer, so they show no bar.
