@@ -292,6 +292,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - `NewSession` gains optional `model` and `effort`, validated like D31's route (additive).
   - **Built after D38**, alongside D40.
 
+## Every background task counts (added 2026-09-29)
+- **D43 Background workflows, and every other background task the CLI reports, show the session as working (extends D30).**
+  - **Why:** a session that launched a background **Workflow** ("Workflow launched in background. Task ID: w…", a read-only audit, seen live 2026-09-29) showed as idle, because D30 only knew background `Bash`, `Agent`, `Monitor` and `ScheduleWakeup`.
+  - **Tracking:**
+    - A `Workflow` tool call whose result confirms a background launch is a pending task of kind `workflow`, with its summary.
+    - Every `system/task_started` the CLI streams starts a pending task too, whatever its type, unless the tool call already registered it (matched by task id or `tool_use_id`). `system/task_notification` and a terminal `system/task_updated` end it.
+    - Unknown task types are kept, as kind `task` with the CLI's description.
+  - **Display:** "⏳ Running a workflow: <summary>", or "⏳ Waiting for a background task: <description>" for other kinds, next to D30's lines. Everything else is as D30 has it.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
