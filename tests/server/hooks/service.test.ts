@@ -1,5 +1,4 @@
-import { mkdir } from 'node:fs/promises';
-import { appendFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -175,6 +174,37 @@ describe('D48 P4 hooking a terminal session', () => {
   });
 });
 
+describe('D48 P4 hooked subagents (ruling D48-hooked-subagents)', () => {
+  it('imports each plain subagent (agent-*.jsonl + .meta.json) as an agent with its chat; done once its file ends its turn; workflow files are left to D51', async () => {
+    const r = await setup();
+    const session = await hookIn(r);
+    const dir = path.join(path.dirname(r.transcript), CS, 'subagents');
+    await mkdir(path.join(dir, 'workflows', 'run-1'), { recursive: true });
+    await writeFile(path.join(dir, 'agent-a015af7abcb52ccc2.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Find the flaky test', toolUseId: 'toolu_agent_1', requestShape: 'background' }));
+    const prompt: Record<string, unknown> = { ...terminalUserLine({ sessionId: CS, cwd: r.cwd, content: 'Look for the flaky test.', parentUuid: null, timestamp: '2026-09-29T10:00:10.000Z' }), isSidechain: true, agentId: 'a015af7abcb52ccc2' };
+    const working: Record<string, unknown> = { ...assistantTextLine({ sessionId: CS, cwd: r.cwd, text: 'Searching the specs.', parentUuid: prompt.uuid as string, timestamp: '2026-09-29T10:00:12.000Z' }), isSidechain: true };
+    (working['message'] as Record<string, unknown>)['stop_reason'] = 'tool_use';
+    await writeFile(path.join(dir, 'agent-a015af7abcb52ccc2.jsonl'), ndjson([prompt, working]));
+    // A workflow agent's file (D51's): not read here.
+    await writeFile(path.join(dir, 'workflows', 'run-1', 'agent-wf.jsonl'), ndjson([prompt]));
+    await hookCall(r, 'event', { hook_event_name: 'PostToolUse', tool_name: 'Agent', tool_input: {} });
+    const detail = await until('the subagent', async () => {
+      const d = (await api(r, 'GET', `/api/sessions/${session.id}`)).json() as SessionDetail;
+      return d.agents.some((agent) => agent.kind === 'subagent') ? d : null;
+    });
+    const agent = detail.agents.find((entry) => entry.kind === 'subagent');
+    expect(agent).toMatchObject({ name: 'Explore', description: 'Find the flaky test', toolUseId: 'toolu_agent_1', status: 'run' });
+    expect(detail.agents.filter((entry) => entry.kind === 'subagent')).toHaveLength(1);
+    const own = detail.events.filter((event) => event.agentId === agent?.id).map((event) => event.payload as { type: string; text: string });
+    expect(own).toEqual([expect.objectContaining({ type: 'agent-prompt', text: 'Look for the flaky test.' }), expect.objectContaining({ type: 'assistant', text: 'Searching the specs.' })]);
+    // Its last message ends its turn: done.
+    const done: Record<string, unknown> = { ...assistantTextLine({ sessionId: CS, cwd: r.cwd, text: 'It is timeline.spec.', parentUuid: working.uuid as string, timestamp: '2026-09-29T10:00:20.000Z' }), isSidechain: true };
+    await appendFile(path.join(dir, 'agent-a015af7abcb52ccc2.jsonl'), ndjson([done]));
+    await hookCall(r, 'event', { hook_event_name: 'Stop' });
+    await until('done', async () => ((await api(r, 'GET', `/api/sessions/${session.id}`)).json() as SessionDetail).agents.find((entry) => entry.kind === 'subagent')?.status === 'done');
+  });
+});
+
 describe('D48 P4 messages: exactly once, one wake-up per turn, rate-limited', () => {
   it('delivers a message once to an idle waiter; re-armed waiters after every turn get nothing (the spike\'s runaway)', async () => {
     const r = await setup();
@@ -226,7 +256,7 @@ describe('D48 P4 messages: exactly once, one wake-up per turn, rate-limited', ()
     expect(r.hooks.waiterCount).toBe(0);
   });
 
-  it('holds messages while a turn runs; one waiter per session (a newer one supersedes); several queued messages go out together', async () => {
+  it('delivers while a turn runs (ruling D48-midturn-policy); one wake-up in flight; one waiter per session (a newer one supersedes); several queued messages go out together', async () => {
     const r = await setup();
     const session = await hookIn(r);
     const first = hookCall(r, 'waiter', { hook_event_name: 'SessionStart' });
@@ -234,22 +264,25 @@ describe('D48 P4 messages: exactly once, one wake-up per turn, rate-limited', ()
     // A newer waiter supersedes the older one (answered with no message).
     const older = hookCall(r, 'waiter', { hook_event_name: 'SessionStart' });
     expect((await first).statusCode).toBe(204);
+    // Mid-turn: delivered at once (the CLI folds it in at the next tool boundary).
     await api(r, 'POST', `/api/sessions/${session.id}/messages`, { text: 'First.' });
+    expect((await older).json()).toEqual({ message: 'First.' });
+    // The next ones wait while the first is in flight: its fold (UserPromptSubmit), then the turn's end.
     await api(r, 'POST', `/api/sessions/${session.id}/messages`, { text: 'Second.' });
-    // Held while the turn runs.
-    expect(await settles(older, 200)).toBe(false);
-    await hookCall(r, 'event', { hook_event_name: 'Stop' });
-    const answer = await older;
-    expect(answer.statusCode).toBe(200);
-    expect(answer.json()).toEqual({ message: 'First.\n\nSecond.' });
-    // The Stop's own waiter comes next; a message sent now waits for the woken turn to end.
-    const next = hookCall(r, 'waiter', { hook_event_name: 'Stop' });
     await api(r, 'POST', `/api/sessions/${session.id}/messages`, { text: 'Third.' });
-    expect(await settles(next, 200)).toBe(false);
     await hookCall(r, 'event', { hook_event_name: 'UserPromptSubmit' });
-    expect(await settles(next, 100)).toBe(false);
     await hookCall(r, 'event', { hook_event_name: 'Stop' });
-    expect((await next).json()).toEqual({ message: 'Third.' });
+    const next = hookCall(r, 'waiter', { hook_event_name: 'Stop' });
+    expect((await next).json()).toEqual({ message: 'Second.\n\nThird.' });
+    // A turn that ends before the fold: the message starts the next turn, and the one after waits for that turn.
+    const again = hookCall(r, 'waiter', { hook_event_name: 'Stop' });
+    await hookCall(r, 'event', { hook_event_name: 'Stop' });
+    await api(r, 'POST', `/api/sessions/${session.id}/messages`, { text: 'Fourth.' });
+    expect(await settles(again, 200)).toBe(false);
+    await hookCall(r, 'event', { hook_event_name: 'UserPromptSubmit' });
+    expect(await settles(again, 100)).toBe(false);
+    await hookCall(r, 'event', { hook_event_name: 'Stop' });
+    expect((await again).json()).toEqual({ message: 'Fourth.' });
   });
 
   it('at most 3 wake-ups a minute: a 4th message waits for the window', async () => {

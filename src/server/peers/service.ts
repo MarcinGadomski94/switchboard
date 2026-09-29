@@ -169,6 +169,8 @@ export class PeerService implements PeerHandlers {
   #started = false;
   #closed = false;
   #self: { id: string; name: string } | null = null;
+  /** The session list last stored per machine (so an unchanged list is not written again). */
+  readonly #savedLists = new Map<string, string>();
   /** `true` while a peer's event is being published on the local bus (listeners run synchronously): never sent on to a peer. */
   #republishing = false;
 
@@ -197,6 +199,12 @@ export class PeerService implements PeerHandlers {
     for (const record of await this.#store.machines.list()) {
       this.#records.set(record.id, record);
       this.#connect(record.id);
+      // D48 ruling D48-cache-persist: the last known sessions stay listed (unreachable) until the machine is reached.
+      const snapshot = await this.#store.peerSnapshots.get(record.id, 'sessions', '');
+      if (Array.isArray(snapshot)) {
+        this.#connections.get(record.id)?.seed(snapshot as Session[]);
+        this.#savedLists.set(record.id, JSON.stringify(snapshot));
+      }
     }
     await this.#applyListener();
   }
@@ -424,8 +432,10 @@ export class PeerService implements PeerHandlers {
     const ref = this.#ref(id);
     await this.#connections.get(id)?.close();
     this.#connections.delete(id);
+    await this.#store.peerSnapshots.deleteMachine(id);
     await this.#store.machines.delete(id);
     this.#records.delete(id);
+    this.#savedLists.delete(id);
     for (const stream of [...this.#inbound]) if (stream.machineId === id) stream.close();
     if (ref) for (const session of sessions) this.#publishFromPeer('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
     await this.#publishInboxCount();
@@ -446,7 +456,9 @@ export class PeerService implements PeerHandlers {
       ownAddress: () => this.#listening,
       onEvent: (name, payload) => this.#onPeerEvent(id, name, payload),
       onState: (state) => this.#onPeerState(id, state),
-      onCache: () => undefined,
+      onCache: () => {
+        void this.#saveSessions(id);
+      },
       onSeen: () => {
         void this.#touch(id);
       },
@@ -455,6 +467,22 @@ export class PeerService implements PeerHandlers {
     });
     this.#connections.set(id, connection);
     if (this.#started) connection.start();
+  }
+
+  /** D48 ruling D48-cache-persist: stores the machine's open sessions as last known (and drops the snapshots of the others). */
+  async #saveSessions(id: string): Promise<void> {
+    const connection = this.#connections.get(id);
+    if (!connection || !this.#records.has(id) || this.#closed) return;
+    const sessions = connection.sessions;
+    const text = JSON.stringify(sessions);
+    if (this.#savedLists.get(id) === text) return;
+    this.#savedLists.set(id, text);
+    try {
+      await this.#store.peerSnapshots.put(id, 'sessions', '', sessions);
+      await this.#store.peerSnapshots.prune(id, sessions.map((session) => session.id));
+    } catch (error) {
+      this.#onError(error);
+    }
   }
 
   async #touch(id: string): Promise<void> {
@@ -539,18 +567,31 @@ export class PeerService implements PeerHandlers {
     const ref = this.#ref(machineId);
     if (!connection || !ref) return { status: 404, body: { error: 'not-found', message: `no paired machine ${machineId}` } };
     const long = (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/'))) || path.endsWith('/hook');
+    const kind = peerAnswerKind(method, path);
+    // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
+    const snapshot = snapshotOf(method, path, kind);
+    const offline = async (reason: string): Promise<{ readonly status: number; readonly body: unknown }> => {
+      if (snapshot) {
+        const stored = await this.#store.peerSnapshots.get(machineId, snapshot.kind, snapshot.key);
+        if (stored !== undefined) return { status: 200, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, stored) };
+      }
+      return { status: 502, body: { error: 'peer-unreachable', message: offlineMessage(ref.name), reason } };
+    };
+    // Nothing is sent to a machine that is not connected: reads come from the snapshot, everything else is refused at once.
+    if (connection.state !== 'online') return offline(connection.lastError ?? connection.state);
     let answer: { status: number; body: unknown };
     try {
       answer = await connection.request(method, `/peer/v1${path}`, body ?? undefined, { timeoutMs: long ? PEER_LONG_TIMEOUT_MS : PEER_FORWARD_TIMEOUT_MS });
     } catch (error) {
-      if (error instanceof PeerUnreachableError) return { status: 502, body: { error: 'peer-unreachable', message: `${ref.name}: ${error.message}` } };
+      if (error instanceof PeerUnreachableError) return offline(error.message);
       throw error;
     }
+    if (snapshot && answer.status === 200) await this.#store.peerSnapshots.put(machineId, snapshot.kind, snapshot.key, answer.body).catch((error: unknown) => this.#onError(error));
     if (answer.status === 401) {
       connection.kick();
       return { status: 502, body: { error: 'peer-auth-failed', message: `${ref.name} refused this pairing (revoked there?): pair again` } };
     }
-    if (answer.status >= 200 && answer.status < 300) return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, peerAnswerKind(method, path), answer.body) };
+    if (answer.status >= 200 && answer.status < 300) return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     return answer;
   }
 
@@ -600,6 +641,8 @@ export class PeerService implements PeerHandlers {
     const record = await this.#store.machines.update(machine.id, patch);
     if (record) this.#records.set(record.id, record);
     if (patch.address) this.#connect(machine.id, true);
+    // The machine just reached us: reach back now instead of waiting out the reconnect backoff (an attempt in progress goes on).
+    else if (this.#connections.get(machine.id)?.state !== 'online') this.#connections.get(machine.id)?.wake();
     const self = await this.self();
     return { id: self.id, name: self.name, version: this.#version };
   }
@@ -699,5 +742,24 @@ function pairingRefusalText(reason: string): string {
       return 'too many wrong codes: make a new one on the other machine';
     default:
       return 'the code is wrong';
+  }
+}
+
+/** D48 ruling D48-cache-persist: what the UI says (and the 502's message) while a machine cannot be reached. */
+export function offlineMessage(name: string): string {
+  return `${name} is offline — reconnect to continue`;
+}
+
+/** The snapshot a forwarded read is kept as: a session's detail, or its whole event list (no `since`); `null` for anything else. */
+function snapshotOf(method: string, path: string, kind: ReturnType<typeof peerAnswerKind>): { readonly kind: 'detail' | 'events'; readonly key: string } | null {
+  if (method.toUpperCase() !== 'GET' || (kind !== 'detail' && kind !== 'events')) return null;
+  const [pathname, query] = path.split('?') as [string, string | undefined];
+  if (kind === 'events' && query && new URLSearchParams(query).has('since')) return null;
+  const segment = pathname.split('/')[3];
+  if (!segment) return null;
+  try {
+    return { kind, key: decodeURIComponent(segment) };
+  } catch {
+    return null;
   }
 }

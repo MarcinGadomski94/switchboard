@@ -5,7 +5,7 @@ import type { HubEventName, InboxItem, Session, SessionDetail } from '../../../s
 import { parseRemoteId, remoteId } from '../../../src/core/peers.ts';
 import { readSse } from '../../../src/server/peers/sse.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
-import { type PeerNode, pairedNodes, waitFor } from '../../helpers/peers.ts';
+import { type PeerNode, machineOn, pairedNodes, startPeerNode, waitFor } from '../../helpers/peers.ts';
 
 /**
  * D48 P2 / P3 with two real Switchboard processes (fake-claude sessions): B sees
@@ -154,6 +154,52 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
     expect(listed.machine?.state).toBe('offline');
     const detail = await b.call('GET', `/api/sessions/${encodeURIComponent(id)}`);
     expect(detail).toMatchObject({ status: 502, body: { error: 'peer-unreachable' } });
+  });
+});
+
+describe('D48 ruling D48-cache-persist: the last known state survives a restart; nothing can be done until the peer is back', () => {
+  it('keeps an unreachable peer\'s sessions listed and readable after this service restarts, refuses every action, and goes live again on reconnection', async () => {
+    const started = await world();
+    let { a, b } = started;
+    const { aId } = started;
+    const local = await startOn(a, 'kept-offline', 'Say OK.');
+    const id = remoteId(aId, local.id);
+    const path_ = `/api/sessions/${encodeURIComponent(id)}`;
+    await waitFor('the turn done on A', async () => ['idle', 'done'].includes(((await a.call('GET', `/api/sessions/${local.id}`)).body as SessionDetail).status));
+    // B opens it (the detail and the events become the snapshot).
+    await waitFor('listed on B', async () => ((await b.call('GET', '/api/sessions')).body as Session[]).some((session) => session.id === id));
+    const live = (await b.call('GET', path_)).body as SessionDetail;
+    expect(live.events.length).toBeGreaterThan(0);
+    expect((await b.call('GET', `${path_}/events`)).status).toBe(200);
+
+    // A goes away, then B restarts: A's session is still listed (offline) and readable.
+    await a.server.stop();
+    await b.server.stop();
+    nodes = nodes.filter((node) => node !== a && node !== b);
+    b = await startPeerNode(tmp, 'b', { repo: true });
+    nodes.push(b);
+    const listed = ((await b.call('GET', '/api/sessions')).body as Session[]).find((session) => session.id === id);
+    expect(listed?.machine).toMatchObject({ id: aId, state: expect.not.stringMatching(/^online$/) });
+    const offline = await b.call('GET', path_);
+    expect(offline.status).toBe(200);
+    expect((offline.body as SessionDetail).machine?.state).not.toBe('online');
+    expect((offline.body as SessionDetail).events.map((event) => event.id)).toEqual(live.events.map((event) => event.id));
+    expect((await b.call('GET', `${path_}/events`)).status).toBe(200);
+    // Every action is refused at once, with the reason.
+    for (const [method, route, body] of [['POST', '/messages', { text: 'hello' }], ['POST', '/pause', undefined], ['PUT', '/title', { title: 'x' }]] as const) {
+      const refused = await b.call(method, `${path_}${route}`, body);
+      expect(refused.status, route).toBe(502);
+      expect(refused.body).toMatchObject({ error: 'peer-unreachable', message: expect.stringMatching(/is offline — reconnect to continue$/) });
+    }
+    expect((await b.call('GET', `${path_}/diff`)).status).toBe(502);
+
+    // A comes back: B reconnects and serves live data again.
+    a = await startPeerNode(tmp, 'a', { repo: true });
+    nodes.push(a);
+    await waitFor('A online again on B', async () => (await machineOn(b, aId))?.state === 'online', 60_000);
+    const back = await b.call('GET', path_);
+    expect((back.body as SessionDetail).machine?.state).toBe('online');
+    expect((await b.call('PUT', `${path_}/title`, { title: 'Back online' })).status).toBe(200);
   });
 });
 

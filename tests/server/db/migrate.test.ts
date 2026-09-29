@@ -80,6 +80,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
   pending_messages: ['session_id', 'kind', 'text', 'delivered_at'],
   // D48: paired machines.
   machines: ['id', 'name', 'address', 'outbound_token', 'inbound_token_hash', 'paired_at', 'last_seen_at'],
+  // D48 ruling D48-cache-persist.
+  peer_snapshots: ['machine_id', 'kind', 'key', 'body', 'updated_at'],
 };
 
 describe('shipped migrations', () => {

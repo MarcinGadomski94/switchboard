@@ -10,6 +10,7 @@ import { FolderRepository } from './repos/folders.ts';
 import { HistoryCacheRepository } from './repos/history-cache.ts';
 import { LoopRepository } from './repos/loops.ts';
 import { MachineRepository } from './repos/machines.ts';
+import { PeerSnapshotRepository } from './repos/peer-snapshots.ts';
 import { PendingMessageRepository } from './repos/pending-messages.ts';
 import { PermissionRepository } from './repos/permissions.ts';
 import { QuestionRepository } from './repos/questions.ts';
@@ -50,6 +51,8 @@ export interface Store {
   readonly folders: FolderRepository;
   /** Paired Switchboard machines (D48, `docs/peers.md`). */
   readonly machines: MachineRepository;
+  /** The paired machines' last known sessions (D48 ruling D48-cache-persist). */
+  readonly peerSnapshots: PeerSnapshotRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -107,6 +110,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     pendingMessages: new PendingMessageRepository(ctx),
     folders: new FolderRepository(ctx),
     machines: new MachineRepository(ctx),
+    peerSnapshots: new PeerSnapshotRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;
