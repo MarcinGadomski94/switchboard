@@ -164,3 +164,37 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   await a.server.stop();
   await expect(row.getByTestId('machine-tag')).toHaveText(`${aName} · unreachable`, { timeout: 15_000 });
 });
+
+test('P3: the New-session form starts a session on a peer: its folders and models, then the remote session opens', async ({ browser }) => {
+  const { a, b, aId, aName } = await paired();
+  const page = await pageOf(browser, b, '/');
+  await page.getByTestId('new-session').click();
+  const modal = page.getByTestId('modal-new-session');
+  const machine = modal.getByTestId('ns-machine');
+  await expect(machine).toBeVisible();
+  await expect(machine.locator('option')).toHaveText([/^This machine/, aName]);
+  // This machine first: its own repo folder.
+  await expect(modal.getByTestId('ns-folder').locator('option:checked')).toHaveText(/repo-b/);
+  await machine.selectOption(aId);
+  await expect(modal.getByTestId('ns-machine-note')).toBeVisible();
+  await expect(modal.getByTestId('ns-folder').locator('option:checked')).toHaveText(/repo-a/);
+  await expect(modal.getByTestId('ns-folder-browse')).toHaveCount(0);
+  await expect(modal.getByTestId('ns-remote')).toHaveCount(0);
+  await expect(modal.getByTestId('ns-resume')).toHaveCount(0);
+  await modal.getByTestId('ns-name').fill('Started from B');
+  await modal.getByTestId('ns-task').fill('Say OK.');
+  // In place (no worktree), so no ticket branch is needed.
+  const worktree = modal.getByTestId('ns-switch-worktrees');
+  await expect(worktree).toHaveAttribute('aria-checked', 'true');
+  await worktree.click();
+  await expect(worktree).toHaveAttribute('aria-checked', 'false');
+  const created = page.waitForResponse((r) => r.url().endsWith(`/api/machines/${aId}/api/sessions`) && r.request().method() === 'POST');
+  await modal.getByTestId('ns-start').click();
+  expect((await created).status()).toBe(201);
+  await expect(page).toHaveURL(new RegExp(`/sessions/r~${aId}~`));
+  await expect(page.getByTestId('session-machine')).toHaveText(aName);
+  await expect(page.getByTestId('session-name')).toHaveText('Started from B');
+  const onA = (await a.call('GET', '/api/sessions')).body as Array<{ title: string; folder: string }>;
+  expect(onA).toMatchObject([{ title: 'Started from B', folder: a.folderId }]);
+  expect(((await b.call('GET', '/api/sessions')).body as Array<{ machine: unknown }>).every((session) => session.machine !== null)).toBe(true);
+});

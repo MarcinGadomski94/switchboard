@@ -43,6 +43,14 @@ A paired machine's sessions show and work here as if they were local: the sideba
 - **Offline.** An unreachable machine's sessions stay listed (tagged unreachable; opening one shows the 502's reason in the header's error line); the machine keeps running them itself. After a restart of this service the cache is empty until the machine is reached again (ASSUMED D48-cache).
 - **Not proxied** (developer ruling; ASSUMED D48-not-proxied): the peer's settings, folder management, schedules, embedded tools, History, the global Artifacts / Solutions views, the terminal handoff (a peer's session header has no "Continue in terminal" / "Attach here": the terminal would be on the other machine), and teleport.
 
+## Starting a session on a peer (P3)
+
+The New-session form has a **Machine** row when at least one machine is paired (never for a scheduled run: schedules stay local): "This machine (<name>)" and every paired machine (an unreachable one disabled, with its state). With a peer chosen:
+- the **Folder** list, the chosen folder's solutions (the scan), the **Model** row (its reported models and its last choice, D42) and the **Branching** preflight (D40 / D47: run there, against its repos) all come from that machine, through `/api/machines/{id}/api/folders`, `…/models`, `…/solutions`, `…/branching/preflight`;
+- **Browse…**, "From a remote session" and "Resume a terminal conversation" are hidden (folder management, teleport and History are not proxied);
+- the name check uses that machine's open sessions;
+- **Start** posts to `/api/machines/{id}/api/sessions`; the answer is the new session with its remote id, and the view opens it. (`POST /api/sessions` with an additive `machine` field does the same; `machine` naming this machine, or empty, starts here.) The peer's own validation answers (422 fields, 409 refusals) are shown as for a local start.
+
 ## Tests
 
 Two real Switchboard processes on loopback test ports act as peers: `SWITCHBOARD_PEER_TEST_LOOPBACK=1` (tests only) lets the peer listener bind 127.0.0.1, and `tools/fake-tailscale` answers `tailscale ip -4` (a default of every test server, `FAKE_TAILSCALE_IP`, default `127.0.0.1`; `none` = no address). Helpers: `tests/helpers/peers.ts` (`pairedNodes`: two nodes with a git repo folder each, both listening, paired, online). Unit: `tests/core/peers.test.ts`, `tests/server/peers/units.test.ts`; two processes: `tests/server/peers/pairing.test.ts`, `tests/server/peers/proxy.test.ts` (P2 / P3: listing, detail, question batch and permission answered from B, events namespaced on B's `/hub`, no echo, pause, title, forbidden routes, the unreachable peer, starting on the peer); E2E: `tests/e2e/peers.spec.ts` (each machine's UI in its own browser context: the `sb_token` cookies of two ports on one host would overwrite each other).
