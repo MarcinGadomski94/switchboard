@@ -116,13 +116,20 @@ test('the footer shows Session, Week and the model in use, each with its bar, % 
     const track = usage.locator(`[data-meter="${meter}"] .sb-meter-track`);
     expect((await track.boundingBox())?.height).toBe(4);
   }
-  // D23 on the page's own clock: the Week reset is 74h12 ahead, so this is day 4 (57.14 % allowed) and 18 % is on pace;
-  // only the Week row has a pace (tests/e2e/week-pace.spec.ts drives the colors and the step on a fixed clock).
+  // D23 on the page's own clock: the Week reset is 74h12 ahead, so this is day 4 (57.14 % allowed) and 18 % is on pace
+  // (tests/e2e/week-pace.spec.ts drives the colors and the step on a fixed clock).
   const week = usage.locator('[data-meter="week"]');
   await expect(week).toHaveAttribute('data-pace', 'on');
   await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
   await expect(week.getByTestId('pace-marker')).toHaveCount(1);
-  await expect(usage.locator('[data-pace]')).toHaveCount(1);
+  // D46: the Session reset is 1h48 ahead, so about 192 of its 300 minutes have passed (63.67–64 % allowed) and 62 % is
+  // on pace (tests/e2e/session-pace.spec.ts drives the colors and the minute step). The model row has no pace.
+  const session = usage.locator('[data-meter="session"]');
+  await expect(session).toHaveAttribute('data-pace', 'on');
+  await expect(session).toHaveAttribute('title', /^On pace: 62% of (63\.67|64|64\.33)% until \d\d:\d\d$/);
+  await expect(session.getByTestId('pace-marker')).toHaveCount(1);
+  await expect(usage.locator('[data-pace]')).toHaveCount(2);
+  await expect(usage.locator('[data-meter="model"]')).not.toHaveAttribute('data-pace');
   // The three usage bars line up, and end where the RAM bar ends.
   const ends = await footer.locator('.sb-meter-track').evaluateAll((tracks) => tracks.map((t) => Math.round(t.getBoundingClientRect().right)));
   expect(new Set(ends).size).toBe(1);
