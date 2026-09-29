@@ -80,7 +80,7 @@ import {
 import { ScheduleSection } from './ScheduleSection.tsx';
 import { BranchingSection, useBranchingPreflight } from './BranchingSection.tsx';
 import { type BranchingForm, branchingBlocks, branchingFromPrefill, formParent, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
-import { type ScheduleDraft, canSaveSchedule, cronPreview, saveErrorText, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
+import { type ScheduleDraft, canSaveSchedule, cronPreview, deleteErrorText, saveErrorText, scheduleMachine, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import './new-session.css';
 
 /** `sessionUpdated` comes in bursts; the name check's session list reloads at most this often. */
@@ -182,17 +182,22 @@ export function NewSessionModal({
   onClose,
   prefill = null,
   schedule = null,
+  machine: initialMachine = null,
 }: {
   readonly onClose: () => void;
   readonly prefill?: NewSessionPrefill | null;
   readonly schedule?: ScheduleDraft | null;
+  /** D52: the machine the form starts on (a paired machine's id; `null` = this one). */
+  readonly machine?: string | null;
 }) {
   const { navigate } = useRouter();
   const scheduling = schedule !== null;
-  // D48 (P3, docs/peers.md): the machine the session starts on; `null` = this one. A schedule always runs here.
-  const machines = useApi(() => (scheduling ? Promise.resolve(null) : api.machines().catch(() => null)), [scheduling]);
-  const [machine, setMachine] = useState<string | null>(null);
-  const peer = scheduling ? null : machine;
+  // D48 (P3, docs/peers.md): the machine the session starts on; `null` = this one.
+  // D52: a schedule too (it is saved and runs there); a peer's schedule's Edit stays on its machine (its remote id names it).
+  const lockedMachine = scheduleMachine(schedule);
+  const machines = useApi(() => api.machines().catch(() => null), []);
+  const [machine, setMachine] = useState<string | null>(() => lockedMachine ?? initialMachine);
+  const peer = machine;
   const localFolders = useSavedFolders();
   // A peer's saved folders (its own ids), tagged with the machine so a switch never shows the last machine's list.
   const peerFolders = useApi(
@@ -287,7 +292,8 @@ export function NewSessionModal({
   const takenNames = (sessions.data ?? []).filter((session) => (session.machine?.id ?? null) === peer).map((session) => session.name);
   const scanned = scan ?? (scanError ? [] : null);
   const groups = chipGroups(scanned, form.solutions);
-  const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id).map((s) => s.name);
+  // D52: schedule names are unique per machine (a peer's schedules are listed too, with their machine).
+  const takenScheduleNames = (schedules.data ?? []).filter((s) => s.id !== schedule?.id && (s.machine?.id ?? null) === peer).map((s) => s.name);
   const preview = cronPreview(cron, new Date());
   const lines = scheduling
     ? scheduleSummaryLines(launch, workspaceRoot(scan), preview, takenScheduleNames, folder, modelOptions)
@@ -327,12 +333,34 @@ export function NewSessionModal({
     setBusy(true);
     setError(null);
     try {
-      await api.createSchedule(toScheduleInput(launch, cron, schedule?.id, folder));
+      // D52: a new schedule on a peer names it (`machine`); an Edit's remote id already does.
+      const input = toScheduleInput(launch, cron, schedule?.id, folder);
+      await api.createSchedule(peer && !schedule?.id ? { ...input, machine: peer } : input);
       onClose();
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
       setError(saveErrorText(apiError.status, apiError.body));
       schedules.reload();
+      setBusy(false);
+    }
+  };
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeSchedule = async (): Promise<void> => {
+    if (!schedule?.id) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteSchedule(schedule.id);
+      onClose();
+    } catch (caught) {
+      const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+      setError(deleteErrorText(apiError.status, apiError.body));
+      setConfirmDelete(false);
       setBusy(false);
     }
   };
@@ -417,7 +445,7 @@ export function NewSessionModal({
             )}
           </div>
 
-          {!scheduling && peerMachines.length > 0 ? (
+          {peerMachines.length > 0 || lockedMachine ? (
             <div className="sb-ns-section sb-ns-section--machine" data-testid="ns-section" data-section="machine">
               <div className="sb-ns-label">Machine</div>
               <div className="sb-ns-folder-row">
@@ -426,7 +454,8 @@ export function NewSessionModal({
                   data-testid="ns-machine"
                   aria-label="Machine"
                   value={peer ?? ''}
-                  disabled={busy}
+                  disabled={busy || lockedMachine !== null}
+                  title={lockedMachine !== null ? 'A schedule stays on the machine it was saved on' : undefined}
                   onChange={(event) => pickMachine(event.target.value === '' ? null : event.target.value)}
                 >
                   <option value="">{`This machine${machines.data ? ` (${machines.data.self.name})` : ''}`}</option>
@@ -438,7 +467,9 @@ export function NewSessionModal({
                 </select>
                 {peer ? (
                   <span className="sb-ns-folder-check" data-testid="ns-machine-note">
-                    Folders, models and the branching check come from that machine; the session runs there.
+                    {scheduling
+                      ? 'Folders and models come from that machine; the schedule is saved there and its runs start there.'
+                      : 'Folders, models and the branching check come from that machine; the session runs there.'}
                   </span>
                 ) : null}
               </div>
@@ -879,6 +910,19 @@ export function NewSessionModal({
             </div>
           ) : null}
           <div className="sb-ns-actions">
+            {scheduling && schedule.id ? (
+              // D52: Delete (two steps: the first click asks, the second deletes; on a peer the schedule is deleted there).
+              <button
+                type="button"
+                className="sb-button sb-ns-cancel sb-ns-delete"
+                data-testid="ns-delete-schedule"
+                data-confirm={confirmDelete ? 'true' : undefined}
+                disabled={busy}
+                onClick={() => void removeSchedule()}
+              >
+                {confirmDelete ? 'Delete it?' : 'Delete schedule'}
+              </button>
+            ) : null}
             <button type="button" className="sb-button sb-ns-cancel" data-testid="ns-cancel" onClick={onClose}>
               Cancel
             </button>

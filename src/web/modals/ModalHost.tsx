@@ -15,6 +15,12 @@ export interface ModalOptions {
   readonly prefill?: NewSessionPrefill | null;
   /** New session in schedule mode (M7.1, D8): "+ New scheduled run" (`{}`) or a schedule's Edit (`{ id, cron }`). */
   readonly schedule?: ScheduleDraft | null;
+  /**
+   * D52: the machine the form starts on (a paired machine's id; `null` = this one),
+   * e.g. "Open fix session" of a peer's failed run. A peer's schedule's Edit takes
+   * its machine from the schedule's remote id instead.
+   */
+  readonly machine?: string | null;
 }
 
 interface ModalValue {
@@ -23,6 +29,8 @@ interface ModalValue {
   readonly prefill: NewSessionPrefill | null;
   /** The Schedule section of the open New-session modal (`null` = a plain New session). */
   readonly schedule: ScheduleDraft | null;
+  /** D52: the machine the open New-session modal starts on (`null` = this one). */
+  readonly machine: string | null;
   readonly open: (name: ModalName, options?: ModalOptions) => void;
   readonly close: () => void;
 }
@@ -37,9 +45,11 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
   const [modal, setModal] = useState<ModalName | null>(null);
   const [prefill, setPrefill] = useState<NewSessionPrefill | null>(null);
   const [schedule, setSchedule] = useState<ScheduleDraft | null>(null);
+  const [machine, setMachine] = useState<string | null>(null);
   const open = useCallback((name: ModalName, options?: ModalOptions) => {
     setPrefill(name === 'new-session' ? (options?.prefill ?? null) : null);
     setSchedule(name === 'new-session' ? (options?.schedule ?? null) : null);
+    setMachine(name === 'new-session' ? (options?.machine ?? null) : null);
     setModal(name);
   }, []);
   const close = useCallback(() => setModal(null), []);
@@ -57,7 +67,7 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, open, close }), [modal, prefill, schedule, open, close]);
+  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, machine, open, close }), [modal, prefill, schedule, machine, open, close]);
   return <ModalContext.Provider value={value}>{children}</ModalContext.Provider>;
 }
 
@@ -70,8 +80,8 @@ export function useModals(): ModalValue {
 
 /** Renders the open modal over the shell (positioned against `.sb-shell`). */
 export function ModalHost() {
-  const { modal, prefill, schedule, close } = useModals();
-  if (modal === 'new-session') return <NewSessionModal onClose={close} prefill={prefill} schedule={schedule} />;
+  const { modal, prefill, schedule, machine, close } = useModals();
+  if (modal === 'new-session') return <NewSessionModal onClose={close} prefill={prefill} schedule={schedule} machine={machine} />;
   if (modal === 'setup-wizard') return <SetupWizard onClose={close} />;
   if (modal === 'palette') return <Palette onClose={close} />;
   return null;

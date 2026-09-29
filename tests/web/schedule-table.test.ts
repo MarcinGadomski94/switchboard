@@ -5,8 +5,10 @@ import { DEFAULT_FORM, type NewSessionForm } from '../../src/web/modals/new-sess
 import {
   canSaveSchedule,
   cronPreview,
+  deleteErrorText,
   formatRunTime,
   saveErrorText,
+  scheduleMachine,
   scheduleSummaryLines,
   toScheduleInput,
 } from '../../src/web/modals/schedule-form.ts';
@@ -155,5 +157,28 @@ describe('Schedule section of the New-session modal (D8)', () => {
     expect(saveErrorText(422, { errors: [{ field: 'cron', message: 'cron: bad' }, { field: 'template.task', message: 'no task' }] })).toBe('Not saved: cron: bad; no task');
     expect(saveErrorText(404, { error: 'not-found', message: 'no schedule x' })).toBe('Not saved: no schedule x');
     expect(saveErrorText(0, null)).toBe('Not saved: Switchboard is not reachable.');
+  });
+});
+
+describe('D52 · a peer\'s schedules', () => {
+  const PEER = { id: 'abcdefghijkl', name: 'pc-office', state: 'online' as const };
+
+  it('a peer\'s row carries its machine; offline, its actions are blocked with the D48 reason', () => {
+    const [own] = scheduleRows([schedule()], NOW);
+    expect(own).toMatchObject({ machine: null, blocked: null });
+    const [peer] = scheduleRows([schedule({ id: 'r~abcdefghijkl~x', machine: PEER })], NOW);
+    expect(peer).toMatchObject({ machine: PEER, blocked: null });
+    const [offline] = scheduleRows([schedule({ id: 'r~abcdefghijkl~x', machine: { ...PEER, state: 'offline' } })], NOW);
+    expect(offline?.blocked).toBe('pc-office is offline — reconnect to continue');
+  });
+
+  it('an Edit stays on the schedule\'s machine; Delete refusals read "Not deleted: …"', () => {
+    expect(scheduleMachine({ id: 'r~abcdefghijkl~x', cron: '0 2 * * *' })).toBe('abcdefghijkl');
+    expect(scheduleMachine({ id: 'local-uuid' })).toBeNull();
+    expect(scheduleMachine({})).toBeNull();
+    expect(scheduleMachine(null)).toBeNull();
+    expect(deleteErrorText(409, { error: 'running', message: 'a run of this schedule is still in progress' })).toBe('Not deleted: a run of this schedule is still in progress');
+    expect(deleteErrorText(0, null)).toBe('Not deleted: Switchboard is not reachable.');
+    expect(deleteErrorText(500, null)).toBe('Not deleted: HTTP 500');
   });
 });

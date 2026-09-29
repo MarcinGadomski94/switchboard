@@ -2,7 +2,7 @@ import { open, stat } from 'node:fs/promises';
 import type { Loop, TerminalLoop, TerminalSession } from '../../core/api.ts';
 import { deriveLoops, type LoopEventInput } from '../../core/derive/loops.ts';
 import { transcriptLoopEvents } from '../../core/derive/terminal-loops.ts';
-import type { SessionStatus } from '../../core/model.ts';
+import { terminalStatus } from '../../core/terminal-status.ts';
 import { parseTranscript } from '../../core/transcript-sync.ts';
 import { findTranscriptFile } from '../supervisor/attach.ts';
 import { findLoopProgress } from './progress.ts';
@@ -42,13 +42,6 @@ export interface TerminalLoopReaderOptions {
 interface Cached {
   readonly key: string;
   readonly events: LoopEventInput[];
-}
-
-/** A terminal's status words (`claude agents --json`) as a session status (the color of an open iteration). */
-export function terminalStatus(status: string | null): SessionStatus {
-  if (status === 'busy') return 'run';
-  if (status === 'waiting') return 'need';
-  return 'idle';
 }
 
 /** The D52 terminal-loop reader of this machine. */

@@ -6,6 +6,7 @@ import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
+import { MachineTag } from '../components/MachineTag.tsx';
 import { useModals } from '../modals/ModalHost.tsx';
 import { actionErrorText, scheduleRows, toneColor } from './schedule-table.ts';
 import './schedule-table.css';
@@ -14,6 +15,8 @@ import './schedule-table.css';
 const SESSIONS_RELOAD_MS = 1_000;
 /** The relative Next / Failed … ago texts are redrawn this often. */
 const CLOCK_MS = 30_000;
+/** D52: the list is read again this often (a paired machine's schedules change there without an event here). */
+const PEERS_RELOAD_MS = 15_000;
 
 /** The message of a failed `GET /api/schedules`. */
 function loadErrorText(error: ApiError): string {
@@ -71,6 +74,12 @@ export function ScheduleTable() {
     return () => window.clearInterval(timer);
   }, [schedules.data]);
 
+  // D52: a paired machine's schedules (saved, paused or deleted there; its state) follow within this period.
+  useEffect(() => {
+    const timer = window.setInterval(() => reload(), PEERS_RELOAD_MS);
+    return () => window.clearInterval(timer);
+  }, [reload]);
+
   const act = async (id: string, action: () => Promise<Schedule>): Promise<void> => {
     setBusy(id);
     setError(null);
@@ -104,13 +113,14 @@ export function ScheduleTable() {
         <span />
       </div>
       {rows.map((row) => (
-        <div key={row.id} className="sb-sch-row" data-testid="schedule-row" data-schedule={row.name}>
+        <div key={row.id} className="sb-sch-row" data-testid="schedule-row" data-schedule={row.name} data-machine={row.machine?.id}>
           <span className="sb-sch-dot" data-testid="schedule-dot" data-tone={row.dot} style={{ background: toneColor(row.dot) }} />
           <button
             type="button"
             className="sb-button sb-sch-names"
             data-testid="schedule-edit"
-            title="Edit schedule"
+            title={row.blocked ?? 'Edit schedule'}
+            disabled={row.blocked !== null}
             onClick={() => {
               const schedule = byId.get(row.id);
               if (schedule) edit(schedule);
@@ -118,7 +128,12 @@ export function ScheduleTable() {
           >
             <span className="sb-sch-name" data-testid="schedule-name">
               {row.name}
-              <FolderTag name={tagOf({ folder: byId.get(row.id)?.folder ?? null })} title={titleOf({ folder: byId.get(row.id)?.folder ?? null })} />
+              {/* D52: a peer's schedule names its machine (its folder ids are that machine's: no local folder tag). */}
+              {row.machine ? (
+                <MachineTag machine={row.machine} testId="schedule-machine" />
+              ) : (
+                <FolderTag name={tagOf({ folder: byId.get(row.id)?.folder ?? null })} title={titleOf({ folder: byId.get(row.id)?.folder ?? null })} />
+              )}
             </span>
             <span className="sb-sch-desc" data-testid="schedule-desc">
               {row.description}
@@ -145,7 +160,8 @@ export function ScheduleTable() {
               type="button"
               className="sb-button sb-sch-action"
               data-testid="schedule-run"
-              disabled={row.runDisabled || busy === row.id}
+              title={row.blocked ?? undefined}
+              disabled={row.runDisabled || busy === row.id || row.blocked !== null}
               onClick={() => void act(row.id, () => api.runSchedule(row.id))}
             >
               {row.runLabel}
@@ -154,7 +170,8 @@ export function ScheduleTable() {
               type="button"
               className="sb-button sb-sch-action"
               data-testid="schedule-pause"
-              disabled={busy === row.id}
+              title={row.blocked ?? undefined}
+              disabled={busy === row.id || row.blocked !== null}
               onClick={() => void act(row.id, () => (byId.get(row.id)?.paused ? api.resumeSchedule(row.id) : api.pauseSchedule(row.id)))}
             >
               {row.pauseLabel}

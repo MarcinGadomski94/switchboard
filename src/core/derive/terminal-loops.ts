@@ -79,3 +79,4 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
   }
   return out;
 }
+
