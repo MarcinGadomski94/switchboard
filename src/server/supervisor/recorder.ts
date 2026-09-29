@@ -36,6 +36,7 @@ import {
 } from '../../core/derive/event-kind.ts';
 import type { LiveStatusInput, TurnOutcome } from '../../core/derive/status.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
+import { writtenSolution } from '../../core/session-solutions.ts';
 import type { StreamMessage } from '../../core/stream-json.ts';
 import { readingFromRateLimit } from '../../core/usage.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -73,6 +74,12 @@ export interface RecorderOptions {
    * session stays idle); every later `init` opens one as usual.
    */
   readonly startupInit?: boolean;
+  /**
+   * D38: an agent of the session wrote a file into this solution (a successful
+   * Write / Edit / NotebookEdit; `writtenSolution`, the D21 derivation). The
+   * supervisor adds it to `Session.solutions` when it is missing. Awaited in order.
+   */
+  readonly onSolutionWritten?: (solution: string) => Promise<void>;
 }
 
 interface ToolEntry {
@@ -140,6 +147,7 @@ export class StreamRecorder {
   #lastTranscriptUuid: string | null;
   /** D25: the next `init` may be the startup one ({@link RecorderOptions.startupInit}). */
   #startupInit: boolean;
+  readonly #onSolutionWritten: ((solution: string) => Promise<void>) | undefined;
 
   constructor(options: RecorderOptions) {
     this.#store = options.store;
@@ -159,6 +167,7 @@ export class StreamRecorder {
     this.#cliVersion = options.session.cliVersion;
     this.#lastTranscriptUuid = options.session.lastTranscriptUuid;
     this.#startupInit = options.startupInit ?? false;
+    this.#onSolutionWritten = options.onSolutionWritten;
   }
 
   /** The inputs of the live status derivation. */
@@ -720,6 +729,9 @@ export class StreamRecorder {
       if (file) {
         await this.#fileArtifacts(path.resolve(place.cwd, file));
         await this.#placeAgent(entry.agentId, path.resolve(place.cwd, file));
+        // D38: the solution joins the session's solutions (fill-in from what its agents touch).
+        const solution = writtenSolution(place, path.resolve(place.cwd, file), this.#sessionName);
+        if (solution !== null && this.#onSolutionWritten) await this.#onSolutionWritten(solution);
       }
       return;
     }

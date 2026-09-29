@@ -5,6 +5,8 @@ import type { NewSession } from '../../src/core/api.ts';
 import {
   REPO_WORKTREE_NOTE_HEADER,
   SESSION_START_HEADER,
+  SOLUTIONS_NOT_CHOSEN,
+  agentWorktreesInstruction,
   asksMobileCoordination,
   firstTurnPayload,
   repoWorktreeNote,
@@ -90,6 +92,63 @@ describe('sessionStartBlock (M5.2)', () => {
       '  - microfrontends/web-front: /w/microfrontends/web-front-wt-demo (branch session/demo)',
       '  - mobile: /w/mobile-wt-demo (branch session/demo)',
     ]);
+  });
+});
+
+describe('sessionStartBlock · D38: solutions chosen by the agent', () => {
+  it('no solutions: "not chosen" with the instruction, no mobile coordination, edits in place without worktrees', () => {
+    expect(items(session({ solutions: [], coordination: 'sequential' }))).toEqual([
+      '- Work type: feature-building',
+      '- Mode: single-solution',
+      '- Solutions in scope: not chosen: determine them from the task and the router (AGENTS.md), name them in your one-line confirmation before you change anything, and ask if it is unclear',
+      '- Phase: UI-first',
+      '- Ultracode: off',
+      '- Worktrees: no worktrees · edits in place',
+    ]);
+    expect(SOLUTIONS_NOT_CHOSEN.startsWith('not chosen: ')).toBe(true);
+  });
+
+  it('no solutions + worktrees: the agent creates one per solution it changes, on the ticket branch, at <repo>-wt-<name>', () => {
+    const s = session({ name: 'free-talk', solutions: [], worktrees: true, branch: 'PROJ-12-free-talk', mode: 'orchestrator' });
+    const lines = sessionStartBlock({ session: s, folders: [], worktrees: [], agentBranch: 'PROJ-12-free-talk' }).split('\n').slice(SESSION_START_HEADER.length);
+    expect(lines).toEqual([
+      '- Work type: feature-building',
+      '- Mode: workspace orchestrator',
+      `- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`,
+      '- Phase: UI-first',
+      '- Ultracode: off',
+      "- Worktrees: for each solution you change, create a git worktree on branch PROJ-12-free-talk at <the solution repo's parent>/<repo>-wt-free-talk (git worktree add -b PROJ-12-free-talk <path>, from the repo's current HEAD) and make every change there, not in the main checkout",
+    ]);
+    // Without the service's branch, the session's own (the ticket branch).
+    expect(sessionStartBlock({ session: s, folders: [], worktrees: [] })).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-12-free-talk', 'free-talk')}`);
+  });
+
+  it('a scheduled run (no ticket branch): the instruction names session/{name}', () => {
+    const s = session({ name: 'nightly-0929-0200', solutions: [], worktrees: true });
+    const block = sessionStartBlock({ session: s, folders: [], worktrees: [], agentBranch: 'session/nightly-0929-0200' });
+    expect(block).toContain('create a git worktree on branch session/nightly-0929-0200 at <the solution repo\'s parent>/<repo>-wt-nightly-0929-0200 (git worktree add -b session/nightly-0929-0200 <path>');
+    // One paragraph, so the chat hides it like any answers block.
+    expect(block.includes('\n\n')).toBe(false);
+    expect(withoutSessionStartBlock(firstTurnPayload('Check the build.', block))).toBe('Check the build.');
+  });
+
+  it('QA without solutions: not chosen, the QA contract as before', () => {
+    const lines = items(session({ workType: 'qa', solutions: [], qa: { stack: 'web', confluenceUrl: 'https://c/1', figmaUrls: ['https://f/1'] } }));
+    expect(lines.slice(2, 5)).toEqual([`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`, '- Phase: UI-first', '- Stack under test: web']);
+  });
+
+  it('buildFirstTurn: the service passes the branch the agent creates its worktrees on', async () => {
+    const turn = await buildFirstTurn(session({ name: 'demo', solutions: [], worktrees: true }), {
+      folder: folderRef('/does/not/exist/ws'),
+      worktrees: [],
+      resolveRepo: async () => {
+        throw new Error('nothing to resolve');
+      },
+      agentBranch: 'PROJ-7-demo',
+    });
+    expect(turn.block).toContain(`- Solutions in scope: ${SOLUTIONS_NOT_CHOSEN}`);
+    expect(turn.block).toContain(`- Worktrees: ${agentWorktreesInstruction('PROJ-7-demo', 'demo')}`);
+    expect(turn.message).toBe(`Do the thing.\n\n${turn.block}`);
   });
 });
 

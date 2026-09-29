@@ -100,7 +100,8 @@ function branchOf(body: Record<string, unknown>, worktrees: unknown, checks: New
 
 /**
  * Validates a `POST /api/sessions` body (contract → NewSession): name unique and
- * kebab-case; solutions not empty; read-only solutions rejected; `qa` required
+ * kebab-case; D38: solutions may be empty or omitted (the agent determines
+ * them), a non-empty list is checked as before; read-only solutions rejected; `qa` required
  * when `workType` is `qa`; every enum from the contract; D22: an optional `title`
  * of 1–80 characters (trimmed); D32: with `worktrees: true` a ticket `branch`
  * ({@link branchOf}). Unknown fields (and `folder`, which the caller resolves)
@@ -141,9 +142,10 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
     fail('coordination', `coordination must be null or one of ${COORDINATIONS.join(', ')}`);
   }
 
-  const solutions = body['solutions'];
-  if (!Array.isArray(solutions) || solutions.length === 0) {
-    fail('solutions', 'choose at least one solution');
+  // D38: a workspace session may start without solutions (empty or omitted): the agent determines them.
+  const solutions = body['solutions'] ?? [];
+  if (!Array.isArray(solutions)) {
+    fail('solutions', 'solutions must be a list of solution names');
   } else if (!solutions.every((s): s is string => typeof s === 'string' && s.trim() !== '' && s === s.trim())) {
     fail('solutions', 'every solution must be a non-empty name');
   } else if (new Set(solutions).size !== solutions.length) {

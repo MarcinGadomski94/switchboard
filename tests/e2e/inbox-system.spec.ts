@@ -132,7 +132,7 @@ test.describe('failed scheduled runs', () => {
 
     // Dismiss the new one (no green streak: the run before it failed).
     await cards.nth(1).click();
-    await expect(page.getByTestId('inbox-title')).toHaveText(/^Not started: .*choose at least one solution/);
+    await expect(page.getByTestId('inbox-title')).toHaveText(/^Not started: workType must be one of feature, qa/);
     await expect(page.getByTestId('inbox-text')).toHaveCount(0);
     await page.getByTestId('inbox-action').filter({ hasText: 'Dismiss' }).click();
     await expect(cards).toHaveCount(1);

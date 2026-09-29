@@ -33,6 +33,7 @@ import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
 import { LiveRemote, RemoteControlError } from './remote.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { closeNeedsConfirm } from '../../core/session-close.ts';
+import { withSolutions } from '../../core/session-solutions.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
 export interface StopTimeouts {
@@ -345,6 +346,8 @@ export class SessionSupervisor {
   readonly #attaching = new Map<string, Promise<unknown>>();
   /** D31: model / effort changes run one at a time per session (each compares against what the one before stored). */
   readonly #modelChanges = new Map<string, Promise<unknown>>();
+  /** D38: solution fill-ins run one at a time per session (each reads what the one before stored). */
+  readonly #solutionUpdates = new Map<string, Promise<unknown>>();
   readonly #listeners = {
     sessionUpdated: new Set<Listener<'sessionUpdated'>>(),
     event: new Set<Listener<'event'>>(),
@@ -423,7 +426,8 @@ export class SessionSupervisor {
    * `firstMessage` (default: the task text; `POST /api/sessions` passes the M5.2
    * first-turn payload, `sessions/first-turn.ts`); an empty one leaves the process idle.
    * The input must already be validated (sessions/validate.ts; D22: its `title`
-   * is stored, `null` when absent). `options.beforeSpawn`
+   * is stored, `null` when absent; D38: with `worktrees` its `branch`, the branch
+   * the session's worktrees are on, is stored too). `options.beforeSpawn`
    * runs once the session is stored and before its process starts (M2.2 links the
    * session's worktrees there).
    */
@@ -452,6 +456,7 @@ export class SessionSupervisor {
       root: place.folder.root,
       rootKind: place.folder.kind,
       requestedPermissionMode: DEFAULT_PERMISSION_MODE,
+      branch: input.worktrees ? (input.branch ?? null) : null,
     });
     await this.#store.agents.create({
       sessionId: session.id,
@@ -918,6 +923,35 @@ export class SessionSupervisor {
     }
   }
 
+  /**
+   * D38: adds the solutions the session does not name yet to `Session.solutions`
+   * (in order, after the ones it has; `withSolutions`), stores them and publishes
+   * `sessionUpdated`. Called when an agent writes into a solution (the recorder)
+   * and when a worktree the agent created is adopted (`WorktreeAdoption`). With
+   * `publish: 'always'` the session is published even when nothing was added (an
+   * adopted worktree changes its Diff and Solutions chips). Runs one at a time per
+   * session. `null` when there is no such session.
+   */
+  async addSolutions(sessionId: string, solutions: readonly string[], options: { readonly publish?: 'changed' | 'always' } = {}): Promise<SessionRecord | null> {
+    const previous = this.#solutionUpdates.get(sessionId) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.#addSolutionsNow(sessionId, solutions, options.publish ?? 'changed'));
+    this.#solutionUpdates.set(sessionId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#solutionUpdates.get(sessionId) === run) this.#solutionUpdates.delete(sessionId);
+    }
+  }
+
+  async #addSolutionsNow(sessionId: string, solutions: readonly string[], publish: 'changed' | 'always'): Promise<SessionRecord | null> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) return null;
+    const next = withSolutions(session.solutions, solutions);
+    const stored = next ? ((await this.#store.sessions.update(sessionId, { solutions: next })) ?? session) : session;
+    if (next || publish === 'always') await this.#emitSession(sessionId);
+    return stored;
+  }
+
   /** Writes the reply to an open `can_use_tool` request (M3.1: answers, Allow once, Deny). */
   async respond(sessionId: string, requestId: string, decision: ToolDecision): Promise<void> {
     const live = this.#live.get(sessionId);
@@ -1287,6 +1321,10 @@ export class SessionSupervisor {
       answeredOn: () => holder.live?.remote.answeredOn() ?? null,
       // D25: a `--teleport` process may report `init` before it takes a message.
       startupInit: start.kind === 'teleport',
+      // D38: a solution an agent writes into joins the session's solutions.
+      onSolutionWritten: async (solution) => {
+        await this.addSolutions(session.id, [solution]);
+      },
     });
     let teleport: TeleportState | null = null;
     if (start.kind === 'teleport') {
