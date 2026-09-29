@@ -51,7 +51,7 @@ test('the shell renders from the real API and shows only what the API returns', 
   // /api/inbox (M3.2), /api/schedules (M7.1) and /api/artifacts (M7.3) answer with the empty list,
   // /api/tools (M8.1) with the default tools, the others still with the 501 placeholder. D41: /api/settings is
   // read before the first paint (the stored pane state).
-  const expected = ['/api/settings', '/api/sessions', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
+  const expected = ['/api/settings', '/api/sessions', '/api/sidebar', '/api/tools', '/api/inbox', '/api/solutions', '/api/schedules', '/api/artifacts', '/api/system'];
   await expect.poll(() => expected.filter((url) => !apiCalls.some((call) => call.url === url))).toEqual([]);
   for (const call of apiCalls) {
     if (call.url === '/api/sessions' || call.url === '/api/inbox' || call.url === '/api/schedules') {
@@ -83,6 +83,10 @@ test('the shell renders from the real API and shows only what the API returns', 
       // D41: the stored pane state, read before the first paint; a fresh install shows both panes.
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toMatchObject({ 'ui.sidebarHidden': false, 'ui.rightPanelHidden': false });
+    } else if (call.url === '/api/sidebar') {
+      // D54: the sidebar's pins and folders; a fresh install has none.
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toEqual({ pinned: [], folders: [] });
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);

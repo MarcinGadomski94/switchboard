@@ -17,6 +17,7 @@ import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { SessionMachine } from './peers.ts';
+import type { SidebarLayout } from './sidebar-layout.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -36,6 +37,7 @@ import type {
 
 export type { SessionChip } from './derive/chips.ts';
 export type { StatusTableFormat } from './derive/status-table.ts';
+export type { SidebarFolder, SidebarFolderCreate, SidebarFolderMove, SidebarFolderPatch, SidebarLayout, SidebarPlace, SidebarPlaceInput } from './sidebar-layout.ts';
 
 /**
  * `POST /api/sessions` body (contract, locked; `folder` additive, D14).
@@ -1731,6 +1733,12 @@ export interface HubEvents {
    * schedule edited on one machine shows on the other at once.
    */
   readonly schedulesChanged: { readonly scheduleId: string; readonly change: ScheduleChange };
+  /**
+   * Additive (D54): the sidebar's pins and folders changed (any `/api/sidebar*`
+   * write, in any tab); the payload is the whole new layout. This machine's
+   * only: never forwarded between peers.
+   */
+  readonly sidebarLayoutChanged: SidebarLayout;
 }
 
 /** D52: what happened to a schedule (`schedulesChanged`). */
@@ -1750,6 +1758,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'system',
   'activity',
   'schedulesChanged',
+  'sidebarLayoutChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

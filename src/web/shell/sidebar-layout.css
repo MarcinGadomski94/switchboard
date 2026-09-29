@@ -1,0 +1,248 @@
+/*
+ * D54 · pins and folders in SESSIONS (docs/sidebar.md). Nothing here shows while
+ * nothing is pinned or foldered, except the label's drawn "+" and, on hover or
+ * focus, a row's ⋯ next to its ×; so the rows keep the prototype's geometry.
+ * SPEC tokens only.
+ */
+
+/* The label's "+" (a new folder): after the count, muted, the text color on hover. */
+.sb-folder-add {
+  margin-left: 8px;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--muted-3);
+}
+
+.sb-folder-add:hover {
+  color: var(--text);
+}
+
+/*
+ * A row's ⋯: like the × (shell.css, D33), left of it, over the end of the head
+ * (nothing moves on hover); drawn on the row's own background so a long name
+ * ends under it cleanly.
+ */
+.sb-session .sb-session-more {
+  position: absolute;
+  top: 8px;
+  right: 25px;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--muted-2);
+  background: var(--bg-sidebar);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sb-session[aria-current='page'] .sb-session-more {
+  background: var(--bg-selected-nav);
+}
+
+.sb-session:hover .sb-session-more,
+.sb-session:focus-visible .sb-session-more,
+.sb-session .sb-session-more:focus-visible,
+.sb-session:has(.sb-session-close:focus-visible) .sb-session-more {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sb-session:has(.sb-session-close:focus-visible) .sb-session-close,
+.sb-session:has(.sb-session-more:focus-visible) .sb-session-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sb-session:has(.sb-session-more:focus-visible) .sb-session-age {
+  visibility: hidden;
+}
+
+.sb-session .sb-session-more:hover,
+.sb-session[aria-current='page'] .sb-session-more:hover {
+  color: var(--text);
+  background: var(--bg-selected-card);
+}
+
+/* The "Pinned" group label and the drop zones' hints. */
+.sb-group-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px 2px;
+  border-radius: 6px;
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-3);
+}
+
+.sb-group-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--muted-4);
+}
+
+.sb-loose-zone {
+  padding: 6px 8px;
+  border: 1px dashed var(--border-control);
+}
+
+/* A folder's head: chevron, name, (need dot), count, ⋯ on hover. */
+.sb-folder {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.sb-folder-toggle {
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--muted-2);
+  flex: none;
+}
+
+.sb-folder-toggle svg {
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+
+.sb-folder[data-collapsed='true'] .sb-folder-toggle svg {
+  transform: none;
+}
+
+.sb-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-folder-need {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--status-need);
+}
+
+.sb-folder-count {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-folder .sb-folder-more {
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--muted-2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sb-folder:hover .sb-folder-more,
+.sb-folder .sb-folder-more:focus-visible,
+.sb-folder:has(:focus-visible) .sb-folder-more {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sb-folder .sb-folder-more:hover {
+  color: var(--text);
+  background: var(--bg-selected-card);
+}
+
+.sb-folder-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 5px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.sb-folder-input:focus {
+  border-color: var(--muted-2);
+}
+
+/* The sessions of an open folder sit indented under its head. */
+.sb-session[data-group='folder'] {
+  margin-left: 12px;
+}
+
+/* Dragging: the dragged item fades; the target shows a line before / after it, or is highlighted as the place it goes into. */
+.sb-sessions [data-dragging='true'] {
+  opacity: 0.45;
+}
+
+.sb-sessions [data-drop='before'] {
+  box-shadow: inset 0 2px 0 var(--status-run);
+}
+
+.sb-sessions [data-drop='after'] {
+  box-shadow: inset 0 -2px 0 var(--status-run);
+}
+
+.sb-sessions [data-drop='into'] {
+  background: var(--bg-selected-card);
+  box-shadow: inset 0 0 0 1px var(--status-run);
+}
+
+/* The ⋯ menus (a portal over the page). */
+.sb-layout-menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.sb-layout-menu-item {
+  all: unset;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-layout-menu-item:hover,
+.sb-layout-menu-item:focus-visible {
+  background: var(--bg-selected-nav);
+}
+
+.sb-layout-menu-item:disabled {
+  color: var(--muted-4);
+  cursor: default;
+  background: none;
+}

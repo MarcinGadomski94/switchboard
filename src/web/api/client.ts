@@ -34,6 +34,9 @@ import type {
   SessionEvent,
   SetupState,
   Settings,
+  SidebarFolderPatch,
+  SidebarLayout,
+  SidebarPlaceInput,
   SolutionGroup,
   SystemInfo,
   TeleportSession,
@@ -140,6 +143,18 @@ export const api = {
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
+  /** D54, additive: the sidebar's pins and folders (this machine's; `docs/sidebar.md`). Every write answers the new layout. */
+  sidebarLayout: () => request<SidebarLayout>('GET', '/api/sidebar'),
+  /** D54: a new folder, at the end of the folders (201). */
+  createSidebarFolder: (name: string) => request<SidebarLayout>('POST', '/api/sidebar/folders', { name }),
+  /** D54: rename and / or collapse / expand a folder. */
+  updateSidebarFolder: (id: string, patch: SidebarFolderPatch) => request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}`, patch),
+  /** D54: a folder's final position among the folders. */
+  moveSidebarFolder: (id: string, index: number) => request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}/position`, { index }),
+  /** D54: delete a folder (its sessions become loose). */
+  deleteSidebarFolder: (id: string) => request<SidebarLayout>('DELETE', `/api/sidebar/folders/${enc(id)}`),
+  /** D54: pin, unpin, put into / take out of a folder, or re-order a session. */
+  placeSidebarSession: (input: SidebarPlaceInput) => request<SidebarLayout>('POST', '/api/sidebar/place', input),
   /** D33: reopen a closed session (no process starts). */
   reopenSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reopen`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
