@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { QueueTracker } from '../../src/core/derive/queued.ts';
 import { deriveSessionStatus } from '../../src/core/derive/status.ts';
 import { TURN_STOPPED_REASON, closedBatchText } from '../../src/core/session-close.ts';
-import { interruptLine } from '../../src/core/stdin.ts';
-import { STOPPED_LABEL, isInterruptedResult, stopTimeoutText, withdrawnDraft } from '../../src/core/stop-turn.ts';
+import { interruptLine, stopTaskLine } from '../../src/core/stdin.ts';
+import { parseStopBackground } from '../../src/server/api/sessions.ts';
+import { STOPPED_LABEL, isInterruptedResult, stopTimeoutText, stoppableTask, withdrawnDraft } from '../../src/core/stop-turn.ts';
 
 /**
  * D50 · Stop the current turn: the pure rules (`src/core/stop-turn.ts`), the
@@ -92,5 +93,19 @@ describe('deriveSessionStatus · a stopped turn (D50)', () => {
     expect(deriveSessionStatus({ ...live, openRequests: 1 })).toBe('need');
     expect(deriveSessionStatus({ live: false, stopReason: null, exitCode: 0, signal: null, spawnFailed: false, lastOutcome: 'stopped' })).toBe('done');
     expect(deriveSessionStatus({ live: false, stopReason: 'pause', exitCode: 1, signal: null, spawnFailed: false, lastOutcome: 'stopped' })).toBe('paused');
+  });
+});
+
+describe('stopping background tasks (D50 ruling)', () => {
+  it('the stop_task line; which tasks it can stop; the route body', () => {
+    expect(stopTaskLine('r1', 'b123')).toEqual({ type: 'control_request', request_id: 'r1', request: { subtype: 'stop_task', task_id: 'b123' } });
+    for (const kind of ['bash', 'agent', 'monitor', 'workflow', 'task']) expect(stoppableTask({ kind })).toBe(true);
+    expect(stoppableTask({ kind: 'wakeup' })).toBe(false);
+    expect(parseStopBackground(undefined)).toBeUndefined();
+    expect(parseStopBackground({})).toBeUndefined();
+    expect(parseStopBackground({ taskIds: ['a', 'b'] })).toEqual(['a', 'b']);
+    expect(parseStopBackground({ taskIds: 'a' })).toBeNull();
+    expect(parseStopBackground({ taskIds: [1] })).toBeNull();
+    expect(parseStopBackground([])).toBeNull();
   });
 });

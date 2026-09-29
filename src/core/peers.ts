@@ -213,3 +213,13 @@ export function formatPeerAddress(address: { readonly host: string; readonly por
 export function isPort(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65535;
 }
+
+/**
+ * D48 ruling D48-cache-persist: why a peer's session cannot be acted on now
+ * (`<machine> is offline — reconnect to continue`), `null` for this machine's own
+ * sessions and a connected machine's. Its last known state stays readable.
+ */
+export function offlineReason(machine: SessionMachine | null | undefined): string | null {
+  if (!machine || machine.state === 'online') return null;
+  return `${machine.name} is offline — reconnect to continue`;
+}

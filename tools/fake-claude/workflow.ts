@@ -119,6 +119,8 @@ export class FakeWorkflow {
   readonly #o: FakeWorkflowOptions;
   readonly #agents: AgentState[] = [];
   readonly #startedAt = Date.now();
+  /** Its own pending step timers ({@link stop}). */
+  readonly #timers = new Set<NodeJS.Timeout>();
   #writes: Promise<void> = Promise.resolve();
 
   constructor(options: FakeWorkflowOptions) {
@@ -181,9 +183,20 @@ export class FakeWorkflow {
   #at(ms: number, step: () => void): void {
     const timer = setTimeout(() => {
       this.#o.timers.delete(timer);
+      this.#timers.delete(timer);
       if (this.#o.alive()) step();
     }, Math.max(0, Math.round(ms)));
     this.#o.timers.add(timer);
+    this.#timers.add(timer);
+  }
+
+  /** D50 `stop_task` on the workflow's task: no further step runs (its files stay as far as they got, like a killed run). */
+  stop(): void {
+    for (const timer of this.#timers) {
+      clearTimeout(timer);
+      this.#o.timers.delete(timer);
+    }
+    this.#timers.clear();
   }
 
   #write(job: () => Promise<void>): void {

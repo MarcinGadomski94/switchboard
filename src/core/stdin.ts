@@ -63,6 +63,16 @@ export function interruptLine(requestId: string, options: InterruptOptions = {})
   return { type: 'control_request', request_id: requestId, request };
 }
 
+/**
+ * D50: the `stop_task` control request (CLI 2.1.284, read-only: `{subtype:"stop_task", task_id}`,
+ * "Stops a running task"): ends one background task (a background command, agent,
+ * workflow, monitor). The CLI answers an empty success (also for a task it no longer
+ * has) and reports the task's end as `system/task_notification` with status `stopped`.
+ */
+export function stopTaskLine(requestId: string, taskId: string): ControlRequestLine {
+  return { type: 'control_request', request_id: requestId, request: { subtype: 'stop_task', task_id: taskId } };
+}
+
 /** The `set_permission_mode` control request (D6 fallback, `docs/spike-m0.md` → *D6: auto mode headless*). */
 export function setPermissionModeLine(requestId: string, mode: string): ControlRequestLine {
   return { type: 'control_request', request_id: requestId, request: { subtype: 'set_permission_mode', mode } };

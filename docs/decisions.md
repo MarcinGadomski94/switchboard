@@ -399,6 +399,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **P5 (the developer):** a live test on the Windows PC, from the checklist in `docs/peers.md` → *Windows setup and live test*.
   - Details: `docs/peers.md`; choices where the spec is silent: `.loop/questions.md` → *D48 · Switchboard peers*.
 
+## Rulings on D48 (added 2026-09-29)
+- **Mid-turn delivery (D48-midturn-policy):** "Deliver mid-turn." A message to a hooked terminal session goes out as soon as possible, also while a turn runs (the CLI folds it in at the next tool boundary, VERIFIED D48-midturn), instead of waiting for the turn to end. Exactly once and the rate limit stay (one wake-up in flight at a time; at most 3 a minute). The bubble's D44 clock clears when the transcript shows the message taken up (the `queued_command` attachment / the absorbed line).
+- **Hooked subagents (D48-hooked-subagents):** "Import them too." A hooked session's subagents (plain Agent / Task subagents, background ones included, from `<session>/subagents/agent-*.jsonl` + `.meta.json`) appear in its agent overview and cards, and their chats open, as for local sessions. Workflow agents are D51's; a clear seam is left for them.
+- **Offline peers (D48-cache-persist):** "Keep the snapshot but block interaction until reconnection." Each peer's last known open sessions (and the detail the sidebar and the view need) are persisted, so after a restart of this Switchboard an unreachable peer's sessions stay listed, marked unreachable, readable on the last snapshot, but every interaction is blocked (composer, Stop, pause, answers, Inbox actions disabled with "<machine> is offline — reconnect to continue"; the server refuses with 502 `peer-unreachable` anyway). On reconnection the snapshot is replaced by live data. Offline Inbox items stay hidden as built, unless showing them read-only is clearer (ours to record).
+- Details: `docs/peers.md` → *Replies (the mailbox)*, *Following a session*, *Remote sessions* → *Offline*; `.loop/questions.md` → *D48 · Switchboard peers*.
+
 ## Context window meter (added 2026-09-29)
 - **D49 A context window meter above the quick replies.** Developer request, 2026-09-29: "An embedded progress bar above quick replies to see how much of the context window for the current session is filled in. It should detect context compression and then reset accordingly."
   - **Placement (ruling):** a thin bar directly above the quick-replies row of the session composer (main chat). Subagent chats have no composer, so they show no bar.
@@ -428,6 +434,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **API:** additive `POST /api/sessions/{id}/interrupt` (`docs/handoff/contracts/local-api.md`).
   - **Out of scope:** peer / hooked sessions (D48, another lane).
   - Details: `docs/supervisor.md` → *Stop the current turn (D50)*, `docs/chat.md` → *Stop (D50)*; choices where the ruling is silent: `.loop/questions.md` → *D50 · Stop the current turn*.
+
+## Rulings on D50 (added 2026-09-29)
+- **D50-probe: yes.** One D11 probe on the real CLI (2.1.284, Haiku, `--max-turns 3`, `.spike/sandbox/`, no user settings) confirmed the Stop: the receipt `{still_queued: [], cancelled: []}` came before the result, then the tool's rejection, `[Request interrupted by user for tool use]` and `result/error_during_execution` with `terminal_reason: "aborted_tools"`; the message queued before the interrupt never ran (nothing for 20 s, then EOF). Details: `.loop/questions.md` → *D50*.
+- **D50-background: offer it when only background work runs.** When a session runs no turn but background tasks do (D30 / D43, workflows and background agents included), the composer offers **Stop background tasks**, with a confirmation that lists them; confirming sends the CLI's `stop_task` control request for each, and the tasks end as stopped. Esc never does this (only the button and the confirmation). Additive route `POST /api/sessions/{id}/background/stop`.
+- **D50-other-tabs: keep as built.** Only the tab that pressed Stop gets the withdrawn texts.
+- **With D48 (found at the merge):** Stop and the background stop work on a peer's session through the proxy (both routes on the peer API's allow-list). A hooked terminal session cannot be interrupted through hooks: both routes answer 409 `hooked-unavailable` with the reason, and the composer offers neither (Esc does nothing there).
 
 ## Workflow agents are visible (added 2026-09-29)
 - **D51 A Workflow's agents show like subagents: in the overview, as cards, in the counts, and with their own chat.** Developer report, 2026-09-29: "In orchestrator mode I cannot see or access the list of subagents running."

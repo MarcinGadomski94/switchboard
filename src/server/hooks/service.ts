@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { HooksStatus, Session, TerminalSession } from '../../core/api.ts';
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
@@ -40,8 +40,9 @@ import { HookInstallError, hooksState, installHooks, readHookSettings, removeHoo
  *   PostToolUse, or the turn ending), the item closes and the hook call gets no
  *   decision.
  * - **Messages:** a mailbox per session (`pending_messages`, kind `hook-message`),
- *   released only to a live waiter (the `asyncRewake` hook of SessionStart / Stop)
- *   while the session is idle; every pending message is claimed exactly once
+ *   released to a live waiter (the `asyncRewake` hook of SessionStart / Stop) as
+ *   soon as possible, also while a turn runs (ruling D48-midturn-policy: the CLI
+ *   folds it in at the next tool boundary); every pending message is claimed exactly once
  *   (marked delivered before the waiter is answered), one wake-up per turn, and at
  *   most `DELIVERY_MAX` wake-ups a minute. One waiter per session: a newer one
  *   supersedes the older (answered with no message); a waiter ends with its
@@ -476,7 +477,9 @@ export class HookService {
     const record = await this.#hookedRecord(claudeSessionId);
     if (!record) return;
     const terminal = this.#terminals.get(claudeSessionId);
-    if (terminal?.running || terminal?.ended || this.#woken(claudeSessionId)) return;
+    // D48 ruling D48-midturn-policy: delivered as soon as possible, also while a turn runs (the CLI folds it in at the next
+    // tool boundary; a turn that ends first starts the next one on it). One wake-up in flight at a time.
+    if (terminal?.ended || this.#woken(claudeSessionId)) return;
     const waiter = this.#waiters.get(claudeSessionId);
     if (!waiter || waiter.done) return;
     const pending = (await this.#store.pendingMessages.pending(record.id)).filter((message) => message.kind === HOOK_MESSAGE_KIND);
@@ -797,7 +800,58 @@ export class HookService {
     let result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart });
     // A sync point the file no longer has (/clear, a compaction): read the newest chain whole (stored entries are skipped).
     if (!result.found) result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart: true });
-    if (result.imported > 0) await this.#publishSession(sessionId);
+    const agentsChanged = await this.#importSubagents(record, transcript, main.id, onEvent);
+    if (result.imported > 0 || agentsChanged) await this.#publishSession(sessionId);
+  }
+
+  /**
+   * D48 ruling D48-hooked-subagents: the session's plain subagents (Agent / Task,
+   * background ones too), each from `<session>/subagents/agent-<id>.jsonl` with its
+   * `agent-<id>.meta.json` (`agentType`, `description`, `toolUseId`): an agent row
+   * (kind `subagent`, `taskId` = the file's agent id, `toolUseId` = the call that
+   * started it, so the chat's call opens its chat, D36) and its events. Status:
+   * `done` once its file ends with an assistant message that ended its turn
+   * (`stop_reason: end_turn`), `idle` when the session ended first, else `run`.
+   * Seam for D51: workflow agents' files (`subagents/workflows/…`,
+   * `<session>/workflows/…`) are not read here (only `agent-*.jsonl` directly in
+   * `subagents/`): D51's `WorkflowService` reads them for every session by its CLI
+   * session id, hooked ones included. Returns whether an agent row was added or changed.
+   */
+  async #importSubagents(record: SessionRecord, transcript: string, mainAgentId: string, onEvent: (event: EventRecord) => void): Promise<boolean> {
+    let changed = false;
+    for (const file of await subagentFiles(transcript)) {
+      const agentId = path.basename(file, '.jsonl').slice('agent-'.length);
+      let meta: Record<string, unknown> = {};
+      try {
+        const parsed: unknown = JSON.parse(await readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
+        if (isRecord(parsed)) meta = parsed;
+      } catch {
+        // No meta (yet): the agent's type and call stay unknown.
+      }
+      const text = (key: string): string | null => (typeof meta[key] === 'string' && meta[key] !== '' ? (meta[key] as string) : null);
+      const agents = await this.#store.agents.listBySession(record.id);
+      let agent = agents.find((entry) => entry.kind === 'subagent' && entry.taskId === agentId) ?? null;
+      if (!agent) {
+        agent = await this.#store.agents.create({
+          sessionId: record.id,
+          kind: 'subagent',
+          name: text('agentType') ?? 'agent',
+          description: text('description'),
+          subagentType: text('agentType'),
+          toolUseId: text('toolUseId'),
+          taskId: agentId,
+          status: 'run',
+        });
+        changed = true;
+      }
+      await importTerminalTurns({ store: this.#store, session: record, mainAgentId, transcript: file, onEvent, subagent: { agentId: agent.id } });
+      const status = (await subagentFinished(file)) ? 'done' : (await this.#store.sessions.get(record.id))?.status === 'done' ? 'idle' : 'run';
+      if (agent.status !== status) {
+        await this.#store.agents.update(agent.id, { status, ...(status === 'run' ? {} : { endedAt: new Date(this.#now()).toISOString() }) });
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   async #pollTranscripts(): Promise<void> {
@@ -807,7 +861,13 @@ export class HookService {
       if (!transcript) continue;
       try {
         const info = await stat(transcript);
-        const key = `${info.size}:${info.mtimeMs}`;
+        // The subagents' files grow on their own (a background agent while the main chain waits).
+        const parts = [`${info.size}:${info.mtimeMs}`];
+        for (const file of await subagentFiles(transcript)) {
+          const sub = await stat(file).catch(() => null);
+          if (sub) parts.push(`${sub.size}:${sub.mtimeMs}`);
+        }
+        const key = parts.join('|');
         if (this.#sizes.get(record.id) !== key) {
           this.#sizes.set(record.id, key);
           this.#scheduleSync(record.id);
@@ -856,4 +916,36 @@ export class HookService {
   #publishEvent(event: EventRecord): void {
     this.#bus.publish('event', { sessionId: event.sessionId, event: toEvent(event) });
   }
+}
+
+/** D48 P4: the plain subagents' transcripts of a session (`<dir>/<session id>/subagents/agent-*.jsonl`), sorted; workflow agents (D51) are not listed. */
+export async function subagentFiles(transcript: string): Promise<string[]> {
+  const dir = path.join(path.dirname(transcript), path.basename(transcript, '.jsonl'), 'subagents');
+  try {
+    return (await readdir(dir)).filter((name) => /^agent-[\w-]+\.jsonl$/.test(name)).sort().map((name) => path.join(dir, name));
+  } catch {
+    return [];
+  }
+}
+
+/** `true` when a subagent's file ends with an assistant message that ended its turn (`stop_reason: end_turn`). */
+async function subagentFinished(file: string): Promise<boolean> {
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch {
+    return false;
+  }
+  const lines = text.split('\n').filter((line) => line.trim().startsWith('{'));
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const entry = JSON.parse(lines[i] as string) as Record<string, unknown>;
+      if (entry['type'] !== 'assistant' && entry['type'] !== 'user') continue;
+      const message = entry['message'] as Record<string, unknown> | undefined;
+      return entry['type'] === 'assistant' && message?.['stop_reason'] === 'end_turn';
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { SessionEvent } from '../../src/core/api.ts';
 import { STOP_LABEL, STOPPING_LABEL, STOP_TOOLTIP } from '../../src/core/stop-turn.ts';
 import { chatItems, chatMessages, stepMark } from '../../src/web/views/session/chat.ts';
-import { canStop, escStops } from '../../src/web/views/session/stop.ts';
+import { canStop, escStops, stoppableBackground } from '../../src/web/views/session/stop.ts';
+import type { BackgroundTask } from '../../src/core/api.ts';
 
 /**
  * D50 · Stop in the composer (`docs/chat.md` → *Stop*): when ■ Stop replaces
@@ -115,5 +116,26 @@ describe('the chat after a Stop', () => {
   it('a failed turn that was not stopped stays a ✕ line', () => {
     const failed = event(1, { type: 'result', subtype: 'error_during_execution', isError: true, text: null, terminalReason: 'aborted_streaming', errors: [], taskNotification: false, numTurns: 1, durationMs: 10, costUsd: 0 });
     expect(stepMark(failed)).toBe('✕');
+  });
+});
+
+describe('D48 P4 and the background offer (D50 rulings)', () => {
+  const bash: BackgroundTask = { id: 'b1', toolUseId: 't1', kind: 'bash', summary: 'npm run dev', startedAt: '2026-09-29T10:00:00.000Z', github: false };
+  const wakeup: BackgroundTask = { id: 't2', toolUseId: 't2', kind: 'wakeup', summary: 'check CI', startedAt: '2026-09-29T10:00:01.000Z', wakeAt: '2026-09-29T10:05:00.000Z', github: false };
+
+  it('a hooked terminal session never offers Stop (its turns are stopped in the terminal)', () => {
+    expect(canStop({ live: true, status: 'run', activity: { state: 'thinking' }, hooked: true })).toBe(false);
+    expect(canStop({ live: true, status: 'run', activity: { state: 'thinking' }, hooked: false })).toBe(true);
+  });
+
+  it('Stop background tasks: only while no turn runs and background tasks wait; not for wake-ups only, a hooked session or without a process', () => {
+    const waiting = { live: true, status: 'done' as const, activity: { state: 'background', background: [bash, wakeup] } };
+    expect(stoppableBackground(waiting)).toEqual([bash, wakeup]);
+    expect(stoppableBackground({ ...waiting, activity: { state: 'background', background: [wakeup] } })).toEqual([]);
+    expect(stoppableBackground({ ...waiting, hooked: true })).toEqual([]);
+    expect(stoppableBackground({ ...waiting, live: false })).toEqual([]);
+    // A turn runs: that is Stop's (the list is then the turn's, not offered).
+    expect(stoppableBackground({ live: true, status: 'run', activity: { state: 'thinking', background: [bash] } })).toEqual([]);
+    expect(stoppableBackground(null)).toEqual([]);
   });
 });

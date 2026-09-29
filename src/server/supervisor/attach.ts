@@ -116,6 +116,14 @@ export interface ImportOptions {
   readonly session: SessionRecord;
   /** The session's main agent: the terminal's turns are its main chain. */
   readonly mainAgentId: string;
+  /**
+   * D48 P4: a hooked session's **subagent** file (`<session>/subagents/agent-<id>.jsonl`,
+   * all sidechain entries): its entries go to that agent (`agentId`), its prompts
+   * become `agent-prompt` lines (as a supervised subagent's), everything is read
+   * from the start (stored entries are skipped), and the session's own sync
+   * point, activity and context are left alone.
+   */
+  readonly subagent?: { readonly agentId: string };
   readonly transcript: string;
   /** Called after every event insert or update (the `/hub` `event`). */
   readonly onEvent: (event: EventRecord) => void;
@@ -151,10 +159,13 @@ export interface ImportResult {
  * the sync point moves to the chain's tip.
  */
 export async function importTerminalTurns(options: ImportOptions): Promise<ImportResult> {
-  const { store, session, mainAgentId, onEvent } = options;
+  const { store, session, onEvent } = options;
+  const mainAgentId = options.subagent?.agentId ?? options.mainAgentId;
   const origin = options.origin ?? 'terminal';
-  const entries = parseTranscript(await readFile(options.transcript, 'utf8'));
-  const slice = entriesSince(entries, options.fromStart === true ? null : session.lastTranscriptUuid);
+  const parsed = parseTranscript(await readFile(options.transcript, 'utf8'));
+  // D48 P4: a subagent file is one sidechain; read as a chain of its own.
+  const entries = options.subagent ? parsed.map((entry) => ({ ...entry, isSidechain: false })) : parsed;
+  const slice = entriesSince(entries, options.fromStart === true || options.subagent ? null : session.lastTranscriptUuid);
   if (!slice.found) return { imported: 0, found: false, forked: false, tip: session.lastTranscriptUuid };
   const texts = new Map<string, { eventId: number; text: string }>();
   const tools = new Map<string, number>();
@@ -173,6 +184,11 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     if (item.kind !== 'tool-result' && (await store.events.hasUuid(session.id, item.uuid))) continue;
     switch (item.kind) {
       case 'prompt': {
+        if (options.subagent) {
+          const cut = clip(item.text);
+          await append({ sessionId: session.id, agentId: mainAgentId, ts, kind: 'text', label: textLabel(item.text), payload: { type: 'agent-prompt', text: cut.text }, uuid: item.uuid });
+          break;
+        }
         if (item.from === 'switchboard') {
           // D48 P4: the developer's message, sent from Switchboard to a hooked session: its waiting bubble is now delivered.
           const pending = await findUndelivered(store, session.id, item.text);
@@ -256,6 +272,7 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     }
   }
 
+  if (options.subagent) return { imported: counts.imported, found: true, forked: slice.forked, tip: slice.tip };
   const patch: { lastTranscriptUuid?: string; lastActivityAt?: string; context?: ContextState } = {};
   // D49: the context meter from the whole main chain (what the terminal did included): its last usage and compaction.
   const stored = readContextState(session.context);

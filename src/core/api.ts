@@ -838,6 +838,21 @@ export interface InterruptResult {
   readonly withdrawn: readonly string[];
 }
 
+/** Additive (D50 background): optional body of `POST /api/sessions/{id}/background/stop`. */
+export interface StopBackgroundRequest {
+  /** The background tasks to stop (`BackgroundTask.id`); absent = every stoppable one. */
+  readonly taskIds?: readonly string[];
+}
+
+/** Additive (D50 background): the reply of `POST /api/sessions/{id}/background/stop`. */
+export interface StopBackgroundResult {
+  readonly session: Session;
+  /** The tasks the CLI stopped. */
+  readonly stopped: readonly string[];
+  /** The tasks it refused or did not answer for, with the CLI's text (or `no reply`). */
+  readonly failed: ReadonlyArray<{ readonly id: string; readonly error: string }>;
+}
+
 /** Additive (M4.1): optional body of `POST /api/sessions/{id}/attach`. */
 export interface AttachRequest {
   /** Attach even though the warning below applies (the developer confirmed it). */

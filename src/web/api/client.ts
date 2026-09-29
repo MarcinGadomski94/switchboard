@@ -1,5 +1,7 @@
 import type {
   InterruptResult,
+  StopBackgroundRequest,
+  StopBackgroundResult,
   BranchingPreflight,
   BranchingPreflightRequest,
   AnswerBatch,
@@ -132,6 +134,8 @@ export const api = {
   pauseSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/pause`),
   /** D50: Stop the current turn (the process stays alive); the reply carries the messages taken back for the composer. */
   interruptSession: (id: string) => request<InterruptResult>('POST', `/api/sessions/${enc(id)}/interrupt`),
+  /** D50 ruling: stop the session's background tasks (`stop_task` each); `taskIds` absent = every stoppable one. */
+  stopBackground: (id: string, body: StopBackgroundRequest = {}) => request<StopBackgroundResult>('POST', `/api/sessions/${enc(id)}/background/stop`, body),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),

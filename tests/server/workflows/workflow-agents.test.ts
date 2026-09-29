@@ -150,6 +150,26 @@ describe('D51 · a run whose process ends', () => {
   }, 60_000);
 });
 
+describe('D51 × D50 · stopping a workflow task', () => {
+  it('Stop background tasks (stop_task) stops the run: it reads stopped, its running agents cut off, the process lives on', async () => {
+    const w = await setup();
+    const session = await w.supervisor.start(newSession({ task: 'Audit. [fake:workflow 30 1x2]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    await until(async () => {
+      const d = await detail(session.id);
+      return d.agents.filter((a) => a.kind === 'workflow' && a.status === 'run' && a.workflow?.agentId).length === 2 || undefined;
+    }, 'two running workflow agents');
+    await w.supervisor.stopBackground(session.id);
+    const stopped = await until(async () => {
+      const d = await detail(session.id);
+      return d.workflows?.[0]?.status === 'idle' ? d : undefined;
+    }, 'the run stopped', 5_000);
+    expect(stopped.agents.filter((a) => a.kind === 'workflow').map((a) => a.status)).toEqual(['idle', 'idle']);
+    expect(w.supervisor.isLive(session.id)).toBe(true);
+    await w.supervisor.pause(session.id);
+  }, 60_000);
+});
+
 describe('D51 · WorkflowService on files alone (terminal / hooked / History sessions)', () => {
   const SID = '9d2c1b0a-5151-4a4a-8b8b-0c0c0c0c0c51';
 

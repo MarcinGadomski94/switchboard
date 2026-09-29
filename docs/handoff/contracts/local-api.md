@@ -438,6 +438,7 @@ Developer ruling D48 (`docs/decisions.md` → *Switchboard peers*; design and li
 - **Session** and **InboxItem** gain `machine: { id, name, state: "online" | "offline" | "auth-failed" | "no-address" } | null`: set on a paired machine's session or item, `null` (sessions) / absent (items) on this machine's own. `GET /api/sessions` lists this machine's sessions, then the paired machines' open ones; `GET /api/inbox` this machine's items, then the reachable machines' ones.
 - **New session on a peer (P3):** `POST /api/sessions` takes an additive `machine` (a paired machine's id): the session starts there (its folder ids, its validation) and the 201 answer carries its remote id; `machine` naming this machine, or empty, starts here. The form uses `/api/machines/{id}/api/folders`, `…/models`, `…/solutions`, `…/branching/preflight` and `…/sessions`.
 - **Hooked terminal sessions (P4):** `GET /api/terminal-sessions` → TerminalSession[] (502 `agents-unavailable`); `POST /api/terminal-sessions/{id}/hook` → 201 Session (a new hooked session) / 200 (it was hooked before; 404, 409 `already-in-switchboard`); `GET /api/hooks` → HooksStatus; `POST /api/hooks/install` / `POST /api/hooks/remove` → HooksStatus (409 `settings-unreadable`). **Session** gains `hooked: boolean`; for a hooked session `pause`, `resume`, `model`, `remote`, `detach`, `attach` and a message that is a slash command answer 409 `hooked-unavailable` (message = why), and `close` unhooks it. **PermissionRequest** (Inbox) gains `hook: { denyMessage: true, alwaysAllow } | null` on a hooked session's request, whose actions are `allow-once`, `always-allow` (when offered) and `deny`, which takes an optional body `{ message }` (at most 2000 characters). **Question.answeredOn** may also read `terminal`. The hook script's own endpoints `POST /hook/v1/event | permission | waiter` take only the hook token (`docs/security.md` → *Hook endpoints*) and are not part of the UI contract.
+- **Unreachable machine (ruling D48-cache-persist, 2026-09-29):** its sessions stay in `GET /api/sessions` (`machine.state` other than `online`, also after a restart of this service); `GET /api/sessions/{id}` and `GET /api/sessions/{id}/events` (without `since`) answer 200 from the last known snapshot; every other request naming it answers 502 `{ error: "peer-unreachable", message: "<machine> is offline — reconnect to continue" }` without reaching the network.
 - **`/hub`:** a paired machine's `sessionUpdated`, `event`, `questionBatch` and `activity` arrive with remote ids; `inboxChanged.count` counts this machine's items plus the reachable machines' ones. No new event names.
 
 ```json
@@ -463,15 +464,19 @@ Developer request D50 (`docs/decisions.md` → *Stop the current turn*): stop th
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` |
+| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` · 409 `hooked-unavailable` (D48 P4) |
+| POST | /api/sessions/{id}/background/stop | StopBackgroundRequest `{ taskIds? }` (ruling, 2026-09-29) | 200 StopBackgroundResult · 422 `invalid` `{ errors: [{ field: "taskIds" }] }` · 404 `not-found` · 409 `hooked-unavailable` |
 
 - **InterruptResult:** `session` (the Session after the Stop: `idle` once the turn stopped, unless background work keeps it working), `outcome` (`stopped` = the CLI acknowledged and the turn ended; `idle` = no turn ran, nothing was sent; `timeout` = no acknowledgement in time: an error event is recorded and nothing is killed, Pause ends the process), `withdrawn` (the texts of the messages the Stop took back, oldest first, for the composer; empty for a second Stop while the first one waits). The call returns once the Stop is over.
 - **SessionEvent.payload** of type `user` gains `withdrawn: true` on a message the Stop took back (the agent never runs it); the event is re-sent on `/hub` `event` when it is set (and when a late echo shows the CLI had taken it up after all: `withdrawn` removed, `delivered: true`).
 - **SessionEvent.payload** of type `result` gains `stopped: true` on the stopped turn's result (kind `text`, label `Stopped`), and a new payload type `stop` `{ outcome: "timeout", waitedMs, missing: "ack" | "result" }` (kind `error`) records a Stop the CLI did not acknowledge.
 - **Question.closedReason** can be `turn stopped`: a batch whose turn was stopped while it waited (it leaves the Inbox, like D33's `session closed`). A permission request open then goes `stale`.
 
+- **Rulings on D50 (2026-09-29):** `POST …/background/stop` stops the session's background tasks (the CLI's `stop_task` each; `taskIds` absent = every stoppable one; a wake-up is never stoppable): **StopBackgroundResult** `{ session, stopped: string[], failed: [{ id, error }] }`. Both routes are served to paired machines (D48 peer API) and answered with the session mapped to the caller's remote id; a hooked terminal session answers 409 `hooked-unavailable` with the reason.
+
 ```json
 InterruptResult { "session": Session, "outcome": "stopped" | "idle" | "timeout", "withdrawn": ["Also: keep it short."] }
+StopBackgroundResult { "session": Session, "stopped": ["b1f2c3d4"], "failed": [] }
 Event { …, "payload": { "type": "user", "text": "Also: keep it short.", "origin": "user", "delivered": false, "withdrawn": true } }
 Event { …, "kind": "text", "label": "Stopped", "payload": { "type": "result", "subtype": "error_during_execution", "isError": true, "terminalReason": "aborted_streaming", …, "stopped": true } }
 ```

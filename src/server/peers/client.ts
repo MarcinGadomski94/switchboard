@@ -98,6 +98,14 @@ export class PeerConnection {
     return this.#state === 'online' ? this.#inbox : [];
   }
 
+  /**
+   * D48 ruling D48-cache-persist: the last known sessions from the stored snapshot,
+   * shown (unreachable) until the machine is reached and its live list replaces them.
+   */
+  seed(sessions: readonly Session[]): void {
+    if (this.#sessions.length === 0) this.#sessions = [...sessions];
+  }
+
   /** Starts the connect loop (idempotent). */
   start(): void {
     if (this.#closed || this.#running) return;
@@ -114,6 +122,15 @@ export class PeerConnection {
     this.#wake?.();
     this.#abort?.abort();
     this.start();
+  }
+
+  /** Cuts a reconnect backoff short (the machine just reached us); an attempt in progress is left alone. */
+  wake(): void {
+    this.#backoffMs = this.#options.minBackoffMs ?? RECONNECT_MIN_MS;
+    if (this.#abort) return;
+    clearTimeout(this.#timer);
+    this.#timer = undefined;
+    this.#wake?.();
   }
 
   /** Stops for good (the machine was removed, or the service stops). */
