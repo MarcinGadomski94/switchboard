@@ -113,7 +113,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 }
 
 /** Which mapping a forwarded answer gets, by the local API path it came from (method + path without the query). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'inbox' | 'none';
+/** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'inbox' | 'wrapped' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -125,6 +126,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (pathname === '/api/sessions') return upper === 'GET' ? 'sessions' : upper === 'POST' ? 'session' : 'none';
   if (pathname === '/api/inbox') return upper === 'GET' ? 'inbox' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
+  // D50: the Stop's and the background stop's answers carry the session under `session`.
+  if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/(?:interrupt|background\/stop)$/.test(pathname)) return 'wrapped';
   const match = /^\/api\/sessions\/[^/]+(?:\/([a-z-]+))?$/.exec(pathname);
   if (!match) return 'none';
   const tail = match[1];
@@ -147,6 +150,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return Array.isArray(body) ? body.filter(isRecord).map((event) => peerEvent(machine, event as unknown as SessionEvent)) : body;
     case 'inbox':
       return Array.isArray(body) ? body.filter(isRecord).map((item) => peerInboxItem(machine, item as unknown as InboxItem)) : body;
+    case 'wrapped':
+      return isRecord(body) && isRecord(body['session']) && typeof body['session']['id'] === 'string'
+        ? { ...body, session: peerSession(machine, body['session'] as unknown as Session) }
+        : body;
     case 'none':
       return body;
   }

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { type ContextState, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
-import { mainAgentName } from '../../core/derive/agents.ts';
+import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
+import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
 import { withoutQueued } from '../../core/derive/queued.ts';
@@ -17,6 +18,7 @@ import {
   controlSuccessLine,
   effortLine,
   interruptLine,
+  stopTaskLine,
   setModelLine,
   setPermissionModeLine,
   userMessageLine,
@@ -101,6 +103,16 @@ export interface InterruptReply {
   /** The texts of the messages the Stop took back, oldest first (empty for a second Stop while the first one waits). */
   readonly withdrawn: readonly string[];
 }
+
+/** D50 background: what {@link SessionSupervisor.stopBackground} did. */
+export interface StopBackgroundReply {
+  readonly record: SessionRecord;
+  readonly stopped: readonly string[];
+  readonly failed: ReadonlyArray<{ readonly id: string; readonly error: string }>;
+}
+
+/** D50 background: how long Switchboard waits for the CLI to report a stopped task's end before ending it itself (ms). */
+export const STOP_TASK_END_MS = 5_000;
 
 /** Options of {@link SessionSupervisor.start}. */
 export interface StartOptions {
@@ -651,6 +663,53 @@ export class SessionSupervisor {
       await this.#emitSession(live.sessionId);
     });
     return outcome;
+  }
+
+  /**
+   * D50 background: stops the session's pending background tasks (D30 / D43; all
+   * stoppable ones, or those named in `taskIds`) with the CLI's `stop_task` control
+   * request, one at a time. A task the CLI answered for ends as stopped when the CLI
+   * reports it (`task_notification` / `task_updated`), else after
+   * {@link STOP_TASK_END_MS} Switchboard ends it itself. Wake-ups are not stoppable
+   * (`stoppableTask`). Without a live process nothing is sent.
+   * @throws {SupervisorError} `not-found`.
+   */
+  async stopBackground(sessionId: string, taskIds?: readonly string[]): Promise<StopBackgroundReply> {
+    await this.#gate;
+    const session = await this.#get(sessionId);
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.running) return { record: session, stopped: [], failed: [] };
+    const wanted = taskIds === undefined ? null : new Set(taskIds);
+    const tasks = live.recorder.backgroundTasks().filter((task) => stoppableTask(task) && (wanted === null || wanted.has(task.id)));
+    const stopped: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+    for (const task of tasks) {
+      const ends = this.#waitFor(
+        live,
+        (m) => (m.kind === 'task-notification' || m.kind === 'task-updated') && m.taskId === task.id && isTaskFinished(m.status),
+        this.#timeouts.ack + STOP_TASK_END_MS,
+      );
+      const reply = await this.#controlOn(live, stopTaskLine(`sb-stop-task-${randomUUID()}`, task.id), this.#timeouts.ack);
+      if (!reply) {
+        failed.push({ id: task.id, error: 'no reply' });
+        continue;
+      }
+      if (reply.subtype !== 'success') {
+        failed.push({ id: task.id, error: reply.error ?? 'refused' });
+        continue;
+      }
+      stopped.push(task.id);
+      if (!(await ends)) {
+        await this.#enqueue(live, async () => {
+          if (live.recorder.backgroundTasks().some((pending) => pending.id === task.id)) await live.recorder.endBackgroundTask(task.id);
+        });
+      }
+    }
+    await this.#enqueue(live, async () => {
+      await this.#refreshStatus(live);
+      await this.#emitSession(live.sessionId);
+    });
+    return { record: await this.#get(sessionId), stopped, failed };
   }
 
   async #stopTimedOut(live: Live, waitedMs: number, missing: 'ack' | 'result'): Promise<void> {
