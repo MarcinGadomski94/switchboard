@@ -350,6 +350,23 @@ NewSession { "name": "proj-38-agent-worktree", "title": "PROJ-38 Agent worktree"
 Session    { …, "solutions": [] }  →  sessionUpdated { …, "solutions": ["acme-app-front"] }
 ```
 
+## Model at session start (D42, 2026-09-29, additive)
+Developer ruling D42 (`docs/decisions.md` → *Model at session start, remembered*): the New-session form picks the model and effort a session starts with, and the service remembers the last choice. Additive; the rows and payloads above keep their meaning. Details: `docs/model-effort.md` → *At session start (D42)*, `docs/new-session.md` → *Model (D42)*. No migration: both settings are rows of the existing `settings` table.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | /api/models | — | ModelSettings `{ options, last }` |
+| POST | /api/sessions | NewSession with `model?` / `effort?` (also NewRepoSession and a schedule's `template`) | 201 Session (its `model.current` / `effort` set) · 422 `invalid` on `model` / `effort`: not text of at most 100 characters or null; with a reported list, a model it does not offer or an effort the chosen model does not support (a model without levels takes none); without one, not a model name / not one of `low, medium, high, xhigh, max` |
+
+```json
+NewSession    { …, "model": "opus" | "default" | null, "effort": "high" | null }
+ModelSettings { "options": [ { "value": "opus", "label": "Opus 5.5", "description"?: "…", "efforts"?: ["low", "medium", "high", "xhigh", "max"] } ] | null,
+                "last": { "model": "opus" | null, "effort": "high" | null } | null }
+```
+- **NewSession.model / effort:** omitted = the CLI's defaults, as before; `null`, blank or (model) `"default"` = the default too. The choice is stored on the session, so its first spawn (and, D31, every later one) passes `--model` / `--effort`.
+- **ModelSettings.options:** the latest model list any claude process reported in its `initialize` reply (`SessionModelOption[]`, D31's shape), replaced by each later report; `null` until one did. **last:** the last model and effort the developer chose: written by a `POST /api/sessions` that names `model` or `effort`, and by every choice `PUT /api/sessions/{id}/model` stores; `null` until then. Scheduled runs never change it. Neither is in `GET /api/settings`, and `PUT /api/settings` does not take them.
+- **Schedules:** `POST /api/schedules`' template carries `model` / `effort` like any other field (checked the same way); each run starts with them.
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
