@@ -970,6 +970,18 @@ a.sb-agent--link:focus-visible {
   color: var(--status-fail);
 }
 
+/* D50: while a turn runs, Send is the ■ Stop button (same slot and size); disabled while the Stop waits for the CLI. */
+.sb-chat-compose .sb-chat-stop {
+  white-space: nowrap;
+}
+
+/* D50: the Pause offer after a Stop the CLI did not acknowledge in time. */
+.sb-chat-error .sb-chat-stop-pause {
+  margin-left: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
 /*
  * D36: a subagent's own chat (docs/chat.md → Subagent chats): the top bar with the
  * way back, the brief and result labels, and the note in the composer's place.
