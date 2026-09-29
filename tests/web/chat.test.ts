@@ -5,8 +5,10 @@ import type { Question, SessionEvent } from '../../src/core/api.ts';
 import { answeredLines } from '../../src/web/components/question-card.ts';
 import {
   ANSWERS_WRITTEN,
+  QUEUED_TOOLTIPS,
   QUICK_REPLIES,
   QUICK_REPLIES_LABEL,
+  batchQueued,
   batchWaiting,
   chatItems,
   composerKeyAction,
@@ -130,6 +132,41 @@ describe('chatItems', () => {
   it('batches without any event (the demo seed) follow the messages in batch order', () => {
     const items = chatItems([event(1, user('task', 'task')), event(2, assistant('text'))], [question('a', 'x'), question('b', 'y', 0)], MAIN);
     expect(items.map((item) => item.key)).toEqual(['u:1', 'a:2', 'q:x', 'q:y']);
+  });
+});
+
+describe('D44 · queued messages', () => {
+  it('a user bubble carries the reason while the message waits (payload `queued`), else null; a subagent prompt never waits', () => {
+    const items = chatItems(
+      [
+        event(1, user('Delivered')),
+        event(2, { type: 'user', text: 'Behind the turn', origin: 'user', delivered: false, queued: 'turn' }),
+        event(3, { type: 'user', text: 'For the resume', origin: 'user', delivered: false, queued: 'resume' }),
+        event(4, { type: 'user', text: 'Taken up, not echoed yet', origin: 'user', delivered: false }),
+      ],
+      [],
+      MAIN,
+    );
+    expect(items.map((item) => (item.kind === 'user' ? [item.text, item.queued, item.delivered] : null))).toEqual([
+      ['Delivered', null, true],
+      ['Behind the turn', 'turn', false],
+      ['For the resume', 'resume', false],
+      ['Taken up, not echoed yet', null, false],
+    ]);
+  });
+
+  it('a batch whose answers wait in the outbox: batchQueued is the reason; any other batch null', () => {
+    const waiting = { ...question('q1', 'b1', 0), state: 'stale' as const, queued: 'resume' as const };
+    expect(batchQueued([waiting])).toBe('resume');
+    expect(batchQueued([question('q1', 'b1', 0)])).toBeNull();
+    expect(batchQueued([{ ...question('q1', 'b1', 0), queued: null }])).toBeNull();
+  });
+
+  it('the tooltips are the ruling\'s copy', () => {
+    expect(QUEUED_TOOLTIPS).toEqual({
+      turn: 'Queued: the agent reads it after its current turn',
+      resume: 'Queued: sent when the session resumes',
+    });
   });
 });
 
