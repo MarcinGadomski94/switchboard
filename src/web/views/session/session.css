@@ -867,12 +867,23 @@ a.sb-agent--link:focus-visible {
 }
 
 .sb-chat-context-track {
+  position: relative;
   flex: 1;
   min-width: 40px;
   height: 4px;
   border-radius: 2px;
   background: var(--border-card);
   overflow: hidden;
+}
+
+/* Ruling D49-autocompact-mark: where the CLI will auto-compact, a 2 px tick like the usage rows' allowance marker. */
+.sb-chat-context-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--muted-3);
 }
 
 .sb-chat-context-fill {

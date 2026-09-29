@@ -172,8 +172,9 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
 /**
  * D49 · the context bar (`docs/chat.md` → *Context bar*): a thin bar with
  * `Context 62% · 124k / 200k`, green / yellow / red at 60 % and 80 %, and
- * `compacted 14:05` after a compaction until the next turn; the tooltip names the
- * window and the last compaction. `Context —` with an empty bar before a reading.
+ * `compacted 14:05` after a compaction until the next turn; a tick where the CLI
+ * will auto-compact (ruling D49-autocompact-mark); the tooltip names the window,
+ * the auto-compact point and the last compaction. `Context —` with an empty bar before a reading.
  */
 export function ContextBar({ context }: { readonly context: SessionContext }) {
   const view = contextBarView(context);
@@ -189,6 +190,7 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
         aria-valuetext={view.text}
       >
         <div className="sb-chat-context-fill" data-testid="chat-context-fill" style={{ width: `${view.fill}%` }} />
+        {view.tick !== null ? <div className="sb-chat-context-tick" data-testid="chat-context-tick" style={{ left: `${view.tick}%` }} /> : null}
       </div>
       <span className="sb-chat-context-text" data-testid="chat-context-text">
         {view.text}

@@ -17,7 +17,7 @@ const at = formatClockTime(AT);
 function context(tokens: number | null, window = 200_000, extra: Partial<SessionContext> = {}): SessionContext {
   const percent = tokens === null ? null : Math.round((tokens / window) * 100);
   const band = percent === null ? 'unknown' : percent >= 80 ? 'high' : percent >= 60 ? 'warn' : 'ok';
-  return { tokens, window, windowSource: 'reported', model: 'claude-opus-4-7', percent, band, updatedAt: AT, compaction: null, compactedRecently: false, ...extra };
+  return { tokens, window, windowSource: 'reported', model: 'claude-opus-4-7', percent, band, updatedAt: AT, compaction: null, compactedRecently: false, autoCompactTokens: window === 200_000 ? 167_000 : 967_000, autoCompactPercent: window === 200_000 ? 83.5 : 96.7, ...extra };
 }
 
 describe('contextBarView', () => {
@@ -40,14 +40,14 @@ describe('contextBarView', () => {
     const compaction = { at: AT, trigger: 'auto', preTokens: 167_000, postTokens: 18_000 };
     const recent = contextBarView(context(18_000, 200_000, { compaction, compactedRecently: true }));
     expect(recent.compacted).toBe(`compacted ${at}`);
-    expect(recent.tooltip).toBe(`Context window: 200,000 tokens · claude-opus-4-7\nLast compacted: ${at} (auto)`);
+    expect(recent.tooltip).toBe(`Context window: 200,000 tokens · claude-opus-4-7\nAuto-compact at 84%\nLast compacted: ${at} (auto)`);
     const later = contextBarView(context(30_000, 200_000, { compaction, compactedRecently: false }));
     expect(later.compacted).toBeNull();
     expect(later.tooltip).toContain(`Last compacted: ${at} (auto)`);
   });
 
   it('the tooltip without a compaction or a model', () => {
-    expect(contextBarView(context(null, 1_000_000, { model: null })).tooltip).toBe('Context window: 1,000,000 tokens\nNot compacted yet');
+    expect(contextBarView(context(null, 1_000_000, { model: null })).tooltip).toBe('Context window: 1,000,000 tokens\nAuto-compact at 97%\nNot compacted yet');
   });
 
   it('from the core: a compaction resets the bar to its post-compaction size', () => {
@@ -69,7 +69,12 @@ describe('ContextBar (markup)', () => {
     expect(html).toContain('aria-valuenow="62"');
     expect(html).toContain('width:62%');
     expect(html).toContain('Context 62% · 124k / 200k');
-    expect(html).toContain('title="Context window: 200,000 tokens · claude-opus-4-7\nNot compacted yet"');
+    expect(html).toContain('title="Context window: 200,000 tokens · claude-opus-4-7\nAuto-compact at 84%\nNot compacted yet"');
     expect(html).not.toContain('chat-context-compacted');
+    // Ruling D49-autocompact-mark: the tick at the CLI's auto-compact point.
+    expect(html).toContain('data-testid="chat-context-tick" style="left:83.5%"');
+    const off = renderToStaticMarkup(createElement(ContextBar, { context: context(124_000, 200_000, { autoCompactTokens: null, autoCompactPercent: null }) }));
+    expect(off).not.toContain('chat-context-tick');
+    expect(off).toContain('Auto-compact off');
   });
 });

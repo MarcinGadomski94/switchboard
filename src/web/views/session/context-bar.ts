@@ -14,7 +14,9 @@ export interface ContextBarView {
   readonly text: string;
   /** `compacted 14:05` from a compaction until the next turn starts; `null` otherwise. */
   readonly compacted: string | null;
-  /** The hover tooltip: the window (with the model) and the last compaction (local 24 h time). */
+  /** Ruling D49-autocompact-mark: where the auto-compact tick sits on the track (percent, one decimal); `null` = no tick (auto-compact off). */
+  readonly tick: number | null;
+  /** The hover tooltip: the window (with the model), where the CLI auto-compacts, and the last compaction (local 24 h time). */
   readonly tooltip: string;
 }
 
@@ -36,11 +38,14 @@ export function contextBarView(context: SessionContext): ContextBarView {
   const compactionLine = context.compaction && at
     ? `Last compacted: ${at}${context.compaction.trigger ? ` (${context.compaction.trigger})` : ''}`
     : 'Not compacted yet';
+  const tick = context.autoCompactPercent ?? null;
+  const autoLine = tick === null ? 'Auto-compact off' : `Auto-compact at ${Math.round(tick)}%`;
   return {
     band: known ? context.band : 'unknown',
     fill: known ? (context.percent ?? 0) : 0,
     text,
     compacted,
-    tooltip: `${windowLine}\n${compactionLine}`,
+    tick,
+    tooltip: `${windowLine}\n${autoLine}\n${compactionLine}`,
   };
 }

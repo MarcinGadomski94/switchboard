@@ -411,6 +411,13 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Unknown:** an empty neutral bar, `Context —`.
   - Details: `docs/chat.md` → *Context bar*; choices where the ruling is silent: `.loop/questions.md` → *D49 · Context window meter*.
 
+## Rulings on D49 (added 2026-09-29)
+- **D49-backfill: yes.** A session with no stored meter (from before D49) reads its context once from its transcript, reusing the transcript replay (the main chain through the compaction boundary). This happens in the background of its first detail request (`GET /api/sessions/{id}`), which then publishes `sessionUpdated`, or at its next spawn, whichever comes first. The result is stored, so it is never read on every GET. A missing or unreadable transcript stores the empty meter (`Context —`).
+- **D49-autocompact-mark: yes.** A small tick on the track where the CLI will auto-compact, and the tooltip adds "Auto-compact at N%".
+  - The threshold is exactly the CLI's (2.1.284 `kK` + `_Q`): `window − min(maxOutputTokens, 20 000) − 13 000`, lowered by `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, with the window clamped by `CLAUDE_CODE_AUTO_COMPACT_WINDOW`.
+  - There is no tick (the tooltip says "Auto-compact off") when `autoCompactEnabled` is false or `DISABLE_COMPACT` / `DISABLE_AUTO_COMPACT` is set. Those are read from the process's env and its user / project / local settings files at each spawn.
+  - The tick sits at `threshold / window` on the bar's own scale; see `.loop/questions.md` → *D49* for how the CLI's count (which adds the last reply's output tokens) relates to the displayed percentage.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
