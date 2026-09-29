@@ -1,4 +1,4 @@
--- 0015 · paired Switchboard machines (D48, "Switchboard peers", docs/peers.md).
+-- 0016 · paired Switchboard machines (D48, "Switchboard peers", docs/peers.md).
 -- machines: one row per paired peer. One pairing creates both directions
 -- (ASSUMED D48-both-directions): each side stores the token it presents to the
 -- other and only a hash of the token the other presents to it.

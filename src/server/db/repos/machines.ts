@@ -2,7 +2,7 @@ import type { CreateInput, Patch, RepoContext } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 
 /**
- * A paired Switchboard (D48, migration 0015, `docs/peers.md`). The outbound token
+ * A paired Switchboard (D48, migration 0016, `docs/peers.md`). The outbound token
  * is what this service presents to the peer; of the token the peer presents here
  * only a hash is kept. Neither is ever logged or sent to the UI.
  */
