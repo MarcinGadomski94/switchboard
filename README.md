@@ -123,6 +123,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 - **Live activity:** "Pondering… 1m 23s", "● Bash: npm test 0:42".
 - **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.
 - **Queued messages:** a message you send while the agent is busy shows a clock until the agent takes it up. A message to a paused session resumes it.
+- **Stop:** while the agent works, **Send** becomes **■ Stop**, and **Esc** does the same (an open popup takes Esc first). It stops the current turn only, like Ctrl+C in the terminal: the session stays ready for your next message. Messages still queued come back into the message field so you can edit them.
 - **Context bar:** a thin bar above the quick replies shows how full the session's context window is (`Context 62% · 124k / 200k`), green, then yellow from 60 % and red from 80 %. After the CLI compacts the conversation it resets and reads "compacted 14:05" until the next turn.
 - **Questions:** the agent's questions appear as cards in the chat. Besides the offered answers, **Other…** lets you answer in your own words.
 
@@ -273,7 +274,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 `SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. [`docs/demo.md`](docs/demo.md)
 
 ### How changes are made
-- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D49). The developer's rulings win where the two differ.
+- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D50). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
 - **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `main` with the full suites green.
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.

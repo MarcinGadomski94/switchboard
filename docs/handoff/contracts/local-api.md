@@ -439,6 +439,24 @@ Developer request D49 (`docs/decisions.md` → *Context window meter*): the comp
 Session { …, "context": { "tokens": 124000, "window": 200000, "windowSource": "reported", "model": "claude-opus-4-7", "percent": 62, "band": "warn", "updatedAt": "2026-09-29T12:05:00.000Z", "compaction": { "at": "2026-09-29T12:05:00.000Z", "trigger": "auto", "preTokens": 167000, "postTokens": 18000 }, "compactedRecently": false } | null }
 ```
 
+## Stop the current turn (D50, 2026-09-29, additive)
+Developer request D50 (`docs/decisions.md` → *Stop the current turn*): stop the running turn only; the process stays alive and the session becomes idle. One new route, no new event name, no migration. Details: `docs/supervisor.md` → *Stop the current turn (D50)*, `docs/chat.md` → *Stop (D50)*.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | /api/sessions/{id}/interrupt | — | 200 InterruptResult · 404 `not-found` |
+
+- **InterruptResult:** `session` (the Session after the Stop: `idle` once the turn stopped, unless background work keeps it working), `outcome` (`stopped` = the CLI acknowledged and the turn ended; `idle` = no turn ran, nothing was sent; `timeout` = no acknowledgement in time: an error event is recorded and nothing is killed, Pause ends the process), `withdrawn` (the texts of the messages the Stop took back, oldest first, for the composer; empty for a second Stop while the first one waits). The call returns once the Stop is over.
+- **SessionEvent.payload** of type `user` gains `withdrawn: true` on a message the Stop took back (the agent never runs it); the event is re-sent on `/hub` `event` when it is set (and when a late echo shows the CLI had taken it up after all: `withdrawn` removed, `delivered: true`).
+- **SessionEvent.payload** of type `result` gains `stopped: true` on the stopped turn's result (kind `text`, label `Stopped`), and a new payload type `stop` `{ outcome: "timeout", waitedMs, missing: "ack" | "result" }` (kind `error`) records a Stop the CLI did not acknowledge.
+- **Question.closedReason** can be `turn stopped`: a batch whose turn was stopped while it waited (it leaves the Inbox, like D33's `session closed`). A permission request open then goes `stale`.
+
+```json
+InterruptResult { "session": Session, "outcome": "stopped" | "idle" | "timeout", "withdrawn": ["Also: keep it short."] }
+Event { …, "payload": { "type": "user", "text": "Also: keep it short.", "origin": "user", "delivered": false, "withdrawn": true } }
+Event { …, "kind": "text", "label": "Stopped", "payload": { "type": "result", "subtype": "error_during_execution", "isError": true, "terminalReason": "aborted_streaming", …, "stopped": true } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
