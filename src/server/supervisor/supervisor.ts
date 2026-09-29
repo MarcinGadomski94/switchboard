@@ -615,7 +615,13 @@ export class SessionSupervisor {
       return 'idle';
     }
     let outcome: InterruptOutcome = 'stopped';
-    if (!(await acked)) {
+    const ackOk = await acked;
+    if (!ackOk && !live.proc.running) {
+      // The process ended meanwhile (its exit is recorded as usual): there is nothing left to stop.
+      live.stopInFlight = false;
+      return 'idle';
+    }
+    if (!ackOk) {
       outcome = 'timeout';
       await this.#stopTimedOut(live, t.ack, 'ack');
     } else {
