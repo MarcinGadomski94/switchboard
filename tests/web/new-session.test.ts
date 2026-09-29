@@ -96,6 +96,7 @@ describe('defaults and prefill', () => {
       ultracode: false,
       folder: null,
       branch: null,
+      model: null,
     });
     expect(RECOMMENDED).toEqual({ workType: 'feature', mode: 'single', phase: 'ui-first', coordination: 'sequential' });
     expect(formFromPrefill(null)).toBe(DEFAULT_FORM);

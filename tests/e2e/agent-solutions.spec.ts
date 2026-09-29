@@ -124,6 +124,7 @@ test('no solution picked: the agent is told to choose; a write into acme-app-fro
     'mode      single-solution',
     'phase     UI-first',
     'ultracode off',
+    'model     Default', // D42: the Model row's choice (the CLI default here)
     ' ',
     '# no worktrees · edits in place',
     'solutions  chosen by the agent',

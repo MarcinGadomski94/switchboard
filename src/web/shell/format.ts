@@ -3,7 +3,7 @@ import type { SessionStatus } from '../../core/model.ts';
 import { WEEKDAY_LABELS } from '../../core/cron.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
-import { USAGE_ROW_LABELS, weeklyPace } from '../../core/usage.ts';
+import { USAGE_ROW_LABELS, sessionPace, weeklyPace } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -85,15 +85,20 @@ export function formatResetsIn(iso: string, now: number = Date.now()): string {
 }
 
 /**
- * D23: the Week row's pace ({@link weeklyPace}): the bar's color, the allowance
- * marker and the row's tooltip. Absent while the week or its reset is unknown.
+ * D23 / D46: a usage row's pace, the Week row's ({@link weeklyPace}) or the
+ * Session row's ({@link sessionPace}): the bar's color, the allowance marker and
+ * the row's tooltip. Absent while the window or its reset is unknown.
  */
-export interface WeekPaceView {
+export interface PaceView {
   /** The row's `data-pace`: `on` below the allowance (bar in SPEC status done, green), `ahead` at or above it (status need, yellow). */
   readonly state: 'on' | 'ahead';
   /** Where the marker sits on the bar: the current allowance, 0–100 (`57.14`). */
   readonly markerPct: number;
-  /** The row's `title`: `On pace: 33% of 57.14% allowed until Mon 15:00` (local weekday and time of the next step). */
+  /**
+   * The row's `title`, naming the next step in local time: Week `On pace: 33% of
+   * 57.14% allowed until Mon 15:00` (weekday and time), Session `On pace: 38% of
+   * 50% until 14:05` (time).
+   */
   readonly title: string;
 }
 
@@ -104,8 +109,8 @@ export interface UsageRow extends Meter {
   readonly label: string;
   /** `key: 'model'`: the model's name. */
   readonly model?: string;
-  /** D23, `key: 'week'` only: the pace while the week and its reset are known. */
-  readonly pace?: WeekPaceView;
+  /** D23 (`key: 'week'`) and D46 (`key: 'session'`) only: the pace while the window and its reset are known. */
+  readonly pace?: PaceView;
 }
 
 /** A percentage with up to 2 decimals and no trailing zeros: `33%`, `57.14%`, `100%`. */
@@ -115,20 +120,32 @@ function pacePct(value: number): string {
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 
-/** `Mon 15:00`: local weekday and time (the schedule table's `clockTime` form, not imported: that module imports this one). */
-function weekdayTime(date: Date): string {
-  return `${WEEKDAY_LABELS[date.getDay()]} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+/** `15:00`: local 24 h time (the schedule table's `clockTime`, not imported: that module imports this one). */
+function clockTime(date: Date): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
-/** D23: the Week row's pace at `now`, `null` while unknown (never guessed). */
-function weekPaceView(week: UsageWindow, now: number): WeekPaceView | null {
-  const pace = weeklyPace(week, new Date(now));
+/** `Mon 15:00`: local weekday and time. */
+function weekdayTime(date: Date): string {
+  return `${WEEKDAY_LABELS[date.getDay()]} ${clockTime(date)}`;
+}
+
+/**
+ * D23 / D46: the Week or the Session row's pace at `now`, `null` while unknown
+ * (never guessed). The Week steps by the day, so its tooltip names the step's
+ * weekday ("allowed until Mon 15:00", D23); the Session steps by the minute, so
+ * its tooltip names the time only ("until 14:05", D46).
+ */
+function paceView(key: 'session' | 'week', window: UsageWindow, now: number): PaceView | null {
+  const pace = key === 'week' ? weeklyPace(window, new Date(now)) : sessionPace(window, new Date(now));
   if (!pace) return null;
   const verdict = pace.onPace ? 'On pace' : 'Ahead of pace';
+  const next = new Date(pace.nextStepAt);
+  const until = key === 'week' ? `allowed until ${weekdayTime(next)}` : `until ${clockTime(next)}`;
   return {
     state: pace.onPace ? 'on' : 'ahead',
     markerPct: pace.allowancePct,
-    title: `${verdict}: ${pacePct(week.pct)} of ${pacePct(pace.allowancePct)} allowed until ${weekdayTime(new Date(pace.nextStepAt))}`,
+    title: `${verdict}: ${pacePct(window.pct)} of ${pacePct(pace.allowancePct)} ${until}`,
   };
 }
 
@@ -143,7 +160,8 @@ function windowMeter(window: UsageWindow, now: number): Meter {
  * (`unknown` while `usageWindows` has no such window, `—` before `/api/system`
  * answers), then one row per model window the server lists (it lists them only
  * while in use). Nothing is derived from `usagePct`: unknown stays unknown. D23:
- * a known Week row carries its `pace` (color, allowance marker, tooltip).
+ * a known Week row carries its `pace` (color, allowance marker, tooltip); D46: so
+ * does a known Session row.
  */
 export function usageRows(system: SystemInfo | null, now: number = Date.now()): UsageRow[] {
   const windows = system?.usageWindows ?? [];
@@ -151,7 +169,7 @@ export function usageRows(system: SystemInfo | null, now: number = Date.now()): 
     const label = USAGE_ROW_LABELS[key];
     const window = windows.find((w) => w.key === key);
     if (window) {
-      const pace = key === 'week' ? weekPaceView(window, now) : null;
+      const pace = paceView(key, window, now);
       return { key, label, ...windowMeter(window, now), ...(pace ? { pace } : {}) };
     }
     return { key, label, pct: 0, text: system ? 'unknown' : UNKNOWN };

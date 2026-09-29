@@ -340,6 +340,16 @@
   left: 16px;
 }
 
+/*
+ * D42 · the Model row (not in the prototype): a Launch row like the two toggles
+ * (title + description), with D31's picker (session.css: the header actions'
+ * 12px outlined button, its popover under it, right-aligned) in the switch's place.
+ */
+.sb-ns-model-row .sb-sv-model {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
 /* The live mono summary. */
 .sb-ns-summary {
   margin: 0 16px;

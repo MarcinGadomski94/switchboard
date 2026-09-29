@@ -8,6 +8,7 @@ import type { Store } from '../../../src/server/db/store.ts';
 import { LatestThrottle, type ThrottleTimers } from '../../../src/server/supervisor/activity-throttle.ts';
 import { StreamRecorder } from '../../../src/server/supervisor/recorder.ts';
 import { FIXTURES_DIR } from '../../../tools/fake-claude/fixtures.ts';
+import { FAKE_TASK_DESCRIPTION, FAKE_WORKFLOW_SUMMARY } from '../../../tools/fake-claude/scenarios.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
@@ -311,6 +312,42 @@ describe('background work · real path (D30)', () => {
     expect(w.supervisor.activity(session.id)).toBeNull();
     await wait(() => seen.at(-1) === null);
     expect(seen.at(-1)).toBeNull();
+  });
+});
+
+describe('every background task counts · real path (D43)', () => {
+  const until = async (check: () => boolean, ms = 10_000): Promise<void> => {
+    const deadline = Date.now() + ms;
+    while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+  };
+
+  it('fake-claude [fake:workflow]: the launched workflow is the wait after the turn (tool Workflow, its Summary), once; its notification ends it', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Audit the fixtures. [fake:workflow 3]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const waiting = w.supervisor.activity(session.id);
+    expect(waiting).toMatchObject({ state: 'background', tool: 'Workflow', summary: FAKE_WORKFLOW_SUMMARY, thinkingTokens: null });
+    // One entry, though both the task_started and the confirming result reported it.
+    expect(waiting?.background).toMatchObject([{ kind: 'workflow', summary: FAKE_WORKFLOW_SUMMARY, github: false }]);
+    expect(waiting?.background[0]?.id).toMatch(/^w[a-z0-9]{8}$/);
+    await until(() => w.supervisor.activity(session.id) === null);
+    expect(w.supervisor.activity(session.id)).toBeNull();
+    await w.supervisor.pause(session.id);
+  });
+
+  it('fake-claude [fake:bg-task]: a task_started of an unknown type alone is the wait (kind task, its description, no tool); exit clears it', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const session = await w.supervisor.start(newSession({ task: 'Keep going. [fake:bg-task 60]' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    const waiting = w.supervisor.activity(session.id);
+    expect(waiting).toMatchObject({ state: 'background', tool: null, summary: FAKE_TASK_DESCRIPTION });
+    expect(waiting?.background).toMatchObject([{ kind: 'task', summary: FAKE_TASK_DESCRIPTION, github: false }]);
+    // Without a tool use id the task id stands in.
+    expect(waiting?.background[0]?.toolUseId).toBe(waiting?.background[0]?.id);
+    await w.supervisor.pause(session.id);
+    expect(w.supervisor.activity(session.id)).toBeNull();
   });
 });
 

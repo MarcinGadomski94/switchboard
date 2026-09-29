@@ -12,7 +12,7 @@ The form behind "+ New session" (SPEC → Modals → New session; prototype `mNe
 5. **Phase**: UI-first · Integration.
 6. **Mobile coordination** (Sequential follow-up · Parallel-twin · No mobile counterpart) only for feature-building + single-solution + a `*-front` in scope; **QA contract** (stack Web · Playwright / Mobile · Appium / Both, then the Confluence page URL and the Figma frame URLs) only for test-authoring. Never both.
 
-Right: "Launch" with the two 32×18 toggles (Worktree per solution · Ultracode (workflows)), "Summary" (the live mono summary) and Cancel / Start session. The header has "Accept recommended".
+Right: "Launch" with the two 32×18 toggles (Worktree per solution · Ultracode (workflows)) and, D42, the **Model** row (*Model (D42)* below), "Summary" (the live mono summary) and Cancel / Start session. The header has "Accept recommended".
 
 Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solution chips are toggle buttons (selected: blue, `✓ name`); read-only chips are disabled buttons at 40% opacity with a not-allowed cursor.
 
@@ -26,6 +26,7 @@ Pills are radio groups (selected: `#26272c` background, `#8d8c87` border). Solut
 | QA stack, Confluence URL, Figma URLs | none, empty, empty | `qa: {stack, confluenceUrl, figmaUrls}` for test-authoring (Figma URLs split on spaces, commas and new lines), else `null` |
 | worktrees, ultracode | on, off (the prototype's Settings → Sessions & worktrees: "Worktree per session: on", "Ultracode by default: off"; M8.2 may read them from Settings) | booleans |
 | folder (D14) | the prefill's folder while it is saved, else the default folder (once `GET /api/folders` has answered) | `folder` = the saved folder's id; for a **repo** folder the body is a `NewRepoSession`: `{name, task, folder, solutions: [<repo>], worktrees, ultracode}` (no router fields) |
+| model, effort (D42) | the developer's pick, else a prefill's (a schedule's Edit), else the last choice (`GET /api/models` → `last`), else the CLI's default; fitted to the offered models | `model` / `effort` (`null` = the CLI's default) on every body, also a repo folder's and a schedule's template; not for a moved conversation or a teleport |
 | branch (D32) | what the title suggests (`branchFromTitle`) until the developer types in it; a prefill's `branch` counts as typed | `branch` (trimmed) only with `worktrees: true`, for a workspace and a repo folder; never in a schedule's template |
 
 **Prefill** (M3.3 "Open fix session", `useModals().open('new-session', { prefill })`): the defaults with every valid prefill field on top (invalid values and `coordination: null` are ignored; the name is sanitised like typed input). The dialog also carries the prefill as `data-prefill` (JSON), which `tests/e2e/inbox-system.spec.ts` reads. A prefilled solution the scan does not list shows in an extra row `not found`, selected, so it can be removed; the server decides whether it can start.
@@ -48,6 +49,7 @@ phase     UI-first | integration
 stack     web | mobile | both | —            (QA only)
 mobile    sequential | parallel-twin | no counterpart   (feature + single + *-front only)
 ultracode on | off
+model     <model> · <effort>                  (D42: the Model row's trigger text: `Default`, `Opus 5.5 · high`)
 
 # worktrees | # no worktrees · edits in place
 branch    <ticket branch> | branch    —       (D32: always with worktrees; `—` until the Branch field is valid)
@@ -66,6 +68,7 @@ solutions  chosen by the agent                (D38: no solution picked; replaces
   folder    <repo> · git repo
   cwd       <repo path> | <parent>/<repo>-wt-<name>   (Worktree on)
   ultracode on | off
+  model     <model> · <effort>                         (D42)
 
   # worktree | # no worktree · edits in place
   branch    <ticket branch> | branch    —              (D32: Worktree on)
@@ -93,6 +96,14 @@ Picking solutions is optional for a **workspace** folder (repo folders are uncha
 - Start posts `solutions: []`. The server stores the session with empty `solutions` and, with Worktree on, creates **no worktree up front**; it stores the branch (`sessions.branch`) instead. The first message tells the agent to determine the solutions and, with worktrees, where to create them (*First-turn payload* below). The solutions then fill in from what the agent touches (`docs/derivations.md` → *Session solutions (D38)*), and worktrees it creates are adopted (`docs/worktrees.md` → *Adopted worktrees (D38)*).
 - A schedule's form follows the same rule (a template may have no solutions; each run's agent determines them, `docs/schedules.md`).
 - The visual oracle's `empty` state compares the rest against the prototype and checks the ruled hint, line and enabled Start on their own (`docs/visual/new-session.md` → *D38 ruling*).
+
+## Model (D42)
+The Launch area's third row, under Ultracode (not in the prototype; for a workspace or a repo folder and while scheduling; hidden with the toggles for a moved conversation or a teleport). Code: `formModel`, `formModelPicker`, `pickFormModel`, `pickFormEffort`, `modelSummaryLine` in `new-session.ts`; the rules of the stored settings are `docs/model-effort.md` → *At session start (D42)*.
+- **Layout:** a toggle row (title `Model`, description `Starts on your last choice`) with D31's picker where the switches sit: the header actions' 12px outlined button `<model> · <effort> ▾` (`ns-model-button`) and its popover (the model list, the chosen model's effort pills after Default, hidden for a model without levels; the note `The session starts with this choice (--model / --effort). New sessions start on your last choice.`). The popover opens under the button, inside the side column, over the summary. Esc closes only the popover (a second Esc the form). The toggles block grows by the row; the summary gives the height back, so the form's height is unchanged.
+- **Options:** `GET /api/models` → `options` (the latest list any claude process reported), else the CLI's aliases `default`, `opus`, `sonnet`, `haiku` without effort levels. A failed read counts as neither list nor last choice; while it loads, the button is disabled (`Loading the models…`) and nothing about the model is sent.
+- **Start:** the developer's pick or a prefill's, else `last`, else the CLI's default, fitted to the options (a model not offered → Default; an effort the model lacks → Default). A model pick keeps the effort when the new model has that level.
+- **Summary:** `model     <model> · <effort>` after `ultracode` (the trigger's text: the short model name, the effort only when one is chosen); in schedule mode the `schedule` line follows it.
+- **Start / Save schedule** send `model` / `effort`; the start becomes the service's last choice (a saved schedule does not). The visual oracle checks the row and the line on their own (`docs/visual/new-session.md` → *D42 additions*).
 
 ## Name and title (D22)
 The name field takes free text: the session's **title** (`startNames` / `toStartBody` in `new-session.ts`, rules in `src/core/session-title.ts`, `docs/derivations.md` → *Session titles*).
@@ -230,6 +241,7 @@ Take them as the answers to the session-start questions: confirm them back in on
 - `tests/e2e/new-session.spec.ts` (oracle, real path, no demo): fake-claude, fake gh, a fixture workspace with git repos and read-only folders. The form (sections, pills, chips, locked read-only chips, coordination and QA visibility, toggles, summary, D22: a title's derived short name and a taken name getting `-2`), Start → the posted body, the session view, the stored session, the worktrees on disk and the first message the agent got (M5.2), a refusal shown in the modal (D22: the short name's branch exists already), the contract's 422s through the API (read-only paths, duplicate name, QA without `qa`; D38: no solutions is a 201), and "Open fix session" → the prefilled form → a started session.
 - `tests/e2e/visual/new-session.spec.ts`: the visual oracle against the prototype (`docs/visual/new-session.md`); D14: the sections are compared relative to section 1 and the Folder row and the summary's `folder` line are recorded as additions; D38: the `empty` state's hint, summary line and Start are checked on their own (`D38 …` rows).
 - D38: `tests/web/new-session.test.ts` → *D38 · solutions chosen by the agent* (Start without solutions, the summary line, the hint, the body), `tests/core/first-turn.test.ts` → *D38* (not chosen; plus worktrees; a scheduled run's branch), `tests/server/sessions/agent-solutions.test.ts` (an empty / omitted list accepted, a repo folder unchanged, no up-front worktree, adoption by the sweep and by a `git worktree add`, fill-in from writes), `tests/e2e/agent-solutions.spec.ts` (real path: the "not chosen" first message, a write filling in the chip, an agent-created worktree adopted into the Diff tab).
+- D42: `tests/web/model-at-start.test.ts`, `tests/server/api/model-at-start.test.ts`, `tests/e2e/model-at-start.spec.ts` and the visual spec's `D42 …` rows (`docs/model-effort.md` → *At session start (D42)*).
 - D14: `tests/e2e/folders.spec.ts` (the Folder row switching chips, a repo folder's form and session in its worktree), `tests/e2e/walkthrough-repo.spec.ts`.
 - D16: `tests/web/resume-conversation.test.ts` (entries, name preview, D22: a typed title and its short name, the 80-character rule, Start rule, summary), `tests/e2e/move-conversations.spec.ts` (Resume a terminal conversation → pick → a typed title → Start moves it, on the real path), and the visual spec's `D16 …` rows (the pill out of the flow).
 - D25: `tests/web/remote-session.test.ts` (the repo folders offered, names, Start rule, body, summary, the refusal line), `tests/e2e/teleport.spec.ts` (From a remote session → Start → the local copy, on the real path; a refusal shown verbatim, nothing left), and the visual spec's `D25 …` rows (the pill out of the flow on the Folder label line).

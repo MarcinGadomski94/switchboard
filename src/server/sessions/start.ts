@@ -6,6 +6,7 @@ import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
 import type { ApiContext } from '../routes.ts';
+import { readModelOptionsSetting } from '../settings/models.ts';
 import { type TaskWorktree, WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
 import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
@@ -78,7 +79,9 @@ export async function resolveSessionFolder(
  * cut from `origin/<epic>` / `origin/<base>` / the origin default branch, reuse an
  * existing task branch; 409 `fetch-failed` / `base-missing` /
  * `branch-checked-out`), dropped repos leave `solutions`, the branching is
- * stored and the first message carries the Branching lines.
+ * stored and the first message carries the Branching lines. D42: its `model` /
+ * `effort` are checked against the latest reported model list and stored on the
+ * session, so its first spawn passes `--model` / `--effort`.
  */
 export async function startNewSession(context: SessionStartContext, body: unknown, options: StartNewSessionOptions = {}): Promise<StartNewSessionOutcome> {
   const { store, supervisor, providers, worktrees, folders } = context;
@@ -99,6 +102,8 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     nameTaken: async (name) => (await store.sessions.getByName(name)) !== null,
     folder: { kind: folder.kind, repoName: repoSolutionName(folder) },
     worktreeBranch: options.worktreeBranch ?? 'ticket',
+    // D42: a `model` / `effort` is checked against the latest list any claude process reported.
+    modelOptions: await readModelOptionsSetting(store.settings),
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };

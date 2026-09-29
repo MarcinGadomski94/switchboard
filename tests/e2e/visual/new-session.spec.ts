@@ -59,6 +59,14 @@ import {
  * Those three parts leave the prototype comparison and are checked on their own
  * ({@link d38Additions}); the draft state (solutions picked) is unchanged.
  *
+ * D42 additions (not findings): the Launch area's **Model row** (the toggles'
+ * third row: title, description and D31's picker in the switch's place) and the
+ * summary's **`model` line** right after `ultracode`. The prototype has
+ * neither: the toggles block is compared with its height less the row's share,
+ * the summary label and the summary with their y less it (the summary's height
+ * plus it: the side keeps its height, the summary gives way), and the summary
+ * lines after `ultracode` at the app's index + 1 more with their y less the
+ * added line too. The added parts are checked on their own ({@link d42Additions}).
  * D40 addition (not a finding): with Worktree on the form ends with the
  * **Branching** section (epic key, summary, creation line, preflight table),
  * after every prototype section, so no compared part moves; its inputs are left
@@ -85,43 +93,66 @@ const FOLDER_ROW = [...FORM, 1];
 const FOLDER_LINE = [...SUMMARY, 1];
 
 /**
- * The app's path of a prototype path (D14, see the module comment). D32:
- * `worktreesLine` is the prototype's index of the `# worktrees` summary line
- * (`null` when the state compares no line after it): the lines after it sit one
- * more line lower in the app (the added `branch` line).
+ * Where the D32 / D42 summary additions sit, as the prototype's summary line
+ * indexes of the current state (`null` without such a line): the lines after
+ * `# worktrees` (D32: the added `branch` line) and after `ultracode` (D42: the
+ * added `model` line) sit one more line lower in the app each.
  */
-function appPathOf(path: readonly number[], worktreesLine: number | null = null): readonly number[] {
+interface SummaryMarks {
+  readonly worktrees: number | null;
+  readonly ultracode: number | null;
+}
+
+const NO_MARKS: SummaryMarks = { worktrees: null, ultracode: null };
+
+/**
+ * The app's path of a prototype path (D14, see the module comment); summary
+ * lines also move down past the D32 / D42 lines ({@link SummaryMarks}).
+ */
+function appPathOf(path: readonly number[], marks: SummaryMarks = NO_MARKS): readonly number[] {
   const [a, b, c] = path;
   if (a !== undefined && a === FORM[0] && b !== undefined && b >= 1) return [a, b + 1, ...path.slice(2)];
   if (a !== undefined && a === SIDE[0] && b !== undefined && b === SUMMARY[1] && c !== undefined && c >= 1) {
-    return [a, b, c + (worktreesLine !== null && c > worktreesLine ? 2 : 1), ...path.slice(3)];
+    const past = (line: number | null): number => (line !== null && c > line ? 1 : 0);
+    return [a, b, c + 1 + past(marks.ultracode) + past(marks.worktrees), ...path.slice(3)];
   }
   return path;
 }
 
 /**
  * What {@link appPathOf} shifted: section 1 below the Folder row (`form`; D32: its
- * own box, `task`, grows by the Branch row), the sections below it (`belowTask`),
- * the summary below the `folder` line (`summary`), and (D32) the summary lines
- * below the `branch` line (`belowBranch`).
+ * own box, `task`, grows by the Branch row), the sections below it (`belowTask`);
+ * D42: the toggles block grows by the Model row (`toggles`), so the summary label
+ * and the summary's first line sit lower (`launch`) and the summary box too, less
+ * high (`summaryBox`); the summary below the `folder` line (`summary`), the lines
+ * below the `model` line (D42, `belowModel`) and (D32) below the `branch` line
+ * (`belowBranch`).
  */
-type Shift = 'form' | 'task' | 'belowTask' | 'summary' | 'belowBranch';
+type Shift = 'form' | 'task' | 'belowTask' | 'toggles' | 'launch' | 'summaryBox' | 'summary' | 'belowModel' | 'belowBranch';
 
-function shiftOf(path: readonly number[], worktreesLine: number | null = null): Shift | null {
+function shiftOf(path: readonly number[], marks: SummaryMarks = NO_MARKS): Shift | null {
   const [a, b, c] = path;
   if (a === FORM[0] && b === 1) return path.length === 2 ? 'task' : 'form';
   if (a === FORM[0] && b !== undefined && b >= 2) return 'belowTask';
-  if (a === SIDE[0] && b === SUMMARY[1] && c !== undefined && c >= 1) return worktreesLine !== null && c > worktreesLine ? 'belowBranch' : 'summary';
+  if (a === SIDE[0] && b === 1 && path.length === 2) return 'toggles';
+  if (a === SIDE[0] && b === 2) return 'launch';
+  if (a === SIDE[0] && b === SUMMARY[1] && c === undefined) return 'summaryBox';
+  if (a === SIDE[0] && b === SUMMARY[1] && c === 0) return 'launch';
+  if (a === SIDE[0] && b === SUMMARY[1] && c !== undefined && c >= 1) {
+    if (marks.worktrees !== null && c > marks.worktrees) return 'belowBranch';
+    return marks.ultracode !== null && c > marks.ultracode ? 'belowModel' : 'summary';
+  }
   return null;
 }
 
-/** D32: the prototype's index of its `# worktrees` summary line in the current state (`null` without one). */
-async function worktreesLineOf(protoPage: Page): Promise<number | null> {
+/** D32 / D42: the prototype's indexes of its `# worktrees` and `ultracode …` summary lines in the current state. */
+async function summaryMarksOf(protoPage: Page): Promise<SummaryMarks> {
   return protoPage.evaluate((path) => {
     let el: Element | undefined | null = findPanelIn(document);
     for (const index of path) el = el?.children[index];
-    const index = [...(el?.children ?? [])].findIndex((line) => (line.textContent ?? '').trim() === '# worktrees');
-    return index === -1 ? null : index;
+    const texts = [...(el?.children ?? [])].map((line) => (line.textContent ?? '').trim());
+    const at = (index: number): number | null => (index === -1 ? null : index);
+    return { worktrees: at(texts.indexOf('# worktrees')), ultracode: at(texts.findIndex((text) => text.startsWith('ultracode '))) };
   }, [...SUMMARY]);
 }
 
@@ -266,46 +297,83 @@ function fmtBox(part: Part): string {
 }
 
 /**
- * How far the D14 / D32 additions move the app's parts down (px): section 1 and
- * the form below the Folder row (`form`, `task`), the sections below section 1's
- * Branch row too (`belowTask`), the summary below the `folder` line, the summary
- * lines below the `branch` line too (`belowBranch`). `taskGrow` = the Branch row's
- * share of section 1's height (taken off its height).
+ * How far the D14 / D32 / D42 additions move the app's parts down (px): section 1
+ * and the form below the Folder row (`form`, `task`), the sections below section
+ * 1's Branch row too (`belowTask`); D42: the summary label, the summary box and its
+ * first line below the Model row (`launch`, `summaryBox`); the summary lines
+ * below the `folder` line (`summary`), below the `model` line too (`belowModel`)
+ * and below the `branch` line too (`belowBranch`). `taskGrow` = the Branch row's
+ * share of section 1's height (taken off its height); `launchGrow` (D42) = the
+ * Model row's share of the toggles block's height (taken off it, and given back
+ * to the summary box's).
  */
 interface Offsets {
   readonly form: number;
   readonly task: number;
   readonly belowTask: number;
   readonly taskGrow: number;
+  readonly toggles: number;
+  readonly launch: number;
+  readonly summaryBox: number;
+  readonly launchGrow: number;
   readonly summary: number;
+  readonly belowModel: number;
   readonly belowBranch: number;
 }
 
-const NO_OFFSETS: Offsets = { form: 0, task: 0, belowTask: 0, taskGrow: 0, summary: 0, belowBranch: 0 };
+const NO_OFFSETS: Offsets = { form: 0, task: 0, belowTask: 0, taskGrow: 0, toggles: 0, launch: 0, summaryBox: 0, launchGrow: 0, summary: 0, belowModel: 0, belowBranch: 0 };
 
 /**
  * Measures the offsets of a state: the first section's y and height on both
- * pages (D14 / D32), the added summary lines' heights (D14 `folder`, D32
- * `branch` right after `# worktrees`).
+ * pages (D14 / D32), the toggles block's height on both (D42), the added summary
+ * lines' heights (D14 `folder`, D42 `model` right after `ultracode`, D32 `branch`
+ * right after `# worktrees`).
  */
-async function measureOffsets(protoPage: Page, appPage: Page, worktreesLine: number | null): Promise<Offsets> {
+async function measureOffsets(protoPage: Page, appPage: Page, marks: SummaryMarks): Promise<Offsets> {
   const firstSection = [...FORM, 1];
-  const proto = await measurePanel(protoPage, { first: firstSection });
+  const toggles = [...SIDE, 1];
+  const proto = await measurePanel(protoPage, { first: firstSection, toggles });
   const app = await measurePanel(appPage, {
     first: appPathOf(firstSection),
+    toggles,
     folderLine: FOLDER_LINE,
-    ...(worktreesLine !== null ? { branchLine: [...SUMMARY, worktreesLine + 2] } : {}),
+    // The app's index of a prototype line + 1 is the line added right after it.
+    ...(marks.ultracode !== null ? { modelLine: [...SUMMARY, appPathOf([...SUMMARY, marks.ultracode], marks)[2]! + 1] } : {}),
+    ...(marks.worktrees !== null ? { branchLine: [...SUMMARY, appPathOf([...SUMMARY, marks.worktrees], marks)[2]! + 1] } : {}),
   });
   const form = (app['first']?.box.y ?? 0) - (proto['first']?.box.y ?? 0);
   const taskGrow = (app['first']?.box.height ?? 0) - (proto['first']?.box.height ?? 0);
-  const summary = app['folderLine']?.box.height ?? 0;
-  return { form, task: form, belowTask: form + taskGrow, taskGrow, summary, belowBranch: summary + (app['branchLine']?.box.height ?? 0) };
+  const launch = (app['toggles']?.box.height ?? 0) - (proto['toggles']?.box.height ?? 0);
+  const summary = launch + (app['folderLine']?.box.height ?? 0);
+  const belowModel = summary + (app['modelLine']?.box.height ?? 0);
+  return {
+    form,
+    task: form,
+    belowTask: form + taskGrow,
+    taskGrow,
+    toggles: 0,
+    launch,
+    summaryBox: launch,
+    launchGrow: launch,
+    summary,
+    belowModel,
+    belowBranch: belowModel + (app['branchLine']?.box.height ?? 0),
+  };
+}
+
+/** How much a shifted part's height differs from the prototype's: D32's Branch row in section 1, D42's Model row in the toggles (the summary gives it back). */
+function heightShift(shift: Shift | null | undefined, offsets: Offsets): number {
+  if (shift === 'task') return offsets.taskGrow;
+  if (shift === 'toggles') return offsets.launchGrow;
+  if (shift === 'summaryBox') return -offsets.launchGrow;
+  return 0;
 }
 
 /**
  * Compares measured parts; appends report rows and findings. `offsets` (D14 /
- * D32) are taken off the app's y of shifted parts, and section 1's added Branch
- * row off its height (`task`).
+ * D32 / D42) are taken off the app's y of shifted parts, section 1's added Branch
+ * row off its height (`task`), the Model row off the toggles' (`toggles`) and
+ * added back to the summary's (`summaryBox`).
  */
 function compareParts(
   state: string,
@@ -325,14 +393,14 @@ function compareParts(
       continue;
     }
     const dy = spec.shift ? offsets[spec.shift] : 0;
-    const dh = spec.shift === 'task' ? offsets.taskGrow : 0;
+    const dh = heightShift(spec.shift, offsets);
     const a: Part = dy || dh ? { ...measured, box: { ...measured.box, y: measured.box.y - dy, height: measured.box.height - dh } } : measured;
     const boxIssues = compareBoxes(label, p.box, a.box, spec.geometry);
     const copyIssues = spec.copy && p.text !== a.text ? [`${label}.text: prototype ${JSON.stringify(p.text)} vs app ${JSON.stringify(a.text)}`] : [];
     const styleIssues = COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map((prop) => `${label}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`);
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
-    const geometry = spec.shift ? `${spec.geometry} (y − ${round(dy)}${dh ? `, height − ${round(dh)}` : ''})` : spec.geometry;
+    const geometry = spec.shift ? `${spec.geometry} (y − ${round(dy)}${dh ? `, height ${dh > 0 ? '−' : '+'} ${round(Math.abs(dh))}` : ''})` : spec.geometry;
     rows.push(`| ${label} | ${geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? JSON.stringify(a.text).slice(0, 70) : ''} |`);
   }
 }
@@ -345,11 +413,11 @@ async function measureAndCompare(
   rows: string[],
   failures: string[],
 ): Promise<void> {
-  const worktreesLine = await worktreesLineOf(protoPage);
+  const marks = await summaryMarksOf(protoPage);
   const protoPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, part.path]));
-  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, appPathOf(part.path, worktreesLine)]));
-  const shifted = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, worktreesLine) }]));
-  const offsets = await measureOffsets(protoPage, appPage, worktreesLine);
+  const appPaths = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, appPathOf(part.path, marks)]));
+  const shifted = Object.fromEntries(Object.entries(specs).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, marks) }]));
+  const offsets = await measureOffsets(protoPage, appPage, marks);
   compareParts(state, shifted, await measurePanel(protoPage, protoPaths), await measurePanel(appPage, appPaths), rows, failures, offsets);
 }
 
@@ -537,6 +605,125 @@ async function d32Additions(state: string, appPage: Page, branch: string, rows: 
   }
 }
 
+/** D42: the Model row's copy (`src/web/modals/new-session.ts`). */
+const D42_TITLE = 'Model';
+const D42_DESCRIPTION = 'Starts on your last choice';
+/** D42: the demo reports no models and stores no last choice: the CLI's default, among the CLI's aliases. */
+const D42_TRIGGER = 'Default▾';
+const D42_LINE = 'model     Default';
+const D42_ALIASES = ['default', 'opus', 'sonnet', 'haiku'];
+
+/**
+ * The D42 additions of a state, checked on their own (the prototype has none):
+ * the **Model row** is the toggles block's third row, the Ultracode row's box
+ * (x, width, height) one toggles gap below it, its title and description in the
+ * toggle rows' styles; D31's picker sits where the switches do (right edge,
+ * centered) in the header actions' look (12px, a 1px `--border-control` line as
+ * Cancel's, 6px radius), on the CLI's default; the summary's **`model` line**
+ * follows `ultracode` as a value line. With `popover`, the picker opens inside
+ * the side column above the actions, offers the CLI's aliases without effort
+ * pills, and Esc closes only the popover (the modal stays).
+ */
+async function d42Additions(state: string, appPage: Page, rows: string[], failures: string[], options: { readonly popover?: boolean } = {}): Promise<void> {
+  const facts = await appPage.evaluate(() => {
+    const row = document.querySelector<HTMLElement>('[data-testid="ns-model-row"]');
+    const toggles = row?.parentElement;
+    const ultracode = toggles?.children[1];
+    const worktree = toggles?.children[0];
+    const button = document.querySelector<HTMLElement>('[data-testid="ns-model-button"]');
+    const switchEl = document.querySelector<HTMLElement>('[data-testid="ns-switch-ultracode"]');
+    const cancel = document.querySelector<HTMLElement>('[data-testid="ns-cancel"]');
+    if (!row || !toggles || !ultracode || !worktree || !button || !switchEl || !cancel) return null;
+    const box = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    const props = ['font-family', 'font-size', 'font-weight', 'color', 'line-height'];
+    const styleDiff = (a: Element | null | undefined, b: Element | null | undefined) =>
+      a && b ? props.filter((prop) => getComputedStyle(a).getPropertyValue(prop) !== getComputedStyle(b).getPropertyValue(prop)).join(', ') : 'missing';
+    const title = row.querySelector('.sb-ns-toggle-title');
+    const desc = row.querySelector('.sb-ns-toggle-desc');
+    const lines = [...document.querySelectorAll('[data-testid="ns-summary-line"]')];
+    const at = lines.findIndex((line) => (line.textContent ?? '').trim().startsWith('ultracode '));
+    const modelLine = at === -1 ? null : lines[at + 1];
+    const buttonStyle = getComputedStyle(button);
+    return {
+      index: [...toggles.children].indexOf(row),
+      row: box(row),
+      ultracode: box(ultracode),
+      gap: box(ultracode).y - (box(worktree).y + box(worktree).height),
+      below: box(row).y - (box(ultracode).y + box(ultracode).height),
+      title: (title?.textContent ?? '').trim(),
+      titleStyle: styleDiff(title, ultracode.querySelector('.sb-ns-toggle-title')),
+      desc: (desc?.textContent ?? '').trim(),
+      descStyle: styleDiff(desc, ultracode.querySelector('.sb-ns-toggle-desc')),
+      trigger: (button.textContent ?? '').trim(),
+      button: box(button),
+      switchBox: box(switchEl),
+      look: `${buttonStyle.fontSize} ${buttonStyle.borderTopWidth} ${buttonStyle.borderTopLeftRadius}`,
+      border: buttonStyle.borderTopColor === getComputedStyle(cancel).borderTopColor,
+      line: (modelLine?.textContent ?? '').trim(),
+      lineTone: modelLine?.getAttribute('data-tone') ?? null,
+      lineColor: modelLine && lines[2] ? getComputedStyle(modelLine).color === getComputedStyle(lines[2]).color : false,
+    };
+  });
+  const near = (a: number, b: number): boolean => Math.abs(a - b) <= 2;
+  const checks: Array<[string, boolean, string]> = [
+    ['Model row = the toggles\' third row', facts?.index === 2, facts ? String(facts.index) : 'missing'],
+    [
+      'Model row = the Ultracode row\'s x, width, height',
+      facts !== null && near(facts.row.x, facts.ultracode.x) && near(facts.row.width, facts.ultracode.width) && near(facts.row.height, facts.ultracode.height),
+      facts ? `${round(facts.row.x)},${round(facts.row.y)} ${round(facts.row.width)}×${round(facts.row.height)}` : 'missing',
+    ],
+    ['Model row one toggles gap below Ultracode', facts !== null && near(facts.below, facts.gap), facts ? `${round(facts.below)} px vs ${round(facts.gap)} px` : 'missing'],
+    ['title copy', facts?.title === D42_TITLE, JSON.stringify(facts?.title ?? null)],
+    ['title style = the toggle titles\'', facts?.titleStyle === '', facts?.titleStyle || 'same'],
+    ['description copy', facts?.desc === D42_DESCRIPTION, JSON.stringify(facts?.desc ?? null)],
+    ['description style = the toggle descriptions\'', facts?.descStyle === '', facts?.descStyle || 'same'],
+    ['picker on the CLI default (the demo reports no models)', facts?.trigger === D42_TRIGGER, JSON.stringify(facts?.trigger ?? null)],
+    [
+      'picker right edge = the switches\', centered in the row',
+      facts !== null && near(facts.button.x + facts.button.width, facts.switchBox.x + facts.switchBox.width) && near(facts.button.y + facts.button.height / 2, facts.row.y + facts.row.height / 2),
+      facts ? `${round(facts.button.x + facts.button.width)} vs ${round(facts.switchBox.x + facts.switchBox.width)} · ${round(facts.button.height)} px high` : 'missing',
+    ],
+    ['picker look = the header actions\' (12px, 1px, 6px; Cancel\'s line color)', facts?.look === '12px 1px 6px' && facts.border === true, facts ? `${facts.look} ${facts.border ? 'same line' : 'other line'}` : 'missing'],
+    ['summary model line after ultracode', facts?.line === D42_LINE, JSON.stringify(facts?.line ?? null)],
+    ['summary model line = a value line', facts?.lineTone === 'value' && facts.lineColor === true, facts?.lineTone ?? 'missing'],
+  ];
+  if (options.popover) {
+    await appPage.getByTestId('ns-model-button').click();
+    const pop = await appPage.evaluate(() => {
+      const popover = document.querySelector('[data-testid="ns-model"] [data-testid="model-popover"]');
+      const side = document.querySelector('.sb-ns-side');
+      const actions = document.querySelector('.sb-ns-actions');
+      if (!popover || !side || !actions) return null;
+      const p = popover.getBoundingClientRect();
+      const sd = side.getBoundingClientRect();
+      const a = actions.getBoundingClientRect();
+      return {
+        inside: p.left >= sd.left - 0.5 && p.right <= sd.right + 0.5 && p.bottom <= a.top + 0.5,
+        box: `${Math.round(p.x)},${Math.round(p.y)} ${Math.round(p.width)}×${Math.round(p.height)}`,
+        options: [...popover.querySelectorAll('[data-testid="model-option"]')].map((el) => el.getAttribute('data-value')),
+        efforts: popover.querySelectorAll('[data-testid="effort-option"]').length,
+      };
+    });
+    checks.push(
+      ['popover inside the side column, above the actions', pop?.inside === true, pop?.box ?? 'missing'],
+      ['popover: the CLI aliases, no effort pills', JSON.stringify(pop?.options ?? null) === JSON.stringify(D42_ALIASES) && pop?.efforts === 0, JSON.stringify(pop?.options ?? null)],
+    );
+    await appPage.keyboard.press('Escape');
+    const closed = await appPage.evaluate(() => ({
+      popover: document.querySelectorAll('[data-testid="model-popover"]').length,
+      modal: document.querySelectorAll('[data-testid="modal-new-session"]').length,
+    }));
+    checks.push(['Esc closes the popover, the modal stays', closed.popover === 0 && closed.modal === 1, JSON.stringify(closed)]);
+  }
+  for (const [what, ok, note] of checks) {
+    if (!ok) failures.push(`${state} · D42 ${what}: ${note}`);
+    rows.push(`| ${state} · D42 ${what} | addition | — | ${note.replaceAll('|', '\\|').slice(0, 60)} | ${ok ? 'ok' : 'FAIL'} | |`);
+  }
+}
+
 /** D38: the hint while no solution is picked. */
 const D38_HINT = '0 selected · leave empty to let the agent choose · read-only folders locked';
 /** D38: the summary line in place of the prototype's warning. */
@@ -566,13 +753,13 @@ async function protoLineIndex(protoPage: Page, text: string): Promise<number | n
  * box, copy and styles, but enabled: opacity 1 where the prototype has 45%).
  */
 async function d38Additions(state: string, protoPage: Page, appPage: Page, warning: number, rows: string[], failures: string[]): Promise<void> {
-  const worktreesLine = await worktreesLineOf(protoPage);
-  const offsets = await measureOffsets(protoPage, appPage, worktreesLine);
+  const marks = await summaryMarksOf(protoPage);
+  const offsets = await measureOffsets(protoPage, appPage, marks);
   const hintPath = [...SOLUTIONS, 0, 0];
   const linePath = [...SUMMARY, warning];
   const startPath = [...SIDE, 4, 1];
   const proto = await measurePanel(protoPage, { hint: hintPath, line: linePath, start: startPath });
-  const app = await measurePanel(appPage, { hint: appPathOf(hintPath), line: appPathOf(linePath, worktreesLine), start: startPath, value: [...SUMMARY, 2] });
+  const app = await measurePanel(appPage, { hint: appPathOf(hintPath), line: appPathOf(linePath, marks), start: startPath, value: [...SUMMARY, 2] });
   const facts = await appPage.evaluate(() => {
     const lines = [...document.querySelectorAll('[data-testid="ns-summary-line"]')];
     const line = lines.find((el) => (el.textContent ?? '').trim() === 'solutions  chosen by the agent');
@@ -685,6 +872,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   await d16Addition('draft', appPage, rows, failures);
   await d25Addition('draft', appPage, rows, failures);
   await d32Additions('draft', appPage, DRAFT_BRANCH, rows, failures);
+  await d42Additions('draft', appPage, rows, failures, { popover: true });
 
   // SPEC tokens as computed styles of the app (New session: 1080px, `1fr | 360px`, pills, chips, toggles, summary).
   const computed = await appPage.evaluate(() => {
@@ -785,10 +973,10 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
     summaryLine5: { path: [...SIDE, 3, 5], geometry: 'box', copy: true },
   };
   const qaPaths = Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, part.path]));
-  const qaWorktreesLine = await worktreesLineOf(protoPage);
+  const qaMarks = await summaryMarksOf(protoPage);
   const protoQa = await measurePanel(protoPage, qaPaths);
-  const appQa = await measurePanel(appPage, Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, appPathOf(part.path, qaWorktreesLine)])));
-  const qaOffsets = await measureOffsets(protoPage, appPage, qaWorktreesLine);
+  const appQa = await measurePanel(appPage, Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, appPathOf(part.path, qaMarks)])));
+  const qaOffsets = await measureOffsets(protoPage, appPage, qaMarks);
   // The prototype draws the two sources as static boxes; the app's are inputs whose placeholder is that copy (muted, #76756f).
   const placeholderCopy = await appPage.evaluate(() => [
     (document.querySelector('[data-testid="ns-confluence"]') as HTMLInputElement).placeholder,
@@ -805,7 +993,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
     const a = appQa[name];
     if (a) appQa[name] = { ...a, style: { ...a.style, color: placeholderCopy[2] ?? '', cursor: a.style['cursor'] === 'text' ? 'auto' : (a.style['cursor'] ?? '') } };
   }
-  compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, qaWorktreesLine) }])), protoQa, appQa, rows, failures, qaOffsets);
+  compareParts('qa', Object.fromEntries(Object.entries(qa).map(([name, part]) => [name, { ...part, shift: shiftOf(part.path, qaMarks) }])), protoQa, appQa, rows, failures, qaOffsets);
 
   // State 4: back to the draft's work type, no solutions → the prototype's "⚠ pick at least one solution", Start at 45%.
   // D38 (ruling): the app reads `solutions  chosen by the agent` there, Start is enabled and the hint says to leave
@@ -824,6 +1012,7 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   await d14Additions('empty', appPage, rows, failures);
   await d32Additions('empty', appPage, DRAFT_BRANCH, rows, failures);
   if (warning !== null) await d38Additions('empty', protoPage, appPage, warning, rows, failures);
+  await d42Additions('empty', appPage, rows, failures);
 
   await writeReport({
     'new-session.md': report({ rows, computedRows, failures, panel: panelDiff.percent, full: fullDiff.percent }),
@@ -858,6 +1047,9 @@ With Worktree on (the prototype's draft) the app's form has a **Branch row** ins
 
 ## D38 ruling (not findings)
 Picking solutions is optional (the agent determines them when none is picked). In the \`empty\` state the prototype's \`⚠ pick at least one solution\` line reads \`solutions  chosen by the agent\` in the app (a value line at the warning's place), Start is enabled (the app's Branch field holds the draft's ticket branch; the prototype shows it at 45%) and section 4's hint reads \`0 selected · leave empty to let the agent choose · read-only folders locked\`. Those three parts leave the prototype comparison and are checked on their own (\`D38 …\` rows): the hint has the prototype hint's styles, right edge, y and height; the line the warning line's box and style (color aside: a value line's); Start the prototype's box, copy and styles with opacity 1. The draft state (solutions picked) is compared as before.
+
+## D42 additions (not findings)
+The Launch area's **Model row** (the toggles block's third row: title \`Model\`, description \`Starts on your last choice\`, D31's model and effort picker where the switches sit) and the summary's **\`model\` line** right after \`ultracode\` are not in the prototype. The toggles block is compared with its height less the row's share (\`height − <n>\`), the summary label and the summary with their y less it (the side keeps its height: the summary is that much shorter, \`height + <n>\`), and the summary lines after \`ultracode\` at the app's index + 1 more with their y less the added line too. The added parts are checked on their own (\`D42 …\` rows): the row has the Ultracode row's box one toggles gap below it and the toggle rows' type, the picker sits at the switches' right edge in the header actions' look on the CLI's default (the demo reports no models), the summary line is a value line; in the draft the popover opens inside the side column with the CLI's aliases and Esc closes only the popover.
 
 ## D25 addition (not a finding)
 **From a remote session** (\`⇣\` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (\`D25 …\` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.

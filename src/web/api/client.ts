@@ -15,6 +15,7 @@ import type {
   HistoryItem,
   InboxItem,
   IsolateRequest,
+  ModelSettings,
   NewRepoSession,
   NewSession,
   ResumeCommand,
@@ -161,6 +162,8 @@ export const api = {
 
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),
+  /** D42, additive: the latest reported model list and the last model choice (the New-session form's Model row). */
+  models: () => request<ModelSettings>('GET', '/api/models'),
 
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),

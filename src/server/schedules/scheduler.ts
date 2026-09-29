@@ -8,6 +8,7 @@ import type { HubBus } from '../hub/bus.ts';
 import { type ScheduleRunner, SystemItemError } from '../inbox/system-items.ts';
 import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
 import { type SessionStartContext, resolveSessionFolder, startNewSession } from '../sessions/start.ts';
+import { readModelOptionsSetting } from '../settings/models.ts';
 import { type FieldError, SESSION_NAME } from '../sessions/validate.ts';
 import { type ValidScheduleInput, validateScheduleInput } from './validate.ts';
 import { toSchedule } from './wire.ts';
@@ -259,6 +260,8 @@ export class Scheduler {
       },
       ...(scan?.isReadOnly && readOnlyIn ? { readOnly: (solution: string) => scan.isReadOnly!(solution, readOnlyIn) } : {}),
       ...(folder ? { folder: { id: folder.id, kind: folder.kind, repoName: repoSolutionName(folder) } } : {}),
+      // D42: a template's model / effort are checked against the latest reported list, like a new session's.
+      modelOptions: await readModelOptionsSetting(this.#store.settings),
     });
     if (!result.ok) throw new SchedulerError('invalid', result.errors.map((e) => e.message).join('; '), result.errors);
     const record = await this.#persist(result.value);

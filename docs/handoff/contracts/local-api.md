@@ -134,6 +134,16 @@ BackgroundTask  { "id": "<CLI task id | tool_use id>", "toolUseId": "toolu_…",
 ```
 `id` = the CLI's task id (the background command's, the async agent's, the monitor's), the `tool_use` id when there is none (a wake-up); `summary` = D19's short text (a GitHub wait: its `gh …` command; a wake-up: its reason); `startedAt` = its tool call; `wakeAt` only on a wake-up (the call's time + `delaySeconds`); `github` = the command uses `gh run`, `gh pr checks` or `gh workflow`. A task ends with the CLI's `system/task_notification` for it, a wake-up when the next turn starts, all of them when the process ends (exit, pause, detach).
 
+**D43 (2026-09-29, additive): every background task counts.** Developer ruling D43 (`docs/decisions.md`): a background **Workflow**, and every other background task the CLI reports (`system/task_started`), keeps a session working like D30's tasks. Nothing above changes meaning; no new route, event or field.
+- **`BackgroundTask.kind`** gains `workflow` (a `Workflow` call whose result confirms a background launch; `summary` = the result's `Summary:` line, else the call's description / name) and `task` (a task the CLI reported of a type Switchboard does not map; `summary` = its description). A background shell or subagent the CLI reports without a known call has kind `bash` / `agent`.
+- For a task the CLI reported without a `tool_use_id`, **`toolUseId`** is its task id; **`startedAt`** of a task known only from its `system/task_started` is that line's arrival.
+- In state `background`, **`SessionActivity.tool`** is `Workflow` for a workflow and `null` for a `task`.
+- A task also ends with a `system/task_updated` whose status is terminal. Details: `docs/derivations.md` → *Background work* → *Every background task counts (D43)*.
+
+```json
+BackgroundTask  { …D30 fields, "kind": "bash|agent|monitor|wakeup|workflow|task" }
+```
+
 ## Session titles (D22, 2026-09-28, additive)
 Developer ruling D22 (`docs/decisions.md`): a session keeps its technical short name (`name`: kebab-case, unique; its worktree `../{repo}-wt-{name}` and branch `session/{name}` are built from it, so it never changes) and may have a free-text **title**, which the UI shows wherever the session is named. Additive; the rows and payloads above keep their meaning. Details: `docs/derivations.md` → *Session titles*.
 
@@ -369,6 +379,23 @@ BranchingPreflightRequest { "folder": "f1", "solutions": ["alpha-front", "beta-f
 BranchingPreflight        { "rows": [ { "solution": "alpha-front", "repoPath": "/w/microfrontends/alpha-front", "error": null, "base": "dev", "baseSource": "epic", "baseExists": true, "epic": { "branch": "feature/PROJ-3010-Platform-tracking", "exists": true, "behind": 2 }, "task": { "branch": "PROJ-3011-kpi-dashboard", "exists": false, "local": false }, "cutFrom": "origin/feature/PROJ-3010-Platform-tracking" } ] }
 NewSession                { …, "worktrees": true, "branch": "PROJ-3011-kpi-dashboard", "branching": { "epic": { "key": "PROJ-3010", "summary": "Platform tracking", "branch": "feature/PROJ-3010-Platform-tracking" }, "base": "dev", "bases": { "mobile": "main" }, "dropped": ["beta-front"] } }
 ```
+
+## Model at session start (D42, 2026-09-29, additive)
+Developer ruling D42 (`docs/decisions.md` → *Model at session start, remembered*): the New-session form picks the model and effort a session starts with, and the service remembers the last choice. Additive; the rows and payloads above keep their meaning. Details: `docs/model-effort.md` → *At session start (D42)*, `docs/new-session.md` → *Model (D42)*. No migration: both settings are rows of the existing `settings` table.
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | /api/models | — | ModelSettings `{ options, last }` |
+| POST | /api/sessions | NewSession with `model?` / `effort?` (also NewRepoSession and a schedule's `template`) | 201 Session (its `model.current` / `effort` set) · 422 `invalid` on `model` / `effort`: not text of at most 100 characters or null; with a reported list, a model it does not offer or an effort the chosen model does not support (a model without levels takes none); without one, not a model name / not one of `low, medium, high, xhigh, max` |
+
+```json
+NewSession    { …, "model": "opus" | "default" | null, "effort": "high" | null }
+ModelSettings { "options": [ { "value": "opus", "label": "Opus 5.5", "description"?: "…", "efforts"?: ["low", "medium", "high", "xhigh", "max"] } ] | null,
+                "last": { "model": "opus" | null, "effort": "high" | null } | null }
+```
+- **NewSession.model / effort:** omitted = the CLI's defaults, as before; `null`, blank or (model) `"default"` = the default too. The choice is stored on the session, so its first spawn (and, D31, every later one) passes `--model` / `--effort`.
+- **ModelSettings.options:** the latest model list any claude process reported in its `initialize` reply (`SessionModelOption[]`, D31's shape), replaced by each later report; `null` until one did. **last:** the last model and effort the developer chose: written by a `POST /api/sessions` that names `model` or `effort`, and by every choice `PUT /api/sessions/{id}/model` stores; `null` until then. Scheduled runs never change it. Neither is in `GET /api/settings`, and `PUT /api/settings` does not take them.
+- **Schedules:** `POST /api/schedules`' template carries `model` / `effort` like any other field (checked the same way); each run starts with them.
 
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.

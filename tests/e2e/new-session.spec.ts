@@ -256,6 +256,7 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
     'mode      single-solution',
     'phase     UI-first',
     'ultracode off',
+    'model     Default', // D42: the Model row's choice (the CLI default here)
     ' ',
     '# worktrees',
     'branch    —',
@@ -316,8 +317,8 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   expect(await wt.boundingBox()).toMatchObject({ width: 32, height: 18 });
   await expect(wt).toHaveCSS('background-color', 'rgb(232, 231, 227)');
   await expect(ultra).toHaveCSS('background-color', 'rgb(51, 52, 58)');
-  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree per solution', 'Ultracode (workflows)']);
-  await expect(modal.locator('.sb-ns-toggle-desc')).toHaveText(['Kept until the PR is merged on GitHub', 'Dispatch via the Workflow tool']);
+  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree per solution', 'Ultracode (workflows)', 'Model']);
+  await expect(modal.locator('.sb-ns-toggle-desc')).toHaveText(['Kept until the PR is merged on GitHub', 'Dispatch via the Workflow tool', 'Starts on your last choice']);
   await wt.click();
   await expect(wt).toHaveAttribute('aria-checked', 'false');
   expect(await summary(modal)).toContain('# no worktrees · edits in place');
@@ -406,6 +407,9 @@ test('Start session posts the form, opens the session, and creates the worktrees
     branch: 'PROJ-0640-free-talk-screen',
     // D40: with a worktree the Branching section's choices go along (no epic here: a task only).
     branching: { epic: null, base: 'dev' },
+    // D42: the Model row's choice (the CLI default).
+    model: null,
+    effort: null,
   });
   await expect(modal).toHaveCount(0);
   const view = page.getByTestId('view-session');
@@ -569,6 +573,7 @@ test('"Open fix session" opens the form prefilled (M3.3); Start creates that ses
     'phase     integration',
     'mobile    parallel-twin',
     'ultracode on',
+    'model     Default', // D42: the Model row's choice (the CLI default here)
     ' ',
     '# no worktrees · edits in place',
     ' ',

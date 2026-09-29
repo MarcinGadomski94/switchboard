@@ -259,7 +259,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   await expect(modal.getByTestId('ns-chip')).toHaveText(['✓ tool-repo']);
   await expect(chip(modal, 'tool-repo')).toBeDisabled();
   await expect(chip(modal, 'tool-repo')).toHaveAttribute('data-fixed', 'true');
-  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree', 'Ultracode (workflows)']);
+  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree', 'Ultracode (workflows)', 'Model']);
   // D32: the worktree's branch is named after its ticket. A title that starts with a ticket key pre-fills it.
   const branch = modal.getByTestId('ns-branch');
   const start = modal.getByTestId('ns-start');
@@ -279,6 +279,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     'folder    tool-repo · git repo',
     `cwd       ${path.join(tmp, 'tool-repo-wt-repo-fix')}`,
     'ultracode off',
+    'model     Default', // D42: the Model row's choice (the CLI default here)
     ' ',
     '# worktree',
     'branch    —',
@@ -297,6 +298,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     'folder    tool-repo · git repo',
     `cwd       ${path.join(tmp, 'tool-repo-wt-repo-fix')}`,
     'ultracode off',
+    'model     Default', // D42: the Model row's choice (the CLI default here)
     ' ',
     '# worktree',
     'branch    TOOL-7-fix-the-tool',
@@ -306,7 +308,7 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   ]);
   // Worktree off: the session would run in the repo itself, and no branch is asked for.
   await modal.getByTestId('ns-switch-worktrees').click();
-  expect((await summary(modal)).slice(2, 6)).toEqual([`cwd       ${repo}`, 'ultracode off', ' ', '# no worktree · edits in place']);
+  expect((await summary(modal)).slice(2, 7)).toEqual([`cwd       ${repo}`, 'ultracode off', 'model     Default', ' ', '# no worktree · edits in place']);
   await expect(modal.getByTestId('ns-branch-row')).toHaveCount(0);
   await modal.getByTestId('ns-switch-worktrees').click();
 
@@ -325,6 +327,9 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     branch: 'TOOL-7-fix-the-tool',
     // D40: the Branching section's choices (no epic: a task only; the repo has no origin, so it is cut from HEAD).
     branching: { epic: null, base: 'dev' },
+    // D42: the Model row's choice (the CLI default).
+    model: null,
+    effort: null,
   });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();
