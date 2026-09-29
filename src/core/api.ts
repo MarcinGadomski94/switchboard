@@ -350,6 +350,21 @@ export interface WorkflowRun {
   readonly failedCount: number;
   readonly startedAt: string | null;
   readonly endedAt: string | null;
+  /**
+   * Additive (D51 ruling D51-resume): what "Resume run" asks the session's agent to
+   * call (`Workflow({ scriptPath, resumeFromRunId: runId, args })`); set only for a
+   * run that stopped or failed and whose script Switchboard found, else `null`.
+   * Optional so older payloads type-check.
+   */
+  readonly resume?: WorkflowResume | null;
+}
+
+/** Additive (D51 ruling D51-resume): the `Workflow` call that resumes a run. */
+export interface WorkflowResume {
+  /** The run's script file (under the CLI's projects folder, `<name>-<runId>.js`). */
+  readonly scriptPath: string;
+  /** The run's `args` from its run file, when it had any; else `null`. */
+  readonly args: unknown;
 }
 
 /** Additive (D51): `GET /api/sessions/{id}/workflow-agents/{agentId}/chat`: a Workflow agent's conversation from its transcript. */

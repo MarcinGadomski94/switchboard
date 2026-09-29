@@ -106,3 +106,43 @@ test('a workflow\'s agents: grouped rows live, a chat that updates, finished one
   await expect(page.getByTestId('subagent-chat')).toContainText(fakeAgentText(fakeAgentLabel(0, 1)));
   await expect(page.getByTestId('subagent-result')).toContainText('"ok": true');
 });
+
+test('D51 rulings: a fan-out\'s "+N more" opens its cards and "Show fewer" cuts them; a stopped run offers Resume run, which asks the agent to resume it', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'workflow-rulings-e2e', 'Fan out. [fake:workflow 60 1x8]');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const panel = page.getByTestId('session-right-panel');
+  const cards = panel.locator('[data-testid="agent-card"][data-agent-id^="wf_"]');
+
+  // 8 running agents: 6 cards and one "+2 more" line (the overview lists all 8).
+  await expect(panel.locator('[data-testid="overview-row"][data-run-id]')).toHaveCount(8, { timeout: 15_000 });
+  await expect(cards).toHaveCount(6);
+  const more = panel.getByTestId('agents-more');
+  await expect(more).toHaveText(`+2 more in ${FAKE_WORKFLOW_NAME}`);
+  await more.click();
+  await expect(cards).toHaveCount(8);
+  await expect(panel.getByTestId('agents-more')).toHaveCount(0);
+  const fewer = panel.getByTestId('agents-fewer');
+  await expect(fewer).toHaveText(`Show fewer · ${FAKE_WORKFLOW_NAME}`);
+  await fewer.click();
+  await expect(cards).toHaveCount(6);
+  await expect(panel.getByTestId('agents-more')).toBeVisible();
+
+  // Pause mid-run: the run stops; its row offers Resume run.
+  const paused = await page.evaluate(async (sessionId) => (await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/pause`, { method: 'POST' })).status, id);
+  expect(paused).toBe(200);
+  const runRow = panel.getByTestId('overview-workflow');
+  await expect(runRow).toHaveAttribute('data-status', 'idle', { timeout: 15_000 });
+  await expect(runRow.getByTestId('overview-workflow-status')).toHaveText('stopped · 0/8 done');
+  const resume = panel.getByTestId('overview-workflow-resume');
+  await expect(resume).toHaveText('Resume run');
+  await expect(resume).toBeEnabled();
+  await resume.click();
+  await expect(panel.getByTestId('overview-workflow-resume-note')).toHaveText('Asked the agent to resume it');
+  await expect(resume).toBeDisabled();
+  // The message went through the normal path (the paused session resumes on it) and names the run and its script.
+  const runId = await runRow.getAttribute('data-run-id');
+  await expect(page.getByTestId('session-chat')).toContainText(`resumeFromRunId: "${runId}"`, { timeout: 15_000 });
+  await expect(page.getByTestId('session-chat')).toContainText(`${FAKE_WORKFLOW_NAME}-${runId}.js`);
+});

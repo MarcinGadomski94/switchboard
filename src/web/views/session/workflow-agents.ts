@@ -1,4 +1,4 @@
-import type { Agent, AgentActivity, SessionActivity, WorkflowRun } from '../../../core/api.ts';
+import type { Agent, AgentActivity, Session, SessionActivity, WorkflowRun } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
 
 /**
@@ -100,22 +100,30 @@ export interface MoreCards {
   readonly count: number;
 }
 
-/** The "+N more" line of a cut run: `+4 more in proj-3014-final-round`. */
+/** The "+N more" line of a cut run: `+4 more in proj-3014-final-round` (a button: it opens the run's cards, D51 ruling D51-card-cap). */
 export function moreCardsLine(more: MoreCards): string {
   return `+${more.count} more in ${more.name}`;
 }
 
+/** The line under an opened run's cards that cuts them again: `Show fewer · proj-3014-final-round`. */
+export function fewerCardsLine(more: MoreCards): string {
+  return `Show fewer · ${more.name}`;
+}
+
 /**
  * The agent cards after D51's cap: at most {@link WORKFLOW_CARD_CAP} cards per run
- * (in order: running ones first, then the others), the rest counted per run. While
- * the finished cards are expanded (D37) every card shows.
+ * (in order: running ones first, then the others), the rest counted per run
+ * (`more`). A run in `open` (its "+N more" line was clicked) shows every card and
+ * is listed in `fewer` (its "Show fewer" line). While the finished cards are
+ * expanded (D37) every card shows.
  */
 export function cappedCards<A extends Pick<Agent, 'kind' | 'status' | 'workflow'>>(
   shown: readonly A[],
   runs: readonly WorkflowRun[],
   expanded: boolean,
-): { readonly cards: readonly A[]; readonly more: readonly MoreCards[] } {
-  if (expanded) return { cards: shown, more: [] };
+  open: ReadonlySet<string> = new Set(),
+): { readonly cards: readonly A[]; readonly more: readonly MoreCards[]; readonly fewer: readonly MoreCards[] } {
+  if (expanded) return { cards: shown, more: [], fewer: [] };
   const byRun = new Map<string, A[]>();
   for (const agent of shown) {
     const runId = agent.kind === 'workflow' ? agent.workflow?.runId : undefined;
@@ -126,11 +134,49 @@ export function cappedCards<A extends Pick<Agent, 'kind' | 'status' | 'workflow'
   }
   const hidden = new Set<A>();
   const more: MoreCards[] = [];
+  const fewer: MoreCards[] = [];
   for (const [runId, agents] of byRun) {
     if (agents.length <= WORKFLOW_CARD_CAP) continue;
+    if (open.has(runId)) {
+      fewer.push({ runId, name: runs.find((run) => run.runId === runId)?.name ?? runId, count: agents.length - WORKFLOW_CARD_CAP });
+      continue;
+    }
     const ranked = [...agents].sort((a, b) => Number(b.status === 'run') - Number(a.status === 'run'));
     for (const agent of ranked.slice(WORKFLOW_CARD_CAP)) hidden.add(agent);
     more.push({ runId, name: runs.find((run) => run.runId === runId)?.name ?? runId, count: agents.length - WORKFLOW_CARD_CAP });
   }
-  return { cards: shown.filter((agent) => !hidden.has(agent)), more };
+  return { cards: shown.filter((agent) => !hidden.has(agent)), more, fewer };
+}
+
+/** D51 ruling D51-resume: the button on a stopped or failed run's row. */
+export const RESUME_RUN = 'Resume run';
+
+/**
+ * The message "Resume run" sends the session's agent (the normal message path:
+ * D44 queues it, a paused session resumes on it): call the Workflow tool with the
+ * run's script and `resumeFromRunId` (the parameter names in CLI 2.1.284), plus the
+ * run's `args` when it had any; done agents replay from the CLI's cache.
+ */
+export function resumeRunMessage(run: Pick<WorkflowRun, 'runId' | 'name' | 'resume'>): string | null {
+  const resume = run.resume;
+  if (!resume) return null;
+  const args = resume.args !== null && resume.args !== undefined ? `, args: ${JSON.stringify(resume.args)}` : '';
+  return [
+    `Resume the stopped workflow run ${run.runId} (${run.name}). Call the Workflow tool once with exactly:`,
+    '',
+    `Workflow({ scriptPath: ${JSON.stringify(resume.scriptPath)}, resumeFromRunId: ${JSON.stringify(run.runId)}${args} })`,
+    '',
+    'Do not edit the script. Its agents that already finished replay from the cache; the others run again.',
+  ].join('\n');
+}
+
+/**
+ * Why "Resume run" cannot be used now, or `null` when it can: the session is
+ * closed (reopen it first), or it is a paired machine's that cannot be reached.
+ * Hooked sessions take messages through their hooks (D48), so they can.
+ */
+export function resumeBlocked(session: Pick<Session, 'closedAt'> & { readonly machine?: Session['machine'] }): string | null {
+  if (session.closedAt) return 'Reopen the session to resume the run';
+  if (session.machine && session.machine.state !== 'online') return `${session.machine.name} is unreachable`;
+  return null;
 }

@@ -28,11 +28,12 @@
  *   startTime, durationMs, phases: [{title, detail}], defaultModel, workflowProgress,
  *   agentCount, …}`.
  */
+import path from 'node:path';
 import type { Agent, AgentWorkflow, SessionEvent, WorkflowAgentAction, WorkflowRun } from '../api.ts';
 import type { SessionStatus } from '../model.ts';
 import { type AgentPromptPayload, type ToolPayload, clip, clipInput } from '../event-payload.ts';
 import { toolSummary } from './activity.ts';
-import { textLabel, toolEventKind, toolLabel } from './event-kind.ts';
+import { WRITE_TOOLS, textLabel, toolEventKind, toolLabel } from './event-kind.ts';
 import { agentStatusFromTask } from './agents.ts';
 import { newestChain, transcriptItems } from '../transcript-sync.ts';
 
@@ -82,8 +83,11 @@ export interface WorkflowLaunch {
   readonly taskId: string | null;
   readonly name: string | null;
   readonly summary: string | null;
+  /** D51-resume: the script file it names (`tool_use_result.scriptPath`, else `Script file:`), as given (checked by the server before use). */
+  readonly scriptPath: string | null;
 }
 
+const LAUNCH_SCRIPT = /(?:^|\n)Script file: ([^\n]+)/;
 const LAUNCH_TASK = /Workflow launched (?:in background|in a remote CCR session)\. Task ID: ([A-Za-z0-9_-]+)/;
 const LAUNCH_RUN = /(?:^|\n)Run ID: (wf_[A-Za-z0-9_-]+)/;
 const LAUNCH_DIR = /(?:^|\n)Transcript dir: [^\n]*[\\/](wf_[A-Za-z0-9_-]+)\s*(?:\n|$)/;
@@ -107,6 +111,7 @@ export function workflowLaunch(text: string, detail: unknown): WorkflowLaunch | 
     taskId: str(structured?.['taskId']) ?? LAUNCH_TASK.exec(text)?.[1] ?? null,
     name: str(structured?.['workflowName']),
     summary: str(structured?.['summary']) ?? str(LAUNCH_SUMMARY.exec(text)?.[1]),
+    scriptPath: str(structured?.['scriptPath']) ?? str(LAUNCH_SCRIPT.exec(text)?.[1]?.trim()),
   };
 }
 
@@ -188,6 +193,9 @@ export interface RunFileFacts {
   readonly phases: readonly string[];
   readonly defaultModel: string | null;
   readonly progress: WorkflowProgress;
+  /** D51-resume: its `scriptPath` as written (checked by the server before use), and its `args` (`null` without). */
+  readonly scriptPath: string | null;
+  readonly args: unknown;
 }
 
 /** Parses a run file's JSON; `null` when it is not one (no valid `runId`). */
@@ -209,6 +217,8 @@ export function parseRunFile(value: unknown): RunFileFacts | null {
     phases,
     defaultModel: str(file['defaultModel']),
     progress: parseWorkflowProgress(file['workflowProgress']),
+    scriptPath: str(file['scriptPath']),
+    args: file['args'] ?? null,
   };
 }
 
@@ -343,6 +353,56 @@ export function scanAgentEntries(prev: AgentTranscriptFacts, entries: readonly J
   return { cwd, firstAt, lastAt, model, lastTool, bytes };
 }
 
+/**
+ * D51 ruling D51-solution: an agent's first successful write, found by scanning its
+ * transcript in order (the server feeds it line by line as it reads, bounded): a
+ * Write / Edit / MultiEdit / NotebookEdit `tool_use` whose `tool_result` is not an
+ * error, its path resolved against the line's `cwd`. `pending` holds the calls
+ * still waiting for their result (at most {@link MAX_PENDING_WRITES}).
+ */
+export interface WriteScan {
+  readonly first: string | null;
+  readonly pending: ReadonlyMap<string, string>;
+}
+
+/** Nothing scanned yet. */
+export const NO_WRITES: WriteScan = { first: null, pending: new Map() };
+
+/** Write calls remembered while their results are pending (older ones are dropped). */
+export const MAX_PENDING_WRITES = 32;
+
+/** `prev` after the parsed `entries` (in file order); unchanged once a first write is known. */
+export function scanWrites(prev: WriteScan, entries: readonly Json[]): WriteScan {
+  if (prev.first !== null) return prev;
+  const pending = new Map(prev.pending);
+  for (const entry of entries) {
+    const message = record(entry['message']);
+    const blocks = Array.isArray(message?.['content']) ? (message['content'] as unknown[]) : [];
+    for (const block of blocks) {
+      const b = record(block);
+      if (!b) continue;
+      if (entry['type'] === 'assistant' && b['type'] === 'tool_use' && typeof b['name'] === 'string' && WRITE_TOOLS.includes(b['name'])) {
+        const input = record(b['input']);
+        const file = str(input?.['file_path']) ?? str(input?.['notebook_path']);
+        const id = str(b['id']);
+        if (file && id) {
+          const cwd = str(entry['cwd']);
+          pending.set(id, cwd ? path.resolve(cwd, file) : file);
+          if (pending.size > MAX_PENDING_WRITES) pending.delete(pending.keys().next().value as string);
+        }
+      } else if (entry['type'] === 'user' && b['type'] === 'tool_result') {
+        const id = str(b['tool_use_id']);
+        const file = id ? pending.get(id) : undefined;
+        if (id && file !== undefined) {
+          pending.delete(id);
+          if (b['is_error'] !== true && path.isAbsolute(file)) return { first: file, pending: new Map() };
+        }
+      }
+    }
+  }
+  return { first: null, pending };
+}
+
 // ── the run and its agents ───────────────────────────────────────────────
 
 /** Everything known about one run (the server gathers it; see the module comment). */
@@ -358,6 +418,10 @@ export interface WorkflowRunInput {
   readonly journal: readonly JournalEntry[];
   readonly metas: ReadonlyMap<string, AgentMeta>;
   readonly transcripts: ReadonlyMap<string, AgentTranscriptFacts>;
+  /** D51-solution: each agent's first successful write (absolute path), by agent id. */
+  readonly writes?: ReadonlyMap<string, string>;
+  /** D51-resume: the run's script file as the server checked it (under the CLI's projects folder), `null` when not found. */
+  readonly scriptPath?: string | null;
   readonly script: ScriptMeta | null;
   /** The task's final status on stdout (`task_updated` / `task_notification`), `null` while none came. */
   readonly ended: string | null;
@@ -373,6 +437,8 @@ export interface WorkflowAgentView {
   /** `queued` for an agent waiting for its turn; `null` otherwise. */
   readonly statusText: string | null;
   readonly workflow: AgentWorkflow;
+  /** D51-solution: its first successful write (absolute path), `null` before one. */
+  readonly firstWrite: string | null;
   /** Its return value or error for its chat; `null` while it runs. */
   readonly result: { readonly text: string; readonly isError: boolean } | null;
 }
@@ -582,6 +648,7 @@ export function deriveWorkflowRun(input: WorkflowRunInput): { run: WorkflowRun; 
         cwd: facts?.cwd ?? null,
         version: facts?.bytes ?? 0,
       },
+      firstWrite: draft.agentId !== null ? (input.writes?.get(draft.agentId) ?? null) : null,
       result,
     });
   }
@@ -615,23 +682,26 @@ export function deriveWorkflowRun(input: WorkflowRunInput): { run: WorkflowRun; 
     failedCount: agents.filter((agent) => agent.status === 'fail').length,
     startedAt: input.runFile?.startedAt ?? input.launchedAt ?? startTimes[0] ?? null,
     endedAt: status === 'run' ? null : (input.runFile?.endedAt ?? endTimes.at(-1) ?? null),
+    // D51-resume: a stopped or failed run whose script is known can be resumed (its done agents replay from the CLI's cache).
+    resume: (status === 'idle' || status === 'fail') && input.scriptPath ? { scriptPath: input.scriptPath, args: input.runFile?.args ?? null } : null,
   };
   return { run, agents };
 }
 
 /**
  * A run's agents as `Session.agents` entries (`kind: 'workflow'`): named by their
- * label, described by their phase; `solutionPath` from `solutionOf(cwd)` (the
- * server maps the transcript's cwd to a solution folder, `null` for the workspace
- * root or an unknown cwd).
+ * label, described by their phase; `solutionPath` = the solution of its first
+ * successful write (D51 ruling D51-solution, like a subagent's, D21), else of its
+ * transcript's cwd; `solutionOf(file)` maps an absolute file to a solution folder
+ * (`null` for the workspace root, outside files, unknown).
  */
-export function workflowAgents(views: readonly WorkflowAgentView[], solutionOf: (cwd: string) => string | null = () => null): Agent[] {
+export function workflowAgents(views: readonly WorkflowAgentView[], solutionOf: (file: string) => string | null = () => null): Agent[] {
   return views.map((view) => ({
     id: view.id,
     kind: 'workflow',
     name: view.label,
     description: view.workflow.phase,
-    solutionPath: view.workflow.cwd !== null ? solutionOf(view.workflow.cwd) : null,
+    solutionPath: (view.firstWrite !== null ? solutionOf(view.firstWrite) : null) ?? (view.workflow.cwd !== null ? solutionOf(path.join(view.workflow.cwd, '_')) : null),
     branch: null,
     status: view.status,
     statusText: view.statusText,
