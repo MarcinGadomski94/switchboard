@@ -374,6 +374,11 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
     - **Branch-name hygiene:** a typed full parent name is checked with `isValidBranchName` (git's check-ref-format rules).
   - Built on master `5a6c2df` (after D40–D46). Details: `docs/worktrees.md` → *Stacked task branches (D47)*, `docs/new-session.md` → *Parent (D47)*; choices where the spec is silent: `.loop/questions.md` → *D47 · Stacked task branches*.
 
+## Rulings on D47 (added 2026-09-29)
+- **Force-push after the rebase:** kept as built: the rule-5 instruction and message ask the agent to ask the developer before force-pushing the rebased branch.
+- **A parent closed without merging:** when the poll sees a stacked worktree's parent PR turn CLOSED (not merged), the Inbox gets an item "Parent <parent> closed — retarget <task> to <epic or default branch>" (label "Parent closed", Dismiss only), once per worktree, surviving restarts like the merged item (raised from the sync if missed). Inbox item only: the session gets no message.
+- **PR target column:** shows always in the preflight table for every branching session (stacked or not: the parent, the epic, or the default branch without an epic). The Resolved base and Parent status columns stay stacked-only.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

@@ -28,6 +28,8 @@ export const SCHEDULE_RUN_FAILED = 'schedule-run-failed';
 export const WORKTREE_REMOVABLE = 'worktree-removable';
 /** D47: kind of the item a stacked worktree raises when its parent's PR merged. */
 export const PARENT_MERGED = 'parent-merged';
+/** D47 ruling D47-closed-parent: kind of the item a stacked worktree raises when its parent's PR closed without a merge. */
+export const PARENT_CLOSED = 'parent-closed';
 /** D47: outbox kind (`pending_messages.kind`) of the parent-merged message when it cannot be sent at once. */
 export const PARENT_MERGED_KIND = 'parent-merged';
 
@@ -87,6 +89,8 @@ export interface WorktreeSource {
   on(name: 'worktreeRemovable', listener: (worktree: Worktree) => void): () => void;
   /** D47: a stacked worktree's parent merged (optional: without it the items come from {@link SystemItemService.sync} only). */
   onParentMerged?(listener: (worktree: WorktreeRecord) => void): () => void;
+  /** D47 ruling: a stacked worktree's parent closed without a merge (optional, like {@link onParentMerged}). */
+  onParentClosed?(listener: (worktree: WorktreeRecord) => void): () => void;
   /** Removes the worktree folder (gap #3); throws a `WorktreeError` when it refuses. */
   remove(worktreeId: string): Promise<unknown>;
 }
@@ -131,6 +135,7 @@ export class SystemItemService {
   #runner: ScheduleRunner | null;
   #unsubscribe: (() => void) | null = null;
   #unsubscribeParent: (() => void) | null = null;
+  #unsubscribeClosed: (() => void) | null = null;
   #timer: NodeJS.Timeout | undefined;
   #watching = false;
   #syncing: Promise<SystemItemRecord[]> | null = null;
@@ -149,6 +154,10 @@ export class SystemItemService {
       this.#unsubscribeParent =
         this.#worktrees.onParentMerged?.((worktree) => {
           this.parentMerged(worktree.id).catch(this.#onError);
+        }) ?? null;
+      this.#unsubscribeClosed =
+        this.#worktrees.onParentClosed?.((worktree) => {
+          this.parentClosed(worktree.id).catch(this.#onError);
         }) ?? null;
     }
   }
@@ -197,6 +206,18 @@ export class SystemItemService {
   }
 
   /**
+   * D47 ruling D47-closed-parent: raises the "Parent … closed" item of a stacked
+   * worktree whose parent's PR closed without a merge (once per worktree). The
+   * session gets no message: the developer decides where the task goes.
+   * @returns the new item, or `null`.
+   */
+  async parentClosed(worktreeId: string): Promise<SystemItemRecord | null> {
+    const created = await this.#raiseClosed(worktreeId);
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /**
    * Raises the items of every failed run and every removable worktree in the
    * database that has none yet (runs, then worktrees, oldest first; D47: then
    * the stacked worktrees whose parent merged). Concurrent calls share one run.
@@ -216,6 +237,10 @@ export class SystemItemService {
         }
         for (const worktreeId of await this.#store.systemItems.parentMergedWorktreesWithoutItem(PARENT_MERGED)) {
           const created = await this.#raiseParent(worktreeId);
+          if (created) raised.push(created);
+        }
+        for (const worktreeId of await this.#store.systemItems.parentClosedWorktreesWithoutItem(PARENT_CLOSED)) {
+          const created = await this.#raiseClosed(worktreeId);
           if (created) raised.push(created);
         }
         if (raised.length > 0) await this.#publishInbox();
@@ -262,6 +287,8 @@ export class SystemItemService {
     this.#unsubscribe = null;
     this.#unsubscribeParent?.();
     this.#unsubscribeParent = null;
+    this.#unsubscribeClosed?.();
+    this.#unsubscribeClosed = null;
     await this.stopWatching();
   }
 
@@ -299,6 +326,13 @@ export class SystemItemService {
       await this.#store.pendingMessages.enqueue({ sessionId: session.id, kind: PARENT_MERGED_KIND, text });
     }
     return created;
+  }
+
+  async #raiseClosed(worktreeId: string): Promise<SystemItemRecord | null> {
+    const worktree = await this.#store.worktrees.get(worktreeId);
+    if (!worktree || worktree.parentClosedAt === null || worktree.parentMergedAt !== null || worktree.parentBranch === null || worktree.removedAt) return null;
+    const session = worktree.sessionId ? await this.#store.sessions.get(worktree.sessionId) : null;
+    return this.#store.systemItems.createOnce(parentClosedItem(worktree, session?.branching?.epic?.branch ?? null));
   }
 
   // ── act ───────────────────────────────────────────────────────────────
@@ -482,6 +516,33 @@ export function parentMergedItem(worktree: WorktreeRecord, merged: ParentMerged,
     worktreeId: worktree.id,
     payload: null,
     ...(worktree.parentMergedAt ? { createdAt: worktree.parentMergedAt } : {}),
+  };
+}
+
+/**
+ * D47 ruling D47-closed-parent: the "Parent … closed" item of a stacked worktree
+ * whose parent's PR closed without a merge: title `Parent <parent> closed —
+ * retarget <task> to <target>` (the session's epic branch, else the parent PR's
+ * base, the repo's default branch), detail with the repo and the PR and that
+ * nothing was sent to the session, the `<repo> ⎇ <task>` chip, Dismiss. Dated
+ * when the close was seen.
+ */
+export function parentClosedItem(worktree: WorktreeRecord, epicBranch: string | null): SystemItemCreate {
+  const parent = worktree.parentBranch ?? '';
+  const target = epicBranch ?? worktree.parentBase ?? "the repo's default branch";
+  const pr = worktree.parentPrNumber !== null ? `PR #${worktree.parentPrNumber} ` : '';
+  return {
+    kind: PARENT_CLOSED,
+    source: 'worktrees',
+    status: 'need',
+    title: `Parent ${parent} closed — retarget ${worktree.branch} to ${target}`,
+    detail: `${worktree.repo} · ${pr}${parent} was closed without merging. Nothing was sent to the session: retarget the PR of ${worktree.branch} to ${target} (gh pr edit ${worktree.branch} --base ${target}) and take the parent's commits out of it, or ask the session to.`,
+    branches: [{ solution: worktree.repo, branch: worktree.branch }],
+    actions: PARENT_MERGED_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+    sessionId: worktree.sessionId,
+    worktreeId: worktree.id,
+    payload: null,
+    ...(worktree.parentClosedAt ? { createdAt: worktree.parentClosedAt } : {}),
   };
 }
 

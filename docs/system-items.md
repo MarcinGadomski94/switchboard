@@ -9,6 +9,7 @@ Every item is built from stored state only (D13); nothing from the prototype's m
 |---|---|---|
 | `schedule-run-failed` | `scheduleRunFinished(runId)` (the scheduler's hook: M7.1 calls it when a run fails, `docs/schedules.md`) and `sync()` | a `schedule_runs` row with `result = 'fail'` |
 | `worktree-removable` | the M2.2 manager's `worktreeRemovable` event (subscribed in the constructor) and `sync()` | a live worktree flagged `removable` (PR `MERGED` and removal allowed, `docs/worktrees.md`) |
+| `parent-closed` (D47 ruling) | the manager's `onParentClosed` and `sync()` | a live stacked worktree whose parent's PR was seen turning `CLOSED` without a merge (`parent_closed_at`) |
 | `parent-merged` (D47) | the manager's `onParentMerged` (subscribed in the constructor) and `sync()` | a live stacked worktree whose parent's PR was seen `MERGED` (`parent_merged_at`, `docs/worktrees.md` → *Stacked task branches (D47)*) |
 
 `sync()` raises the items of every failed run and removable worktree that has none yet (runs first, then worktrees, oldest first). `main.ts` runs it once the port is bound and then every 30 s (`startWatching()`, `DEFAULT_SYNC_MS`), so a failed run recorded in the schedule tables by anything, or while the service was down, still produces its item. Demo mode does not watch (the demo seeds its own two items). `inboxChanged { count }` is published whenever an item is raised (once per sync) or closed.
@@ -46,6 +47,12 @@ The Inbox shows them through `systemItem()` (`src/server/inbox/wire.ts`): kind l
 - detail `<repo> · PR #<n> <parent> was merged into <parent's base>[ (squash-merged) | (merge kind unknown)]. The session was asked to retarget the PR to <base> (gh pr edit <task> --base <base>) and rebase: <git rebase …>, then report.`; for a closed session `… The session is closed, so nothing was sent to it: retarget the PR …`.
 - chip `<repo> ⎇ <task>`; `sessionId` = the worktree's session; action `dismiss` Dismiss.
 - **The session message** (`parentMergedMessage`, origin `service`) goes out only from the call that raised the item (so once per worktree), through the supervisor (`SystemItemServiceOptions.sessions`; a paused session is resumed by it); refused (a terminal owns the session, the service is closing) → the session's outbox (`pending_messages` kind `parent-merged`); a closed session gets nothing.
+
+**Parent closed** (ruling D47-closed-parent, `parentClosedItem`):
+- label `Parent closed`; source `worktrees`; status `need`; dated when the close was seen (`parent_closed_at`).
+- title `Parent <parent> closed — retarget <task> to <target>` (the session's epic branch, else the parent PR's base, i.e. the default branch).
+- detail `<repo> · PR #<n> <parent> was closed without merging. Nothing was sent to the session: retarget the PR of <task> to <target> (gh pr edit <task> --base <target>) and take the parent's commits out of it, or ask the session to.`
+- chip `<repo> ⎇ <task>`; action `dismiss` Dismiss. No session message.
 
 ## Actions (`POST /api/inbox/{id}/actions/{action}` → 204)
 The route asks the question pipeline first (permission items), then this service. An action runs, then the item closes with `closed_action` = the action and `inboxChanged` goes out; a refused action leaves it open.

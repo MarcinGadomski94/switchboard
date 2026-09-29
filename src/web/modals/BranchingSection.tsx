@@ -16,6 +16,7 @@ import {
   parentFromTaskShown,
   preflightCells,
   preflightKey,
+  prTargetCell,
   rowMissesBase,
   stackedCells,
   stackedParent,
@@ -132,8 +133,8 @@ function OtherBase({ solution, value, onApply }: { readonly solution: string; re
  * other base: ___** (a repo folder only the latter). The task branch is D32's
  * Branch field above. `docs/new-session.md` → *Branching (D40)*. D47: the
  * **Parent** field (empty = the epic branch; pre-filled from the task text until
- * typed in) and, while stacked, the Resolved base / PR target / Parent status
- * columns (`docs/new-session.md` → *Parent (D47)*).
+ * typed in), the PR target column on every row (ruling D47-columns) and,
+ * while stacked, the Resolved base / Parent status columns (`docs/new-session.md` → *Parent (D47)*).
  */
 export function BranchingSection({
   form,
@@ -289,19 +290,16 @@ export function BranchingSection({
                   <th>base</th>
                   {epic ? <th>epic</th> : null}
                   <th>{`task ${taskBranch || '—'}`}</th>
-                  {stacked ? (
-                    <>
-                      <th>resolved base</th>
-                      <th>PR target</th>
-                      <th>parent status</th>
-                    </>
-                  ) : null}
+                  {stacked ? <th>resolved base</th> : null}
+                  <th>PR target</th>
+                  {stacked ? <th>parent status</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => {
                   const cells = preflightCells(row);
                   const extra = stacked ? stackedCells(row) : null;
+                  const target = prTargetCell(row);
                   const choice = form.choices[row.solution];
                   const isDropped = dropped.includes(row.solution);
                   const failed = row.error !== null;
@@ -309,7 +307,7 @@ export function BranchingSection({
                   return (
                     <tr key={row.solution} data-testid="br-row" data-solution={row.solution} data-dropped={isDropped ? 'true' : 'false'}>
                       <td className="sb-br-repo">{row.solution}</td>
-                      <td colSpan={failed ? (epic ? 3 : 2) + (stacked ? 3 : 0) : 1} data-testid="br-cell-base" data-tone={cells.base.tone}>
+                      <td colSpan={failed ? (epic ? 3 : 2) + 1 + (stacked ? 2 : 0) : 1} data-testid="br-cell-base" data-tone={cells.base.tone}>
                         {isDropped ? '— dropped from the task' : cells.base.text}
                         {offer && !isDropped ? (
                           <div className="sb-br-choices">
@@ -338,17 +336,19 @@ export function BranchingSection({
                         </td>
                       ) : null}
                       {stacked && !failed ? (
-                        <>
-                          <td data-testid="br-cell-resolved" data-tone={extra?.resolved.tone}>
-                            {extra?.resolved.text ?? '—'}
-                          </td>
-                          <td data-testid="br-cell-target" data-tone={extra?.target.tone}>
-                            {extra?.target.text ?? '—'}
-                          </td>
-                          <td data-testid="br-cell-parent" data-tone={extra?.status.tone}>
-                            {extra?.status.text ?? '—'}
-                          </td>
-                        </>
+                        <td data-testid="br-cell-resolved" data-tone={extra?.resolved.tone}>
+                          {extra?.resolved.text ?? '—'}
+                        </td>
+                      ) : null}
+                      {!failed ? (
+                        <td data-testid="br-cell-target" data-tone={target?.tone}>
+                          {target?.text ?? '—'}
+                        </td>
+                      ) : null}
+                      {stacked && !failed ? (
+                        <td data-testid="br-cell-parent" data-tone={extra?.status.tone}>
+                          {extra?.status.text ?? '—'}
+                        </td>
                       ) : null}
                     </tr>
                   );

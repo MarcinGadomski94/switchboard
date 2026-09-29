@@ -285,6 +285,21 @@ export function preflightCells(row: BranchingPreflightRow): { readonly base: Pre
 }
 
 /**
+ * D47 ruling D47-columns: the **PR target** cell of every row (stacked or not):
+ * where the task's PR would go (`row.prTarget`): the parent, `<epic> (epic)` /
+ * `<epic> (epic, created lazily)` while the epic is not on origin, or the default
+ * branch without an epic; `—` when unknown; `null` for a row that could not be
+ * read (its error spans the row).
+ */
+export function prTargetCell(row: BranchingPreflightRow): PreflightCell | null {
+  if (row.error !== null) return null;
+  const target = row.prTarget ?? null;
+  if (target === null) return { text: '—', tone: 'muted' };
+  if (row.epic !== null && target === row.epic.branch) return { text: `${target} (epic${row.epic.exists === false ? ', created lazily' : ''})`, tone: 'muted' };
+  return { text: target, tone: 'muted' };
+}
+
+/**
  * D47: a stacked row's extra cells: **Resolved base** (`origin/<parent>`,
  * `origin/<epic>`, `origin/dev (epic not created yet)`, …), **PR target** (the
  * parent, the epic, `(epic, created lazily)`), **Parent status** (`PR #306 open`;
@@ -307,11 +322,7 @@ export function stackedCells(row: BranchingPreflightRow): { readonly resolved: P
     row.cutFrom === null
       ? { text: '⚠ nothing to cut from', tone: 'warn' }
       : { text: `${row.cutFrom}${notes.length > 0 ? ` (${notes.join('; ')})` : ''}`, tone: parent.branch !== null ? 'ok' : 'muted' };
-  const targetName = row.prTarget ?? null;
-  const target: PreflightCell =
-    targetName === null
-      ? { text: '—', tone: 'muted' }
-      : { text: row.epic !== null && targetName === row.epic.branch && parent.branch === null ? `${targetName} (epic${epicMissing ? ', created lazily' : ''})` : targetName, tone: 'muted' };
+  const target = prTargetCell(row) ?? { text: '—', tone: 'muted' };
   let status: PreflightCell;
   if (parent.branch === null) status = { text: '— parent not in repo', tone: 'muted' };
   else if (parent.pr !== null) {

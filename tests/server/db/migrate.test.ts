@@ -368,6 +368,29 @@ describe('0013 worktree parent (D47)', () => {
   });
 });
 
+describe('0014 worktree parent closed (D47 ruling)', () => {
+  it('adds a nullable worktrees.parent_closed_at: existing rows have none; the store round-trips it', async () => {
+    const file = path.join(tmp, 'existing-parent-closed.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    expect(shipped.find((m) => m.version === 14)).toMatchObject({ name: 'worktree_parent_closed' });
+    migrate(database, shipped.filter((m) => m.version <= 13));
+    const ts = '2026-09-29T10:00:00.000Z';
+    database
+      .prepare('INSERT INTO worktrees (id, repo, repo_path, branch, path, removable, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)')
+      .run('w-old', 'web-front', '/r/web-front', 'PROJ-1-x', '/r/web-front-wt-x', ts, ts);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 13).map((m) => m.version));
+    expect(database.prepare('SELECT parent_closed_at FROM worktrees').all()).toEqual([{ parent_closed_at: null }]);
+    database.close();
+    const store = await openStore(file);
+    try {
+      expect(await store.worktrees.update('w-old', { parentClosedAt: ts })).toMatchObject({ parentClosedAt: ts });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

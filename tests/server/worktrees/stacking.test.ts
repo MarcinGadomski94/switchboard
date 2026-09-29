@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { BranchingPreflight, Session } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
-import { PARENT_MERGED } from '../../../src/server/inbox/system-items.ts';
+import { PARENT_CLOSED, PARENT_MERGED } from '../../../src/server/inbox/system-items.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import type { WorktreeManager } from '../../../src/server/worktrees/manager.ts';
 import { seedFolder } from '../../helpers/folders.ts';
@@ -375,5 +375,28 @@ describe('rule 5 · the parent merges', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect((await stdinMessages(s)).length).toBe(messagesBefore);
     expect(await s.store.pendingMessages.pending(session.id)).toEqual([]);
+  });
+
+  it('ruling D47-closed-parent: a parent closed without merging raises one "Parent closed" item and sends nothing', async () => {
+    const { s, g, worktrees } = await setup();
+    const session = await started(body({ solutions: ['alpha-front'] }));
+    await firstMessage(s);
+    const [row] = await s.store.worktrees.list({ sessionId: session.id });
+    const messagesBefore = (await stdinMessages(s)).length;
+    await g.setPullRequests({ [`alpha-front:${PARENT}`]: { number: 306, state: 'CLOSED', url: null, baseRefName: EPIC, headRefOid: row?.parentHeadOid } });
+    await worktrees.checkPullRequests();
+    const updated = await s.store.worktrees.get(row?.id as string);
+    expect(updated).toMatchObject({ parentPrState: 'CLOSED', parentMergedAt: null, baseRef: `origin/${PARENT}` });
+    expect(updated?.parentClosedAt).not.toBeNull();
+    const items = await until(async () => {
+      const list = await s.store.systemItems.list();
+      return list.length > 0 ? list : undefined;
+    }, 'the parent-closed item');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: PARENT_CLOSED, title: `Parent ${PARENT} closed — retarget ${TASK} to ${EPIC}`, sessionId: session.id });
+    await worktrees.checkPullRequests();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await s.store.systemItems.list()).toHaveLength(1);
+    expect((await stdinMessages(s)).length).toBe(messagesBefore);
   });
 });
