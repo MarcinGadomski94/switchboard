@@ -204,11 +204,20 @@ export class QuestionPipeline implements ControlRequestHandler {
     if (changed) await this.#publishInbox();
   }
 
-  /** Queued stale answers went out with a stdin message: record the batch as delivered. */
-  async pendingDelivered(_sessionId: string, messages: readonly PendingMessageRecord[]): Promise<void> {
+  /**
+   * Queued stale answers went out with a stdin message: record the batch as
+   * delivered. D44: its answers no longer wait in the outbox (`Question.queued`),
+   * so the session is published (`sessionUpdated`) and its chat reloads the batch.
+   */
+  async pendingDelivered(sessionId: string, messages: readonly PendingMessageRecord[]): Promise<void> {
+    let delivered = false;
     for (const message of messages) {
-      if (message.kind === STALE_ANSWERS_KIND && message.batchId) await this.#store.questions.markDelivered(message.batchId, 'user_message');
+      if (message.kind === STALE_ANSWERS_KIND && message.batchId) {
+        await this.#store.questions.markDelivered(message.batchId, 'user_message');
+        delivered = true;
+      }
     }
+    if (delivered) await this.#publishSession(sessionId);
   }
 
   // ── actions ───────────────────────────────────────────────────────────

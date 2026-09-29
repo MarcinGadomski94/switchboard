@@ -13,6 +13,7 @@ import type {
   Worktree,
 } from '../../../src/core/api.ts';
 import { HUB_EVENT_NAMES } from '../../../src/core/api.ts';
+import type { UserPayload } from '../../../src/core/event-payload.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
@@ -124,6 +125,8 @@ const QUESTION_KEYS = keys<Question>()([
   'answeredOn',
   // additive, D33 (closed with its session)
   'closedReason',
+  // additive, D44 (answers waiting in the outbox)
+  'queued',
 ]);
 const INBOX_CHANGED_KEYS = keys<HubEvents['inboxChanged']>()(['count']);
 const ACTIVITY_EVENT_KEYS = keys<HubEvents['activity']>()(['sessionId', 'activity']);
@@ -393,6 +396,35 @@ describe('/hub · events (contract, field by field)', () => {
     expectWellFormed(stream.parser);
   });
 
+  it('event (D44, additive): a message sent while a turn waits streams its user event with `queued: "turn"`, then the same event without it once the CLI takes it up', async () => {
+    const stream = await connect();
+    const created = await requestJson(port, 'POST', '/api/sessions', cookie, newSession({ name: 'hub-queued', task: '[fake:hold 1.5] Think for a while.' }));
+    expect(created.status).toBe(201);
+    const session = created.body as Session;
+    await waitForStatus(sw.store, session.id, ['run']);
+    const sent = await requestJson(port, 'POST', `/api/sessions/${session.id}/messages`, cookie, { text: 'Keep it short.' });
+    expect(sent.status).toBe(202);
+    const message = await waitForEvent(sw.store, session.id, (e) => (e.payload as UserPayload).text === 'Keep it short.');
+    const versions = (): UserPayload[] =>
+      stream.payloads<HubEvents['event']>('event').filter((m) => m.event.id === message.id).map((m) => m.event.payload as UserPayload);
+    await stream.waitFor(() => versions().length > 0, 'the queued message');
+    expect(versions()[0]).toEqual({ type: 'user', text: 'Keep it short.', origin: 'user', delivered: false, queued: 'turn' });
+
+    // The turn thinks without a tool boundary, ends, and the next turn starts on the message.
+    await stream.waitFor(() => versions().at(-1)?.delivered === true, 'the message delivered');
+    expect(versions()).toEqual([
+      { type: 'user', text: 'Keep it short.', origin: 'user', delivered: false, queued: 'turn' },
+      { type: 'user', text: 'Keep it short.', origin: 'user', delivered: false },
+      { type: 'user', text: 'Keep it short.', origin: 'user', delivered: true },
+    ]);
+    for (const m of stream.payloads<HubEvents['event']>('event').filter((e) => e.event.id === message.id)) expect(keysOf(m.event)).toEqual(SESSION_EVENT_KEYS);
+    // REST agrees.
+    const stored = (await requestJson(port, 'GET', `/api/sessions/${session.id}/events`, cookie)).body as SessionEvent[];
+    expect(stored.find((e) => e.id === message.id)?.payload).toEqual(versions().at(-1));
+    await waitForStatus(sw.store, session.id, ['done']);
+    expectWellFormed(stream.parser);
+  });
+
   it('worktreeRemovable: a real worktree whose PR merged (temp git repo + fake gh) streams the Worktree', async () => {
     const stream = await connect();
     const [record] = await manager.createForSession('hub-pr', ['web-front'], gw.folder);
@@ -431,6 +463,7 @@ describe('/hub · events (contract, field by field)', () => {
         answerText: null,
         answeredOn: null,
         closedReason: null,
+        queued: null,
       },
       {
         id: 'q2',
@@ -447,6 +480,7 @@ describe('/hub · events (contract, field by field)', () => {
         answerText: null,
         answeredOn: null,
         closedReason: null,
+        queued: null,
       },
     ];
     const batch: HubEvents['questionBatch'] = { sessionId: 's1', batchId: 'req_1', questions };

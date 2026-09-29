@@ -6,6 +6,7 @@ import type {
   AgentPromptPayload,
   AssistantPayload,
   ModelPayload,
+  QueuedReason,
   RemotePayload,
   RequestPayload,
   ResultPayload,
@@ -99,11 +100,28 @@ export type ChatItem =
       readonly origin: string;
       /** `false` until the CLI echoed the line (`isReplay`). */
       readonly delivered: boolean;
+      /** D44: why the message still waits for the agent (the bubble shows a clock); `null` once taken up, and for messages that never waited. */
+      readonly queued: QueuedReason | null;
     }
   /** Agent text (left) with the step lines that followed it; `text` is empty when the turn started with a tool. */
   | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly steps: readonly ChatStep[] }
   /** A question batch: the inline card while it waits, else the answers bubble. */
   | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean };
+
+/**
+ * D44: the clock's tooltip on a message the agent has not taken up yet
+ * (`docs/decisions.md` → D44): written while a turn ran, or sent while the
+ * session had no live process.
+ */
+export const QUEUED_TOOLTIPS: Readonly<Record<QueuedReason, string>> = {
+  turn: 'Queued: the agent reads it after its current turn',
+  resume: 'Queued: sent when the session resumes',
+};
+
+/** D44: why a batch's answers still wait (in the session's outbox), `null` when they do not. */
+export function batchQueued(questions: readonly Question[]): QueuedReason | null {
+  return questions.find((question) => question.queued)?.queued ?? null;
+}
 
 /** The mark of a step event, `null` for an event that is not a step line. */
 export function stepMark(event: SessionEvent): StepMark | null {
@@ -237,10 +255,18 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
     const type = payload?.type;
     if (type === 'user') {
       const user = payload as UserPayload;
-      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: withoutSessionStartBlock(user.text), origin: user.origin, delivered: user.delivered });
+      out.push({
+        kind: 'user',
+        key: `u:${event.id}`,
+        id: event.id,
+        text: withoutSessionStartBlock(user.text),
+        origin: user.origin,
+        delivered: user.delivered,
+        queued: user.queued ?? null,
+      });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {
-      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true });
+      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true, queued: null });
       block = null;
     } else if (type === 'assistant') {
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, steps: [] };

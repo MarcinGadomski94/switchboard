@@ -12,6 +12,7 @@ import {
   clipInput,
 } from '../../core/event-payload.ts';
 import { ActivityTracker } from '../../core/derive/activity.ts';
+import { QueueTracker, queuedReason, withoutQueued } from '../../core/derive/queued.ts';
 import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
 import {
@@ -149,7 +150,8 @@ export class StreamRecorder {
   readonly #textByMessage = new Map<string, { eventId: number; text: string }>();
   readonly #tools = new Map<string, ToolEntry>();
   readonly #agentByToolUse = new Map<string, string>();
-  readonly #pendingUserEvents: Array<{ eventId: number; text: string }> = [];
+  /** The stdin messages the CLI has not echoed yet, and which of them wait (D44). */
+  readonly #queue = new QueueTracker();
   /** Bash commands of the current turn whose result was an error (rebuild detection, gap #7). */
   readonly #failedCommands = new Set<string>();
   #modeMismatchFlagged = false;
@@ -293,12 +295,36 @@ export class StreamRecorder {
     await this.#update(id, { payload: change(event.payload as P), ...extra });
   }
 
-  /** Records a user message Switchboard is about to write to stdin (one more pending turn). */
-  async recordUserMessage(text: string, origin: UserMessageOrigin): Promise<EventRecord> {
+  /**
+   * Records a user message Switchboard is about to write to stdin (one more pending
+   * turn). D44: it is queued (`UserPayload.queued`) when a turn runs or other
+   * messages still wait (`turn`), or when `options.resuming` says the process was
+   * started for it because the session had none (`resume`); until the CLI takes it up.
+   */
+  async recordUserMessage(text: string, origin: UserMessageOrigin, options: { readonly resuming?: boolean } = {}): Promise<EventRecord> {
+    const queued = queuedReason({ turnRunning: this.#pendingTurns > 0 || this.#turnOpen, resuming: options.resuming === true });
     this.#pendingTurns++;
-    const event = await this.#append(userMessageKind(text), textLabel(text), { type: 'user', text, origin, delivered: false });
-    this.#pendingUserEvents.push({ eventId: event.id, text });
+    const payload: UserPayload = { type: 'user', text, origin, delivered: false, ...(queued ? { queued } : {}) };
+    const event = await this.#append(userMessageKind(text), textLabel(text), payload);
+    this.#queue.sent(event.id, text, queued);
     return event;
+  }
+
+  /**
+   * D44: the process ended: the messages still queued lose `queued` (the CLI never
+   * took them up and nothing sends them again), so no clock stays behind.
+   */
+  async closeQueued(): Promise<void> {
+    for (const eventId of this.#queue.ended()) await this.#clearQueued(eventId);
+  }
+
+  /** D44: the message's event loses `queued` (the CLI took it up); re-sent on `/hub` as an `event`. */
+  async #clearQueued(eventId: number, extra: { delivered?: true; uuid?: string } = {}): Promise<void> {
+    await this.#patchPayload<UserPayload>(
+      eventId,
+      (payload) => ({ ...withoutQueued(payload), ...(extra.delivered ? { delivered: true } : {}) }),
+      extra.uuid ? { uuid: extra.uuid } : {},
+    );
   }
 
   /** Records a process lifecycle step (`kind` `text`, or `error` for a failure). */
@@ -437,6 +463,11 @@ export class StreamRecorder {
     const startup = this.#startupInit && this.#pendingTurns === 0 && !this.#turnOpen;
     this.#startupInit = false;
     if (!startup) {
+      if (this.#pendingTurns > 0) {
+        // D44: the turn starts on the oldest message no turn has started on: it no longer waits.
+        const taken = this.#queue.turnStarted();
+        if (taken !== null) await this.#clearQueued(taken);
+      }
       // `system/init` opens every turn (M0.1): a user message was taken up, or the CLI started one itself.
       this.#openTurn();
       this.#startTurn();
@@ -487,15 +518,9 @@ export class StreamRecorder {
     if (this.#pendingTurns > 0) this.#pendingTurns--;
     this.#turnTookUp = true;
     this.#startTurn();
-    const at = this.#pendingUserEvents.findIndex((pending) => pending.text === message.text);
-    const pending = at >= 0 ? this.#pendingUserEvents.splice(at, 1)[0] : this.#pendingUserEvents.shift();
-    if (pending) {
-      await this.#patchPayload<UserPayload>(
-        pending.eventId,
-        (payload) => ({ ...payload, delivered: true }),
-        message.uuid ? { uuid: message.uuid } : {},
-      );
-    }
+    // Delivered; D44: no longer queued (a message a running turn absorbs is echoed mid-turn, without an `init`).
+    const taken = this.#queue.replayed(message.text);
+    if (taken) await this.#clearQueued(taken.eventId, { delivered: true, ...(message.uuid ? { uuid: message.uuid } : {}) });
     await this.#setTranscriptUuid(message.uuid, null);
   }
 

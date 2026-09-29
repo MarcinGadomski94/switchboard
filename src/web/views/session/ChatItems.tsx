@@ -5,7 +5,8 @@ import { QuestionCard } from '../../components/QuestionCard.tsx';
 import { answeredLines } from '../../components/question-card.ts';
 import { Link } from '../../router.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
-import { ANSWERS_WRITTEN, type ChatItem, type ChatStep, answeredOnText } from './chat.ts';
+import type { QueuedReason } from '../../../core/event-payload.ts';
+import { ANSWERS_WRITTEN, type ChatItem, type ChatStep, QUEUED_TOOLTIPS, answeredOnText, batchQueued } from './chat.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 
 /**
@@ -49,6 +50,24 @@ function ChatStepLine({ sessionId, step }: { readonly sessionId: string; readonl
   );
 }
 
+/**
+ * D44: the clock beside a message the agent has not taken up yet (a user bubble,
+ * or the answers bubble of a batch whose answers wait in the outbox), with its
+ * reason as the tooltip. It sits outside the bubble, at its bottom left, and is
+ * positioned absolutely, so the bubble keeps its size; muted like the step lines.
+ */
+function QueuedClock({ reason }: { readonly reason: QueuedReason }) {
+  const tooltip = QUEUED_TOOLTIPS[reason];
+  return (
+    <span className="sb-chat-queued" data-testid="chat-queued" data-reason={reason} title={tooltip} role="img" aria-label={tooltip}>
+      <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true" focusable="false">
+        <circle cx="6" cy="6" r="4.9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M6 3.4V6l1.8 1.2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
 /** Props of {@link ChatItemView}. */
 export interface ChatItemViewProps {
   readonly sessionId: string;
@@ -63,10 +82,18 @@ export interface ChatItemViewProps {
 export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote }: ChatItemViewProps) {
   if (item.kind === 'user') {
     return (
-      <div className="sb-chat-message" data-testid="chat-message" data-role="user" data-origin={item.origin} data-delivered={item.delivered ? 'true' : 'false'}>
+      <div
+        className="sb-chat-message"
+        data-testid="chat-message"
+        data-role="user"
+        data-origin={item.origin}
+        data-delivered={item.delivered ? 'true' : 'false'}
+        data-queued={item.queued ?? undefined}
+      >
         <div className="sb-chat-bubble" data-testid="chat-text">
           <ChatMarkdown text={item.text} />
         </div>
+        {item.queued ? <QueuedClock reason={item.queued} /> : null}
       </div>
     );
   }
@@ -125,9 +152,11 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
       </div>
     );
   }
+  // D44: answers of a stale batch that wait in the outbox until the session runs again.
+  const queued = batchQueued(item.questions);
   return (
     <Fragment>
-      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId}>
+      <div className="sb-chat-answers" data-testid="chat-answers" data-batch-id={item.batchId} data-queued={queued ?? undefined}>
         <div className="sb-chat-answers-bubble">
           {answeredLines(item.questions).map((line, index) => (
             <div key={index} data-testid="chat-answer">
@@ -135,6 +164,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             </div>
           ))}
         </div>
+        {queued ? <QueuedClock reason={queued} /> : null}
       </div>
       <div className="sb-chat-answers-note" data-testid="chat-answers-note">
         {ANSWERS_WRITTEN}

@@ -757,6 +757,32 @@ a.sb-agent--link:focus-visible {
   padding: 10px 14px;
 }
 
+/*
+ * D44: a message the agent has not taken up yet shows a clock beside its bubble's
+ * bottom left, outside the bubble (absolutely positioned: the bubble keeps its size
+ * and place). Muted like the step lines; the tooltip says why it waits.
+ */
+.sb-chat-message[data-queued],
+.sb-chat-answers[data-queued] {
+  position: relative;
+}
+
+.sb-chat-queued {
+  position: absolute;
+  right: calc(100% + 6px);
+  bottom: 14px;
+  display: flex;
+  width: 12px;
+  height: 12px;
+  color: var(--muted-3);
+}
+
+.sb-chat-queued > svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
 /* Mono step lines under an agent message (✓ / ● / ✕ / ⏸ + the event label). */
 .sb-chat-steps {
   display: flex;

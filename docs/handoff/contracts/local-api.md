@@ -377,6 +377,17 @@ ModelSettings { "options": [ { "value": "opus", "label": "Opus 5.5", "descriptio
 - **ModelSettings.options:** the latest model list any claude process reported in its `initialize` reply (`SessionModelOption[]`, D31's shape), replaced by each later report; `null` until one did. **last:** the last model and effort the developer chose: written by a `POST /api/sessions` that names `model` or `effort`, and by every choice `PUT /api/sessions/{id}/model` stores; `null` until then. Scheduled runs never change it. Neither is in `GET /api/settings`, and `PUT /api/settings` does not take them.
 - **Schedules:** `POST /api/schedules`' template carries `model` / `effort` like any other field (checked the same way); each run starts with them.
 
+## Queued messages (D44, 2026-09-29, additive)
+Developer ruling D44 (`docs/decisions.md` → *Queued messages*): the developer's own messages show a clock while the agent has not taken them up. No new route or event name, no migration: the state rides on existing payloads, and its changes go out on the existing `/hub` events. Details: `docs/derivations.md` → *Queued messages (D44)*, `docs/chat.md` → *Queued messages*.
+
+- **SessionEvent.payload** of type `user` gains `queued: "turn" | "resume"`, present while the message waits and absent once the CLI took it up (and on every message that never waited): `turn` = written while a turn ran (or behind messages still waiting), `resume` = sent to a session with no live process, which it resumed. When it goes, the event is re-sent on `/hub` `event` (same id, the payload without `queued`), as for a merged text or a closed tool call; `delivered` still flips with the CLI's replay.
+- **Question** gains `queued: "resume" | null`: `resume` while its batch's answers wait in the session's outbox (a stale batch answered while the session had no live process), `null` once they were written and for every other batch. Optional in `src/core/api.ts` so older fixtures type-check; the server always sends it (`/hub` `questionBatch`, `GET /api/inbox`, `SessionDetail.questions`). When the outbox is written, `sessionUpdated` is published for the session.
+
+```json
+Event    { …, "payload": { "type": "user", "text": "Keep it short.", "origin": "user", "delivered": false, "queued": "turn" } }
+Question { …, "state": "stale", "answeredAt": "2026-09-29T10:00:00.000Z", "queued": "resume" | null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

@@ -37,6 +37,7 @@ Body `{ answers: [{ questionId, answerIndex }] }`; D39 adds `{ questionId, text 
   - the session has a live process that is not being stopped (e.g. resumed idle after a restart, or resumed and idle) → sent at once (`SessionSupervisor.sendToLive`); the outbox (restart note) rides along in the same message;
   - otherwise (paused, ended, detached, service closing) → queued in the session's outbox (`pending_messages`, kind `stale-answers`, with the batch id) and sent ahead of the session's next message, e.g. `<answers>\n\nContinue.` on Resume. Answering never starts or resumes a process by itself.
   - The batch records `deliveredVia: user_message` once the message is written (`pendingDelivered` hook for queued ones).
+  - D44: while the answers wait in the outbox, the batch's questions carry `Question.queued: "resume"` and the chat's answers bubble shows the clock "Queued: sent when the session resumes"; once they are written, `pendingDelivered` publishes `sessionUpdated` and the clock goes (`docs/derivations.md` → *Queued messages (D44)*).
 - After an answer: `inboxChanged` and `sessionUpdated` (the open question count).
 
 ### Own answers (D39)

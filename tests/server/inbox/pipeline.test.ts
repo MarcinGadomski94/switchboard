@@ -47,7 +47,7 @@ const PORT = 4910; // inject() opens no socket; the port feeds the Host check on
 const HOST = `127.0.0.1:${PORT}`;
 
 /** The exact keys of the contract's Question (src/core/api.ts). */
-const QUESTION_KEYS = ['answerIndex', 'answerText', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'sessionId', 'source', 'state', 'text'];
+const QUESTION_KEYS = ['answerIndex', 'answerText', 'answeredAt', 'answeredOn', 'batchId', 'closedReason', 'header', 'id', 'multiSelect', 'options', 'queued', 'sessionId', 'source', 'state', 'text'];
 
 interface Rig {
   readonly w: SupervisorWorld;
@@ -326,6 +326,38 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
     expect((await spawnedArgv(r.w.logFile)).length).toBe(2);
     const userEvents = (await r.w.store.events.list(session.id)).filter((e) => (e.payload as { type?: string; origin?: string }).origin === 'service');
     expect(userEvents).toHaveLength(1);
+  });
+});
+
+describe('D44 · answers waiting in the outbox (Question.queued)', () => {
+  it('ask-interrupt: a stale batch answered while paused is queued (resume) until Resume writes it; then sessionUpdated reloads it as written', async () => {
+    const r = await setup('ask-interrupt');
+    const session = await startSession(r, 'Ask me one question.');
+    await waitForStatus(r.w.store, session.id, ['need']);
+    const { batch, questions } = await batchOf(r, session.id);
+    const detailQuestions = async (): Promise<Question[]> => ((await call(r, 'GET', `/api/sessions/${session.id}`)).json() as { questions: Question[] }).questions;
+    // Open: not queued (the answers go straight into the control_response).
+    expect((await detailQuestions()).map((q) => q.queued)).toEqual([null]);
+
+    await r.w.supervisor.pause(session.id);
+    // Stale and unanswered: it waits for the developer, not in the outbox.
+    expect((await detailQuestions()).map((q) => q.queued)).toEqual([null]);
+    const response = await call(r, 'POST', `/api/questions/batch/${batch.id}/answers`, { answers: [{ questionId: questions[0]?.id, answerIndex: 0 }] });
+    expect(response.statusCode).toBe(204);
+    expect((await detailQuestions()).map((q) => q.queued)).toEqual(['resume']);
+
+    r.w.env['FAKE_CLAUDE_SCENARIO'] = 'ask-resume';
+    const before = r.published.length;
+    await call(r, 'POST', `/api/sessions/${session.id}/resume`);
+    await waitForStatus(r.w.store, session.id, ['done']);
+    expect((await detailQuestions()).map((q) => q.queued)).toEqual([null]);
+    // Written: the pipeline publishes the session, so the chat reloads the batch without its clock.
+    const updated = r.published.slice(before).filter((m) => m.name === 'sessionUpdated' && (m.payload as Session).id === session.id);
+    expect(updated.length).toBeGreaterThan(0);
+    // The answers went out with "Continue." (the resume itself): that message is not queued.
+    const carrier = (await r.w.store.events.list(session.id)).find((e) => (e.payload as { origin?: string }).origin === 'resume');
+    expect(carrier?.payload).toMatchObject({ delivered: true });
+    expect(carrier?.payload).not.toHaveProperty('queued');
   });
 });
 
