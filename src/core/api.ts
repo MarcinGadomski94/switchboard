@@ -282,6 +282,83 @@ export interface Agent {
    * type-check; the server always sends it.
    */
   readonly toolUseId?: string | null;
+  /**
+   * Additive (D51): what a Workflow's agent is (`kind: 'workflow'`), `null` / absent
+   * for every other agent. `docs/derivations.md` → *Workflow agents*.
+   */
+  readonly workflow?: AgentWorkflow | null;
+}
+
+/**
+ * Additive (D51): a Workflow agent's own facts, from the CLI's live `task_progress`
+ * snapshot and its files (`workflows/<runId>.json`, `subagents/workflows/<runId>/`).
+ */
+export interface AgentWorkflow {
+  /** The run it belongs to (`WorkflowRun.runId`, `wf_…`). */
+  readonly runId: string;
+  /** The script's agent number (1-based, `workflow_agent.index`); `null` when only the files know the agent. */
+  readonly index: number | null;
+  /** The CLI's agent id (`agent-<id>.jsonl`); `null` while it is queued (no transcript yet). */
+  readonly agentId: string | null;
+  /** The phase it runs in (`phaseTitle`, the meta's `workflowPhase`); `null` without one. */
+  readonly phase: string | null;
+  readonly model: string | null;
+  /** When it started / ended (ISO); `null` when unknown or not yet. */
+  readonly startedAt: string | null;
+  readonly endedAt: string | null;
+  /** Its current action while it runs (the last tool it called); `null` otherwise. */
+  readonly action: WorkflowAgentAction | null;
+  /** The working folder its transcript names (`cwd`); `null` when unknown. */
+  readonly cwd: string | null;
+  /** Grows while its transcript grows (bytes read): its open chat reloads when it changes. */
+  readonly version: number;
+}
+
+/** Additive (D51): what a running Workflow agent does now. */
+export interface WorkflowAgentAction {
+  /** The tool it called last (`lastToolName`, the transcript's last `tool_use`). */
+  readonly tool: string;
+  /** Short literal summary (D19's rules), `null` when none. */
+  readonly summary: string | null;
+  /** Since when (ISO): that call's time, else the agent's start. */
+  readonly since: string;
+}
+
+/**
+ * Additive (D51): one Workflow run of a session, the group its agents belong to
+ * (`Session.workflows`, oldest first).
+ */
+export interface WorkflowRun {
+  /** `wf_…`: the run folder's name. */
+  readonly runId: string;
+  /** The CLI's task id (`w…`, the background task); `null` when unknown (after a restart, before the run file). */
+  readonly taskId: string | null;
+  /** The script's `meta.name`, else the run id. */
+  readonly name: string;
+  /** The script's `meta.description`; `null` when unknown. */
+  readonly summary: string | null;
+  /** `run` while it runs, then `done` / `fail`; `idle` when it stopped (killed, or its process ended first). */
+  readonly status: SessionStatus;
+  /** The phase it is in (the newest phase an agent started in; the last one once it ended); `null` without phases. */
+  readonly phase: string | null;
+  /** Every phase title of the script, in order (as far as known). */
+  readonly phases: readonly string[];
+  /** Its agents (queued ones included) and how many are done / failed. */
+  readonly agentCount: number;
+  readonly doneCount: number;
+  readonly failedCount: number;
+  readonly startedAt: string | null;
+  readonly endedAt: string | null;
+}
+
+/** Additive (D51): `GET /api/sessions/{id}/workflow-agents/{agentId}/chat`: a Workflow agent's conversation from its transcript. */
+export interface WorkflowAgentChat {
+  /** Its conversation in the event shapes the stream produces (`agentId` = the agent's id; ids are local to this answer). */
+  readonly events: readonly SessionEvent[];
+  /** Its return value (the journal's `result`, as JSON) or its error; `null` while it runs. */
+  readonly result: { readonly text: string; readonly isError: boolean } | null;
+  /** `AgentWorkflow.version` at read time. */
+  readonly version: number;
 }
 
 /**
@@ -326,6 +403,12 @@ export interface BackgroundTask {
   readonly wakeAt?: string;
   /** The command runs `gh run`, `gh pr checks` or `gh workflow`: a wait for GitHub Actions. */
   readonly github: boolean;
+  /**
+   * Additive (D51): a `workflow` task's run, when Switchboard knows it: its agents
+   * done out of all and its phase ("3/7 agents done · phase Review"). Absent / `null`
+   * otherwise.
+   */
+  readonly workflow?: { readonly runId: string; readonly doneCount: number; readonly agentCount: number; readonly phase: string | null } | null;
 }
 
 /** Additive (D19): one agent's current action while the session's turn runs. */
@@ -389,6 +472,11 @@ export interface Session {
   /** Last activity (drives the sidebar age); `null` before the first event. */
   readonly lastActivityAt: string | null;
   readonly agents: readonly Agent[];
+  /**
+   * Additive (D51): the session's Workflow runs, oldest first; their agents are in
+   * {@link agents} (`kind: 'workflow'`, `Agent.workflow.runId`). Empty when none.
+   */
+  readonly workflows?: readonly WorkflowRun[];
   readonly openQuestionCount: number;
   /**
    * Additive (M4.1; D14): the folder the session's process runs in: the workspace

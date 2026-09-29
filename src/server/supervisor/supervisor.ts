@@ -3,7 +3,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { type ContextState, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
-import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput } from '../../core/api.ts';
+import type { AttachWarningReason, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { mainAgentName } from '../../core/derive/agents.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
@@ -27,7 +27,8 @@ import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { FolderRef } from '../folders/ref.ts';
-import { toEvent, toSession } from '../sessions/wire.ts';
+import { registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
+import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildClaudeArgs, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
@@ -194,6 +195,8 @@ export interface SupervisorOptions {
    * stopped and the teleport refused (default {@link DEFAULT_TELEPORT_INIT_TIMEOUT_MS}).
    */
   readonly teleportInitTimeoutMs?: number;
+  /** D51: how often the files of a running Workflow run are read again (default `POLL_MS` of `workflows/service.ts`). */
+  readonly workflowPollMs?: number;
 }
 
 /** Options of {@link SessionSupervisor.close} (D33). */
@@ -367,6 +370,8 @@ export class SessionSupervisor {
   /** D33: closes in progress, by session (a second close waits for the first; messages are refused meanwhile). */
   readonly #closingSessions = new Map<string, Promise<SessionRecord>>();
   #closing = false;
+  /** D51: the sessions' Workflow runs and their agents (the CLI's files + this process's stream). */
+  readonly #workflows: WorkflowService;
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
   #gate: Promise<void> = Promise.resolve();
 
@@ -381,6 +386,13 @@ export class SessionSupervisor {
     this.#listLive = options.listLive ?? null;
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
+    this.#workflows = new WorkflowService({
+      configDir: () => claudeConfigDir(this.#env),
+      onChange: (sessionId) => this.#workflowChanged(sessionId),
+      ...(options.workflowPollMs !== undefined ? { pollMs: options.workflowPollMs } : {}),
+      onError: (error) => this.#onError(error),
+    });
+    registerWorkflowSource(this.#store, this.#workflows);
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -420,7 +432,36 @@ export class SessionSupervisor {
    * while no turn runs. Always current (the `activity` notifications are throttled).
    */
   activity(sessionId: string): SessionActivity | null {
-    return this.#live.get(sessionId)?.recorder.activity() ?? null;
+    return this.#withWorkflows(sessionId, this.#live.get(sessionId)?.recorder.activity() ?? null);
+  }
+
+  /**
+   * D51: a Workflow agent's conversation from its transcript
+   * (`GET /api/sessions/{id}/workflow-agents/{agentId}/chat`); `null` when the
+   * session has no such agent or it has no transcript yet.
+   */
+  async workflowChat(record: SessionRecord, agentId: string): Promise<WorkflowAgentChat | null> {
+    return this.#workflows.chat(record, agentId);
+  }
+
+  /** D51: each pending workflow task with its run's progress (`BackgroundTask.workflow`), when the run is known. */
+  #withWorkflows(sessionId: string, activity: SessionActivity | null): SessionActivity | null {
+    if (!activity || !activity.background.some((task) => task.kind === 'workflow')) return activity;
+    return {
+      ...activity,
+      background: activity.background.map((task) => {
+        if (task.kind !== 'workflow') return task;
+        const run = this.#workflows.taskRun(sessionId, task.id);
+        return run ? { ...task, workflow: { runId: run.runId, doneCount: run.doneCount, agentCount: run.agentCount, phase: run.phase } } : task;
+      }),
+    };
+  }
+
+  /** D51: a session's Workflow runs changed: its `sessionUpdated`, and its activity (the counts on the background line). */
+  #workflowChanged(sessionId: string): void {
+    void this.#emitSession(sessionId).catch((error: unknown) => this.#onError(error));
+    const live = this.#live.get(sessionId);
+    if (live) live.activity.push(live.recorder.activity());
   }
 
   // ── commands ───────────────────────────────────────────────────────────
@@ -1276,6 +1317,7 @@ export class SessionSupervisor {
   async shutdown(): Promise<void> {
     this.#closing = true;
     await Promise.all([...this.#live.values()].map((live) => this.#stop(live, 'shutdown')));
+    this.#workflows.close();
   }
 
   // ── internals ──────────────────────────────────────────────────────────
@@ -1354,6 +1396,8 @@ export class SessionSupervisor {
       },
       // D49: the context meter changed (stored on the session): the header and composer follow `sessionUpdated`.
       onContext: () => void this.#emitSession(session.id).catch((error: unknown) => this.#onError(error)),
+      // D51: Workflow launches, their live progress and their ends.
+      onWorkflow: (signal) => this.#workflows.signal(prepared, signal),
     });
     let teleport: TeleportState | null = null;
     if (start.kind === 'teleport') {
@@ -1564,6 +1608,8 @@ export class SessionSupervisor {
     await live.recorder.closeQueued();
     // D19: no turn runs once the process is gone.
     live.recorder.endActivity();
+    // D51: its Workflow runs ended with it.
+    this.#workflows.processEnded(live.sessionId);
     const now = new Date().toISOString();
     const patch: { -readonly [K in keyof SessionPatch]: SessionPatch[K] } = { pid: null, stopReason: null };
     const base = { pid: live.proc.pid, code: exit.code, signal: exit.signal };
@@ -1633,8 +1679,9 @@ export class SessionSupervisor {
     this.#emitEvent(event);
   }
 
-  #emitActivity(sessionId: string, activity: SessionActivity | null): void {
+  #emitActivity(sessionId: string, value: SessionActivity | null): void {
     if (this.#starting.has(sessionId)) return;
+    const activity = this.#withWorkflows(sessionId, value);
     for (const listener of this.#listeners.activity) {
       try {
         listener({ sessionId, activity });
