@@ -494,48 +494,48 @@ describe('D46: session pace (the 5-hour Session window against its allowance, by
     expect(PACE_MINUTE_MS).toBe(60_000);
   });
 
-  it('at the window start (the reset minus 5 h) nothing is allowed yet; the first step is a minute later', () => {
-    expect(pace(0, new Date(START))).toEqual({ minutes: 0, allowancePct: 0, nextStepAt: '2026-09-29T11:01:00.000Z', onPace: false });
-    expect(pace(0, minute(0, 59_999))).toMatchObject({ minutes: 0, allowancePct: 0 });
-    expect(pace(0, minute(1))).toEqual({ minutes: 1, allowancePct: 0.33, nextStepAt: '2026-09-29T11:02:00.000Z', onPace: true });
+  it('each minute counts from its start (developer ruling 2026-09-29): the window\'s first minute already allows 1/300', () => {
+    expect(pace(0, new Date(START))).toEqual({ minutes: 0, allowancePct: 0.33, nextStepAt: '2026-09-29T11:01:00.000Z', onPace: true });
+    expect(pace(0, minute(0, 59_999))).toMatchObject({ minutes: 0, allowancePct: 0.33 });
+    expect(pace(0, minute(1))).toEqual({ minutes: 1, allowancePct: 0.67, nextStepAt: '2026-09-29T11:02:00.000Z', onPace: true });
   });
 
-  it('in the middle: 150 minutes in, 50 % is allowed until the next minute', () => {
-    expect(pace(38, at('2026-09-29T13:30:00.000Z'))).toEqual({ minutes: 150, allowancePct: 50, nextStepAt: '2026-09-29T13:31:00.000Z', onPace: true });
-    expect(pace(62, at('2026-09-29T13:30:30.000Z'))).toEqual({ minutes: 150, allowancePct: 50, nextStepAt: '2026-09-29T13:31:00.000Z', onPace: false });
+  it('in the middle: in the 150th minute (149 whole minutes in), 50 % is allowed until the next minute', () => {
+    expect(pace(38, at('2026-09-29T13:29:00.000Z'))).toEqual({ minutes: 149, allowancePct: 50, nextStepAt: '2026-09-29T13:30:00.000Z', onPace: true });
+    expect(pace(62, at('2026-09-29T13:29:30.000Z'))).toEqual({ minutes: 149, allowancePct: 50, nextStepAt: '2026-09-29T13:30:00.000Z', onPace: false });
   });
 
-  it('at the end: the last minute allows 99.67 % and its next step is the reset itself', () => {
-    expect(pace(90, minute(299))).toEqual({ minutes: 299, allowancePct: 99.67, nextStepAt: RESET, onPace: true });
-    expect(pace(90, at('2026-09-29T15:59:59.999Z'))).toEqual({ minutes: 299, allowancePct: 99.67, nextStepAt: RESET, onPace: true });
+  it('at the end: the last minute allows 100 % and its next step is the reset itself', () => {
+    expect(pace(90, minute(299))).toEqual({ minutes: 299, allowancePct: 100, nextStepAt: RESET, onPace: true });
+    expect(pace(99.99, at('2026-09-29T15:59:59.999Z'))).toEqual({ minutes: 299, allowancePct: 100, nextStepAt: RESET, onPace: true });
     expect(pace(100, at('2026-09-29T15:59:59.999Z'))?.onPace).toBe(false);
   });
 
-  it('minutes elapsed × 100 / 300, rounded to 2 decimals like the utilization (and like D23)', () => {
-    expect([1, 2, 3, 100, 150, 200, 298, 299].map((m) => pace(0, minute(m))?.allowancePct)).toEqual([0.33, 0.67, 1, 33.33, 50, 66.67, 99.33, 99.67]);
+  it('during minute n (1–300) n × 100 / 300, rounded to 2 decimals like the utilization (and like D23)', () => {
+    expect([0, 1, 2, 99, 149, 199, 297, 298, 299].map((m) => pace(0, minute(m))?.allowancePct)).toEqual([0.33, 0.67, 1, 33.33, 50, 66.67, 99.33, 99.67, 100]);
   });
 
   it('steps once a minute, counted from the window start, not from the clock: a reset at :20 s steps at :20 s', () => {
-    expect(pace(10, at('2026-09-29T13:30:59.999Z'))).toMatchObject({ minutes: 150, allowancePct: 50 });
-    expect(pace(10, at('2026-09-29T13:31:00.000Z'))).toMatchObject({ minutes: 151, allowancePct: 50.33, nextStepAt: '2026-09-29T13:32:00.000Z' });
+    expect(pace(10, at('2026-09-29T13:30:59.999Z'))).toMatchObject({ minutes: 150, allowancePct: 50.33 });
+    expect(pace(10, at('2026-09-29T13:31:00.000Z'))).toMatchObject({ minutes: 151, allowancePct: 50.67, nextStepAt: '2026-09-29T13:32:00.000Z' });
     const reset = '2026-09-29T16:00:20.000Z';
-    expect(pace(10, at('2026-09-29T13:31:19.999Z'), reset)).toMatchObject({ minutes: 150, allowancePct: 50, nextStepAt: '2026-09-29T13:31:20.000Z' });
-    expect(pace(10, at('2026-09-29T13:31:20.000Z'), reset)).toMatchObject({ minutes: 151, allowancePct: 50.33, nextStepAt: '2026-09-29T13:32:20.000Z' });
-    // Every minute of the window steps by one: 300 steps, from 0 to 99.67.
+    expect(pace(10, at('2026-09-29T13:31:19.999Z'), reset)).toMatchObject({ minutes: 150, allowancePct: 50.33, nextStepAt: '2026-09-29T13:31:20.000Z' });
+    expect(pace(10, at('2026-09-29T13:31:20.000Z'), reset)).toMatchObject({ minutes: 151, allowancePct: 50.67, nextStepAt: '2026-09-29T13:32:20.000Z' });
+    // Every minute of the window steps by one: 300 steps, from 0.33 to 100.
     const steps = new Set(Array.from({ length: SESSION_MINUTES }, (_, m) => pace(0, minute(m, 30_000))?.allowancePct));
     expect(steps.size).toBe(SESSION_MINUTES);
   });
 
   it('on pace while below the allowance; exactly at the allowance (as shown) or above it is not (yellow)', () => {
-    const half = at('2026-09-29T13:30:00.000Z');
+    const half = at('2026-09-29T13:29:00.000Z');
     expect(pace(49.99, half)?.onPace).toBe(true);
     expect(pace(50, half)?.onPace).toBe(false);
     expect(pace(50.01, half)?.onPace).toBe(false);
-    // The rounded allowance is the one compared: 1 minute in allows 0.33 %, so 0.33 % is at it.
-    expect(pace(0.32, minute(1))?.onPace).toBe(true);
-    expect(pace(0.33, minute(1))?.onPace).toBe(false);
-    // Over 100 % reads as 100 % (normalizePct), never on pace.
-    expect(pace(104, minute(299))).toMatchObject({ allowancePct: 99.67, onPace: false });
+    // The rounded allowance is the one compared: the first minute allows 0.33 %, so 0.33 % is at it.
+    expect(pace(0.32, minute(0))?.onPace).toBe(true);
+    expect(pace(0.33, minute(0))?.onPace).toBe(false);
+    // Over 100 % reads as 100 % (normalizePct), never on pace, even in the last minute.
+    expect(pace(104, minute(299))).toMatchObject({ allowancePct: 100, onPace: false });
   });
 
   it('unknown stays unknown: a reset now or past, more than 5 h ahead, unparseable, or no usable pct → null', () => {

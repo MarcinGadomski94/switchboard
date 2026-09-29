@@ -19,7 +19,7 @@
  * - D23: `weeklyPace` places the Week window against its daily allowance
  *   (7 days of 24 h back from its reset, `day × 100 / 7` % during day *n*).
  * - D46: `sessionPace` places the 5-hour Session window against its allowance by
- *   the minute (300 minutes back from its reset, `minutes elapsed × 100 / 300` %).
+ *   the minute (300 minutes back from its reset; during minute *n*, 1–300, `n × 100 / 300` %).
  */
 import type { SystemInfo, UsageWarning, UsageWindow, UsageWindowName } from './api.ts';
 import type { UsageSource } from './model.ts';
@@ -383,8 +383,8 @@ export interface WeeklyPace extends UsagePace {
 
 /**
  * D46: where the 5-hour Session usage stands against its allowance at a moment
- * ({@link sessionPace}): `allowancePct` is `minutes × 100 / 300` (0 at the window's
- * start, 50 half-way, 99.67 in its last minute) and `nextStepAt` the end of this minute.
+ * ({@link sessionPace}): `allowancePct` is `(minutes + 1) × 100 / 300` (0.33 in the
+ * window's first minute, 50 in its 150th, 100 in its last) and `nextStepAt` the end of this minute.
  */
 export interface SessionPace extends UsagePace {
   /** Whole minutes elapsed since the window's start (its reset minus 5 h), 0–299. */
@@ -435,16 +435,19 @@ export function weeklyPace(week: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Dat
 
 /**
  * D46: the 5-hour Session window's pace at `now`. The window started 5 h before
- * `resetsAt` and its allowance grows evenly by the minute: after *m* whole minutes
- * it is *m* × 100 / 300 % (rounded like {@link weeklyPace}'s), stepping up at the
- * end of each minute counted from the window's start. Returns `null` (unknown,
+ * `resetsAt` and its allowance grows evenly by the minute: each minute's share is
+ * available from the start of that minute (like D23's days, developer ruling
+ * 2026-09-29), so during minute *n* (1–300) it is *n* × 100 / 300 % (rounded like
+ * {@link weeklyPace}'s), stepping up at the end of each minute counted from the
+ * window's start. Returns `null` (unknown,
  * never guessed) when `pct` or `resetsAt` is not usable, when the reset is not
  * ahead of `now`, or when it is more than 5 h ahead.
  */
 export function sessionPace(session: Pick<UsageWindow, 'pct' | 'resetsAt'>, now: Date): SessionPace | null {
   const at = paceStep(session, now, SESSION_MINUTES, PACE_MINUTE_MS);
   if (!at) return null;
-  return { minutes: at.step, ...paceAgainst(at.pct, (at.step * 100) / SESSION_MINUTES, at.start + (at.step + 1) * PACE_MINUTE_MS) };
+  // Developer ruling 2026-09-29: a minute counts as soon as it starts (like D23's days), so minute 1 already allows 1/300.
+  return { minutes: at.step, ...paceAgainst(at.pct, ((at.step + 1) * 100) / SESSION_MINUTES, at.start + (at.step + 1) * PACE_MINUTE_MS) };
 }
 
 /**

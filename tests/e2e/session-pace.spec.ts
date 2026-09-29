@@ -13,10 +13,12 @@ import { stubToolProbes } from './probes.ts';
  * Session 62 % with its reset about 2 h ahead (a whole minute), so the server
  * lists the Session window for the whole run. The pace is computed in the browser
  * from `usageWindows`, so only the page's clock moves (`page.clock`, in UTC for the
- * tooltip) through the window, which started 5 h before the reset:
- * - 120 minutes in (40 % allowed): yellow;
- * - 186 minutes in (62 % allowed, exactly the usage): still yellow;
- * - one minute of page clock later (62.33 %): green, the marker moves;
+ * tooltip) through the window, which started 5 h before the reset. Each minute's
+ * share counts from the minute's start (developer ruling 2026-09-29), so during
+ * minute n (1–300) n × 100 / 300 % is allowed:
+ * - in minute 120 (40 % allowed): yellow;
+ * - in minute 186 (62 % allowed, exactly the usage): still yellow;
+ * - one minute of page clock later, minute 187 (62.33 %): green, the marker moves;
  * - after the reset, and more than 5 h before it: no color, no marker, no tooltip.
  * The Week row keeps its own D23 pace throughout.
  */
@@ -119,20 +121,20 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('the Session bar is yellow at or above its allowance, green below it, stepping every minute, with a marker at the allowance and a pace tooltip', async ({ page }) => {
-  // 120 minutes into the window (10 s past the step): 62 % ≥ 40 % → ahead of pace, yellow.
-  await page.clock.install({ time: start + 120 * MIN + 10_000 });
+  // Minute 120 of the window (10 s past its start): 62 % ≥ 40 % → ahead of pace, yellow.
+  await page.clock.install({ time: start + 119 * MIN + 10_000 });
   await page.goto(`${server.baseUrl}/`);
   const usage = page.getByTestId('usage-meters');
   const session = usage.locator('[data-meter="session"]');
   const week = usage.locator('[data-meter="week"]');
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 3h00`);
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 3h01`);
   const need = await tokenColor(page, '--status-need');
   const done = await tokenColor(page, '--status-done');
   const text = await tokenColor(page, '--text');
   const muted = await tokenColor(page, '--muted-3');
   expect(new Set([need, done, text]).size).toBe(3);
   await expect(session).toHaveAttribute('data-pace', 'ahead');
-  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 40% until ${utcTime(start + 121 * MIN)}`);
+  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 40% until ${utcTime(start + 120 * MIN)}`);
   expect(await fillColor(session)).toBe(need);
   await expect(session.locator('.sb-meter-fill')).toHaveAttribute('style', `width: ${SESSION_PCT}%;`);
   await expectMarkerAt(session, 40);
@@ -141,22 +143,22 @@ test('the Session bar is yellow at or above its allowance, green below it, stepp
   await expect(week).toHaveAttribute('data-pace', 'on');
   await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
 
-  // 186 minutes in: the allowance is exactly the usage (62 %), which is not below it → still yellow.
-  await page.clock.pauseAt(start + 186 * MIN + 10_000);
-  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 62% until ${utcTime(start + 187 * MIN)}`);
+  // Minute 186: the allowance is exactly the usage (62 %), which is not below it → still yellow.
+  await page.clock.pauseAt(start + 185 * MIN + 10_000);
+  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 62% until ${utcTime(start + 186 * MIN)}`);
   await expect(session).toHaveAttribute('data-pace', 'ahead');
   expect(await fillColor(session)).toBe(need);
   await expectMarkerAt(session, 62);
 
   // One minute of page clock later the allowance steps to 62.33 %: on pace, green; the marker moves.
   await page.clock.runFor(MIN);
-  await expect(session).toHaveAttribute('title', `On pace: ${SESSION_PCT}% of 62.33% until ${utcTime(start + 188 * MIN)}`);
+  await expect(session).toHaveAttribute('title', `On pace: ${SESSION_PCT}% of 62.33% until ${utcTime(start + 187 * MIN)}`);
   await expect(session).toHaveAttribute('data-pace', 'on');
   expect(await fillColor(session)).toBe(done);
   await expectMarkerAt(session, 62.33);
   await expect(session.getByTestId('pace-marker')).toHaveCount(1);
-  // 112 min 50 s to the reset, rounded like every reset time.
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 1h53`);
+  // 113 min 50 s to the reset, rounded like every reset time.
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 1h54`);
 
   // After the reset the page still has the window (the server's clock has not reached it), but no pace.
   await page.clock.pauseAt(reset + MIN);

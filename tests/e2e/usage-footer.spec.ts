@@ -122,11 +122,11 @@ test('the footer shows Session, Week and the model in use, each with its bar, % 
   await expect(week).toHaveAttribute('data-pace', 'on');
   await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
   await expect(week.getByTestId('pace-marker')).toHaveCount(1);
-  // D46: the Session reset is 1h48 ahead, so about 192 of its 300 minutes have passed (63.67–64 % allowed) and 62 % is
+  // D46: the Session reset is 1h48 ahead, so it is in about its 192nd of 300 minutes (64–64.33 % allowed, each minute counted from its start) and 62 % is
   // on pace (tests/e2e/session-pace.spec.ts drives the colors and the minute step). The model row has no pace.
   const session = usage.locator('[data-meter="session"]');
   await expect(session).toHaveAttribute('data-pace', 'on');
-  await expect(session).toHaveAttribute('title', /^On pace: 62% of (63\.67|64|64\.33)% until \d\d:\d\d$/);
+  await expect(session).toHaveAttribute('title', /^On pace: 62% of (64|64\.33|64\.67)% until \d\d:\d\d$/);
   await expect(session.getByTestId('pace-marker')).toHaveCount(1);
   await expect(usage.locator('[data-pace]')).toHaveCount(2);
   await expect(usage.locator('[data-meter="model"]')).not.toHaveAttribute('data-pace');
