@@ -1,0 +1,172 @@
+import path from 'node:path';
+import { type Locator, type Page, expect, test } from '@playwright/test';
+import { readingFromGetUsage } from '../../src/core/usage.ts';
+import { openStore, storeFile } from '../../src/server/db/store.ts';
+import { makeTempDir, removeTempDir } from '../helpers/net.ts';
+import { type ServerProcess, startServer } from '../helpers/server-process.ts';
+import { stubToolProbes } from './probes.ts';
+
+/**
+ * D46 oracle (E2E) on the real code path (no demo seed, D13), the way D23's
+ * `week-pace.spec.ts` does it: `node src/server/main.ts` with the fake CLIs and a
+ * temp data folder holding one `get_usage` reading (the CLI's recorded shape):
+ * Session 62 % with its reset about 2 h ahead (a whole minute), so the server
+ * lists the Session window for the whole run. The pace is computed in the browser
+ * from `usageWindows`, so only the page's clock moves (`page.clock`, in UTC for the
+ * tooltip) through the window, which started 5 h before the reset:
+ * - 120 minutes in (40 % allowed): yellow;
+ * - 186 minutes in (62 % allowed, exactly the usage): still yellow;
+ * - one minute of page clock later (62.33 %): green, the marker moves;
+ * - after the reset, and more than 5 h before it: no color, no marker, no tooltip.
+ * The Week row keeps its own D23 pace throughout.
+ */
+
+const MIN = 60_000;
+const SESSION_PCT = 62;
+const WEEK_PCT = 18;
+
+let tmp: string;
+let server: ServerProcess;
+/** The Session window's reset (epoch ms, a whole minute about 2 h ahead of the server's clock). */
+let reset = 0;
+/** The Session window's start: 5 h before its reset. */
+let start = 0;
+
+test.use({ timezoneId: 'UTC' });
+
+/** `14:05` in UTC (the page's time zone here), as the tooltip names the next minute step. */
+function utcTime(ms: number): string {
+  const date = new Date(ms);
+  return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** The computed color of a SPEC token, as the page resolves it. */
+async function tokenColor(page: Page, token: string): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement('div');
+    probe.style.background = `var(${name})`;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+async function fillColor(row: Locator): Promise<string> {
+  return row.locator('.sb-meter-fill').evaluate((fill) => getComputedStyle(fill).backgroundColor);
+}
+
+/** The marker sits on the bar at `pct` of its width (centered, ±1 px), 2 px wide and as high as the bar. */
+async function expectMarkerAt(row: Locator, pct: number): Promise<void> {
+  const track = await row.locator('.sb-meter-track').boundingBox();
+  const marker = await row.getByTestId('pace-marker').boundingBox();
+  expect(track && marker).toBeTruthy();
+  if (!track || !marker) return;
+  expect(marker.width).toBe(2);
+  expect(marker.height).toBe(track.height);
+  expect(Math.abs(marker.x + marker.width / 2 - (track.x + (track.width * pct) / 100))).toBeLessThanOrEqual(1);
+}
+
+/** The Session row keeps the D17 look: no pace, no tooltip, no marker, the bright fill. */
+async function expectNoPace(page: Page, session: Locator): Promise<void> {
+  await expect(session).not.toHaveAttribute('data-pace');
+  await expect(session).not.toHaveAttribute('title');
+  await expect(session.getByTestId('pace-marker')).toHaveCount(0);
+  expect(await fillColor(session)).toBe(await tokenColor(page, '--text'));
+}
+
+test.beforeAll(async () => {
+  tmp = await makeTempDir('e2e-session-pace');
+  const dataDir = path.join(tmp, 'data');
+  const store = await openStore(storeFile(dataDir));
+  try {
+    const seededAt = Date.now();
+    reset = Math.ceil((seededAt + 120 * MIN) / MIN) * MIN;
+    start = reset - 300 * MIN;
+    const iso = (ms: number): string => new Date(ms).toISOString().replace('Z', '+00:00');
+    const answer = {
+      subscription_type: 'max',
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: SESSION_PCT, resets_at: iso(reset), limit_dollars: null, used_dollars: null, remaining_dollars: null, locked_reason: null },
+        seven_day: { utilization: WEEK_PCT, resets_at: iso(seededAt + 74 * 60 * MIN), limit_dollars: null, used_dollars: null, remaining_dollars: null, locked_reason: null },
+      },
+    };
+    const reading = readingFromGetUsage({ kind: 'response', message: { subtype: 'success', response: answer, error: null, raw: {} } });
+    await store.usage.add({
+      receivedAt: new Date(seededAt).toISOString(),
+      source: reading.source,
+      sessionId: null,
+      fiveHourPct: reading.fiveHourPct,
+      fiveHourResetsAt: reading.fiveHourResetsAt,
+      sevenDayPct: reading.sevenDayPct,
+      sevenDayResetsAt: reading.sevenDayResetsAt,
+      raw: reading.raw,
+    });
+  } finally {
+    await store.close();
+  }
+  server = await startServer({ SWITCHBOARD_DATA_DIR: dataDir });
+});
+
+test.afterAll(async () => {
+  await server?.stop();
+  await removeTempDir(tmp);
+});
+
+test.beforeEach(async ({ page }) => {
+  await stubToolProbes(page);
+});
+
+test('the Session bar is yellow at or above its allowance, green below it, stepping every minute, with a marker at the allowance and a pace tooltip', async ({ page }) => {
+  // 120 minutes into the window (10 s past the step): 62 % ≥ 40 % → ahead of pace, yellow.
+  await page.clock.install({ time: start + 120 * MIN + 10_000 });
+  await page.goto(`${server.baseUrl}/`);
+  const usage = page.getByTestId('usage-meters');
+  const session = usage.locator('[data-meter="session"]');
+  const week = usage.locator('[data-meter="week"]');
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 3h00`);
+  const need = await tokenColor(page, '--status-need');
+  const done = await tokenColor(page, '--status-done');
+  const text = await tokenColor(page, '--text');
+  const muted = await tokenColor(page, '--muted-3');
+  expect(new Set([need, done, text]).size).toBe(3);
+  await expect(session).toHaveAttribute('data-pace', 'ahead');
+  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 40% until ${utcTime(start + 121 * MIN)}`);
+  expect(await fillColor(session)).toBe(need);
+  await expect(session.locator('.sb-meter-fill')).toHaveAttribute('style', `width: ${SESSION_PCT}%;`);
+  await expectMarkerAt(session, 40);
+  expect(await session.getByTestId('pace-marker').evaluate((marker) => getComputedStyle(marker).backgroundColor)).toBe(muted);
+  // The Week row keeps its own D23 pace (18 %, day 4 of its week: on pace).
+  await expect(week).toHaveAttribute('data-pace', 'on');
+  await expect(week).toHaveAttribute('title', /^On pace: 18% of 57\.14% allowed until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$/);
+
+  // 186 minutes in: the allowance is exactly the usage (62 %), which is not below it → still yellow.
+  await page.clock.pauseAt(start + 186 * MIN + 10_000);
+  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 62% until ${utcTime(start + 187 * MIN)}`);
+  await expect(session).toHaveAttribute('data-pace', 'ahead');
+  expect(await fillColor(session)).toBe(need);
+  await expectMarkerAt(session, 62);
+
+  // One minute of page clock later the allowance steps to 62.33 %: on pace, green; the marker moves.
+  await page.clock.runFor(MIN);
+  await expect(session).toHaveAttribute('title', `On pace: ${SESSION_PCT}% of 62.33% until ${utcTime(start + 188 * MIN)}`);
+  await expect(session).toHaveAttribute('data-pace', 'on');
+  expect(await fillColor(session)).toBe(done);
+  await expectMarkerAt(session, 62.33);
+  await expect(session.getByTestId('pace-marker')).toHaveCount(1);
+  // 112 min 50 s to the reset, rounded like every reset time.
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 1h53`);
+
+  // After the reset the page still has the window (the server's clock has not reached it), but no pace.
+  await page.clock.pauseAt(reset + MIN);
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 0m`);
+  await expectNoPace(page, session);
+
+  // More than 5 h before the reset: before the window, no pace either.
+  await page.clock.setSystemTime(start - 30 * MIN);
+  await page.clock.runFor(30_000);
+  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 5h30`);
+  await expectNoPace(page, session);
+  await expect(week).toHaveAttribute('data-pace', 'on');
+});
