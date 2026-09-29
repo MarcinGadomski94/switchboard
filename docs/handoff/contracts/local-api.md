@@ -250,6 +250,7 @@ Developer ruling D32 (`docs/decisions.md` → *Ticket branches and closing sessi
 ```json
 NewSession     { …, "worktrees": true, "branch": "PROJ-0001-test-branch-name" }
 IsolateRequest { "sessionId": "…", "branch": "PROJ-0001-test-branch-name" }
+```
 
 ## Closing sessions (D33, 2026-09-28, additive)
 Developer ruling D33 (`docs/decisions.md` → *Ticket branches and closing sessions*): a session can be closed out of the sidebar and the session header and reopened from History. Additive; the rows and payloads above keep their meaning. Details: `docs/supervisor.md` → *Close and reopen*, migration `0010_session_closed.sql`.
@@ -292,6 +293,7 @@ Developer ruling D35 (`docs/decisions.md` → *Frame helper: guided setup*; no C
 ```json
 FrameHelperInfo      { "path": "/Users/dev/switchboard/tools/frame-helper", "version": "2.0.0" }
 FrameHelperOpenError { "error": "open-failed", "message": "open -a Google Chrome chrome://extensions: Unable to find application named 'Google Chrome'" }
+```
 
 ## Subagent chats (D36, 2026-09-28, additive)
 Developer ruling D36 (`docs/decisions.md` → *Subagent chats*): a subagent's own conversation opens from the chat. Additive; nothing above or below changes meaning. Details: `docs/chat.md` → *Subagent chats*.
