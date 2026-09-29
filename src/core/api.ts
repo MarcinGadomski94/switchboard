@@ -1697,7 +1697,17 @@ export interface HubEvents {
   readonly system: SystemInfo;
   /** Additive (D19): a session's live activity changed (at most one per second per session; `null` = the turn ended; D30: and no background task is pending). */
   readonly activity: { readonly sessionId: string; readonly activity: SessionActivity | null };
+  /**
+   * Additive (D52 ruling D52-peer-edits-live): a schedule changed: saved (created or
+   * edited), paused, resumed, deleted, or its run state changed (with every
+   * `scheduleRun`). Forwarded between peers (a peer's with its remote id), so a
+   * schedule edited on one machine shows on the other at once.
+   */
+  readonly schedulesChanged: { readonly scheduleId: string; readonly change: ScheduleChange };
 }
+
+/** D52: what happened to a schedule (`schedulesChanged`). */
+export type ScheduleChange = 'saved' | 'paused' | 'resumed' | 'deleted' | 'run';
 
 /** A `/hub` event name. */
 export type HubEventName = keyof HubEvents;
@@ -1712,6 +1722,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'scheduleRun',
   'system',
   'activity',
+  'schedulesChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

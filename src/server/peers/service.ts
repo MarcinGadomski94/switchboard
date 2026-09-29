@@ -542,7 +542,7 @@ export class PeerService implements PeerHandlers {
       void this.#publishInboxCount();
       return;
     }
-    if (name === 'scheduleRun') {
+    if (name === 'scheduleRun' || name === 'schedulesChanged') {
       // D52: the peer's schedules are fetched again first, so a page that reloads on the event sees the run.
       void this.refreshList(id, 'schedules').then(() => {
         const current = this.#ref(id);

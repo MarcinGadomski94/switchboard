@@ -201,6 +201,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   questions.bind(sessionsWithHooks(supervisor, hooks));
   // D52: a hooked terminal session's loops are derived from its imported events, like a supervised session's.
   loops.listen(hooks);
+  loops.useEventsOf((sessionId) => hooks.loopEvents(sessionId));
   // D48: a request that names a peer's id goes to that peer (before any route handler reads the local store).
   registerPeerForwarding(app, peers);
   await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks });

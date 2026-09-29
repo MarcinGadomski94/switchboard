@@ -144,6 +144,7 @@ describe('D48 peer wire mapping', () => {
     expect(peerHubEvent(MACHINE, 'activity', { sessionId: 's1', activity: null })).toEqual({ sessionId: 'r~abcdefghijkl~s1', activity: null });
     expect(peerHubEvent(MACHINE, 'questionBatch', { sessionId: 's1', batchId: 'b1', questions: [] })).toEqual({ sessionId: 'r~abcdefghijkl~s1', batchId: 'r~abcdefghijkl~b1', questions: [] });
     expect(peerHubEvent(MACHINE, 'scheduleRun', { scheduleId: 'x', result: 'ok' })).toEqual({ scheduleId: 'r~abcdefghijkl~x', result: 'ok' });
+    expect(peerHubEvent(MACHINE, 'schedulesChanged', { scheduleId: 'x', change: 'paused' })).toEqual({ scheduleId: 'r~abcdefghijkl~x', change: 'paused' });
     expect(peerHubEvent(MACHINE, 'system', {} as never)).toBeNull();
     expect(peerHubEvent(MACHINE, 'worktreeRemovable', {} as never)).toBeNull();
   });

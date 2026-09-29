@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { InboxItem, Schedule, Session, SessionDetail, TerminalLoop } from '../../../src/core/api.ts';
+import type { HubEventName, InboxItem, Schedule, Session, SessionDetail, TerminalLoop } from '../../../src/core/api.ts';
 import { parseRemoteId, remoteId } from '../../../src/core/peers.ts';
+import { readSse } from '../../../src/server/peers/sse.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, machineOn, pairedNodes, startPeerNode, waitFor } from '../../helpers/peers.ts';
 import { terminalLoopLines, writeTranscript } from '../../helpers/transcripts.ts';
@@ -48,6 +49,24 @@ async function schedulesOf(node: PeerNode): Promise<Schedule[]> {
 }
 
 const enc = encodeURIComponent;
+
+/** Collects `node`'s own `/hub` events (as its browser gets them); `ready` once the stream is open. */
+function hubOf(node: PeerNode): { readonly events: Array<{ name: HubEventName; payload: any }>; readonly ready: Promise<void>; stop(): void } {
+  const events: Array<{ name: HubEventName; payload: any }> = [];
+  const abort = new AbortController();
+  let opened: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => {
+    opened = resolve;
+  });
+  void (async () => {
+    const token = (await readFile(path.join(node.dataDir, 'sb_token'), 'utf8')).trim();
+    const response = await fetch(`${node.baseUrl}/hub`, { headers: { cookie: `sb_token=${token}` }, signal: abort.signal });
+    opened();
+    if (!response.body) return;
+    await readSse(response.body, (frame) => events.push({ name: frame.event as HubEventName, payload: JSON.parse(frame.data) }), abort.signal);
+  })().catch(() => undefined);
+  return { events, ready, stop: () => abort.abort() };
+}
 
 /** A hand-started terminal session on `node` (a live pid's registry entry) whose transcript ran `/loop 5m` with CronCreate and fired once. */
 async function terminalWithLoop(node: PeerNode): Promise<void> {
@@ -115,6 +134,44 @@ describe('D52 · a peer\'s schedules', () => {
   }, 90_000);
 });
 
+describe('D52 ruling D52-peer-edits-live: a schedule changed on A\'s own UI shows on B at once', () => {
+  it('A saves, pauses, resumes and deletes its own schedule: B gets `schedulesChanged` with the remote id and its list is already current', async () => {
+    const { a, b, aId } = await world();
+    const hubB = hubOf(b);
+    const hubA = hubOf(a);
+    await Promise.all([hubB.ready, hubA.ready]);
+    try {
+      const changes = (): Array<{ scheduleId: string; change: string }> => hubB.events.filter((event) => event.name === 'schedulesChanged').map((event) => event.payload);
+      const created = await a.call('POST', '/api/schedules', { cron: '0 2 * * *', template: template(a, 'made-on-a', 'Say OK.') });
+      expect(created.status).toBe(201);
+      const id = remoteId(aId, (created.body as Schedule).id);
+      // Well within the 10 s staleness fallback.
+      await waitFor('saved on B', async () => changes().some((c) => c.scheduleId === id && c.change === 'saved'), 5_000);
+      expect((await schedulesOf(b)).map((entry) => [entry.id, entry.paused])).toEqual([[id, false]]);
+
+      expect((await a.call('POST', `/api/schedules/${enc((created.body as Schedule).id)}/pause`)).status).toBe(200);
+      await waitFor('paused on B', async () => changes().some((c) => c.scheduleId === id && c.change === 'paused'), 5_000);
+      expect((await schedulesOf(b))[0]?.paused).toBe(true);
+
+      expect((await a.call('POST', `/api/schedules/${enc((created.body as Schedule).id)}/resume`)).status).toBe(200);
+      await waitFor('resumed on B', async () => changes().some((c) => c.scheduleId === id && c.change === 'resumed'), 5_000);
+      expect((await schedulesOf(b))[0]?.paused).toBe(false);
+
+      expect((await a.call('DELETE', `/api/schedules/${enc((created.body as Schedule).id)}`)).status).toBe(204);
+      await waitFor('deleted on B', async () => changes().some((c) => c.scheduleId === id && c.change === 'deleted'), 5_000);
+      expect(await schedulesOf(b)).toEqual([]);
+
+      // A's own stream carries its own ids only: nothing echoed back from B.
+      const onA = hubA.events.filter((event) => event.name === 'schedulesChanged').map((event) => event.payload.scheduleId as string);
+      expect(onA.length).toBeGreaterThanOrEqual(4);
+      expect(onA.every((scheduleId) => parseRemoteId(scheduleId) === null)).toBe(true);
+    } finally {
+      hubA.stop();
+      hubB.stop();
+    }
+  }, 60_000);
+});
+
 describe('D52 · a peer\'s loops', () => {
   it('a terminal /loop on A shows on A and on B (tagged) until it is hooked; hooked, it is the session\'s loop', async () => {
     const { a, b, aId } = await world();
@@ -144,6 +201,8 @@ describe('D52 · a peer\'s loops', () => {
       return answer.loops?.some((loop) => loop.kind === '/loop') ? answer : null;
     });
     expect(detail.loops?.[0]?.sessionId).toBe(session.id);
+    // Derived from the transcript (VERIFIED D52-probe-fire): the scheduled firing counts, as for the un-hooked terminal.
+    await waitFor('the hooked loop at iteration 2', async () => (((await b.call('GET', `/api/sessions/${enc(session.id)}`)).body as SessionDetail).loops?.[0]?.iteration === 2 ? true : null));
     await waitFor('B drops the terminal loop', async () => !((await b.call('GET', '/api/terminal-loops')).body as TerminalLoop[]).some((entry) => entry.terminal.id === CS), 30_000);
   }, 90_000);
 });

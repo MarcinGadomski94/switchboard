@@ -4,8 +4,12 @@
  * follow, read from its transcript, in the shape `deriveLoops` reads. Pure.
  *
  * The transcript has no stream-json `result` lines, so a turn's end is the main
- * chain's assistant message that ended it (`stop_reason: end_turn`): it becomes a
- * `result` event (`isError: false`, labelled with that message's first text line).
+ * chain's assistant message that ended it (`stop_reason: end_turn`): it becomes one
+ * `result` event after that message's last line (`isError: false`, labelled with
+ * its first text line). A turn the CLI runs on its own (a `/loop` / cron firing)
+ * starts with an `isMeta` user line (`turnOrigin: "scheduled"`), which is skipped
+ * like every meta line, so its turn reads as self-started: a firing (VERIFIED
+ * D52-probe-fire).
  * Prompts (slash commands as `/name args`, so a typed `/loop 5m …` reads as the
  * `/loop` command) become `user` events; tool calls become `tool` events with
  * their results paired in (`isError` from the result); assistant text becomes
@@ -44,7 +48,21 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
   const out: Draft[] = [];
   const tools = new Map<string, Draft>();
   let lastTs = new Date(0).toISOString();
+  /**
+   * The turn-ending message seen last, not written yet: the CLI writes one line per
+   * content block (thinking, text, tool use), each with the message's `stop_reason`
+   * (VERIFIED D52-probe-blocks), so the `result` goes out once, after the last line
+   * of that message.
+   */
+  let ending: { id: string | null; ts: string; label: string } | null = null;
+  const flush = (): void => {
+    if (!ending) return;
+    out.push({ ts: ending.ts, agentId: null, label: ending.label, payload: { type: 'result', isError: false } });
+    ending = null;
+  };
   for (const entry of newestChain(entries)) {
+    const id = messageId(entry);
+    if (ending && !(entry['type'] === 'assistant' && id !== null && id === ending.id)) flush();
     const items = transcriptItems([entry]);
     let lastText: string | null = null;
     for (const item of items) {
@@ -74,9 +92,19 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
     if (entry['type'] === 'assistant' && stopReason(entry) === 'end_turn') {
       const ts = typeof entry['timestamp'] === 'string' && !Number.isNaN(Date.parse(entry['timestamp'])) ? new Date(entry['timestamp']).toISOString() : lastTs;
       lastTs = ts;
-      out.push({ ts, agentId: null, label: lastText ? firstLine(lastText) : '', payload: { type: 'result', isError: false } });
+      const previous: { id: string | null; label: string } | null = ending;
+      const label: string = lastText ? firstLine(lastText) : previous && previous.id === id && id !== null ? previous.label : '';
+      ending = { id, ts, label };
     }
   }
+  flush();
   return out;
 }
 
+/** The assistant message id of a transcript line (`message.id`), `null` without one. */
+function messageId(entry: TranscriptEntry): string | null {
+  const message = entry['message'];
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return null;
+  const id = (message as Record<string, unknown>)['id'];
+  return typeof id === 'string' && id !== '' ? id : null;
+}

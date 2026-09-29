@@ -1,4 +1,4 @@
-import type { Schedule, Session } from '../../core/api.ts';
+import type { Schedule, ScheduleChange, Session } from '../../core/api.ts';
 import { nextRun, parseCron } from '../../core/cron.ts';
 import { runSessionName } from '../../core/schedules.ts';
 import type { ScheduleRunResult, ScheduleRunTrigger, SessionStatus } from '../../core/model.ts';
@@ -267,6 +267,7 @@ export class Scheduler {
     const record = await this.#persist(result.value);
     this.#armedFrom.set(record.id, this.#clock.now().getTime());
     await this.#rearm();
+    this.#changed(record.id, 'saved');
     return this.#wire(record);
   }
 
@@ -275,6 +276,7 @@ export class Scheduler {
     await this.#record(id);
     const record = await this.#store.schedules.update(id, { paused: true });
     await this.#rearm();
+    this.#changed(id, 'paused');
     return this.#wire(record ?? (await this.#record(id)));
   }
 
@@ -284,6 +286,7 @@ export class Scheduler {
     const record = await this.#store.schedules.update(id, { paused: false });
     this.#armedFrom.set(id, this.#clock.now().getTime());
     await this.#rearm();
+    this.#changed(id, 'resumed');
     return this.#wire(record ?? (await this.#record(id)));
   }
 
@@ -304,6 +307,7 @@ export class Scheduler {
       this.#armedFrom.delete(id);
     });
     await this.#rearm();
+    this.#changed(id, 'deleted');
   }
 
   /**
@@ -558,6 +562,12 @@ export class Scheduler {
 
   #publish(scheduleId: string, result: ScheduleRunResult): void {
     this.#bus?.publish('scheduleRun', { scheduleId, result });
+    this.#changed(scheduleId, 'run');
+  }
+
+  /** D52 (ruling D52-peer-edits-live): `schedulesChanged` on the bus. */
+  #changed(scheduleId: string, change: ScheduleChange): void {
+    this.#bus?.publish('schedulesChanged', { scheduleId, change });
   }
 }
 
