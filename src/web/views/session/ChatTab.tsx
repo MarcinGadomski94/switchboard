@@ -4,19 +4,11 @@ import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
-import { useHubEvent } from '../../api/useHub.ts';
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
-import {
-  COMPOSER_MAX_LINES,
-  QUICK_REPLIES,
-  QUICK_REPLIES_LABEL,
-  chatItems,
-  composerKeyAction,
-  composerPlaceholder,
-  draftToSend,
-  upsertEvent,
-} from './chat.ts';
+import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, draftToSend } from './chat.ts';
+import { ChatSkeleton } from './SessionSkeletons.tsx';
+import type { LoadState } from './session-loading.ts';
 import { SubagentChatView } from './SubagentChat.tsx';
 import { mainChatPlace, rememberMainChat } from './subagent-chat.ts';
 
@@ -32,6 +24,12 @@ export interface ChatTabProps {
   readonly sessionId: string;
   /** `GET /api/sessions/{id}` (the main agent, the questions, the name); `null` while it loads. */
   readonly session: SessionDetail | null;
+  /** D45: the session's events (`GET /api/sessions/{id}/events` + the `/hub` stream; SessionView's `useSessionData`). */
+  readonly events: readonly SessionEvent[];
+  /** D45: `ready` once the complete event list is there (fetched, or cached from an earlier visit). */
+  readonly eventsState: LoadState;
+  /** D45: the chat's data is late: bubble placeholders stand in for the conversation. */
+  readonly placeholder?: boolean;
   /** Reloads the session detail (after an answer; the view also reloads on its `/hub` events). */
   readonly onChanged: () => void;
   /** D36: a subagent's id (`/sessions/{id}/agents/{agentId}`): its own chat instead of the main conversation. */
@@ -49,37 +47,26 @@ export interface ChatTabProps {
  * item unless the developer scrolled up. D19: while a turn runs, the live activity
  * line sits above the composer (`ChatActivityLine`). D36: with `agentId`, the same
  * events show that subagent's own chat (`SubagentChatView`); an Agent / Task step
- * line opens it, and the main chat comes back at the place it was left.
+ * line opens it, and the main chat comes back at the place it was left. D45: the
+ * events come from the session view (held per session, cached per tab); while
+ * they or the detail are late, bubble placeholders stand in (`ChatSkeleton`).
  */
-export function ChatTab({ sessionId, session, onChanged, agentId = null }: ChatTabProps) {
-  const [events, setEvents] = useState<readonly SessionEvent[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.sessionEvents(sessionId).then(
-      (fetched) => {
-        if (cancelled) return;
-        // Events the stream delivered while loading stay (merged by id).
-        setEvents((current) => current.reduce(upsertEvent, [...fetched]));
-        setLoaded(true);
-      },
-      () => undefined,
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
-
-  useHubEvent('event', (payload) => {
-    if (payload.sessionId === sessionId) setEvents((current) => upsertEvent(current, payload.event));
-  });
-
+export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null }: ChatTabProps) {
   const activity = useLiveActivity(sessionId, session);
   if (agentId !== null) {
-    return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} />;
+    return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} placeholder={placeholder} />;
   }
-  return <MainChat sessionId={sessionId} session={session} events={events} loaded={loaded} activity={activity} onChanged={onChanged} />;
+  return (
+    <MainChat
+      sessionId={sessionId}
+      session={session}
+      events={events}
+      eventsState={eventsState}
+      placeholder={placeholder}
+      activity={activity}
+      onChanged={onChanged}
+    />
+  );
 }
 
 /** `true` while the conversation is at (or within {@link STICK_PX} of) its bottom. */
@@ -92,8 +79,10 @@ interface MainChatProps {
   readonly sessionId: string;
   readonly session: SessionDetail | null;
   readonly events: readonly SessionEvent[];
-  /** The events arrived (the remembered place can be restored). */
-  readonly loaded: boolean;
+  /** D45: the events arrived (`ready`: the remembered place can be restored), are on their way, or failed. */
+  readonly eventsState: LoadState;
+  /** D45: the placeholders show instead of the conversation. */
+  readonly placeholder: boolean;
   readonly activity: SessionActivity | null;
   readonly onChanged: () => void;
 }
@@ -104,14 +93,16 @@ interface MainChatProps {
  * coming back from a subagent's chat shows it where it was left; a subagent's
  * question card can ask to bring its batch into view instead.
  */
-function MainChat({ sessionId, session, events, loaded, activity, onChanged }: MainChatProps) {
+function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const restored = useRef(false);
+  const loaded = eventsState === 'ready';
 
   const mainAgentId = session?.agents.find((agent) => agent.kind === 'main')?.id ?? null;
-  const items = session ? chatItems(events, session.questions, mainAgentId, session.agents) : [];
+  // D45: nothing half-loaded shows while the events are on their way (a failed load shows what there is, as before).
+  const items = session && eventsState !== 'loading' ? chatItems(events, session.questions, mainAgentId, session.agents) : [];
 
   // Keep the newest item in view while the developer is at the bottom; D36: first, go back to the remembered place.
   useLayoutEffect(() => {
@@ -157,6 +148,7 @@ function MainChat({ sessionId, session, events, loaded, activity, onChanged }: M
   return (
     <>
       <div className="sb-chat" data-testid="session-chat" data-session-id={sessionId} ref={scroller} onScroll={onScroll}>
+        {placeholder ? <ChatSkeleton /> : null}
         {items.map((item) => (
           <ChatItemView key={item.key} sessionId={sessionId} item={item} answering={answering} onAnswer={answer} />
         ))}

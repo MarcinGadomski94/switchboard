@@ -1,5 +1,3 @@
-import { api } from '../../api/client.ts';
-import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import type { SessionTab } from '../../router.tsx';
@@ -9,7 +7,11 @@ import { ChatTab } from './ChatTab.tsx';
 import { DiffTab } from './DiffTab.tsx';
 import { RightPanel } from './RightPanel.tsx';
 import { SessionHeader } from './SessionHeader.tsx';
+import { LoadingNote } from './SessionSkeletons.tsx';
 import { TimelineTab } from './TimelineTab.tsx';
+import { actionErrorText } from './session-header.ts';
+import { NOTHING_LOADING, anyLoading, loadingParts } from './session-loading.ts';
+import { usePlaceholderDelay, useSessionData } from './useSessionData.ts';
 import './session.css';
 
 /** `sessionUpdated` / `event` come in bursts; the session detail reloads at most this often. */
@@ -24,14 +26,24 @@ const RELOAD_MS = 500;
  * (docs/lanes.md); since M4.3 the panel reads the same detail (agents, recent
  * events, status: `docs/session-panel.md`). D36: `agentId` (the address
  * `/sessions/{id}/agents/{agentId}`) turns the chat tab into that subagent's own chat.
+ *
+ * D45 (`docs/session-panel.md` → *Loading a session*): the detail and the chat's
+ * events come from `useSessionData`, held per session id (another session's data
+ * never shows) and seeded from the in-memory cache of the sessions opened in this
+ * tab (a revisit renders at once and refreshes in the background). While a part's
+ * data is missing the view is `aria-busy`; once that lasted `PLACEHOLDER_DELAY_MS`,
+ * the header, the chat and the right panel show skeleton placeholders and a
+ * visually hidden "Loading session…". A failed load shows the missing state
+ * (404) or the header's error line, never a placeholder.
+ *
  * D41: a hidden right panel (the same state in every session) slides out, its
  * column narrows to a slim rail with the reveal handle (after the panel, so the
  * prototype's children keep their places), and the header and tab take the
  * freed width (`docs/panes.md`).
  */
 export function SessionView({ sessionId, tab, agentId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null }) {
-  const detail = useApi(() => api.getSession(sessionId), [sessionId]);
-  const reload = useThrottled(detail.reload, RELOAD_MS);
+  const data = useSessionData(sessionId, tab === 'chat');
+  const reload = useThrottled(data.reload, RELOAD_MS);
   useHubEvent('sessionUpdated', (session) => {
     if (session.id === sessionId) reload();
   });
@@ -43,7 +55,11 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
     if (payload.sessionId === sessionId) reload();
   });
 
-  const session = detail.data && detail.data.id === sessionId ? detail.data : null;
+  const session = data.detail;
+  const failed = session ? null : data.detailError;
+  const loading = loadingParts(data.detailState, data.eventsState, tab === 'chat');
+  const busy = anyLoading(loading);
+  const placeholders = usePlaceholderDelay(sessionId, busy) ? loading : NOTHING_LOADING;
   const panelHidden = usePanes().state.rightPanelHidden;
   return (
     <section
@@ -53,25 +69,39 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
       data-session-id={sessionId}
       data-tab={tab}
       data-agent-id={agentId ?? undefined}
+      aria-busy={busy || undefined}
       data-panel={panelHidden ? 'hidden' : undefined}
     >
       <div className="sb-sv-main">
         <SessionHeader
           sessionId={sessionId}
           session={session}
-          missing={detail.error?.status === 404}
+          missing={failed?.status === 404}
+          loadError={failed && failed.status !== 404 ? actionErrorText(failed.status, failed.body) : null}
+          placeholder={placeholders.header}
           tab={tab}
-          files={session?.files.length ?? 0}
-          artifacts={session?.artifacts.length ?? 0}
-          onChanged={detail.reload}
+          files={session?.files.length ?? null}
+          artifacts={session?.artifacts.length ?? null}
+          onChanged={data.reload}
         />
-        {tab === 'chat' ? <ChatTab sessionId={sessionId} session={session} onChanged={detail.reload} agentId={agentId} /> : null}
+        {tab === 'chat' ? (
+          <ChatTab
+            sessionId={sessionId}
+            session={session}
+            events={data.events}
+            eventsState={data.eventsState}
+            placeholder={placeholders.chat}
+            onChanged={data.reload}
+            agentId={agentId}
+          />
+        ) : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}
       </div>
-      <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} />
+      <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} placeholder={placeholders.panel} />
       {panelHidden ? <PaneHandle pane="rightPanel" /> : null}
+      {anyLoading(placeholders) ? <LoadingNote /> : null}
     </section>
   );
 }

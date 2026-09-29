@@ -13,6 +13,12 @@ describe('session header copy and rules (M4.1)', () => {
     expect(rootLine({ cwd: 'D:\\ws\\other\\app-wt-x', folderPath: 'D:\\ws\\other\\app\\', folderKind: 'repo' })).toBe('D:\\ws\\other\\app-wt-x · worktree of app');
     expect(tabLabels(5, 4).map((t) => t.label)).toEqual(['Chat', 'Timeline', 'Diff · 5', 'Artifacts · 4']);
     expect(tabLabels(0, 0).map((t) => t.tab)).toEqual(['chat', 'timeline', 'diff', 'artifacts']);
+    expect(tabLabels(0, 0).map((t) => t.label)).toEqual(['Chat', 'Timeline', 'Diff · 0', 'Artifacts · 0']);
+  });
+
+  it('D45 ruling: no counts while the detail loads', () => {
+    expect(tabLabels(null, null).map((t) => t.label)).toEqual(['Chat', 'Timeline', 'Diff', 'Artifacts']);
+    expect(tabLabels(null, null).map((t) => t.tab)).toEqual(['chat', 'timeline', 'diff', 'artifacts']);
   });
 
   it('Pause while live or running, Resume otherwise; disabled while a terminal owns the session', () => {
