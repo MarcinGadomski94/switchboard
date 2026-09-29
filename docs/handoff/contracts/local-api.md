@@ -429,6 +429,21 @@ Event    { …, "payload": { "type": "user", "text": "Keep it short.", "origin":
 Question { …, "state": "stale", "answeredAt": "2026-09-29T10:00:00.000Z", "queued": "resume" | null }
 ```
 
+## Switchboard peers (D48, 2026-09-29, additive)
+Developer ruling D48 (`docs/decisions.md` → *Switchboard peers*; design and limits `docs/peers.md`). Every change is additive; no existing route, field or event changes shape.
+
+- **Machines (Settings → Machines):** `GET /api/machines` → `{ self: { id, name }, listener: PeerListenerState, machines: Machine[] }`; `PUT /api/machines/self` `{ name }`; `PUT /api/machines/listener` `{ enabled?, address?, port? }` → PeerListenerState (422 `invalid`); `POST /api/machines/pairing-code` → `{ code, expiresAt }`; `POST /api/machines` `{ address, code }` → 201 Machine (422 `invalid`, 409 `pairing-refused`, 502 `peer-unreachable` / `pairing-failed`); `PUT /api/machines/{id}` `{ name }` → Machine; `DELETE /api/machines/{id}` → 204 (404). Types in `src/core/peers.ts`.
+- **A machine's peer API through this service:** `GET/POST/PUT/DELETE /api/machines/{id}/api/<path>` → that machine's `/api/<path>` (its allow-list, `docs/peers.md` → *The peer API*), answers namespaced; 403 `peer-forbidden` for a route it does not serve, 404 `not-found` for an unknown machine, 502 `peer-unreachable` / `peer-auth-failed`.
+- **Remote ids:** a paired machine's session, question batch and Inbox item ids read `r~<machine id>~<its id>`. Every existing route that takes `{id}` or `{batchId}` accepts them and is answered by that machine (same statuses and bodies; plus the 404 / 502 / 403 above).
+- **Session** and **InboxItem** gain `machine: { id, name, state: "online" | "offline" | "auth-failed" | "no-address" } | null`: set on a paired machine's session or item, `null` (sessions) / absent (items) on this machine's own. `GET /api/sessions` lists this machine's sessions, then the paired machines' open ones; `GET /api/inbox` this machine's items, then the reachable machines' ones.
+- **`/hub`:** a paired machine's `sessionUpdated`, `event`, `questionBatch` and `activity` arrive with remote ids; `inboxChanged.count` counts this machine's items plus the reachable machines' ones. No new event names.
+
+```json
+Machine            { "id": "k3v7q2m9x4ab", "name": "pc-office", "address": "100.101.102.103:13002", "state": "online", "lastError": null, "lastSeenAt": "2026-09-29T12:00:00.000Z", "pairedAt": "2026-09-29T11:58:00.000Z" }
+PeerListenerState  { "enabled": true, "configuredAddress": null, "port": 13002, "listening": "100.64.1.2:13002", "error": null }
+Session            { "id": "r~k3v7q2m9x4ab~0b7c3e0a-…", …, "machine": { "id": "k3v7q2m9x4ab", "name": "pc-office", "state": "online" } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

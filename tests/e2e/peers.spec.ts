@@ -1,6 +1,8 @@
 import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test';
 import { freeTestPorts, makeTempDir, removeTempDir } from '../helpers/net.ts';
-import { type PeerNode, enableListener, machineOn, startPeerNode, waitFor } from '../helpers/peers.ts';
+import type { MachinesView } from '../../src/core/peers.ts';
+import { remoteId } from '../../src/core/peers.ts';
+import { type PeerNode, enableListener, machineOn, pairedNodes, startPeerNode, waitFor } from '../helpers/peers.ts';
 
 /**
  * D48 "Switchboard peers" oracle (`docs/peers.md`): two real Switchboard
@@ -92,3 +94,73 @@ test('P1: pair two machines from Settings → Machines; both see each other onli
   await expect(pageA.getByTestId('machines-empty')).toBeVisible({ timeout: 10_000 });
 });
 
+
+async function paired(): Promise<{ a: PeerNode; b: PeerNode; aId: string; aName: string }> {
+  const world = await pairedNodes(tmp);
+  nodes.push(world.a, world.b);
+  const aName = ((await world.a.call('GET', '/api/machines')).body as MachinesView).self.name;
+  return { a: world.a, b: world.b, aId: world.aId, aName };
+}
+
+test('P2: a peer\'s session in the sidebar with its tag; the full view drives it: question card, permission in the Inbox, message, pause; unreachable when the peer stops', async ({ browser }) => {
+  const { a, b, aId, aName } = await paired();
+  const page = await pageOf(browser, b, '/');
+  await expect(page.getByTestId('view-inbox')).toBeVisible();
+  const started = await a.call('POST', '/api/sessions', { name: 'on-a', task: '[fake:ask-2q] Ask me two questions.', folder: a.folderId, worktrees: false, ultracode: false });
+  expect(started.status).toBe(201);
+  const id = remoteId(aId, started.body.id as string);
+
+  const row = page.locator('.sb-session', { hasText: 'on-a' });
+  await expect(row.getByTestId('machine-tag')).toHaveText(aName, { timeout: 15_000 });
+  await expect(row.getByTestId('machine-tag')).toHaveAttribute('data-state', 'online');
+  // The question batch is in B's Inbox with the machine tag, and raised a toast here.
+  await expect(page.getByTestId('toast')).toBeVisible({ timeout: 10_000 });
+  const questions = page.getByTestId('inbox-item').filter({ hasText: 'on-a' });
+  await expect(questions.getByTestId('machine-tag')).toHaveText(aName);
+
+  // The full session view, from the sidebar.
+  await row.click();
+  await expect(page).toHaveURL(`${b.baseUrl}/sessions/${id}`);
+  await expect(page.getByTestId('session-machine')).toHaveText(aName);
+  await expect(page.getByTestId('session-handoff')).toHaveCount(0);
+  const view = page.getByTestId('view-session');
+  const card = view.getByTestId('question-card');
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: 'Green' }).click();
+  await card.getByRole('button', { name: 'Small' }).click();
+  const answered = page.waitForResponse((r) => /\/api\/questions\/batch\/[^/]+\/answers$/.test(r.url()));
+  await card.getByTestId('question-send').click();
+  expect((await answered).status()).toBe(204);
+  await expect(view.getByTestId('question-card')).toHaveCount(0);
+  await expect(view.getByTestId('chat-answer')).toHaveCount(2);
+  expect(((await a.call('GET', '/api/inbox')).body as unknown[]).length).toBe(0);
+
+  // A message from B; its permission request is answered in B's Inbox.
+  const input = page.getByTestId('chat-input');
+  await input.fill('[fake:perm-allow] Run the command.');
+  const posted = page.waitForResponse((r) => r.url().endsWith(`/api/sessions/${id}/messages`) && r.request().method() === 'POST');
+  await input.press('Enter');
+  expect((await posted).status()).toBe(202);
+  await page.getByTestId('nav-inbox').click();
+  const permission = page.getByTestId('inbox-item').filter({ hasText: 'on-a' });
+  await expect(permission).toHaveAttribute('data-kind', 'permission', { timeout: 15_000 });
+  await permission.click();
+  await expect(page.getByTestId('inbox-machine')).toHaveText(aName);
+  await expect(page.getByTestId('permission-request')).toBeVisible();
+  const allowed = page.waitForResponse((r) => r.url().includes('/actions/allow-once'));
+  await page.getByTestId('inbox-action').filter({ hasText: 'Allow once' }).click();
+  expect((await allowed).status()).toBe(204);
+  await waitFor('A\'s permission decided', async () => ((await a.call('GET', '/api/inbox')).body as unknown[]).length === 0);
+
+  // Pause from B's header; the session on A is paused.
+  await row.click();
+  const pause = page.getByTestId('session-pause');
+  await expect(pause).toHaveAttribute('data-action', 'pause', { timeout: 15_000 });
+  await pause.click();
+  await expect(pause).toHaveAttribute('data-action', 'resume', { timeout: 15_000 });
+  expect((await a.call('GET', `/api/sessions/${started.body.id as string}`)).body.status).toBe('paused');
+
+  // A stops: its session stays listed, tagged unreachable.
+  await a.server.stop();
+  await expect(row.getByTestId('machine-tag')).toHaveText(`${aName} · unreachable`, { timeout: 15_000 });
+});

@@ -6,6 +6,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useCloseSession } from '../../components/CloseSession.tsx';
 import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../../components/PhoneGlyph.tsx';
+import { MachineTag } from '../../components/MachineTag.tsx';
 import { Link, type SessionTab, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
@@ -147,6 +148,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             {placeholder ? <TitleSkeleton /> : missing || loadError ? sessionId : null}
           </div>
         )}
+        {/* D48: a peer's session names its machine. */}
+        {session?.machine ? <MachineTag machine={session.machine} testId="session-machine" /> : null}
         <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
@@ -214,6 +217,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           >
             {pause?.label ?? 'Pause'}
           </button>
+          {/* D48: the terminal handoff is on the machine the session runs on; not offered for a peer's session. */}
+          {session?.machine ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -225,6 +230,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           >
             {attached ? CONTINUE_IN_TERMINAL : ATTACH_HERE}
           </button>
+          )}
         </div>
       </div>
       {session?.remoteSource ? (

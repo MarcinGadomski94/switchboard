@@ -5,6 +5,7 @@ import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { QuestionCard } from '../components/QuestionCard.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
+import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link } from '../router.tsx';
@@ -65,6 +66,8 @@ function ListCard({ item, selected, now, onPick }: { readonly item: InboxItem; r
     >
       <div className="sb-inbox__card-head">
         <span className="sb-inbox__dot" style={{ background: statusColor(item.status) }} />
+        {/* D48: a peer's item names its machine. */}
+        <MachineTag machine={item.machine} />
         <span className="sb-inbox__card-source">{item.sourceTitle ?? item.source}</span>
         <span className="sb-inbox__card-age">{formatAge(item.createdAt, now)}</span>
       </div>
@@ -127,6 +130,7 @@ function Detail({ item, folderTag, folderPath, now, busy, error, onAnswers, onAc
         <span>·</span>
         <span>{formatAge(item.createdAt, now)}</span>
         {folderTag ? <FolderTag name={folderTag} title={folderPath} /> : null}
+        <MachineTag machine={item.machine} testId="inbox-machine" />
         {linksSession(item) ? (
           <Link to={{ view: 'session', id: item.sessionId, tab: 'chat' }} className="sb-inbox__open" data-testid="inbox-open-session">
             {OPEN_SESSION}

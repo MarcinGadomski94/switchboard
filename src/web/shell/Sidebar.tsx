@@ -12,6 +12,7 @@ import { useCloseSession } from '../components/CloseSession.tsx';
 import { InlineTitle } from '../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
+import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
 import { Link, type Route, useRouter } from '../router.tsx';
@@ -276,6 +277,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
                 <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
               </div>
               <div className="sb-session-mode">
+                {/* D48: a peer's session carries its machine's tag (and "unreachable" while it is offline). */}
+                <MachineTag machine={session.machine} />
                 <FolderTag name={tagOf(session)} title={session.folderPath} />
                 <SessionActivityOr activity={activityOf(session.id)}>{modeLine(session)}</SessionActivityOr>
               </div>

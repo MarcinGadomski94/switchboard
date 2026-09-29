@@ -169,6 +169,8 @@ export class PeerService implements PeerHandlers {
   #started = false;
   #closed = false;
   #self: { id: string; name: string } | null = null;
+  /** `true` while a peer's event is being published on the local bus (listeners run synchronously): never sent on to a peer. */
+  #republishing = false;
 
   constructor(options: PeerServiceOptions) {
     this.#config = options.config;
@@ -425,7 +427,7 @@ export class PeerService implements PeerHandlers {
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     for (const stream of [...this.#inbound]) if (stream.machineId === id) stream.close();
-    if (ref) for (const session of sessions) this.#bus.publish('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
+    if (ref) for (const session of sessions) this.#publishFromPeer('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
     await this.#publishInboxCount();
   }
 
@@ -470,7 +472,7 @@ export class PeerService implements PeerHandlers {
     const ref = this.#ref(id);
     const connection = this.#connections.get(id);
     if (!ref || !connection) return;
-    for (const session of connection.sessions) this.#bus.publish('sessionUpdated', peerSession(ref, session));
+    for (const session of connection.sessions) this.#publishFromPeer('sessionUpdated', peerSession(ref, session));
   }
 
   #onPeerEvent<K extends HubEventName>(id: string, name: K, payload: HubEvents[K]): void {
@@ -481,12 +483,22 @@ export class PeerService implements PeerHandlers {
       return;
     }
     const mapped = peerHubEvent(ref, name, payload);
-    if (mapped !== null) this.#bus.publish(name, mapped);
+    if (mapped !== null) this.#publishFromPeer(name, mapped);
+  }
+
+  /** Publishes a peer's (mapped) event locally, marked so the peer streams of this machine skip it. */
+  #publishFromPeer<K extends HubEventName>(name: K, payload: HubEvents[K]): void {
+    this.#republishing = true;
+    try {
+      this.#bus.publish(name, payload);
+    } finally {
+      this.#republishing = false;
+    }
   }
 
   async #publishInboxCount(): Promise<void> {
     try {
-      this.#bus.publish('inboxChanged', { count: (await inboxCount(this.#store)) + this.remoteInbox().length });
+      this.#publishFromPeer('inboxChanged', { count: (await inboxCount(this.#store)) + this.remoteInbox().length });
     } catch (error) {
       this.#onError(error);
     }
@@ -611,7 +623,8 @@ export class PeerService implements PeerHandlers {
       if (res.writableLength > 8 * 1024 * 1024) stream.close();
     };
     const unsubscribe = this.#bus.subscribe((message) => {
-      if (!PEER_HUB_EVENTS.has(message.name) || isAboutRemote(message)) return;
+      // Only this machine's own events: never one that came from a peer (no echo, no chains).
+      if (this.#republishing || !PEER_HUB_EVENTS.has(message.name) || isAboutRemote(message)) return;
       if (message.name === 'inboxChanged') {
         // This machine's own count (the bus's count may include other peers' items).
         void inboxCount(this.#store).then(
