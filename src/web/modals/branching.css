@@ -26,6 +26,7 @@
 }
 
 .sb-br-base,
+.sb-br-parent,
 .sb-br-other {
   display: flex;
   align-items: center;
@@ -36,6 +37,12 @@
 
 .sb-br-base input {
   width: 120px;
+}
+
+/* D47: the Parent field takes the row's width. */
+.sb-br-parent input {
+  flex: 1;
+  min-width: 0;
 }
 
 .sb-br-line {
