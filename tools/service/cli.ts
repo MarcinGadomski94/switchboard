@@ -11,6 +11,7 @@ import {
   type ServiceAction,
   type ServicePlatform,
   MANAGER_BIN,
+  UID_PLACEHOLDER,
   describePlan,
   displayCommand,
   installPlan,
@@ -138,6 +139,10 @@ export async function runServiceCli(action: ServiceAction, args: readonly string
     const installed = await exists(definition);
     const lines = [`Switchboard service · ${managerLabel(platform)} · ${action}${flags.dryRun ? ' · dry run: nothing is written or run' : ''}`];
     if (platform !== host) lines.push(`preview of the ${platform} files with this machine's paths`);
+    // A preview of the macOS steps on a host without a numeric user id (Windows) shows the
+    // launchctl domain as gui/<uid>; only a dry run gets here with a foreign platform.
+    const uid = currentUid() ?? (platform !== host ? UID_PLACEHOLDER : null);
+    if (platform === 'darwin' && uid === UID_PLACEHOLDER) lines.push(`launchctl domain shown as gui/${UID_PLACEHOLDER}: this machine has no numeric user id`);
 
     let plan;
     if (action === 'install') {
@@ -145,10 +150,10 @@ export async function runServiceCli(action: ServiceAction, args: readonly string
       lines.push(`node: ${node.path} (${node.version})`);
       if (!(await exists(path.join(APP_DIR, 'dist', 'web', 'index.html')))) io.err('warning: dist/web is not built; run `npm run build` before the service starts.\n');
       const carried = carriedEnvironment({ ...config, dataDir }, defaultDataDir(platform, env, os.homedir()));
-      const target = serviceTarget({ location, nodePath: node.path, env, carried, address: `${config.host}:${config.port}`, uid: currentUid() });
+      const target = serviceTarget({ location, nodePath: node.path, env, carried, address: `${config.host}:${config.port}`, uid });
       plan = installPlan(target, { start: flags.start });
     } else {
-      plan = uninstallPlan({ ...location, uid: currentUid() }, { stop: true });
+      plan = uninstallPlan({ ...location, uid }, { stop: true });
     }
     lines.push(`definition: ${definition} (${installed ? 'installed' : 'not installed'})`);
 

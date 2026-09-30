@@ -58,6 +58,16 @@ export function serviceManager(platform: ServicePlatform): ServiceManagerName {
   return MANAGER[platform];
 }
 
+/**
+ * Stands in for the numeric user id in a **preview** of the macOS steps on a host
+ * that has none (Windows: no `process.getuid`), so `--dry-run --platform darwin`
+ * shows `gui/<uid>` instead of failing. Never used for a plan that runs.
+ */
+export const UID_PLACEHOLDER = '<uid>';
+
+/** The user id of the launchctl domain `gui/<uid>`: a number, or {@link UID_PLACEHOLDER} in a preview. */
+export type LaunchdUid = number | typeof UID_PLACEHOLDER;
+
 /** Thrown when a value cannot be written into a service file safely (a newline in a path, a NUL, …). */
 export class ServiceFileError extends Error {
   override name = 'ServiceFileError';
@@ -86,8 +96,8 @@ export interface ServiceTarget extends ServiceLocation {
   readonly env: Readonly<Record<string, string>>;
   /** PATH for launchd / systemd, which do not give a service the login shell's PATH; `null` = leave unset. Windows ignores it. */
   readonly searchPath: string | null;
-  /** macOS: the numeric user id (launchctl domain `gui/<uid>`); `null` elsewhere. */
-  readonly uid: number | null;
+  /** macOS: the numeric user id (launchctl domain `gui/<uid>`; {@link UID_PLACEHOLDER} in a preview on a host without one); `null` elsewhere. */
+  readonly uid: LaunchdUid | null;
   /** Windows: `DOMAIN\user` for the logon trigger and principal; `null` elsewhere. */
   readonly user: string | null;
   /** `127.0.0.1:<port>`, for the descriptions. */
@@ -445,7 +455,7 @@ export interface ServicePlan {
   readonly steps: readonly ServiceStep[];
 }
 
-function launchdDomain(uid: number | null): string {
+function launchdDomain(uid: LaunchdUid | null): string {
   if (uid === null) throw new ServiceFileError('launchctl needs the numeric user id (gui/<uid>)');
   return `gui/${uid}`;
 }
@@ -489,7 +499,7 @@ export function installPlan(target: ServiceTarget, options: { readonly start?: b
  * (macOS). `stop` also stops a running service first (the uninstall script): the
  * toggle never does, because the service answering it may be that very service.
  */
-export function uninstallPlan(location: ServiceLocation & { readonly uid: number | null }, options: { readonly stop?: boolean } = {}): ServicePlan {
+export function uninstallPlan(location: ServiceLocation & { readonly uid: LaunchdUid | null }, options: { readonly stop?: boolean } = {}): ServicePlan {
   const paths = servicePaths(location);
   const steps: ServiceStep[] = [];
   switch (location.platform) {

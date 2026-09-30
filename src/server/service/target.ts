@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { MANAGER_BIN, type ServiceLocation, type ServicePlatform, type ServiceTarget, isServicePlatform } from '../../core/service-files.ts';
+import { type LaunchdUid, MANAGER_BIN, type ServiceLocation, type ServicePlatform, type ServiceTarget, isServicePlatform } from '../../core/service-files.ts';
 import { ConfigError, DEFAULT_PORT, type ServerConfig, defaultDataDir, parseCommand } from '../config.ts';
 
 /** The repo folder (the service's working directory). */
@@ -132,7 +132,7 @@ export function serviceTarget(options: {
   readonly address: string;
   readonly appDir?: string;
   readonly entry?: string;
-  readonly uid?: number | null;
+  readonly uid?: LaunchdUid | null;
 }): ServiceTarget {
   const { location } = options;
   const platform: ServicePlatform = location.platform;

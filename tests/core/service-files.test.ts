@@ -6,6 +6,7 @@ import {
   LAUNCHD_LABEL,
   type ServiceTarget,
   ServiceFileError,
+  UID_PLACEHOLDER,
   describePlan,
   envFileLine,
   installPlan,
@@ -422,6 +423,14 @@ describe('plans', () => {
       { kind: 'run', args: ['bootout', 'gui/501/local.switchboard'], onlyIf: ['print', 'gui/501/local.switchboard'] },
       { kind: 'remove', path: plist },
     ]);
+    // A preview on a host without a numeric user id (Windows) shows the placeholder; without either it refuses.
+    expect(uninstallPlan({ ...DARWIN, uid: UID_PLACEHOLDER }, { stop: true }).steps[0]).toEqual({
+      kind: 'run',
+      args: ['bootout', 'gui/<uid>/local.switchboard'],
+      onlyIf: ['print', 'gui/<uid>/local.switchboard'],
+    });
+    expect(installPlan({ ...DARWIN, uid: UID_PLACEHOLDER }, { start: true }).steps.at(-1)).toEqual({ kind: 'run', args: ['bootstrap', 'gui/<uid>', plist] });
+    expect(() => uninstallPlan({ ...DARWIN, uid: null }, { stop: true })).toThrow(ServiceFileError);
   });
 
   it('Linux: daemon-reload + enable; uninstall disables before the unit goes', () => {

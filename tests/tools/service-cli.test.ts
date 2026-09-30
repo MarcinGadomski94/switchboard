@@ -85,6 +85,8 @@ afterEach(async () => {
 });
 
 const HOST = process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32' ? process.platform : null;
+/** The launchctl domain's user id in a macOS preview: this machine's number, or the `<uid>` placeholder where there is none (Windows). */
+const UID = typeof process.getuid === 'function' ? '\\d+' : '<uid>';
 
 describe('--dry-run', () => {
   it.runIf(HOST !== null)('install prints the definition in full and the steps, and changes nothing', async () => {
@@ -103,9 +105,10 @@ describe('--dry-run', () => {
   });
 
   it('previews every platform: launchd plist, systemd unit, Task Scheduler XML + env file', async () => {
-    const mac = await script('install', ['--dry-run', '--platform', 'darwin']);
+    const mac = await script('install', ['--dry-run', '--platform', 'darwin', '--start']);
     expect(mac.code, mac.stderr).toBe(0);
     expect(mac.stdout).toContain('Switchboard service · launchd (macOS) · install · dry run');
+    expect(mac.stdout).toMatch(new RegExp(`^run {5}.* bootstrap gui/${UID} \\S.*local\\.switchboard\\.plist"?$`, 'm'));
     expect(mac.stdout).toContain('        | \t<key>RunAtLoad</key>');
     expect(mac.stdout).toContain(`write   ${path.posix.join(home, 'Library', 'LaunchAgents', 'local.switchboard.plist')}`);
 
@@ -138,7 +141,7 @@ describe('--dry-run', () => {
     expect(linux.stdout).toMatch(/^run {5}.* --user disable --now switchboard\.service$/m);
     const mac = await script('uninstall', ['--dry-run', '--platform', 'darwin']);
     expect(mac.code, mac.stderr).toBe(0);
-    expect(mac.stdout).toMatch(/^run {5}.* bootout gui\/\d+\/local\.switchboard {3}\(only if `.* print gui\/\d+\/local\.switchboard` succeeds\)$/m);
+    expect(mac.stdout).toMatch(new RegExp(`^run {5}.* bootout gui/${UID}/local\\.switchboard {3}\\(only if \`.* print gui/${UID}/local\\.switchboard\` succeeds\\)$`, 'm'));
     expect(await tree(tmp)).toEqual([]);
   });
 });
