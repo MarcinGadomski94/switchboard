@@ -1251,16 +1251,79 @@ export interface ConflictSession {
 
 /**
  * `POST /api/solutions/{repo}/isolate` body ("Move … to worktree", gap #2 / M6.3):
- * the contract's `{ sessionId }`, plus D32's `branch`.
+ * the contract's `{ sessionId }`, plus D32's `branch` (a new branch) or, D60,
+ * `existingBranch` (one of the repo's branches): exactly one of the two.
  */
-export interface IsolateRequest {
+export type IsolateRequest = IsolateNewBranchRequest | IsolateExistingBranchRequest;
+
+/** {@link IsolateRequest} on a new branch (D32). */
+export interface IsolateNewBranchRequest {
   readonly sessionId: string;
   /**
-   * Additive, required (D32): the new worktree's branch, named after the ticket
-   * (`PROJ-0001-short-description`); missing or not a ticket branch is 422 on
-   * field `branch`, a branch the repo has already is 409 `branch-exists`.
+   * Additive, required without `existingBranch` (D32): the new worktree's branch,
+   * named after the ticket (`PROJ-0001-short-description`); missing or not a
+   * ticket branch is 422 on field `branch`, a branch the repo has already is 409
+   * `branch-exists`.
    */
   readonly branch: string;
+  readonly existingBranch?: undefined;
+}
+
+/**
+ * {@link IsolateRequest} on an existing branch (D60, additive): `existingBranch`
+ * is a {@link RepoBranch.name} of `GET /api/solutions/{repo}/branches`: a local
+ * branch (`PROJ-7-login`) or a remote one (`origin/PROJ-7-login`). The D32 ticket
+ * rule does not apply. A remote-only branch gets a local branch of the same
+ * name tracking it; when a local branch of that name exists, the worktree is on
+ * the local one. Refusals: 409 `branch-not-found`, 409 `branch-checked-out`
+ * (checked out in the main checkout or another worktree); 422 on field
+ * `existingBranch` when it is not a branch name or `branch` is sent too.
+ */
+export interface IsolateExistingBranchRequest {
+  readonly sessionId: string;
+  readonly existingBranch: string;
+  readonly branch?: undefined;
+}
+
+/**
+ * One branch of a repository for the "Existing branch" picker (D60,
+ * `GET /api/solutions/{repo}/branches`).
+ */
+export interface RepoBranch {
+  /** What the picker shows and `IsolateRequest.existingBranch` takes: `PROJ-7-login` (local) or `origin/PROJ-7-login` (remote). */
+  readonly name: string;
+  readonly kind: 'local' | 'remote';
+  /** The remote of a remote branch (`origin`); `null` for a local one. */
+  readonly remote: string | null;
+  /** The local branch the worktree would be on: the name itself, or a remote branch's name without its remote. */
+  readonly localName: string;
+  /** A local branch's upstream (`origin/PROJ-7-login`), a remote branch's own name; `null` when a local branch tracks nothing. */
+  readonly upstream: string | null;
+  /** A remote branch whose {@link localName} exists locally: the worktree uses that local branch. */
+  readonly localExists: boolean;
+  /** The tip commit's subject; `null` when git gave none. */
+  readonly subject: string | null;
+  /** The tip commit's committer date (ISO 8601); `null` when git gave none. */
+  readonly committedAt: string | null;
+  /**
+   * Where the branch the worktree would be on ({@link localName}) is checked out
+   * (the main checkout or another worktree); `null` when nowhere. git checks a
+   * branch out in one worktree at a time, so the picker disables it.
+   */
+  readonly checkedOutAt: string | null;
+}
+
+/** `GET /api/solutions/{repo}/branches?session=&fetch=` (D60). */
+export interface RepoBranches {
+  readonly repo: string;
+  /** The repository's main checkout. */
+  readonly repoPath: string;
+  /** Local branches first, then remote ones, each newest commit first. */
+  readonly branches: readonly RepoBranch[];
+  /** `true` when `git fetch --all --prune` ran and succeeded, `false` when it failed, `null` when not asked (or the repo has no remote). */
+  readonly fetched: boolean | null;
+  /** Why the fetch failed (the list is then what was known before); `null` otherwise. */
+  readonly fetchError: string | null;
 }
 
 /** codebase-memory freshness of a solution (`.claude/.codebase-memory-dirty`, M6.2 / M6.4). */
