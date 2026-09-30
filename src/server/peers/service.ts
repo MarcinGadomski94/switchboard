@@ -114,6 +114,17 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/attachments$/],
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['POST', /^\/api\/attachments$/],
+  // D61: the MCP servers page: that machine's servers (list, check, reconnect, sign in, enable / disable, add / edit / remove).
+  ['GET', /^\/api\/mcp$/],
+  ['POST', /^\/api\/mcp\/check$/],
+  ['POST', /^\/api\/mcp\/servers$/],
+  ['GET', /^\/api\/mcp\/servers\/[^/]+$/],
+  ['PUT', /^\/api\/mcp\/servers\/[^/]+$/],
+  ['DELETE', /^\/api\/mcp\/servers\/[^/]+$/],
+  ['POST', /^\/api\/mcp\/servers\/[^/]+\/(?:reconnect|toggle|auth)$/],
+  ['GET', /^\/api\/mcp\/auth\/[^/]+$/],
+  ['POST', /^\/api\/mcp\/auth\/[^/]+\/callback$/],
+  ['DELETE', /^\/api\/mcp\/auth\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON). */

@@ -9,6 +9,7 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { CLI_VERSION, type FakeCommand, UsageError, parseArgv } from './args.ts';
 import { FixtureStore } from './fixtures.ts';
+import { runMcpCommand } from './mcp.ts';
 import { Logger } from './log.ts';
 import { Runner } from './session.ts';
 import { listAgents } from './transcript.ts';
@@ -68,6 +69,8 @@ async function main(argv: readonly string[]): Promise<void> {
       else await writeOut(rows.map((r) => `${r.sessionId}  ${r.status}  ${r.name}  ${r.cwd}\n`).join(''));
       return exit(0);
     }
+    case 'mcp':
+      return exit(await runMcpCommand(command.argv, process.env, cwd));
     case 'run': {
       if (!command.args.print) {
         await writeErr('fake-claude: only print mode (-p) is supported\n');

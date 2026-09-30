@@ -50,6 +50,7 @@ import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto }
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
 import { addWorktree, worktreeAddCommand, worktreeAddToken } from './worktree.ts';
 import { FakeWorkflow, type WorkflowGrid } from './workflow.ts';
+import { FakeMcp } from './mcp.ts';
 
 /** How a turn playback ended. */
 type Outcome = 'done' | 'sigint' | 'crash';
@@ -262,6 +263,8 @@ export class Runner {
   private core!: Core;
   private transcript: Transcript | null = null;
   private live: LiveFile | null = null;
+  /** D61: the MCP control requests (created on the first one). */
+  private mcp: FakeMcp | null = null;
   private scenario: string;
   private turnIndex = 0;
   private resultIndex = 0;
@@ -531,11 +534,22 @@ export class Runner {
         this.writeJson({ type: 'control_response', response: { subtype: 'success', request_id: requestId, response: { mode } } });
         return;
       }
-      default:
+      default: {
+        // D61: the MCP control requests (`mcp.ts`).
+        this.mcp ??= new FakeMcp(this.o.env, this.o.cwd);
+        const reply = await this.mcp.handle(subtype, request ?? {});
+        if (reply) {
+          this.writeJson({
+            type: 'control_response',
+            response: reply.ok ? { subtype: 'success', request_id: requestId, response: reply.response as unknown as JsonObject } : { subtype: 'error', request_id: requestId, error: reply.error },
+          });
+          return;
+        }
         this.writeJson({
           type: 'control_response',
           response: { subtype: 'error', request_id: requestId, error: `Unsupported control request subtype: ${subtype}` },
         });
+      }
     }
   }
 

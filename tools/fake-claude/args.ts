@@ -37,6 +37,8 @@ export type FakeCommand =
   | { kind: 'version' }
   | { kind: 'auth-status'; json: boolean }
   | { kind: 'agents'; json: boolean; all: boolean; cwd: string | null }
+  /** D61: `claude mcp …` (`mcp.ts`): the rest of the argv after `mcp`. */
+  | { kind: 'mcp'; argv: string[] }
   | { kind: 'run'; args: RunArgs };
 
 /** A usage error: printed to stderr, exit code 1 (like the real CLI's commander errors). */
@@ -110,6 +112,7 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
     const flags = parseSubcommandFlags('auth status', argv.slice(2), { '--json': 'bool', '--text': 'bool' });
     return { kind: 'auth-status', json: flags.has('--json') };
   }
+  if (argv[0] === 'mcp') return { kind: 'mcp', argv: argv.slice(1) };
   if (argv[0] === 'agents') {
     const flags = parseSubcommandFlags('agents', argv.slice(1), { '--json': 'bool', '--all': 'bool', '--cwd': 'value' });
     const cwd = flags.get('--cwd');

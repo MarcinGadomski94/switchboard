@@ -12,6 +12,7 @@ import { registerPeerForwarding } from './api/machines.ts';
 import { AttachmentService } from './attachments/service.ts';
 import { PeerService } from './peers/service.ts';
 import { HookService } from './hooks/service.ts';
+import { McpService } from './mcp/service.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -109,6 +110,8 @@ export interface AppOptions {
   readonly hookToken?: string;
   /** D57: chat attachments (default: one over `config.dataDir` and `store`). */
   readonly attachments?: AttachmentService;
+  /** D61: the MCP servers page's service (default: one over `config`'s CLI command and `process.env`, closed with the app). */
+  readonly mcp?: McpService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -209,7 +212,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerPeerForwarding(app, peers);
   // D57: attachments live in the data folder (`<dataDir>/attachments/<session>/`).
   const attachments = options.attachments ?? new AttachmentService({ dataDir: config.dataDir, store: options.store });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments });
+  // D61: its helper processes end with the app (a sign-in in progress is cancelled).
+  let mcp = options.mcp;
+  if (!mcp) {
+    const own = new McpService({ claudeCommand: config.claudeCommand, extraArgs: config.claudeExtraArgs });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    mcp = own;
+  }
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

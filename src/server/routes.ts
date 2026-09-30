@@ -10,6 +10,7 @@ import { registerHubRoutes } from './api/hub.ts';
 import { registerHookRoutes } from './api/hooks.ts';
 import { registerInboxRoutes } from './api/inbox.ts';
 import { registerMachineRoutes } from './api/machines.ts';
+import { registerMcpRoutes } from './api/mcp.ts';
 import { registerScheduleRoutes } from './api/schedules.ts';
 import { registerServiceRoutes } from './api/service.ts';
 import { registerSessionRoutes } from './api/sessions.ts';
@@ -28,6 +29,7 @@ import type { SseHub } from './hub/hub.ts';
 import type { QuestionPipeline } from './inbox/pipeline.ts';
 import type { SystemItemService } from './inbox/system-items.ts';
 import type { HookService } from './hooks/service.ts';
+import type { McpService } from './mcp/service.ts';
 import type { PeerService } from './peers/service.ts';
 import type { Providers } from './providers.ts';
 import type { Scheduler } from './schedules/scheduler.ts';
@@ -66,6 +68,8 @@ export interface ApiContext {
   readonly hooks: HookService;
   /** Chat attachments: uploads, storage, serving, a message's inline blocks and paths (D57, docs/chat.md → Attachments). */
   readonly attachments: AttachmentService;
+  /** D61: the MCP servers page: list, check, reconnect, sign in, enable / disable, add / edit / remove (docs/mcp.md). */
+  readonly mcp: McpService;
 }
 
 /**
@@ -96,5 +100,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerUpdateRoutes(app, context);
+  await registerMcpRoutes(app, context);
   await registerHubRoutes(app, context);
 }
