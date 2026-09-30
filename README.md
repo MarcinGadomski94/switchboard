@@ -35,6 +35,16 @@ macOS is the primary platform. Linux and Windows are supported for the service, 
 
 ## Install and run
 
+**From a release** (the UI comes pre-built): download `switchboard-<version>.tar.gz` from the [GitHub releases](https://github.com/MarcinGadomski94/switchboard/releases), then
+
+```sh
+tar -xzf switchboard-1.0.0.tar.gz && cd switchboard-1.0.0
+npm ci --omit=dev   # runtime dependencies only
+npm start           # serves http://127.0.0.1:13001
+```
+
+**From the repository:**
+
 ```sh
 cd ~/RiderProjects/Personal/switchboard   # this repo
 npm ci          # exact, pinned dependencies

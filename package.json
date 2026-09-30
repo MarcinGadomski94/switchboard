@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Local web app for running and supervising many Claude Code sessions.",
   "type": "module",
