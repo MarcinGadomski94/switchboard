@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0 (2026-09-30)
+
+### Attachments
+- Paste (⌘V / Ctrl+V), drag and drop, or 📎 attach images and files in the chat and in both New-session forms. Images (PNG, JPEG, GIF, WebP) and PDFs go into the message so the model sees them; other files are saved and the agent is given their paths. Thumbnails and file chips show in your messages and survive a reload; Stop returns them to the composer.
+- Stored under `<data folder>/attachments/<session>/`, never in your repos, and cleaned up after 30 days. Limits: 20 MB per file, 50 MB / 20 files per message.
+
+### MCP servers page
+- A new **MCP** page lists the servers Claude Code loads for each saved folder (local, project and user scope), with status, tools and last check. **Check**, **Reconnect**, **Authenticate** (the sign-in opens in a new tab), **Enable/Disable**, and **Add / Edit / Remove** through the `claude mcp` commands. Secrets are never sent to the browser. Also for a paired machine's folders.
+
+### Sidebar
+- **Subfolders:** folders can hold folders, up to 5 levels, by drag and drop or the menus (**New subfolder**, **Move to folder ▸**).
+
+### Sessions and folders
+- **Simple mode starts in any folder**, including one that is neither a git repository nor has an `AGENTS.md`; such folders can be saved too.
+- **Move to worktree on an existing branch:** the Solutions conflict card can put a session's worktree on an existing local or remote branch, not only a new one.
+
+### Fixed
+- Test servers no longer read the machine's real login-service files.
+
+### Database
+- Migrations 0020 (attachments), 0021 (subfolders) and 0022 (plain folders) run by themselves on the first start.
+
 ## 1.2.0 (2026-09-30)
 
 ### Simple New-session form
