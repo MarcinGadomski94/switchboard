@@ -27,44 +27,124 @@ It runs on your machine only (`127.0.0.1`). It drives the unmodified `claude` CL
 
 ## Requirements
 
-| What | Why |
-|---|---|
-| **Node.js ≥ 24** on `PATH` | The server runs its TypeScript directly (type stripping). |
-| **git** | Worktrees, branches, diffs. |
-| **Claude Code CLI** (`claude`), signed in with your claude.ai subscription | Every session is a supervised `claude` process. Check with `claude auth status`; an API key is not enough for Remote Control. |
-| **GitHub CLI** (`gh`), signed in (optional) | Detects merged pull requests of session worktrees. |
-| **Chrome** (recommended) or Safari | Signed-in sites such as Jira can only be embedded in Chrome ([Embedded tools](#embedded-tools)). |
+Install these **before** Switchboard:
 
-macOS is the primary platform. Linux and Windows are supported for the service, paths and "Start at login".
+| What | Needed for | Check |
+|---|---|---|
+| **Node.js 24 or newer** (with npm), on `PATH` | Switchboard runs its TypeScript directly on Node (type stripping). | `node --version` → `v24.x` or higher |
+| **git** | Worktrees, branches and diffs. On Windows, Git for Windows is also what Claude Code needs. | `git --version` |
+| **Claude Code CLI** (`claude`), signed in with your **claude.ai subscription** (Pro / Max) | Every session is a real `claude` process. An API key alone is not enough for Remote Control. | `claude --version`, `claude auth status` |
+| **A browser**: Chrome (recommended), Edge, Firefox or Safari | The UI. Embedding signed-in sites such as Jira needs Chrome ([Embedded tools](#embedded-tools)). | |
+| **GitHub CLI** (`gh`), signed in (optional) | Detects merged pull requests of session worktrees. | `gh auth status` |
+| **Tailscale** (optional) | Connecting Switchboards on several machines ([Machines (peers)](#machines-peers)). | `tailscale status` |
+
+<details>
+<summary><b>macOS</b>: installing the requirements</summary>
+
+```sh
+# Homebrew: https://brew.sh
+brew install node git          # check `node --version` is 24 or newer (or use nvm / fnm)
+brew install gh                # optional
+curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (native installer)
+claude                         # run once and sign in with your claude.ai account
+```
+</details>
+
+<details>
+<summary><b>Linux</b>: installing the requirements</summary>
+
+```sh
+# Node.js 24 via nvm (https://github.com/nvm-sh/nvm); distro packages are often older
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+exec $SHELL -l && nvm install 24
+sudo apt install git           # Debian / Ubuntu; use your distro's package manager otherwise
+# optional: gh (https://github.com/cli/cli/blob/trunk/docs/install_linux.md)
+curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (native installer)
+claude                         # run once and sign in with your claude.ai account
+```
+
+Start at login uses a **systemd user service** (most desktop distributions).
+</details>
+
+<details>
+<summary><b>Windows 10 / 11</b>: installing the requirements</summary>
+
+In **PowerShell**:
+
+```powershell
+winget install OpenJS.NodeJS.LTS   # then check `node --version` is 24 or newer
+winget install Git.Git             # Git for Windows (Claude Code needs it too)
+winget install GitHub.cli          # optional
+irm https://claude.ai/install.ps1 | iex   # Claude Code (native installer: claude.exe)
+claude                             # run once and sign in with your claude.ai account
+```
+
+Open a **new** terminal afterwards so the updated `PATH` is picked up. Use the native installer for Claude Code: an npm install creates `claude.cmd`, which Switchboard can't start without a shell (then set `SWITCHBOARD_CLAUDE_BIN`, see [Configuration](#configuration)). `tar` and `curl` come with Windows 10 and 11.
+</details>
 
 ## Install and run
 
-**From a release** (the UI comes pre-built): download `switchboard-<version>.tar.gz` from the [GitHub releases](https://github.com/MarcinGadomski94/switchboard/releases), then
+The recommended way is a **release**: the UI comes pre-built, and Switchboard [updates itself](#updating). Pick a folder for it. The examples use `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Replace `1.1.1` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest).
+
+### macOS and Linux
 
 ```sh
-tar -xzf switchboard-1.0.0.tar.gz && cd switchboard-1.0.0
-npm ci --omit=dev   # runtime dependencies only
-npm start           # serves http://127.0.0.1:13001
+V=1.1.1
+DIR=~/Applications/Switchboard            # Linux: ~/.local/opt/switchboard
+mkdir -p "$DIR" && cd "$DIR"
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
+curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256
+shasum -a 256 -c switchboard-$V.tar.gz.sha256   # Linux: sha256sum -c …
+tar -xzf switchboard-$V.tar.gz && cd switchboard-$V
+npm ci --omit=dev                         # runtime dependencies only
+npm run service:install -- --start        # start now and at every sign-in (launchd / systemd --user)
 ```
 
-**From the repository:**
+Prefer not to install a service? Run `npm start` in that folder instead, and keep the terminal open.
 
-```sh
-cd ~/RiderProjects/Personal/switchboard   # this repo
-npm ci          # exact, pinned dependencies
-npm run build   # builds the UI into dist/web
-npm start       # serves http://127.0.0.1:13001
+### Windows
+
+In **PowerShell**:
+
+```powershell
+$V = "1.1.1"
+$Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
+New-Item -ItemType Directory -Force $Dir | Out-Null; Set-Location $Dir
+curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz"
+curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz.sha256"
+# the two hashes must be the same:
+(Get-FileHash "switchboard-$V.tar.gz" -Algorithm SHA256).Hash.ToLower(); (Get-Content "switchboard-$V.tar.gz.sha256").Split(" ")[0]
+tar -xzf "switchboard-$V.tar.gz"; Set-Location "switchboard-$V"
+npm ci --omit=dev
+npm run service:install -- --start    # a Task Scheduler task that starts Switchboard at every sign-in
 ```
+
+The task runs `node.exe` in a console window; **closing that window stops Switchboard** (minimise it instead). Or run `npm start` in that folder by hand.
+
+### Open it
 
 Open **http://127.0.0.1:13001** by typing it or from a bookmark. That first page load gives your browser its access cookie ([Security model](#security-model)).
 
 The first time, a **setup wizard** opens:
-1. It checks the `claude` CLI and its login (plus `gh`).
+1. It checks the `claude` CLI and its sign-in (plus `gh`).
 2. It adds your first **folder**: a workspace (a folder with a router `AGENTS.md`) or a git repository.
 3. It scans that folder's solutions.
 4. It sets up notifications.
 
-You can skip it and do all of this later in Settings.
+You can skip it and do all of this later in Settings. Your data (the database, the access token, logs) lives in the per-user data folder: `~/Library/Application Support/Switchboard` (macOS), `~/.local/share/switchboard` (Linux), `%LOCALAPPDATA%\Switchboard` (Windows).
+
+### From source (development)
+
+A git checkout builds the UI itself and is only **told** about new releases, not updated:
+
+```sh
+git clone https://github.com/MarcinGadomski94/switchboard.git && cd switchboard
+npm ci          # exact, pinned dependencies (including the build tools)
+npm run build   # builds the UI into dist/web
+npm start       # serves http://127.0.0.1:13001
+```
+
+Run it on another port next to a release install with `SWITCHBOARD_PORT=13005 npm start` (PowerShell: `$env:SWITCHBOARD_PORT=13005; npm start`).
 
 ## Updating
 
@@ -94,7 +174,7 @@ npm run service:install                # launchd (macOS) / systemd --user (Linux
 npm run service:uninstall
 ```
 
-The service is the same process as `npm start`, so build first (`npm run build`). Details: [`docs/service.md`](docs/service.md).
+Run these in the folder you start Switchboard from: the service starts `node src/server/main.ts` there. A release install is ready as it is; a git checkout needs `npm run build` first. `--start` also starts it right away. It starts Switchboard at sign-in and is not restarted after a crash (start it again with `npm run service:install -- --start`). Details: [`docs/service.md`](docs/service.md).
 
 ## Configuration
 
