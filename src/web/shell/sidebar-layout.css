@@ -222,6 +222,9 @@
   border-radius: 8px;
   background: var(--bg-card);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  /* A long "Move to folder ▸" tree stays inside the window and scrolls. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .sb-layout-menu-item {

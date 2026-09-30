@@ -21,7 +21,13 @@
   background: var(--bg-main);
 }
 
-/* Sidebar: scrolls as a whole. */
+/*
+ * Sidebar: a full-height column whose top (brand, + New session, nav, TOOLS) and
+ * bottom (Settings, machine footer) stay put; only the SESSIONS list scrolls
+ * (`.sb-sessions` below, docs/sidebar.md → *Layout and scrolling*). The sidebar's
+ * own `overflow-y: auto` is only the fallback for a window too short for the
+ * fixed parts plus the sessions' minimum height.
+ */
 .sb-sidebar {
   border-right: 1px solid var(--border-divider);
   display: flex;
@@ -167,6 +173,13 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* A long TOOLS list scrolls on its own after a quarter of the window, and gives way (down to two rows) before
+     SESSIONS goes under its 160 px. */
+  flex: 0 1 auto;
+  max-height: 25vh;
+  min-height: 64px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sb-tool {
@@ -232,8 +245,11 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1 0 auto;
+  /* Takes the height the fixed parts leave (at least 160 px) and scrolls down, never sideways. */
+  flex: 1 1 0;
   min-height: 160px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sb-session {

@@ -572,6 +572,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - No migration (the check cache is in memory).
   - Details: `docs/mcp.md`, `docs/handoff/contracts/local-api.md` → *MCP servers page (D61)*, `docs/security.md` → *MCP servers (D61)*, `docs/fake-claude.md` → *MCP (D61)*; choices where the request is silent: `.loop/questions.md` → *D61 · MCP servers page*.
 
+## Fix: sidebar scrolling (added 2026-09-30)
+- **Only the SESSIONS list scrolls, not the whole sidebar.** Developer request, 2026-09-30: "When there are a lot of sessions, only the sessions part of the left sidebar should scroll, not the whole sidebar." Builds on D29 (never sideways), D41 (collapsible sidebar), D54 / D58 (pins, folders, subfolders) and D61 (whose sixth nav item made the demo seed's sidebar scroll by 24 px at 1440×900).
+  - **Layout:** the brand, + New session, the nav, TOOLS and the SESSIONS label stay at the top, Settings and the machine footer at the bottom; the SESSIONS list takes the rest (at least 160 px) and scrolls down only. The SESSIONS label stays in view above it (ASSUMED sidebar-scroll-header). A long TOOLS list scrolls on its own within a quarter of the window and gives way to two rows before SESSIONS goes under 160 px (ASSUMED sidebar-scroll-tools); a window too short for all of it lets the whole sidebar scroll as before (ASSUMED sidebar-scroll-min).
+  - **Kept working:** the opened session's row is scrolled into the list (palette, Inbox, links; ASSUMED sidebar-scroll-reveal); ⋯ menus are not clipped and flip above their ⋯ near the window's bottom, scrolling closes them (ASSUMED sidebar-scroll-menu); drag and drop scrolls the list at its edges (the browser's own; VERIFIED in Chromium); D41 keeps the scroll position. No API, storage or migration change.
+  - Details: `docs/sidebar.md` → *Layout and scrolling*; choices: `.loop/questions.md` → *Fix · sidebar scrolling*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

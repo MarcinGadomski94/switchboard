@@ -35,10 +35,14 @@ import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
  * D61: the nav has a sixth item, MCP, after Schedules & loops (the prototype has
  * five). The app's Artifacts / History items are its 5th / 6th (`appPath`), and they
  * and the parts under the nav are compared with y relative to the item above them
- * on each page (`anchor` / `appAnchor`), so the extra row is not a finding. With the
- * demo seed's sessions the taller sidebar scrolls (it has `overflow-y: auto`): the
- * footer parts and the D17 rows are measured with the app's sidebar scrolled to its
- * end, where the footer's bottom edge is the prototype's again.
+ * on each page (`anchor` / `appAnchor`), so the extra row is not a finding.
+ *
+ * Fix: sidebar scrolling (`docs/sidebar.md` → *Layout and scrolling*): only the
+ * SESSIONS list scrolls. The extra MCP row no longer makes the whole sidebar
+ * scroll (by 24 px with the demo seed, as it did from D61 on): the sidebar itself
+ * does not scroll, the footer is measured where it is, its bottom edge the
+ * prototype's, and the SESSIONS list is the part that is shorter than its rows
+ * (it scrolls, down only).
  */
 
 /** Child-index paths from the shell grid (harness.measure). */
@@ -55,8 +59,8 @@ const PARTS: Readonly<
       readonly appPath?: readonly number[];
       /** D61: the app's anchor when it differs from the prototype's. */
       readonly appAnchor?: readonly number[];
-      /** D61: measured with the app's sidebar scrolled to its end (the footer). */
-      readonly scrolled?: boolean;
+      /** y relative to the footer's top (D17), for the report's wording. */
+      readonly footerRelative?: boolean;
     }
   >
 > = {
@@ -81,14 +85,14 @@ const PARTS: Readonly<
   toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 5] },
   sessionsLabel: { path: [0, 5], geometry: 'size', copy: false },
   settings: { path: [0, 7], geometry: 'size', copy: true },
-  footer: { path: [0, 8], geometry: 'bottom', copy: false, scrolled: true },
+  footer: { path: [0, 8], geometry: 'bottom', copy: false },
   // "claude code" wraps in the prototype only because its row also holds "9 bg processes".
-  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true, scrolled: true },
+  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true },
   // D17: the footer grows upward by the Week row, so its rows are compared relative to its top.
-  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, scrolled: true },
-  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, scrolled: true },
-  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, scrolled: true },
-  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, scrolled: true },
+  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, footerRelative: true },
+  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, footerRelative: true },
+  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, footerRelative: true },
+  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, footerRelative: true },
   // The prototype's Max row (maxLabel / maxTrack) has no counterpart: D17's Session + Week rows, see usage-rows.ts.
 };
 
@@ -126,24 +130,40 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
   await openApp(appPage, app.baseUrl, '/');
 
   const paths = Object.fromEntries(Object.entries(PARTS).map(([name, part]) => [name, part.path]));
-  const appPaths = (scrolled: boolean) => Object.fromEntries(Object.entries(PARTS).filter(([, part]) => !!part.scrolled === scrolled).map(([name, part]) => [name, part.appPath ?? part.path]));
+  const appPaths = Object.fromEntries(Object.entries(PARTS).map(([name, part]) => [name, part.appPath ?? part.path]));
   // An anchor is measured under its prototype name on both pages (D61: from the app's own path there).
-  const anchors = (app: boolean, scrolled: boolean | null) =>
-    Object.fromEntries(
-      Object.entries(PARTS).flatMap(([, part]) =>
-        part.anchor && (scrolled === null || !!part.scrolled === scrolled) ? [[`@${part.anchor.join('.')}`, app ? (part.appAnchor ?? part.anchor) : part.anchor]] : [],
-      ),
-    );
-  const proto = await measure(protoPage, { ...paths, ...anchors(false, null) });
-  const unscrolled = await measure(appPage, { ...appPaths(false), ...anchors(true, false) });
-  // D61: the footer with the app's sidebar scrolled to its end (a no-op when it does not scroll).
-  await appPage.evaluate(() => {
-    const sidebar = document.querySelector('.sb-sidebar');
-    if (sidebar) sidebar.scrollTop = sidebar.scrollHeight;
-  });
-  const scrolledParts = await measure(appPage, { ...appPaths(true), ...anchors(true, true) });
-  const shell = { ...unscrolled, ...scrolledParts };
+  const anchors = (app: boolean) =>
+    Object.fromEntries(Object.entries(PARTS).flatMap(([, part]) => (part.anchor ? [[`@${part.anchor.join('.')}`, app ? (part.appAnchor ?? part.anchor) : part.anchor]] : [])));
+  const proto = await measure(protoPage, { ...paths, ...anchors(false) });
+  const shell = await measure(appPage, { ...appPaths, ...anchors(true) });
   const failures: string[] = [];
+
+  // Fix: sidebar scrolling: at 1440×900 with the demo seed the sidebar itself does not scroll (the footer shows without
+  // scrolling); the SESSIONS list takes the room left and is the part that scrolls when its rows do not fit, down only.
+  const scrolling = await appPage.evaluate(() => {
+    const sidebar = document.querySelector<HTMLElement>('.sb-sidebar')!;
+    const list = document.querySelector<HTMLElement>('[data-testid="sidebar-sessions"]')!;
+    const footer = document.querySelector<HTMLElement>('[data-testid="machine-footer"]')!.getBoundingClientRect();
+    const style = getComputedStyle(list);
+    return {
+      sidebarOverflow: sidebar.scrollHeight - sidebar.clientHeight,
+      footerBottom: footer.bottom,
+      listOverflow: list.scrollHeight - list.clientHeight,
+      listSideways: list.scrollWidth - list.clientWidth,
+      listOverflowY: style.overflowY,
+      listOverflowX: style.overflowX,
+    };
+  });
+  const scrollChecks: Array<[string, string, string, boolean]> = [
+    ['sidebar scroll height − client height', '0', String(scrolling.sidebarOverflow), scrolling.sidebarOverflow <= 0],
+    ['footer bottom (no scrolling)', '≤ 900', String(round(scrolling.footerBottom)), scrolling.footerBottom <= 900.5],
+    ['SESSIONS list overflow-y / overflow-x', 'auto / hidden', `${scrolling.listOverflowY} / ${scrolling.listOverflowX}`, scrolling.listOverflowY === 'auto' && scrolling.listOverflowX === 'hidden'],
+    // The demo seed's rows are taller than the room the MCP nav item leaves them: the list scrolls (by that row's height).
+    ['SESSIONS list scrolls (scroll height − client height)', '> 0', String(scrolling.listOverflow), scrolling.listOverflow > 0],
+    ['SESSIONS list sideways (scroll width − client width)', '0', String(scrolling.listSideways), scrolling.listSideways <= 0],
+  ];
+  for (const [check, want, got, ok] of scrollChecks) if (!ok) failures.push(`scrolling · ${check}: expected ${want}, got ${got}`);
+  const scrollRows = scrollChecks.map(([check, want, got, ok]) => `| ${check} | ${want} | ${got} | ${ok ? 'ok' : 'FAIL'} |`);
   const rows: string[] = [];
 
   // Boxes (±2 px) and exact copy.
@@ -157,7 +177,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     const anchorName = spec.anchor ? `@${spec.anchor.join('.')}` : null;
     const relative = (part: Part, side: Record<string, Part | null>): Part =>
       anchorName ? { ...part, box: { ...part.box, y: part.box.y - (side[anchorName]?.box.y ?? Number.NaN) } } : part;
-    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, shell).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to ${spec.scrolled ? "the footer's top, D17" : 'the item above, D61'})` : m));
+    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, shell).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to ${spec.footerRelative ? "the footer's top, D17" : 'the item above, D61'})` : m));
     failures.push(...boxIssues);
     let copyNote = '';
     if (spec.copy) {
@@ -172,7 +192,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     }
     failures.push(...styleIssues);
     rows.push(
-      `| ${name} | ${spec.geometry}${anchorName ? (spec.scrolled ? ' (y rel. footer)' : ' (y rel. item above)') : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
+      `| ${name} | ${spec.geometry}${anchorName ? (spec.footerRelative ? ' (y rel. footer)' : ' (y rel. item above)') : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
     );
   }
 
@@ -258,7 +278,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
   const pairSidebar = await sideBySide(appPage, protoSidebar, appSidebar);
 
   await writeReport({
-    'shell.md': report({ rows, usageRows, tokenRows, computedRows, failures, full: full.percent, sidebar: side.percent }),
+    'shell.md': report({ rows, usageRows, scrollRows, tokenRows, computedRows, failures, full: full.percent, sidebar: side.percent }),
     'shell-side-by-side.png': pairFull,
     'shell-sidebar-side-by-side.png': pairSidebar,
   });
@@ -274,6 +294,7 @@ function fmtBox(part: Part): string {
 function report(input: {
   rows: string[];
   usageRows: string[];
+  scrollRows: string[];
   tokenRows: string[];
   computedRows: string[];
   failures: string[];
@@ -305,6 +326,13 @@ The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (an
 | Part | Prototype | App | Result | Notes |
 |---|---|---|---|---|
 ${input.usageRows.join('\n')}
+
+## Sidebar scrolling (Fix: sidebar scrolling)
+Only the SESSIONS list scrolls (\`docs/sidebar.md\` → *Layout and scrolling*). The prototype has five nav items and its sidebar fits; D61's sixth (MCP) made the app's whole sidebar scroll by 24 px with the demo seed. Now the sidebar itself does not scroll, the footer is measured where it is (its bottom edge the prototype's, above), and the SESSIONS list is shorter than its rows and scrolls.
+
+| Check | Expected | App | Result |
+|---|---|---|---|
+${input.scrollRows.join('\n')}
 
 ## SPEC color tokens defined as CSS variables
 | Token | SPEC values | Result |

@@ -6,6 +6,18 @@ Developer request D58 (`docs/decisions.md` → *Subfolders in the sidebar*): "Ma
 
 Code: rules `src/core/sidebar-layout.ts` (pure, shared by the server and the UI); storage `src/server/db/repos/sidebar.ts` + migrations `0019_sidebar_layout.sql` and `0021_sidebar_subfolders.sql` (D58); routes `src/server/api/sidebar.ts`; UI `src/web/shell/SidebarSessions.tsx` (+ `sidebar-dnd.ts`, `sidebar-layout.css`).
 
+## Layout and scrolling
+Fix: sidebar scrolling (`docs/decisions.md` → *Fix: sidebar scrolling*): "When there are a lot of sessions, only the sessions part of the left sidebar should scroll, not the whole sidebar." Choices where the request is silent: `.loop/questions.md` → *Fix · sidebar scrolling*.
+
+- The sidebar is a full-height flex column (`shell.css`). The top (brand + ⌘K, + New session, the nav with MCP, the TOOLS label and list, the SESSIONS label) and the bottom (Settings, the machine footer) keep their heights and stay in view.
+- The **SESSIONS list** (`.sb-sessions`: Pinned, the folders, the drop zones, the loose sessions) takes the height that is left (`flex: 1 1 0`, at least **160 px**, the prototype's own minimum) and scrolls on its own: down only (`overflow-y: auto`, `overflow-x: hidden`). The SESSIONS label (count, the new-folder **+**) sits directly above it, outside the scrolling part, so it is always in view; the DOM is unchanged, so the prototype's child paths (visual oracle) hold.
+- The **TOOLS list** scrolls on its own after a quarter of the window (`max-height: 25vh`) and gives way, down to about two rows (64 px), before SESSIONS would go under its 160 px.
+- Only a window too short for all of that (below about 760 px of window height with the demo seed: its two tools and four footer rows) falls back to the old behavior: the whole sidebar scrolls too.
+- **The session on screen is revealed:** when a session is opened from anywhere (the ⌘K palette, the Inbox, a link, a notification, its row), the list scrolls just enough to show its row in full, once per opened session (a later layout change or a scroll by hand is left alone). In a collapsed folder, the head of the outermost collapsed folder is shown instead; the folder stays collapsed. Only the list scrolls, never the sidebar or the page.
+- **⋯ menus** are portals over the page (position fixed), so the scrolling list never clips them. A menu opens under its ⋯ when the window has room, else above it, else inside the window with its own scroll (`menuTop`, `src/web/shell/sidebar-menu.ts`). Scrolling the list (or the sidebar / page) closes the open menu, which would otherwise stay away from its row; a chat scrolling in the main area does not.
+- **Drag and drop:** holding a dragged session or folder near the list's top or bottom edge scrolls the list (the browser's own drag auto-scroll of a scrolling box; checked in Chromium by `tests/e2e/sidebar-scroll.spec.ts`), so a target out of view can be reached.
+- **D41:** hiding and showing the sidebar keeps the list's scroll position (it stays mounted).
+
 ## The SESSIONS list
 Top to bottom:
 1. **Pinned** — the pinned sessions, in the order the developer dragged them into. The group label shows only while something is pinned (and, as a drop zone, while a session is dragged).
@@ -80,4 +92,6 @@ D58: every `SidebarFolder` carries `parentId` (`null` = top level) and `folders`
 - `tests/server/db/migrate.test.ts` → *0021 sidebar subfolders (D58)* — D54 folders stay top level with their places.
 - `tests/server/api/sidebar.test.ts` — the routes, persistence, `sidebarLayoutChanged`, refusals, a peer's session and forgetting its machine, closed and deleted sessions, not on the peer API; D58: `parentId` on create / move, positions per parent, 404 / 422 refusals, delete with subfolders, a peer's session in a subfolder.
 - `tests/e2e/sidebar-layout.spec.ts` — on the demo seed: the untouched list, pin, drag re-order, a folder, drag in and out, collapse, a reload and a second tab, and the keyboard path.
+- `tests/web/sidebar-scroll.test.ts` — where a ⋯ menu opens (`menuTop`: under, above, clamped).
+- `tests/e2e/sidebar-scroll.spec.ts` (Fix: sidebar scrolling, 26 fake-claude sessions) — only the list scrolls, the nav / TOOLS / SESSIONS label / Settings / footer stay put at 1440×900 (also with the wheel and after hiding and showing the sidebar); the ⌘K palette reveals the opened session's row; a ⋯ menu at the bottom shows in full and a tall one flips above its ⋯, scrolling closes it; a drag held at the list's top edge scrolls to a folder out of view and drops in it; 14 sidebar tools scroll on their own within 25vh. `tests/e2e/visual/shell.spec.ts` checks the demo seed: the sidebar does not scroll, the footer shows unscrolled, the list scrolls.
 - `tests/e2e/sidebar-subfolders.spec.ts` (D58) — New subfolder, a session and a folder dragged in, out to the top level, collapse hides and counts (amber dot through two levels), reload and a second tab, the menus (tree targets without the folder's own subfolders, delete with subfolders asks), 5 levels without sideways scrolling.

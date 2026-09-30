@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session, SessionActivity } from '../../core/api.ts';
 import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
@@ -29,6 +29,7 @@ import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
+import { MENU_GAP, MENU_MARGIN, menuTop } from './sidebar-menu.ts';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
 import './sidebar-layout.css';
 
@@ -165,25 +166,43 @@ interface MenuItem {
 
 /**
  * D54: a small menu over the page (a portal, so it never sits inside a row's
- * link), under its ⋯ button: ↑ / ↓ move between the items, Esc closes and gives
- * the focus back to the button, a click outside closes it.
+ * link, and the scrolling sessions list never clips it), under its ⋯ button, or
+ * above it when the window has no room below ({@link menuTop}): ↑ / ↓ move
+ * between the items, Esc closes and gives the focus back to the button, a click
+ * outside closes it, and so does scrolling the list (or the sidebar / page around
+ * it), which would leave the menu away from its row.
  */
 function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement; readonly label: string; readonly items: readonly MenuItem[]; readonly onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const rect = anchor.getBoundingClientRect();
   const width = 196;
-  const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
-  const top = Math.min(rect.bottom + 4, window.innerHeight - 40);
+  const left = Math.max(MENU_MARGIN, Math.min(rect.right - width, window.innerWidth - width - MENU_MARGIN));
+  const [top, setTop] = useState(() => rect.bottom + MENU_GAP);
 
+  // Placed once its height is known, before it is painted.
+  useLayoutEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+    const at = anchor.getBoundingClientRect();
+    setTop(menuTop(at, menu.getBoundingClientRect().height, window.innerHeight));
+  }, [anchor, items.length]);
   useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
     const outside = (event: globalThis.MouseEvent): void => {
       if (!ref.current?.contains(event.target as Node) && !anchor.contains(event.target as Node)) onClose();
     };
+    // Only a scroll that moves its ⋯ (the list, the sidebar, the page): a chat scrolling in the main area leaves it open.
+    const scrolled = (event: Event): void => {
+      if (event.target instanceof Node && event.target.contains(anchor)) onClose();
+    };
     document.addEventListener('mousedown', outside);
-    return () => document.removeEventListener('mousedown', outside);
+    document.addEventListener('scroll', scrolled, true);
+    return () => {
+      document.removeEventListener('mousedown', outside);
+      document.removeEventListener('scroll', scrolled, true);
+    };
   }, [anchor, onClose]);
 
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -223,6 +242,17 @@ function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement;
     </div>,
     document.body,
   );
+}
+
+/**
+ * Scrolls the SESSIONS list (only the list, never the sidebar or the page) just
+ * enough that `el` shows in full; nothing moves when it already does.
+ */
+function revealInList(list: HTMLElement, el: HTMLElement): void {
+  const box = list.getBoundingClientRect();
+  const at = el.getBoundingClientRect();
+  if (at.top < box.top) list.scrollTop -= box.top - at.top;
+  else if (at.bottom > box.bottom) list.scrollTop += Math.min(at.bottom - box.bottom, at.top - box.top);
 }
 
 /** Which menu is open. */
@@ -304,6 +334,29 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const [renaming, setRenaming] = useState<string | null>(null);
   const arranged = arrangeSidebar(sessions, layout);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const listRef = useRef<HTMLDivElement>(null);
+  /** The session whose row was last revealed (the effect below). */
+  const revealed = useRef<string | null>(null);
+  const currentId = sessions.find((s) => isCurrent(s.id))?.id ?? null;
+
+  // The session on screen (opened from the palette, the Inbox, a link, …) has its row scrolled into the list's view,
+  // once per session: a later layout change or a scroll by hand is left alone. In a collapsed folder its folder's head
+  // is revealed instead (the outermost collapsed one; the folder stays collapsed).
+  useEffect(() => {
+    if (currentId === null) {
+      revealed.current = null;
+      return;
+    }
+    const list = listRef.current;
+    if (!list || revealed.current === currentId) return;
+    const folder = arranged.folders.find((entry) => !entry.hidden && entry.folder.collapsed && entry.total.some((s) => s.id === currentId))?.folder;
+    const target =
+      list.querySelector<HTMLElement>(`a.sb-session[data-session-id="${CSS.escape(currentId)}"]`) ??
+      (folder ? list.querySelector<HTMLElement>(`[data-folder-id="${CSS.escape(folder.id)}"]`) : null);
+    if (!target) return; // not listed yet: tried again on the next render
+    revealed.current = currentId;
+    revealInList(list, target);
+  });
 
   const endDrag = (): void => {
     setDrag(null);
@@ -657,6 +710,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         </button>
       </div>
       <div
+        ref={listRef}
         className="sb-sessions"
         data-testid="sidebar-sessions"
         data-dragging={drag ? drag.kind : undefined}
