@@ -139,6 +139,7 @@ describe('/api/mcp (D61)', () => {
     expect(entries[0]).toMatchObject({ argv: ['mcp', 'get', 'docs'] });
     expect(await realpath(entries[0]?.['cwd'] as string)).toBe(await realpath(project));
 
+    expect((await call('POST', `/api/mcp/check?folder=${folderId}`, { name: '--help' })).statusCode).toBe(404);
     const all = await call('POST', `/api/mcp/check?folder=${folderId}`, {});
     noSecrets(all.body);
     const allView = (all.json() as McpActionResult).view;

@@ -138,6 +138,7 @@ describe('the form (D61)', () => {
     const bad = parseServerInput({ name: 'a b', scope: 'global', transport: 'tcp' });
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.errors.map((e) => e.field)).toEqual(['name', 'scope', 'transport']);
+    expect(parseServerInput({ name: '-x', scope: 'user', transport: 'stdio', command: 'c' }).ok).toBe(false);
     const noUrl = parseServerInput({ name: 'x', scope: 'user', transport: 'http', url: 'ftp://x' });
     expect(noUrl.ok ? [] : noUrl.errors.map((e) => e.message)).toEqual(['A http server needs a http or https URL.']);
     const ws = parseServerInput({ name: 'x', scope: 'user', transport: 'ws', url: 'wss://x.example.com' });

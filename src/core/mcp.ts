@@ -386,6 +386,8 @@ export function parseServerInput(body: unknown): ParsedServerInput {
   const name = typeof raw['name'] === 'string' ? raw['name'].trim() : '';
   if (name === '') errors.push({ field: 'name', message: 'Server name is required.' });
   else if (!SERVER_NAME.test(name)) errors.push({ field: 'name', message: `Invalid name ${name}. Names can only contain letters, numbers, hyphens, and underscores.` });
+  // The CLI would read a leading "-" as an option (Switchboard's own rule on top of the CLI's).
+  else if (name.startsWith('-')) errors.push({ field: 'name', message: `Invalid name ${name}. A name cannot start with "-".` });
   const scope = raw['scope'];
   if (typeof scope !== 'string' || !(MCP_EDITABLE_SCOPES as readonly string[]).includes(scope)) {
     errors.push({ field: 'scope', message: `Invalid scope: ${String(scope)}. Must be one of: local, user, project` });

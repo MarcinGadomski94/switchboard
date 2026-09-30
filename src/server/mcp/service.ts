@@ -284,8 +284,10 @@ export class McpService {
    */
   async check(folder: McpFolder, name?: string): Promise<McpActionResult> {
     if (name !== undefined) {
-      const configured = (await this.#configured(folder)).find((s) => s.name === name);
-      const secrets = configured ? secretValues(configured.config) : [];
+      // Only a server the page knows (and never an option-looking argv item).
+      const known = await this.#named(folder, name);
+      if (name.startsWith('-')) throw new McpError('invalid', `Invalid name ${name}`, { field: 'name' });
+      const secrets = 'config' in known ? secretValues(known.config) : [];
       const run = await this.#run(folder, ['mcp', 'get', name], secrets);
       const status = run.ok ? parseGetOutput(run.text) : null;
       if (status) this.#storeText(folder, name, status);
