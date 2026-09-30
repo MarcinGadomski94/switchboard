@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import path from 'node:path';
 import type { LoginServiceStatus } from '../../core/login-service.ts';
 import { MANAGER_BIN, type ServiceLocation, installPlan, serviceManager, servicePaths, uninstallPlan } from '../../core/service-files.ts';
 import type { ServerConfig } from '../config.ts';
@@ -76,12 +77,26 @@ export class LoginService implements LoginServiceProvider {
     return next;
   }
 
-  async #set(enabled: boolean): Promise<LoginServiceStatus> {
+  /**
+   * D55 (`docs/updates.md` → *Switching*): registers the service definition
+   * again for another install folder (`<appDir>/src/server/main.ts`, working
+   * folder `appDir`), the updater's switch to a new version. The same steps as
+   * turning it on (a failed manager command puts the files back); it never
+   * starts or stops anything.
+   */
+  pointTo(appDir: string): Promise<LoginServiceStatus> {
+    const next = this.#queue.then(() => this.#set(true, appDir));
+    this.#queue = next.catch(() => undefined);
+    return next;
+  }
+
+  async #set(enabled: boolean, appDir?: string): Promise<LoginServiceStatus> {
     const options = this.#options;
     const { location } = options;
     if (!location) throw new ServiceError('unsupported', `Start at login is not supported on ${process.platform}.`);
     const manager = options.manager ?? [MANAGER_BIN[location.platform]];
-    const cwd = options.appDir ?? APP_DIR;
+    const cwd = appDir ?? options.appDir ?? APP_DIR;
+    const entry = appDir ? path.join(appDir, 'src', 'server', 'main.ts') : (options.entry ?? SERVICE_ENTRY);
     const run = options.run;
     if (enabled) {
       // PATH is this machine's, so it is searched the host's way (tests simulate other platforms' files).
@@ -94,7 +109,7 @@ export class LoginService implements LoginServiceProvider {
         carried: options.carried,
         address: options.address,
         appDir: cwd,
-        entry: options.entry ?? SERVICE_ENTRY,
+        entry,
         uid: options.uid === undefined ? currentUid() : options.uid,
       });
       await executePlan(installPlan(target), { manager, cwd, env: options.env, ...(run ? { run } : {}) });

@@ -1,0 +1,186 @@
+/* D55 updates: the banner, the "What's new" dialog, Settings → Updates (SPEC tokens). */
+.sb-update-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 40px);
+  padding: 6px 8px 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-toast);
+  box-shadow: var(--shadow-toast);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.sb-update-banner-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-done);
+  flex: none;
+}
+
+.sb-update-banner[data-phase='failed'] .sb-update-banner-dot {
+  background: var(--status-fail);
+}
+
+.sb-update-banner-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-update-banner-action {
+  padding: 3px 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.sb-update-banner-primary,
+.sb-update-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sb-update-banner-close {
+  padding: 0 6px;
+  color: var(--muted-2);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.sb-update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-update-dialog {
+  width: 640px;
+  max-width: calc(100% - 60px);
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.sb-update-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 22px 12px;
+}
+
+.sb-update-title {
+  font-size: var(--fs-modal-title);
+  font-weight: 600;
+}
+
+.sb-update-sub,
+.sb-update-muted {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-update-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 22px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb-update-notes {
+  border-top: 1px solid var(--border-row);
+  padding-top: 10px;
+}
+
+.sb-update-link {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-update-git,
+.sb-update-confirm,
+.sb-update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-update-code {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-code);
+  border-radius: var(--radius-card);
+  font: 400 12px var(--font-mono);
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.sb-update-error {
+  font-size: 12.5px;
+  color: var(--status-fail);
+}
+
+.sb-update-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px 18px;
+  border-top: 1px solid var(--border-row);
+}
+
+.sb-update-primary,
+.sb-update-outlined {
+  padding: 7px 14px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button-lg);
+  font-size: 12.5px;
+}
+
+.sb-update-outlined {
+  color: var(--text-2);
+}
+
+.sb-update-primary:disabled,
+.sb-update-outlined:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-update-set-primary {
+  color: var(--text-strong);
+}
+
+.sb-update-section-notes {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-update-section-label {
+  font-size: 13px;
+  font-weight: 600;
+}

@@ -18,7 +18,8 @@
     "screenshots": "node tools/screenshots/readme.ts",
     "service:install": "node tools/service/install.ts",
     "service:uninstall": "node tools/service/uninstall.ts",
-    "frame-helper:safari": "node tools/frame-helper/build-safari.ts"
+    "frame-helper:safari": "node tools/frame-helper/build-safari.ts",
+    "release:package": "node tools/release/package.ts"
   },
   "dependencies": {
     "@fastify/static": "10.1.5",

@@ -80,7 +80,7 @@ function parseUsageFigure(text: string | undefined): { readonly pct: number; rea
  * Every provider except D15's framing proxies (`toolFrames`): the demo runs none; and
  * D35's `frameHelperOpener`, which main.ts adds in every mode (it runs only on a click).
  */
-export function createDemoProviders(data: DemoData, now: () => Date = () => new Date()): Required<Omit<Providers, 'toolFrames' | 'frameHelperOpener'>> {
+export function createDemoProviders(data: DemoData, now: () => Date = () => new Date()): Required<Omit<Providers, 'toolFrames' | 'frameHelperOpener' | 'updates'>> {
   const sessionNames = new Set(data.sessions.map((s) => s.name));
 
   const diff: DiffProvider = {

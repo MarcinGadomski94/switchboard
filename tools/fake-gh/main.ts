@@ -15,11 +15,18 @@
  *   folder name of the cwd's repository, its main checkout for a worktree) wins over
  *   `<branch>`, so each repo can have its own PR for the same branch name. `FAKE_GH_FAIL=<text>` makes every
  *   `pr` command print that text to stderr and exit 1 (a network or auth failure).
+ * - D55: `gh release view --repo <r> --json <fields>` → the JSON file named by
+ *   `FAKE_GH_RELEASE` (gh's `release view` shape: tagName, name, body, assets,
+ *   publishedAt, isDraft, isPrerelease, url), only the requested fields; no file →
+ *   `release not found`, exit 1. `gh release download <tag> --repo <r> --pattern
+ *   <name> --dir <dir> [--clobber]` copies `<FAKE_GH_RELEASE_DIR>/<name>` into
+ *   `<dir>`; a missing file → `no assets match the file pattern`, exit 1.
+ *   `FAKE_GH_RELEASE_FAIL=<text>` makes every `release` command fail with that text.
  * - anything else → `unknown command`, exit 1.
  * - `FAKE_GH_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
  */
 import { spawn } from 'node:child_process';
-import { appendFile, readFile } from 'node:fs/promises';
+import { appendFile, copyFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 process.stdout.on('error', () => undefined);
@@ -113,6 +120,45 @@ async function prView(args: string[]): Promise<never> {
   return finish(0, `${JSON.stringify(picked)}\n`);
 }
 
+function option(args: readonly string[], name: string): string | null {
+  const index = args.indexOf(name);
+  if (index !== -1) return args[index + 1] ?? null;
+  const inline = args.find((arg) => arg.startsWith(`${name}=`));
+  return inline ? inline.slice(name.length + 1) : null;
+}
+
+/** D55: `gh release view` / `gh release download` from `FAKE_GH_RELEASE` / `FAKE_GH_RELEASE_DIR`. */
+async function release(command: string | undefined, args: string[]): Promise<never> {
+  const failure = process.env['FAKE_GH_RELEASE_FAIL'];
+  if (failure) return finish(1, '', `${failure}\n`);
+  if (command === 'view') {
+    const fields = (option(args, '--json') ?? '').split(',').filter(Boolean);
+    const file = process.env['FAKE_GH_RELEASE'];
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(await readFile(file ?? '', 'utf8')) as Record<string, unknown>;
+    } catch {
+      return finish(1, '', 'release not found\n');
+    }
+    const picked: Record<string, unknown> = {};
+    for (const field of fields) if (field in entry) picked[field] = entry[field];
+    return finish(0, `${JSON.stringify(fields.length > 0 ? picked : entry)}\n`);
+  }
+  if (command === 'download') {
+    const pattern = option(args, '--pattern');
+    const dir = option(args, '--dir') ?? process.cwd();
+    const source = process.env['FAKE_GH_RELEASE_DIR'];
+    if (!pattern || !source) return finish(1, '', 'no assets match the file pattern\n');
+    try {
+      await copyFile(path.join(source, pattern), path.join(dir, pattern));
+    } catch {
+      return finish(1, '', 'no assets match the file pattern\n');
+    }
+    return finish(0);
+  }
+  return finish(1, '', `unknown command "release ${command ?? ''}" for "gh"\n`);
+}
+
 async function main(): Promise<never> {
   const args = process.argv.slice(2);
   const logFile = process.env['FAKE_GH_LOG'];
@@ -126,6 +172,7 @@ async function main(): Promise<never> {
     return finish(0, 'github.com\n  ✓ Logged in to github.com account fake-gh (keyring)\n');
   }
   if (first === 'pr' && second === 'view') return prView(rest);
+  if (first === 'release') return release(second, rest);
   return finish(1, '', `unknown command "${[first, second].filter(Boolean).join(' ')}" for "gh"\n`);
 }
 

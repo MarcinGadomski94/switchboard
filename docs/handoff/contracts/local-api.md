@@ -565,6 +565,29 @@ POST /api/sidebar/place { "sessionId": "a41b…", "place": "folder", "folderId":
 sidebarLayoutChanged { "pinned": ["5c1e0b52-…"], "folders": [{ "id": "7d2c…", "name": "Reviews", "collapsed": true, "sessionIds": ["a41b…"] }] }
 ```
 
+## Updates from GitHub releases (D55, 2026-09-30, additive)
+Developer request D55 (`docs/decisions.md` → *Updates from GitHub releases*). Additive; nothing above changes meaning. No migration. This machine's only: none of these routes is on the peer API and `updateChanged` is not forwarded between peers. Details: `docs/updates.md`.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | `/api/updates` | — | `UpdateStatus` |
+| POST | `/api/updates/check` | — | `UpdateStatus` after a check of the GitHub releases (a failed check is in `lastCheck`, still 200) |
+| POST | `/api/updates/install` | `{ version }` | `202 UpdateStatus` (the update runs in the background; progress as `updateChanged`); `409 { error: "busy" \| "checking" \| "git-checkout" \| "no-update" \| "stale-version", message }`; `422` without a version |
+| POST | `/api/updates/dismiss` | `{ version }` | `UpdateStatus` (hides that version's banner) ; `422` without a version |
+
+Without an updater (the demo, `SWITCHBOARD_UPDATES=off`) every route answers `501 { error: "not-implemented", item: "D55" }`.
+
+- **UpdateStatus** `{ current, install: { kind: "git" | "release", dir }, restart: "service" | "manual", repo, checking, lastCheck: UpdateCheck | null, latest: ReleaseInfo | null, available, dismissed: string | null, progress: UpdateProgress, previous: { version, dir } | null, liveSessions }`
+- **UpdateCheck** `{ at, ok, via: "api" | "gh" | null, error: string | null }`
+- **ReleaseInfo** `{ version, tag, name, notes (Markdown), publishedAt, url }`
+- **UpdateProgress** `{ phase: "idle" | "downloading" | "verifying" | "extracting" | "installing" | "switching" | "restarting" | "restart-manually" | "failed", version, message, error, dir, at }`
+- **InboxItem** of kind `system` gains the label `Update available` (actions `whats-new`, `dismiss`).
+- **Event** `updateChanged`: `UpdateStatus` (the whole answer of `GET /api/updates`).
+
+```json
+UpdateStatus { "current": "1.0.0", "install": { "kind": "release", "dir": "C:\\Users\\me\\switchboard-1.0.0" }, "restart": "service", "repo": "MarcinGadomski94/switchboard", "checking": false, "lastCheck": { "at": "2026-09-30T09:00:00.000Z", "ok": true, "via": "api", "error": null }, "latest": { "version": "1.1.0", "tag": "v1.1.0", "name": "Switchboard 1.1.0", "notes": "## What's new …", "publishedAt": "2026-10-01T08:00:00Z", "url": "https://github.com/MarcinGadomski94/switchboard/releases/tag/v1.1.0" }, "available": true, "dismissed": null, "progress": { "phase": "installing", "version": "1.1.0", "message": "", "error": null, "dir": null, "at": "2026-10-01T08:05:00.000Z" }, "previous": null, "liveSessions": 2 }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -587,3 +610,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
 | sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers) |
+| updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |

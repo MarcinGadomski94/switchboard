@@ -68,7 +68,11 @@ You can skip it and do all of this later in Settings.
 
 ## Updating
 
-After pulling new code:
+Switchboard checks its [GitHub releases](https://github.com/MarcinGadomski94/switchboard/releases) on start and every hour (Settings → **Updates** → **Check for updates** checks now). A newer release shows a banner and an Inbox item; **What's new** shows its release notes.
+
+**A release install** (unpacked from a `switchboard-<version>.tar.gz`) updates itself: **Update** downloads the release, checks its SHA-256 checksum, unpacks it next to the running one (`<data folder>/versions/<version>`), runs `npm ci --omit=dev` there and switches to it. When Switchboard runs as the login service ([Start at login](#start-at-login)), the service restarts it into the new version and live sessions resume; started by hand with `npm start`, it tells you to restart it from the new folder (`cd "<data folder>/versions/<version>" && npm start`). Your database and settings stay where they are; migrations run on the new version's first start. The previous version stays for a rollback: `npm run service:install -- --start` in its folder. Details: [`docs/updates.md`](docs/updates.md).
+
+**A git checkout** is only told about new releases (with the commands). After pulling new code:
 
 ```sh
 npm ci           # only when package-lock.json changed
@@ -76,7 +80,9 @@ npm run build    # the UI is served from dist/web, so rebuild it
 # then restart Switchboard (stop npm start / the service and start it again)
 ```
 
-Database migrations run by themselves on start. Sessions that were live when Switchboard stopped are resumed after the restart.
+Database migrations run by themselves on start. Sessions that were live when Switchboard stopped are resumed after the restart. `SWITCHBOARD_UPDATES=off` switches the checks off.
+
+**Making a release** (maintainers): bump the version, then `npm run release:package` writes `dist/release/switchboard-<version>.tar.gz` and its `.sha256`; publish both with `gh release create v<version> … --notes-file <notes>` ([`docs/updates.md`](docs/updates.md) → *Release packages*).
 
 ## Start at login
 
@@ -101,6 +107,8 @@ Settings are environment variables, read at start. An invalid value makes `npm s
 | `SWITCHBOARD_CLAUDE_BIN` | `claude` | The Claude Code CLI; a JSON array is used as an argv prefix. |
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI. |
 | `SWITCHBOARD_SETUP_WIZARD` | on | `off` stops the wizard from opening by itself. |
+| `SWITCHBOARD_UPDATES` | on | `off` stops the hourly check for new releases (and updating). |
+| `SWITCHBOARD_UPDATE_REPO` | `MarcinGadomski94/switchboard` | The GitHub repository whose releases are checked (forks). |
 | `SWITCHBOARD_CLAUDE_EXTRA_ARGS` | none | Dev only: a JSON array of extra flags for every `claude` spawn. |
 | `SWITCHBOARD_TAILSCALE_BIN` | `tailscale` | The Tailscale CLI; `tailscale ip -4` gives the address of the optional peer listener (Machines). |
 

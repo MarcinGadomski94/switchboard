@@ -10,6 +10,7 @@ Every item is built from stored state only (D13); nothing from the prototype's m
 | `schedule-run-failed` | `scheduleRunFinished(runId)` (the scheduler's hook: M7.1 calls it when a run fails, `docs/schedules.md`) and `sync()` | a `schedule_runs` row with `result = 'fail'` |
 | `worktree-removable` | the M2.2 manager's `worktreeRemovable` event (subscribed in the constructor) and `sync()` | a live worktree flagged `removable` (PR `MERGED` and removal allowed, `docs/worktrees.md`) |
 | `parent-closed` (D47 ruling) | the manager's `onParentClosed` and `sync()` | a live stacked worktree whose parent's PR was seen turning `CLOSED` without a merge (`parent_closed_at`) |
+| `update-available` (D55) | the updater's check (`updateAvailable`, `docs/updates.md`) | a release newer than the running version: one item per version (`createOnceByPayload` on `payload.version`), open or closed; a newer release closes the older one (`superseded`), a start on that version or a newer one closes it (`updated`, `updatesResolved`) |
 | `parent-merged` (D47) | the manager's `onParentMerged` (subscribed in the constructor) and `sync()` | a live stacked worktree whose parent's PR was seen `MERGED` (`parent_merged_at`, `docs/worktrees.md` → *Stacked task branches (D47)*) |
 
 `sync()` raises the items of every failed run and removable worktree that has none yet (runs first, then worktrees, oldest first). `main.ts` runs it once the port is bound and then every 30 s (`startWatching()`, `DEFAULT_SYNC_MS`), so a failed run recorded in the schedule tables by anything, or while the service was down, still produces its item. Demo mode does not watch (the demo seeds its own two items). `inboxChanged { count }` is published whenever an item is raised (once per sync) or closed.
@@ -54,6 +55,8 @@ The Inbox shows them through `systemItem()` (`src/server/inbox/wire.ts`): kind l
 - detail `<repo> · PR #<n> <parent> was closed without merging. Nothing was sent to the session: retarget the PR of <task> to <target> (gh pr edit <task> --base <target>) and take the parent's commits out of it, or ask the session to.`
 - chip `<repo> ⎇ <task>`; action `dismiss` Dismiss. No session message.
 
+**Update available** (D55, `updateAvailableItem`): label `Update available`; source `switchboard`; status `idle`; title `Switchboard <v> is available`; detail for a release install "You run <current>. What's new shows the release notes and the Update button: …", for a git checkout "You run <current> from a git checkout, so Switchboard does not update itself: fetch <tag>, run npm ci and npm run build, then restart. …"; no chips; actions `whats-new` What's new (closes it; the UI then opens Settings → Updates, this machine's item only) · `dismiss` Dismiss; `payload` `{ version, tag }`.
+
 ## Actions (`POST /api/inbox/{id}/actions/{action}` → 204)
 The route asks the question pipeline first (permission items), then this service. An action runs, then the item closes with `closed_action` = the action and `inboxChanged` goes out; a refused action leaves it open.
 
@@ -62,6 +65,7 @@ The route asks the question pipeline first (permission items), then this service
 | `open-fix-session` | closes the item | then opens the New-session modal with the item's `prefill` (prototype): since M5.1 the form starts from it (`docs/new-session.md`); the dialog still carries it as `data-prefill` (JSON); "+ New session" opens it without one. |
 | `retry-run` | `ScheduleRunner.runNow(scheduleId)`, then closes (a new failure raises a new item) | — |
 | `remove-worktree` | `WorktreeManager.remove(worktreeId)` (gap #3: refused with uncommitted or unpushed work, never `--force`, the branch is kept); a folder already removed counts as done | — |
+| `whats-new` (D55) | closes the item | then opens `/settings/updates` (`routeAfter`, `src/web/views/inbox.ts`; not for a paired machine's item) |
 | `dismiss`, `keep` | close the item (D47's parent-merged item has only `dismiss`) | — |
 
 Refusals: unknown id `404`; an action the item does not list `400 {error:"unknown-action"}`; already closed or a second click while one runs `409 {error:"not-open"|"busy"}`; the schedule or worktree it points at is gone `409 {error:"gone"}`; a worktree refusal as the other worktree routes (`409 {error:"uncommitted"|"unpushed"|"git-failed", message}`); Retry run while a run of the schedule is still in progress `409 {error:"busy", message:"a run of this schedule is still in progress"}`; Retry run on a service with no scheduler plugged in `501 {error:"not-implemented", item:"M7.1", message:"the scheduler is not available yet"}` (only services built without one, e.g. in tests; main.ts and buildApp plug it in). The Inbox shows the message on its refusal line (`Not sent: …`).

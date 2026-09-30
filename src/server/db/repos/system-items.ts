@@ -121,6 +121,24 @@ export class SystemItemRepository {
     });
   }
 
+  /**
+   * D55: creates the item unless an item of the same `kind` (open or closed)
+   * already stores `key` = `value` in its payload (`payload.version` for the
+   * update item: one per release); check and insert in one transaction.
+   * @returns the new item, or `null` when one already exists.
+   */
+  async createOnceByPayload(input: SystemItemCreate, key: string, value: string): Promise<SystemItemRecord | null> {
+    if (!/^[a-zA-Z]+$/.test(key)) throw new TypeError(`payload key must be letters only, got "${key}"`);
+    return transaction(this.#ctx.db, () => {
+      if (this.#table.first(`kind = ? AND json_extract(payload, '$.${key}') = ?`, [input.kind, value])) return null;
+      return this.#table.insert({
+        ...defined(input),
+        id: input.id ?? randomUUID(),
+        createdAt: input.createdAt ?? this.#ctx.now(),
+      });
+    });
+  }
+
   /** Ids of the failed schedule runs (`result = 'fail'`) that have no item of `kind` yet, oldest first. */
   async failedRunsWithoutItem(kind: string): Promise<string[]> {
     const rows = this.#table

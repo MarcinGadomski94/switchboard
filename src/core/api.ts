@@ -13,6 +13,7 @@
  */
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
+import type { UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
@@ -1739,6 +1740,12 @@ export interface HubEvents {
    * only: never forwarded between peers.
    */
   readonly sidebarLayoutChanged: SidebarLayout;
+  /**
+   * Additive (D55): the updater's state changed (a check started or ended, an
+   * update's progress, a dismissed banner); the payload is the whole
+   * `GET /api/updates` answer. This machine's only: never forwarded between peers.
+   */
+  readonly updateChanged: UpdateStatus;
 }
 
 /** D52: what happened to a schedule (`schedulesChanged`). */
@@ -1759,6 +1766,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'activity',
   'schedulesChanged',
   'sidebarLayoutChanged',
+  'updateChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */
