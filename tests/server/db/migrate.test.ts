@@ -4,15 +4,20 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../../../src/server/db/database.ts';
 import {
+  FOREIGN_KEYS_OFF,
   LEGACY_CHECKSUMS,
   MIGRATIONS_DIR,
+  type Migration,
   MigrationError,
   appliedMigrations,
   checksumOf,
   loadMigrations,
   makeMigration,
   migrate,
+  needsForeignKeysOff,
 } from '../../../src/server/db/migrate.ts';
+import { loadDemoData } from '../../../src/server/demo/data.ts';
+import { seedDemo } from '../../../src/server/demo/seed.ts';
 import { openStore, storeFile } from '../../../src/server/db/store.ts';
 import { EMPTY_CONTEXT } from '../../../src/core/context-meter.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -685,5 +690,185 @@ describe('loadMigrations', () => {
     await mkdir(dir);
     for (const file of files) await writeFile(path.join(dir, file), 'SELECT 1;');
     await expect(loadMigrations(dir)).rejects.toThrow(message);
+  });
+});
+
+describe('0022 plain folders (D59)', () => {
+  /** sha256 of every migration shipped before D59 (as on master before this change): editing one stops existing installs. */
+  const SHIPPED_BEFORE_D59: ReadonlyArray<readonly [string, string]> = [
+    ['0001_initial.sql', 'fd797d41e9fc0f5db3856037a03bd8482c489a158de960764486e55a0dde45e2'],
+    ['0002_default_tools.sql', 'e736499c8c9891496fb64772c95de472b5712afbdc8d9bcc9874ea958409e76e'],
+    ['0003_folders.sql', '161edafd1242fa1e848190eaf6e8f516368230e6f1c4dd7a09cf52407f5d9a61'],
+    ['0004_session_origin.sql', 'b6c744d4b09466347aef050948fad6c41c9a611e5fe8080d6cca1b412d49f128'],
+    ['0005_folder_label.sql', 'a3fe407934264578c0855dd85ad05b51a568312b2541c9ff1a1b99f2b7831040'],
+    ['0006_session_title.sql', '7f3c34842bbfc876200ce831ca0caf0d76b803a533bd974efd28a794e94b7e3f'],
+    ['0007_session_remote.sql', '096055a188e46e33f0aebc8da9e675f01f0d18719350b3b3d390ead0578f774d'],
+    ['0008_session_remote_source.sql', '99889c3e9579fc0c2cf78a482351f04cc38986e454f4fd511b6bd4e0087b7867'],
+    ['0009_session_model.sql', 'b496455743f9f86f8e588e5b7ddbbbd016af3322e286457c8c22d3ee63255630'],
+    ['0010_session_closed.sql', '658315a5c0fec18fddea8302c6502d7b3d59862de123f5fd7e8e10e34d8a780e'],
+    ['0011_session_branch.sql', 'f341222321d64382190f6978293ee4862ccc254be91fdb855a9cfa5c6a55350c'],
+    ['0012_session_branching.sql', '2789ddb2046e1cbb9a5932c1504630b432f6a8caf6bced89980a5227fa8da66a'],
+    ['0013_worktree_parent.sql', '04d4fe06ea679ffdb62d20bc979970acc0187cb7340c014c261b26221ff6e751'],
+    ['0014_worktree_parent_closed.sql', '4ab9b10d2ba75fe91011927e4d745d599ab0bbe50a0e3653de4ee3e8064c734b'],
+    ['0015_session_context.sql', 'df7815b012f8fdf11a8a599d4ab849cbc183255b25ca72497ac44ea93ec0fe20'],
+    ['0016_machines.sql', '2f0eb44ece7b636d63775c39eb031f52aceb059372ceeb64973237ca6e77aa1b'],
+    ['0017_hooked_sessions.sql', '72a93c52af27733120f5e6578d74e5f412d636264feaf5e5ccd208d6aab53485'],
+    ['0018_peer_snapshots.sql', '321e7d8cb5f489223716c807f7b1748682d8b6bf4449f65cd099a98e60505b62'],
+    ['0019_sidebar_layout.sql', 'a734ca537d8b2fed7542704469fd8b46754ae1acf04807165e965b4d96f50891'],
+    ['0020_attachments.sql', 'e4ded7214a6486f5641d94e68d1b20df8dbc656797418467df8895d308e1a6cf'],
+    ['0021_sidebar_subfolders.sql', '6d0f5f1d8e83bc77e47fe97b0e575ee5cb15048a9999b2b1238ddd6443c45eb2'],
+  ];
+
+  const insertFolder = 'INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at, last_used_at, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+
+  /** Every row of `table` in rowid order, rowid included (a table rebuild must keep them). */
+  function rowsOf(database: DatabaseSync, table: string): unknown[] {
+    return database.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all();
+  }
+
+  /** Every user table's rows, by name. */
+  function dump(database: DatabaseSync): Record<string, unknown[]> {
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    return Object.fromEntries(tables.map((row) => [String(row['name']), rowsOf(database, String(row['name']))]));
+  }
+
+  it('leaves every earlier migration file as it was shipped (checksums)', async () => {
+    const shipped = await loadMigrations();
+    for (const [file, checksum] of SHIPPED_BEFORE_D59) {
+      expect(checksumOf(await readFile(path.join(MIGRATIONS_DIR, file), 'utf8')), file).toBe(checksum);
+      expect(shipped.find((m) => `${String(m.version).padStart(4, '0')}_${m.name}.sql` === file)?.checksum, file).toBe(checksum);
+    }
+    const plain = shipped.find((m) => m.name === 'plain_folders');
+    expect(plain?.version).toBe(22);
+    expect(needsForeignKeysOff(plain as Migration)).toBe(true);
+    expect(shipped.filter((m) => needsForeignKeysOff(m)).map((m) => m.version)).toEqual([22]);
+  });
+
+  it('a fresh database: folders.kind takes plain (and nothing else new); the indexes and the references to folders are kept', async () => {
+    const database = await db();
+    migrate(database, await loadMigrations());
+    const insert = database.prepare(insertFolder);
+    insert.run('w', '/w', '/w', 'workspace', 1, 'now', null, null);
+    insert.run('r', '/r', '/r', 'repo', 0, 'now', null, 'Tools');
+    insert.run('p', '/p', '/p', 'plain', 0, 'now', null, null);
+    expect(() => insert.run('x', '/x', '/x', 'bogus', 0, 'now', null, null)).toThrow(/CHECK/);
+    expect(() => insert.run('d', '/d', '/d', 'plain', 1, 'now', null, null)).toThrow(/UNIQUE/);
+    expect(() => insert.run('l', '/l', '/l', 'plain', 0, 'now', null, 'tools')).toThrow(/UNIQUE/);
+    expect(() => insert.run('c', '/c', '/p', 'plain', 0, 'now', null, null)).toThrow(/UNIQUE/);
+    const indexes = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'folders' AND sql IS NOT NULL ORDER BY name`).all();
+    expect(indexes.map((row) => row['name'])).toEqual(['folders_default', 'folders_label']);
+    expect(database.prepare(`SELECT "table", "from", on_delete FROM pragma_foreign_key_list('sessions') WHERE "table" = 'folders'`).all()).toEqual([{ table: 'folders', from: 'folder_id', on_delete: 'SET NULL' }]);
+    expect(database.prepare(`SELECT "table", "from", on_delete FROM pragma_foreign_key_list('schedules') WHERE "table" = 'folders'`).all()).toEqual([{ table: 'folders', from: 'folder_id', on_delete: 'SET NULL' }]);
+    // The new table enforces them: removing a folder unlinks its sessions; an unknown folder id is refused.
+    const ts = 'now';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, root, root_kind, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('s', 'n', 'c', '/p', '/p', null, 'p', ts, ts);
+    expect(() => database.prepare('INSERT INTO sessions (id, name, claude_session_id, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('s2', 'n2', 'c2', 'nope', ts, ts)).toThrow(/FOREIGN KEY/);
+    database.prepare("DELETE FROM folders WHERE id = 'p'").run();
+    expect(database.prepare("SELECT folder_id, root, root_kind FROM sessions WHERE id = 's'").get()).toEqual({ folder_id: null, root: '/p', root_kind: null });
+    // sessions.root_kind keeps 0003's CHECK: a plain session stores NULL (the repository maps it).
+    expect(() => database.prepare("UPDATE sessions SET root_kind = 'plain' WHERE id = 's'").run()).toThrow(/CHECK/);
+  });
+
+  it('on top of every earlier migration with folders, sessions and schedules: every row, rowid and link is kept; foreign keys are back on', async () => {
+    const database = await db();
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version < 22));
+    const ts = '2026-09-30T10:00:00.000Z';
+    const insert = database.prepare(insertFolder);
+    // Added out of id order, so the rowid order (the list's last tie-break) differs from the ids'.
+    insert.run('f-ws', '/Users/dev/ws', '/Users/dev/ws', 'workspace', 1, ts, ts, null);
+    insert.run('c-repo', '/Users/dev/tool', '/real/tool', 'repo', 0, ts, null, 'Tools');
+    insert.run('a-repo', '/Users/dev/other', '/Users/dev/other', 'repo', 0, ts, null, null);
+    const session = database.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, root, root_kind, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    session.run('s-ws', 'ws', 'c1', '/Users/dev/ws', '/Users/dev/ws', 'workspace', 'f-ws', ts, ts);
+    session.run('s-repo', 'repo', 'c2', '/real/tool', '/real/tool', 'repo', 'c-repo', ts, ts);
+    session.run('s-gone', 'gone', 'c3', '/Users/dev/gone', '/Users/dev/gone', 'workspace', null, ts, ts);
+    database.prepare('INSERT INTO events (session_id, ts, kind, label) VALUES (?, ?, ?, ?)').run('s-repo', ts, 'text', 'hello');
+    database.prepare('INSERT INTO schedules (id, name, cron, template, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sch', 'nightly', '0 2 * * *', '{}', 'c-repo', ts, ts);
+    database.prepare('INSERT INTO schedules (id, name, cron, template, folder_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('sch2', 'weekly', '0 3 * * 1', '{}', 'f-ws', ts, ts);
+    const before = dump(database);
+    const schemaBefore = schemaDump(database).filter((line) => !/ folders(_default|_label)?: /.test(line));
+
+    expect(migrate(database, shipped).applied).toEqual([22]);
+    expect(dump(database)).toEqual(before);
+    expect(rowsOf(database, 'folders').map((row) => (row as { id: string }).id)).toEqual(['f-ws', 'c-repo', 'a-repo']);
+    // Nothing but the folders table (and its indexes) changed in the schema.
+    expect(schemaDump(database).filter((line) => !/ folders(_default|_label)?: /.test(line))).toEqual(schemaBefore);
+    expect(String(database.prepare(`SELECT sql FROM sqlite_master WHERE name = 'folders'`).get()?.['sql'])).toContain("CHECK (kind IN ('workspace', 'repo', 'plain'))");
+    expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(database.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+    // The links still work both ways after the rebuild.
+    database.prepare("DELETE FROM schedules WHERE folder_id = 'c-repo'").run();
+    database.prepare("DELETE FROM folders WHERE id = 'c-repo'").run();
+    expect(database.prepare("SELECT folder_id FROM sessions WHERE id = 's-repo'").get()).toEqual({ folder_id: null });
+    expect(database.prepare("SELECT count(*) AS n FROM events WHERE session_id = 's-repo'").get()).toEqual({ n: 1 });
+    // Running again is a no-op.
+    expect(migrate(database, shipped).applied).toEqual([]);
+  });
+
+  it('a copy of a realistic database (the demo fixtures + saved folders, sessions, schedules, worktrees) keeps every row', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'realistic', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 22) });
+    try {
+      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      const repo = await earlier.folders.create({ path: '/Users/dev/tool', canonicalPath: '/real/tool', kind: 'repo', label: 'Tools' });
+      await earlier.folders.markUsed(repo.id);
+      const made = await earlier.sessions.create({ name: 'tool-work', claudeSessionId: 'c-tool', cwd: '/real/tool', root: '/real/tool', rootKind: 'repo', folderId: repo.id });
+      await earlier.worktrees.create({ repo: 'tool', repoPath: '/real/tool', branch: 'sb/tool-work', path: '/real/tool-wt-tool-work', sessionId: made.id });
+      await earlier.schedules.create({ name: 'nightly-tool', cron: '0 2 * * *', template: { name: 'nightly-tool' }, folderId: repo.id });
+    } finally {
+      await earlier.close();
+    }
+    // Migrate a copy, as an existing install's file would be.
+    const copy = path.join(tmp, 'copy', 'switchboard.db');
+    await mkdir(path.dirname(copy), { recursive: true });
+    const source = await db(file);
+    source.exec(`VACUUM INTO '${copy.replace(/'/g, "''")}'`);
+    const before = dump(source);
+    expect(before['folders']?.length).toBeGreaterThanOrEqual(2);
+    expect(before['sessions']?.length).toBeGreaterThanOrEqual(7);
+
+    const store = await openStore(copy);
+    try {
+      expect(store.migrations.applied).toEqual([22]);
+      expect(dump(store.db)).toEqual(before);
+      expect(store.db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      expect(store.db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
+      // The repositories read it as before, and take a plain folder and a plain session now.
+      expect((await store.folders.list()).map((f) => f.kind).sort()).toEqual(['repo', 'workspace']);
+      const plain = await store.folders.create({ path: '/Users/dev/notes', canonicalPath: '/Users/dev/notes', kind: 'plain' });
+      const session = await store.sessions.create({ name: 'notes', claudeSessionId: 'c-notes', cwd: plain.canonicalPath, root: plain.canonicalPath, rootKind: 'plain', folderId: plain.id });
+      expect(session.rootKind).toBe('plain');
+      expect(store.db.prepare('SELECT root_kind FROM sessions WHERE id = ?').get(session.id)).toEqual({ root_kind: null });
+      expect((await store.sessions.list()).find((s) => s.id === session.id)?.rootKind).toBe('plain');
+      // A session that never started (no root) stays without a kind.
+      const idle = await store.sessions.create({ name: 'idle', claudeSessionId: 'c-idle' });
+      expect(idle.rootKind).toBeNull();
+    } finally {
+      await store.close();
+    }
+  });
+
+  it('the runner: a foreign_keys=off migration drops a referenced table without touching its children, and a violation still rolls back', async () => {
+    const base = [makeMigration(1, 'base', 'CREATE TABLE p (id TEXT PRIMARY KEY) STRICT; CREATE TABLE c (id TEXT PRIMARY KEY, p_id TEXT REFERENCES p (id) ON DELETE SET NULL) STRICT; INSERT INTO p VALUES (\'a\'); INSERT INTO c VALUES (\'x\', \'a\');')];
+    const rebuild = makeMigration(2, 'rebuild', `${FOREIGN_KEYS_OFF}\nCREATE TABLE p_new (id TEXT PRIMARY KEY, note TEXT) STRICT;\nINSERT INTO p_new (id) SELECT id FROM p;\nDROP TABLE p;\nALTER TABLE p_new RENAME TO p;\n`);
+    const database = await db();
+    migrate(database, base);
+    expect(migrate(database, [...base, rebuild]).applied).toEqual([2]);
+    expect(database.prepare('SELECT p_id FROM c').get()).toEqual({ p_id: 'a' });
+    expect(database.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+    // Without the directive the same drop would have run the children's ON DELETE action.
+    const other = await db(path.join(tmp, 'other.db'));
+    migrate(other, base);
+    migrate(other, [...base, makeMigration(2, 'rebuild', rebuild.sql.split('\n').slice(1).join('\n'))]);
+    expect(other.prepare('SELECT p_id FROM c').get()).toEqual({ p_id: null });
+    // A rebuild that leaves a dangling reference is rolled back, and foreign keys are on again.
+    const broken = makeMigration(2, 'broken', `${FOREIGN_KEYS_OFF}\nCREATE TABLE p_new (id TEXT PRIMARY KEY) STRICT;\nDROP TABLE p;\nALTER TABLE p_new RENAME TO p;\n`);
+    const third = await db(path.join(tmp, 'third.db'));
+    migrate(third, base);
+    expect(() => migrate(third, [...base, broken])).toThrow(/foreign key violations/);
+    expect(third.prepare('SELECT id FROM p').all()).toEqual([{ id: 'a' }]);
+    expect(third.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
   });
 });

@@ -6,7 +6,7 @@
  * worktrees. No processes, no file system: `src/server/worktrees/` runs git / gh.
  */
 import path from 'node:path';
-import type { FileDiff } from './api.ts';
+import type { FileDiff, RepoBranch } from './api.ts';
 import { GROUP_FOLDERS } from './derive/artifacts.ts';
 
 /** Prefix of the branch every Switchboard worktree gets (gap #1). */
@@ -243,6 +243,21 @@ export interface MoveMessageInput {
   readonly branch: string;
   /** The base branch (or commit) the worktree branch was created from. */
   readonly base: string;
+  /**
+   * D60: the worktree is on a branch that existed before (the conflict card's
+   * "Existing branch"); omitted / `null` = a new branch (D32).
+   */
+  readonly existing?: ExistingBranchNote | null;
+}
+
+/** D60: what the move message says about an existing branch. */
+export interface ExistingBranchNote {
+  /** The branch's upstream (`origin/PROJ-7-login`); `null` when it tracks nothing. */
+  readonly upstream: string | null;
+  /** `true` when this move made the local branch from the remote one (it tracks it). */
+  readonly createdFromRemote: boolean;
+  /** The remote branch the developer picked when a local branch of that name was used instead; `null` otherwise. */
+  readonly pickedRemote: string | null;
 }
 
 /**
@@ -251,11 +266,99 @@ export interface MoveMessageInput {
  * asks the agent to stash, reset or check out the developer's tree.
  */
 export function moveToWorktreeMessage(input: MoveMessageInput): string {
+  const existing = input.existing ?? null;
+  if (existing) return existingBranchMoveMessage(input, existing);
   return [
     `Switchboard moved your work on ${input.repo} into its own git worktree, so your changes stay separate from other work in that repo.`,
     `From now on, make every change to ${input.repo} in ${input.worktreePath} (branch ${input.branch}, created from the current commit of ${input.base}). Do not edit files in ${input.repoPath} any more.`,
     `Anything you already changed in ${input.repoPath} was left where it is. Re-apply the changes you still need inside the worktree, for example by copying the files you edited. Do not stash, reset or check out anything in ${input.repoPath}: that working tree belongs to the developer.`,
   ].join('\n\n');
+}
+
+/**
+ * D60: the move message for a worktree on an existing branch: it names the
+ * branch as existing (and its upstream), so the agent continues that branch's
+ * work instead of starting fresh.
+ */
+function existingBranchMoveMessage(input: MoveMessageInput, existing: ExistingBranchNote): string {
+  const where = existing.upstream
+    ? existing.createdFromRemote
+      ? `the existing branch ${input.branch}, made from ${existing.upstream} and tracking it`
+      : `the existing branch ${input.branch}, tracking ${existing.upstream}`
+    : `the existing branch ${input.branch}, which tracks no remote branch`;
+  const picked = existing.pickedRemote ? `; ${existing.pickedRemote} was picked, but the local branch ${input.branch} already existed, so the worktree uses it` : '';
+  const catchUp = existing.upstream ? ` If ${existing.upstream} has commits the branch lacks, bring them in before you build on it.` : '';
+  return [
+    `Switchboard moved your work on ${input.repo} into its own git worktree, so your changes stay separate from other work in that repo.`,
+    `From now on, make every change to ${input.repo} in ${input.worktreePath} (${where}${picked}). Do not edit files in ${input.repoPath} any more.`,
+    `This branch already has work on it: you are continuing that branch's work, not starting fresh. Read its recent commits (git log in the worktree) before you change anything.${catchUp}`,
+    `Anything you already changed in ${input.repoPath} was left where it is. Re-apply the changes you still need inside the worktree, for example by copying the files you edited. Do not stash, reset or check out anything in ${input.repoPath}: that working tree belongs to the developer.`,
+  ].join('\n\n');
+}
+
+// ── D60: existing branches ───────────────────────────────────────────────
+
+/** `git for-each-ref` format {@link parseBranchRefs} reads: ref, upstream, committer date, subject, NUL-separated. */
+export const BRANCH_REF_FORMAT = '%(refname)%00%(upstream:short)%00%(committerdate:iso-strict)%00%(contents:subject)';
+
+/**
+ * D60: the branches of `git for-each-ref --sort=-committerdate
+ * --format=<BRANCH_REF_FORMAT> refs/heads refs/remotes` as {@link RepoBranch}es:
+ * local branches first, then remote ones (a remote's `HEAD` left out), each
+ * newest first as git sorted them. `remotes` are the repo's remote names (a
+ * remote ref's remote is the longest that prefixes it); `checkedOut` maps a
+ * local branch to the worktree it is checked out in.
+ */
+export function parseBranchRefs(stdout: string, remotes: readonly string[], checkedOut: ReadonlyMap<string, string>): RepoBranch[] {
+  const rows = stdout
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [ref = '', upstream = '', date = '', subject = ''] = line.split('\0');
+      return { ref, upstream, date, subject };
+    });
+  const locals = new Set(rows.filter((row) => row.ref.startsWith('refs/heads/')).map((row) => row.ref.slice('refs/heads/'.length)));
+  const byLength = [...remotes].sort((a, b) => b.length - a.length);
+  const local: RepoBranch[] = [];
+  const remote: RepoBranch[] = [];
+  for (const row of rows) {
+    const common = { subject: row.subject.trim() || null, committedAt: row.date.trim() || null };
+    if (row.ref.startsWith('refs/heads/')) {
+      const name = row.ref.slice('refs/heads/'.length);
+      if (name === '') continue;
+      local.push({ name, kind: 'local', remote: null, localName: name, upstream: row.upstream.trim() || null, localExists: true, ...common, checkedOutAt: checkedOut.get(name) ?? null });
+    } else if (row.ref.startsWith('refs/remotes/')) {
+      const name = row.ref.slice('refs/remotes/'.length);
+      const remoteName = byLength.find((candidate) => name.startsWith(`${candidate}/`)) ?? name.split('/')[0] ?? '';
+      const localName = name.slice(remoteName.length + 1);
+      if (localName === '' || localName === 'HEAD') continue;
+      remote.push({
+        name,
+        kind: 'remote',
+        remote: remoteName,
+        localName,
+        upstream: name,
+        localExists: locals.has(localName),
+        ...common,
+        checkedOutAt: checkedOut.get(localName) ?? null,
+      });
+    }
+  }
+  return [...local, ...remote];
+}
+
+/**
+ * D60: `IsolateRequest.existingBranch` as a name git may be given as an
+ * argument: trimmed, not empty, no leading `-` (never an option), no spaces,
+ * control characters or `..`; `null` otherwise. Whether the branch exists is
+ * git's to say.
+ */
+export function existingBranchName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  if (name === '' || name.startsWith('-') || name.includes('..') || /[\s\x00-\x1f\x7f~^:?*[\\]/.test(name)) return null;
+  return name;
 }
 
 // ── D38: adopted worktrees ───────────────────────────────────────────────

@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { MESSAGE_TITLE_MAX, simpleBranchFromTitle, simpleBranchOfName, simpleShortName, simpleTitle, titleFromMessage } from '../../src/core/simple-session.ts';
 import { readKnownSettings } from '../../src/core/settings.ts';
-import { DEFAULT_FORM, type FormFolder, type NewSessionForm, toStartBody } from '../../src/web/modals/new-session.ts';
+import type { FolderCheck } from '../../src/core/api.ts';
+import { FOLDER_KIND_LABEL, PLAIN_CHECK_LINE, folderCheckLine } from '../../src/web/folders/folders.ts';
 import {
+  DEFAULT_FORM,
+  type FormFolder,
+  type NewSessionForm,
+  PLAIN_FOLDER_FULL_NOTE,
+  PLAIN_FOLDER_SCHEDULE_NOTE,
+  canStart,
+  formComplete,
+  isPlainFolder,
+  toStartBody,
+} from '../../src/web/modals/new-session.ts';
+import { canSaveSchedule, cronPreview } from '../../src/web/modals/schedule-form.ts';
+import { needsFolderText } from '../../src/web/views/history-move.ts';
+import { FOLDER_ROOT, rootPath } from '../../src/web/views/session/right-panel.ts';
+import { placeLabel } from '../../src/web/views/session/session-header.ts';
+import {
+  PLAIN_NOTE,
   WORKSPACE_NOTE,
   branchProblem,
   canStartSimple,
@@ -184,5 +201,42 @@ describe('D56 · carry-over between Simple and Full (one form state)', () => {
     const typed = form({ folder: 'rp', name: 'PROJ-12 Tidy readme', task: 'x', worktrees: true });
     expect(toSimpleBody({ form: typed, folder: REPO, branch: 'sb/other', takenNames: [] })).toMatchObject({ branch: 'sb/other' });
     expect(toStartBody(typed, REPO, [])).toMatchObject({ branch: 'PROJ-12-tidy-readme' });
+  });
+});
+
+describe('D59 · a plain folder (no AGENTS.md, not a git repository)', () => {
+  const PLAIN: FormFolder = { id: 'pl', path: '/Users/dev/notes', name: 'notes', displayName: 'notes', kind: 'plain' };
+  const plainCheck: FolderCheck = { path: '/Users/dev/notes', canonicalPath: '/Users/dev/notes', exists: true, kind: 'plain', router: null, solutionCount: 0, repoName: null, problem: null, message: '' };
+
+  it('Simple starts there: no worktree offered (even when the shared form has it on), the message alone, runs in the folder', () => {
+    expect(offersWorktree(PLAIN)).toBe(false);
+    const f = form({ folder: 'pl', task: 'Sort my notes.', worktrees: true });
+    expect(usesWorktree(f, PLAIN)).toBe(false);
+    expect(simpleBlockers({ form: f, folder: PLAIN, branch: 'bad..name', takenNames: [] })).toEqual([]);
+    expect(canStartSimple({ form: f, folder: PLAIN, branch: null, takenNames: [] })).toBe(true);
+    expect(toSimpleBody({ form: f, folder: PLAIN, branch: null, takenNames: [] })).toEqual({ simple: true, name: 'sort-my-notes', task: 'Sort my notes.', folder: 'pl', worktrees: false, title: 'Sort my notes.' });
+    expect(whereLine({ form: f, folder: PLAIN, takenNames: [] })).toBe('Runs in /Users/dev/notes');
+    expect(PLAIN_NOTE).toBe('A plain folder (no AGENTS.md, not a git repository): Claude runs here with your message alone.');
+  });
+
+  it('Full cannot start (or save a schedule) there; its note offers Simple', () => {
+    const f = form({ folder: 'pl', task: 'Sort my notes.', name: 'notes' });
+    expect(isPlainFolder(PLAIN)).toBe(true);
+    expect(isPlainFolder(REPO)).toBe(false);
+    expect(formComplete(f, PLAIN)).toBe(false);
+    expect(canStart(f, [], PLAIN)).toBe(false);
+    expect(canStart({ ...f, worktrees: false }, [], REPO)).toBe(true);
+    expect(canSaveSchedule({ ...f, name: 'nightly' }, cronPreview('0 2 * * *', new Date('2026-09-30T10:00:00Z')), [], PLAIN)).toBe(false);
+    expect(PLAIN_FOLDER_FULL_NOTE).toContain('Use Simple');
+    expect(PLAIN_FOLDER_SCHEDULE_NOTE).not.toContain('Use Simple');
+  });
+
+  it('a typed or browsed plain path checks as a folder (the Add button saves it); the kind reads "folder"; its sessions read "folder"', () => {
+    expect(folderCheckLine(plainCheck)).toEqual({ ok: true, text: PLAIN_CHECK_LINE });
+    expect(PLAIN_CHECK_LINE).toBe('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
+    expect(FOLDER_KIND_LABEL.plain).toBe('folder');
+    expect(placeLabel({ cwd: '/Users/dev/notes', folderPath: '/Users/dev/notes', folderKind: 'plain' })).toBe('folder');
+    expect(rootPath({ folderKind: 'plain', folderPath: '/Users/dev/notes' })).toBe(FOLDER_ROOT);
+    expect(needsFolderText(plainCheck)).toBe('No saved folder holds this conversation. It sits in the folder /Users/dev/notes.');
   });
 });

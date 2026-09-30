@@ -23,6 +23,8 @@ export const WORKTREE_ERROR_STATUS: Record<WorktreeErrorCode, number> = {
   'branch-checked-out': 409,
   // D47: the typed parent key names several origin branches in a repo.
   'parent-ambiguous': 409,
+  // D60: the existing branch picked for "Move … to worktree" is not the repo's.
+  'branch-not-found': 409,
 };
 
 /**

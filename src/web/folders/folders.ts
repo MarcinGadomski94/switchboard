@@ -39,11 +39,13 @@ function solutions(count: number): string {
  * The check line of a folder (D14): a workspace `✓ AGENTS.md (Workspace Router) ·
  * 38 solutions` (the router's name, then how many solutions its scan lists; the
  * count is left out when the scan failed), a repo `✓ git repo · single solution`,
+ * D59: a plain folder {@link PLAIN_CHECK_LINE},
  * anything else `✕ <the server's message>`. `null` without a check.
  */
 export function folderCheckLine(check: FolderCheck | null): CheckLine | null {
   if (!check) return null;
   if (check.kind === 'repo') return { ok: true, text: '✓ git repo · single solution' };
+  if (check.kind === 'plain') return { ok: true, text: PLAIN_CHECK_LINE };
   if (check.kind === 'workspace') {
     const name = routerName(check.router?.title ?? null);
     return { ok: true, text: check.solutionCount === null ? `✓ ${name}` : `✓ ${name} · ${solutions(check.solutionCount)}` };
@@ -51,8 +53,11 @@ export function folderCheckLine(check: FolderCheck | null): CheckLine | null {
   return { ok: false, text: `✕ ${check.message || 'not a workspace or a git repository'}` };
 }
 
-/** The kind as the UI names it. */
-export const FOLDER_KIND_LABEL: Readonly<Record<FolderKind, string>> = { workspace: 'workspace', repo: 'git repo' };
+/** D59: the check line of a plain folder (no AGENTS.md, not a git repository): Simple sessions start there. */
+export const PLAIN_CHECK_LINE = '✓ folder · no AGENTS.md, not a git repo · Simple sessions';
+
+/** The kind as the UI names it (D59: a plain folder is just a `folder`). */
+export const FOLDER_KIND_LABEL: Readonly<Record<FolderKind, string>> = { workspace: 'workspace', repo: 'git repo', plain: 'folder' };
 
 /** The default saved folder (the API lists it first), `null` while none is saved. */
 export function defaultFolder(folders: readonly Folder[] | null): Folder | null {

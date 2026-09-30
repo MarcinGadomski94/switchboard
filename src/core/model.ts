@@ -41,9 +41,11 @@ export type QaStack = (typeof QA_STACKS)[number];
 /**
  * Folder kind (D14, locked by the decision): a `workspace` is a folder with a
  * router `AGENTS.md` that is not itself a git main checkout (many solutions,
- * router rules); a `repo` is a git main checkout (one solution).
+ * router rules); a `repo` is a git main checkout (one solution). D59 adds
+ * `plain`: any other folder (no `AGENTS.md`, not a git repository), for Simple
+ * sessions only: no solutions, no worktrees, no router answers.
  */
-export const FOLDER_KINDS = ['workspace', 'repo'] as const;
+export const FOLDER_KINDS = ['workspace', 'repo', 'plain'] as const;
 /** Kind of a saved folder / of a session's folder. */
 export type FolderKind = (typeof FOLDER_KINDS)[number];
 

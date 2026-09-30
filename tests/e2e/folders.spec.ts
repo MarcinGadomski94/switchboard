@@ -19,9 +19,9 @@ import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts'
  *   `microfrontends/web-front` and `mobile`, saved as the default before the start;
  * - `second ws`: another workspace with `microfrontends/pay-front`;
  * - `tool-repo`: a git main checkout on its own (a repo folder);
- * - `plain folder`: neither, refused.
+ * - `plain folder`: neither (D59: a plain folder, which checks as one; a missing path is refused).
  * 1. Settings → Folders: Add… a repo, a workspace picked with Browse…, and a
- *    repo inside the workspace; a plain folder is refused and not added; Make
+ *    repo inside the workspace; a missing folder is refused and not added; Make
  *    default; Remove; the scan of the folder clicked.
  * 2. The New-session form's Folder row: switching folders changes the chips; a
  *    repo folder hides the router sections, shows the repo as its one locked
@@ -150,7 +150,7 @@ test.beforeEach(async ({ page }) => {
   await stubToolProbes(page);
 });
 
-test('Settings → Folders: Add… a repo and a workspace (Browse…), a plain folder is refused, Make default, Remove, the scan of the folder clicked', async ({ page }) => {
+test('Settings → Folders: Add… a repo and a workspace (Browse…), a missing folder is refused, Make default, Remove, the scan of the folder clicked', async ({ page }) => {
   await page.goto(`${server.baseUrl}/settings/workspace`);
   await expect(page.getByTestId('settings-title')).toHaveText('Folders');
   const rows = page.getByTestId('settings-folder');
@@ -158,7 +158,7 @@ test('Settings → Folders: Add… a repo and a workspace (Browse…), a plain f
   await expect(rows.getByTestId('settings-folder-check')).toHaveText('✓ AGENTS.md (Workspace Router) · 2 solutions');
   await expect(page.getByTestId('settings-scan').locator('.sb-set-scan-folder')).toHaveText(['microfrontends/', 'mobile/']);
 
-  // A plain folder: its check line says why, Add refuses it, nothing is saved.
+  // D59: a plain folder checks as one (it could be saved; tests/e2e/simple-session.spec.ts does); a missing folder: Add refuses it, nothing is saved.
   await page.getByTestId('settings-folder-add').click();
   const panel = page.getByTestId('settings-folder-add-panel');
   await expect(panel).toBeVisible();
@@ -166,10 +166,13 @@ test('Settings → Folders: Add… a repo and a workspace (Browse…), a plain f
   await expect(panel.getByTestId('settings-folder-add-browser-path')).toHaveText(workspace);
   const input = panel.getByTestId('settings-folder-add-input');
   await input.fill(plain);
-  await expect(panel.getByTestId('settings-folder-add-line')).toHaveText('✕ no AGENTS.md here and not a git repository');
+  await expect(panel.getByTestId('settings-folder-add-line')).toHaveText('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
+  await expect(panel.getByTestId('settings-folder-add-line')).toHaveAttribute('data-ok', 'true');
+  await input.fill(path.join(plain, 'nope'));
+  await expect(panel.getByTestId('settings-folder-add-line')).toHaveText('✕ folder not found');
   await expect(panel.getByTestId('settings-folder-add-line')).toHaveAttribute('data-ok', 'false');
   await panel.getByTestId('settings-folder-add-add').click();
-  await expect(panel.getByTestId('settings-folder-add-error')).toHaveText('Not added: no AGENTS.md here and not a git repository');
+  await expect(panel.getByTestId('settings-folder-add-error')).toHaveText('Not added: folder not found');
   expect((await savedFolders(page)).map((f) => f.path)).toEqual([workspace]);
 
   // A git repo on its own: a repo folder.

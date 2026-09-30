@@ -19,8 +19,8 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  *    walks its five steps: the `claude --version` / `claude auth status` /
  *    `gh auth status` rows; "Add your first folder" (skippable: Continue with an
  *    empty field moves on and the scan says there is no folder yet; a git repo
- *    reads `✓ git repo · single solution`; a plain folder is refused and not
- *    added; the workspace chosen with Browse… is added with `POST /api/folders`
+ *    reads `✓ git repo · single solution`; D59: a plain folder reads as one; a
+ *    missing folder is refused and not added; the workspace chosen with Browse… is added with `POST /api/folders`
  *    and becomes the default); the real scan of it, the notification permission
  *    (mocked `Notification`) with its confirmation, the usage threshold; Back and
  *    the rail move between steps; Finish stores it. The folder is used at once (a
@@ -220,7 +220,7 @@ test.describe('first run without a saved folder', () => {
     await wizard.getByTestId('wz-back').click();
     await expectStep(wizard, 1, 'Add your first folder');
 
-    // A missing folder, a git repo (fine, not added yet) and a folder without AGENTS.md (refused, not added).
+    // A missing folder (refused, not added), a git repo (fine, not added yet) and, D59, a folder without AGENTS.md (a plain folder: fine too).
     await input.fill(path.join(tmp, 'nope'));
     await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ folder not found');
     await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'false');
@@ -228,9 +228,11 @@ test.describe('first run without a saved folder', () => {
     await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ git repo · single solution');
     await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'true');
     await input.fill(path.join(tmp, 'not a workspace'));
-    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✕ no AGENTS.md here and not a git repository');
+    await expect(wizard.getByTestId('wz-root-line')).toHaveText('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
+    await expect(wizard.getByTestId('wz-root-line')).toHaveAttribute('data-ok', 'true');
+    await input.fill(path.join(tmp, 'nope'));
     await wizard.getByTestId('wz-next').click();
-    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not added: no AGENTS.md here and not a git repository');
+    await expect(wizard.getByTestId('wz-root-error')).toHaveText('Not added: folder not found');
     await expectStep(wizard, 1, 'Add your first folder');
     expect((await setupState(page)).folders).toEqual([]);
 

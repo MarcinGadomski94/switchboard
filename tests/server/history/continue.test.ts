@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -305,15 +305,28 @@ describe('POST /api/history/{id}/continue (D16)', () => {
     expect(moved.json()).toMatchObject({ folderKind: 'repo', folderPath: repo, solutions: ['lone-repo'], cwd: path.join(repo, 'src', 'handoff') });
   });
 
-  it('neither a workspace nor a repo above it: 422 not-in-a-folder, even with addFolder', async () => {
+  it('D59: neither a workspace nor a repo above it: its start folder is offered as a plain folder (409), addFolder saves it and moves', async () => {
     const w = await setup();
     const cwd = await terminalConversation(w, 'handoff', 'term-p', { parent: path.join(w.root, 'plain') });
-    for (const body of [{}, { addFolder: true, confirm: true }]) {
-      const response = await move('term-p', body);
-      expect(response.statusCode).toBe(422);
-      expect(response.json()).toMatchObject({ error: 'not-in-a-folder', cwd });
-    }
+    const refusal = await move('term-p');
+    expect(refusal.statusCode).toBe(409);
+    expect(refusal.json()).toMatchObject({ error: 'folder-not-saved', message: `no saved folder holds ${cwd}; add the folder ${cwd} to continue it here`, check: { path: cwd, kind: 'plain' } });
     expect(await w.store.sessions.list()).toEqual([]);
+    const moved = await move('term-p', { addFolder: true, confirm: true });
+    expect(moved.statusCode, moved.body).toBe(201);
+    expect(moved.json()).toMatchObject({ folderKind: 'plain', folderPath: cwd, solutions: [], cwd });
+    expect((await w.store.folders.list()).find((folder) => folder.canonicalPath === cwd)?.kind).toBe('plain');
+  });
+
+  it('D59: a conversation inside a saved plain folder continues there, with no solutions', async () => {
+    const w = await setup();
+    const notes = path.join(w.root, 'notes');
+    await mkdir(notes, { recursive: true });
+    await w.store.folders.create({ path: notes, canonicalPath: await realpath(notes), kind: 'plain' });
+    const cwd = await terminalConversation(w, 'handoff', 'term-n', { parent: notes });
+    const moved = await move('term-n', { confirm: true });
+    expect(moved.statusCode, moved.body).toBe(201);
+    expect(moved.json()).toMatchObject({ folderKind: 'plain', folderPath: await realpath(notes), solutions: [], cwd });
   });
 
   it('a terminal may still have it open: 409 terminal-open (nothing moved), confirm moves it', async () => {

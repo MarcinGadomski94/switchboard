@@ -1,4 +1,4 @@
-# Folders (D14, D18)
+# Folders (D14, D18, D59)
 
 There is no single workspace root and no workspace environment variable. The developer saves **folders**, and every session, scan, schedule and Codebase Memory view names the folder it works in (`docs/decisions.md` → D14). A saved folder can also have a **custom name** (D18, *Names* below). The server side comes first; the UI (Settings → Folders, the wizard's "Add your first folder", the New-session form's Folder row, the folder switchers, the folder tags) is under *UI* below.
 
@@ -9,7 +9,8 @@ Code: `src/server/folders/` (`inspect.ts` the kinds, `service.ts` the `FolderSer
 1. **repo**: a git main checkout (`<path>/.git` is a folder, `isMainCheckout` in `src/server/solutions/checkout.ts`), even when it has its own `AGENTS.md`: a repo's rules do not make it a workspace. One solution, named after the folder.
 2. **refused, `git-worktree`**: `.git` is a file (a linked worktree or a submodule, gap #16). Its main checkout is the repo to add.
 3. **workspace**: a folder with an `AGENTS.md` (the router). The check reports the router's first `# ` heading and line count and how many solutions the workspace scanner (M6.1, the router parsing in `src/core/workspace-rules.ts`) finds: every row `GET /api/solutions` would list.
-4. **refused** otherwise: `not-absolute`, `missing`, `not-a-folder`, `unsupported` (no `AGENTS.md` and not a git repository).
+4. **plain** (D59): any other folder (no `AGENTS.md`, not a git repository): Simple sessions only; `solutionCount` 0 (*Plain folders (D59)* below). Before D59 this was refused as `unsupported`, which is no longer answered.
+5. **refused** otherwise: `not-absolute`, `missing`, `not-a-folder`.
 
 `~` is the home folder. The canonical path is the realpath; it is a folder's identity (adding a symlink to a saved folder returns that folder).
 
@@ -19,7 +20,7 @@ The result is a `FolderCheck` (`src/core/api.ts`): `path`, `canonicalPath`, `exi
 `id`, `path` (as given, `~` expanded), `canonical_path` (unique), `kind` (what it was when added), `is_default` (at most one: a partial unique index), `added_at`, `last_used_at` (a session started there), `label` (D18: the custom name, `NULL` = none; `0005_folder_label.sql`). Order everywhere: the default, then most recently used, then the order they were added.
 
 `FolderService`:
-- **add** (`POST /api/folders`, optional `label`, D18): refused (422 `invalid` + the check) unless the folder is a workspace or a repo; the same canonical path again returns the saved folder (200), and a non-empty `label` then renames it (an empty one leaves its name); the first saved folder becomes the default. Sessions without a saved folder whose root is this folder are linked to it (a folder removed and added back). A refused name (409 `label-taken`, 422 `invalid-label`) saves nothing.
+- **add** (`POST /api/folders`, optional `label`, D18): refused (422 `invalid` + the check) unless the folder is a workspace, a repo or (D59) a plain folder; the same canonical path again returns the saved folder (200), and a non-empty `label` then renames it (an empty one leaves its name); the first saved folder becomes the default. Sessions without a saved folder whose root is this folder are linked to it (a folder removed and added back). A refused name (409 `label-taken`, 422 `invalid-label`) saves nothing.
 - **rename** (`PUT /api/folders/{id}/label`, D18): sets the custom name by the rules under *Names*; empty or `null` removes it; returns the whole list.
 - **remove** (`DELETE /api/folders/{id}`): refused (409 `folder-in-use`, with the schedules' names) while a schedule starts its runs there; otherwise the folder leaves the list, its sessions keep their `root` / `root_kind` (their folder id becomes `null`), and the default moves to the most recently used folder left.
 - **setDefault** (`PUT /api/folders/{id}/default`).
@@ -28,6 +29,15 @@ The result is a `FolderCheck` (`src/core/api.ts`): `path`, `canonicalPath`, `exi
 - **resolveForSession(id)** (NewSession `folder`, schedule templates): a saved folder's id, or the default when omitted. The folder must still be a folder on disk (409 `folder-missing`); its realpath is taken then. The kind is the one it was saved with.
 
 A saved `setup.workspaceRoot` (the M5.3 wizard) is migrated into the list as the default workspace by `0003_folders.sql`; the setting stays in the table, unread. Sessions started before D14 get `root` = their `cwd` and `root_kind` = `workspace` (they all ran at the one root), and the default folder's id when that root is the migrated one. Schedules get the default folder.
+
+## Plain folders (D59)
+A folder that is neither a workspace nor a git repository (`docs/decisions.md` → D59): the developer "shouldn't be blocked in simple mode from spawning a session in any folder".
+- **Kind** `plain` (`FOLDER_KINDS`, `inspectFolder` step 4); the UI calls it a **folder** (`FOLDER_KIND_LABEL`), its check line is `✓ folder · no AGENTS.md, not a git repo · Simple sessions` (`PLAIN_CHECK_LINE`). Saved like the others (same checks: absolute, exists, a folder, canonical path, no duplicates, D18 names) from Simple's Browse… (typed or browsed), Settings → Folders → Add… and the setup wizard.
+- **Simple starts only.** `claude` runs in the folder (`cwd` = its canonical path), no solutions, no worktree (the checkbox shows for git repos only; `worktrees: true` 422), no router answers: the first message is the message and D57's attachment lines. A Full start is refused (422 on `folder`, `PLAIN_FOLDER_FULL_MESSAGE`); the Full form shows the note with **Use Simple** and keeps Start disabled (`formComplete`); schedules (Full starts) cannot use one.
+- **Everywhere else:** Solutions shows it empty (`plainFolderScan`); Codebase Memory lists nothing; artifacts and History map its files to no solution (`locateSessionFile`, `solutionAt`); the worktree manager refuses any solution there; D38 adoption and D40/D47 branching are workspace / repo only; a remote session (D25) needs a repo folder. The header's root line reads `<cwd> · folder` and an agent without a solution path `folder root`.
+- **History → Continue in Switchboard:** a conversation inside a saved plain folder moves into it (no solutions); outside every saved folder, the nearest workspace or repo up the tree is offered as before, and only when there is none the conversation's start folder is offered as a plain folder (409 `folder-not-saved`, "add the folder …"; before D59: 422 `not-in-a-folder`).
+- **Storage:** `folders.kind` takes `plain` since `0022_plain_folders.sql` (a 12-step rebuild of `folders`, `docs/database.md`). `sessions.root_kind` keeps 0003's CHECK: a plain session stores its `root` with `root_kind` NULL and `SessionRepository` maps it to and from `plain`.
+- Tests: `tests/server/folders/folders.test.ts` (kinds), `tests/server/sessions/simple-session.test.ts` → *a plain folder (D59)* (saved, check, Solutions, Simple start: cwd, first message, attachment lines, stored kind; refusals; schedules), `tests/server/history/continue.test.ts` (*D59* moves), `tests/server/db/migrate.test.ts` → *0022 plain folders (D59)*, `tests/core/derive.test.ts` (*D59*), `tests/web/simple-session.test.ts` → *D59*, `tests/e2e/simple-session.spec.ts` (Browse… a plain folder → saved and selected → Full's note → Simple start → offered next time, Settings shows `folder`), `tests/e2e/folders.spec.ts` and `tests/e2e/setup-wizard.spec.ts` (a plain folder checks as one).
 
 ## Names (D18)
 A saved folder can have a custom name (`docs/decisions.md` → D18), set when it is added (the add panel's **Name** field: Settings → Folders → Add…, the New-session form's Browse…, the setup wizard's "Add your first folder") and changed with **Rename** in Settings → Folders.
@@ -43,6 +53,7 @@ A session stores its folder: `folder_id` (the saved folder), `root` (its canonic
 |---|---|---|---|
 | workspace | the folder (the router applies) | the NewSession's, validated by the folder's scan (read-only rules) | task + the session-start answers block (M5.2) |
 | repo | the repo; with Worktree on, its worktree `../{repo}-wt-{name}` (gap #1) | exactly the repo (`[<repo name>]`; empty or omitted means the same; any other name 422) | the task, plus only the worktree note when it runs in a worktree (`repoWorktreeNote`); no router answers |
+| plain (D59) | the folder (Simple starts only; no worktree) | none (`[]`; any name 422) | the message alone (plus D57's attachment lines) |
 
 For a repo folder the router-only NewSession fields (`workType`, `mode`, `phase`, `coordination`, `qa`) are not read and are stored `null`.
 

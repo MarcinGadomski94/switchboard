@@ -219,11 +219,12 @@ Screenshots come from the demo seed (`docs/demo.md`); `npm run screenshots` reta
 There is no single workspace root. You save **folders** in **Settings → Folders**, and each session, scan and schedule names the one it works in:
 - A **workspace** (router `AGENTS.md`) gets the router's session-start questions answered up front in the Full New-session form (the Simple form leaves them to the agent).
 - A **git repo** is a single solution.
+- Any other folder (no `AGENTS.md`, not a git repo) can be saved too, for **Simple** sessions.
 
 A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 ### New session
-- **Simple / Full:** a switch at the top of the dialog. **Simple** (the default) asks only for the folder, the message, an optional title (taken from the message when empty), the model and whether to work in its own git worktree (git repo folders; the branch is derived from the title, e.g. `sb/fix-login`, and can be edited). **Full** is the form below. The dialog remembers the last one used, and what you typed carries over when you switch.
+- **Simple / Full:** a switch at the top of the dialog. **Simple** (the default) starts in any folder (a workspace, a git repo or any plain folder) and asks only for the folder, the message, an optional title (taken from the message when empty), the model and whether to work in its own git worktree (git repo folders; the branch is derived from the title, e.g. `sb/fix-login`, and can be edited). **Full** is the form below. The dialog remembers the last one used, and what you typed carries over when you switch.
 - **Title:** free text, e.g. "JIRA Ticket handling". A kebab-case short name is derived from it for the branch and worktree folder.
 - **Task:** what the agent should do.
 - **Session-start answers:** work type, mode, solutions in scope, phase, mobile coordination, ultracode.
@@ -291,7 +292,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 ### Solutions
 - Every solution of a folder, grouped the way the router groups them.
 - Each one's live branches and worktrees, phase ledger and artifacts.
-- A **conflict card** when two sessions work in the same checkout. **Move … to worktree** isolates one of them onto a ticket branch.
+- A **conflict card** when two sessions work in the same checkout. **Move … to worktree** isolates one of them onto a new ticket branch, or onto an **existing branch** (local or remote) picked from a searchable list.
 
 [`docs/solutions.md`](docs/solutions.md)
 

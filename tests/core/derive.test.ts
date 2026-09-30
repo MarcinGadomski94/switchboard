@@ -220,3 +220,14 @@ describe('artifacts in a repo folder (D14)', () => {
     expect(sessionSolutionFolder(place, '/ws/microfrontends/web-front/src/a.ts', 'demo')).toBe('microfrontends/web-front');
   });
 });
+
+describe('D59 · a plain folder session\'s files', () => {
+  it('belong to no solution: inside the folder by their path, else outside; no solution folder', () => {
+    const root = path.join('/w', 'notes');
+    const place = { root, kind: 'plain' as const, cwd: root };
+    expect(locateSessionFile(place, 'microfrontends/x-front/a.md', 'demo')).toEqual({ solution: null, relative: 'microfrontends/x-front/a.md', worktree: false, outside: false });
+    expect(locateSessionFile(place, path.join(root, 'todo.txt'))).toEqual({ solution: null, relative: 'todo.txt', worktree: false, outside: false });
+    expect(locateSessionFile(place, path.join('/w', 'elsewhere', 'a.md'))).toMatchObject({ solution: null, outside: true });
+    expect(sessionSolutionFolder(place, 'mobile/a.md', 'demo')).toBeNull();
+  });
+});

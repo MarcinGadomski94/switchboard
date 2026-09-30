@@ -21,6 +21,7 @@ import type {
   HooksStatus,
   InboxItem,
   IsolateRequest,
+  RepoBranches,
   ModelSettings,
   NewRepoSession,
   NewSimpleSession,
@@ -192,9 +193,11 @@ export const api = {
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
-  /** "Move … to worktree" (gap #2); D32: `branch` names the new worktree's branch after the ticket (required). */
-  isolate: (repo: string, sessionId: string, branch: string) =>
-    request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, { sessionId, branch } satisfies IsolateRequest),
+  /** "Move … to worktree" (gap #2); D32: `{ sessionId, branch }` names a new branch after the ticket; D60: `{ sessionId, existingBranch }` uses an existing one. */
+  isolate: (repo: string, body: IsolateRequest) => request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, body),
+  /** D60: the repo's local and remote branches for the "Existing branch" picker; `fetch` runs `git fetch --all --prune` first. */
+  repoBranches: (repo: string, sessionId: string, fetch: boolean) =>
+    request<RepoBranches>('GET', `/api/solutions/${enc(repo)}/branches${query({ session: sessionId, fetch: fetch ? '1' : undefined })}`),
 
   schedules: () => request<Schedule[]>('GET', '/api/schedules'),
   createSchedule: (body: unknown) => request<Schedule>('POST', '/api/schedules', body),
@@ -249,7 +252,7 @@ export const api = {
   /** The check line of a typed path; nothing is saved. */
   checkFolder: (path: string) => request<FolderCheck>('GET', `/api/folders/check${query({ path })}`),
   /**
-   * 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but a workspace or a git repo.
+   * 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but an existing folder (D59: a plain folder is saved too).
    * D18: `label` is the optional custom name (sent only when not empty); 409 `label-taken`, 422 `invalid-label`.
    */
   addFolder: (path: string, label?: string) => request<Folder>('POST', '/api/folders', label ? { path, label } : { path }),

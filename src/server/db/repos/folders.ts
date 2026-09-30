@@ -4,7 +4,7 @@ import type { CreateInput, Patch, RepoContext } from '../context.ts';
 import { transaction } from '../database.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 
-/** A saved folder (D14): a workspace or a git repo sessions can start in. */
+/** A saved folder (D14): a workspace or a git repo sessions can start in; D59: or a plain folder (Simple sessions only). */
 export interface FolderRecord {
   readonly id: string;
   /** Absolute path as the developer gave it (`~` expanded). */

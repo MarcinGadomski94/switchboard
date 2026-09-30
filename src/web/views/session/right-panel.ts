@@ -20,18 +20,22 @@ import { folderName } from '../../folders/folders.ts';
 /** Path line of an agent that has not written into a solution yet: it runs at the session's cwd, the workspace root. */
 export const WORKSPACE_ROOT = 'workspace root';
 
+/** D59: path line of an agent of a plain-folder session (no solutions): it runs at the folder. */
+export const FOLDER_ROOT = 'folder root';
+
 /**
  * The path line of an agent without a solution path (D14): `workspace root` for a
  * workspace session; a repo session's agents run in its one solution, so its
- * name (the repo folder's name).
+ * name (the repo folder's name); D59: {@link FOLDER_ROOT} for a plain folder's session.
  */
 export function rootPath(session: { readonly folderKind?: FolderKind | null; readonly folderPath?: string | null }): string {
+  if (session.folderKind === 'plain') return FOLDER_ROOT;
   if (session.folderKind === 'repo' && session.folderPath) return folderName(session.folderPath);
   return WORKSPACE_ROOT;
 }
 
 /** Path values that are not a solution (the prototype's `agentSummary` leaves them out). */
-const NOT_A_SOLUTION: ReadonlySet<string> = new Set([WORKSPACE_ROOT, 'read-only']);
+const NOT_A_SOLUTION: ReadonlySet<string> = new Set([WORKSPACE_ROOT, FOLDER_ROOT, 'read-only']);
 
 /** The word next to an agent's dot when it has no status text of its own (prototype words: `needs you`, `running`, `done`, `paused`). */
 const STATUS_WORDS: Readonly<Record<SessionStatus, string>> = {

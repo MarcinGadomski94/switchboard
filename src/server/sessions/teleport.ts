@@ -158,7 +158,7 @@ export class SessionTeleporter {
       return invalid([
         {
           field: 'folder',
-          message: `${folder.path} is a workspace: a remote session continues in a checkout of its GitHub repository, so pick a git repo folder`,
+          message: `${folder.path} is ${folder.kind === 'plain' ? 'a plain folder' : 'a workspace'}: a remote session continues in a checkout of its GitHub repository, so pick a git repo folder`,
         },
       ]);
     }

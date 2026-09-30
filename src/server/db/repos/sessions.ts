@@ -43,7 +43,11 @@ export interface SessionRecord {
   readonly folderId: string | null;
   /** The session's folder, canonical: the workspace root or the repo (D14). Kept when the folder leaves the saved list. */
   readonly root: string | null;
-  /** What {@link root} is (D14). */
+  /**
+   * What {@link root} is (D14). D59: `plain` is stored as `root_kind` NULL next to
+   * a `root` (0003's CHECK allows only workspace / repo, and `sessions` is not
+   * rebuilt; `docs/database.md` → 0022): {@link SessionRepository} maps it both ways.
+   */
   readonly rootKind: FolderKind | null;
   /** Where the session came from (0004, D16): started in Switchboard, or moved in from a terminal. */
   readonly origin: SessionOrigin;
@@ -189,6 +193,25 @@ const SPEC: TableSpec<SessionRecord> = {
   },
 };
 
+/**
+ * D59: a plain-folder session is stored with `root_kind` NULL (0003's CHECK is
+ * workspace / repo only): a record read with a `root` and no kind is `plain`.
+ * No earlier version writes a root without its kind (0003 and every start set
+ * both), so the state is unambiguous.
+ */
+function fromStored(record: SessionRecord): SessionRecord {
+  return record.root !== null && record.rootKind === null ? { ...record, rootKind: 'plain' } : record;
+}
+
+/** D59: `rootKind: 'plain'` is written as `root_kind` NULL ({@link fromStored}). */
+function toStored<T extends { readonly rootKind?: FolderKind | null }>(values: T): T {
+  return values.rootKind === 'plain' ? { ...values, rootKind: null } : values;
+}
+
+function mapped(record: SessionRecord | null): SessionRecord | null {
+  return record === null ? null : fromStored(record);
+}
+
 /** Sessions. */
 export class SessionRepository {
   readonly #ctx: RepoContext;
@@ -202,19 +225,19 @@ export class SessionRepository {
   /** Stores a new session. The name and the claude session id must be unique. */
   async create(input: SessionCreate): Promise<SessionRecord> {
     const ts = this.#ctx.now();
-    return this.#table.insert({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts });
+    return fromStored(this.#table.insert(toStored({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts })));
   }
 
   async get(id: string): Promise<SessionRecord | null> {
-    return this.#table.get(id);
+    return mapped(this.#table.get(id));
   }
 
   async getByName(name: string): Promise<SessionRecord | null> {
-    return this.#table.first('name = ?', [name]);
+    return mapped(this.#table.first('name = ?', [name]));
   }
 
   async getByClaudeSessionId(claudeSessionId: string): Promise<SessionRecord | null> {
-    return this.#table.first('claude_session_id = ?', [claudeSessionId]);
+    return mapped(this.#table.first('claude_session_id = ?', [claudeSessionId]));
   }
 
   /** Sessions, newest first. */
@@ -227,12 +250,12 @@ export class SessionRepository {
       params.push(...filter.statuses);
     }
     if (filter.closed !== undefined) where.push(filter.closed ? 'closed_at IS NOT NULL' : 'closed_at IS NULL');
-    return this.#table.select(where.join(' AND '), params, 'created_at DESC, id');
+    return this.#table.select(where.join(' AND '), params, 'created_at DESC, id').map(fromStored);
   }
 
   /** Updates the given fields (and `updatedAt`); `null` if there is no such session. */
   async update(id: string, patch: SessionPatch): Promise<SessionRecord | null> {
-    return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
+    return mapped(this.#table.update(id, toStored({ ...patch, updatedAt: this.#ctx.now() })));
   }
 
   /** Deletes a session with its agents, events, questions, requests, loops and pending messages. */
