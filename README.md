@@ -243,6 +243,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 **Chat**
 - **Formatting:** agent and developer messages render as Markdown, with syntax colors and clickable links.
 - **Composer:** **Enter** sends, **Shift+Enter** adds a line.
+- **Images and files:** paste a screenshot or an image (⌘V / Ctrl+V), drop files on the chat, or pick them with **📎**. They show as chips before you send and in your message afterwards (click an image to see it larger). Images and PDFs go to the agent directly; other files (logs, CSV, JSON, source files…) are saved in Switchboard's data folder and the agent gets their paths. The New-session forms take them for the first message too. Up to 20 MB per file, 50 MB per message; kept 30 days.
 - **Live activity:** "Pondering… 1m 23s", "● Bash: npm test 0:42".
 - **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.
 - **Queued messages:** a message you send while the agent is busy shows a clock until the agent takes it up. A message to a paused session resumes it.
