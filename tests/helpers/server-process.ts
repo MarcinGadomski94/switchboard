@@ -1,8 +1,10 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { fakeOpenerEnv } from '../../tools/fake-opener/command.ts';
+import { fakeServiceCtlEnv } from '../../tools/fake-servicectl/command.ts';
 import { fakeTailscaleBinEnv } from '../../tools/fake-tailscale/command.ts';
 import { REPO_ROOT, TEST_PORTS, freeTestPorts } from './net.ts';
 
@@ -27,13 +29,26 @@ export interface ServerProcess extends SpawnedServer {
 }
 
 /**
+ * The login-service home every test server gets by default: a folder under the
+ * OS temp dir that no test creates (one per test process), so "Start at login"
+ * reads "off" and never the developer's real `~/Library/LaunchAgents`,
+ * `~/.config/systemd/user` or Task Scheduler (`docs/service.md` → *Test
+ * redirects*). Specs that turn the toggle on pass their own temp home
+ * (`tests/e2e/service-world.ts`, `tests/e2e/updates.spec.ts`).
+ */
+export const TEST_SERVICE_HOME = path.join(os.tmpdir(), `switchboard-test-service-home-${process.pid}`);
+
+/**
  * Defaults every test server gets unless `env` sets them (M5.3): the fake CLIs, so
  * `GET /api/system` and the `system` hub event never run the real `claude` or `gh`
  * (AGENTS.md), and the setup wizard does not open by itself over the page a spec
  * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on). D35: the fake
  * opener in front of the frame-helper setup's OS openers, so no test opens Chrome,
  * Finder or Explorer. D48: the fake Tailscale CLI (`tools/fake-tailscale`).
- * D55: the updater off (it would check GitHub releases at start).
+ * D55: the updater off (it would check GitHub releases at start). The per-user
+ * service redirected to {@link TEST_SERVICE_HOME} with tools/fake-servicectl as the
+ * manager (the two are set together), so no test server reads or registers the
+ * real login service.
  */
 export function testServerDefaults(): Record<string, string> {
   return {
@@ -46,6 +61,9 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_TAILSCALE_BIN: fakeTailscaleBinEnv(),
     // D55: the updater never asks the real GitHub; tests/e2e/updates.spec.ts turns it on against a fake.
     SWITCHBOARD_UPDATES: 'off',
+    // Never the real home's login service (settings.spec read the developer's plist as "on").
+    SWITCHBOARD_SERVICE_HOME: TEST_SERVICE_HOME,
+    SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
   };
 }
 
