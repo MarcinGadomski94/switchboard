@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **2.30%**, main area (256,0 1184×900) **2.08%**, main area with Diffs selected **0.00%**.
+Pixel diff (advisory, channel threshold 24): full page **2.31%**, main area (256,0 1184×900) **2.08%**, main area with Diffs selected **0.00%**.
 
 Side by side (prototype left, app right): `artifacts-side-by-side.png`, `artifacts-main-side-by-side.png`, `artifacts-diffs-side-by-side.png`.
 

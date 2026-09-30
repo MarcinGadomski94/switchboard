@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **7.82%**, full page **5.56%**.
+Pixel diff of the draft (advisory, channel threshold 24): modal panel (179,49 1082×802) **7.98%**, full page **5.67%**.
 Known data differences: the solution chips come from the demo's workspace scan (the Solutions view's rows): nugets/ has 2 chips instead of 4, microservices/ lists notifications before auth, functions/ has 1, and there is no other/ row, so the solutions section is 66 px shorter and everything below it (read-only row, phase, section 6) is compared by size only. Behind the overlay the sidebar differs where other lanes' routes still answer 501 in this lane.
 
 Side by side (prototype left, app right): `new-session-side-by-side.png` (the panel), `new-session-page-side-by-side.png` (page).
@@ -169,7 +169,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft
 | empty · summaryLine6 | box (y − 85.3) | 932,345.8 297×11.5 | 932,345.8 297×11.5 | ok | "" |
 | empty · summaryLine7 | box (y − 85.3) | 932,357.3 297×20.1 | 932,357.3 297×20.1 | ok | "# worktrees" |
 | empty · summaryLine9 | box (y − 105.4) | 932,397.5 297×11.5 | 932,397.5 297×11.5 | ok | "" |
-| empty · D14 Folder row between the head and section 1 | addition | — | 208,119 664×58 | ok | |
+| empty · D14 Folder row between the head and section 1 | addition | — | 208,115 664×58 | ok | |
 | empty · D14 label copy | addition | — | "Folder" | ok | |
 | empty · D14 label style = section 1 label | addition | — | same | ok | |
 | empty · D14 dropdown: the demo folder (the default) | addition | — | "D:\\acme (default)" | ok | |

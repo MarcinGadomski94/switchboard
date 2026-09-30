@@ -48,7 +48,7 @@ Advisory pixel diff (not a gate): empty 0 % · free 0.4 % · down 0.4 %. Side-by
 | empty | row7:hint | 913,432 99×14 | 913,432 99×14 | ok | (data) |
 | empty | row8 | 416,457 608×36 | 416,457 608×36 | ok | (data) |
 | empty | row8:kind | 428,468.5 70×13 | 428,468.5 70×13 | ok | (data) |
-| empty | row8:label | 508,466 53.1×18 | 508,466 53.1×18 | ok | (data) |
+| empty | row8:label | 508,466 63.9×18 | 508,466 63.9×18 | ok | (data) |
 | empty | row8:hint | 1012,475 0×0 | 1012,475 0×0 | ok | (data) |
 | empty | row9 | 416,493 608×36 | 416,493 608×36 | ok | (data) |
 | empty | row9:kind | 428,504.5 70×13 | 428,504.5 70×13 | ok | (data) |

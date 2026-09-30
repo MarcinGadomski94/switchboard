@@ -9,7 +9,7 @@ Take them as the answers to the session-start questions: confirm them back in on
 - Stack under test: web
 - Confluence page: https://example.atlassian.net/wiki/spaces/SL/pages/2231902/Free+talk
 - Figma frames:
-  - https://www.figma.com/design/AbC123/Swap?node-id=2231-902
-  - https://www.figma.com/design/AbC123/Swap?node-id=2231-990
+  - https://www.figma.com/design/AbC123/Acme?node-id=2231-902
+  - https://www.figma.com/design/AbC123/Acme?node-id=2231-990
 - Ultracode: off
 - Worktrees: no worktrees · edits in place

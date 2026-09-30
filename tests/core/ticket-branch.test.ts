@@ -23,8 +23,8 @@ describe('TICKET_BRANCH (D32)', () => {
       'PROJ-0001',
       'PROJ-0001-',
       'PROJ-test-branch',
-      'SLIT0001-test',
-      '1SLIT-0001-test',
+      'PROJ0001-test',
+      '1PROJ-0001-test',
       'PROJ-0001-Test-Branch',
       'PROJ-0001-test--branch',
       'PROJ-0001-test_branch',
@@ -65,7 +65,7 @@ describe('tidyTicketBranch (D32)', () => {
     expect(tidyTicketBranch('proj-1984')).toBe('PROJ-1984');
     expect(tidyTicketBranch('proj-1984 ')).toBe('PROJ-1984');
     expect(tidyTicketBranch('Purchase complete')).toBe('Purchase-complete');
-    expect(tidyTicketBranch('SLIT1984 x')).toBe('SLIT1984-x');
+    expect(tidyTicketBranch('PROJ1984 x')).toBe('PROJ1984-x');
     expect(tidyTicketBranch('')).toBe('');
     expect(tidyTicketBranch(' !! ')).toBe('');
   });

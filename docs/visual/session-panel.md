@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **11.46%**, calendar-func-fix **7.27%**.
+Pixel diff (advisory, channel threshold 24) of the right panel (1060,0 380×900): free-talk-feature **11.40%**, calendar-func-fix **7.21%**.
 
 Side by side (prototype left, app right): `session-panel-free-talk-side-by-side.png`, `session-panel-calendar-side-by-side.png`.
 

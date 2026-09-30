@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.60%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.61%**.
 Known data differences: the header meta (see `solutions.md`) and the sidebar's other badges, rows and footer (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-conflict-side-by-side.png` (view), `solutions-conflict-page-side-by-side.png` (page).
@@ -30,7 +30,7 @@ Geometry: `box` = x, y, width, height. Styles compared: color, background-color,
 | branchesSection | box | 1118,222.4 304×248 | 1118,222.4 304×248 | ok | "Branches & worktrees⎇ feature/free-talk-360../mobile-wt-free-talk-featurefree-talk-featur |
 | branchesLabel | box | 1118,222.4 304×14 | 1118,222.4 304×14 | ok | "Branches & worktrees" |
 | ledgerSection | box | 1118,484.4 304×116 | 1118,484.4 304×116 | ok | "Phase ledgerFreeTalkServiceUI-firstseam TODO · FreeTalkViewModel.cs:41PushPreferencesClie |
-| artifactsSection | box | 1118,614.4 304×83 | 1118,614.4 304×83 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedFOLLOWUPmobile-followups/from-s |
+| artifactsSection | box | 1118,614.4 304×83 | 1118,614.4 304×83 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedFOLLOWUPmobile-followups/from-a |
 | freshness | box | 1118,840 304×42 | 1118,840 304×42 | ok | "codebase-memory · edited by agents since last indexopen Codebase Memory ›" |
 | card1 | box | 1118,242.4 304×72 | 1118,242.4 304×72 | ok | "⎇ feature/free-talk-360../mobile-wt-free-talk-featurefree-talk-feature" |
 | card1:worktree | box | 1130,271.4 280×14 | 1130,271.4 280×14 | ok | "../mobile-wt-free-talk-feature" |
