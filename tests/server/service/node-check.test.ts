@@ -28,6 +28,7 @@ afterAll(async () => {
 });
 
 describe('findOnPath', () => {
+  // Real files on disk; the X_OK bit this test depends on does not exist on Windows (PATHEXT decides there, the next test).
   it.runIf(process.platform !== 'win32')('takes the first executable file on PATH, skipping non-executables and relative folders', async () => {
     const env = { PATH: ['relative/bin', path.join(tmp, 'missing'), path.join(tmp, 'a'), path.join(tmp, 'b')].join(':') };
     expect(await findOnPath('node', { env, platform: process.platform })).toBe(path.join(tmp, 'b', 'node'));
@@ -52,19 +53,20 @@ describe('findOnPath', () => {
 
 describe('checkNode', () => {
   it('accepts Node 24 and later', async () => {
+    // A simulated Linux PATH, so POSIX paths on every host (a Windows temp folder is not absolute for Linux).
     const calls: string[][] = [];
     const node = await checkNode({
-      env: { PATH: path.join(tmp, 'b') },
+      env: { PATH: '/opt/a:/opt/b' },
       platform: 'linux',
       cwd: tmp,
-      isExecutable: async (file) => file === path.join(tmp, 'b', 'node'),
+      isExecutable: async (file) => file === '/opt/b/node',
       run: async (command, args) => {
         calls.push([...command, ...args]);
         return answer('v24.0.0\n');
       },
     });
-    expect(node).toEqual({ path: path.join(tmp, 'b', 'node'), version: 'v24.0.0' });
-    expect(calls).toEqual([[path.join(tmp, 'b', 'node'), '--version']]);
+    expect(node).toEqual({ path: '/opt/b/node', version: 'v24.0.0' });
+    expect(calls).toEqual([['/opt/b/node', '--version']]);
   });
 
   it('refuses an older node, no node, and a node that does not answer', async () => {

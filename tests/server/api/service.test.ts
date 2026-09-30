@@ -63,7 +63,8 @@ const headers = (): Record<string, string> => ({ host: HOST, cookie: `sb_token=$
 describe('GET/PUT /api/service', () => {
   it('reports and changes Start at login on the real code path', async () => {
     const server = await start({ loginService: login() });
-    const unit = path.join(tmp, 'home', '.config', 'systemd', 'user', 'switchboard.service');
+    // The Linux location joins with POSIX separators, also under a Windows temp home.
+    const unit = path.posix.join(path.join(tmp, 'home'), '.config', 'systemd', 'user', 'switchboard.service');
     const before = await server.inject({ method: 'GET', url: '/api/service', headers: headers() });
     expect(before.statusCode).toBe(200);
     expect(before.json()).toEqual({ manager: 'systemd', startAtLogin: false, file: unit });

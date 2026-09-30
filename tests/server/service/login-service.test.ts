@@ -56,6 +56,22 @@ async function ctlCalls(): Promise<string[][]> {
   }
 }
 
+/**
+ * `value` as systemd reads it inside double quotes (`Environment="…"`): `\` and `"`
+ * backslash-escaped. A no-op for POSIX temp paths; a Windows temp path in a simulated
+ * Linux unit (the Windows CI runner) has its backslashes doubled.
+ */
+function systemdQuoted(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/** The first word of `ExecStart=` as written (`systemdExecWord`), unescaped back to the path. */
+function execStartNode(unit: string): string {
+  const word = /^ExecStart=("(?:[^"\\]|\\.)*"|\S+) /m.exec(unit)?.[1] ?? '';
+  const bare = word.startsWith('"') ? word.slice(1, -1).replace(/\\(.)/g, '$1') : word;
+  return bare.replace(/%%/g, '%').replace(/\$\$/g, '$');
+}
+
 function location(platform: ServiceLocation['platform']): ServiceLocation {
   return { platform, home, dataDir, xdgConfigHome: null };
 }
@@ -124,18 +140,20 @@ describe('LoginService on macOS (launchd)', () => {
 describe('LoginService on Linux (systemd --user)', () => {
   it('writes the unit, reloads + enables it; off disables, removes, reloads', async () => {
     const login = service('linux');
-    const unit = path.join(home, '.config', 'systemd', 'user', 'switchboard.service');
+    const unit = path.posix.join(home, '.config', 'systemd', 'user', 'switchboard.service');
     expect((await login.setStartAtLogin(true)).startAtLogin).toBe(true);
     const content = await readFile(unit, 'utf8');
     expect(content).toContain('WantedBy=default.target');
-    expect(content).toContain(`Environment="SWITCHBOARD_DATA_DIR=${path.join(tmp, 'data dir')}"`);
-    const nodePath = /^ExecStart=(\S+) /m.exec(content)?.[1] ?? '';
+    expect(content).toContain(`Environment="SWITCHBOARD_DATA_DIR=${systemdQuoted(path.join(tmp, 'data dir'))}"`);
+    const nodePath = execStartNode(content);
+    expect(path.isAbsolute(nodePath)).toBe(true);
     expect(content).toBe(
       systemdUnit(
         serviceTarget({
           location: location('linux'),
           nodePath,
-          env: process.env,
+          // The same copy as the service's (a spread keeps Windows' `Path` spelling, which a Linux PATH lookup does not read).
+          env: { ...process.env, FAKE_SERVICECTL_LOG: log },
           carried: { SWITCHBOARD_DATA_DIR: path.join(tmp, 'data dir') },
           address: '127.0.0.1:4870',
         }),
@@ -279,7 +297,8 @@ describe('configuration of the service', () => {
     });
     expect(carriedEnvironment(custom, real)).toEqual({
       SWITCHBOARD_PORT: '4880',
-      SWITCHBOARD_DATA_DIR: '/data/sb',
+      // loadConfig resolves the variable the host's way (a real config always runs on its host): `/data/sb`, or `D:\data\sb` on Windows.
+      SWITCHBOARD_DATA_DIR: path.resolve('/', '/data/sb'),
       SWITCHBOARD_CLAUDE_BIN: '/opt/claude',
       SWITCHBOARD_GH_BIN: '["/usr/bin/node","/fake/gh.ts"]',
     });
@@ -344,8 +363,8 @@ describe('configuration of the service', () => {
       platform: 'linux',
     });
     const status = await login.setStartAtLogin(true);
-    expect(status.file).toBe(path.join(home, '.config', 'systemd', 'user', 'switchboard.service'));
-    expect(await readFile(status.file ?? '', 'utf8')).toContain(`Environment="SWITCHBOARD_DATA_DIR=${dataDir}"`);
+    expect(status.file).toBe(path.posix.join(home, '.config', 'systemd', 'user', 'switchboard.service'));
+    expect(await readFile(status.file ?? '', 'utf8')).toContain(`Environment="SWITCHBOARD_DATA_DIR=${systemdQuoted(dataDir)}"`);
     expect(await readdir(home)).toEqual(['.config']);
     expect((await ctlCalls()).length).toBe(2);
   });
