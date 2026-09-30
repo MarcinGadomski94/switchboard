@@ -13,6 +13,9 @@ import { BindRefusedError, listenLoopback } from './listen.ts';
 import type { Providers } from './providers.ts';
 import { createLoginService } from './service/login-service.ts';
 import { loadServiceRedirect } from './service/target.ts';
+import { loadUpdateConfig } from './updates/config.ts';
+import type { UpdateService } from './updates/service.ts';
+import { createUpdateService } from './updates/wire.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { SetupService, setupWizardAutoOpen } from './setup/service.ts';
 import { LiveSolutions } from './solutions/live.ts';
@@ -41,6 +44,8 @@ async function main(): Promise<void> {
   const config = loadConfig();
   // M9.1 test redirects of the per-user service (docs/service.md); refused unless set together.
   const serviceRedirect = loadServiceRedirect();
+  // D55 (docs/updates.md): the updater's variables (off, repo, test redirects).
+  const updateConfig = loadUpdateConfig(process.env, { serviceRedirect: serviceRedirect !== null });
   if (config.demo) assertDemoDataDir(config.dataDir);
   const token = await loadOrCreateToken(config.dataDir);
   const store = await openStore(storeFile(config.dataDir));
@@ -101,6 +106,24 @@ async function main(): Promise<void> {
     // D35 (docs/frame-helper.md → Guided setup): the setup's OS openers, in demo mode too (they run only on a click);
     // SWITCHBOARD_OPEN_COMMAND puts tests' fake opener in front of them.
     providers = { ...providers, frameHelperOpener: createFrameHelperOpener({ prefix: config.openCommand }) };
+    // D55 (docs/updates.md): GitHub releases, the Inbox item and banner, and (release installs) the update + restart.
+    // The restart closes this Switchboard the SIGTERM way (installShutdown below), also on Windows where there are no signals.
+    let requestExit: () => void = () => undefined;
+    const updates: UpdateService | null =
+      config.demo || !updateConfig.enabled
+        ? null
+        : await createUpdateService({
+            config,
+            update: updateConfig,
+            settings: store.settings,
+            bus,
+            items: systemItems,
+            loginService,
+            redirect: serviceRedirect,
+            liveSessions: () => supervisor.liveCount,
+            exit: () => requestExit(),
+          });
+    if (updates) providers = { ...providers, updates };
     // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
     const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
@@ -118,6 +141,7 @@ async function main(): Promise<void> {
       // Recovery may still be spawning; let it finish so shutdown sees every process.
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
+      await updates?.close();
       await peers.close();
       await hooks.close();
       await worktrees.stopPolling();
@@ -132,7 +156,7 @@ async function main(): Promise<void> {
     await toolProxies?.sync(await store.tools.list());
     // Installed before listening: a signal right after "Server listening" (tests stop
     // the server immediately) must still close cleanly with exit 0.
-    installShutdown(app);
+    requestExit = installShutdown(app);
     await listenLoopback(app, { port: config.port });
     // Items for failed runs / removable worktrees that have none yet, now and every 30 s
     // (docs/system-items.md); only once the port is ours. The demo seeds its own items.
@@ -143,6 +167,8 @@ async function main(): Promise<void> {
     if (!config.demo) await peers.start().catch((error: unknown) => app.log.error(error, 'peers failed to start'));
     // D48 P4: the hooked sessions' transcript and liveness polls.
     if (!config.demo) hooks.start();
+    // D55: check GitHub releases now and every hour.
+    updates?.start();
     // Resume the sessions that were live (docs/supervisor.md → Restart recovery). The demo's sessions are not real.
     if (releaseCommands) {
       recovering = recover(app, config, store, supervisor).finally(releaseCommands);
@@ -177,10 +203,13 @@ async function recover(
   }
 }
 
-/** SIGINT / SIGTERM close the app (and the database with it), then exit 0. */
-function installShutdown(app: FastifyInstance): void {
+/**
+ * SIGINT / SIGTERM close the app (and the database with it), then exit 0.
+ * @returns the same shutdown, for D55's restart after an update.
+ */
+function installShutdown(app: FastifyInstance): () => void {
   let closing = false;
-  const shutdown = (signal: NodeJS.Signals): void => {
+  const shutdown = (signal: NodeJS.Signals | 'update'): void => {
     if (closing) return;
     closing = true;
     app.log.info({ signal }, 'shutting down');
@@ -194,6 +223,7 @@ function installShutdown(app: FastifyInstance): void {
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
+  return () => shutdown('update');
 }
 
 main().catch((error: unknown) => {

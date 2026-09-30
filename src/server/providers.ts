@@ -1,5 +1,6 @@
 import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
+import type { UpdateStatus } from '../core/updates.ts';
 import type { FolderRef } from './folders/ref.ts';
 import type { FrameHelperOpener } from './tools/frame-helper.ts';
 import type { FramingHeaders } from './tools/framing.ts';
@@ -114,4 +115,20 @@ export interface Providers {
    * can open a real app by accident.
    */
   readonly frameHelperOpener?: FrameHelperOpener;
+  /**
+   * D55 (`docs/updates.md`): the updater (`updates/service.ts` → `UpdateService`),
+   * wired by main.ts in normal runs unless `SWITCHBOARD_UPDATES=off`. Without one
+   * (demo mode, tests that build the app bare) the `/api/updates*` routes answer
+   * 501, so nothing ever calls GitHub by accident.
+   */
+  readonly updates?: UpdatesProvider;
+}
+
+/** D55: what the updates routes need from the updater. */
+export interface UpdatesProvider {
+  status(): UpdateStatus;
+  check(): Promise<UpdateStatus>;
+  /** Starts the update to `version`; throws an `UpdateError` (`updates/service.ts`) when refused. */
+  install(version: string): UpdateStatus;
+  dismiss(version: string): Promise<UpdateStatus>;
 }

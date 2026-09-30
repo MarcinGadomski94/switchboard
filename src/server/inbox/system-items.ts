@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { BranchRef, InboxAction, NewSessionPrefill, Worktree } from '../../core/api.ts';
 import { COORDINATIONS, PHASES, SESSION_MODES } from '../../core/model.ts';
+import type { InstallKind } from '../../core/updates.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import { type MergeKind, type ParentMerged, parentMergedMessage, parentMergedTitle, rebaseCommand } from '../../core/stacking.ts';
 import type { ScheduleRecord, ScheduleRunRecord } from '../db/repos/schedules.ts';
@@ -32,6 +33,16 @@ export const PARENT_MERGED = 'parent-merged';
 export const PARENT_CLOSED = 'parent-closed';
 /** D47: outbox kind (`pending_messages.kind`) of the parent-merged message when it cannot be sent at once. */
 export const PARENT_MERGED_KIND = 'parent-merged';
+
+/** D55: kind of the item a newer Switchboard release raises (one per release version). */
+export const UPDATE_AVAILABLE = 'update-available';
+/** D55: "What's new": closes the item; the UI opens Settings → Updates (the notes and the Update button). */
+export const WHATS_NEW = 'whats-new';
+/** D55: the actions of an update item. */
+export const UPDATE_AVAILABLE_ACTIONS: readonly InboxAction[] = [
+  { id: WHATS_NEW, label: "What's new" },
+  { id: 'dismiss', label: 'Dismiss' },
+];
 
 /** "Open fix session": closes the item; the UI opens the New-session modal with the item's `prefill`. */
 export const OPEN_FIX_SESSION = 'open-fix-session';
@@ -215,6 +226,59 @@ export class SystemItemService {
     const created = await this.#raiseClosed(worktreeId);
     if (created) await this.#publishInbox();
     return created;
+  }
+
+  /**
+   * D55: raises the "Update available" item of a newer release (once per
+   * version, open or closed: a dismissed one never comes back) and closes the
+   * open ones of other versions (`superseded`).
+   * @returns the new item, or `null`.
+   */
+  async updateAvailable(update: UpdateItemInput): Promise<SystemItemRecord | null> {
+    let changed = await this.#closeUpdates((version) => version !== update.version, 'superseded');
+    const created = await this.#store.systemItems.createOnceByPayload(updateAvailableItem(update), 'version', update.version);
+    if (created) changed = true;
+    if (changed) await this.#publishInbox();
+    return created;
+  }
+
+  /**
+   * D55: closes the open "Update available" items no longer relevant: those of
+   * versions at or below `current` (`updated`, the update happened) and, when
+   * `latest` is given, of any other version than it.
+   * @returns how many were closed.
+   */
+  async updatesResolved(current: string, isAtOrBelow: (version: string, current: string) => boolean): Promise<number> {
+    let count = 0;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== UPDATE_AVAILABLE) continue;
+      const version = updateItemVersion(item);
+      if (version !== null && !isAtOrBelow(version, current)) continue;
+      try {
+        await this.#store.systemItems.close(item.id, 'updated');
+        count++;
+      } catch {
+        // Closed meanwhile.
+      }
+    }
+    if (count > 0) await this.#publishInbox();
+    return count;
+  }
+
+  async #closeUpdates(match: (version: string) => boolean, action: string): Promise<boolean> {
+    let changed = false;
+    for (const item of await this.#store.systemItems.list(['open'])) {
+      if (item.kind !== UPDATE_AVAILABLE) continue;
+      const version = updateItemVersion(item);
+      if (version === null || !match(version)) continue;
+      try {
+        await this.#store.systemItems.close(item.id, action);
+        changed = true;
+      } catch {
+        // Closed meanwhile.
+      }
+    }
+    return changed;
   }
 
   /**
@@ -402,6 +466,46 @@ export class SystemItemService {
 }
 
 // ── item builders (pure) ───────────────────────────────────────────────
+
+/** D55: what the "Update available" item says. */
+export interface UpdateItemInput {
+  /** The new release's version (`1.1.0`). */
+  readonly version: string;
+  readonly tag: string;
+  /** This install's version. */
+  readonly current: string;
+  readonly kind: InstallKind;
+}
+
+/** D55: the version an update item is about (`payload.version`), else `null`. */
+export function updateItemVersion(item: SystemItemRecord): string | null {
+  const payload = item.payload;
+  return isRecord(payload) && typeof payload['version'] === 'string' ? payload['version'] : null;
+}
+
+/**
+ * D55: the "Update available" item: source `switchboard`, title `Switchboard
+ * <v> is available`, a detail that says what happens next for this install kind
+ * (a release install updates from Settings → Updates; a git checkout only gets
+ * the commands), What's new + Dismiss, `payload.version`.
+ */
+export function updateAvailableItem(update: UpdateItemInput): SystemItemCreate {
+  const detail =
+    update.kind === 'git'
+      ? `You run ${update.current} from a git checkout, so Switchboard does not update itself: fetch ${update.tag}, run npm ci and npm run build, then restart. What's new shows the release notes and the commands.`
+      : `You run ${update.current}. What's new shows the release notes and the Update button: Switchboard downloads the release, checks its checksum, installs it next to this one and restarts.`;
+  return {
+    kind: UPDATE_AVAILABLE,
+    source: 'switchboard',
+    status: 'idle',
+    title: `Switchboard ${update.version} is available`,
+    detail,
+    branches: [],
+    actions: UPDATE_AVAILABLE_ACTIONS.map((action) => ({ id: action.id, label: action.label })),
+    sessionId: null,
+    payload: { version: update.version, tag: update.tag },
+  };
+}
 
 /**
  * The green streak before `run`: how many runs right before it (by time) ended

@@ -17,6 +17,7 @@ import { registerSidebarRoutes } from './api/sidebar.ts';
 import { registerSolutionRoutes } from './api/solutions.ts';
 import { registerSystemRoutes } from './api/system.ts';
 import { registerToolRoutes } from './api/tools.ts';
+import { registerUpdateRoutes } from './api/updates.ts';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
 import type { FolderService } from './folders/service.ts';
@@ -89,5 +90,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerMachineRoutes(app, context);
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
+  await registerUpdateRoutes(app, context);
   await registerHubRoutes(app, context);
 }

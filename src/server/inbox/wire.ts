@@ -187,6 +187,8 @@ export const SYSTEM_ITEM_LABELS: Readonly<Record<string, string>> = {
   'parent-merged': 'Parent merged',
   // D47 ruling: a stacked task's parent PR closed without a merge.
   'parent-closed': 'Parent closed',
+  // D55: a newer Switchboard release.
+  'update-available': 'Update available',
 };
 
 /**

@@ -77,6 +77,7 @@ async function main(): Promise<void> {
       SWITCHBOARD_CLAUDE_EXTRA_ARGS: JSON.stringify(['--model', 'haiku', '--max-turns', '3']),
       SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
       SWITCHBOARD_SETUP_WIZARD: 'off',
+      SWITCHBOARD_UPDATES: 'off',
     },
   });
   let log = '';

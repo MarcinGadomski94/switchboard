@@ -33,6 +33,7 @@ export interface ServerProcess extends SpawnedServer {
  * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on). D35: the fake
  * opener in front of the frame-helper setup's OS openers, so no test opens Chrome,
  * Finder or Explorer. D48: the fake Tailscale CLI (`tools/fake-tailscale`).
+ * D55: the updater off (it would check GitHub releases at start).
  */
 export function testServerDefaults(): Record<string, string> {
   return {
@@ -43,6 +44,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_OPEN_COMMAND: fakeOpenerEnv(),
     // D48: `tailscale ip -4` of the peer listener never runs the real CLI.
     SWITCHBOARD_TAILSCALE_BIN: fakeTailscaleBinEnv(),
+    // D55: the updater never asks the real GitHub; tests/e2e/updates.spec.ts turns it on against a fake.
+    SWITCHBOARD_UPDATES: 'off',
   };
 }
 
