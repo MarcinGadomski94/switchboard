@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 (2026-09-30)
+
+### Fixed
+- **Sidebar scrolling:** only the Sessions list scrolls now. The top (New session, navigation, Tools), the SESSIONS header and the bottom (Settings, usage footer) stay in place. Opening a session from anywhere scrolls its row into view; row menus near the bottom open upwards; dragging near the list's edge scrolls it; a long Tools list scrolls on its own.
+
 ## 1.3.0 (2026-09-30)
 
 ### Attachments
