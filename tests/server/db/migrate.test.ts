@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase } from '../../../src/server/db/database.ts';
 import {
+  LEGACY_CHECKSUMS,
   MIGRATIONS_DIR,
   MigrationError,
   appliedMigrations,
@@ -566,6 +567,24 @@ describe('migration runner', () => {
     const edited = makeMigration(1, 'one', 'CREATE TABLE a (id INTEGER PRIMARY KEY, extra TEXT) STRICT;');
     expect(() => migrate(database, [edited])).toThrow(/migration 1 \(one\) was changed after it was applied/);
     expect(columnsOf(database, 'a')).toEqual(['id']);
+  });
+
+  it('accepts a legacy checksum for a reworded shipped migration, and nothing else (0002, 2026-09-30)', async () => {
+    const shipped = await loadMigrations();
+    const database = await db();
+    migrate(database, shipped);
+    // A database that ran 0002 before its example tool was renamed carries the old checksum.
+    const [legacy] = LEGACY_CHECKSUMS.get(2) ?? [];
+    expect(legacy).toMatch(/^[0-9a-f]{64}$/);
+    database.prepare('UPDATE schema_migrations SET checksum = ? WHERE version = 2').run(legacy as string);
+    expect(migrate(database, shipped).applied).toEqual([]);
+    // Any other checksum is still an edited migration.
+    database.prepare('UPDATE schema_migrations SET checksum = ? WHERE version = 2').run('0'.repeat(64));
+    expect(() => migrate(database, shipped)).toThrow(/migration 2 \(default_tools\) was changed after it was applied/);
+    // A legacy checksum only counts for its own version.
+    database.prepare('UPDATE schema_migrations SET checksum = ? WHERE version = 2').run(checksumOf(shipped[1]?.sql as string));
+    database.prepare('UPDATE schema_migrations SET checksum = ? WHERE version = 3').run(legacy as string);
+    expect(() => migrate(database, shipped)).toThrow(/migration 3 \(folders\) was changed after it was applied/);
   });
 
   it('refuses a database migrated by a newer build', async () => {

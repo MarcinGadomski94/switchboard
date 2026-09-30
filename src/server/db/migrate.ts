@@ -13,6 +13,23 @@ export const MIGRATIONS_TABLE = 'schema_migrations';
 /** Migration file names: `NNNN_name.sql` (4-digit version, lowercase name). */
 const FILE_PATTERN = /^(\d{4})_([a-z0-9][a-z0-9_-]*)\.sql$/;
 
+/**
+ * Checksums an applied migration may also carry, per version: the file was
+ * reworded after release without changing what it does, so databases that ran the
+ * earlier text are still current. Only for edits that leave the effect identical;
+ * anything else needs a new migration.
+ * - 0002: the example tool's name in the file (not in the databases it already
+ *   ran on) was renamed when the repository went public (2026-09-30).
+ */
+export const LEGACY_CHECKSUMS: ReadonlyMap<number, readonly string[]> = new Map([
+  [2, ['f2b7c4b7ea05f28959187e8420eb3649d599445ec32481cdff0c977e2213b375']],
+]);
+
+/** `true` when `recorded` is `migration`'s checksum or one of its {@link LEGACY_CHECKSUMS}. */
+export function checksumMatches(migration: Migration, recorded: string, legacy: ReadonlyMap<number, readonly string[]> = LEGACY_CHECKSUMS): boolean {
+  return migration.checksum === recorded || (legacy.get(migration.version) ?? []).includes(recorded);
+}
+
 /** One plain SQL migration. */
 export interface Migration {
   /** From the file name; unique, ascending. */
@@ -132,7 +149,7 @@ export function migrate(db: DatabaseSync, migrations: readonly Migration[], now:
         `the database has migration ${row.version} (${row.name}), which this build does not know; it was made by a newer Switchboard`,
       );
     }
-    if (migration.checksum !== row.checksum) {
+    if (!checksumMatches(migration, row.checksum)) {
       throw new MigrationError(
         `migration ${row.version} (${row.name}) was changed after it was applied; add a new migration instead of editing it`,
       );
