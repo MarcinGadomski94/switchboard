@@ -5,10 +5,16 @@
  * the object; the supervisor writes it as one JSON line.
  */
 
-/** A user message: runs one turn that ends with a `result`. */
+import { type UserContentBlock, userContent } from './attachments.ts';
+
+/**
+ * A user message: runs one turn that ends with a `result`. D57: `content` is an
+ * array of content blocks when the message carries inline images / PDFs
+ * (`src/core/attachments.ts` → `userContent`), else the text as before.
+ */
 export interface UserMessageLine {
   readonly type: 'user';
-  readonly message: { readonly role: 'user'; readonly content: string };
+  readonly message: { readonly role: 'user'; readonly content: string | readonly UserContentBlock[] };
 }
 
 /** A control request Switchboard sends (interrupt, get_usage, …). */
@@ -40,9 +46,12 @@ export type ToolDecision =
     }
   | { readonly behavior: 'deny'; readonly message: string };
 
-/** `{"type":"user","message":{"role":"user","content":<text>}}`. */
-export function userMessageLine(text: string): UserMessageLine {
-  return { type: 'user', message: { role: 'user', content: text } };
+/**
+ * `{"type":"user","message":{"role":"user","content":<text>}}`; D57: with inline
+ * `blocks` (images, PDFs) the content is `[...blocks, {type:"text", text}]`.
+ */
+export function userMessageLine(text: string, blocks: readonly UserContentBlock[] = []): UserMessageLine {
+  return { type: 'user', message: { role: 'user', content: userContent(text, blocks) } };
 }
 
 /** Options of {@link interruptLine}. */

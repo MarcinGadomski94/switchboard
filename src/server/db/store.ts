@@ -4,6 +4,7 @@ import type { RepoContext } from './context.ts';
 import { DB_FILE, openDatabase } from './database.ts';
 import { type Migration, type MigrationResult, loadMigrations, migrate } from './migrate.ts';
 import { AgentRepository } from './repos/agents.ts';
+import { AttachmentRepository } from './repos/attachments.ts';
 import { ArtifactRepository } from './repos/artifacts.ts';
 import { EventRepository } from './repos/events.ts';
 import { FolderRepository } from './repos/folders.ts';
@@ -56,6 +57,8 @@ export interface Store {
   readonly peerSnapshots: PeerSnapshotRepository;
   /** The sidebar's pins and folders (D54, `docs/sidebar.md`). */
   readonly sidebar: SidebarLayoutRepository;
+  /** Attachments of chat messages (D57, `docs/chat.md` → *Attachments*). */
+  readonly attachments: AttachmentRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -115,6 +118,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     machines: new MachineRepository(ctx),
     peerSnapshots: new PeerSnapshotRepository(ctx),
     sidebar: new SidebarLayoutRepository(ctx),
+    attachments: new AttachmentRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

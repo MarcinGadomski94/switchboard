@@ -16,8 +16,10 @@
  *   not have falls back to the previous chain entry in file order.
  */
 
-/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed (2: D24 `remoteControl`). */
-export const TRANSCRIPT_FACTS_VERSION = 2;
+import { transcriptImages } from './attachments.ts';
+
+/** Bumped when the parsed shape or its rules change; older cached facts are re-parsed (2: D24 `remoteControl`; 3: D57 an image-only prompt reads `[image]`). */
+export const TRANSCRIPT_FACTS_VERSION = 3;
 
 /** Longest stored first / last prompt and command (characters). */
 const PROMPT_CAP = 500;
@@ -104,13 +106,17 @@ function isToolResult(content: unknown): boolean {
   return Array.isArray(content) && content.some((block) => isEntry(block) && block['type'] === 'tool_result');
 }
 
+/** D57: History's first / last prompt of a prompt that is only images. */
+export const IMAGE_PROMPT_PLACEHOLDER = '[image]';
+
 /** A prompt someone typed or Switchboard sent (spike M0.3 `isHumanPrompt`), else `null`. */
 export function humanPromptText(entry: Entry): string | null {
   if (entry['type'] !== 'user' || entry['isSidechain'] === true || entry['isMeta'] === true) return null;
   const content = isEntry(entry['message']) ? entry['message']['content'] : undefined;
   if (isToolResult(content)) return null;
   if (entry['promptSource'] === 'system' || entry['turnOrigin'] === 'task_notification') return null;
-  const text = contentText(content).trim();
+  // D57: a prompt of only images (pasted, or sent by Switchboard) reads as the placeholder `[image]`.
+  const text = contentText(content).trim() || (transcriptImages(content).length > 0 ? IMAGE_PROMPT_PLACEHOLDER : '');
   if (!text || text.startsWith('<local-command-') || text.startsWith('<command-') || text.startsWith('[Request interrupted')) return null;
   return text;
 }

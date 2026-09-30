@@ -28,8 +28,8 @@ import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { KEEPALIVE_FRAME, SSE_CONTENT_TYPE, formatEvent } from '../hub/hub.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { TOKEN_COOKIE } from '../security.ts';
-import { PeerConnection, PeerUnreachableError } from './client.ts';
-import { type PeerHandlers, buildPeerApp, listenPeer } from './listener.ts';
+import { PEER_RAW_HEADERS, PeerConnection, PeerUnreachableError } from './client.ts';
+import { type PeerApiAnswer, type PeerHandlers, buildPeerApp, listenPeer } from './listener.ts';
 import { PairingCodes } from './pairing.ts';
 import { tailscaleIPv4 } from './tailscale.ts';
 import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens.ts';
@@ -110,7 +110,14 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/],
   ['DELETE', /^\/api\/schedules\/[^/]+$/],
   ['GET', /^\/api\/terminal-loops$/],
+  // D57: attachments: upload to a session (or staged for a start there), and serve them (the file lives on that machine).
+  ['POST', /^\/api\/sessions\/[^/]+\/attachments$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
+  ['POST', /^\/api\/attachments$/],
 ];
+
+/** D57: the peer API's attachment download (its answer is bytes, not JSON). */
+export const PEER_ATTACHMENT_GET = /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/;
 
 /** `true` when the peer API may serve `method path` (`url` may carry a query). */
 export function peerApiAllowed(method: string, url: string): boolean {
@@ -678,7 +685,10 @@ export class PeerService implements PeerHandlers {
     const ref = this.#ref(machineId);
     if (!connection || !ref) return { status: 404, body: { error: 'not-found', message: `no paired machine ${machineId}` } };
     // D52: Save schedule (a folder scan) and Run now (a start with worktrees) take the long limit too.
-    const long = (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules'))) || path.endsWith('/hook');
+    // D57: an upload (up to 20 MiB over the tailnet) takes the long limit too.
+    const long =
+      (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
+      path.endsWith('/hook');
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
     const snapshot = snapshotOf(method, path, kind);
@@ -709,6 +719,31 @@ export class PeerService implements PeerHandlers {
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }
     return answer;
+  }
+
+  /**
+   * D57: a GET of an attachment on machine `machineId` (`path` is the peer's own
+   * path): the bytes and their serving headers, passed on as they are. 404 for an
+   * unknown machine, 502 `peer-unreachable` when it is not connected (no snapshot:
+   * an offline machine's files are not kept here).
+   */
+  async forwardRaw(machineId: string, path: string): Promise<{ readonly status: number; readonly bytes: Buffer | null; readonly headers: Readonly<Record<string, string>>; readonly body?: unknown }> {
+    const connection = this.#connections.get(machineId);
+    const ref = this.#ref(machineId);
+    if (!connection || !ref) return { status: 404, bytes: null, headers: {}, body: { error: 'not-found', message: `no paired machine ${machineId}` } };
+    const offline = (reason: string) => ({ status: 502, bytes: null, headers: {}, body: { error: 'peer-unreachable', message: offlineMessage(ref.name), reason } });
+    if (connection.state !== 'online') return offline(connection.lastError ?? connection.state);
+    try {
+      const answer = await connection.requestRaw(`/peer/v1${path}`, { timeoutMs: PEER_LONG_TIMEOUT_MS });
+      if (answer.status === 401) {
+        connection.kick();
+        return { status: 502, bytes: null, headers: {}, body: { error: 'peer-auth-failed', message: `${ref.name} refused this pairing (revoked there?): pair again` } };
+      }
+      return { status: answer.status, bytes: answer.bytes, headers: answer.headers };
+    } catch (error) {
+      if (error instanceof PeerUnreachableError) return offline(error.message);
+      throw error;
+    }
   }
 
   /** `true` when `id` is a paired machine. */
@@ -814,7 +849,7 @@ export class PeerService implements PeerHandlers {
     res.on('error', stream.close);
   }
 
-  async api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<{ readonly status: number; readonly body: string; readonly contentType: string | null }> {
+  async api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer> {
     if (!peerApiAllowed(method, url)) {
       return { status: 403, body: JSON.stringify({ error: 'peer-forbidden', message: `${method} ${url.split('?')[0]} is not part of the peer API` }), contentType: 'application/json; charset=utf-8' };
     }
@@ -832,6 +867,15 @@ export class PeerService implements PeerHandlers {
       ...(body === undefined || body === null ? {} : { payload: JSON.stringify(body) }),
     });
     const contentType = response.headers['content-type'];
+    // D57: an attachment is bytes: sent as they are, with the headers that say how to show it.
+    if (method.toUpperCase() === 'GET' && PEER_ATTACHMENT_GET.test(url.split('?')[0] ?? '')) {
+      const headers: Record<string, string> = {};
+      for (const name of PEER_RAW_HEADERS) {
+        const value = response.headers[name];
+        if (typeof value === 'string') headers[name] = value;
+      }
+      return { status: response.statusCode, body: response.rawPayload, contentType: typeof contentType === 'string' ? contentType : null, headers };
+    }
     return { status: response.statusCode, body: response.body, contentType: typeof contentType === 'string' ? contentType : null };
   }
 }

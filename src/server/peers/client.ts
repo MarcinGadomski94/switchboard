@@ -25,6 +25,16 @@ export interface PeerAnswer {
   readonly body: unknown;
 }
 
+/** D57: a peer's answer as bytes (an attachment), with the headers that describe it. */
+export interface PeerRawAnswer {
+  readonly status: number;
+  readonly bytes: Buffer;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+/** D57: the headers of a peer's attachment answer that are passed on (the serving rules travel with it). */
+export const PEER_RAW_HEADERS = ['content-type', 'content-disposition', 'x-content-type-options', 'content-security-policy'] as const;
+
 /** Thrown when a peer cannot be reached (connection refused, timeout, no address). */
 export class PeerUnreachableError extends Error {
   override name = 'PeerUnreachableError';
@@ -307,6 +317,34 @@ export class PeerConnection {
     if (!target) throw new PeerUnreachableError('the machine is not paired');
     if (!target.address) throw new PeerUnreachableError('the machine has not told an address (its peer listener is off)');
     return this.#call(target, method, path, body, { timeoutMs: options.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS });
+  }
+
+  /**
+   * D57: a GET whose answer is bytes (an attachment the peer serves): the body is
+   * not parsed, and {@link PEER_RAW_HEADERS} come along. Throws
+   * {@link PeerUnreachableError} like {@link request}.
+   */
+  async requestRaw(path: string, options: { readonly timeoutMs?: number } = {}): Promise<PeerRawAnswer> {
+    const target = await this.#options.target();
+    if (!target) throw new PeerUnreachableError('the machine is not paired');
+    if (!target.address) throw new PeerUnreachableError('the machine has not told an address (its peer listener is off)');
+    let response: Response;
+    try {
+      response = await this.#fetch(`http://${target.address}${path}`, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${target.token}` },
+        signal: AbortSignal.timeout(options.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw new PeerUnreachableError(`${target.address} could not be reached: ${describe(error)}`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const headers: Record<string, string> = {};
+    for (const name of PEER_RAW_HEADERS) {
+      const value = response.headers.get(name);
+      if (value !== null) headers[name] = value;
+    }
+    return { status: response.status, bytes, headers };
   }
 
   async #call(

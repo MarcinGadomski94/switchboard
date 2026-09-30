@@ -6,6 +6,7 @@ import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
 import { HookError } from '../hooks/service.ts';
+import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachments/service.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
@@ -200,17 +201,28 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/messages', async (request, reply) => {
-    const body = request.body as { text?: unknown } | undefined;
+    const body = request.body as { text?: unknown; attachments?: unknown } | undefined;
     const text = body?.text;
-    if (typeof text !== 'string' || text.trim() === '') {
+    // D57: the ids of attachments uploaded to this session (`POST …/attachments`); with some, the text may be empty.
+    const ids = parseAttachmentIds(body?.attachments);
+    if (ids === null) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'attachments', message: 'attachments must be a list of distinct attachment ids' }] });
+    if (typeof text !== 'string' || (text.trim() === '' && ids.length === 0)) {
       return reply.code(422).send({ error: 'invalid', errors: [{ field: 'text', message: 'the message must be non-empty text' }] });
     }
     try {
+      const hooked = await isHooked(context, request.params.id);
+      let prepared = NO_ATTACHMENTS;
+      if (ids.length > 0) {
+        if (!(await store.sessions.get(request.params.id))) return notFound(reply, request.params.id);
+        // D57 ruling: images and PDFs inline, other files as paths; a hooked session (hooks carry text) gets only paths.
+        prepared = await context.attachments.prepare(await context.attachments.resolve(request.params.id, ids), { inline: !hooked });
+      }
       // D48 P4: a hooked terminal session's message waits in its mailbox for its next idle waiter.
-      if (await isHooked(context, request.params.id)) await context.hooks.sendMessage(request.params.id, text);
-      else await supervisor.sendMessage(request.params.id, text);
+      if (hooked) await context.hooks.sendMessage(request.params.id, text, prepared);
+      else await supervisor.sendMessage(request.params.id, text.trim() === '' ? '' : text, 'user', prepared);
       return reply.code(202).send();
     } catch (error) {
+      if (error instanceof AttachmentError) return reply.code(error.status).send(error.body());
       if (error instanceof HookError) return reply.code(error.status).send({ error: error.code, message: error.message });
       return sendError(reply, error);
     }
@@ -233,7 +245,13 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'interrupt');
     try {
       const result = await supervisor.interrupt(request.params.id);
-      return { session: await toSession(store, result.record, supervisor.activity(result.record.id)), outcome: result.outcome, withdrawn: result.withdrawn };
+      return {
+        session: await toSession(store, result.record, supervisor.activity(result.record.id)),
+        outcome: result.outcome,
+        withdrawn: result.withdrawn,
+        // D57: the withdrawn messages' attachments go back into the composer as chips.
+        withdrawnAttachments: result.withdrawnAttachments,
+      };
     } catch (error) {
       return sendError(reply, error);
     }

@@ -17,6 +17,7 @@
  * absorbed by a running turn (or merged into one with the message ahead of it):
  * it gets no `result` of its own ({@link TakenUp.absorbed}).
  */
+import type { Attachment } from '../attachments.ts';
 import type { QueuedReason, UserPayload } from '../event-payload.ts';
 
 /** What was going on when a message was written ({@link queuedReason}). */
@@ -47,6 +48,10 @@ export function withoutQueued(payload: UserPayload): UserPayload {
 interface Pending {
   readonly eventId: number;
   readonly text: string;
+  /** D57: the text the CLI echoes (the message with its attached files' lines), when it differs from `text`. */
+  readonly match: string;
+  /** D57: the message's attachments (a Stop puts them back into the composer). */
+  readonly attachments: readonly Attachment[];
   /** The reason while it waits, `null` once taken up (or when it never waited). */
   queued: QueuedReason | null;
   /** A turn started on it (it still waits for its replay, the delivery ack). */
@@ -75,6 +80,8 @@ export interface TakenUp {
 export interface Withdrawn {
   readonly eventId: number;
   readonly text: string;
+  /** D57: its attachments (empty when it had none). */
+  readonly attachments: readonly Attachment[];
   /** It showed the D44 clock (`queued`) when it was withdrawn. */
   readonly wasQueued: boolean;
 }
@@ -88,10 +95,14 @@ export class QueueTracker {
   /** D50: messages the last Stop withdrew; kept until the next message is sent, in case the CLI's echo of one was already on its way. */
   #withdrawn: Pending[] = [];
 
-  /** Records a message written to stdin (its event id and text) with the reason it waits, if any. */
-  sent(eventId: number, text: string, queued: QueuedReason | null): void {
+  /**
+   * Records a message written to stdin (its event id and text) with the reason it
+   * waits, if any. D57: `extra.match` = the text the CLI echoes when it differs
+   * (the attached files' lines), `extra.attachments` = its attachments.
+   */
+  sent(eventId: number, text: string, queued: QueuedReason | null, extra: { readonly match?: string; readonly attachments?: readonly Attachment[] } = {}): void {
     this.#withdrawn = [];
-    this.#pending.push({ eventId, text, queued, takenUp: false });
+    this.#pending.push({ eventId, text, match: extra.match ?? text, attachments: extra.attachments ?? [], queued, takenUp: false });
   }
 
   /**
@@ -109,7 +120,7 @@ export class QueueTracker {
         kept.push(pending);
         continue;
       }
-      out.push({ eventId: pending.eventId, text: pending.text, wasQueued: pending.queued !== null });
+      out.push({ eventId: pending.eventId, text: pending.text, attachments: pending.attachments, wasQueued: pending.queued !== null });
       this.#withdrawn.push(pending);
     }
     this.#pending.length = 0;
@@ -137,10 +148,10 @@ export class QueueTracker {
    * and leaves the list. `null` when nothing is pending.
    */
   replayed(text: string): TakenUp | null {
-    const at = this.#pending.findIndex((pending) => pending.text === text);
+    const at = this.#pending.findIndex((pending) => pending.match === text);
     if (at < 0) {
       // D50: the echo of a message a Stop withdrew a moment too late (the CLI had taken it up already).
-      const late = this.#withdrawn.findIndex((pending) => pending.text === text);
+      const late = this.#withdrawn.findIndex((pending) => pending.match === text);
       const [hit] = late >= 0 ? this.#withdrawn.splice(late, 1) : [];
       if (hit) return { eventId: hit.eventId, wasQueued: false, absorbed: true, withdrawn: true };
     }

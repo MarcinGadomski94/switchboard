@@ -26,6 +26,7 @@
  *   `attachment` / `system` entries (D48 P4: except a `queued_command` attachment
  *   carrying a message Switchboard woke a hooked session with).
  */
+import { type TranscriptImage, transcriptImages } from './attachments.ts';
 import { switchboardMessageText } from './hooks.ts';
 import { type JsonRecord, parseStreamObject } from './stream-json.ts';
 
@@ -155,7 +156,15 @@ export type TranscriptItem =
    * `from: 'switchboard'` = the developer's message Switchboard woke a hooked
    * session with (a task notification, `switchboardMessageText`), its text only.
    */
-  | { readonly kind: 'prompt'; readonly uuid: string; readonly ts: string | null; readonly text: string; readonly from?: 'switchboard' }
+  | {
+      readonly kind: 'prompt';
+      readonly uuid: string;
+      readonly ts: string | null;
+      readonly text: string;
+      readonly from?: 'switchboard';
+      /** D57: the prompt's image blocks, with their bytes when the transcript has them (absent: none). */
+      readonly images?: readonly TranscriptImage[];
+    }
   /** Assistant text; blocks of one `messageId` belong to one message. */
   | { readonly kind: 'text'; readonly uuid: string; readonly ts: string | null; readonly messageId: string | null; readonly text: string }
   | {
@@ -171,6 +180,12 @@ export type TranscriptItem =
 
 const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/;
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
+
+/** The `message.content` of a transcript line (`undefined` when it has none). */
+function asMessageContent(entry: TranscriptEntry): unknown {
+  const message = entry['message'];
+  return typeof message === 'object' && message !== null && !Array.isArray(message) ? (message as Record<string, unknown>)['content'] : undefined;
+}
 
 /** A typed prompt's text: slash commands (`<command-name>/loop</command-name><command-args>1h</command-args>`) read `/loop 1h`. */
 export function promptText(text: string): string | null {
@@ -207,8 +222,10 @@ export function transcriptItems(entries: readonly TranscriptEntry[]): Transcript
           if (result.toolUseId) items.push({ kind: 'tool-result', uuid, ts, toolUseId: result.toolUseId, text: result.text, isError: result.isError });
         }
       } else if (message.kind === 'user-text' && !message.interrupt) {
-        const text = promptText(message.text);
-        if (text !== null) items.push({ kind: 'prompt', uuid, ts, text });
+        // D57: a prompt with images (pasted in the terminal, or sent by Switchboard) keeps them; an image alone is a prompt too.
+        const images = transcriptImages(asMessageContent(entry));
+        const text = promptText(message.text) ?? (images.length > 0 ? '' : null);
+        if (text !== null) items.push({ kind: 'prompt', uuid, ts, text, ...(images.length > 0 ? { images } : {}) });
       }
     } else if (type === 'attachment') {
       // D48 P4: a wake-up folded into a running turn is a `queued_command` attachment (CLI 2.1.284, probe b).

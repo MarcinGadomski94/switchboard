@@ -9,10 +9,15 @@ import type { ApiContext } from '../routes.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
 import { type TaskWorktree, WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
+import { AttachmentError, type AttachmentService, NO_ATTACHMENTS, type PreparedAttachments, parseAttachmentIds } from '../attachments/service.ts';
+import type { AttachmentRecord } from '../db/repos/attachments.ts';
 import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
 
 /** What {@link startNewSession} needs (a subset of the route context). */
-export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supervisor' | 'worktrees' | 'folders'>;
+export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supervisor' | 'worktrees' | 'folders'> & {
+  /** D57: staged uploads a start's first message carries (`NewSession.attachments`); without it a start takes none. */
+  readonly attachments?: AttachmentService;
+};
 
 /** Options for {@link startNewSession}. */
 export interface StartNewSessionOptions {
@@ -110,6 +115,20 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
+  // D57: the first message's attachments (staged uploads, `POST /api/attachments`), checked before anything is created.
+  const attachmentIds = parseAttachmentIds(isRecord(body) ? body['attachments'] : undefined);
+  const invalidAttachments = (message: string): StartNewSessionOutcome => ({ ok: false, status: 422, body: { error: 'invalid', errors: [{ field: 'attachments', message }] } });
+  if (attachmentIds === null) return invalidAttachments('attachments must be a list of distinct attachment ids');
+  if (attachmentIds.length > 0 && !context.attachments) return invalidAttachments('this start takes no attachments');
+  if (attachmentIds.length > 0 && result.value.task.trim() === '') return invalidAttachments('attachments go with the first message: write one');
+  let staged: AttachmentRecord[] = [];
+  try {
+    if (context.attachments) staged = await context.attachments.resolve(null, attachmentIds);
+  } catch (error) {
+    if (error instanceof AttachmentError) return { ok: false, status: error.status, body: error.body() as unknown as RefusalBody };
+    throw error;
+  }
+  let prepared: PreparedAttachments = NO_ATTACHMENTS;
   // D38: the branch the session's worktrees are on (stored with the session): the developer's ticket branch
   // (D32), `session/{name}` for scheduled runs; also the branch its agent's own worktrees get.
   const branch = result.value.worktrees ? (result.value.branch ?? worktreeBranch(result.value.name)) : null;
@@ -158,8 +177,11 @@ export async function startNewSession(context: SessionStartContext, body: unknow
         if (branching) await store.sessions.update(session.id, { branching });
         await worktrees.assign(created, session.id);
         if (firstTurn.message === '' && firstTurn.block !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
+        // D57: the staged uploads become the new session's (moved into its folder), then go with the first message.
+        if (context.attachments && staged.length > 0) prepared = await context.attachments.prepare(await context.attachments.bind(staged, session.id), { inline: true });
         if (options.beforeSpawn) await options.beforeSpawn(session);
       },
+      attachments: () => prepared,
     });
     await folders.markUsed(folder.id);
     return { ok: true, session: input, folder, record };

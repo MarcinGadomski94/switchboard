@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { ATTACHMENT_UPLOAD_BODY_MAX } from '../../core/attachments.ts';
 import { parseRemoteId } from '../../core/peers.ts';
 import { PEER_REQUEST_HEADER, PeerError, type PeerService } from '../peers/service.ts';
 import type { ApiContext } from '../routes.ts';
@@ -65,15 +66,18 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
     }
   });
 
+  const machineApi = async (request: FastifyRequest<{ Params: { id: string; '*'?: string } }>, reply: FastifyReply, rest: string): Promise<FastifyReply> => {
+    if (request.headers[PEER_REQUEST_HEADER] !== undefined) return reply.code(403).send({ error: 'peer-forbidden', message: 'a peer cannot reach further machines' });
+    const query = queryOf(request.url);
+    const answer = await peers.forward(request.params.id, request.method, `/api/${rest}${query}`, request.body);
+    return reply.code(answer.status).send(answer.body ?? undefined);
+  };
+  // D57: a New-session start on that machine uploads its attachments there first (one file per call, base64).
+  app.post<{ Params: { id: string } }>('/api/machines/:id/api/attachments', { bodyLimit: ATTACHMENT_UPLOAD_BODY_MAX }, (request, reply) => machineApi(request, reply, 'attachments'));
   app.route<{ Params: { id: string; '*': string } }>({
     method: ['GET', 'POST', 'PUT', 'DELETE'],
     url: '/api/machines/:id/api/*',
-    handler: async (request, reply) => {
-      if (request.headers[PEER_REQUEST_HEADER] !== undefined) return reply.code(403).send({ error: 'peer-forbidden', message: 'a peer cannot reach further machines' });
-      const query = queryOf(request.url);
-      const answer = await peers.forward(request.params.id, request.method, `/api/${request.params['*']}${query}`, request.body);
-      return reply.code(answer.status).send(answer.body ?? undefined);
-    },
+    handler: async (request, reply) => machineApi(request, reply, request.params['*']),
   });
 }
 
@@ -152,10 +156,21 @@ export function registerPeerForwarding(app: FastifyInstance, peers: PeerService)
     for (const [name, value] of Object.entries(params)) {
       if (typeof value === 'string') path = path.replace(`:${name}`, encodeURIComponent(value));
     }
+    // D57: an attachment is bytes: passed on with its serving headers (never parsed as JSON).
+    if (request.method === 'GET' && route === ATTACHMENT_ROUTE) {
+      const raw = await peers.forwardRaw(machineId, `${path}${queryOf(request.url)}`);
+      if (raw.bytes === null) return reply.code(raw.status).send(raw.body ?? undefined);
+      reply.code(raw.status).header('cache-control', 'private, no-cache');
+      for (const [name, value] of Object.entries(raw.headers)) reply.header(name, value);
+      return reply.send(raw.bytes);
+    }
     const answer = await peers.forward(machineId, request.method, `${path}${queryOf(request.url)}`, body);
     return reply.code(answer.status).send(answer.body ?? undefined);
   });
 }
+
+/** D57: the attachment download route (its peer answer is bytes). */
+const ATTACHMENT_ROUTE = '/api/sessions/:id/attachments/:attachmentId';
 
 /** `true` when the request came in through the peer API (answer this machine's own data only). */
 export function isPeerRequest(request: FastifyRequest): boolean {

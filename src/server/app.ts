@@ -9,6 +9,7 @@ import { QuestionPipeline, type QuestionSessions } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { LoopTracker } from './loops/tracker.ts';
 import { registerPeerForwarding } from './api/machines.ts';
+import { AttachmentService } from './attachments/service.ts';
 import { PeerService } from './peers/service.ts';
 import { HookService } from './hooks/service.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
@@ -106,6 +107,8 @@ export interface AppOptions {
   readonly hooks?: HookService;
   /** D48 P4: the hook token `/hook/*` takes (with {@link hooks}). */
   readonly hookToken?: string;
+  /** D57: chat attachments (default: one over `config.dataDir` and `store`). */
+  readonly attachments?: AttachmentService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -204,7 +207,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   loops.useEventsOf((sessionId) => hooks.loopEvents(sessionId));
   // D48: a request that names a peer's id goes to that peer (before any route handler reads the local store).
   registerPeerForwarding(app, peers);
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks });
+  // D57: attachments live in the data folder (`<dataDir>/attachments/<session>/`).
+  const attachments = options.attachments ?? new AttachmentService({ dataDir: config.dataDir, store: options.store });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
@@ -218,6 +223,8 @@ export function createSupervisor(config: ServerConfig, store: Store, controlHand
     // M4.1: the "Attach here" warning asks `claude agents --json` (in the session's cwd) whether a terminal holds the session.
     listLive: claudeAgentsLister({ claudeCommand: config.claudeCommand }),
     ...(controlHandler ? { controlHandler } : {}),
+    // D57: an imported terminal prompt's images are stored as the session's attachments.
+    attachments: new AttachmentService({ dataDir: config.dataDir, store }),
   });
 }
 

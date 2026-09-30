@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
+import { registerAttachmentRoutes } from './api/attachments.ts';
+import type { AttachmentService } from './attachments/service.ts';
 import { registerBranchingRoutes } from './api/branching.ts';
 import { registerFolderRoutes } from './api/folders.ts';
 import { registerFrameHelperRoutes } from './api/frame-helper.ts';
@@ -62,6 +64,8 @@ export interface ApiContext {
   readonly peers: PeerService;
   /** Hand-started terminal sessions: hooks, the hook endpoints, hooked sessions (D48 P4, docs/peers.md). */
   readonly hooks: HookService;
+  /** Chat attachments: uploads, storage, serving, a message's inline blocks and paths (D57, docs/chat.md → Attachments). */
+  readonly attachments: AttachmentService;
 }
 
 /**
@@ -74,6 +78,7 @@ export interface ApiContext {
  */
 export async function registerApiRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   await registerSessionRoutes(app, context);
+  await registerAttachmentRoutes(app, context);
   await registerInboxRoutes(app, context);
   await registerSolutionRoutes(app, context);
   await registerScheduleRoutes(app, context);

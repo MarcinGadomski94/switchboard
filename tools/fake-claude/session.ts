@@ -44,7 +44,7 @@ import {
   compactToken,
   type UsageSpec,
   type CompactSpec,
-  writeToken, autoModeSupported, ignoresInterrupt } from './scenarios.ts';
+  writeToken, autoModeSupported, ignoresInterrupt, mediaReply } from './scenarios.ts';
 import { FAKE_EFFORT_LEVELS, type ControlReply, FakeModelState, effortWarning, modelsListed } from './model.ts';
 import { remoteHistory, remoteHistoryEntries, reportsInitAtStart, teleportInto } from './teleport.ts';
 import { LiveFile, ResumeError, Transcript, gitBranchOf, slugForCwd, templatesFrom } from './transcript.ts';
@@ -707,6 +707,8 @@ export class Runner {
     const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : sayToken(msg.text);
     /** D44: `[fake:hold <seconds>]`: the default turn, held before its reply. */
     const hold = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null || said !== null ? null : holdToken(msg.text);
+    /** D57: a message that carries images / PDFs (and no other token, nor a scenario switch) is answered with what it carried. */
+    const media = msg.fired || scenarioToken(msg.text) !== null ? null : mediaReply(msg.content, msg.text);
     /** D30: the recording's rest after this turn's result, played `delayMs` later. */
     let later: { readonly steps: readonly Step[]; readonly delayMs: number } | null = null;
     /** D30: a `[fake:wakeup]` fires a turn of its own this many ms after the turn. */
@@ -799,6 +801,12 @@ export class Runner {
       // The default turn ("OK") with the given reply text.
       steps = this.core.base.turns[0] ?? [];
       say = said.text;
+      scenario = DEFAULT_FIXTURE;
+      turnIndex = 0;
+    } else if (media !== null) {
+      // D57: a message with images / PDFs: the default turn, whose reply says what it carried.
+      steps = this.core.base.turns[0] ?? [];
+      say = media;
       scenario = DEFAULT_FIXTURE;
       turnIndex = 0;
     } else {

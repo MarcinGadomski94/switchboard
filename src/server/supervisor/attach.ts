@@ -18,6 +18,7 @@ import { homedir } from 'node:os';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { AttachWarningReason } from '../../core/api.ts';
+import { type Attachment, attachmentsLabel, placeholderImage } from '../../core/attachments.ts';
 import { textLabel, toolEventKind, toolLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { type ToolPayload, type UserPayload, clip, clipInput } from '../../core/event-payload.ts';
 import { type ContextState, contextFromTranscript, readContextState } from '../../core/context-meter.ts';
@@ -135,6 +136,12 @@ export interface ImportOptions {
    * whose remote history sits in front of the turns Switchboard already saw.
    */
   readonly fromStart?: boolean;
+  /**
+   * D57: stores a prompt image's bytes (base64) as the session's attachment, so the
+   * chat shows it; `null` = not an image it takes. Without it (or without bytes in
+   * the transcript) the image is listed as a placeholder ("image").
+   */
+  readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null>;
 }
 
 /** What {@link importTerminalTurns} did. */
@@ -199,13 +206,25 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
             break;
           }
         }
-        const payload: UserPayload = { type: 'user', text: item.text, origin: item.from === 'switchboard' ? 'user' : origin, delivered: true };
+        // D57: the prompt's images: stored (so the chat shows them) when the transcript has their bytes, else placeholders.
+        const attachments: Attachment[] = [];
+        for (const [index, image] of (item.images ?? []).entries()) {
+          const saved = image.data !== null && options.saveImage ? await options.saveImage(session.id, image.data, index).catch(() => null) : null;
+          attachments.push(saved ?? placeholderImage(image.mediaType));
+        }
+        const payload: UserPayload = {
+          type: 'user',
+          text: item.text,
+          origin: item.from === 'switchboard' ? 'user' : origin,
+          delivered: true,
+          ...(attachments.length > 0 ? { attachments } : {}),
+        };
         await append({
           sessionId: session.id,
           agentId: mainAgentId,
           ts,
           kind: userMessageKind(item.text),
-          label: textLabel(item.text),
+          label: item.text === '' && attachments.length > 0 ? attachmentsLabel(attachments) : textLabel(item.text),
           payload,
           uuid: item.uuid,
         });
@@ -289,7 +308,8 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
 async function findUndelivered(store: Store, sessionId: string, text: string): Promise<EventRecord | null> {
   for (const event of await store.events.list(sessionId)) {
     const payload = event.payload as Partial<UserPayload> | null;
-    if (payload?.type === 'user' && payload.delivered === false && payload.text?.trim() === text.trim()) return event;
+    // D57: a message with attachments went out with its attached files' lines (`sentText`).
+    if (payload?.type === 'user' && payload.delivered === false && (payload.sentText ?? payload.text)?.trim() === text.trim()) return event;
   }
   return null;
 }
