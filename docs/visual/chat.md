@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.20%**, free-talk-feature with the open card **11.08%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
+Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.20%**, free-talk-feature with the open card **11.09%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
 
 Side by side (prototype left, app right): `chat-calendar-side-by-side.png`, `chat-card-side-by-side.png`, `chat-answered-side-by-side.png`.
 
