@@ -38,7 +38,7 @@ export function AddFolderPanel({ testId, onAdded, onCancel }: { readonly testId:
           data-testid={`${testId}-input`}
           value={picker.input}
           spellCheck={false}
-          placeholder="A workspace (router AGENTS.md) or a git repository"
+          placeholder="A workspace (router AGENTS.md), a git repository or any folder"
           aria-label="Folder to add"
           onChange={(event) => picker.setInput(event.target.value)}
           onKeyDown={addOnEnter}

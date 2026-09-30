@@ -716,6 +716,7 @@ describe('0022 plain folders (D59)', () => {
     ['0018_peer_snapshots.sql', '321e7d8cb5f489223716c807f7b1748682d8b6bf4449f65cd099a98e60505b62'],
     ['0019_sidebar_layout.sql', 'a734ca537d8b2fed7542704469fd8b46754ae1acf04807165e965b4d96f50891'],
     ['0020_attachments.sql', 'e4ded7214a6486f5641d94e68d1b20df8dbc656797418467df8895d308e1a6cf'],
+    ['0021_sidebar_subfolders.sql', '6d0f5f1d8e83bc77e47fe97b0e575ee5cb15048a9999b2b1238ddd6443c45eb2'],
   ];
 
   const insertFolder = 'INSERT INTO folders (id, path, canonical_path, kind, is_default, added_at, last_used_at, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';

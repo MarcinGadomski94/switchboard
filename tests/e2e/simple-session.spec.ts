@@ -26,11 +26,17 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
  *    across a reload (the palette's New session opens in it too). Start from
  *    Simple: the session runs in `../solo-wt-<name>` on the edited branch, its
  *    first message is the message + only the worktree note.
+ * 3. D59: a plain folder (no AGENTS.md, not a git repository), typed into
+ *    Browse…: its check line says so, Add saves it (kind `folder` in Settings →
+ *    Folders) and selects it; no worktree checkbox; Full shows its note with
+ *    **Use Simple** and cannot start; Start from Simple runs claude in the folder
+ *    with the message alone; next time the dropdown offers the folder.
  */
 
 let tmp: string;
 let workspace: string;
 let soloRepo: string;
+let notes: string;
 let server: ServerProcess;
 let gitEnv: Record<string, string>;
 
@@ -85,6 +91,7 @@ test.beforeAll(async () => {
   tmp = await realpath(await makeTempDir('e2e-simple-session'));
   workspace = path.join(tmp, 'work space');
   soloRepo = path.join(tmp, 'solo');
+  notes = path.join(tmp, 'my notes');
   const gitConfig = path.join(tmp, 'gitconfig');
   const dataDir = path.join(tmp, 'data');
   await mkdir(workspace, { recursive: true });
@@ -102,6 +109,9 @@ test.beforeAll(async () => {
   await writeFile(path.join(workspace, 'AGENTS.md'), '# AGENTS.md (Workspace Router)\n');
   await makeRepo(path.join(workspace, 'microfrontends', 'web-front'));
   await makeRepo(soloRepo);
+  // D59: a plain folder: no AGENTS.md, not a git repository.
+  await mkdir(notes, { recursive: true });
+  await writeFile(path.join(notes, 'todo.txt'), 'buy milk\n');
   // D14: the workspace is the default folder, the repo a second one. Nothing else is stored (no remembered mode).
   await seedFolderInDataDir(dataDir, workspace);
   await seedFolderInDataDir(dataDir, soloRepo, { kind: 'repo' });
@@ -256,4 +266,63 @@ test('a repo folder: own worktree with the derived branch; Full keeps what was t
     `- Worktree: ${dir} (branch docs/tidy-readme, from main); it is your working folder: make every change here.`,
     `- Main checkout: ${soloRepo} (leave it as it is).`,
   ]);
+});
+
+test('D59: a plain folder typed into Browse… is saved and selected; Full offers Simple; Simple starts claude there with the message alone; it is offered next time', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  let modal = await openModal(page);
+  if ((await modal.getAttribute('data-mode')) !== 'simple') await modal.getByTestId('ns-mode-simple').click();
+  await expect(modal).toHaveAttribute('data-mode', 'simple');
+  await expect(modal.getByTestId('ns-folder').locator('option')).toHaveCount(2);
+
+  // Browse…: type the plain folder's path; its check line says what it is; Add saves and selects it.
+  await modal.getByTestId('ns-folder-browse').click();
+  const panel = modal.getByTestId('ns-folder-add-panel');
+  await panel.getByTestId('ns-folder-add-input').fill(notes);
+  await expect(panel.getByTestId('ns-folder-add-line')).toHaveText('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
+  await expect(panel.getByTestId('ns-folder-add-line')).toHaveAttribute('data-ok', 'true');
+  await panel.getByTestId('ns-folder-add-add').click();
+  await expect(panel).toHaveCount(0);
+  await expect(modal.getByTestId('ns-folder').locator('option:checked')).toHaveText('my notes');
+  await expect(modal.getByTestId('ns-folder-check')).toHaveText('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
+  const saved = (await savedFolders(page)).find((folder) => folder.path === notes);
+  expect(saved).toMatchObject({ kind: 'plain', name: 'my notes', check: { kind: 'plain' } });
+
+  // No worktree, no workspace note: the plain note; it runs in the folder itself.
+  await expect(modal.getByTestId('ns-simple-field').first()).toHaveAttribute('data-kind', 'plain');
+  await expect(modal.getByTestId('ns-worktree')).toHaveCount(0);
+  await expect(modal.getByTestId('ns-simple-workspace-note')).toHaveCount(0);
+  await expect(modal.getByTestId('ns-simple-plain-note')).toHaveText('A plain folder (no AGENTS.md, not a git repository): Claude runs here with your message alone.');
+  await expect(modal.getByTestId('ns-simple-where').locator('div').first()).toHaveText(`Runs in ${notes}`);
+  await modal.getByTestId('ns-message').fill('Sort my notes by date.');
+
+  // Full cannot start in a plain folder: its note offers Simple (and keeps what was typed).
+  await modal.getByTestId('ns-mode-full').click();
+  await expect(modal).toHaveAttribute('data-mode', 'full');
+  await expect(modal.getByTestId('ns-plain-note')).toContainText("This folder has no AGENTS.md and isn't a git repository");
+  await expect(modal.getByTestId('ns-recommended')).toHaveCount(0);
+  await expect(modal.getByTestId('ns-start')).toBeDisabled();
+  await modal.getByTestId('ns-plain-use-simple').click();
+  await expect(modal).toHaveAttribute('data-mode', 'simple');
+  await expect.poll(() => storedMode(page)).toBe('simple');
+  await expect(modal.getByTestId('ns-message')).toHaveValue('Sort my notes by date.');
+  await expect(modal.getByTestId('ns-folder')).toHaveValue(saved!.id);
+
+  await modal.getByTestId('ns-start').click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.getByTestId('session-name')).toHaveText('Sort my notes by date.');
+  const session = (await listSessions(page)).find((s) => s.name === 'sort-my-notes-by-date');
+  expect(session).toMatchObject({ solutions: [], workType: null, worktrees: false, cwd: notes, folder: saved!.id, folderPath: notes, folderKind: 'plain' });
+  const first = await firstMessage(page, session!.id);
+  expect(first).toBe('Sort my notes by date.');
+  await expect(page.getByTestId('session-root')).toContainText(`${notes} · folder`);
+
+  // Next time: the dropdown offers it (recently used, after the default); Settings → Folders lists it as a "folder".
+  modal = await openModal(page);
+  await expect(modal.getByTestId('ns-folder').locator('option')).toHaveText(['work space (default)', 'my notes', 'solo']);
+  await page.keyboard.press('Escape');
+  await page.goto(`${server.baseUrl}/settings/folders`);
+  const row = page.getByTestId('settings-folder').filter({ has: page.getByTestId('settings-folder-name').filter({ hasText: /^my notes$/ }) });
+  await expect(row.getByTestId('settings-folder-kind')).toHaveText('folder');
+  await expect(row.getByTestId('settings-folder-check')).toHaveText('✓ folder · no AGENTS.md, not a git repo · Simple sessions');
 });
