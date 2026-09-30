@@ -759,7 +759,7 @@ class Component extends DCLogic {
     const b = (b, who, s, wt, agent) => ({ b, who, color: C[s], wt: wt || '', agent: agent || '' });
     const SG = [
       ['microfrontends/', '', [
-        { id: 'swap', name: 'acme-app-front', type: 'Web', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', 'wt-1', 'web'), b('feature/button-variants', 'button-rollout', 'run', 'wt-2', 'web')], phase: 'mixed', changes: '+312', flag: '2 writers · isolated', fc: '#76756f' },
+        { id: 'acme', name: 'acme-app-front', type: 'Web', s: 'need', branches: [b('feature/free-talk-360', 'free-talk-feature', 'need', 'wt-1', 'web'), b('feature/button-variants', 'button-rollout', 'run', 'wt-2', 'web')], phase: 'mixed', changes: '+312', flag: '2 writers · isolated', fc: '#76756f' },
         { id: 'workspace', name: 'workspace-front', type: 'Web', s: 'run', branches: [b('feature/notifications-panel', 'notifications-integration', 'run', '', 'web')], phase: 'integration', changes: '+88' },
         { id: 'auth', name: 'auth-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'integration', changes: '—' },
         { id: 'lm', name: 'learning-material-front', type: 'Web', s: 'idle', branches: [b('main', 'idle', 'idle')], phase: 'UI-first', changes: '—' },
@@ -775,7 +775,7 @@ class Component extends DCLogic {
     const all = SG.flatMap(g => g[2]); const sr = all.find(r => r.id === solSel) || all[0];
     const D = {
       mobile: { path: '~/acme/mobile/', warn: 'free-talk-feature and button-rollout both write to mobile/ in one working tree. Your AGENTS.md requires isolation: \'worktree\' for parallel writers in the same repo.', ledger: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'seam TODO · FreeTalkViewModel.cs:41' }, { i: 'NotificationsConnector', p: 'integration', c: C.run, seam: 'Tier A green · Tier B pending' }], arts: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'FOLLOWUP', n: 'mobile-followups/from-acme-app-front.md', m: '2 pending' }, { t: 'QA', n: 'coverage-matrix.md', m: '14/18' }], idx: 'codebase-memory · dirty since 10:31 · reindex', idxColor: C.need },
-      swap: { path: '~/acme/microfrontends/acme-app-front/', warn: '', ledger: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'mock-DI · fixtures/free-talk.json' }, { i: 'ProfileConnector', p: 'integration', c: C.run, seam: 'Tier B green 09-24' }], arts: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'DIFF', n: 'Pages/FreeTalk/*.razor', m: '+284 −12' }], idx: 'codebase-memory · dirty since 10:22 · reindex', idxColor: C.need },
+      acme: { path: '~/acme/microfrontends/acme-app-front/', warn: '', ledger: [{ i: 'FreeTalkService', p: 'UI-first', c: C.need, seam: 'mock-DI · fixtures/free-talk.json' }, { i: 'ProfileConnector', p: 'integration', c: C.run, seam: 'Tier B green 09-24' }], arts: [{ t: 'CONTRACT', n: 'contracts/free-talk.md', m: 'locked' }, { t: 'DIFF', n: 'Pages/FreeTalk/*.razor', m: '+284 −12' }], idx: 'codebase-memory · dirty since 10:22 · reindex', idxColor: C.need },
     };
     const d = D[sr.id] || { path: '~/acme/' + (SG.find(g => g[2].includes(sr))[0].replace('read-only', 'deprecated/')) + sr.name + '/', warn: '', ledger: [{ i: '—', p: sr.phase, c: '#8d8c87', seam: 'no phase-ledger.md changes today' }], arts: [{ t: 'INFO', n: 'No artifacts today', m: '' }], idx: 'codebase-memory · indexed · fresh', idxColor: C.done };
     const sd = { name: sr.name, ...d, branches: sr.branches };

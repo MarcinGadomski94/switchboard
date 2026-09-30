@@ -87,9 +87,9 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
         '',
         'editable',
         [
+          ['acme-app-front', p('microfrontends', 'acme-app-front'), 'Web', 'editable'],
           ['auth-front', p('microfrontends', 'auth-front'), 'Web', 'editable'],
           ['not-cloned-front', p('microfrontends', 'not-cloned-front'), 'Web', 'editable'],
-          ['acme-app-front', p('microfrontends', 'acme-app-front'), 'Web', 'editable'],
         ],
       ],
       ['mobile/', '', 'editable', [['mobile', p('mobile'), 'Mobile', 'editable']]],
@@ -139,9 +139,9 @@ describe('WorkspaceScanner · fixture workspace with the real router rules', () 
     ]);
     const web = scan.folders[0]?.solutions ?? [];
     expect(web.map((s) => [s.relativePath, s.git])).toEqual([
+      ['microfrontends/acme-app-front', true],
       ['microfrontends/auth-front', true],
       ['microfrontends/not-cloned-front', false],
-      ['microfrontends/acme-app-front', true],
     ]);
     expect(scan.folders[6]?.solutions.map((s) => s.relativePath)).toEqual(['deprecated/microfrontends/old-chat-front', 'deprecated/mobile']);
   });

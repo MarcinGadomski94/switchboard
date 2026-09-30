@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **4.02%**, session view (256,0 1184×900) **11.19%**.
+Pixel diff (advisory, channel threshold 24): header strip (256,0 804×header) **4.00%**, session view (256,0 1184×900) **11.18%**.
 The view below the header differs by design in this item: the Chat tab (M4.2) and the right panel's agent cards and terminal tail (M4.3) are later items; M4.1's handoff card sits at the top of the panel until then.
 
 Side by side (prototype left, app right): `session-header-side-by-side.png` (header strip), `session-view-side-by-side.png` (view).
@@ -22,7 +22,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | calendar-func-fix | top | box | 278,13 760×30 | 278,13 760×30 | ok |  |
 | calendar-func-fix | dot | box | 278,24 8×8 | 278,24 8×8 | ok |  |
 | calendar-func-fix | name | box | 296,18.5 126.4×19 | 296,18.5 126.4×19 | ok | "calendar-func-fix" |
-| calendar-func-fix | root | box | 432.4,20.5 220.8×15 | 432.4,20.5 220.8×15 | ok | "D:\\acme · workspace root" |
+| calendar-func-fix | root | box | 432.4,20.5 165.6×15 | 432.4,20.5 165.6×15 | ok | "D:\\acme · workspace root" |
 | calendar-func-fix | actions | right, y, height (D33) | 828.8,13 209.3×30 | 769.7,13 268.3×30 | ok | "ClosePause⇄ Continue in terminal" |
 | calendar-func-fix | pause | box | 828.8,13 55.7×30 | 828.8,13 55.7×30 | ok | "Pause" |
 | calendar-func-fix | handoff | box | 890.4,13 147.6×30 | 890.4,13 147.6×30 | ok | "⇄ Continue in terminal" |
@@ -44,7 +44,7 @@ Geometry: `box` = x, y, width, height; `size` = x, width, height. Styles compare
 | free-talk-feature | top | box | 278,13 760×30 | 278,13 760×30 | ok |  |
 | free-talk-feature | dot | box | 278,24 8×8 | 278,24 8×8 | ok |  |
 | free-talk-feature | name | box | 296,18.5 121.6×19 | 296,18.5 121.6×19 | ok | "free-talk-feature" |
-| free-talk-feature | root | box | 427.6,20.5 220.8×15 | 427.6,20.5 220.8×15 | ok | "D:\\acme · workspace root" |
+| free-talk-feature | root | box | 427.6,20.5 165.6×15 | 427.6,20.5 165.6×15 | ok | "D:\\acme · workspace root" |
 | free-talk-feature | actions | right, y, height (D33) | 828.8,13 209.3×30 | 769.7,13 268.3×30 | ok | "ClosePause⇄ Continue in terminal" |
 | free-talk-feature | pause | box | 828.8,13 55.7×30 | 828.8,13 55.7×30 | ok | "Pause" |
 | free-talk-feature | handoff | box | 890.4,13 147.6×30 | 890.4,13 147.6×30 | ok | "⇄ Continue in terminal" |

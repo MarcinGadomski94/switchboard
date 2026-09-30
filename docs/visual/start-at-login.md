@@ -12,10 +12,10 @@ Compared styles: color, font-family, font-size, font-weight, line-height, letter
 
 | Part | Prototype | App | Copy (exact) |
 |---|---|---|---|
-| row | 520,328 860×64 | 520,328 860×64 |  |
-| label | 520,342 829.6×18 | 520,342 829.6×18 | "Start at login" |
-| desc | 520,360 829.6×17 | 520,360 829.6×17 | "Launch the service when you sign in (Windows / macOS)" |
-| value | 1365.6,351.5 14.4×16 | 1365.6,351.5 14.4×16 | "on" |
+| row | 520,328 860×64 | 520,345 860×64 |  |
+| label | 520,342 829.6×18 | 520,359 829.6×18 | "Start at login" |
+| desc | 520,360 829.6×17 | 520,377 829.6×17 | "Launch the service when you sign in (Windows / macOS)" |
+| value | 1365.6,351.5 14.4×16 | 1365.6,368.5 14.4×16 | "on" |
 
 ## Known differences (not findings)
 - Page position: until M8.2's Settings view is merged, the placeholder view has no 230px section nav and no section title, so the row sits 230 px further left and higher than in the prototype (the 5th row of Claude Code there). Sizes, offsets inside the row, copy and styles are compared.

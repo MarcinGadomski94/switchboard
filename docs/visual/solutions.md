@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.60%**.
+Pixel diff (advisory, channel threshold 24): Solutions view (256,0 1184×900) **0.01%**, full page **0.61%**.
 Known data differences: the header meta (the prototype hard-codes "18 solutions · 7 active" while its own list has 12 rows, 6 of them not idle; the app counts its rows: "12 solutions · 6 active"), and the sidebar (other lanes' routes still answer 501 in this lane).
 
 Side by side (prototype left, app right): `solutions-side-by-side.png` (view), `solutions-page-side-by-side.png` (page).
@@ -19,18 +19,18 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | list | box | 256,0 844×900 | 256,0 844×900 | ok |  |
 | head | box | 256,0 843×90 | 256,0 843×90 | ok |  |
 | title | box | 278,18 81.8×23 | 278,18 81.8×23 | ok | "Solutions" |
-| headerMeta | none | 371.8,24 295.2×16 | 371.8,24 295.2×16 | ok |  |
+| headerMeta | none | 371.8,24 237.6×16 | 371.8,24 237.6×16 | ok |  |
 | pills | box | 278,53 799×24 | 278,53 799×24 | ok | "AllWebMobileNuGetBackendRead-only" |
 | scroll | box | 256,90 843×810 | 256,90 843×810 | ok |  |
 | detail | box | 1100,0 340×900 | 1100,0 340×900 | ok |  |
-| detailPath | box | 1118,18 304×30 | 1118,18 304×30 | ok | "D:\\acme\\microfrontends\\acme-app-front" |
-| detailName | box | 1118,50 304×23 | 1118,50 304×23 | ok | "acme-app-front" |
-| branchesSection | box | 1118,87 304×248 | 1118,87 304×248 | ok | "Branches & worktrees⎇ feature/free-talk-360../acme-app-front-wt-free- |
-| branchesLabel | box | 1118,87 304×14 | 1118,87 304×14 | ok | "Branches & worktrees" |
-| ledgerSection | box | 1118,349 304×116 | 1118,349 304×116 | ok | "Phase ledgerFreeTalkServiceUI-firstmock-DI · fixtures/free-talk.jsonP |
-| ledgerLabel | box | 1118,349 304×14 | 1118,349 304×14 | ok | "Phase ledger" |
-| artifactsSection | box | 1118,479 304×60 | 1118,479 304×60 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedQAcoverage- |
-| artifactsLabel | box | 1118,479 304×14 | 1118,479 304×14 | ok | "Artifacts & follow-ups" |
+| detailPath | box | 1118,18 304×15 | 1118,18 304×15 | ok | "D:\\acme\\microfrontends\\acme-app-front" |
+| detailName | box | 1118,35 304×23 | 1118,35 304×23 | ok | "acme-app-front" |
+| branchesSection | box | 1118,72 304×248 | 1118,72 304×248 | ok | "Branches & worktrees⎇ feature/free-talk-360../acme-app-front-wt-free- |
+| branchesLabel | box | 1118,72 304×14 | 1118,72 304×14 | ok | "Branches & worktrees" |
+| ledgerSection | box | 1118,334 304×116 | 1118,334 304×116 | ok | "Phase ledgerFreeTalkServiceUI-firstmock-DI · fixtures/free-talk.jsonP |
+| ledgerLabel | box | 1118,334 304×14 | 1118,334 304×14 | ok | "Phase ledger" |
+| artifactsSection | box | 1118,464 304×60 | 1118,464 304×60 | ok | "Artifacts & follow-upsCONTRACTcontracts/free-talk.mdlockedQAcoverage- |
+| artifactsLabel | box | 1118,464 304×14 | 1118,464 304×14 | ok | "Artifacts & follow-ups" |
 | freshness | box | 1118,840 304×42 | 1118,840 304×42 | ok | "codebase-memory · edited by agents since last indexopen Codebase Memo |
 | freshnessDot | box | 1118,858 3.5×6 | 1118,858 3.5×6 | ok |  |
 | freshnessText | box | 1129.5,847 198.7×28 | 1129.5,847 198.7×28 | ok | "codebase-memory · edited by agents since last index" |
@@ -55,7 +55,7 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | group:readOnly:note | box | 345.4,735 290.4×14 | 345.4,735 290.4×14 | ok | "deprecated/ · infrastructure/ · never edited" |
 | row:acme-app-front | box | 268,122 819×86 | 268,122 819×86 | ok | "acme-app-front⎇ feature/free-talk-360acme-app-front-wt-free-talk-feat |
 | row:acme-app-front:dot | box | 278,162.5 7×7 | 278,162.5 7×7 | ok |  |
-| row:acme-app-front:name | box | 293,156.5 95.7×17 | 293,156.5 95.7×17 | ok | "acme-app-front" |
+| row:acme-app-front:name | box | 293,156.5 96.6×17 | 293,156.5 96.6×17 | ok | "acme-app-front" |
 | row:acme-app-front:chips | box | 480,130 439×70 | 480,130 439×70 | ok | "⎇ feature/free-talk-360acme-app-front-wt-free-talk-featurefree-talk-f |
 | row:acme-app-front:chip0 | box | 480,130 439×20 | 480,130 439×20 | ok | "⎇ feature/free-talk-360acme-app-front-wt-free-talk-featurefree-talk-f |
 | row:acme-app-front:chip0:branch | box | 488,133 156.2×14 | 488,133 156.2×14 | ok | "⎇ feature/free-talk-360" |
@@ -163,34 +163,34 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | row:old-chat-front:changes | box | 1023,799.5 54×15 | 1023,799.5 54×15 | ok | "locked" |
 | row:mobile:flag | box | 293,392.5 132.3×14 | 293,392.5 132.3×14 | ok | "⚠ shared working tree" |
 | row:notifications-microservice:flag | box | 293,595 158.6×14 | 293,595 158.6×14 | ok | "contract source" |
-| card1 | box | 1118,107 304×72 | 1118,107 304×72 | ok | "⎇ feature/free-talk-360../acme-app-front-wt-free-talk-featurefree-tal |
-| card1:branch | box | 1130,117 280×16 | 1130,117 280×16 | ok | "⎇ feature/free-talk-360" |
-| card1:worktree | box | 1130,136 280×14 | 1130,136 280×14 | ok | "../acme-app-front-wt-free-talk-feature" |
-| card1:owner | box | 1130,153 280×16 | 1130,153 280×16 | ok | "free-talk-feature" |
-| card2 | box | 1118,185 304×72 | 1118,185 304×72 | ok | "⎇ feature/button-variants../acme-app-front-wt-button-rolloutbutton-ro |
-| card2:branch | box | 1130,195 280×16 | 1130,195 280×16 | ok | "⎇ feature/button-variants" |
-| card2:worktree | box | 1130,214 280×14 | 1130,214 280×14 | ok | "../acme-app-front-wt-button-rollout" |
-| card2:owner | box | 1130,231 280×16 | 1130,231 280×16 | ok | "button-rollout" |
-| card3 | box | 1118,263 304×72 | 1118,263 304×72 | ok | "⎇ qa/free-talk-e2e../acme-app-front-wt-qa-free-talkqa-free-talk" |
-| card3:branch | box | 1130,273 280×16 | 1130,273 280×16 | ok | "⎇ qa/free-talk-e2e" |
-| card3:worktree | box | 1130,292 280×14 | 1130,292 280×14 | ok | "../acme-app-front-wt-qa-free-talk" |
-| card3:owner | box | 1130,309 280×16 | 1130,309 280×16 | ok | "qa-free-talk" |
-| ledger1 | box | 1118,369 304×45 | 1118,369 304×45 | ok | "FreeTalkServiceUI-firstmock-DI · fixtures/free-talk.json" |
-| ledger1:interface | box | 1118,374 240.8×15 | 1118,374 240.8×15 | ok | "FreeTalkService" |
-| ledger1:phase | box | 1366.8,374 55.2×15 | 1366.8,374 55.2×15 | ok | "UI-first" |
-| ledger1:seam | box | 1118,393 304×15 | 1118,393 304×15 | ok | "mock-DI · fixtures/free-talk.json" |
-| artifact1 | box | 1118,499 304×17 | 1118,499 304×17 | ok | "CONTRACTcontracts/free-talk.mdlocked" |
-| artifact1:tag | box | 1118,499 60×17 | 1118,499 60×17 | ok | "CONTRACT" |
-| artifact1:name | box | 1186,499 188.4×17 | 1186,499 188.4×17 | ok | "contracts/free-talk.md" |
-| artifact1:meta | box | 1382.4,500.5 39.6×14 | 1382.4,500.5 39.6×14 | ok | "locked" |
-| ledger2 | box | 1118,420 304×45 | 1118,420 304×45 | ok | "ProfileConnectorintegrationTier B green 09-24" |
-| ledger2:interface | box | 1118,425 220.1×15 | 1118,425 220.1×15 | ok | "ProfileConnector" |
-| ledger2:phase | box | 1346.1,425 75.9×15 | 1346.1,425 75.9×15 | ok | "integration" |
-| ledger2:seam | box | 1118,444 304×15 | 1118,444 304×15 | ok | "Tier B green 09-24" |
-| artifact2 | box | 1118,522 304×17 | 1118,522 304×17 | ok | "QAcoverage-matrix.md14/18" |
-| artifact2:tag | box | 1118,522 24×17 | 1118,522 24×17 | ok | "QA" |
-| artifact2:name | box | 1150,522 231×17 | 1150,522 231×17 | ok | "coverage-matrix.md" |
-| artifact2:meta | box | 1389,523.5 33×14 | 1389,523.5 33×14 | ok | "14/18" |
+| card1 | box | 1118,92 304×72 | 1118,92 304×72 | ok | "⎇ feature/free-talk-360../acme-app-front-wt-free-talk-featurefree-tal |
+| card1:branch | box | 1130,102 280×16 | 1130,102 280×16 | ok | "⎇ feature/free-talk-360" |
+| card1:worktree | box | 1130,121 280×14 | 1130,121 280×14 | ok | "../acme-app-front-wt-free-talk-feature" |
+| card1:owner | box | 1130,138 280×16 | 1130,138 280×16 | ok | "free-talk-feature" |
+| card2 | box | 1118,170 304×72 | 1118,170 304×72 | ok | "⎇ feature/button-variants../acme-app-front-wt-button-rolloutbutton-ro |
+| card2:branch | box | 1130,180 280×16 | 1130,180 280×16 | ok | "⎇ feature/button-variants" |
+| card2:worktree | box | 1130,199 280×14 | 1130,199 280×14 | ok | "../acme-app-front-wt-button-rollout" |
+| card2:owner | box | 1130,216 280×16 | 1130,216 280×16 | ok | "button-rollout" |
+| card3 | box | 1118,248 304×72 | 1118,248 304×72 | ok | "⎇ qa/free-talk-e2e../acme-app-front-wt-qa-free-talkqa-free-talk" |
+| card3:branch | box | 1130,258 280×16 | 1130,258 280×16 | ok | "⎇ qa/free-talk-e2e" |
+| card3:worktree | box | 1130,277 280×14 | 1130,277 280×14 | ok | "../acme-app-front-wt-qa-free-talk" |
+| card3:owner | box | 1130,294 280×16 | 1130,294 280×16 | ok | "qa-free-talk" |
+| ledger1 | box | 1118,354 304×45 | 1118,354 304×45 | ok | "FreeTalkServiceUI-firstmock-DI · fixtures/free-talk.json" |
+| ledger1:interface | box | 1118,359 240.8×15 | 1118,359 240.8×15 | ok | "FreeTalkService" |
+| ledger1:phase | box | 1366.8,359 55.2×15 | 1366.8,359 55.2×15 | ok | "UI-first" |
+| ledger1:seam | box | 1118,378 304×15 | 1118,378 304×15 | ok | "mock-DI · fixtures/free-talk.json" |
+| artifact1 | box | 1118,484 304×17 | 1118,484 304×17 | ok | "CONTRACTcontracts/free-talk.mdlocked" |
+| artifact1:tag | box | 1118,484 60×17 | 1118,484 60×17 | ok | "CONTRACT" |
+| artifact1:name | box | 1186,484 188.4×17 | 1186,484 188.4×17 | ok | "contracts/free-talk.md" |
+| artifact1:meta | box | 1382.4,485.5 39.6×14 | 1382.4,485.5 39.6×14 | ok | "locked" |
+| ledger2 | box | 1118,405 304×45 | 1118,405 304×45 | ok | "ProfileConnectorintegrationTier B green 09-24" |
+| ledger2:interface | box | 1118,410 220.1×15 | 1118,410 220.1×15 | ok | "ProfileConnector" |
+| ledger2:phase | box | 1346.1,410 75.9×15 | 1346.1,410 75.9×15 | ok | "integration" |
+| ledger2:seam | box | 1118,429 304×15 | 1118,429 304×15 | ok | "Tier B green 09-24" |
+| artifact2 | box | 1118,507 304×17 | 1118,507 304×17 | ok | "QAcoverage-matrix.md14/18" |
+| artifact2:tag | box | 1118,507 24×17 | 1118,507 24×17 | ok | "QA" |
+| artifact2:name | box | 1150,507 231×17 | 1150,507 231×17 | ok | "coverage-matrix.md" |
+| artifact2:meta | box | 1389,508.5 33×14 | 1389,508.5 33×14 | ok | "14/18" |
 
 ## SPEC tokens (computed)
 | Check | Expected | App | Result |
@@ -214,7 +214,7 @@ Geometry: `box` = x, y, width, height · `none` = styles only (the text is data)
 | pillOffBg | rgb(31, 32, 36) | rgb(31, 32, 36) | ok |
 | titleFont | 600 18px | 600 18px | ok |
 | pathFont | 11.5px "Geist Mono", monospace | 11.5px "Geist Mono", monospace | ok |
-| status color swap | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |
+| status color acme | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |
 | status color notifications | oklch(0.74 0.13 150) | oklch(0.74 0.13 150) | ok |
 | status color calendar | oklch(0.72 0.12 250) | oklch(0.72 0.12 250) | ok |
 | status color mobileFlag | oklch(0.8 0.14 70) | oklch(0.8 0.14 70) | ok |

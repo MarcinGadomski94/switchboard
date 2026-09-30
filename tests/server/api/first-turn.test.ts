@@ -159,7 +159,7 @@ const QA: NewSession = {
   qa: {
     stack: 'web',
     confluenceUrl: 'https://example.atlassian.net/wiki/spaces/SL/pages/2231902/Free+talk',
-    figmaUrls: ['https://www.figma.com/design/AbC123/Swap?node-id=2231-902', 'https://www.figma.com/design/AbC123/Swap?node-id=2231-990'],
+    figmaUrls: ['https://www.figma.com/design/AbC123/Acme?node-id=2231-902', 'https://www.figma.com/design/AbC123/Acme?node-id=2231-990'],
   },
   worktrees: false,
   ultracode: false,
