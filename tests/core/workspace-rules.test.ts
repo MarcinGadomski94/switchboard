@@ -222,13 +222,13 @@ describe('toSolutionGroups', () => {
       ]),
     );
     expect(groups.map((g) => [g.folder, g.note, g.rule, g.solutions.map((s) => s.name)])).toEqual([
-      ['microfrontends/', '', 'editable', ['Auth-front', 'acme-app-front', 'workspace-front']],
+      ['microfrontends/', '', 'editable', ['acme-app-front', 'Auth-front', 'workspace-front']],
       ['mobile/', '', 'editable', ['mobile']],
       ['other/', 'on request only', 'on-request', ['it-dashboard']],
       ['read-only', 'deprecated/ · infrastructure/ · never edited', 'read-only', ['infrastructure', 'mobile', 'old-chat-front']],
     ]);
     const [web, , other, readOnly] = groups;
-    expect(web?.solutions[1]).toEqual({
+    expect(web?.solutions[0]).toEqual({
       name: 'acme-app-front',
       path: path.join(root, 'microfrontends', 'acme-app-front'),
       relativePath: 'microfrontends/acme-app-front',

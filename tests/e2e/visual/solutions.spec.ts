@@ -283,14 +283,14 @@ test('Solutions view matches the prototype (tokens, boxes ±2 px, copy)', async 
     computedRows.push(`| ${key} | ${want} | ${got} | ${got === want ? 'ok' : 'FAIL'} |`);
   }
   const dots = await appPage.evaluate(() => ({
-    swap: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-app-front"] .sb-sol-dot')!).backgroundColor,
+    acme: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="acme-app-front"] .sb-sol-dot')!).backgroundColor,
     notifications: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="notifications-microservice"] .sb-sol-dot')!).backgroundColor,
     calendar: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="calendar-func"] .sb-sol-dot')!).backgroundColor,
     mobileFlag: getComputedStyle(document.querySelector('.sb-sol-row[data-solution="mobile"] .sb-sol-flag')!).color,
     ledgerUiFirst: getComputedStyle(document.querySelector('[data-testid="ledger-row"] span:nth-child(2)')!).color,
   }));
   const dotExpect: Record<string, string> = {
-    swap: needColor ?? '',
+    acme: needColor ?? '',
     notifications: doneColor ?? '',
     calendar: runColor ?? '',
     mobileFlag: needColor ?? '',

@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline with `simula
 
 **Gate:** green
 
-Pixel diff of the toast crops (advisory, channel threshold 24): **19.45%**. Side by side (prototype left, app right): `toast-side-by-side.png` (the toast), `toast-page-side-by-side.png` (the page; the main area behind the toast is the demo Inbox in the prototype and a one-item real Inbox in the app).
+Pixel diff of the toast crops (advisory, channel threshold 24): **19.50%**. Side by side (prototype left, app right): `toast-side-by-side.png` (the toast), `toast-page-side-by-side.png` (the page; the main area behind the toast is the demo Inbox in the prototype and a one-item real Inbox in the app).
 
 Text height difference (prototype − app): 18.8 px; parts marked `shift` compare their y after it.
 

@@ -156,7 +156,7 @@ describe('palette model (M8.3)', () => {
     expect(filterPalette(entries, '')).toHaveLength(PALETTE_MAX_RESULTS);
     expect(filterPalette(entries, '').map((e) => e.label)).toEqual(entries.slice(0, 10).map((e) => e.label));
     // by label
-    expect(rows(filterPalette(entries, 'SWAP'))).toEqual(['tool | Acme Tool | ', 'solution | acme-app-front | microfrontends/']);
+    expect(rows(filterPalette(entries, 'ACME'))).toEqual(['tool | Acme Tool | ', 'solution | acme-app-front | microfrontends/']);
     // by kind
     expect(filterPalette(entries, 'view').map((e) => e.label)).toEqual(['Inbox', 'Solutions', 'Schedules & loops', 'Artifacts', 'History', 'Settings']);
     expect(filterPalette(entries, 'Session').map((e) => e.label)).toEqual(['New session', 'free-talk-feature', 'calendar-func-fix']);
