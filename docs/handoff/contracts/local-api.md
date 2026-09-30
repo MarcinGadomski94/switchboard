@@ -605,6 +605,27 @@ Settings         { …, "newSession.mode": "simple" }
 - **First message:** the task alone; in a workspace folder **no "Session-start answers" block** (the agent asks the router's questions itself); a repo folder's session in its worktree gets the task plus only the worktree note. An empty task starts idle with nothing in the outbox (a repo worktree's note waits there as before).
 - **`newSession.mode`:** editable, default `simple` (a fresh install); a stored value other than the two words reads as `simple`. The New-session dialog writes it when the developer switches forms and opens in it.
 
+## Subfolders in the sidebar (D58, 2026-09-30, additive)
+Developer request D58 (`docs/decisions.md` → *Subfolders in the sidebar*): folders inside folders in the sidebar. Additive on *Sidebar pins and folders (D54)*; a D54 body means what it meant. No new route or event name; migration 0021. Details: `docs/sidebar.md` → *Subfolders (D58)*.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | /api/sidebar/folders | `{ name, parentId? }` | 201 SidebarLayout (the new folder last among the subfolders of `parentId`; absent / `null` = the top level) · 404 unknown parent · 422 (`parentId` not a string or null; too deep) |
+| PUT | /api/sidebar/folders/{folderId}/position | `{ index, parentId? }` | SidebarLayout · 404 unknown folder or parent · 422 (a loop: into itself or one of its subfolders; too deep) |
+| DELETE | /api/sidebar/folders/{folderId} | — | SidebarLayout: its subfolders move up one level into its place, its sessions go to the end of its parent folder (loose when it was top level) · 404 |
+
+- **SidebarFolder** gains `parentId: string | null` (`null` = a top-level folder; every folder from D54 is top level). **SidebarLayout.folders** is in tree order: each folder followed by its subfolders, depth first; folders with the same `parentId` are in their manual order. A client that ignores `parentId` still reads a valid D54 layout.
+- `parentId` on a move: absent = the folder stays at its level (D54's re-order); `null` = the top level; a folder id = into that folder. `index` is the final position among the folders of that level. The folder moves with its subfolders and sessions.
+- **Limits:** no loops; at most **5 levels** (a top-level folder is level 1), counting the moved folder's own subfolders. A refusal is `422 { error: "invalid", errors: [{ field: "parentId", message }] }` and changes nothing, publishes nothing.
+- `sidebarLayoutChanged` is unchanged in name; its payload (the whole SidebarLayout) now carries the tree. The routes stay off the peer API.
+
+```json
+SidebarLayout { "pinned": [], "folders": [{ "id": "7d2c…", "name": "Work", "collapsed": false, "sessionIds": ["a41b…"], "parentId": null }, { "id": "9e10…", "name": "Reviews", "collapsed": true, "sessionIds": ["r~abcdefghijkl~9f0a…"], "parentId": "7d2c…" }] }
+POST /api/sidebar/folders { "name": "Reviews", "parentId": "7d2c…" }
+PUT /api/sidebar/folders/9e10…/position { "index": 0, "parentId": null }
+422 { "error": "invalid", "errors": [{ "field": "parentId", "message": "a folder cannot go into itself or one of its subfolders" }] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -626,5 +647,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | system | same shape as GET /api/system, every 5 s |
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
-| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers) |
+| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |

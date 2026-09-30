@@ -1,16 +1,21 @@
-import { type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session, SessionActivity } from '../../core/api.ts';
 import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import {
+  type ArrangedFolder,
   EMPTY_SIDEBAR_LAYOUT,
   NEW_FOLDER_NAME,
   SIDEBAR_FOLDER_NAME_MAX,
   type SidebarFolder,
   type SidebarLayout,
   arrangeSidebar,
+  checkFolderParent,
+  childFolders,
+  descendantIds,
   needsYou,
+  parentOf,
   placeOf,
   stepPosition,
 } from '../../core/sidebar-layout.ts';
@@ -24,7 +29,7 @@ import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
-import { type DragItem, type DropIndicator, type DropOver, type RowGroup, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
+import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
 import './sidebar-layout.css';
 
 /** The text of a refused layout write. */
@@ -152,6 +157,10 @@ interface MenuItem {
   readonly testId: string;
   readonly run: () => void;
   readonly disabled?: boolean;
+  /** D58: a folder in a folder list is indented by its level (0 = top level). */
+  readonly level?: number;
+  /** Picking it keeps the menu open (it switches to a sub-list). */
+  readonly keepOpen?: boolean;
 }
 
 /**
@@ -203,6 +212,7 @@ function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement;
           className="sb-layout-menu-item"
           data-testid={item.testId}
           disabled={item.disabled}
+          style={item.level ? { paddingLeft: 8 + item.level * 12 } : undefined}
           onClick={() => {
             item.run();
           }}
@@ -218,7 +228,10 @@ function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement;
 /** Which menu is open. */
 type OpenMenu =
   | { readonly kind: 'session'; readonly id: string; readonly anchor: HTMLElement; readonly folders: boolean; readonly group: RowGroup; readonly visible: readonly string[] }
-  | { readonly kind: 'folder'; readonly id: string; readonly anchor: HTMLElement };
+  | { readonly kind: 'folder'; readonly id: string; readonly anchor: HTMLElement; readonly view: 'main' | 'move' | 'delete' };
+
+/** D58: the indent of one folder level, in px (a top-level folder's sessions keep D54's 12 px). */
+const LEVEL_INDENT = 10;
 
 /** Props of {@link SidebarSessions}. */
 export interface SidebarSessionsProps {
@@ -272,19 +285,22 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
 /**
  * The SESSIONS label and list (SPEC → Shell; D54 `docs/sidebar.md`): the
  * **Pinned** group (dragged order), then the sidebar folders (dragged order,
- * each collapsible, one level), then the loose sessions in the service's order
- * (newest first, as before D54). With nothing pinned and no folder the list is
- * exactly the prototype's rows. Sessions and folders move by drag and drop and by
- * each row's / folder's ⋯ menu (Pin / Unpin, Move up / down, Move to folder…),
- * the keyboard path. The label's drawn "+" creates a folder. The layout is
- * stored by the service and live in every tab (`sidebarLayoutChanged`).
+ * each collapsible; D58: folders hold subfolders too, shown first and indented
+ * one step per level), then the loose sessions in the service's order (newest
+ * first, as before D54). With nothing pinned and no folder the list is exactly
+ * the prototype's rows. Sessions and folders move by drag and drop and by each
+ * row's / folder's ⋯ menu (Pin / Unpin, Move up / down, Move to folder…), the
+ * keyboard path. The label's drawn "+" creates a folder, a folder's menu a
+ * subfolder. The layout is stored by the service and live in every tab
+ * (`sidebarLayoutChanged`).
  */
 export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, now }: SidebarSessionsProps) {
   const { layout, run, error } = useSidebarLayout();
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
-  const [creating, setCreating] = useState(false);
+  /** The folder a new folder's name field is in (`null` = the top level, D54's "+"); `undefined` = no field. */
+  const [creating, setCreating] = useState<string | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<string | null>(null);
   const arranged = arrangeSidebar(sessions, layout);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -321,7 +337,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       endDrag();
       if (!action) return;
       if (action.kind === 'place') place(action.input);
-      else void run(() => api.moveSidebarFolder(action.folderId, action.index));
+      else void run(() => api.moveSidebarFolder(action.folderId, action.index, action.parentId));
     },
   });
 
@@ -331,6 +347,9 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   };
 
   const sideAt = (event: DragEvent<HTMLElement>) => sideOf(event.clientY, event.currentTarget.getBoundingClientRect());
+
+  /** D58: every folder in tree order with its level (the "Move to folder ▸" lists). */
+  const tree = arranged.folders.map(({ folder, level }) => ({ folder, level }));
 
   const sessionMenu = (session: Session, visible: readonly string[], group: RowGroup): MenuItem[] => {
     const where = placeOf(layout, session.id);
@@ -347,34 +366,87 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       items.push({ label: 'Move up', testId: 'sidebar-menu-up', run: () => step(-1), disabled: stepPosition(stored, visible, session.id, -1) === null });
       items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
     }
-    items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
+    items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
     return items;
   };
 
+  /** A session's "Move to folder ▸": the folder tree, indented (D58); its own folder is shown, not offered. */
   const folderTargets = (session: Session): MenuItem[] => {
     const where = placeOf(layout, session.id);
     const current = where !== null && where !== 'pinned' ? where.folderId : null;
-    const items: MenuItem[] = layout.folders
-      .filter((f) => f.id !== current)
-      .map((f) => ({ label: f.name, testId: `sidebar-menu-folder-${f.id}`, run: () => place({ sessionId: session.id, place: 'folder', folderId: f.id }) }));
+    const items: MenuItem[] = tree.map(({ folder: f, level }) =>
+      f.id === current
+        ? { label: `${f.name} (here)`, testId: `sidebar-menu-current-folder-${f.id}`, level, disabled: true, run: () => undefined }
+        : { label: f.name, testId: `sidebar-menu-folder-${f.id}`, level, run: () => place({ sessionId: session.id, place: 'folder', folderId: f.id }) },
+    );
     if (current !== null) items.push({ label: 'Out of the folder', testId: 'sidebar-menu-out-of-folder', run: () => place({ sessionId: session.id, place: 'loose' }) });
     if (items.length === 0) items.push({ label: 'No folders yet (+ in SESSIONS)', testId: 'sidebar-menu-no-folders', run: () => undefined, disabled: true });
     return items;
   };
 
+  /** D58: "New subfolder": a name field at the end of the folder's subfolders (the folder opens if it was collapsed). */
+  const startSubfolder = (folder: SidebarFolder): void => {
+    if (folder.collapsed) void run(() => api.updateSidebarFolder(folder.id, { collapsed: false }));
+    setCreating(folder.id);
+  };
+
   const folderMenu = (folder: SidebarFolder): MenuItem[] => {
-    const ids = layout.folders.map((f) => f.id);
+    const ids = childFolders(layout, parentOf(folder)).map((f) => f.id);
     const at = ids.indexOf(folder.id);
+    const hasSubfolders = childFolders(layout, folder.id).length > 0;
+    const view = (next: 'move' | 'delete') => () => setMenu((m) => (m && m.kind === 'folder' ? { ...m, view: next } : m));
     return [
       { label: 'Rename', testId: 'sidebar-menu-rename', run: () => setRenaming(folder.id) },
+      { label: 'New subfolder', testId: 'sidebar-menu-new-subfolder', run: () => startSubfolder(folder), disabled: checkFolderParent(layout, null, folder.id) !== null },
       { label: folder.collapsed ? 'Expand' : 'Collapse', testId: 'sidebar-menu-collapse', run: () => void run(() => api.updateSidebarFolder(folder.id, { collapsed: !folder.collapsed })) },
       { label: 'Move up', testId: 'sidebar-menu-up', run: () => void run(() => api.moveSidebarFolder(folder.id, at - 1)), disabled: at <= 0 },
       { label: 'Move down', testId: 'sidebar-menu-down', run: () => void run(() => api.moveSidebarFolder(folder.id, at + 1)), disabled: at >= ids.length - 1 },
-      { label: 'Delete folder', testId: 'sidebar-menu-delete', run: () => void run(() => api.deleteSidebarFolder(folder.id)) },
+      { label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: view('move') },
+      hasSubfolders
+        ? { label: 'Delete folder…', testId: 'sidebar-menu-delete', keepOpen: true, run: view('delete') }
+        : { label: 'Delete folder', testId: 'sidebar-menu-delete', run: () => void run(() => api.deleteSidebarFolder(folder.id)) },
     ];
   };
 
-  const row = (session: Session, group: RowGroup, visible: readonly string[]): ReactNode => {
+  /**
+   * D58: a folder's "Move to folder ▸": Top level, then the folder tree without
+   * the folder itself and its own subfolders (no loops); its present parent is
+   * shown, not offered; a folder too deep for it is disabled.
+   */
+  const folderMoveTargets = (folder: SidebarFolder): MenuItem[] => {
+    const parent = parentOf(folder);
+    const inside = new Set([folder.id, ...descendantIds(layout, folder.id)]);
+    const items: MenuItem[] = [];
+    if (parent !== null) items.push({ label: 'Top level', testId: 'sidebar-menu-top-level', run: () => void run(() => api.moveSidebarFolder(folder.id, childFolders(layout, null).length, null)) });
+    for (const { folder: f, level } of tree) {
+      if (inside.has(f.id)) continue;
+      if (f.id === parent) {
+        items.push({ label: `${f.name} (here)`, testId: `sidebar-menu-current-folder-${f.id}`, level, disabled: true, run: () => undefined });
+        continue;
+      }
+      items.push({
+        label: f.name,
+        testId: `sidebar-menu-folder-${f.id}`,
+        level,
+        disabled: checkFolderParent(layout, folder.id, f.id) !== null,
+        run: () => void run(() => api.moveSidebarFolder(folder.id, childFolders(layout, f.id).length, f.id)),
+      });
+    }
+    if (items.length === 0) items.push({ label: 'No other folders', testId: 'sidebar-menu-no-folders', run: () => undefined, disabled: true });
+    return items;
+  };
+
+  /** D58: deleting a folder with subfolders asks first (nothing is lost: they move up a level). */
+  const deleteConfirm = (folder: SidebarFolder): MenuItem[] => {
+    const count = childFolders(layout, folder.id).length;
+    const up = parentOf(folder) === null ? 'the top level' : 'its parent folder';
+    return [
+      { label: `Delete: ${count} subfolder${count === 1 ? '' : 's'} and the sessions move to ${up}`, testId: 'sidebar-menu-delete-confirm', run: () => void run(() => api.deleteSidebarFolder(folder.id)) },
+      { label: 'Cancel', testId: 'sidebar-menu-delete-cancel', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'folder' ? { ...m, view: 'main' } : m)) },
+    ];
+  };
+
+  const row = (session: Session, group: RowGroup, visible: readonly string[], level = 0): ReactNode => {
     const activity = activityOf(session.id);
     const at: (event: DragEvent<HTMLElement>) => DropOver =
       group.kind === 'loose' ? () => ({ zone: 'loose' }) : (event) => ({ zone: 'row', group, sessionId: session.id, side: sideAt(event) });
@@ -389,6 +461,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         data-drop={shown ? indicator(shown) : undefined}
         data-dragging={drag?.kind === 'session' && drag.id === session.id ? 'true' : undefined}
         aria-current={isCurrent(session.id) ? 'page' : undefined}
+        // D58: a subfolder's sessions sit one step further in per level.
+        style={level > 0 ? ({ marginLeft: 12 + level * LEVEL_INDENT } satisfies CSSProperties) : undefined}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = 'move';
@@ -433,25 +507,142 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     );
   };
 
+  const wrap = (items: MenuItem[]): MenuItem[] =>
+    items.map((item) => ({
+      ...item,
+      run: () => {
+        item.run();
+        if (!item.keepOpen) setMenu(null);
+      },
+    }));
+
   const menuItems = ((): { label: string; items: MenuItem[] } | null => {
     if (!menu) return null;
     if (menu.kind === 'session') {
       const session = sessions.find((s) => s.id === menu.id);
       if (!session) return null;
       const items = menu.folders ? folderTargets(session) : sessionMenu(session, menu.visible, menu.group);
-      return { label: `${displayTitle(session)}: sidebar`, items: items.map((item) => ({ ...item, run: () => { item.run(); if (item.testId !== 'sidebar-menu-move-to-folder') setMenu(null); } })) };
+      return { label: `${displayTitle(session)}: sidebar`, items: wrap(items) };
     }
     const folder = layout.folders.find((f) => f.id === menu.id);
     if (!folder) return null;
-    return { label: `Folder ${folder.name}`, items: folderMenu(folder).map((item) => ({ ...item, run: () => { item.run(); setMenu(null); } })) };
+    const items = menu.view === 'move' ? folderMoveTargets(folder) : menu.view === 'delete' ? deleteConfirm(folder) : folderMenu(folder);
+    return { label: `Folder ${folder.name}`, items: wrap(items) };
   })();
-  const openMenu = menu && menuItems ? <Menu key={`${menu.kind}:${menu.id}:${menu.kind === 'session' && menu.folders ? 'f' : ''}`} anchor={menu.anchor} label={menuItems.label} items={menuItems.items} onClose={closeMenu} /> : null;
+  const menuView = menu ? (menu.kind === 'session' ? (menu.folders ? 'f' : '') : menu.view) : '';
+  const openMenu = menu && menuItems ? <Menu key={`${menu.kind}:${menu.id}:${menuView}`} anchor={menu.anchor} label={menuItems.label} items={menuItems.items} onClose={closeMenu} /> : null;
 
   const pinnedIds = arranged.pinned.map((s) => s.id);
+  const draggedFolder = drag?.kind === 'folder' ? layout.folders.find((f) => f.id === drag.id) : undefined;
   const draggingPlaced = drag?.kind === 'session' && placeOf(layout, drag.id) !== null;
+  // D58: a subfolder dragged out goes to the top level from the same zone.
+  const draggingNested = draggedFolder !== undefined && parentOf(draggedFolder) !== null;
   const showPinnedHead = arranged.pinned.length > 0 || drag?.kind === 'session';
   const pinnedHead: DropOver = { zone: 'pinned-head' };
   const looseZone: DropOver = { zone: 'loose' };
+
+  /** A folder name field for a new folder in `parentId` (`null` = the top level). */
+  const newFolderField = (parentId: string | null, level: number): ReactNode => (
+    <div key={`new-folder:${parentId ?? ''}`} className="sb-folder sb-folder-new" style={level > 0 ? { marginLeft: level * LEVEL_INDENT } : undefined}>
+      <FolderNameField
+        initial={NEW_FOLDER_NAME}
+        label={parentId === null ? 'New folder name' : 'New subfolder name'}
+        testId="sidebar-new-folder-name"
+        saveOnBlur={false}
+        onSave={(name) => {
+          setCreating(undefined);
+          void run(() => api.createSidebarFolder(name, parentId));
+        }}
+        onCancel={() => setCreating(undefined)}
+      />
+    </div>
+  );
+
+  const byParent = new Map<string | null, Array<ArrangedFolder<Session>>>();
+  for (const entry of arranged.folders) {
+    const parent = parentOf(entry.folder);
+    byParent.set(parent, [...(byParent.get(parent) ?? []), entry]);
+  }
+
+  /** One folder: its head, then (open) its subfolders, a new subfolder's field, and its sessions (D58). */
+  const renderFolder = ({ folder, sessions: inside, level, total }: ArrangedFolder<Session>): ReactNode[] => {
+    const headAt = (event: DragEvent<HTMLElement>): DropOver => ({ zone: 'folder-head', folderId: folder.id, side: folderSideOf(event.clientY, event.currentTarget.getBoundingClientRect()) });
+    const shown = over && over.zone === 'folder-head' && over.folderId === folder.id ? over : null;
+    const visible = inside.map((s) => s.id);
+    const toggle = (): void => void run(() => api.updateSidebarFolder(folder.id, { collapsed: !folder.collapsed }));
+    const head = (
+      <div
+        key={`folder:${folder.id}`}
+        className="sb-folder"
+        data-testid="sidebar-folder"
+        data-folder-id={folder.id}
+        data-parent-id={parentOf(folder) ?? undefined}
+        data-level={level}
+        data-collapsed={folder.collapsed ? 'true' : 'false'}
+        data-drop={shown ? indicator(shown) : undefined}
+        data-dragging={drag?.kind === 'folder' && drag.id === folder.id ? 'true' : undefined}
+        style={level > 0 ? { marginLeft: level * LEVEL_INDENT } : undefined}
+        draggable={renaming !== folder.id}
+        onDragStart={(event) => {
+          event.stopPropagation();
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/x-switchboard-folder', folder.id);
+          setMenu(null);
+          setDrag({ kind: 'folder', id: folder.id });
+        }}
+        onDragEnd={endDrag}
+        onClick={toggle}
+        {...target(headAt)}
+      >
+        <button
+          type="button"
+          className="sb-button sb-folder-toggle"
+          data-testid="sidebar-folder-toggle"
+          aria-expanded={!folder.collapsed}
+          aria-label={`${folder.collapsed ? 'Expand' : 'Collapse'} ${folder.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            toggle();
+          }}
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" focusable="false">
+            <path d="M2 1.5L5.5 4 2 6.5" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {renaming === folder.id ? (
+          <FolderNameField
+            initial={folder.name}
+            label="Folder name"
+            testId="sidebar-folder-rename"
+            saveOnBlur
+            onSave={(name) => {
+              setRenaming(null);
+              if (name !== folder.name) void run(() => api.updateSidebarFolder(folder.id, { name }));
+            }}
+            onCancel={() => setRenaming(null)}
+          />
+        ) : (
+          <span className="sb-folder-name" data-testid="sidebar-folder-name" title={folder.name}>
+            {folder.name}
+          </span>
+        )}
+        {/* D58: anything inside, at any depth. */}
+        {folder.collapsed && needsYou(total) ? <span className="sb-folder-need" data-testid="sidebar-folder-need" title="A session in this folder waits for you" /> : null}
+        {/* D58: its sessions and those of its subfolders. */}
+        <span className="sb-folder-count" data-testid="sidebar-folder-count">
+          {total.length}
+        </span>
+        <MenuButton label={`More for folder ${folder.name}`} testId="sidebar-folder-menu" className="sb-folder-more" onOpen={(anchor) => setMenu({ kind: 'folder', id: folder.id, anchor, view: 'main' })} />
+      </div>
+    );
+    if (folder.collapsed && creating !== folder.id) return [head];
+    return [
+      head,
+      ...(byParent.get(folder.id) ?? []).flatMap(renderFolder),
+      ...(creating === folder.id ? [newFolderField(folder.id, level + 1)] : []),
+      ...inside.map((session) => row(session, { kind: 'folder', folderId: folder.id }, visible, level)),
+    ];
+  };
 
   return (
     <>
@@ -459,7 +650,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         Sessions
         <span className="sb-section-count">{loaded ? String(sessions.length) : ''}</span>
         {/* D54: drawn, not text, so the label's copy stays the prototype's. */}
-        <button type="button" className="sb-button sb-folder-add" data-testid="sidebar-new-folder" aria-label="New folder" title="New folder" onClick={() => setCreating(true)}>
+        <button type="button" className="sb-button sb-folder-add" data-testid="sidebar-new-folder" aria-label="New folder" title="New folder" onClick={() => setCreating(null)}>
           <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true" focusable="false">
             <path d="M5.5 1.5v8M1.5 5.5h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
           </svg>
@@ -480,90 +671,11 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
           </div>
         ) : null}
         {arranged.pinned.map((session) => row(session, { kind: 'pinned' }, pinnedIds))}
-        {arranged.folders.map(({ folder, sessions: inside }) => {
-          const headAt = (event: DragEvent<HTMLElement>): DropOver => ({ zone: 'folder-head', folderId: folder.id, side: sideAt(event) });
-          const shown = over && over.zone === 'folder-head' && over.folderId === folder.id ? over : null;
-          const visible = inside.map((s) => s.id);
-          const toggle = (): void => void run(() => api.updateSidebarFolder(folder.id, { collapsed: !folder.collapsed }));
-          return [
-            <div
-              key={`folder:${folder.id}`}
-              className="sb-folder"
-              data-testid="sidebar-folder"
-              data-folder-id={folder.id}
-              data-collapsed={folder.collapsed ? 'true' : 'false'}
-              data-drop={shown ? indicator(shown) : undefined}
-              data-dragging={drag?.kind === 'folder' && drag.id === folder.id ? 'true' : undefined}
-              draggable={renaming !== folder.id}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/x-switchboard-folder', folder.id);
-                setMenu(null);
-                setDrag({ kind: 'folder', id: folder.id });
-              }}
-              onDragEnd={endDrag}
-              onClick={toggle}
-              {...target(headAt)}
-            >
-              <button
-                type="button"
-                className="sb-button sb-folder-toggle"
-                data-testid="sidebar-folder-toggle"
-                aria-expanded={!folder.collapsed}
-                aria-label={`${folder.collapsed ? 'Expand' : 'Collapse'} ${folder.name}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggle();
-                }}
-              >
-                <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" focusable="false">
-                  <path d="M2 1.5L5.5 4 2 6.5" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              {renaming === folder.id ? (
-                <FolderNameField
-                  initial={folder.name}
-                  label="Folder name"
-                  testId="sidebar-folder-rename"
-                  saveOnBlur
-                  onSave={(name) => {
-                    setRenaming(null);
-                    if (name !== folder.name) void run(() => api.updateSidebarFolder(folder.id, { name }));
-                  }}
-                  onCancel={() => setRenaming(null)}
-                />
-              ) : (
-                <span className="sb-folder-name" data-testid="sidebar-folder-name" title={folder.name}>
-                  {folder.name}
-                </span>
-              )}
-              {folder.collapsed && needsYou(inside) ? <span className="sb-folder-need" data-testid="sidebar-folder-need" title="A session in this folder waits for you" /> : null}
-              <span className="sb-folder-count" data-testid="sidebar-folder-count">
-                {inside.length}
-              </span>
-              <MenuButton label={`More for folder ${folder.name}`} testId="sidebar-folder-menu" className="sb-folder-more" onOpen={(anchor) => setMenu({ kind: 'folder', id: folder.id, anchor })} />
-            </div>,
-            ...(folder.collapsed ? [] : inside.map((session) => row(session, { kind: 'folder', folderId: folder.id }, visible))),
-          ];
-        })}
-        {creating ? (
-          <div className="sb-folder sb-folder-new">
-            <FolderNameField
-              initial={NEW_FOLDER_NAME}
-              label="New folder name"
-              testId="sidebar-new-folder-name"
-              saveOnBlur={false}
-              onSave={(name) => {
-                setCreating(false);
-                void run(() => api.createSidebarFolder(name));
-              }}
-              onCancel={() => setCreating(false)}
-            />
-          </div>
-        ) : null}
-        {draggingPlaced ? (
+        {(byParent.get(null) ?? []).flatMap(renderFolder)}
+        {creating === null ? newFolderField(null, 0) : null}
+        {draggingPlaced || draggingNested ? (
           <div className="sb-group-label sb-loose-zone" data-testid="sidebar-loose-zone" data-drop={indicator(looseZone)} {...target(looseZone)}>
-            <span className="sb-group-hint">drop here to unpin / take out of the folder</span>
+            <span className="sb-group-hint">{draggingNested ? 'drop here to move to the top level' : 'drop here to unpin / take out of the folder'}</span>
           </div>
         ) : null}
         {arranged.loose.map((session) => row(session, { kind: 'loose' }, []))}
