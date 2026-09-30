@@ -51,6 +51,7 @@ import type {
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
+import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
 
 /**
@@ -301,3 +302,26 @@ export function machineApi(machine: string | null) {
 
 /** The client's type (for test doubles). */
 export type Api = typeof api;
+
+/**
+ * D61: the MCP servers page's calls for one folder (`folder` = a saved folder's id)
+ * on machine `machine` (`null` = this one; a paired machine's go through its peer
+ * API, `docs/mcp.md` → *Peers*).
+ */
+export function mcpApi(machine: string | null, folder: string | undefined) {
+  const at = (path: string, extra: Readonly<Record<string, string | undefined>> = {}): string => onMachine(machine, `${path}${query({ folder, ...extra })}`);
+  return {
+    view: () => request<McpView>('GET', at('/api/mcp')),
+    check: (name?: string) => request<McpActionResult>('POST', at('/api/mcp/check'), name ? { name } : {}),
+    definition: (name: string, scope: string) => request<McpServerDefinition>('GET', at(`/api/mcp/servers/${enc(name)}`, { scope })),
+    add: (input: McpServerInput) => request<McpActionResult>('POST', at('/api/mcp/servers'), input),
+    edit: (name: string, scope: string, input: McpServerInput) => request<McpActionResult>('PUT', at(`/api/mcp/servers/${enc(name)}`, { scope }), input),
+    remove: (name: string, scope: string) => request<McpActionResult>('DELETE', at(`/api/mcp/servers/${enc(name)}`, { scope })),
+    reconnect: (name: string) => request<McpActionResult>('POST', at(`/api/mcp/servers/${enc(name)}/reconnect`)),
+    toggle: (name: string, enabled: boolean) => request<McpActionResult>('POST', at(`/api/mcp/servers/${enc(name)}/toggle`), { enabled }),
+    startAuth: (name: string, reset: boolean) => request<McpAuthState>('POST', at(`/api/mcp/servers/${enc(name)}/auth`), { reset }),
+    authState: (id: string) => request<McpAuthState>('GET', onMachine(machine, `/api/mcp/auth/${enc(id)}`)),
+    submitCallback: (id: string, callbackUrl: string) => request<McpAuthState>('POST', onMachine(machine, `/api/mcp/auth/${enc(id)}/callback`), { callbackUrl }),
+    cancelAuth: (id: string) => request<McpAuthState>('DELETE', onMachine(machine, `/api/mcp/auth/${enc(id)}`)),
+  };
+}

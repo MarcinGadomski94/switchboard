@@ -31,11 +31,34 @@ import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
  * taller (its bottom edge stays). The rows above them are compared with y relative
  * to the footer's top (`anchor`); the new rows are listed and checked on the
  * footer's own rules (`usage-rows.ts`), not against the prototype.
+ *
+ * D61: the nav has a sixth item, MCP, after Schedules & loops (the prototype has
+ * five). The app's Artifacts / History items are its 5th / 6th (`appPath`), and they
+ * and the parts under the nav are compared with y relative to the item above them
+ * on each page (`anchor` / `appAnchor`), so the extra row is not a finding. With the
+ * demo seed's sessions the taller sidebar scrolls (it has `overflow-y: auto`): the
+ * footer parts and the D17 rows are measured with the app's sidebar scrolled to its
+ * end, where the footer's bottom edge is the prototype's again.
  */
 
 /** Child-index paths from the shell grid (harness.measure). */
 const PARTS: Readonly<
-  Record<string, { readonly path: readonly number[]; readonly geometry: Geometry; readonly copy: boolean; /** y relative to this part's top (both pages). */ readonly anchor?: readonly number[] }>
+  Record<
+    string,
+    {
+      readonly path: readonly number[];
+      readonly geometry: Geometry;
+      readonly copy: boolean;
+      /** y relative to this part's top (both pages, unless {@link appAnchor}). */
+      readonly anchor?: readonly number[];
+      /** D61: the app's path when it differs from the prototype's (the MCP nav item shifts the later items). */
+      readonly appPath?: readonly number[];
+      /** D61: the app's anchor when it differs from the prototype's. */
+      readonly appAnchor?: readonly number[];
+      /** D61: measured with the app's sidebar scrolled to its end (the footer). */
+      readonly scrolled?: boolean;
+    }
+  >
 > = {
   sidebar: { path: [0], geometry: 'box', copy: false },
   main: { path: [1], geometry: 'box', copy: false },
@@ -50,22 +73,22 @@ const PARTS: Readonly<
   navSolutionsLabel: { path: [0, 2, 1, 0], geometry: 'box', copy: true },
   navSchedules: { path: [0, 2, 2], geometry: 'box', copy: false },
   navSchedulesLabel: { path: [0, 2, 2, 0], geometry: 'box', copy: true },
-  navArtifacts: { path: [0, 2, 3], geometry: 'box', copy: false },
-  navArtifactsLabel: { path: [0, 2, 3, 0], geometry: 'box', copy: true },
-  navHistory: { path: [0, 2, 4], geometry: 'box', copy: false },
-  navHistoryLabel: { path: [0, 2, 4, 0], geometry: 'box', copy: true },
-  toolsLabel: { path: [0, 3], geometry: 'box', copy: true },
-  toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true },
+  navArtifacts: { path: [0, 2, 3], geometry: 'box', copy: false, appPath: [0, 2, 4], anchor: [0, 2, 2], appAnchor: [0, 2, 3] },
+  navArtifactsLabel: { path: [0, 2, 3, 0], geometry: 'box', copy: true, appPath: [0, 2, 4, 0], anchor: [0, 2, 2], appAnchor: [0, 2, 3] },
+  navHistory: { path: [0, 2, 4], geometry: 'box', copy: false, appPath: [0, 2, 5], anchor: [0, 2, 3], appAnchor: [0, 2, 4] },
+  navHistoryLabel: { path: [0, 2, 4, 0], geometry: 'box', copy: true, appPath: [0, 2, 5, 0], anchor: [0, 2, 3], appAnchor: [0, 2, 4] },
+  toolsLabel: { path: [0, 3], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 5] },
+  toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 5] },
   sessionsLabel: { path: [0, 5], geometry: 'size', copy: false },
   settings: { path: [0, 7], geometry: 'size', copy: true },
-  footer: { path: [0, 8], geometry: 'bottom', copy: false },
+  footer: { path: [0, 8], geometry: 'bottom', copy: false, scrolled: true },
   // "claude code" wraps in the prototype only because its row also holds "9 bg processes".
-  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true },
+  footerLabel: { path: [0, 8, 0, 1], geometry: 'none', copy: true, scrolled: true },
   // D17: the footer grows upward by the Week row, so its rows are compared relative to its top.
-  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH },
-  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH },
-  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH },
-  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH },
+  cpuLabel: { path: [0, 8, 1, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, scrolled: true },
+  cpuTrack: { path: [0, 8, 1, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, scrolled: true },
+  ramLabel: { path: [0, 8, 2, 0], geometry: 'box', copy: true, anchor: FOOTER_PATH, scrolled: true },
+  ramTrack: { path: [0, 8, 2, 1], geometry: 'box', copy: false, anchor: FOOTER_PATH, scrolled: true },
   // The prototype's Max row (maxLabel / maxTrack) has no counterpart: D17's Session + Week rows, see usage-rows.ts.
 };
 
@@ -103,9 +126,23 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
   await openApp(appPage, app.baseUrl, '/');
 
   const paths = Object.fromEntries(Object.entries(PARTS).map(([name, part]) => [name, part.path]));
-  const anchors = Object.fromEntries(Object.entries(PARTS).flatMap(([, part]) => (part.anchor ? [[`@${part.anchor.join('.')}`, part.anchor]] : [])));
-  const proto = await measure(protoPage, { ...paths, ...anchors });
-  const shell = await measure(appPage, { ...paths, ...anchors });
+  const appPaths = (scrolled: boolean) => Object.fromEntries(Object.entries(PARTS).filter(([, part]) => !!part.scrolled === scrolled).map(([name, part]) => [name, part.appPath ?? part.path]));
+  // An anchor is measured under its prototype name on both pages (D61: from the app's own path there).
+  const anchors = (app: boolean, scrolled: boolean | null) =>
+    Object.fromEntries(
+      Object.entries(PARTS).flatMap(([, part]) =>
+        part.anchor && (scrolled === null || !!part.scrolled === scrolled) ? [[`@${part.anchor.join('.')}`, app ? (part.appAnchor ?? part.anchor) : part.anchor]] : [],
+      ),
+    );
+  const proto = await measure(protoPage, { ...paths, ...anchors(false, null) });
+  const unscrolled = await measure(appPage, { ...appPaths(false), ...anchors(true, false) });
+  // D61: the footer with the app's sidebar scrolled to its end (a no-op when it does not scroll).
+  await appPage.evaluate(() => {
+    const sidebar = document.querySelector('.sb-sidebar');
+    if (sidebar) sidebar.scrollTop = sidebar.scrollHeight;
+  });
+  const scrolledParts = await measure(appPage, { ...appPaths(true), ...anchors(true, true) });
+  const shell = { ...unscrolled, ...scrolledParts };
   const failures: string[] = [];
   const rows: string[] = [];
 
@@ -120,7 +157,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     const anchorName = spec.anchor ? `@${spec.anchor.join('.')}` : null;
     const relative = (part: Part, side: Record<string, Part | null>): Part =>
       anchorName ? { ...part, box: { ...part.box, y: part.box.y - (side[anchorName]?.box.y ?? Number.NaN) } } : part;
-    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, shell).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to the footer's top, D17)` : m));
+    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, shell).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to ${spec.scrolled ? "the footer's top, D17" : 'the item above, D61'})` : m));
     failures.push(...boxIssues);
     let copyNote = '';
     if (spec.copy) {
@@ -135,7 +172,7 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     }
     failures.push(...styleIssues);
     rows.push(
-      `| ${name} | ${spec.geometry}${anchorName ? ' (y rel. footer)' : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
+      `| ${name} | ${spec.geometry}${anchorName ? (spec.scrolled ? ' (y rel. footer)' : ' (y rel. item above)') : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
     );
   }
 

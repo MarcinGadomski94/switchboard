@@ -46,6 +46,10 @@ import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
  *   rows above the usage rows are compared with y relative to the footer's top;
  *   the usage rows are listed and checked on the footer's own rules
  *   (`usage-rows.ts`), not against the prototype.
+ * - D61: the app's nav has a sixth item, MCP, which the prototype does not. The
+ *   sidebar is measured with that item hidden (so every other part keeps the
+ *   prototype's place), and the item itself is gated against its neighbour
+ *   Schedules & loops (same height, x, width and label styles).
  *
  * The per-view detail (every row, card and state) is gated by the view's own spec
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
@@ -620,6 +624,48 @@ function compare(surface: string, checks: readonly PartCheck[], proto: Record<st
   return { rows, failures };
 }
 
+/** D61: the app's MCP nav item is its 4th: the app's later nav items are one child further on. */
+const MCP_NAV_INDEX = 3;
+
+/** D61: `paths` for the app: a nav item from the 4th on is one index later (the hidden MCP item keeps its place in the DOM). */
+function appNavPaths(paths: Record<string, readonly number[]>): Record<string, readonly number[]> {
+  const shift = (p: readonly number[]): readonly number[] =>
+    p.length > NAV.length && NAV.every((n, i) => p[i] === n) && (p[NAV.length] as number) >= MCP_NAV_INDEX ? [...NAV, (p[NAV.length] as number) + 1, ...p.slice(NAV.length + 1)] : p;
+  return Object.fromEntries(Object.entries(paths).map(([name, p]) => [name, shift(p)]));
+}
+
+/** D61: hides (or shows again) the app's MCP nav item, which the prototype does not have. */
+async function setMcpNavHidden(page: Page, hidden: boolean): Promise<void> {
+  await page.evaluate((hide) => {
+    const item = document.querySelector<HTMLElement>('[data-testid="nav-mcp"]');
+    if (item) item.style.display = hide ? 'none' : '';
+  }, hidden);
+}
+
+/** D61: the MCP nav item against Schedules & loops: same x, width, height; directly below it; label styles as an unselected neighbour's. */
+async function mcpNavIssues(page: Page): Promise<string[]> {
+  return page.evaluate((props) => {
+    const mcp = document.querySelector<HTMLElement>('[data-testid="nav-mcp"]');
+    const schedules = document.querySelector<HTMLElement>('[data-testid="nav-schedules"]');
+    if (!mcp || !schedules) return ['nav:MCP: missing'];
+    const issues: string[] = [];
+    const a = mcp.getBoundingClientRect();
+    const b = schedules.getBoundingClientRect();
+    for (const edge of ['x', 'width', 'height'] as const) if (Math.abs(a[edge] - b[edge]) > 0.5) issues.push(`nav:MCP.${edge}: ${a[edge]} vs Schedules ${b[edge]}`);
+    if (Math.abs(a.y - (b.y + b.height)) > 3) issues.push(`nav:MCP.y: ${a.y}, not under Schedules (${b.y + b.height})`);
+    // Label styles against a neighbour that is not the selected item (the selected one is brighter).
+    const reference = ['nav-schedules', 'nav-artifacts', 'nav-history'].map((id) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)).find((el) => el && el.getAttribute('aria-current') !== 'page');
+    const la = mcp.children[0];
+    const lb = reference?.children[0];
+    if (!la || !lb) return [...issues, 'nav:MCP: label missing'];
+    if (la.textContent !== 'MCP') issues.push(`nav:MCP.text: ${JSON.stringify(la.textContent)}`);
+    const sa = getComputedStyle(la);
+    const sb = getComputedStyle(lb);
+    for (const prop of props) if (sa.getPropertyValue(prop) !== sb.getPropertyValue(prop)) issues.push(`nav:MCP:label.${prop}: ${sa.getPropertyValue(prop)} vs ${sb.getPropertyValue(prop)}`);
+    return issues;
+  }, ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing']);
+}
+
 /** Paths to measure for `checks`, anchors included (`@<path>`). */
 function pathsOf(checks: readonly PartCheck[]): Record<string, readonly number[]> {
   const out: Record<string, readonly number[]> = {};
@@ -708,9 +754,17 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       const sidebar = sidebarChecks(served);
       const paths = pathsOf(sidebar);
       sidebarTally = { checks: 0, failures: 0 };
-      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, paths)), sidebarTally, 'sidebar');
+      // D61: the MCP nav item (not in the prototype) is checked against its neighbour, then hidden while the rest is measured.
+      const mcpIssues = await mcpNavIssues(appPage);
+      failures.push(...mcpIssues.map((issue) => `${surface.id} · ${issue}`));
+      sidebarTally.checks += 1;
+      sidebarTally.failures += mcpIssues.length;
+      rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:MCP (D61)', geometry: 'relative', proto: '—', app: 'vs nav:Schedules & loops', result: mcpIssues.length ? 'FAIL' : 'ok', note: mcpIssues.join('; ') });
+      await setMcpNavHidden(appPage, true);
+      track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, appNavPaths(paths))), sidebarTally, 'sidebar');
       // D17: the usage rows, listed next to the prototype's Max row and gated on the footer's own rules.
       const usage = await usageRowChecks(protoPage, appPage, surface.id);
+      await setMcpNavHidden(appPage, false);
       track(
         {
           rows: usage.checks.map((c) => ({ surface: surface.id, part: c.part, geometry: c.result === 'listed' ? 'listed' : 'D17 rules', proto: c.proto, app: c.app, result: c.result, note: c.note })),

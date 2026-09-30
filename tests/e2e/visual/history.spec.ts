@@ -35,7 +35,8 @@ const HEAD: Readonly<Record<string, PartSpec>> = {
   subtitle: { path: [1, 0, 0, 1], geometry: 'box', copy: true },
   search: { path: [1, 0, 0, 2], geometry: 'box', copy: false },
   rows: { path: [1, 0, 1], geometry: 'box', copy: false },
-  sideHistory: { path: [0, 2, 4], geometry: 'box', copy: false },
+  // D61: the app's nav has MCP after Schedules & loops: this item is one further on and one row lower (compared by size).
+  sideHistory: { path: [0, 2, 4], geometry: 'size', copy: false },
 };
 
 /** The parts of row `i`. */
@@ -89,7 +90,7 @@ test.afterAll(async () => {
 async function compare(protoPage: Page, appPage: Page, parts: Readonly<Record<string, PartSpec>>, failures: string[], rows: string[]): Promise<void> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.path]));
   const proto = await measure(protoPage, paths);
-  const view = await measure(appPage, paths);
+  const view = await measure(appPage, { ...paths, sideHistory: [0, 2, 5] });
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
     const a = view[name];

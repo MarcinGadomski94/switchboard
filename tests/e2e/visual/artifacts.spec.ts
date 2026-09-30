@@ -60,7 +60,8 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   row0Meta: { path: [1, 0, 2, 0, 4], geometry: 'none', copy: false },
   row0Age: { path: [1, 0, 2, 0, 5], geometry: 'none', copy: false },
   ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`row${i}Box`, { path: [1, 0, 2, i], geometry: 'box' as Geometry, copy: false }])),
-  sideArtifacts: { path: [0, 2, 3], geometry: 'box', copy: false },
+  // D61: the app's nav has MCP after Schedules & loops: this item is one further on and one row lower (compared by size).
+  sideArtifacts: { path: [0, 2, 3], geometry: 'size', copy: false },
 };
 
 /** Computed styles compared between the two pages for every part. */
@@ -108,7 +109,7 @@ async function rowLines(page: Page): Promise<string[]> {
 async function compare(protoPage: Page, appPage: Page, parts: typeof PARTS, failures: string[], rows: string[]): Promise<void> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.path]));
   const proto = await measure(protoPage, paths);
-  const view = await measure(appPage, paths);
+  const view = await measure(appPage, { ...paths, sideArtifacts: [0, 2, 4] });
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
     const a = view[name];

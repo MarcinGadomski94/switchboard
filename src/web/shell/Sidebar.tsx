@@ -33,7 +33,7 @@ const SOLUTIONS_RELOAD_MS = 1_000;
 type BadgeKind = 'need' | 'warn' | 'fail' | null;
 
 interface NavEntry {
-  readonly view: 'inbox' | 'solutions' | 'schedules' | 'artifacts' | 'history';
+  readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history';
   readonly label: string;
   readonly badge: string;
   readonly kind: BadgeKind;
@@ -149,6 +149,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
     { view: 'inbox', label: 'Inbox', badge: inboxCount ? String(inboxCount) : '', kind: inboxCount ? 'need' : null },
     { view: 'solutions', label: 'Solutions', badge: conflicts ? `${conflicts} conflict${conflicts === 1 ? '' : 's'}` : '', kind: conflicts ? 'warn' : null },
     { view: 'schedules', label: 'Schedules & loops', badge: failed ? `${failed} failed` : '', kind: failed ? 'fail' : null },
+    // D61: the MCP servers page.
+    { view: 'mcp', label: 'MCP', badge: '', kind: null },
     { view: 'artifacts', label: 'Artifacts', badge: artifacts.data?.length ? String(artifacts.data.length) : '', kind: null },
     { view: 'history', label: 'History', badge: '', kind: null },
   ];

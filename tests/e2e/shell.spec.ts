@@ -103,7 +103,7 @@ test('the shell renders from the real API and shows only what the API returns', 
 
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
   await expect(page.getByTestId('sidebar-tools').locator('a')).toHaveText(['Codebase Memorylocalhost:13000', 'Acme Toolset URL']);
-  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '']);
+  await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '']); // D61: six nav items (MCP)
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
   await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM', 'Session', 'Week']);
@@ -121,6 +121,7 @@ test('the nav switches views client-side and deep links load the right view', as
   const views: Array<[testId: string, path: string, view: string]> = [
     ['nav-solutions', '/solutions', 'view-solutions'],
     ['nav-schedules', '/schedules', 'view-schedules'],
+    ['nav-mcp', '/mcp', 'view-mcp'],
     ['nav-artifacts', '/artifacts', 'view-artifacts'],
     ['nav-history', '/history', 'view-history'],
     ['nav-settings', '/settings', 'view-settings'],

@@ -6,6 +6,7 @@ import { UpdateBanner } from '../updates/UpdateBanner.tsx';
 import { ArtifactsView } from '../views/ArtifactsView.tsx';
 import { HistoryView } from '../views/HistoryView.tsx';
 import { InboxView } from '../views/InboxView.tsx';
+import { McpView } from '../views/McpView.tsx';
 import { SchedulesView } from '../views/SchedulesView.tsx';
 import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
@@ -25,6 +26,8 @@ function View({ route }: { readonly route: Route }) {
       return <SolutionsView />;
     case 'schedules':
       return <SchedulesView />;
+    case 'mcp':
+      return <McpView />;
     case 'artifacts':
       return <ArtifactsView />;
     case 'history':
