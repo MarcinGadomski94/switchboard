@@ -1,6 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import { ATTACHMENT_UPLOAD_BODY_MAX } from '../../core/attachments.ts';
 import { isTailscaleIPv4, parseIPv4 } from '../../core/peers.ts';
 import { LOOPBACK_HOST } from '../config.ts';
 import type { MachineRecord } from '../db/repos/machines.ts';
@@ -45,7 +46,7 @@ export interface PeerHandlers {
   /** `GET /peer/v1/events`: take over the raw response as an event stream. */
   events(machine: MachineRecord, res: ServerResponse): void;
   /** `/peer/v1/api/*`: the allow-listed local API, answered as the local UI would get it. */
-  api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<{ readonly status: number; readonly body: string; readonly contentType: string | null }>;
+  api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer>;
 }
 
 declare module 'fastify' {
@@ -55,8 +56,17 @@ declare module 'fastify' {
   }
 }
 
-/** Largest peer request body (1 MiB). */
+/** Largest peer request body (1 MiB). D57: an attachment upload takes {@link ATTACHMENT_UPLOAD_BODY_MAX}. */
 export const PEER_BODY_LIMIT = 1024 * 1024;
+
+/** What `/peer/v1/api/*` answers: the local route's answer (D57: an attachment's bytes, with its serving headers). */
+export interface PeerApiAnswer {
+  readonly status: number;
+  readonly body: string | Buffer;
+  readonly contentType: string | null;
+  /** D57: headers passed on with an attachment (`Content-Disposition`, `X-Content-Type-Options`, CSP). */
+  readonly headers?: Readonly<Record<string, string>>;
+}
 
 function deny(reply: FastifyReply, status: number, error: string): FastifyReply {
   return reply.code(status).header('cache-control', 'no-store').send({ error });
@@ -103,16 +113,21 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
     reply.hijack();
     handlers.events(request.peerMachine as MachineRecord, reply.raw);
   });
+  const api = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    const url = request.url.slice('/peer/v1'.length);
+    const answer = await handlers.api(request.peerMachine as MachineRecord, request.method, url, request.body);
+    reply.code(answer.status).header('cache-control', 'no-store');
+    if (answer.contentType) reply.header('content-type', answer.contentType);
+    for (const [name, value] of Object.entries(answer.headers ?? {})) reply.header(name, value);
+    return reply.send(answer.body.length === 0 ? undefined : answer.body);
+  };
+  // D57: uploads carry a file (base64) and get the attachments' own body limit; everything else keeps 1 MiB.
+  app.post('/peer/v1/api/sessions/:id/attachments', { bodyLimit: ATTACHMENT_UPLOAD_BODY_MAX }, api);
+  app.post('/peer/v1/api/attachments', { bodyLimit: ATTACHMENT_UPLOAD_BODY_MAX }, api);
   app.route({
     method: ['GET', 'POST', 'PUT', 'DELETE'],
     url: '/peer/v1/api/*',
-    handler: async (request, reply) => {
-      const url = request.url.slice('/peer/v1'.length);
-      const answer = await handlers.api(request.peerMachine as MachineRecord, request.method, url, request.body);
-      reply.code(answer.status).header('cache-control', 'no-store');
-      if (answer.contentType) reply.header('content-type', answer.contentType);
-      return reply.send(answer.body === '' ? undefined : answer.body);
-    },
+    handler: api,
   });
   return app;
 }

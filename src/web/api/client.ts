@@ -1,4 +1,6 @@
 import type {
+  Attachment,
+  AttachmentUpload,
   InterruptResult,
   StopBackgroundRequest,
   StopBackgroundResult,
@@ -130,7 +132,11 @@ export const api = {
   /** D40, additive: the New-session form's branching preflight (each repo fetched, then read; nothing created). */
   branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', '/api/branching/preflight', body),
   getSession: (id: string) => request<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
-  sendMessage: (id: string, text: string) => request<null>('POST', `/api/sessions/${enc(id)}/messages`, { text }),
+  /** D57: `attachments` = ids uploaded to this session (`uploadAttachment`); with some, `text` may be empty. */
+  sendMessage: (id: string, text: string, attachments: readonly string[] = []) =>
+    request<null>('POST', `/api/sessions/${enc(id)}/messages`, attachments.length > 0 ? { text, attachments } : { text }),
+  /** D57: one file (base64) for this session's next message → 201 Attachment; 413 over 20 MiB. */
+  uploadAttachment: (id: string, body: AttachmentUpload) => request<Attachment>('POST', `/api/sessions/${enc(id)}/attachments`, body),
   /** D22, additive: rename (`null` or an empty title clears it; 422 on field `title` beyond 80 characters). */
   renameSession: (id: string, title: string | null) => request<Session>('PUT', `/api/sessions/${enc(id)}/title`, { title } satisfies SessionTitleInput),
   /** D24: Remote Control on / off for the session's live process. */
@@ -281,6 +287,8 @@ export function machineApi(machine: string | null) {
     solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
     branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
     createSession: (body: NewSession | NewRepoSession | NewSimpleSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
+    /** D57: a staged upload for the start's first message (its id goes in `attachments`), on that machine. */
+    uploadAttachment: (body: AttachmentUpload) => request<Attachment>('POST', onMachine(machine, '/api/attachments'), body),
     // D48 P4: the machine's terminal sessions and its hooks.
     terminalSessions: () => request<TerminalSession[]>('GET', onMachine(machine, '/api/terminal-sessions')),
     /** 201 a new hooked session (200 one that existed); 404, 409 `already-in-switchboard`. */

@@ -4,6 +4,8 @@ import path from 'node:path';
 import type { HookStatus, HooksStatus, Session, SessionActivity, SessionEvent, TerminalSession } from '../../core/api.ts';
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
+import { type Attachment, attachmentsLabel, messageWithFiles } from '../../core/attachments.ts';
+import type { UserPayload } from '../../core/event-payload.ts';
 import { toolSummary } from '../../core/derive/activity.ts';
 import { NO_TURN, type TranscriptTurn, hookedActivity, transcriptTurn } from '../../core/derive/hooked-activity.ts';
 import { hookDelivery } from '../../core/derive/hooked-status.ts';
@@ -12,6 +14,7 @@ import { ANSWERED_IN_TERMINAL } from '../../core/remote-control.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import type { ToolDecision } from '../../core/stdin.ts';
 import type { ServerConfig } from '../config.ts';
+import { AttachmentService, NO_ATTACHMENTS, type PreparedAttachments } from '../attachments/service.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -227,9 +230,14 @@ export class HookService {
   readonly #activityEvents = new Map<string, LatestThrottle<SessionActivity | null>>();
   #activeTimer: NodeJS.Timeout | undefined;
 
+  /** D57: a hooked session's imported prompt images are stored as its attachments (in this machine's data folder). */
+  readonly #saveImage: { readonly saveImage: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> };
+
   constructor(options: HookServiceOptions) {
     this.#config = options.config;
     this.#store = options.store;
+    const attachments = new AttachmentService({ dataDir: options.config.dataDir, store: options.store });
+    this.#saveImage = { saveImage: (sessionId, base64, index) => attachments.saveTranscriptImage(sessionId, base64, index) };
     this.#bus = options.bus;
     this.#questions = options.questions;
     this.#tokenFile = options.hookTokenFile;
@@ -597,7 +605,7 @@ export class HookService {
    * with the D44 clock (`queued: turn`), queued in the mailbox, delivered by the
    * next waiter once the session is idle; the transcript's copy marks it delivered.
    */
-  async sendMessage(sessionId: string, text: string): Promise<void> {
+  async sendMessage(sessionId: string, text: string, attachments: PreparedAttachments = NO_ATTACHMENTS): Promise<void> {
     const record = await this.#store.sessions.get(sessionId);
     if (!record || !record.hooked) throw new SupervisorError('not-found', `no hooked session ${sessionId}`);
     if (record.closedAt !== null) throw new SupervisorError('closed', 'the session is closed (unhooked): hook into it again first');
@@ -606,17 +614,28 @@ export class HookService {
     if (/^\/[a-z][\w:-]*(\s|$)/i.test(trimmed)) {
       throw new HookError(409, 'hooked-unavailable', 'Slash commands stay in the terminal: a message from Switchboard reaches the model as text, not as a command.');
     }
-    if (trimmed.length > HOOK_MESSAGE_MAX) throw new HookError(422, 'invalid', `a message to a terminal session is at most ${HOOK_MESSAGE_MAX} characters`);
+    // D57 (ASSUMED D57-hooked): hooks carry text only, so every attachment is a file on this machine, named by its path.
+    const sent = messageWithFiles(trimmed, attachments.filesText);
+    if (sent.length > HOOK_MESSAGE_MAX) throw new HookError(422, 'invalid', `a message to a terminal session is at most ${HOOK_MESSAGE_MAX} characters`);
     const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const payload: UserPayload = {
+      type: 'user',
+      text: trimmed,
+      origin: 'user',
+      delivered: false,
+      queued: 'turn',
+      ...(attachments.refs.length > 0 ? { attachments: attachments.refs } : {}),
+      ...(sent !== trimmed ? { sentText: sent } : {}),
+    };
     const event = await this.#store.events.append({
       sessionId,
       agentId: main?.id ?? null,
       kind: userMessageKind(trimmed),
-      label: textLabel(trimmed),
-      payload: { type: 'user', text: trimmed, origin: 'user', delivered: false, queued: 'turn' },
+      label: trimmed === '' && attachments.refs.length > 0 ? attachmentsLabel(attachments.refs) : textLabel(trimmed),
+      payload,
     });
     this.#publishEvent(event);
-    await this.#store.pendingMessages.enqueue({ sessionId, kind: HOOK_MESSAGE_KIND, text: trimmed });
+    await this.#store.pendingMessages.enqueue({ sessionId, kind: HOOK_MESSAGE_KIND, text: sent });
     await this.#store.sessions.update(sessionId, { lastActivityAt: new Date(this.#now()).toISOString() });
     await this.#publishSession(sessionId);
     void this.#pump(record.claudeSessionId);
@@ -988,9 +1007,9 @@ export class HookService {
     const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
     if (!main) return;
     const onEvent = (event: EventRecord): void => this.#publishEvent(event);
-    let result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart });
+    let result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart, ...this.#saveImage });
     // A sync point the file no longer has (/clear, a compaction): read the newest chain whole (stored entries are skipped).
-    if (!result.found) result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart: true });
+    if (!result.found) result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart: true, ...this.#saveImage });
     const agentsChanged = await this.#importSubagents(record, transcript, main.id, onEvent);
     if (result.imported > 0 || agentsChanged) await this.#publishSession(sessionId);
     await this.#refreshActivity(sessionId);

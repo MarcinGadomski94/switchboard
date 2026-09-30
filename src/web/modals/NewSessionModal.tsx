@@ -83,6 +83,8 @@ import { BranchingSection, useBranchingPreflight } from './BranchingSection.tsx'
 import { type BranchingForm, branchingBlocks, branchingFromPrefill, formParent, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, deleteErrorText, saveErrorText, scheduleMachine, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
 import { ModeToggle, SimpleSessionForm } from './SimpleSessionForm.tsx';
+import { AttachButton, AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '../components/Attachments.tsx';
+import { attachmentsBlocker } from '../components/attachments.ts';
 import { offersModeToggle, openingMode, toSimpleBody } from './simple-session.ts';
 import './new-session.css';
 
@@ -202,6 +204,9 @@ export function NewSessionModal({
   const simple = mode === 'simple' && !scheduling;
   // D56: the simple form's worktree branch as edited (`null` = derived from the title); kept apart from D32's Branch field.
   const [simpleBranch, setSimpleBranch] = useState<string | null>(null);
+  // D57: the first message's attachments; uploaded at Start to the chosen machine (`POST /api/attachments`).
+  const attach = useAttachmentDraft();
+  const drop = useFileDrop(attach.add);
   // D48 (P3, docs/peers.md): the machine the session starts on; `null` = this one.
   // D52: a schedule too (it is saved and runs there); a peer's schedule's Edit stays on its machine (its remote id names it).
   const lockedMachine = scheduleMachine(schedule);
@@ -326,11 +331,14 @@ export function NewSessionModal({
   const branchingReady = !branchShown || !branchingBlocks(stacking, branchingSolutions, preflight.rows, formBranch(form));
   const move = moves.items?.[0] ?? null;
   const moveRunning = moves.items !== null && !movesSettled(moves.items);
+  // D57: the first message's attachments (a new session's start only: not a schedule, a move or a teleport).
+  const attachable = !remoting && !resuming && !scheduling;
+  const attaching = attachable ? attachmentsBlocker(attach.items) : null;
   const startable = remoting
     ? canStartRemote(remote, form.name, folder) && !busy
     : resuming
       ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
-      : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder) && branchingReady) && !busy;
+      : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder) && branchingReady && attaching === null) && !busy;
   const hideRouter = repo || resuming || remoting;
   const branchNoteId = useId();
   const branchState = branchCheck(form);
@@ -402,12 +410,16 @@ export function NewSessionModal({
     void api.saveSettings({ 'newSession.mode': next }).catch(() => undefined);
   };
 
+  const uploadAttachments = async (): Promise<string[]> => (attach.items.length > 0 ? attach.uploadAll((body) => machineApi(peer).uploadAttachment(body)) : []);
+
   const startSimple = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
+      // D57: the attachments upload to the chosen machine first; their ids go with the start.
+      const ids = await uploadAttachments();
       // D56: a NewSimpleSession (no router answers, no solutions, no branching); D48: on the chosen machine.
-      const session = await machineApi(peer).createSession(toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }));
+      const session = await machineApi(peer).createSession({ ...toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }), ...(ids.length > 0 ? { attachments: ids } : {}) });
       onClose();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
@@ -451,7 +463,9 @@ export function NewSessionModal({
     setError(null);
     try {
       // D22: the field is the title; the short name is derived from it (unique among the listed sessions).
-      const body = toStartBody(launch, folder, takenNames);
+      // D57: the attachments upload to the chosen machine first; their ids go with the start.
+      const ids = await uploadAttachments();
+      const body = { ...toStartBody(launch, folder, takenNames), ...(ids.length > 0 ? { attachments: ids } : {}) };
       // D40: with a worktree, the branching (epic, base, per-repo choices; D47: the parent) goes with it.
       // D48: on a peer the session starts there; the answer is its remote id (the session view opens it like a local one).
       const session = await machineApi(peer).createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
@@ -592,6 +606,7 @@ export function NewSessionModal({
               modelPicker={modelPicker}
               error={error}
               busy={busy}
+              attachments={attach}
               onStart={() => void start()}
               onClose={onClose}
             />
@@ -652,7 +667,13 @@ export function NewSessionModal({
             )}
           </div>
 
-          <div className="sb-ns-section sb-ns-section--task" data-testid="ns-section" data-section="task">
+          <div
+            className="sb-ns-section sb-ns-section--task"
+            data-testid="ns-section"
+            data-section="task"
+            data-dragging={attachable && drop.dragging ? 'true' : undefined}
+            {...(attachable ? drop.handlers : {})}
+          >
             <div className="sb-ns-label">1 · Task definition</div>
             <div className="sb-ns-task">
               <input
@@ -699,15 +720,19 @@ export function NewSessionModal({
                 </div>
               ) : (
                 <input
-                  className="sb-ns-input"
+                  className={attachable ? 'sb-ns-input sb-ns-input--attach' : 'sb-ns-input'}
                   data-testid="ns-task"
                   aria-label="Task"
                   value={form.task}
                   placeholder="What should be implemented?"
                   onChange={(event) => update({ task: event.target.value })}
+                  onPaste={pasteFiles(attach.add, attachable)}
                 />
               )}
+              {/* D57: last in the row, drawn inside the task field at its right (the fields keep their boxes). */}
+              {attachable ? <AttachButton className="sb-attach-button--task" onFiles={attach.add} /> : null}
             </div>
+            {attachable ? <AttachmentChips items={attach.items} notice={attach.notice} onRemove={attach.remove} /> : null}
             {branchShown ? (
               <div className="sb-ns-branch" data-testid="ns-branch-row">
                 <input

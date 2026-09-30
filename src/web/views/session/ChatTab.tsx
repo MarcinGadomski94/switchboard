@@ -4,9 +4,11 @@ import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
 import { useLiveActivity } from '../../activity/useActivity.ts';
 import { ApiError, api } from '../../api/client.ts';
+import { AttachButton, type AttachmentDraft, AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '../../components/Attachments.tsx';
+import { attachmentsBlocker, messageToSend } from '../../components/attachments.ts';
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
-import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, draftToSend, hookedQueuedNote } from './chat.ts';
+import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
@@ -100,6 +102,15 @@ interface MainChatProps {
  */
 function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
+  // D57: the composer's attachments upload to this session as soon as they are added (paste, drop, 📎).
+  const blockedEarly = offlineReason(session?.machine);
+  const attachments = useAttachmentDraft(blockedEarly === null ? (body) => api.uploadAttachment(sessionId, body) : undefined);
+  const drop = useFileDrop(attachments.add, blockedEarly === null);
+  const clearAttachments = attachments.clear;
+  useEffect(() => {
+    // Another session's uploads never go with this one's message.
+    clearAttachments();
+  }, [sessionId, clearAttachments]);
   const scroller = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const restored = useRef(false);
@@ -154,7 +165,15 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
 
   return (
     <>
-      <div className="sb-chat" data-testid="session-chat" data-session-id={sessionId} ref={scroller} onScroll={onScroll}>
+      <div
+        className="sb-chat"
+        data-testid="session-chat"
+        data-session-id={sessionId}
+        data-dragging={drop.dragging ? 'true' : undefined}
+        ref={scroller}
+        onScroll={onScroll}
+        {...drop.handlers}
+      >
         {placeholder ? <ChatSkeleton /> : null}
         {items.map((item) => (
           <ChatItemView
@@ -175,6 +194,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <Composer
         sessionId={sessionId}
         blocked={blocked}
+        attachments={attachments}
         // D50: while a turn runs, Send becomes ■ Stop (and Esc stops it).
         stoppable={session !== null && blocked === null && canStop({ live: session.live, status: session.status, activity, hooked: session.hooked === true })}
         // D50 ruling: no turn, but background tasks: "Stop background tasks" beside Send (button + confirmation only).
@@ -238,6 +258,7 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
 function Composer({
   sessionId,
   blocked,
+  attachments,
   stoppable: turnRuns,
   background,
   context,
@@ -249,6 +270,8 @@ function Composer({
   readonly stoppable: boolean;
   /** D48 ruling D48-cache-persist: why nothing can be sent now (the machine is offline); `null` = send as usual. */
   readonly blocked: string | null;
+  /** D57: the draft's attachments (chips above the field; paste, drop and 📎 add to them). */
+  readonly attachments: AttachmentDraft;
   readonly background: readonly BackgroundTask[];
   readonly context: SessionContext | null;
   readonly placeholder: string;
@@ -257,6 +280,9 @@ function Composer({
 }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // D57: files dropped on the composer join the draft too (the chat above has its own drop zone).
+  const drop = useFileDrop(attachments.add, blocked === null);
+  const attaching = attachmentsBlocker(attachments.items);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement | null>(null);
   // D50: a Stop waits for the CLI; the note (with Pause) when it did not stop in time.
@@ -285,6 +311,11 @@ function Composer({
       onStopped();
       if (result.withdrawn.length > 0) {
         setDraft((current) => withdrawnDraft(result.withdrawn, current));
+        input.current?.focus();
+      }
+      // D57: their attachments come back as chips (still uploaded: the next message carries them again).
+      if ((result.withdrawnAttachments ?? []).length > 0) {
+        attachments.restore(result.withdrawnAttachments ?? [], sessionId);
         input.current?.focus();
       }
       if (result.outcome === 'timeout') setStopTimedOut(true);
@@ -367,16 +398,20 @@ function Composer({
   }, [draft, fontLoads]);
 
   const send = async (): Promise<void> => {
-    const text = draftToSend(draft);
-    if (text === null || sending || blocked !== null) return;
+    // D57: the text and the uploaded attachments; nothing goes while one is still uploading (or failed).
+    const message = messageToSend(draft, attachments.items);
+    if (message === null || sending || blocked !== null) return;
+    const text = message.text;
     const sent = draft;
+    const sentKeys = attachments.items.filter((item) => item.id !== null).map((item) => item.key);
     setStopped(false);
     setSending(true);
     setError(null);
     try {
-      await api.sendMessage(sessionId, text);
+      await api.sendMessage(sessionId, text, message.attachments);
       // The message shows once the service records it (`/hub` event); the draft clears unless it was edited meanwhile.
       setDraft((current) => (current === sent ? '' : current));
+      for (const key of sentKeys) attachments.remove(key);
       onSent();
     } catch (caught) {
       setError(refusal(caught));
@@ -393,7 +428,7 @@ function Composer({
   };
 
   return (
-    <div className="sb-chat-composer" data-testid="chat-composer">
+    <div className="sb-chat-composer" data-testid="chat-composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
       {context ? <ContextBar context={context} /> : null}
       <div className="sb-chat-quick">
         <span className="sb-chat-quick-label">{QUICK_REPLIES_LABEL}</span>
@@ -413,7 +448,10 @@ function Composer({
             {reply.label}
           </button>
         ))}
+        {/* D57: 📎 at the row's right end (the pills, the field and Send keep their places). */}
+        <AttachButton className="sb-attach-button--composer" onFiles={attachments.add} disabled={blocked !== null} />
       </div>
+      <AttachmentChips items={attachments.items} notice={attachments.notice} onRemove={attachments.remove} />
       <div className="sb-chat-compose" data-multiline={multiline ? 'true' : undefined}>
         <textarea
           ref={input}
@@ -426,6 +464,7 @@ function Composer({
           disabled={blocked !== null}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={pasteFiles(attachments.add, blocked === null)}
         />
         {!stoppable && !stopping && background.length > 0 ? <StopBackground sessionId={sessionId} tasks={background} /> : null}
         {stoppable || stopping ? (
@@ -446,8 +485,8 @@ function Composer({
             type="button"
             className="sb-button sb-chat-send"
             data-testid="chat-send"
-            disabled={sending || blocked !== null}
-            title={blocked ?? undefined}
+            disabled={sending || blocked !== null || attaching !== null}
+            title={blocked ?? attaching ?? undefined}
             aria-busy={sending}
             style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
             onClick={() => void send()}

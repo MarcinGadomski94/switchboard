@@ -11,6 +11,7 @@
  * refine them, additively where it can, and must keep the server and the UI in
  * step because both import this file.
  */
+import type { Attachment } from './attachments.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { UpdateStatus } from './updates.ts';
@@ -36,6 +37,7 @@ import type {
   WorkType,
 } from './model.ts';
 
+export type { Attachment, AttachmentDelivery, AttachmentKind } from './attachments.ts';
 export type { SessionChip } from './derive/chips.ts';
 export type { StatusTableFormat } from './derive/status-table.ts';
 export type { SidebarFolder, SidebarFolderCreate, SidebarFolderMove, SidebarFolderPatch, SidebarLayout, SidebarPlace, SidebarPlaceInput } from './sidebar-layout.ts';
@@ -107,6 +109,15 @@ export interface NewSession {
    * without an epic and no per-repo choices ({@link NewSessionBranching}).
    */
   readonly branching?: NewSessionBranching | null;
+  /**
+   * Additive (D57): ids of files uploaded with `POST /api/attachments` (the
+   * staged uploads of the New-session form) that the first message carries: images
+   * and PDFs inline, other files as paths (`docs/chat.md` → *Attachments*). They
+   * move into the new session's attachments. 422 on field `attachments` for an
+   * unknown or already used id, more than 20 files, more than 50 MiB together, or
+   * an empty `task`.
+   */
+  readonly attachments?: readonly string[];
 }
 
 /**
@@ -258,6 +269,8 @@ export interface NewRepoSession {
   readonly model?: string | null;
   /** Additive (D42): as {@link NewSession.effort}. */
   readonly effort?: string | null;
+  /** Additive (D57): as {@link NewSession.attachments}. */
+  readonly attachments?: readonly string[];
 }
 
 /**
@@ -291,6 +304,8 @@ export interface NewSimpleSession {
   readonly model?: string | null;
   /** As {@link NewSession.effort}. */
   readonly effort?: string | null;
+  /** Additive (D57): as {@link NewSession.attachments}. */
+  readonly attachments?: readonly string[];
 }
 
 /**
@@ -914,6 +929,29 @@ export interface InterruptResult {
    * Empty for a second Stop while the first one is still waiting.
    */
   readonly withdrawn: readonly string[];
+  /**
+   * Additive (D57): the attachments of those messages, in the same order
+   * (flattened): the composer puts them back as chips (they stay uploaded, so the
+   * next message can carry them again). Empty when none had any.
+   */
+  readonly withdrawnAttachments?: readonly Attachment[];
+}
+
+/** Additive (D57): the body of `POST /api/sessions/{id}/attachments` and `POST /api/attachments`: one file, as base64. */
+export interface AttachmentUpload {
+  /** The file's name (only its last segment is kept, sanitized). */
+  readonly name: string;
+  /** The file's bytes, base64 (standard alphabet, padding optional). */
+  readonly data: string;
+}
+
+/**
+ * The body of `POST /api/sessions/{id}/messages`: the text and, additive (D57),
+ * the ids of attachments uploaded to this session. With attachments the text may be empty.
+ */
+export interface SendMessageBody {
+  readonly text: string;
+  readonly attachments?: readonly string[];
 }
 
 /** Additive (D50 background): optional body of `POST /api/sessions/{id}/background/stop`. */

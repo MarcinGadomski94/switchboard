@@ -6,6 +6,7 @@ import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
+import { AttachmentService } from './attachments/service.ts';
 import { FolderService } from './folders/service.ts';
 import { HubBus } from './hub/bus.ts';
 import { SystemItemService } from './inbox/system-items.ts';
@@ -176,6 +177,12 @@ async function main(): Promise<void> {
     }
     // Usage readings start once the resumed sessions are back (it reads only while a /hub client is connected).
     usage?.start();
+    // D57 (ASSUMED D57-retention): attachments older than 30 days, and files of sessions that are gone, are removed.
+    void new AttachmentService({ dataDir: config.dataDir, store })
+      .cleanup((error) => app.log.error(error, 'attachments cleanup'))
+      .then(({ removed }) => {
+        if (removed > 0) app.log.info({ removed }, 'attachments cleaned up');
+      });
   } catch (error) {
     await store.close();
     throw error;

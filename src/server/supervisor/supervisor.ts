@@ -8,7 +8,8 @@ import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
-import { withoutQueued } from '../../core/derive/queued.ts';
+import { type Withdrawn, withoutQueued } from '../../core/derive/queued.ts';
+import { type Attachment, messageWithFiles } from '../../core/attachments.ts';
 import { DEFAULT_MODEL_VALUE, type ModelChoice, checkModelChoice, modelStepLabel, normalizeEffort, normalizeModel, parseInitializeModels } from '../../core/model-choice.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import {
@@ -24,6 +25,7 @@ import {
   userMessageLine,
 } from '../../core/stdin.ts';
 import { type CanUseToolMessage, type ControlResponseMessage, type InitMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
+import { type AttachmentService, NO_ATTACHMENTS, type PreparedAttachments } from '../attachments/service.ts';
 import type { EventRecord } from '../db/repos/events.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
@@ -103,6 +105,8 @@ export interface InterruptReply {
   readonly outcome: InterruptOutcome;
   /** The texts of the messages the Stop took back, oldest first (empty for a second Stop while the first one waits). */
   readonly withdrawn: readonly string[];
+  /** D57: their attachments, in the same order (flattened). */
+  readonly withdrawnAttachments: readonly Attachment[];
 }
 
 /** D50 background: what {@link SessionSupervisor.stopBackground} did. */
@@ -119,6 +123,11 @@ export const STOP_TASK_END_MS = 5_000;
 export interface StartOptions {
   /** Runs after the session is stored, before its process is spawned (M2.2: link its worktrees). */
   readonly beforeSpawn?: (session: SessionRecord) => Promise<void>;
+  /**
+   * D57: the first message's attachments, read after {@link beforeSpawn} (which
+   * moves the staged uploads into the new session's folder first).
+   */
+  readonly attachments?: () => PreparedAttachments;
 }
 
 /**
@@ -224,6 +233,8 @@ export interface SupervisorOptions {
   readonly teleportInitTimeoutMs?: number;
   /** D51: how often the files of a running Workflow run are read again (default `POLL_MS` of `workflows/service.ts`). */
   readonly workflowPollMs?: number;
+  /** D57: stores the images of imported terminal prompts (Attach, a move, a teleport); without it they show as placeholders. */
+  readonly attachments?: AttachmentService;
 }
 
 /** Options of {@link SessionSupervisor.close} (D33). */
@@ -406,6 +417,14 @@ export class SessionSupervisor {
   /** Session commands wait for this while restart recovery runs ({@link SessionSupervisor.holdCommands}). */
   #gate: Promise<void> = Promise.resolve();
 
+  readonly #attachments: AttachmentService | null;
+
+  /** D57: how an import stores a prompt's image (none without an attachment service). */
+  #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
+    const attachments = this.#attachments;
+    return attachments ? { saveImage: (sessionId, base64, index) => attachments.saveTranscriptImage(sessionId, base64, index) } : {};
+  }
+
   constructor(options: SupervisorOptions) {
     this.#store = options.store;
     this.#command = options.claudeCommand;
@@ -417,6 +436,7 @@ export class SessionSupervisor {
     this.#listLive = options.listLive ?? null;
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
+    this.#attachments = options.attachments ?? null;
     this.#workflows = new WorkflowService({
       configDir: () => claudeConfigDir(this.#env),
       onChange: (sessionId) => this.#workflowChanged(sessionId),
@@ -549,7 +569,8 @@ export class SessionSupervisor {
     });
     if (options.beforeSpawn) await options.beforeSpawn(session);
     const live = await this.#spawn(session, { kind: 'new', claudeSessionId: session.claudeSessionId }, 'started');
-    if (firstMessage.trim() !== '') await this.#send(live, firstMessage, 'task');
+    const attachments = options.attachments?.() ?? NO_ATTACHMENTS;
+    if (firstMessage.trim() !== '') await this.#send(live, firstMessage, 'task', { attachments });
     else await this.#enqueue(live, () => this.#refreshStatus(live));
     return this.#get(session.id);
   }
@@ -558,8 +579,9 @@ export class SessionSupervisor {
    * Sends a user message. A session without a live process is resumed with
    * `--resume` and gets the message instead of "Continue."; D44: that message is
    * then queued (`resume`) until the new process takes it up. Refused while detached.
+   * D57: `attachments` go with it (inline blocks, the attached files' lines).
    */
-  async sendMessage(sessionId: string, text: string, origin: UserMessageOrigin = 'user'): Promise<SessionRecord> {
+  async sendMessage(sessionId: string, text: string, origin: UserMessageOrigin = 'user', attachments: PreparedAttachments = NO_ATTACHMENTS): Promise<SessionRecord> {
     await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
@@ -576,7 +598,7 @@ export class SessionSupervisor {
     }
     const resuming = !live;
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
-    await this.#send(live, text, origin, { resuming });
+    await this.#send(live, text, origin, { resuming, attachments });
     return this.#get(sessionId);
   }
 
@@ -625,14 +647,16 @@ export class SessionSupervisor {
     await this.#gate;
     const session = await this.#get(sessionId);
     const live = this.#live.get(sessionId);
-    if (!live || live.stopping || !live.proc.running) return { record: session, outcome: 'idle', withdrawn: [] };
+    if (!live || live.stopping || !live.proc.running) return { record: session, outcome: 'idle', withdrawn: [], withdrawnAttachments: [] };
     if (live.interrupting) {
       const outcome = await live.interrupting;
-      return { record: await this.#get(sessionId), outcome, withdrawn: [] };
+      return { record: await this.#get(sessionId), outcome, withdrawn: [], withdrawnAttachments: [] };
     }
     let withdrawn: readonly string[] = [];
-    const run = this.#interruptNow(live, (texts) => {
-      withdrawn = texts;
+    let withdrawnAttachments: readonly Attachment[] = [];
+    const run = this.#interruptNow(live, (taken) => {
+      withdrawn = taken.map((message) => message.text);
+      withdrawnAttachments = taken.flatMap((message) => message.attachments);
     });
     live.interrupting = run;
     let outcome: InterruptOutcome;
@@ -641,10 +665,10 @@ export class SessionSupervisor {
     } finally {
       live.interrupting = null;
     }
-    return { record: await this.#get(sessionId), outcome, withdrawn };
+    return { record: await this.#get(sessionId), outcome, withdrawn, withdrawnAttachments };
   }
 
-  async #interruptNow(live: Live, onWithdrawn: (texts: readonly string[]) => void): Promise<InterruptOutcome> {
+  async #interruptNow(live: Live, onWithdrawn: (taken: readonly Withdrawn[]) => void): Promise<InterruptOutcome> {
     const t = this.#timeouts;
     const requestId = `sb-stop-${randomUUID()}`;
     let acked: Promise<boolean> = Promise.resolve(false);
@@ -657,7 +681,7 @@ export class SessionSupervisor {
       busy = !live.stopping && live.proc.running && live.recorder.turnBusy();
       if (!busy) return;
       const taken = await live.recorder.withdrawQueued();
-      onWithdrawn(taken.map((message) => message.text));
+      onWithdrawn(taken);
       openAtStop = live.recorder.openRequestIds();
       live.recorder.beginInterrupt();
       // The waiters are registered before the write, so a fast reply is never missed.
@@ -1134,6 +1158,7 @@ export class SessionSupervisor {
         mainAgentId: await this.#mainAgentId(session),
         transcript,
         onEvent: (event) => this.#emitEvent(event),
+        ...this.#saveImage(),
         origin: 'remote',
         fromStart: true,
       });
@@ -1156,6 +1181,7 @@ export class SessionSupervisor {
         mainAgentId: await this.#mainAgentId(session),
         transcript,
         onEvent: (event) => this.#emitEvent(event),
+        ...this.#saveImage(),
       });
       if (!result.found) {
         await this.recordServiceEvent(session.id, 'error', 'Could not sync the terminal\'s turns', {
@@ -1675,14 +1701,23 @@ export class SessionSupervisor {
    * (the outbox: the M2.4 restart note, M3.1 stale answers) go first, in the same
    * message, and are marked delivered once written. D44: `options.resuming` = the
    * process was started for this message (the session had none), so it is queued
-   * (`resume`) until the process takes it up.
+   * (`resume`) until the process takes it up. D57: `options.attachments`: the
+   * inline images / PDFs go as content blocks before the text, the attached
+   * files' lines after it; the event lists them (no bytes).
    */
-  async #send(live: Live, text: string, origin: UserMessageOrigin, options: { readonly resuming?: boolean } = {}): Promise<void> {
+  async #send(
+    live: Live,
+    text: string,
+    origin: UserMessageOrigin,
+    options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments } = {},
+  ): Promise<void> {
+    const attachments = options.attachments ?? NO_ATTACHMENTS;
     await this.#enqueue(live, async () => {
       const pending = await this.#store.pendingMessages.pending(live.sessionId);
-      const full = [...pending.map((message) => message.text), text].join('\n\n');
-      await live.recorder.recordUserMessage(full, origin, options);
-      if (live.proc.write(userMessageLine(full))) {
+      const full = [...pending.map((message) => message.text), text].filter((part, index, parts) => part !== '' || parts.length === 1).join('\n\n');
+      const sent = messageWithFiles(full, attachments.filesText);
+      await live.recorder.recordUserMessage(full, origin, { ...(options.resuming ? { resuming: true } : {}), attachments: attachments.refs, sentText: sent });
+      if (live.proc.write(userMessageLine(sent, attachments.blocks))) {
         for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
         if (pending.length > 0 && this.#handler.pendingDelivered) {
           try {

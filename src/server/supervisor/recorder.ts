@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
+import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
 import type { ArtifactType, EventKind, SessionStatus } from '../../core/model.ts';
 import {
   type EventPayload,
@@ -413,14 +414,30 @@ export class StreamRecorder {
    * messages still wait (`turn`), or when `options.resuming` says the process was
    * started for it because the session had none (`resume`); until the CLI takes it up.
    */
-  async recordUserMessage(text: string, origin: UserMessageOrigin, options: { readonly resuming?: boolean } = {}): Promise<EventRecord> {
+  async recordUserMessage(
+    text: string,
+    origin: UserMessageOrigin,
+    options: { readonly resuming?: boolean; readonly attachments?: readonly Attachment[]; readonly sentText?: string } = {},
+  ): Promise<EventRecord> {
     const queued = queuedReason({ turnRunning: this.#pendingTurns > 0 || this.#turnOpen, resuming: options.resuming === true });
     // D50: a new message ends the stop: a later interrupted result is a failure again.
     this.#stopRequested = false;
     this.#pendingTurns++;
-    const payload: UserPayload = { type: 'user', text, origin, delivered: false, ...(queued ? { queued } : {}) };
-    const event = await this.#append(userMessageKind(text), textLabel(text), payload);
-    this.#queue.sent(event.id, text, queued);
+    // D57: the attachments' listing (no bytes) and, when the attached files' lines were added, the text as sent.
+    const attachments = options.attachments ?? [];
+    const sentText = options.sentText !== undefined && options.sentText !== text ? options.sentText : undefined;
+    const payload: UserPayload = {
+      type: 'user',
+      text,
+      origin,
+      delivered: false,
+      ...(queued ? { queued } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
+      ...(sentText !== undefined ? { sentText } : {}),
+    };
+    const label = text.trim() === '' && attachments.length > 0 ? attachmentsLabel(attachments) : textLabel(text);
+    const event = await this.#append(userMessageKind(text), label, payload);
+    this.#queue.sent(event.id, text, queued, { ...(sentText !== undefined ? { match: sentText } : {}), attachments });
     return event;
   }
 

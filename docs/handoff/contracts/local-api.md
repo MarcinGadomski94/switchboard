@@ -605,6 +605,31 @@ Settings         { …, "newSession.mode": "simple" }
 - **First message:** the task alone; in a workspace folder **no "Session-start answers" block** (the agent asks the router's questions itself); a repo folder's session in its worktree gets the task plus only the worktree note. An empty task starts idle with nothing in the outbox (a repo worktree's note waits there as before).
 - **`newSession.mode`:** editable, default `simple` (a fresh install); a stored value other than the two words reads as `simple`. The New-session dialog writes it when the developer switches forms and opens in it.
 
+## Attachments (D57, 2026-09-30, additive)
+Developer request D57 (`docs/decisions.md` → *Paste and attach images and files*): images and files go with a message. Additive: a message or start body without `attachments` is handled exactly as before. Migration 0020 (`attachments`); the bytes live in the data folder (`docs/chat.md` → *Attachments (D57)*, `docs/security.md` → *Attachments (D57)*).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/sessions/{id}/attachments | AttachmentUpload | 201 Attachment · 404 unknown session · 413 `too-large` (over 20 MiB) · 422 `invalid` (`data` not base64, empty) |
+| POST | /api/attachments | AttachmentUpload | 201 Attachment, staged for a start (its id goes in `NewSession.attachments`) · 413 · 422 |
+| GET | /api/sessions/{id}/attachments/{attachmentId}[?download] | – | the file: an image / PDF with its sniffed type and `Content-Disposition: inline` (`?download`: `attachment`), anything else `application/octet-stream` + `attachment`; always `X-Content-Type-Options: nosniff` · 404 unknown, another session's, staged or cleaned up |
+| POST | /api/sessions/{id}/messages | `{ text, attachments?: [ids] }` | 202 · 422 on `attachments` (not a list of distinct ids, an id not uploaded to this session, more than 20, more than 50 MiB) · 422 on `text` when both are empty |
+| POST | /api/sessions | NewSession / NewRepoSession / NewSimpleSession + `attachments?: [ids]` | 201 Session · 422 on `attachments` (unknown or already used staged id, the caps, an empty `task`) |
+| POST | /api/sessions/{id}/interrupt | – | InterruptResult + `withdrawnAttachments` |
+
+```json
+AttachmentUpload { "name": "Screenshot 2026-09-30.png", "data": "<base64>" }
+Attachment       { "id": "<uuid>" | null, "name": "Screenshot 2026-09-30.png", "size": 48213,
+                   "kind": "image" | "pdf" | "file", "mediaType": "image/png", "delivery": "inline" | "file" }
+UserPayload      { "type": "user", "text": "What do you see?", …, "attachments": [Attachment],
+                   "sentText": "What do you see?\n\nAttached files:\n- /…/attachments/<session>/<id>-notes.txt (23 B)" }
+InterruptResult  { "session": Session, "outcome": "stopped", "withdrawn": ["…"], "withdrawnAttachments": [Attachment] }
+```
+- **Kinds:** sniffed from the bytes (PNG, JPEG, GIF, WebP → `image`; `%PDF-` → `pdf`; anything else, SVG and HTML included, `file`); `name` is the upload's last segment, sanitized.
+- **Delivery:** images and PDFs go **inline** as stream-json content blocks (`{ "type": "image", "source": { "type": "base64", "media_type", "data" } }`, `{ "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data" }, "title" }`) before the text block; other files, and what the CLI would not take inline (an image over 3.75 MB, a PDF over 20 MiB or 100 pages, beyond 24 MiB of base64 per message), go as paths in the text (`Attached files:` + `- <absolute path> (<size>)`). A hooked terminal session gets only paths. `delivery` is set on a sent message's listing, not on an upload's answer.
+- **Events:** `UserPayload.attachments` lists them (no bytes, no paths); `id: null` is an image a transcript named without its bytes (a placeholder). `sentText` is present when the text sent differs from `text`.
+- **Peers (D48):** the three routes are on `PEER_API_ALLOW`; a remote session id is forwarded as for every session route (uploads with the attachments' body limit; downloads as bytes with their headers); `POST /api/machines/{id}/api/attachments` stages an upload on that machine for a start there.
+
 ## Subfolders in the sidebar (D58, 2026-09-30, additive)
 Developer request D58 (`docs/decisions.md` → *Subfolders in the sidebar*): folders inside folders in the sidebar. Additive on *Sidebar pins and folders (D54)*; a D54 body means what it meant. No new route or event name; migration 0021. Details: `docs/sidebar.md` → *Subfolders (D58)*.
 

@@ -122,6 +122,64 @@ export function sayToken(text: string): { text: string } | { error: string } | n
   }
 }
 
+/** D57: the image types the CLI takes inline (its `image` block's `media_type`). */
+const MEDIA_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/**
+ * D57: the fake's reply to a stdin user message that carries `image` / `document`
+ * content blocks (CLI 2.1.284 / 2.1.285 shapes, read in the binary): `[fake: 1
+ * image, 1 document]`, plus `, 2 file paths` when the text names attached files
+ * (`- /…` lines under `Attached files:`). A block the CLI would not take gives
+ * `[fake: invalid image block: <why>]` / `[fake: invalid document block: <why>]`.
+ * `null` for a message without such blocks.
+ */
+export function mediaReply(content: Json | undefined, text: string): string | null {
+  if (!Array.isArray(content)) return null;
+  let images = 0;
+  let documents = 0;
+  for (const block of content) {
+    if (!isObject(block)) continue;
+    const type = block['type'];
+    if (type !== 'image' && type !== 'document') continue;
+    const source = asObject(block['source']);
+    const data = source?.['data'];
+    const mediaType = source?.['media_type'];
+    const why =
+      source === undefined
+        ? 'no source object'
+        : source['type'] !== 'base64'
+          ? `source type ${JSON.stringify(source['type'])} is not base64`
+          : typeof data !== 'string' || data === '' || !/^[A-Za-z0-9+/]+=*$/.test(data)
+            ? 'data is not base64'
+            : type === 'image' && (typeof mediaType !== 'string' || !MEDIA_IMAGE_TYPES.has(mediaType))
+              ? `media_type ${JSON.stringify(mediaType)} is not image/png, image/jpeg, image/gif or image/webp`
+              : type === 'document' && mediaType !== 'application/pdf'
+                ? `media_type ${JSON.stringify(mediaType)} is not application/pdf`
+                : null;
+    if (why !== null) return `[fake: invalid ${type} block: ${why}]`;
+    if (type === 'image') images++;
+    else documents++;
+  }
+  if (images === 0 && documents === 0) return null;
+  const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const parts = [plural(images, 'image'), plural(documents, 'document')];
+  const files = attachedFilePaths(text).length;
+  if (files > 0) parts.push(plural(files, 'file path'));
+  return `[fake: ${parts.join(', ')}]`;
+}
+
+/** D57: the paths a message's `Attached files:` lines name (`- <path> (<size>)`). */
+export function attachedFilePaths(text: string): string[] {
+  const at = text.lastIndexOf('Attached files:');
+  if (at < 0) return [];
+  return text
+    .slice(at)
+    .split('\n')
+    .slice(1)
+    .map((line) => /^- (.+) \([^)]*\)$/.exec(line)?.[1])
+    .filter((path): path is string => path !== undefined);
+}
+
 /** The tool_result text of a `[fake:tool]` call (invented: the real tools' results were never recorded). */
 export function toolResultText(name: string): string {
   return `fake-claude: ${name} done`;

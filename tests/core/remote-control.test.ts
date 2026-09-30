@@ -133,8 +133,8 @@ describe('History: the Remote Control badge (D24)', () => {
     line({ type: 'user', uuid, parentUuid: parent, isSidechain: false, entrypoint: 'cli', cwd: ROOT, timestamp: '2026-09-28T10:00:00.000Z', message: { role: 'user', content: text } });
   const bridge = line({ type: 'bridge-session', sessionId: 't-1', bridgeSessionId: 'cse_01AbC', lastSequenceNum: 4, ownerAccountUuid: 'x', ownerOrganizationUuid: 'y' });
 
-  it('a bridge-session line marks the facts (version 2) and the terminal row gets remoteControl + a searchable badge', () => {
-    expect(TRANSCRIPT_FACTS_VERSION).toBe(2);
+  it('a bridge-session line marks the facts (version 2 on, 3 since D57) and the terminal row gets remoteControl + a searchable badge', () => {
+    expect(TRANSCRIPT_FACTS_VERSION).toBeGreaterThanOrEqual(2);
     const withBridge = parseTranscript('t-1', [prompt('u1', null, 'Fix the login page'), bridge, bridge].join('\n'));
     const without = parseTranscript('t-2', prompt('u2', null, 'Tidy the README'));
     expect(withBridge.remoteControl).toBe(true);

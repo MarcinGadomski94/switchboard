@@ -8,6 +8,7 @@
  * (`truncated: true` marks it); the full data stays in the CLI's transcript.
  */
 
+import type { Attachment } from './attachments.ts';
 import type { AnsweredOn } from './remote-control.ts';
 
 /** Longest string kept in an event payload. */
@@ -61,6 +62,19 @@ export interface UserPayload {
    * back into the composer, and the chat no longer shows it. Absent otherwise.
    */
   readonly withdrawn?: true;
+  /**
+   * Additive (D57): the images and files the message carried (no bytes, no path;
+   * served by `GET /api/sessions/{id}/attachments/{attachmentId}`), each with how
+   * it reached the agent. A transcript's image without its bytes has `id: null`
+   * (a placeholder). Absent on a message without attachments.
+   */
+  readonly attachments?: readonly Attachment[];
+  /**
+   * Additive (D57): the text as it went to the agent when that differs from
+   * `text`: the message plus the attached files' paths (`Attached files: …`).
+   * Absent otherwise.
+   */
+  readonly sentText?: string;
 }
 
 /** Assistant text; the text blocks of one `message.id` are merged into one event. */
