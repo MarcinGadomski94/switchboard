@@ -1,5 +1,6 @@
 import type { NewSession, SessionModelOption } from '../../core/api.ts';
 import { type SessionBranching, type SessionEpic, DEFAULT_EPIC_BASE, TASK_ONLY, checkBranchName, checkEpicKey, epicBranchName } from '../../core/branching.ts';
+import { SIMPLE_BRANCH_EXAMPLE, simpleBranchOfName } from '../../core/simple-session.ts';
 import { PARENT_RULE, effectiveParent, parentConflict, parentText, parseParent } from '../../core/stacking.ts';
 import { MODEL_VALUE_MAX, checkModelChoice, normalizeEffort, normalizeModel } from '../../core/model-choice.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -20,13 +21,16 @@ export interface FieldError {
  * `branching` likewise, normalized ({@link SessionBranching}; a body without one
  * is a task without an epic). D42:
  * `model` and `effort` are both present (normalized, `null` = the CLI's default)
- * only when the body named either.
+ * only when the body named either. D56: `simple` is `true` only for a simple
+ * start (the router fields are `null` for a workspace too, and the first message
+ * carries no answers block).
  */
 export type ValidNewSession = Omit<NewSession, 'workType' | 'mode' | 'phase' | 'folder' | 'branching'> & {
   readonly workType: WorkType | null;
   readonly mode: SessionMode | null;
   readonly phase: Phase | null;
   readonly branching?: SessionBranching;
+  readonly simple?: true;
 };
 
 /** Result of {@link validateNewSession}. */
@@ -279,6 +283,11 @@ function modelOf(body: Record<string, unknown>, checks: NewSessionChecks, fail: 
  * other solution is refused.
  */
 export async function validateNewSession(body: unknown, checks: NewSessionChecks): Promise<NewSessionValidation> {
+  // D56: a simple start (the simple New-session form), in any folder kind.
+  if (isRecord(body) && body['simple'] !== undefined && body['simple'] !== null && body['simple'] !== false) {
+    if (body['simple'] !== true) return { ok: false, errors: [{ field: 'simple', message: 'simple must be true or false' }] };
+    return validateSimpleSession(body, checks);
+  }
   if (checks.folder?.kind === 'repo') return validateRepoSession(body, checks, checks.folder.repoName);
   const errors: FieldError[] = [];
   const fail = (field: string, message: string): void => {
@@ -427,6 +436,83 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
       ...(title !== null ? { title } : {}),
       ...(branch !== null ? { branch } : {}),
       ...(branching !== null ? { branching } : {}),
+      ...(model ?? {}),
+    },
+  };
+}
+
+/**
+ * D56: {@link validateNewSession} for a **simple** start (`simple: true`, the
+ * simple New-session form, `docs/new-session.md` → *Simple mode (D56)*): the
+ * name, task, title and model as for any session; no router fields, no QA, no
+ * branching (all `null` / left out, whatever the body says); `solutions` empty
+ * or omitted (a repo folder may name its one repo); `worktrees` and `ultracode`
+ * optional (`false`). A worktree is for a **repo** folder only (422 on field
+ * `worktrees` for a workspace: the simple form offers none there); its branch is
+ * any valid git branch name (no D32 ticket rule), omitted or blank =
+ * `sb/<name>` ({@link simpleBranchOfName}), and it follows D40's task-only rule
+ * ({@link TASK_ONLY}: cut from the origin default branch, an existing branch
+ * reused). Under the `session` branch rule (scheduled runs) no branch is read.
+ */
+async function validateSimpleSession(body: Record<string, unknown>, checks: NewSessionChecks): Promise<NewSessionValidation> {
+  const errors: FieldError[] = [];
+  const fail = (field: string, message: string): void => {
+    errors.push({ field, message });
+  };
+  const name = body['name'];
+  if (typeof name !== 'string' || !SESSION_NAME.test(name) || name.length > 64) {
+    fail('name', 'the name must be kebab-case (a-z, 0-9, single dashes), at most 64 characters');
+  } else if (await checks.nameTaken(name)) {
+    fail('name', `a session named "${name}" already exists`);
+  }
+  const task = body['task'] ?? '';
+  if (typeof task !== 'string') fail('task', 'the task must be text');
+  const title = titleOf(body, fail);
+  const model = modelOf(body, checks, fail);
+
+  const repo = checks.folder?.kind === 'repo' ? checks.folder.repoName : null;
+  const solutions = body['solutions'] ?? [];
+  if (!Array.isArray(solutions) || !solutions.every((s) => typeof s === 'string')) {
+    fail('solutions', 'solutions must be a list of names');
+  } else if (repo !== null ? solutions.some((s) => s !== repo) : solutions.length > 0) {
+    fail('solutions', repo !== null ? `a repo folder has one solution, ${repo}` : 'a simple session names no solutions: the agent determines them from the task');
+  }
+
+  const worktrees = body['worktrees'] ?? false;
+  if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
+  else if (worktrees && repo === null) fail('worktrees', 'a simple session in a workspace folder works in place: its own worktree needs a git repo folder');
+  const ultracode = body['ultracode'] ?? false;
+  if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
+
+  let branch: string | null = null;
+  if (worktrees === true && repo !== null && (checks.worktreeBranch ?? 'ticket') === 'ticket') {
+    const raw = body['branch'];
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+      branch = typeof name === 'string' ? simpleBranchOfName(name) : null;
+    } else {
+      const check = checkBranchName(raw, 'branch', SIMPLE_BRANCH_EXAMPLE);
+      if (check.ok) branch = check.name;
+      else fail('branch', check.message);
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      name: name as string,
+      task: task as string,
+      workType: null,
+      mode: null,
+      solutions: repo !== null ? [repo] : [],
+      phase: null,
+      coordination: null,
+      qa: null,
+      worktrees: worktrees as boolean,
+      ultracode: ultracode as boolean,
+      simple: true,
+      ...(title !== null ? { title } : {}),
+      ...(branch !== null ? { branch, branching: TASK_ONLY } : {}),
       ...(model ?? {}),
     },
   };

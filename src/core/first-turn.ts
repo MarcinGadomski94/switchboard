@@ -54,6 +54,8 @@ export type FirstTurnSession = Pick<NewSession, 'name' | 'solutions' | 'coordina
   readonly workType: WorkType | null;
   readonly mode: SessionMode | null;
   readonly phase: Phase | null;
+  /** D56: a simple start: a workspace session gets no answers block (the agent asks the router's questions itself). */
+  readonly simple?: boolean;
 };
 
 /** What the answers block says: the validated NewSession plus what the service resolved. */

@@ -79,6 +79,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'usage.warnAtPct': 90,
       'ui.sidebarHidden': false,
       'ui.rightPanelHidden': false,
+      'newSession.mode': 'simple',
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,
@@ -210,6 +211,25 @@ describe('GET/PUT /api/settings (M8.2)', () => {
     // A stored value of the wrong type reads as the default (shown).
     await store!.settings.setMany({ 'ui.rightPanelHidden': 'hidden' });
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'ui.rightPanelHidden': false });
+  });
+
+  it('D56: remembers the New-session mode (simple on a fresh install); only "simple" or "full" is taken; a stored oddity reads as simple', async () => {
+    const { dir, workspace } = await setup();
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'newSession.mode': 'simple' });
+    const full = await call('PUT', '/api/settings', { 'newSession.mode': 'full' });
+    expect(full.statusCode).toBe(200);
+    expect(full.json()).toMatchObject({ 'newSession.mode': 'full', 'sessions.worktrees': true });
+    await close();
+    await open(dir, workspace);
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'newSession.mode': 'full' });
+    for (const body of [{ 'newSession.mode': 'Simple' }, { 'newSession.mode': true }, { 'newSession.mode': null }]) {
+      const refused = await call('PUT', '/api/settings', body);
+      expect(refused.statusCode, JSON.stringify(body)).toBe(422);
+      expect((refused.json() as { errors: unknown }).errors).toEqual([{ field: 'newSession.mode', message: 'newSession.mode must be "simple" or "full"' }]);
+    }
+    expect(await store!.settings.getAll()).toEqual({ 'newSession.mode': 'full' });
+    await store!.settings.setMany({ 'newSession.mode': 'wizard' });
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'newSession.mode': 'simple' });
   });
 
   it('stays behind the cookie guard', async () => {

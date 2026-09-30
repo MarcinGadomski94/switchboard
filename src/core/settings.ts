@@ -21,6 +21,12 @@ export interface KnownSettings {
   readonly 'ui.sidebarHidden': boolean;
   /** D41: the session view's right panel is slid out, in every session. Editable, default `false`. */
   readonly 'ui.rightPanelHidden': boolean;
+  /**
+   * D56: the New-session dialog's last used mode (`simple`: folder, message,
+   * title, model, own worktree; `full`: the router form). Editable, default
+   * `simple` (a fresh install opens the simple form).
+   */
+  readonly 'newSession.mode': NewSessionMode;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -37,11 +43,22 @@ export interface KnownSettings {
   readonly 'github.prPollMinutes': number;
 }
 
+/** D56: the New-session dialog's modes (`docs/new-session.md` → *Simple mode (D56)*). */
+export const NEW_SESSION_MODES = ['simple', 'full'] as const;
+
+/** D56: a New-session dialog mode. */
+export type NewSessionMode = (typeof NEW_SESSION_MODES)[number];
+
+/** D56: `true` for one of {@link NEW_SESSION_MODES}. */
+export function isNewSessionMode(value: unknown): value is NewSessionMode {
+  return typeof value === 'string' && (NEW_SESSION_MODES as readonly string[]).includes(value);
+}
+
 /** A known setting key. */
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -49,13 +66,14 @@ export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
 /** The editable settings. */
 export type EditableSettings = Pick<KnownSettings, EditableSettingKey>;
 
-/** Defaults of the editable settings: the prototype's values (Settings → Sessions & worktrees, Notifications & usage; D41: both panes shown). */
+/** Defaults of the editable settings: the prototype's values (Settings → Sessions & worktrees, Notifications & usage; D41: both panes shown; D56: the simple New-session form). */
 export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.worktrees': true,
   'sessions.ultracode': false,
   'usage.warnAtPct': 90,
   'ui.sidebarHidden': false,
   'ui.rightPanelHidden': false,
+  'newSession.mode': 'simple',
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -79,6 +97,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'usage.warnAtPct': num('usage.warnAtPct', SETTING_DEFAULTS['usage.warnAtPct']),
     'ui.sidebarHidden': bool('ui.sidebarHidden', SETTING_DEFAULTS['ui.sidebarHidden']),
     'ui.rightPanelHidden': bool('ui.rightPanelHidden', SETTING_DEFAULTS['ui.rightPanelHidden']),
+    'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

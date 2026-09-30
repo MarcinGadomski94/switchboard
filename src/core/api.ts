@@ -261,6 +261,39 @@ export interface NewRepoSession {
 }
 
 /**
+ * Additive (D56): the `POST /api/sessions` body of the **simple** New-session form
+ * (`simple: true`), in any folder kind. No router fields, no solutions, no
+ * branching: the first message is the task alone (a repo folder's session in its
+ * worktree also gets the worktree note). The name, title, task and D42 model
+ * rules are {@link NewSession}'s. `worktrees: true` only for a **repo** folder
+ * (422 on field `worktrees` for a workspace); `branch` is then any valid git
+ * branch name (no D32 ticket rule), omitted = `sb/<name>`; the worktree follows
+ * D40's task-only rule (cut from the origin default branch after a fetch, a
+ * repo without `origin` from its HEAD; an existing branch reused).
+ */
+export interface NewSimpleSession {
+  readonly simple: true;
+  readonly name: string;
+  readonly task: string;
+  /** The saved folder's id; omitted or `null` = the default folder. */
+  readonly folder?: string | null;
+  /** Omitted or empty (a repo folder may name its one repo). */
+  readonly solutions?: readonly string[];
+  /** Omitted = `false`. A workspace folder takes only `false`. */
+  readonly worktrees?: boolean;
+  /** Omitted = `false`. */
+  readonly ultracode?: boolean;
+  /** As {@link NewSession.title}. */
+  readonly title?: string | null;
+  /** With `worktrees: true`: any valid git branch name; omitted = `sb/<name>`. Not read otherwise. */
+  readonly branch?: string | null;
+  /** As {@link NewSession.model}. */
+  readonly model?: string | null;
+  /** As {@link NewSession.effort}. */
+  readonly effort?: string | null;
+}
+
+/**
  * Additive (M3.3): values the New-session modal opens with instead of its defaults,
  * e.g. from an Inbox item's "Open fix session" action. Any field may be missing.
  */

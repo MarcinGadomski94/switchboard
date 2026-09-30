@@ -132,12 +132,14 @@ export interface FirstTurn {
 /**
  * Builds the first-turn payload of a new session (M5.2; D14): a workspace
  * folder's session gets the session-start answers block, a repo folder's session
- * only the worktree note when it runs in a worktree (no router answers).
+ * only the worktree note when it runs in a worktree (no router answers). D56: a
+ * simple start in a workspace gets no block (the task alone; the agent asks the
+ * router's session-start questions itself); in a repo folder it is as above.
  */
 export async function buildFirstTurn(session: FirstTurnSession & { readonly task: string }, sources: FirstTurnSources): Promise<FirstTurn> {
   let block = '';
   if (sources.folder.kind === 'workspace') {
-    block = sessionStartBlock(await sessionStartAnswers(session, sources));
+    if (!session.simple) block = sessionStartBlock(await sessionStartAnswers(session, sources));
   } else {
     const worktree = sources.worktrees[0];
     if (worktree) {

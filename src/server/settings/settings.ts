@@ -9,6 +9,7 @@ import {
   WARN_AT_PCT_MAX,
   WARN_AT_PCT_MIN,
   isEditableSetting,
+  isNewSessionMode,
 } from '../../core/settings.ts';
 import type { ServerConfig } from '../config.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
@@ -44,7 +45,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
  * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
- * `usage.warnAtPct` a whole number 1–100. A read-only or unknown key,
+ * `usage.warnAtPct` a whole number 1–100, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
@@ -60,6 +61,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
     if (key === 'usage.warnAtPct') {
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < WARN_AT_PCT_MIN || raw > WARN_AT_PCT_MAX) {
         errors.push({ field: key, message: `${key} must be a whole number ${WARN_AT_PCT_MIN}–${WARN_AT_PCT_MAX}` });
+        continue;
+      }
+    } else if (key === 'newSession.mode') {
+      // D56: the New-session dialog's last used mode.
+      if (!isNewSessionMode(raw)) {
+        errors.push({ field: key, message: `${key} must be "simple" or "full"` });
         continue;
       }
     } else if (typeof raw !== 'boolean') {
@@ -120,6 +127,8 @@ export async function readSettings(
     EDITABLE_SETTINGS.map((key) => {
       const value = stored[key];
       const fallback = SETTING_DEFAULTS[key];
+      // D56: the mode is one of two words; anything else stored reads as the default.
+      if (key === 'newSession.mode') return [key, isNewSessionMode(value) ? value : fallback];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
