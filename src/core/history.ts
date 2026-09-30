@@ -298,8 +298,9 @@ function locate(cwd: string, input: HistoryInput): Located | null {
   return best;
 }
 
-/** The solution a located `cwd` belongs to: a repo folder's one solution, else the router layout's (`solutionOfPath`). */
+/** The solution a located `cwd` belongs to: a repo folder's one solution, D59: none in a plain folder, else the router layout's (`solutionOfPath`). */
 function solutionAt(where: Located): string | null {
+  if (where.root.kind === 'plain') return null;
   return where.root.kind === 'repo' ? where.root.repoName : solutionOfPath(where.relative);
 }
 

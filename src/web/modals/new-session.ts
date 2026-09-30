@@ -87,6 +87,20 @@ export function isRepoFolder(folder: Pick<FormFolder, 'kind'> | null | undefined
   return folder?.kind === 'repo';
 }
 
+/** D59: `true` for a plain folder (no AGENTS.md, not a git repository): Simple sessions only. */
+export function isPlainFolder(folder: Pick<FormFolder, 'kind'> | null | undefined): boolean {
+  return folder?.kind === 'plain';
+}
+
+/**
+ * D59: the Full form's note for a plain folder (the router, solutions and
+ * branching need a workspace or a git repository); the dialog offers the switch.
+ */
+export const PLAIN_FOLDER_FULL_NOTE = "This folder has no AGENTS.md and isn't a git repository: the Full form needs a workspace or a git repo. Use Simple to start a session here.";
+
+/** D59: the same note in schedule mode (schedules are Full only, so no switch is offered). */
+export const PLAIN_FOLDER_SCHEDULE_NOTE = "This folder has no AGENTS.md and isn't a git repository: a schedule needs a workspace or a git repo folder.";
+
 /**
  * The router's recommended session-start answers (router AGENTS.md → *Session
  * start*: feature-building, single-solution, UI-first, sequential), which
@@ -261,6 +275,8 @@ export function nameTaken(form: Pick<NewSessionForm, 'name'>, takenNames: readon
  * one solution and the router sections do not apply.
  */
 export function formComplete(form: NewSessionForm, folder: Pick<FormFolder, 'kind'> | null = null): boolean {
+  // D59: the Full form (and a schedule) cannot start in a plain folder: Simple does.
+  if (isPlainFolder(folder)) return false;
   if (isRepoFolder(folder)) return true;
   return missingQa(form).length === 0;
 }

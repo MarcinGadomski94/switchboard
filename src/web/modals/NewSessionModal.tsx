@@ -37,6 +37,9 @@ import {
   formModel,
   formModelOptions,
   formModelPicker,
+  PLAIN_FOLDER_FULL_NOTE,
+  PLAIN_FOLDER_SCHEDULE_NOTE,
+  isPlainFolder,
   isRepoFolder,
   pickFormEffort,
   pickFormModel,
@@ -339,7 +342,9 @@ export function NewSessionModal({
     : resuming
       ? canStartResume(resume, form.name) && !moves.busy && !moveRunning
       : (scheduling ? canSaveSchedule(form, preview, takenScheduleNames, folder) : canStart(form, takenNames, folder) && branchingReady && attaching === null) && !busy;
-  const hideRouter = repo || resuming || remoting;
+  // D59: a plain folder has no router either (the Full form cannot start there; the note offers Simple).
+  const plain = isPlainFolder(folder) && !remoting;
+  const hideRouter = repo || plain || resuming || remoting;
   const branchNoteId = useId();
   const branchState = branchCheck(form);
   const conversationRows = terminalConversations(conversations.data ?? [], folder?.id ?? null);
@@ -647,6 +652,16 @@ export function NewSessionModal({
           <div className="sb-ns-section sb-ns-section--folder" data-testid="ns-section" data-section="folder" data-kind={folder?.kind}>
             <div className="sb-ns-label">Folder</div>
             {folderRow}
+            {plain ? (
+              <div className="sb-ns-plain-note" data-testid="ns-plain-note" role="note">
+                <span>{scheduling ? PLAIN_FOLDER_SCHEDULE_NOTE : PLAIN_FOLDER_FULL_NOTE}</span>
+                {scheduling || resuming ? null : (
+                  <button type="button" className="sb-button sb-ns-plain-simple" data-testid="ns-plain-use-simple" disabled={busy} onClick={() => pickMode('simple')}>
+                    Use Simple
+                  </button>
+                )}
+              </div>
+            ) : null}
             {remoting ? (
               <div className="sb-ns-remote-hint" data-testid="ns-remote-hint">
                 {choices.length === 0 ? NO_REPO_FOLDER_HINT : REPO_FOLDERS_HINT}

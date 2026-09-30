@@ -179,7 +179,7 @@ export function moveWarningText(reasons: readonly AttachWarningReason[], now: nu
 
 /** The folder line of `needs-folder`: where it sits and what that folder is. */
 export function needsFolderText(check: Pick<FolderCheck, 'path' | 'kind'>): string {
-  const kind = check.kind === 'repo' ? 'git repository' : 'workspace';
+  const kind = check.kind === 'repo' ? 'git repository' : check.kind === 'plain' ? 'folder' : 'workspace';
   return `No saved folder holds this conversation. It sits in the ${kind} ${check.path}.`;
 }
 

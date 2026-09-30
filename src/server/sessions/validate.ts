@@ -74,6 +74,13 @@ export interface NewSessionChecks {
   readonly modelOptions?: readonly SessionModelOption[] | null;
 }
 
+/**
+ * D59: why a Full start (and a schedule, whose runs are Full starts) is refused in
+ * a plain folder: its router answers, solutions and branching need a workspace or
+ * a git repository. Simple starts there.
+ */
+export const PLAIN_FOLDER_FULL_MESSAGE = "this folder has no AGENTS.md and isn't a git repository: start a Simple session there";
+
 /** Session names: kebab-case (contract), at most 64 characters. */
 export const SESSION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -288,6 +295,8 @@ export async function validateNewSession(body: unknown, checks: NewSessionChecks
     if (body['simple'] !== true) return { ok: false, errors: [{ field: 'simple', message: 'simple must be true or false' }] };
     return validateSimpleSession(body, checks);
   }
+  // D59: a plain folder (no AGENTS.md, not a git repository) takes Simple starts only.
+  if (checks.folder?.kind === 'plain') return { ok: false, errors: [{ field: 'folder', message: PLAIN_FOLDER_FULL_MESSAGE }] };
   if (checks.folder?.kind === 'repo') return validateRepoSession(body, checks, checks.folder.repoName);
   const errors: FieldError[] = [];
   const fail = (field: string, message: string): void => {
@@ -448,7 +457,8 @@ async function validateRepoSession(body: unknown, checks: NewSessionChecks, repo
  * branching (all `null` / left out, whatever the body says); `solutions` empty
  * or omitted (a repo folder may name its one repo); `worktrees` and `ultracode`
  * optional (`false`). A worktree is for a **repo** folder only (422 on field
- * `worktrees` for a workspace: the simple form offers none there); its branch is
+ * `worktrees` for a workspace or, D59, a plain folder: the simple form offers
+ * none there); its branch is
  * any valid git branch name (no D32 ticket rule), omitted or blank =
  * `sb/<name>` ({@link simpleBranchOfName}), and it follows D40's task-only rule
  * ({@link TASK_ONLY}: cut from the origin default branch, an existing branch
@@ -479,8 +489,9 @@ async function validateSimpleSession(body: Record<string, unknown>, checks: NewS
   }
 
   const worktrees = body['worktrees'] ?? false;
+  const where = checks.folder?.kind === 'plain' ? 'a plain folder' : 'a workspace folder';
   if (typeof worktrees !== 'boolean') fail('worktrees', 'worktrees must be true or false');
-  else if (worktrees && repo === null) fail('worktrees', 'a simple session in a workspace folder works in place: its own worktree needs a git repo folder');
+  else if (worktrees && repo === null) fail('worktrees', `a simple session in ${where} works in place: its own worktree needs a git repo folder`);
   const ultracode = body['ultracode'] ?? false;
   if (typeof ultracode !== 'boolean') fail('ultracode', 'ultracode must be true or false');
 

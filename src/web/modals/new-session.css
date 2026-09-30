@@ -656,6 +656,16 @@
   color: var(--muted-3);
 }
 
+/* D59: the Full form's note for a plain folder, with its switch to Simple. */
+.sb-ns-plain-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--status-need);
+}
+
 /* A refused teleport's text is the CLI's, verbatim: keep its lines. */
 .sb-ns-error[data-remote='true'] {
   white-space: pre-wrap;

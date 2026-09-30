@@ -6,7 +6,7 @@ import type { Phase, SessionStatus } from '../../core/model.ts';
 import { solutionFreshness } from '../../core/codebase-memory.ts';
 import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
 import { branchFromHead, branchOwnerTitle, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
-import { type WorkspaceScan, repoFolderScan, toSolutionGroups } from '../../core/workspace-rules.ts';
+import { type WorkspaceScan, plainFolderScan, repoFolderScan, toSolutionGroups } from '../../core/workspace-rules.ts';
 import { solutionCandidates } from '../../core/worktrees.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
@@ -111,7 +111,7 @@ export class LiveSolutions implements SolutionsProvider {
     return new WorkspaceScanner({ root: folder.path }).isReadOnly(solution);
   }
 
-  /** The folder's scan without live fields (a workspace's `WorkspaceScanner`, a repo's one row). @throws {ScanError} when the folder is gone. */
+  /** The folder's scan without live fields (a workspace's `WorkspaceScanner`, a repo's one row, D59: a plain folder's none). @throws {ScanError} when the folder is gone. */
   async scan(folder: FolderRef): Promise<WorkspaceScan> {
     if (folder.kind === 'workspace') return new WorkspaceScanner({ root: folder.path }).scan();
     try {
@@ -119,6 +119,8 @@ export class LiveSolutions implements SolutionsProvider {
     } catch {
       throw new ScanError('folder-missing', `the folder does not exist: ${folder.path}`);
     }
+    // D59: a plain folder has no solutions.
+    if (folder.kind === 'plain') return plainFolderScan(folder.path);
     return repoFolderScan(folder.path, repoSolutionName(folder), (await isMainCheckout(folder.path)) ? folder.path : null);
   }
 

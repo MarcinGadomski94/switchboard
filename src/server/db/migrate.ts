@@ -25,6 +25,23 @@ export const LEGACY_CHECKSUMS: ReadonlyMap<number, readonly string[]> = new Map(
   [2, ['f2b7c4b7ea05f28959187e8420eb3649d599445ec32481cdff0c977e2213b375']],
 ]);
 
+/**
+ * First line of a migration that must run with foreign keys off (D59): a table
+ * rebuild (SQLite's 12-step procedure, https://sqlite.org/lang_altertable.html#otheralter)
+ * of a table other tables reference. Dropping such a table with foreign keys on
+ * would run its `ON DELETE` actions on the referencing rows (`SET NULL`,
+ * `CASCADE`). The runner turns them off before the migration's transaction
+ * (`PRAGMA foreign_keys` is a no-op inside one), still runs `PRAGMA
+ * foreign_key_check` before committing (a violation rolls everything back), and
+ * restores the previous setting afterwards, also when the script fails.
+ */
+export const FOREIGN_KEYS_OFF = '-- switchboard: foreign_keys=off';
+
+/** `true` when the migration asks to run with foreign keys off ({@link FOREIGN_KEYS_OFF} is its first line). */
+export function needsForeignKeysOff(migration: Pick<Migration, 'sql'>): boolean {
+  return migration.sql.split('\n', 1)[0]?.trim() === FOREIGN_KEYS_OFF;
+}
+
 /** `true` when `recorded` is `migration`'s checksum or one of its {@link LEGACY_CHECKSUMS}. */
 export function checksumMatches(migration: Migration, recorded: string, legacy: ReadonlyMap<number, readonly string[]> = LEGACY_CHECKSUMS): boolean {
   return migration.checksum === recorded || (legacy.get(migration.version) ?? []).includes(recorded);
@@ -106,6 +123,12 @@ function checkOrder(migrations: readonly Migration[]): void {
   }
 }
 
+/** `PRAGMA foreign_keys` is on for this connection. */
+function foreignKeysOn(db: DatabaseSync): boolean {
+  const row = db.prepare('PRAGMA foreign_keys').get();
+  return Number(row?.['foreign_keys'] ?? 0) === 1;
+}
+
 /** Applied migrations, ascending; empty when the table does not exist yet. */
 export function appliedMigrations(db: DatabaseSync): AppliedMigration[] {
   const table = db
@@ -160,6 +183,9 @@ export function migrate(db: DatabaseSync, migrations: readonly Migration[], now:
   const newlyApplied: number[] = [];
   for (const migration of migrations) {
     if (done.has(migration.version)) continue;
+    // D59: a table rebuild runs with foreign keys off (restored in `finally`).
+    const keysOff = needsForeignKeysOff(migration) && foreignKeysOn(db);
+    if (keysOff) db.exec('PRAGMA foreign_keys = OFF');
     try {
       transaction(db, () => {
         db.exec(migration.sql);
@@ -177,6 +203,8 @@ export function migrate(db: DatabaseSync, migrations: readonly Migration[], now:
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new MigrationError(`migration ${migration.version} (${migration.name}) failed: ${reason}`, { cause: error });
+    } finally {
+      if (keysOff) db.exec('PRAGMA foreign_keys = ON');
     }
     newlyApplied.push(migration.version);
   }

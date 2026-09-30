@@ -62,7 +62,7 @@ async function workspaceAt(dir: string): Promise<string> {
 }
 
 describe('inspectFolder (D14 kinds)', () => {
-  it('a git main checkout is a repo, even with its own AGENTS.md; a router AGENTS.md makes a workspace; anything else is refused', async () => {
+  it('a git main checkout is a repo, even with its own AGENTS.md; a router AGENTS.md makes a workspace; D59: any other folder is plain; the rest is refused', async () => {
     const { root } = await tempStore();
     const ws = await workspaceAt(path.join(root, 'work space'));
     const repo = path.join(root, 'solo repo');
@@ -101,7 +101,8 @@ describe('inspectFolder (D14 kinds)', () => {
       message: '',
     });
     expect(await inspectFolder(worktree)).toMatchObject({ kind: null, exists: true, problem: 'git-worktree' });
-    expect(await inspectFolder(plain)).toMatchObject({ kind: null, exists: true, problem: 'unsupported', message: 'no AGENTS.md here and not a git repository' });
+    // D59: neither a repo nor a workspace is a plain folder (no longer refused as `unsupported`).
+    expect(await inspectFolder(plain)).toMatchObject({ kind: 'plain', exists: true, problem: null, message: '', solutionCount: 0, router: null, repoName: null });
     expect(await inspectFolder(path.join(root, 'nope'))).toMatchObject({ kind: null, exists: false, canonicalPath: null, problem: 'missing', message: 'folder not found' });
     expect(await inspectFolder(path.join(root, 'a-file'))).toMatchObject({ kind: null, exists: false, problem: 'not-a-folder' });
     expect(await inspectFolder('relative/folder')).toMatchObject({ path: 'relative/folder', kind: null, problem: 'not-absolute', message: 'enter an absolute path' });
@@ -135,7 +136,7 @@ describe('FolderService (D14)', () => {
     const refused = await folders.add(path.join(root, 'nope')).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(FolderError);
     expect(refused).toMatchObject({ code: 'invalid', status: 422, message: 'folder not found', check: { problem: 'missing' } });
-    await expect(folders.add(path.join(ws, 'other'))).rejects.toMatchObject({ code: 'invalid', check: { problem: 'unsupported' } });
+    await expect(folders.add(path.join(ws, 'AGENTS.md'))).rejects.toMatchObject({ code: 'invalid', check: { problem: 'not-a-folder' } });
     expect(await s.folders.list()).toHaveLength(2);
   });
 

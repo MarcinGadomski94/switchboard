@@ -89,7 +89,7 @@ export const NO_FOLDER_MESSAGE = 'no folder is saved yet: add a workspace or a g
 
 /**
  * The saved folders (D14, `docs/folders.md`): list (with a live check each), add
- * (a workspace or a git main checkout, else 422), remove, the one default, and
+ * (a workspace, a git main checkout or, D59, a plain folder; else 422), remove, the one default, and
  * which folder a request means. Every session, scan, schedule and Codebase Memory
  * view names its folder through this service; there is no configured root.
  */
@@ -163,20 +163,21 @@ export class FolderService {
   // ── changes ─────────────────────────────────────────────────────────────
 
   /**
-   * `POST /api/folders`: saves a workspace or a git repo, with an optional custom
+   * `POST /api/folders`: saves a workspace, a git repo or (D59) a plain folder
+   * (neither: Simple sessions only), with an optional custom
    * name (D18, `label`: trimmed, empty = none). A path whose folder is saved
    * already (same canonical path) returns that folder (`created: false`); a
    * non-empty `label` is then given to it by the {@link rename} rules, an empty
    * one leaves its name as it is. The first saved folder becomes the default.
    * Sessions that ran in the folder before (it was removed and is added again)
    * are linked to it. A refused name saves nothing.
-   * @throws {FolderError} `invalid` (with the check) for anything but a workspace
-   * or a repo; `invalid-label` (over 40 characters); `label-taken` (another saved
+   * @throws {FolderError} `invalid` (with the check) for anything but an existing
+   * folder (not absolute, missing, a file, a linked git worktree); `invalid-label` (over 40 characters); `label-taken` (another saved
    * folder has that name, ignoring case).
    */
   async add(input: string, label?: string | null): Promise<{ readonly folder: Folder; readonly created: boolean }> {
     const check = await this.check(input);
-    if (check.kind === null || check.canonicalPath === null) throw new FolderError('invalid', check.message || 'not a workspace or a git repository', { check });
+    if (check.kind === null || check.canonicalPath === null) throw new FolderError('invalid', check.message || 'not a folder', { check });
     const wanted = normalizeFolderLabel(label);
     const existing = await this.#store.folders.getByCanonicalPath(check.canonicalPath);
     if (existing) {

@@ -1673,7 +1673,8 @@ export interface UsageWarning {
  * - `missing`: nothing is there;
  * - `not-a-folder`: a file;
  * - `git-worktree`: `.git` is a file (a linked worktree or a submodule): add its main checkout instead;
- * - `unsupported`: neither a git main checkout nor a folder with an `AGENTS.md`.
+ * - `unsupported`: neither a git main checkout nor a folder with an `AGENTS.md` (before D59; since D59
+ *   such a folder is a `plain` folder and this is no longer answered).
  */
 export type FolderProblem = 'not-absolute' | 'missing' | 'not-a-folder' | 'git-worktree' | 'unsupported';
 
@@ -1690,15 +1691,15 @@ export interface FolderCheck {
   readonly canonicalPath: string | null;
   /** A folder exists at {@link path}. */
   readonly exists: boolean;
-  /** `repo` = a git main checkout; `workspace` = a folder with a router `AGENTS.md` that is not a main checkout; `null` = refused ({@link problem}). */
+  /** `repo` = a git main checkout; `workspace` = a folder with a router `AGENTS.md` that is not a main checkout; D59: `plain` = any other folder (Simple sessions only); `null` = refused ({@link problem}). */
   readonly kind: FolderKind | null;
   /** Workspace: `<path>/AGENTS.md`'s first `# ` heading and its line count; `null` otherwise. */
   readonly router: { readonly title: string | null; readonly lines: number } | null;
-  /** Workspace: how many solutions its scan lists (every group of `GET /api/solutions`); repo: 1; `null` when refused or the scan failed. */
+  /** Workspace: how many solutions its scan lists (every group of `GET /api/solutions`); repo: 1; D59 plain: 0; `null` when refused or the scan failed. */
   readonly solutionCount: number | null;
   /** Repo: its name (the folder name), which is its one solution; `null` otherwise. */
   readonly repoName: string | null;
-  /** Why it cannot be a folder; `null` for a workspace or a repo. */
+  /** Why it cannot be a folder; `null` for a workspace, a repo or (D59) a plain folder. */
   readonly problem: FolderProblem | null;
   /** The problem in words (`no AGENTS.md here and not a git repository`); empty when there is none. */
   readonly message: string;
@@ -1706,7 +1707,8 @@ export interface FolderCheck {
 
 /**
  * Additive (D14): a saved folder (`GET /api/folders`, Settings → Folders, the
- * New-session form's Folder row): a workspace or a git repo sessions start in.
+ * New-session form's Folder row): a workspace or a git repo sessions start in;
+ * D59: or a plain folder (neither), which only Simple sessions start in.
  */
 export interface Folder {
   readonly id: string;

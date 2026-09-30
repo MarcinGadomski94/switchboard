@@ -19,6 +19,7 @@ export const FOLDER_PROBLEM_MESSAGES: Readonly<Record<FolderProblem, string>> = 
   missing: 'folder not found',
   'not-a-folder': 'not a folder',
   'git-worktree': 'a git worktree or submodule, not a main checkout: add the repository itself',
+  // Before D59; a folder that is neither is now a `plain` folder ({@link inspectFolder}).
   unsupported: 'no AGENTS.md here and not a git repository',
 };
 
@@ -51,7 +52,9 @@ function refused(folder: string, canonicalPath: string | null, exists: boolean, 
  * 3. else a folder with an `AGENTS.md` is a `workspace`: the router's title and
  *    line count, and how many solutions the workspace scanner finds (the
  *    scanner's router parsing, M6.1);
- * 4. anything else is refused: not absolute, missing, a file, or `unsupported`.
+ * 4. D59: any other folder is `plain` (no `AGENTS.md`, not a git repository):
+ *    Simple sessions start there; it has no solutions (`solutionCount` 0);
+ * 5. anything else is refused: not absolute, missing or a file.
  * `input` may start with `~`. Nothing is written and no process runs.
  */
 export async function inspectFolder(input: string, options: InspectOptions = {}): Promise<FolderCheck> {
@@ -75,7 +78,8 @@ export async function inspectFolder(input: string, options: InspectOptions = {})
   try {
     text = await readFile(path.join(folder, ROUTER_FILE), 'utf8');
   } catch {
-    return refused(folder, canonicalPath, true, 'unsupported');
+    // D59: neither a git main checkout nor a workspace: a plain folder.
+    return { path: folder, canonicalPath, exists: true, kind: 'plain', router: null, solutionCount: 0, repoName: null, problem: null, message: '' };
   }
   let solutionCount: number | null = null;
   try {

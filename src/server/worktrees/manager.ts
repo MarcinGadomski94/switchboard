@@ -369,6 +369,8 @@ export class WorktreeManager implements DiffProvider {
    */
   async resolveRepo(solution: string, folder: FolderRef): Promise<RepoLocation> {
     const root = await this.#folderRoot(folder);
+    // D59: a plain folder has no solutions, so nothing in it gets a worktree.
+    if (folder.kind === 'plain') throw new WorktreeError('solution-not-found', `"${solution}" is not a solution: ${folder.path} is a plain folder (no AGENTS.md, not a git repository)`);
     if (folder.kind === 'repo') {
       const names = new Set([repoSolutionName(folder), path.basename(folder.path)]);
       if (!names.has(solution)) throw new WorktreeError('solution-not-found', `"${solution}" is not ${repoSolutionName(folder)}, the one solution of this repo folder`);

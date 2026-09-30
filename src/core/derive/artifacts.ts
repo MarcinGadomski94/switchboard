@@ -115,14 +115,24 @@ function locateRepoFile(place: SessionPlace, file: string, sessionName: string |
   return { solution: null, relative: absolute, worktree: false, outside: true };
 }
 
-/** {@link locateFile} for a session's place (D14): the router layout in a workspace, the repo's one solution in a repo folder. */
+/** D59: a plain folder's file: no solution (the folder has none), its path inside the folder, else outside. */
+function locatePlainFile(place: SessionPlace, file: string): FileLocation {
+  const absolute = path.resolve(place.cwd, file);
+  const rel = path.relative(place.root, absolute);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return { solution: null, relative: absolute, worktree: false, outside: true };
+  return { solution: null, relative: rel.split(path.sep).filter(Boolean).join('/'), worktree: false, outside: false };
+}
+
+/** {@link locateFile} for a session's place (D14): the router layout in a workspace, the repo's one solution in a repo folder, D59: no solution in a plain folder. */
 export function locateSessionFile(place: SessionPlace, file: string, sessionName: string | null = null): FileLocation {
+  if (place.kind === 'plain') return locatePlainFile(place, file);
   return place.kind === 'repo' ? locateRepoFile(place, file, sessionName) : locateFile(place.root, file, sessionName);
 }
 
 /** {@link solutionFolder} for a session's place (D14): a repo folder's files are all in `<repo>/`. */
 export function sessionSolutionFolder(place: SessionPlace, file: string, sessionName: string | null = null): string | null {
   if (place.kind === 'workspace') return solutionFolder(place.root, file, sessionName);
+  if (place.kind === 'plain') return null;
   const where = locateRepoFile(place, file, sessionName);
   return where.solution === null ? null : `${where.solution}/`;
 }

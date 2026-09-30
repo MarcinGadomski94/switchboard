@@ -29,7 +29,7 @@ export function sendFolderError(reply: FastifyReply, error: unknown): FastifyRep
  * - `GET /api/folders` → `Folder[]` (each with its live `check`), the default first, then most recently used;
  * - `GET /api/folders/check?path=` → `FolderCheck` (the Browse… check line; nothing is saved); 400 without `path`;
  * - `POST /api/folders` `{ path }` → `201 Folder` (added) or `200 Folder` (that folder is saved already);
- *   `422 { error: "invalid", message, check }` when it is not a workspace or a git repo;
+ *   `422 { error: "invalid", message, check }` when it is not an existing folder (D59: a plain folder, neither workspace nor repo, is saved);
  * - `DELETE /api/folders/{id}` → `200 Folder[]` (the list left); 404; `409 folder-in-use` (`FolderInUse`) while schedules run there;
  * - `PUT /api/folders/{id}/default` → `200 Folder[]`; 404.
  *

@@ -5,6 +5,7 @@ import { attachmentsBlocker } from '../components/attachments.ts';
 import { MODEL_ROW_DESCRIPTION, MODEL_ROW_TITLE, type FormFolder, type NewSessionForm } from './new-session.ts';
 import {
   MODE_OPTIONS,
+  PLAIN_NOTE,
   WORKSPACE_NOTE,
   WORKTREE_LABEL,
   branchProblem,
@@ -80,7 +81,8 @@ export interface SimpleSessionFormProps {
  * optional title (its placeholder is the title the message gives), the model
  * and, for a git repo folder, "Work in its own git worktree" with the derived
  * branch (read-only, **Edit** makes it a field). A muted line says where the
- * session runs; a workspace folder adds that no session-start answers are sent.
+ * session runs; a workspace folder adds that no session-start answers are sent,
+ * D59: a plain folder (any other folder) that the message goes alone.
  * Start posts a `NewSimpleSession`; a refusal stays as one line.
  */
 export function SimpleSessionForm(props: SimpleSessionFormProps) {
@@ -232,6 +234,7 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
       <div className="sb-ns-simple-where" data-testid="ns-simple-where">
         <div>{whereLine(start)}</div>
         {folder && folder.kind === 'workspace' ? <div data-testid="ns-simple-workspace-note">{WORKSPACE_NOTE}</div> : null}
+        {folder && folder.kind === 'plain' ? <div data-testid="ns-simple-plain-note">{PLAIN_NOTE}</div> : null}
       </div>
 
       {error ? (

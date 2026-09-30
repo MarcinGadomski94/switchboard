@@ -6,6 +6,8 @@ import type { Folder, NewSimpleSession, Session } from '../../../src/core/api.ts
 import { REPO_WORKTREE_NOTE_HEADER, SESSION_START_HEADER } from '../../../src/core/first-turn.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
+import { validateScheduleInput } from '../../../src/server/schedules/validate.ts';
+import { PLAIN_FOLDER_FULL_MESSAGE } from '../../../src/server/sessions/validate.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
@@ -182,5 +184,100 @@ describe('POST /api/sessions with simple: true (D56)', () => {
     const worktree = path.join(path.dirname(repoPath), 'solo-wt-free-form');
     expect(await g.git(worktree, 'symbolic-ref', '--short', 'HEAD')).toBe('feature/free_form.1');
     expect((await s.store.sessions.get((response.json() as Session).id))?.branch).toBe('feature/free_form.1');
+  });
+});
+
+/**
+ * D59 oracle (server, real path): a **plain** folder (no AGENTS.md, not a git
+ * repository) is saved like the others (kind `plain`) and takes Simple starts:
+ * the process runs in the folder, no solutions, no worktree, the first message is
+ * the message alone (plus D57's attachment lines); the session remembers the
+ * folder as `plain` (stored as `root_kind` NULL next to its `root`, 0022). A Full
+ * start, a worktree, solutions and a schedule template are refused there.
+ */
+describe('a plain folder (D59)', () => {
+  async function plainRig(): Promise<Rig & { readonly plain: Folder; readonly plainPath: string }> {
+    const rig = await setup();
+    const plainPath = path.join(rig.s.root, 'notes folder');
+    await mkdir(plainPath, { recursive: true });
+    await writeFile(path.join(plainPath, 'todo.txt'), 'buy milk\n');
+    const added = await call('POST', '/api/folders', { path: plainPath });
+    expect(added.statusCode, added.body).toBe(201);
+    return { ...rig, plain: added.json() as Folder, plainPath };
+  }
+
+  it('is saved with kind plain (201; 200 again); its check says plain; it lists with the others; its Solutions are empty', async () => {
+    const { plain, plainPath } = await plainRig();
+    expect(plain).toMatchObject({ path: plainPath, name: 'notes folder', kind: 'plain', isDefault: false, check: { kind: 'plain', problem: null, solutionCount: 0, router: null, repoName: null } });
+    const again = await call('POST', '/api/folders', { path: plainPath });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toMatchObject({ id: plain.id });
+    expect(((await call('GET', '/api/folders')).json() as Folder[]).map((f) => f.kind)).toEqual(['workspace', 'repo', 'plain']);
+    const check = await call('GET', `/api/folders/check?path=${encodeURIComponent(plainPath)}`);
+    expect(check.json()).toMatchObject({ kind: 'plain', exists: true, problem: null, message: '' });
+    // Still refused: a file, a missing folder.
+    const file = await call('POST', '/api/folders', { path: path.join(plainPath, 'todo.txt') });
+    expect(file.statusCode).toBe(422);
+    expect(file.json()).toMatchObject({ error: 'invalid', check: { problem: 'not-a-folder' } });
+    const solutions = await call('GET', `/api/solutions?folder=${plain.id}`);
+    expect(solutions.statusCode, solutions.body).toBe(200);
+    expect(solutions.json()).toEqual([]);
+  });
+
+  it('a Simple start runs claude in the folder with the message alone; the session remembers the folder as plain', async () => {
+    const { s, plain, plainPath } = await plainRig();
+    const response = await call('POST', '/api/sessions', simple(plain.id));
+    expect(response.statusCode, response.body).toBe(201);
+    const session = response.json() as Session;
+    expect(session).toMatchObject({ solutions: [], workType: null, mode: null, phase: null, worktrees: false, folder: plain.id, folderPath: plainPath, folderKind: 'plain', cwd: plainPath });
+    const { cwd, first } = await spawnOf(s, session);
+    expect(cwd).toBe(plainPath);
+    expect(first).toBe('Fix the login redirect.\nIt loops on /callback.');
+    expect(first).not.toContain(SESSION_START_HEADER[0]);
+    expect(first).not.toContain(REPO_WORKTREE_NOTE_HEADER);
+    await waitForStatus(s.store, session.id, ['done']);
+    // Stored as root + root_kind NULL (0003's CHECK), read back as plain.
+    const raw = s.store.db.prepare('SELECT root, root_kind, folder_id FROM sessions WHERE id = ?').get(session.id);
+    expect(raw).toEqual({ root: plainPath, root_kind: null, folder_id: plain.id });
+    expect((await s.store.sessions.get(session.id))?.rootKind).toBe('plain');
+    expect((await call('GET', `/api/sessions/${session.id}`)).json()).toMatchObject({ folderKind: 'plain', folderPath: plainPath });
+    // The folder moved up the "recently used" order.
+    expect(((await call('GET', '/api/folders')).json() as Folder[]).find((f) => f.id === plain.id)?.lastUsedAt).toEqual(expect.any(String));
+  });
+
+  it('a Simple start with a file attachment: the message plus only the attachment lines', async () => {
+    const { s, plain } = await plainRig();
+    const uploaded = await call('POST', '/api/attachments', { name: 'notes.txt', data: Buffer.from('hello\n').toString('base64') });
+    expect(uploaded.statusCode, uploaded.body).toBe(201);
+    const id = (uploaded.json() as { id: string }).id;
+    const response = await call('POST', '/api/sessions', simple(plain.id, { task: 'Read my notes.', attachments: [id] }));
+    expect(response.statusCode, response.body).toBe(201);
+    const { first } = await spawnOf(s, response.json() as Session);
+    const lines = first.split('\n');
+    expect(lines[0]).toBe('Read my notes.');
+    expect(lines).toContain('Attached files:');
+    expect(lines.at(-1)).toMatch(new RegExp(`^- .*${id}-notes\\.txt \\(`));
+    expect(first).not.toContain(SESSION_START_HEADER[0]);
+  });
+
+  it('refuses a worktree, solutions and a Full start there', async () => {
+    const { plain } = await plainRig();
+    const worktree = await call('POST', '/api/sessions', simple(plain.id, { worktrees: true }));
+    expect(worktree.statusCode).toBe(422);
+    expect(worktree.json()).toMatchObject({ errors: [{ field: 'worktrees', message: 'a simple session in a plain folder works in place: its own worktree needs a git repo folder' }] });
+    const solutions = await call('POST', '/api/sessions', simple(plain.id, { solutions: ['notes'] }));
+    expect(solutions.statusCode).toBe(422);
+    expect((solutions.json() as { errors: Array<{ field: string }> }).errors.map((e) => e.field)).toEqual(['solutions']);
+    const full = await call('POST', '/api/sessions', simple(plain.id, { simple: false, workType: 'feature', mode: 'single', phase: 'ui-first' }));
+    expect(full.statusCode).toBe(422);
+    expect(full.json()).toMatchObject({ errors: [{ field: 'folder', message: PLAIN_FOLDER_FULL_MESSAGE }] });
+  });
+
+  it('a schedule template in a plain folder is refused (schedules are Full starts)', async () => {
+    const result = await validateScheduleInput(
+      { cron: '0 2 * * *', template: { name: 'nightly', task: 'Tidy up.', workType: 'feature', mode: 'single', phase: 'ui-first', solutions: [], coordination: null, qa: null, worktrees: false, ultracode: false } },
+      { scheduleNameTaken: async () => false, folder: { id: 'f-plain', kind: 'plain', repoName: 'notes' } },
+    );
+    expect(result).toEqual({ ok: false, errors: [{ field: 'template.folder', message: PLAIN_FOLDER_FULL_MESSAGE }] });
   });
 });

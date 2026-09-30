@@ -167,7 +167,7 @@ export class ConversationMover {
       saved = check.canonicalPath ? await this.#store.folders.getByCanonicalPath(check.canonicalPath) : null;
       if (!saved) {
         if (!addFolder) {
-          const kind = check.kind === 'repo' ? 'git repository' : 'workspace';
+          const kind = check.kind === 'repo' ? 'git repository' : check.kind === 'plain' ? 'folder' : 'workspace';
           return refused(409, { error: 'folder-not-saved', message: `no saved folder holds ${startCwd}; add the ${kind} ${check.path} to continue it here`, check });
         }
         toAdd = check;
@@ -241,11 +241,15 @@ export class ConversationMover {
    * checkout is the repo to add, and the walk goes on above it). `null` at the top.
    */
   async #enclosingFolder(cwd: string): Promise<FolderCheck | null> {
+    // D59: every folder is at least a plain folder, so the nearest workspace or repo up the tree wins;
+    // only when there is none is the start folder itself offered, as a plain folder.
+    let start: FolderCheck | null = null;
     for (let dir = cwd; ; ) {
       const check = await this.#folders.check(dir);
-      if (check.kind !== null) return check;
+      if (check.kind === 'workspace' || check.kind === 'repo') return check;
+      if (dir === cwd && check.kind === 'plain') start = check;
       const parent = path.dirname(dir);
-      if (parent === dir) return null;
+      if (parent === dir) return start;
       dir = parent;
     }
   }
@@ -257,6 +261,8 @@ export class ConversationMover {
    */
   #solutions(folder: FolderRef, facts: TranscriptFacts): string[] {
     if (folder.kind === 'repo') return [repoSolutionName(folder)];
+    // D59: a plain folder has no solutions.
+    if (folder.kind === 'plain') return [];
     const out: string[] = [];
     for (const cwd of facts.cwds) {
       const relative = relativeToRoot(cwd, folder.root, this.#caseInsensitive) ?? relativeToRoot(cwd, folder.path, this.#caseInsensitive);

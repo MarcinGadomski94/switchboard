@@ -247,7 +247,7 @@ export const api = {
   /** The check line of a typed path; nothing is saved. */
   checkFolder: (path: string) => request<FolderCheck>('GET', `/api/folders/check${query({ path })}`),
   /**
-   * 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but a workspace or a git repo.
+   * 201 added / 200 already saved; 422 `{ error: "invalid", message, check }` for anything but an existing folder (D59: a plain folder is saved too).
    * D18: `label` is the optional custom name (sent only when not empty); 409 `label-taken`, 422 `invalid-label`.
    */
   addFolder: (path: string, label?: string) => request<Folder>('POST', '/api/folders', label ? { path, label } : { path }),

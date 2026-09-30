@@ -39,7 +39,7 @@ export function offersModeToggle(scheduling: boolean): boolean {
   return !scheduling;
 }
 
-/** The own-worktree checkbox is offered: the folder is a git repo (a workspace folder's session works in place). */
+/** The own-worktree checkbox is offered: the folder is a git repo (a workspace or, D59, a plain folder's session works in place). */
 export function offersWorktree(folder: Pick<FormFolder, 'kind'> | null): boolean {
   return isRepoFolder(folder);
 }
@@ -135,6 +135,9 @@ export function whereLine({ form, folder, takenNames }: Omit<SimpleStart, 'branc
 
 /** The note under the fields for a workspace folder: nothing is pre-answered. */
 export const WORKSPACE_NOTE = 'No session-start answers are sent: the agent asks what the workspace router needs.';
+
+/** D59: the note under the fields for a plain folder (no AGENTS.md, not a git repository). */
+export const PLAIN_NOTE = 'A plain folder (no AGENTS.md, not a git repository): Claude runs here with your message alone.';
 
 /** The label of the own-worktree checkbox. */
 export const WORKTREE_LABEL = 'Work in its own git worktree';

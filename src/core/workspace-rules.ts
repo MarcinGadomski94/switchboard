@@ -279,6 +279,14 @@ export function repoFolderScan(root: string, name: string, repoPath: string | nu
   };
 }
 
+/**
+ * The scan of a plain folder (D59): no router file and no solutions (Simple
+ * sessions only; the Solutions page shows the folder empty).
+ */
+export function plainFolderScan(root: string): WorkspaceScan {
+  return { root, router: { path: path.join(root, 'AGENTS.md'), found: false, lines: 0 }, folders: [] };
+}
+
 function compareSolutions(a: Solution, b: Solution): number {
   const byName = a.name.toLowerCase().localeCompare(b.name.toLowerCase(), 'en');
   return byName !== 0 ? byName : a.path.localeCompare(b.path, 'en');

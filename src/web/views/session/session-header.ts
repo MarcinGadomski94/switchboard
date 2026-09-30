@@ -22,9 +22,11 @@ export type SessionPlace = Pick<Session, 'cwd' | 'folderPath' | 'folderKind'>;
 /**
  * What the session's working folder is (D14): `workspace root` for a workspace
  * folder (the prototype's words: the router applies there), `git repo` for a repo
- * session in the repo, `worktree of <repo>` for one in its worktree.
+ * session in the repo, `worktree of <repo>` for one in its worktree; D59: `folder`
+ * for a plain folder (no AGENTS.md, not a git repository).
  */
 export function placeLabel(session: SessionPlace): string {
+  if (session.folderKind === 'plain') return 'folder';
   if (session.folderKind !== 'repo') return 'workspace root';
   const repo = session.folderPath ? folderName(session.folderPath) : null;
   if (session.cwd && session.folderPath && !samePath(session.cwd, session.folderPath)) return repo ? `worktree of ${repo}` : 'worktree';
