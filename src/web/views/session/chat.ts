@@ -1,6 +1,6 @@
 import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
 import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
-import type { Agent, HookStatus, Question, SessionEvent } from '../../../core/api.ts';
+import type { Agent, Attachment, HookStatus, Question, SessionEvent } from '../../../core/api.ts';
 import { isAsyncAgentLaunch } from '../../../core/derive/background.ts';
 import { AGENT_TOOLS } from '../../../core/derive/event-kind.ts';
 import type {
@@ -106,6 +106,8 @@ export type ChatItem =
       readonly delivered: boolean;
       /** D44: why the message still waits for the agent (the bubble shows a clock); `null` once taken up, and for messages that never waited. */
       readonly queued: QueuedReason | null;
+      /** D57: the images and files it carried (none: `[]`). */
+      readonly attachments: readonly Attachment[];
     }
   /** Agent text (left) with the step lines that followed it; `text` is empty when the turn started with a tool. */
   | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly steps: readonly ChatStep[] }
@@ -288,10 +290,11 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         origin: user.origin,
         delivered: user.delivered,
         queued: user.queued ?? null,
+        attachments: user.attachments ?? [],
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {
-      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true, queued: null });
+      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true, queued: null, attachments: [] });
       block = null;
     } else if (type === 'assistant') {
       block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, steps: [] };

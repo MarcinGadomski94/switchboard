@@ -1,5 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useId, useState } from 'react';
 import type { NewSessionMode } from '../../core/settings.ts';
+import { AttachButton, type AttachmentDraft, AttachmentChips, pasteFiles, useFileDrop } from '../components/Attachments.tsx';
+import { attachmentsBlocker } from '../components/attachments.ts';
 import { MODEL_ROW_DESCRIPTION, MODEL_ROW_TITLE, type FormFolder, type NewSessionForm } from './new-session.ts';
 import {
   MODE_OPTIONS,
@@ -65,6 +67,8 @@ export interface SimpleSessionFormProps {
   readonly modelPicker: ReactNode;
   readonly error: string | null;
   readonly busy: boolean;
+  /** D57: the message's attachments (uploaded at Start); `undefined` = none offered. */
+  readonly attachments?: AttachmentDraft;
   readonly onStart: () => void;
   readonly onClose: () => void;
 }
@@ -89,7 +93,11 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
   const branchName = simpleBranch(form, branch, takenNames);
   const problem = worktree ? branchProblem(branchName) : null;
   const blockers = simpleBlockers(start);
-  const startable = canStartSimple(start) && !busy;
+  const attachments = props.attachments;
+  const attaching = attachments ? attachmentsBlocker(attachments.items) : null;
+  const startable = canStartSimple(start) && !busy && attaching === null;
+  const noop = (): void => undefined;
+  const drop = useFileDrop(attachments?.add ?? noop, attachments !== undefined);
   const shortcut = startShortcutLabel(typeof navigator === 'undefined' ? '' : navigator.platform);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -116,7 +124,13 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
         {props.folderRow}
       </div>
 
-      <div className="sb-ns-simple-field" data-testid="ns-simple-field" data-field="message">
+      <div
+        className="sb-ns-simple-field sb-ns-message-drop"
+        data-testid="ns-simple-field"
+        data-field="message"
+        data-dragging={drop.dragging ? 'true' : undefined}
+        {...drop.handlers}
+      >
         <label className="sb-ns-label" htmlFor={messageId}>
           Message
         </label>
@@ -129,7 +143,14 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
           placeholder="What should Claude do? This is the session's first message."
           autoFocus
           onChange={(event) => update({ task: event.target.value })}
+          onPaste={attachments ? pasteFiles(attachments.add) : undefined}
         />
+        {attachments ? (
+          <div className="sb-ns-attach-row" data-testid="ns-attach-row">
+            <AttachButton onFiles={attachments.add} />
+            <AttachmentChips items={attachments.items} notice={attachments.notice} onRemove={attachments.remove} />
+          </div>
+        ) : null}
       </div>
 
       <div className="sb-ns-simple-field" data-testid="ns-simple-field" data-field="title">
@@ -221,7 +242,7 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
 
       <div className="sb-ns-simple-actions">
         <span className="sb-ns-simple-waiting" data-testid="ns-simple-waiting">
-          {blockers.length > 0 ? blockers[0] : ''}
+          {blockers.length > 0 ? blockers[0] : (attaching ?? '')}
         </span>
         <button type="button" className="sb-button sb-ns-cancel" data-testid="ns-cancel" onClick={props.onClose}>
           Cancel

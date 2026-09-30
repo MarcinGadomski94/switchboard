@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { AnswerBatch } from '../../../core/api.ts';
 import { closedBatchText } from '../../../core/session-close.ts';
+import { MessageAttachments } from '../../components/Attachments.tsx';
 import { QuestionCard } from '../../components/QuestionCard.tsx';
 import { answeredLines } from '../../components/question-card.ts';
 import { Link } from '../../router.tsx';
@@ -94,9 +95,13 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         data-queued={item.queued ?? undefined}
         data-queued-note={item.queued && queuedNote ? 'true' : undefined}
       >
-        <div className="sb-chat-bubble" data-testid="chat-text">
-          <ChatMarkdown text={item.text} />
-        </div>
+        {item.text !== '' || item.attachments.length === 0 ? (
+          <div className="sb-chat-bubble" data-testid="chat-text">
+            <ChatMarkdown text={item.text} />
+          </div>
+        ) : null}
+        {/* D57: the images and files it carried, under the bubble. */}
+        <MessageAttachments sessionId={sessionId} attachments={item.attachments} />
         {item.queued ? <QueuedClock reason={item.queued} note={queuedNote} /> : null}
         {item.queued && queuedNote ? (
           <div className="sb-chat-queued-note" data-testid="chat-queued-note">
