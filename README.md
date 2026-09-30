@@ -1,6 +1,6 @@
 # Switchboard
 
-<!-- sponsor-button -->
+<a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="48"></a>
 
 Switchboard is a local web app for running many Claude Code sessions at once. From one window you can:
 

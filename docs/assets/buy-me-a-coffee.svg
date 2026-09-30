@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="212" height="48" viewBox="0 0 212 48" role="img" aria-label="Buy me a coffee">
+  <title>Buy me a coffee</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE14D"/>
+      <stop offset="1" stop-color="#FFCB1F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="211" height="47" rx="12" fill="url(#bg)" stroke="#E0A800"/>
+  <!-- cup -->
+  <g transform="translate(18 11)" fill="none" stroke="#2B1A0E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 9h17v7a7 7 0 0 1-7 7h-3a7 7 0 0 1-7-7z" fill="#FFFFFF"/>
+    <path d="M20 11h2.5a3.5 3.5 0 0 1 0 7H20"/>
+    <path d="M1 26h21"/>
+    <!-- steam -->
+    <path d="M8 1.5c-1.2 1.5 1.2 2.5 0 4.5M13 1.5c-1.2 1.5 1.2 2.5 0 4.5" stroke-width="1.8"/>
+  </g>
+  <text x="56" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16.5" font-weight="700" fill="#2B1A0E">Buy me a coffee</text>
+</svg>
