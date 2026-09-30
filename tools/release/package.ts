@@ -178,7 +178,10 @@ if (import.meta.main) {
   try {
     const repoDir = path.resolve(import.meta.dirname, '..', '..');
     const result = await packageRelease({ repoDir, ...args });
-    const rel = (file: string): string => path.relative(process.cwd(), file) || file;
+    const rel = (file: string): string => {
+      const relative = path.relative(process.cwd(), file);
+      return relative && !relative.startsWith('..') ? relative : file;
+    };
     console.log(`wrote ${rel(result.tarball)} (${result.entries} entries)\nwrote ${rel(result.checksumFile)}\nsha256 ${result.sha256}\n`);
     console.log('Publish it (the tag is created from the pushed commit if it does not exist):');
     console.log(`  gh release create ${releaseTag(result.version)} "${rel(result.tarball)}" "${rel(result.checksumFile)}" --title "Switchboard ${result.version}" --notes-file <notes.md>`);

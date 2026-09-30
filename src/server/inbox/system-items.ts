@@ -243,9 +243,9 @@ export class SystemItemService {
   }
 
   /**
-   * D55: closes the open "Update available" items no longer relevant: those of
-   * versions at or below `current` (`updated`, the update happened) and, when
-   * `latest` is given, of any other version than it.
+   * D55: closes the open "Update available" items of versions at or below
+   * `current` (closed with `updated`: this Switchboard runs that version or a
+   * newer one). The updater calls it at start.
    * @returns how many were closed.
    */
   async updatesResolved(current: string, isAtOrBelow: (version: string, current: string) => boolean): Promise<number> {

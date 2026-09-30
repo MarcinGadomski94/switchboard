@@ -124,6 +124,23 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
+/**
+ * `rename`, tried a few times on Windows' transient EPERM / EBUSY / EACCES (a
+ * virus scanner or the indexer holding a freshly written file).
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 5 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+    }
+  }
+}
+
 /** The D55 updater. */
 export class UpdateService {
   readonly #options: UpdateServiceOptions;
@@ -317,7 +334,7 @@ export class UpdateService {
       if (path.resolve(target) === path.resolve(this.#options.appDir)) throw new UpdateError('invalid', `${target} is the running install`);
       await mkdir(paths.versions, { recursive: true });
       await rm(target, { recursive: true, force: true });
-      await rename(root, target);
+      await renameWithRetry(root, target);
       await rm(staging, { recursive: true, force: true });
       const registered = (await this.#options.service?.registered()) ?? false;
       if (this.#restartMode === 'service' || registered) {

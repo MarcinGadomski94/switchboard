@@ -24,6 +24,17 @@ What each one says:
 
 **Not restarted automatically** on any OS (`KeepAlive` false, `Restart=no`, no `RestartOnFailure`): every service start resumes the sessions that were live and sends them "Switchboard restarted. Continue." (M2.4), so a crash loop would do that over and over. It starts once per sign-in.
 
+### Restart after an update (D55)
+Checked for D55 (`docs/updates.md` → *Restarting*): **no manager restarts Switchboard when it exits**, on purpose (above), and that stays: an exit with code 0 after an update is not treated differently by launchd (`KeepAlive` false), systemd (`Restart=no`) or Task Scheduler (no restart settings). So after the switch (`LoginService.pointTo`: the definition registered again for `<dataDir>/versions/<v>`, the same plan and rollback as the toggle) the updater asks for exactly one start of the new definition, only when this process is the service's own instance:
+
+| OS | Recognised by | Restart |
+|---|---|---|
+| macOS | `XPC_SERVICE_NAME=local.switchboard` (launchd sets it) | launchd keeps the definition it loaded, so a detached helper (`src/server/updates/relaunch.ts`, its own session, so launchd's clean-up of the job's process group spares it) waits for the exit, then `launchctl bootout gui/<uid>/local.switchboard` + `launchctl bootstrap gui/<uid> <plist>` (RunAtLoad starts it). |
+| Linux | `INVOCATION_ID` set and `systemctl --user show -p MainPID --value switchboard.service` = this pid | `systemctl --user restart --no-block switchboard.service` (after the switch's `daemon-reload`): systemd sends SIGTERM (the normal shutdown) and starts the new `ExecStart`. |
+| Windows | started with the task's `--env-file=<dataDir>\service\switchboard.env` | `/Create … /F` re-created the task; a detached helper (hidden) waits for the exit, then `schtasks /Run /TN Switchboard` (`IgnoreNew` allows it only once this instance ended). **Unverified on Windows.** |
+
+Anything else (`npm start` by hand, `npm run dev`) is never exited by an update: the UI says to restart, with the new folder's `npm start`. The helper logs to `<dataDir>/logs/update.log` and retries its last command 5 times. A rollback is the install script run from the previous folder: `npm run service:install -- --start`.
+
 **Windows console window:** the logon task runs `node.exe` under the user's interactive token, so Windows shows its console window; closing it stops the service. Hiding it would need a launcher outside this project (a Windows Service or a hidden-window wrapper) and is left for later (`.loop/questions.md`).
 
 ### Environment (`carriedEnvironment`, `src/server/service/target.ts`)
