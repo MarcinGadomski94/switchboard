@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 (2026-09-30)
+
+### Simple New-session form
+- **New session** opens a short form by default: folder, message, optional title, model and effort, and for a git repo an **own worktree** checkbox (the branch is a plain slug of the title, e.g. `sb/tidy-readme`, editable). **⌘↩ / Ctrl+↩** starts the session.
+- A **Simple / Full** switch at the top of the dialog brings back the full form (workspace session-start answers, solutions, epic/task branching, schedules, moving in existing conversations). The last mode is remembered, and what you typed carries over.
+- In a workspace folder, Simple sends only your message: the agent asks what the workspace needs.
+- API: `POST /api/sessions` also accepts a simple start (`simple: true`).
+
+### Docs
+- The README lists the requirements and the install steps for macOS, Linux and Windows.
+
 ## 1.1.1 (2026-09-30)
 
 ### Fixed
