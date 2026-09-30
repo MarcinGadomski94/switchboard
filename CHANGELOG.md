@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0 (2026-09-30)
+
+### Updates from GitHub releases
+- Switchboard checks this repository's releases on start and every hour (Settings → Updates also has **Check for updates**). When a newer version exists, a banner and an Inbox item show **What's new** (the release notes) and **Update**.
+- **Update** downloads the package, verifies its SHA-256 checksum, unpacks it safely next to the current version, installs its runtime dependencies (`npm ci --omit=dev`), points the login service at it and restarts. Live sessions resume after the restart, and the previous version is kept for a rollback. Details: [`docs/updates.md`](docs/updates.md).
+- A git checkout is only told about the new release, with the commands to update it.
+- `npm run release:package` builds a release package in the same layout for maintainers.
+
+### README
+- Screenshots of the app (taken from demo mode with `npm run screenshots`).
+- A "Buy me a coffee" button.
+
+### Other
+- Example names in the demo data, prototype, docs and tests are neutral ("Acme", `PROJ-…` tickets); the prototype screenshots were retaken.
+
+### Upgrading from 1.0.0
+1.0.0 has no updater, so move to 1.1.0 once by hand: download `switchboard-1.1.0.tar.gz`, unpack it, run `npm ci --omit=dev` in it, and start it (or run `npm run service:install` there for Start at login). From 1.1.0 on, Switchboard updates itself.
+
 ## 1.0.0 (2026-09-30)
 
 The first release. Switchboard is a local web app that runs and supervises your Claude Code sessions: every session is a real `claude` process, and Switchboard gives you one place to start, follow, answer and manage them. The design decisions behind each feature are in [`docs/decisions.md`](docs/decisions.md) (D1–D54).
