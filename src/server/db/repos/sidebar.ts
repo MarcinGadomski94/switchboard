@@ -1,4 +1,4 @@
-import type { SidebarFolder, SidebarLayout } from '../../../core/sidebar-layout.ts';
+import { type SidebarFolder, type SidebarLayout, normalizeFolders, parentOf } from '../../../core/sidebar-layout.ts';
 import type { RepoContext } from '../context.ts';
 import { transaction } from '../database.ts';
 
@@ -6,6 +6,7 @@ interface FolderRow {
   readonly id: string;
   readonly name: string;
   readonly collapsed: number;
+  readonly parent_id: string | null;
 }
 
 interface PlaceRow {
@@ -14,7 +15,8 @@ interface PlaceRow {
 }
 
 /**
- * D54 · the sidebar's pins and folders (migration 0019, `docs/sidebar.md`). The
+ * D54 · the sidebar's pins and folders (migrations 0019 and 0021: D58's
+ * subfolders, `docs/sidebar.md`). The
  * whole layout is small, so it is read and written as one value: the rules live
  * in `src/core/sidebar-layout.ts`, and {@link update} applies one of them inside
  * a single transaction (read, change, write), so two tabs writing at once never
@@ -47,7 +49,7 @@ export class SidebarLayoutRepository {
 
   #read(): SidebarLayout {
     const db = this.#ctx.db;
-    const folders = db.prepare('SELECT id, name, collapsed FROM sidebar_folders ORDER BY position, created_at, id').all() as unknown as FolderRow[];
+    const folders = db.prepare('SELECT id, name, collapsed, parent_id FROM sidebar_folders ORDER BY position, created_at, id').all() as unknown as FolderRow[];
     const places = db.prepare('SELECT session_id, folder_id FROM sidebar_places ORDER BY position, session_id').all() as unknown as PlaceRow[];
     const byFolder = new Map<string, string[]>(folders.map((f) => [f.id, []]));
     const pinned: string[] = [];
@@ -55,22 +57,33 @@ export class SidebarLayoutRepository {
       if (place.folder_id === null) pinned.push(place.session_id);
       else byFolder.get(place.folder_id)?.push(place.session_id);
     }
-    const out: SidebarFolder[] = folders.map((f) => ({ id: f.id, name: f.name, collapsed: f.collapsed === 1, sessionIds: byFolder.get(f.id) ?? [] }));
-    return { pinned, folders: out };
+    const out: SidebarFolder[] = folders.map((f) => ({ id: f.id, name: f.name, collapsed: f.collapsed === 1, sessionIds: byFolder.get(f.id) ?? [], parentId: f.parent_id }));
+    // D58: tree order (each folder followed by its subfolders); siblings by position.
+    return { pinned, folders: normalizeFolders(out) };
   }
 
   #write(layout: SidebarLayout): void {
     const db = this.#ctx.db;
     const now = this.#ctx.now();
+    // D58: parents before children (the foreign key), and positions per parent.
+    const folders = normalizeFolders(layout.folders);
     db.prepare('DELETE FROM sidebar_places').run();
-    const keep = new Set(layout.folders.map((f) => f.id));
+    const upsert = db.prepare(
+      'INSERT INTO sidebar_folders (id, name, position, collapsed, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?) ' +
+        'ON CONFLICT (id) DO UPDATE SET name = excluded.name, position = excluded.position, collapsed = excluded.collapsed, parent_id = excluded.parent_id',
+    );
+    const positions = new Map<string | null, number>();
+    for (const folder of folders) {
+      const parent = parentOf(folder);
+      const position = positions.get(parent) ?? 0;
+      positions.set(parent, position + 1);
+      upsert.run(folder.id, folder.name, position, folder.collapsed ? 1 : 0, now, parent);
+    }
+    // Folders that are gone: their kept subfolders were moved above, so the cascade only meets gone ones.
+    const keep = new Set(folders.map((f) => f.id));
     for (const row of db.prepare('SELECT id FROM sidebar_folders').all() as unknown as Array<{ id: string }>) {
       if (!keep.has(row.id)) db.prepare('DELETE FROM sidebar_folders WHERE id = ?').run(row.id);
     }
-    const upsert = db.prepare(
-      'INSERT INTO sidebar_folders (id, name, position, collapsed, created_at) VALUES (?, ?, ?, ?, ?) ' +
-        'ON CONFLICT (id) DO UPDATE SET name = excluded.name, position = excluded.position, collapsed = excluded.collapsed',
-    );
     const place = db.prepare('INSERT INTO sidebar_places (session_id, folder_id, position) VALUES (?, ?, ?)');
     const seen = new Set<string>();
     const put = (sessionId: string, folderId: string | null, position: number): void => {
@@ -79,9 +92,6 @@ export class SidebarLayoutRepository {
       place.run(sessionId, folderId, position);
     };
     layout.pinned.forEach((id, i) => put(id, null, i));
-    layout.folders.forEach((folder, i) => {
-      upsert.run(folder.id, folder.name, i, folder.collapsed ? 1 : 0, now);
-      folder.sessionIds.forEach((id, j) => put(id, folder.id, j));
-    });
+    for (const folder of folders) folder.sessionIds.forEach((id, j) => put(id, folder.id, j));
   }
 }

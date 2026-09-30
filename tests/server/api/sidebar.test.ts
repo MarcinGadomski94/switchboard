@@ -160,3 +160,112 @@ describe('/api/sidebar (D54)', () => {
     }
   });
 });
+
+/** D58 oracle: subfolders through the routes (parentId on create / move, refusals, delete moves things up, persistence). */
+describe('/api/sidebar subfolders (D58)', () => {
+  const create = async (name: string, parentId?: string | null) => {
+    const response = await call('POST', '/api/sidebar/folders', parentId === undefined ? { name } : { name, parentId });
+    return response;
+  };
+  const idOf = (layout: SidebarLayout, name: string) => layout.folders.find((f) => f.name === name)?.id as string;
+  const shape = (layout: SidebarLayout) => layout.folders.map((f) => `${f.parentId === null ? '-' : layout.folders.find((p) => p.id === f.parentId)?.name}/${f.name}`);
+
+  it('creates subfolders, moves folders in / out / among siblings, and answers the tree in tree order; persisted and published', async () => {
+    const top = (await create('Work')).json() as SidebarLayout;
+    const work = idOf(top, 'Work');
+    expect(top.folders[0]?.parentId).toBeNull();
+    const sub = await create('Reviews', work);
+    expect(sub.statusCode).toBe(201);
+    let layout = sub.json() as SidebarLayout;
+    const reviews = idOf(layout, 'Reviews');
+    layout = (await create('Later')).json() as SidebarLayout;
+    const later = idOf(layout, 'Later');
+    layout = (await create('Deep', reviews)).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Work', 'Work/Reviews', 'Reviews/Deep', '-/Later']);
+
+    // Later into Work, before Reviews.
+    layout = (await call('PUT', `/api/sidebar/folders/${later}/position`, { index: 0, parentId: work })).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Work', 'Work/Later', 'Work/Reviews', 'Reviews/Deep']);
+    // D54's body (no parentId): re-orders within its level.
+    layout = (await call('PUT', `/api/sidebar/folders/${later}/position`, { index: 1 })).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Work', 'Work/Reviews', 'Reviews/Deep', 'Work/Later']);
+    // Out to the top level.
+    layout = (await call('PUT', `/api/sidebar/folders/${reviews}/position`, { index: 1, parentId: null })).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Work', 'Work/Later', '-/Reviews', 'Reviews/Deep']);
+
+    expect(await store.sidebar.read()).toEqual(layout);
+    expect(layoutEvents().at(-1)).toEqual(layout);
+    const positions = store.db.prepare('SELECT name, parent_id, position FROM sidebar_folders ORDER BY name').all();
+    expect(positions).toEqual([
+      { name: 'Deep', parent_id: reviews, position: 0 },
+      { name: 'Later', parent_id: work, position: 0 },
+      { name: 'Reviews', parent_id: null, position: 1 },
+      { name: 'Work', parent_id: null, position: 0 },
+    ]);
+  });
+
+  it('refusals: unknown parent 404, a loop or too deep 422 on parentId; nothing changes and nothing is published', async () => {
+    let layout = (await create('A')).json() as SidebarLayout;
+    const a = idOf(layout, 'A');
+    let parent = a;
+    for (const name of ['B', 'C', 'D', 'E']) {
+      layout = (await create(name, parent)).json() as SidebarLayout;
+      parent = idOf(layout, name);
+    }
+    const before = await store.sidebar.read();
+    const published = layoutEvents().length;
+    expect((await create('X', 'nope')).statusCode).toBe(404);
+    const tooDeep = await create('F', parent);
+    expect(tooDeep.statusCode).toBe(422);
+    expect(tooDeep.json()).toEqual({ error: 'invalid', errors: [{ field: 'parentId', message: 'folders nest at most 5 levels deep' }] });
+    const loop = await call('PUT', `/api/sidebar/folders/${a}/position`, { index: 0, parentId: idOf(layout, 'C') });
+    expect(loop.statusCode).toBe(422);
+    expect(loop.json().errors[0].field).toBe('parentId');
+    expect((await call('PUT', `/api/sidebar/folders/${a}/position`, { index: 0, parentId: a })).statusCode).toBe(422);
+    expect((await call('PUT', `/api/sidebar/folders/${a}/position`, { index: 0, parentId: 'nope' })).statusCode).toBe(404);
+    expect((await call('PUT', `/api/sidebar/folders/nope/position`, { index: 0, parentId: a })).statusCode).toBe(404);
+    expect((await call('POST', '/api/sidebar/folders', { name: 'X', parentId: 5 })).statusCode).toBe(422);
+    // A two-level folder does not fit under the fourth level.
+    layout = (await create('G')).json() as SidebarLayout;
+    const g = idOf(layout, 'G');
+    await create('H', g);
+    expect((await call('PUT', `/api/sidebar/folders/${g}/position`, { index: 0, parentId: idOf(layout, 'D') })).statusCode).toBe(422);
+    expect((await call('PUT', `/api/sidebar/folders/${g}/position`, { index: 0, parentId: idOf(layout, 'C') })).statusCode).toBe(200);
+    expect(before.folders).toHaveLength(5);
+    expect(layoutEvents().length).toBe(published + 3);
+  });
+
+  it('delete: subfolders move up into its place, its sessions go to its parent (or loose); sessions are never deleted', async () => {
+    const [s1, s2] = [await session('one'), await session('two')];
+    let layout = (await create('Top')).json() as SidebarLayout;
+    const topId = idOf(layout, 'Top');
+    layout = (await create('Mid', topId)).json() as SidebarLayout;
+    const mid = idOf(layout, 'Mid');
+    layout = (await create('Leaf', mid)).json() as SidebarLayout;
+    const leaf = idOf(layout, 'Leaf');
+    await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'folder', folderId: mid });
+    await call('POST', '/api/sidebar/place', { sessionId: s2, place: 'folder', folderId: leaf });
+
+    layout = (await call('DELETE', `/api/sidebar/folders/${mid}`)).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Top', 'Top/Leaf']);
+    expect(layout.folders.find((f) => f.id === topId)?.sessionIds).toEqual([s1]);
+    expect(layout.folders.find((f) => f.id === leaf)?.sessionIds).toEqual([s2]);
+    expect(await store.sidebar.read()).toEqual(layout);
+
+    layout = (await call('DELETE', `/api/sidebar/folders/${topId}`)).json() as SidebarLayout;
+    expect(shape(layout)).toEqual(['-/Leaf']);
+    expect(layout.folders[0]?.sessionIds).toEqual([s2]);
+    expect(layout.pinned).toEqual([]);
+    expect(await store.sidebar.read()).toEqual(layout);
+    expect(await store.sessions.get(s1)).not.toBeNull();
+  });
+
+  it("a paired machine's session sits in a subfolder like a local one", async () => {
+    await store.machines.upsert({ id: MACHINE, name: 'pc-office', outboundToken: 'out', inboundTokenHash: 'hash' });
+    let layout = (await create('Top')).json() as SidebarLayout;
+    layout = (await create('Sub', idOf(layout, 'Top'))).json() as SidebarLayout;
+    const remote = `r~${MACHINE}~5c1e0b52`;
+    layout = (await call('POST', '/api/sidebar/place', { sessionId: remote, place: 'folder', folderId: idOf(layout, 'Sub') })).json() as SidebarLayout;
+    expect(layout.folders[1]?.sessionIds).toEqual([remote]);
+  });
+});
