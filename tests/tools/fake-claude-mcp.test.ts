@@ -47,7 +47,16 @@ describe('fake-claude mcp (D61)', () => {
     expect((await run('mcp', 'get', 'nope')).code).toBe(1);
     const removed = await run('mcp', 'remove', 'acme', '--scope', 'user');
     expect(removed.stdout).toContain('Removed MCP server acme from user config');
-    expect((await run('mcp', 'remove', 'acme', '--scope', 'user')).code).toBe(1);
+    const again = await run('mcp', 'remove', 'acme', '--scope', 'user');
+    expect(again.code).toBe(1);
+    expect(again.stderr).toBe('No MCP server named "acme" in user scope\n');
+  });
+
+  it('prints what CLI 2.1.285 prints for add-json and remove (real run, pre-release 1.3.0)', async () => {
+    const added = await run('mcp', 'add-json', 'echo', JSON.stringify({ type: 'stdio', command: 'node', args: ['echo.mjs'] }), '--scope', 'local');
+    expect(added.stdout).toBe('Added stdio MCP server echo to local config\n');
+    const removed = await run('mcp', 'remove', 'echo', '--scope', 'local');
+    expect(removed.stdout).toBe(`Removed MCP server echo from local config\nFile modified: ${path.join(tmp, 'cfg', '.claude.json')} [project: ${cwd}]\n`);
   });
 
   it('answers mcp_status / mcp_toggle / mcp_authenticate over stream-json and exits at EOF', async () => {

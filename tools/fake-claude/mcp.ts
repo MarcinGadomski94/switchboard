@@ -287,8 +287,9 @@ export async function runMcpCommand(argv: readonly string[], env: NodeJS.Process
         await err(`MCP server ${name} already exists in ${scope === 'project' ? '.mcp.json' : `${scope} config`}\n`);
         return 1;
       }
-      const file = await writeServer(env, cwd, scope as Scope, name, config);
-      await out(`Added ${transport(config)} MCP server ${name} to ${scope} config\nFile modified: ${file}\n`);
+      await writeServer(env, cwd, scope as Scope, name, config);
+      // CLI 2.1.285 (real run, 2026-09-30): one line, no "File modified" (that is remove's).
+      await out(`Added ${transport(config)} MCP server ${name} to ${scope} config\n`);
       return 0;
     }
     case 'remove': {
@@ -296,7 +297,8 @@ export async function runMcpCommand(argv: readonly string[], env: NodeJS.Process
       const name = positional[0] ?? '';
       const found = (await servers(env, cwd)).filter((s) => s.name === name && (scope === null || s.scope === scope));
       if (found.length === 0) {
-        await err(`No ${scope ? `${scope}-scoped ` : ''}MCP server found with name: ${name}\n`);
+        // CLI 2.1.285 (real run): `No MCP server named "<name>" in <scope> scope` with a scope.
+        await err(scope ? `No MCP server named "${name}" in ${scope} scope\n` : `No MCP server found with name: ${name}\n`);
         return 1;
       }
       if (found.length > 1) {

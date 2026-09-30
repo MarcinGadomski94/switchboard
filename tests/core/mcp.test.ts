@@ -92,6 +92,39 @@ describe('reading the CLI (D61)', () => {
     expect(parseGetOutput('No MCP server found')).toBeNull();
   });
 
+  it('reads what CLI 2.1.285 printed in a real run on macOS (✔ / ✘ marks; paths shortened)', () => {
+    const failed = [
+      'b1:',
+      '  Scope: Local config (private to you in this project)',
+      '  Status: ✘ Failed to connect',
+      "  Issue: ENOENT: ENOENT: no such file or directory, posix_spawn '/nonexistent/probe-bin'",
+      '  Type: stdio',
+      '  Command: /nonexistent/probe-bin',
+      '  Args: ',
+      '',
+      'To remove this server, run: claude mcp remove b1 -s local',
+      '',
+    ].join('\n');
+    expect(parseGetOutput(failed)).toEqual({ status: 'failed', error: "ENOENT: ENOENT: no such file or directory, posix_spawn '/nonexistent/probe-bin'" });
+    const connected = 'e1:\n  Scope: Local config (private to you in this project)\n  Status: ✔ Connected\n  Type: stdio\n  Command: /bin/node\n  Args: /x/echo.mjs\n  Environment:\n    TOKEN=value\n';
+    expect(parseGetOutput(connected)).toEqual({ status: 'connected', error: null });
+    expect(parseGetOutput('e1:\n  Status: ⊘ Disabled for this project (re-enable via /mcp)\n')).toEqual({ status: 'disabled', error: null });
+    expect(parseGetOutput('p1:\n  Scope: Project config (shared via .mcp.json)\n  Status: ⏸ Pending approval (run `claude` to approve)\n')).toEqual({ status: 'pending-approval', error: null });
+    const list = [
+      'Checking MCP server health…',
+      '',
+      'u1: /bin/node /x/echo.mjs - ✔ Connected',
+      'p1: /bin/node /x/echo.mjs - ⏸ Pending approval (run `claude` to approve)',
+      "b1: /nonexistent/probe-bin  - ✘ Failed to connect — ENOENT: ENOENT: no such file or directory, posix_spawn '/nonexistent/probe-bin'",
+      '',
+    ].join('\n');
+    expect(parseListOutput(list)).toEqual([
+      { name: 'u1', status: 'connected', error: null },
+      { name: 'p1', status: 'pending-approval', error: null },
+      { name: 'b1', status: 'failed', error: "ENOENT: ENOENT: no such file or directory, posix_spawn '/nonexistent/probe-bin'" },
+    ]);
+  });
+
   it('maps every status text the CLI prints', () => {
     expect(statusFromText('! Needs authentication').status).toBe('needs-auth');
     expect(statusFromText('⏸ Pending approval (run `claude` to approve)').status).toBe('pending-approval');
