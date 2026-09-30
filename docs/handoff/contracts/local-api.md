@@ -588,6 +588,23 @@ Without an updater (the demo, `SWITCHBOARD_UPDATES=off`) every route answers `50
 UpdateStatus { "current": "1.0.0", "install": { "kind": "release", "dir": "C:\\Users\\me\\switchboard-1.0.0" }, "restart": "service", "repo": "MarcinGadomski94/switchboard", "checking": false, "lastCheck": { "at": "2026-09-30T09:00:00.000Z", "ok": true, "via": "api", "error": null }, "latest": { "version": "1.1.0", "tag": "v1.1.0", "name": "Switchboard 1.1.0", "notes": "## What's new …", "publishedAt": "2026-10-01T08:00:00Z", "url": "https://github.com/MarcinGadomski94/switchboard/releases/tag/v1.1.0" }, "available": true, "dismissed": null, "progress": { "phase": "installing", "version": "1.1.0", "message": "", "error": null, "dir": null, "at": "2026-10-01T08:05:00.000Z" }, "previous": null, "liveSessions": 2 }
 ```
 
+## Simple New-session form (D56, 2026-09-30, additive)
+Developer request D56 (`docs/decisions.md` → *Simple New-session form*): a simple start without the router's session-start answers. Additive; a body without `simple` (or with `simple: false`) is validated exactly as before. No migration: the remembered mode is a row of the existing `settings` table. Details: `docs/new-session.md` → *Simple mode (D56)*.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/sessions | NewSimpleSession (`simple: true`) | 201 Session · 422 `invalid` (`simple` not a boolean; `name` / `title` / `task` / `model` / `effort` as for a NewSession; `solutions` not empty, a repo folder's only its repo; `worktrees: true` in a workspace folder; `branch` not a valid git branch name) · 409 as for a NewSession (folder, worktree refusals) |
+| GET / PUT | /api/settings | `{ "newSession.mode": "simple" \| "full" }` | Settings; PUT → 422 on `newSession.mode` for anything but the two words |
+
+```json
+NewSimpleSession { "simple": true, "name": "tidy-readme", "task": "Tidy the README.", "folder": "<saved folder id>" | null,
+                   "worktrees": true, "title": "Tidy readme", "branch": "sb/tidy-readme", "model": "opus" | null, "effort": "high" | null }
+Settings         { …, "newSession.mode": "simple" }
+```
+- **NewSimpleSession:** `folder` omitted or `null` = the default folder; `solutions` omitted or empty (a repo folder may name its one repo); `worktrees` and `ultracode` optional (`false`); router fields, `qa` and `branching` are not read (stored `null` / none). `worktrees: true` only for a **repo** folder; its `branch` is any valid git branch name (no D32 ticket rule), omitted or blank = `sb/<name>`, and the worktree follows D40's task-only rule (cut from the origin default branch after a fetch, an existing branch reused, a repo without `origin` from its HEAD).
+- **First message:** the task alone; in a workspace folder **no "Session-start answers" block** (the agent asks the router's questions itself); a repo folder's session in its worktree gets the task plus only the worktree note. An empty task starts idle with nothing in the outbox (a repo worktree's note waits there as before).
+- **`newSession.mode`:** editable, default `simple` (a fresh install); a stored value other than the two words reads as `simple`. The New-session dialog writes it when the developer switches forms and opens in it.
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

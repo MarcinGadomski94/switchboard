@@ -16,6 +16,7 @@ import {
   startDemoApp,
   writeReport,
 } from './harness.ts';
+import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
 
 /**
  * Visual oracle for the New-session modal (M5.1, D10): the app (demo seed) against
@@ -828,6 +829,8 @@ test('New-session modal matches the prototype (tokens, boxes ±2 px, copy, four 
   await installPanelFinder(protoPage);
 
   await openApp(appPage, app.baseUrl, '/');
+  // D56: the prototype's form is the Full one (Simple is the fresh-install default).
+  await rememberNewSessionMode(appPage, 'full');
   await appPage.getByTestId('new-session').click();
   const modal = appPage.getByTestId('modal-new-session');
   await modal.getByTestId('ns-group').first().waitFor();

@@ -56,6 +56,8 @@ const SHOTS: readonly Shot[] = [
       await page.getByTestId('new-session').click();
       const modal = page.getByTestId('modal-new-session');
       await modal.waitFor();
+      // D56: the shot shows the Full form (Simple is the fresh-install default).
+      await modal.getByTestId('ns-mode-full').click();
       await page.getByTestId('ns-name').fill('free-talk-640');
       await modal.getByPlaceholder('What should be implemented?').fill('Free talk screen at 640, web and mobile. Figma frame is in the AI handoff page.');
       await page.getByTestId('ns-branch').fill('PROJ-3021-free-talk-640');

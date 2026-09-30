@@ -10,6 +10,7 @@ import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type OriginRepo, makeOriginRepo } from '../helpers/origin.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { openWithHub } from './question-world.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D40 oracle (E2E, real path, no demo seed, D13): the New-session form's
@@ -84,6 +85,8 @@ test.beforeAll(async () => {
   alpha = await makeOriginRepo(git, tmp, path.join(workspace, 'microfrontends', 'alpha-front'), [['dev', 'master']]);
   beta = await makeOriginRepo(git, tmp, path.join(workspace, 'microfrontends', 'beta-front'));
   await seedFolderInDataDir(dataDir, workspace);
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(dataDir, 'full');
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: dataDir,

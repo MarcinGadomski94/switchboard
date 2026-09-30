@@ -10,6 +10,7 @@ import { REPO_ROOT, makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
 import { stubToolProbes } from './probes.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D14 UI oracle (E2E, real path, no demo seed): saved folders driven through the
@@ -127,6 +128,8 @@ test.beforeAll(async () => {
   await writeFile(path.join(tmp, 'fake-gh-prs.json'), '{}');
   // The workspace is saved (the default) before the start, as a user had done in Settings.
   await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(path.join(tmp, 'data'), 'full');
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),

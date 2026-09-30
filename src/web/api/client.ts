@@ -21,6 +21,7 @@ import type {
   IsolateRequest,
   ModelSettings,
   NewRepoSession,
+  NewSimpleSession,
   NewSession,
   ResumeCommand,
   Schedule,
@@ -122,8 +123,8 @@ const enc = encodeURIComponent;
 export const api = {
   /** D33: open sessions only (the sidebar, the palette); `{ closed: 'include' }` lists closed ones too. */
   listSessions: (options: { readonly closed?: 'include' } = {}) => request<Session[]>('GET', `/api/sessions${query({ closed: options.closed })}`),
-  /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`. */
-  createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', '/api/sessions', body),
+  /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`; D56: the simple form a `NewSimpleSession`. */
+  createSession: (body: NewSession | NewRepoSession | NewSimpleSession) => request<Session>('POST', '/api/sessions', body),
   /** D25, additive: continue a remote session locally (201 Session; 422 / 409, or 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text). */
   teleportSession: (body: TeleportSession) => request<Session>('POST', '/api/sessions/teleport', body),
   /** D40, additive: the New-session form's branching preflight (each repo fetched, then read; nothing created). */
@@ -278,7 +279,7 @@ export function machineApi(machine: string | null) {
     models: () => request<ModelSettings>('GET', onMachine(machine, '/api/models')),
     solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
     branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
-    createSession: (body: NewSession | NewRepoSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
+    createSession: (body: NewSession | NewRepoSession | NewSimpleSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),
     // D48 P4: the machine's terminal sessions and its hooks.
     terminalSessions: () => request<TerminalSession[]>('GET', onMachine(machine, '/api/terminal-sessions')),
     /** 201 a new hooked session (200 one that existed); 404, 409 `already-in-switchboard`. */

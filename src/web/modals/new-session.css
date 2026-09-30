@@ -661,3 +661,201 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * D56 · Simple / Full. The switch is two pills (the router pills' look, smaller):
+ * in the simple form at the end of its head, in the Full form on the Launch
+ * label line (out of the flow, like D25's pill on the Folder label line).
+ */
+.sb-ns-mode {
+  display: inline-flex;
+  border: 1px solid var(--border-control);
+  border-radius: 14px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.sb-ns-mode-option {
+  border-radius: 12px;
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-ns-mode-option[data-selected='true'] {
+  background: var(--border-card);
+  color: var(--text-strong);
+}
+
+.sb-ns-mode-option:hover:not(:disabled):not([data-selected='true']) {
+  color: var(--text-2);
+}
+
+.sb-ns-side {
+  position: relative;
+}
+
+.sb-ns-mode-slot {
+  position: absolute;
+  top: 13px;
+  right: 16px;
+}
+
+/* D56 · the simple form (one column). */
+.sb-ns-simple {
+  padding: 22px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.sb-ns-simple-head {
+  align-items: center;
+}
+
+.sb-ns-simple-head .sb-ns-mode {
+  margin-left: auto;
+}
+
+.sb-ns-simple-loading {
+  padding: 40px 28px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-ns-simple-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sb-ns-simple .sb-ns-section--machine {
+  gap: 7px;
+}
+
+.sb-ns-simple-optional {
+  margin-left: 6px;
+  color: var(--muted-4);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sb-ns-message {
+  resize: vertical;
+  min-height: 96px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+.sb-ns-simple-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.sb-ns-simple-row .sb-sv-model {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-ns-simple-worktree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-ns-simple-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: var(--fs-body);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.sb-ns-simple-check input {
+  accent-color: var(--text-strong);
+}
+
+.sb-ns-simple-branch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding-left: 22px;
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+  min-width: 0;
+}
+
+.sb-ns-simple-branch-name {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-simple-branch-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 10px;
+  font: 400 12px var(--font-mono);
+}
+
+.sb-ns-simple-link {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sb-ns-simple-link:hover {
+  color: var(--text-strong);
+}
+
+.sb-ns-simple-problem {
+  padding-left: 22px;
+  font: 400 11px var(--font-mono);
+  color: var(--status-need);
+}
+
+.sb-ns-simple-where {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  overflow-wrap: anywhere;
+}
+
+.sb-ns-simple-error {
+  margin: 0;
+}
+
+.sb-ns-simple-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.sb-ns-simple-waiting {
+  flex: 1;
+  min-width: 0;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-ns-simple-start {
+  flex: none;
+  padding: 9px 18px;
+}
+
+.sb-ns-simple-kbd {
+  margin-left: 6px;
+  font: 400 11px var(--font-mono);
+  opacity: 0.6;
+}

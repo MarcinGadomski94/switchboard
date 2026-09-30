@@ -9,6 +9,7 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
 import { REPO_ROOT, makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { stubToolProbes } from './probes.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D25 oracle (E2E, real path, no demo): **From a remote session**.
@@ -77,6 +78,8 @@ async function serverFor(name: string, fakeEnv: Record<string, string> = {}): Pr
   await writeFile(path.join(workspace, 'AGENTS.md'), await readFile(path.join(REPO_ROOT, 'tests', 'fixtures', 'workspace', 'router-AGENTS.md'), 'utf8'));
   await seedFolderInDataDir(data, repo, { kind: 'repo', isDefault: true });
   await seedFolderInDataDir(data, workspace, { kind: 'workspace' });
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(data, 'full');
   const log = path.join(tmp, `fake-${name}.log`);
   const started = await startServer({
     ...gitEnv,

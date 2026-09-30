@@ -39,6 +39,18 @@
   box-shadow: var(--shadow-modal);
 }
 
+/* D56 · the simple New-session form: one 600px column, as tall as its content. */
+.sb-modal-simple {
+  width: 600px;
+  max-width: calc(100% - 60px);
+  max-height: calc(100% - 60px);
+  overflow: auto;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+}
+
 /* Setup wizard: 960×620, a 250px steps rail. */
 .sb-modal-wizard {
   width: 960px;

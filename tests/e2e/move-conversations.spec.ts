@@ -9,6 +9,7 @@ import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { type FixtureName, asTerminal, fixtureLines, withChainRepaired, withSessionId, withoutTypes, writeTranscript } from '../helpers/transcripts.ts';
 import { stubToolProbes } from './probes.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D16 oracle (E2E, real path, no demo): terminal conversations continue in
@@ -117,6 +118,8 @@ test.beforeAll(async () => {
   await conversation(workspace, 'handoff-conc', ID.form, { untitled: true });
 
   await seedFolderInDataDir(path.join(tmp, 'data'), workspace);
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(path.join(tmp, 'data'), 'full');
   server = await startServer({
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),

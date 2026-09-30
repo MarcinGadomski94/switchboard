@@ -5,6 +5,7 @@ import type { SessionDetail } from '../../src/core/api.ts';
 import { MODEL_APPLIES_AT_START } from '../../src/web/modals/new-session.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
+import { rememberNewSessionMode } from '../helpers/new-session-mode.ts';
 
 /**
  * D42 on the real path (D13, no demo seed): `node src/server/main.ts` with
@@ -52,6 +53,8 @@ function flag(argv: readonly string[], name: string): string | null {
 }
 
 async function openForm(page: Page) {
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionMode(page, 'full');
   await page.getByTestId('new-session').click();
   const modal = page.getByTestId('modal-new-session');
   await expect(modal).toBeVisible();

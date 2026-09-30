@@ -12,6 +12,7 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `usage.warnAtPct` | editable | whole number 1–100 | `90` | M9.2: the usage warning threshold |
 | `ui.sidebarHidden` | editable | boolean | `false` | D41: the sidebar is slid out (`docs/panes.md`); read before the app's first paint, written by its hide button, reveal handle and ⌘B |
 | `ui.rightPanelHidden` | editable | boolean | `false` | D41: the session view's right panel is slid out, in every session; written by its hide button, reveal handle and ⌥⌘B |
+| `newSession.mode` | editable | `"simple"` \| `"full"` | `"simple"` | D56: the New-session dialog's last used form; written by its Simple / Full switch, read when the dialog opens (`docs/new-session.md` → *Simple mode (D56)*); a stored value other than the two words reads as `"simple"` |
 | `service.startAtLogin` | read-only | boolean | stored value, `false` until set | M9.1 owns the toggle and writes it when it installs the service |
 | `service.address` | read-only | string | `127.0.0.1:<port>` from the configuration | Claude Code → Background service |
 | `workspace.root` | read-only | string \| null | D14: the default saved folder's path (`docs/folders.md`), `null` while no folder is saved | not shown since the UI stage of D14 (Folders reads `GET /api/folders`); kept for compatibility |

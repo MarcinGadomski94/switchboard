@@ -11,6 +11,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * M5.1 oracle (E2E): the New-session modal on the real code path (no demo seed,
@@ -162,6 +163,8 @@ test.beforeAll(async () => {
   await insertFailedSchedule(dataDir);
   // D14: the workspace is a saved folder (the default) in the server's database.
   await seedFolderInDataDir(dataDir, workspace);
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(dataDir, 'full');
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: dataDir,

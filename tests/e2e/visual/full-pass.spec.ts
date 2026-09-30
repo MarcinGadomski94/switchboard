@@ -17,6 +17,7 @@ import {
   writeReport,
 } from './harness.ts';
 import { usageRowChecks } from './usage-rows.ts';
+import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
 
 /**
  * Full visual pass (M9.3, D10): every view and modal SPEC names, on whatever this
@@ -346,6 +347,8 @@ const SURFACES: readonly Surface[] = [
     },
     async openApp(page, base) {
       await openApp(page, base, '/inbox');
+      // D56: the prototype's form is the Full one (Simple is the fresh-install default).
+      await rememberNewSessionMode(page, 'full');
       await page.getByTestId('new-session').click();
       return true;
     },

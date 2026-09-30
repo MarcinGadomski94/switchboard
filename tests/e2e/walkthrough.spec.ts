@@ -3,6 +3,7 @@ import path from 'node:path';
 import { type Locator, type Page, expect, test } from '@playwright/test';
 import type { Session } from '../../src/core/api.ts';
 import { type QuestionWorld, startQuestionWorld } from './question-world.ts';
+import { rememberNewSessionMode } from '../helpers/new-session-mode.ts';
 
 /**
  * D13 final-verify walkthrough (docs/decisions.md → D13, check 1): the whole
@@ -47,7 +48,8 @@ test('the whole product on the real path: session → question → answer → pa
   await page.goto(`${world.baseUrl}/inbox`);
   await expect(page.getByTestId('inbox-zero')).toBeVisible();
 
-  // 1. New session from the modal, with a worktree (gap #1).
+  // 1. New session from the modal, with a worktree (gap #1). D56: the Full form (Simple is the fresh-install default).
+  await rememberNewSessionMode(page, 'full');
   await page.getByTestId('new-session').click();
   const modal = page.getByTestId('modal-new-session');
   await expect(modal.getByTestId('ns-group').first()).toBeVisible();

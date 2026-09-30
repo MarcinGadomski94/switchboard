@@ -6,6 +6,7 @@ import type { MachinesView } from '../../src/core/peers.ts';
 import { remoteId } from '../../src/core/peers.ts';
 import { type PeerNode, enableListener, machineOn, pairedNodes, startPeerNode, waitFor } from '../helpers/peers.ts';
 import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '../helpers/transcripts.ts';
+import { rememberNewSessionMode } from '../helpers/new-session-mode.ts';
 
 /**
  * D48 "Switchboard peers" oracle (`docs/peers.md`): two real Switchboard
@@ -180,6 +181,8 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
 test('P3: the New-session form starts a session on a peer: its folders and models, then the remote session opens', async ({ browser }) => {
   const { a, b, aId, aName } = await paired();
   const page = await pageOf(browser, b, '/');
+  // D56: this test exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionMode(page, 'full');
   await page.getByTestId('new-session').click();
   const modal = page.getByTestId('modal-new-session');
   const machine = modal.getByTestId('ns-machine');

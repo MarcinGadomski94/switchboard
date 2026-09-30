@@ -28,6 +28,9 @@ The Launch area's **Model row** (the toggles block's third row: title `Model`, d
 ## D25 addition (not a finding)
 **From a remote session** (`⇣` pill) is not in the prototype. It sits in the Folder section (itself a D14 addition) out of the flow (absolute), on the right of the Folder label line, so the Folder row and everything below keep their boxes; it is checked on its own (`D25 …` rows): copy, off by default, out of the flow, on the section's right edge, clear of the label's text, above the folder row.
 
+## D56 addition (not a finding)
+The **Simple / Full** switch is not in the prototype. The visual oracle opens the Full form (it remembers `full` before it clicks "+ New session"; Simple is the fresh-install default). In the Full form the switch is the side column's last child, out of the flow (absolute) on the right of the Launch label line, so every compared part keeps its box and index; its behavior (and the simple form) is `tests/e2e/simple-session.spec.ts`.
+
 ## Boxes (±2 px), copy and computed styles
 Geometry: `box` = x, y, width, height; `size` = x, width, height. States: `draft` (the prototype's draft), `single` (Single-solution: section 6 · Mobile coordination), `qa` (Test-authoring, stack Both: section 6 · QA contract; the prototype's static source boxes against the app's inputs, copy = placeholder, color = placeholder color), `empty` (no solutions: the prototype's warning line and Start at 45%, D38's line, Start and hint checked on their own). Styles compared: color, background-color, font-family, font-size, font-weight, line-height, letter-spacing, text-transform, border-radius, border-top-color, border-top-width, border-right-color, padding-top, padding-left, opacity, cursor, white-space.
 

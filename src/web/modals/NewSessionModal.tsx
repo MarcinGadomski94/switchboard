@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useId, useState } from 'react';
 import type { Folder, HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
 import { DEFAULT_MODEL_CHOICE } from '../../core/model-choice.ts';
+import type { NewSessionMode } from '../../core/settings.ts';
 import { formatHistoryDate } from '../../core/history.ts';
 import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
 import { ApiError, api, machineApi } from '../api/client.ts';
@@ -81,6 +82,8 @@ import { ScheduleSection } from './ScheduleSection.tsx';
 import { BranchingSection, useBranchingPreflight } from './BranchingSection.tsx';
 import { type BranchingForm, branchingBlocks, branchingFromPrefill, formParent, preflightRequest, toBranching, withBranchingLines } from './branching-form.ts';
 import { type ScheduleDraft, canSaveSchedule, cronPreview, deleteErrorText, saveErrorText, scheduleMachine, scheduleSummaryLines, toScheduleInput } from './schedule-form.ts';
+import { ModeToggle, SimpleSessionForm } from './SimpleSessionForm.tsx';
+import { offersModeToggle, openingMode, toSimpleBody } from './simple-session.ts';
 import './new-session.css';
 
 /** `sessionUpdated` comes in bursts; the name check's session list reloads at most this often. */
@@ -192,6 +195,13 @@ export function NewSessionModal({
 }) {
   const { navigate } = useRouter();
   const scheduling = schedule !== null;
+  // D56: Simple / Full. A schedule and a prefill open Full; else the remembered mode (`newSession.mode`, Simple on a fresh install).
+  const remembered = useApi(() => (scheduling || prefill ? Promise.resolve(null) : api.settings().catch(() => null)), []);
+  const [pickedMode, setPickedMode] = useState<NewSessionMode | null>(null);
+  const mode: NewSessionMode | null = pickedMode ?? (scheduling || prefill ? 'full' : remembered.loading ? null : openingMode({ scheduling, prefill }, remembered.data));
+  const simple = mode === 'simple' && !scheduling;
+  // D56: the simple form's worktree branch as edited (`null` = derived from the title); kept apart from D32's Branch field.
+  const [simpleBranch, setSimpleBranch] = useState<string | null>(null);
   // D48 (P3, docs/peers.md): the machine the session starts on; `null` = this one.
   // D52: a schedule too (it is saved and runs there); a peer's schedule's Edit stays on its machine (its remote id names it).
   const lockedMachine = scheduleMachine(schedule);
@@ -282,8 +292,9 @@ export function NewSessionModal({
   const scanFolder = folder?.id ?? form.folder ?? undefined;
   const solutions = useApi(
     (): Promise<{ readonly folder: string | undefined; readonly machine: string | null; readonly groups: SolutionGroup[] }> =>
-      folderReady ? machineApi(peer).solutions(scanFolder).then((groups) => ({ folder: scanFolder, machine: peer, groups })) : new Promise(() => undefined),
-    [scanFolder, folderReady, peer],
+      // D56: the simple form picks no solutions: nothing to scan.
+      folderReady && mode === 'full' ? machineApi(peer).solutions(scanFolder).then((groups) => ({ folder: scanFolder, machine: peer, groups })) : new Promise(() => undefined),
+    [scanFolder, folderReady, peer, mode],
   );
   const scan = solutions.data && solutions.data.folder === scanFolder && solutions.data.machine === peer ? solutions.data.groups : null;
   const scanError = scan === null && !solutions.loading ? solutions.error : null;
@@ -303,7 +314,7 @@ export function NewSessionModal({
         ? resumeSummaryLines(resume, folder, form.name, takenNames)
         : summaryLines(launch, workspaceRoot(scan), takenNames, folder, 'start', modelOptions);
   // D32: the Branch row, while Start will create a worktree on the developer's branch (not a schedule, move or teleport).
-  const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting;
+  const branchShown = showsBranch(form) && !scheduling && !resuming && !remoting && mode === 'full';
   // D40: the Branching section shows with the Branch row; its repos are the picked solutions (a repo folder: its repo).
   const branchingSolutions = repo && folder ? [folder.name] : form.solutions;
   // D47: the Parent field as it reads (typed, else the key the task text stacks on).
@@ -377,7 +388,41 @@ export function NewSessionModal({
     }
   };
 
+  /** D56: switches Simple / Full; what is typed stays (one form state), the pick is remembered (`newSession.mode`). */
+  const pickMode = (next: NewSessionMode): void => {
+    setPickedMode(next);
+    setError(null);
+    if (next === 'simple') {
+      // Neither is offered in the simple form.
+      setRemoteMode(false);
+      setResume(null);
+      setResumeOpen(false);
+      moves.close();
+    }
+    void api.saveSettings({ 'newSession.mode': next }).catch(() => undefined);
+  };
+
+  const startSimple = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      // D56: a NewSimpleSession (no router answers, no solutions, no branching); D48: on the chosen machine.
+      const session = await machineApi(peer).createSession(toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }));
+      onClose();
+      navigate({ view: 'session', id: session.id, tab: 'chat' });
+    } catch (caught) {
+      const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+      setError(startErrorText(apiError.status, apiError.body));
+      sessions.reload();
+      setBusy(false);
+    }
+  };
+
   const start = async (): Promise<void> => {
+    if (simple) {
+      if (!busy) await startSimple();
+      return;
+    }
     if (!startable) return;
     if (scheduling) return saveSchedule();
     if (remoting && folder) {
@@ -420,6 +465,142 @@ export function NewSessionModal({
     }
   };
 
+
+  // D48's Machine row and D14's Folder row: the same in both forms (D56).
+  const machineRow =
+    peerMachines.length > 0 || lockedMachine ? (
+      <div className="sb-ns-section sb-ns-section--machine" data-testid="ns-section" data-section="machine">
+        <div className="sb-ns-label">Machine</div>
+        <div className="sb-ns-folder-row">
+          <select
+            className="sb-ns-input sb-ns-select"
+            data-testid="ns-machine"
+            aria-label="Machine"
+            value={peer ?? ''}
+            disabled={busy || lockedMachine !== null}
+            title={lockedMachine !== null ? 'A schedule stays on the machine it was saved on' : undefined}
+            onChange={(event) => pickMachine(event.target.value === '' ? null : event.target.value)}
+          >
+            <option value="">{`This machine${machines.data ? ` (${machines.data.self.name})` : ''}`}</option>
+            {peerMachines.map((entry) => (
+              <option key={entry.id} value={entry.id} disabled={entry.state !== 'online'}>
+                {entry.state === 'online' ? entry.name : `${entry.name} (${entry.state})`}
+              </option>
+            ))}
+          </select>
+          {peer ? (
+            <span className="sb-ns-folder-check" data-testid="ns-machine-note">
+              {scheduling
+                ? 'Folders and models come from that machine; the schedule is saved there and its runs start there.'
+                : 'Folders, models and the branching check come from that machine; the session runs there.'}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+  const folderRow = (
+    <>
+    <div className="sb-ns-folder-row">
+      <select
+        className="sb-ns-input sb-ns-select"
+        data-testid="ns-folder"
+        aria-label="Folder"
+        value={form.folder ?? ''}
+        disabled={choices.length === 0}
+        title={target?.path}
+        onChange={(event) => pickFolder(event.target.value)}
+      >
+        {choices.length === 0 ? (
+          <option value="">{folders.data ? (remoting ? 'No git repo folder saved yet' : 'No folder saved yet') : 'Loading folders…'}</option>
+        ) : null}
+        {choices.map((choice) => (
+          <option key={choice.id} value={choice.id} title={choice.path}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+      {peer ? null : (
+      <button
+        type="button"
+        className="sb-button sb-ns-browse"
+        data-testid="ns-folder-browse"
+        aria-expanded={adding}
+        onClick={() => setAdding((open) => !open)}
+      >
+        Browse…
+      </button>
+      )}
+      {checkLine ? (
+        <span className="sb-ns-folder-check" data-testid="ns-folder-check" data-ok={String(checkLine.ok)} title={checkLine.text}>
+          {checkLine.text}
+        </span>
+      ) : null}
+    </div>
+    {adding ? (
+      <AddFolderPanel
+        testId="ns-folder-add"
+        onAdded={(added) => {
+          setAdding(false);
+          pickFolder(added.id);
+        }}
+        onCancel={() => setAdding(false)}
+      />
+    ) : null}
+    </>
+  );
+  const modelPicker = (
+    <ModelChoicePicker
+      testId="ns-model"
+      picker={formModelPicker(form, modelSettings)}
+      keepEscape
+      onPickModel={(value) => update({ model: pickFormModel(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, modelOptions, value) })}
+      onPickEffort={(value) => update({ model: pickFormEffort(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, value) })}
+    />
+  );
+  const modeToggle = mode !== null && offersModeToggle(scheduling) ? <ModeToggle mode={mode} onPick={pickMode} disabled={busy} /> : null;
+
+  if (mode === null || simple) {
+    return (
+      <div className="sb-overlay" data-modal="new-session" onClick={onClose}>
+        <div
+          className="sb-modal-simple"
+          role="dialog"
+          aria-modal="true"
+          aria-label="New session"
+          data-testid="modal-new-session"
+          data-mode={mode ?? 'loading'}
+          onClick={(event: MouseEvent) => event.stopPropagation()}
+        >
+          {mode === null ? (
+            <div className="sb-ns-simple-loading" data-testid="ns-mode-loading">
+              Loading…
+            </div>
+          ) : (
+            <SimpleSessionForm
+              form={form}
+              update={update}
+              folder={folder}
+              takenNames={takenNames}
+              branch={simpleBranch}
+              onBranch={(value) => {
+                setSimpleBranch(value);
+                setError(null);
+              }}
+              toggle={modeToggle}
+              machineRow={machineRow}
+              folderRow={folderRow}
+              modelPicker={modelPicker}
+              error={error}
+              busy={busy}
+              onStart={() => void start()}
+              onClose={onClose}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="sb-overlay" data-modal="new-session" onClick={onClose}>
       <div
@@ -428,6 +609,7 @@ export function NewSessionModal({
         aria-modal="true"
         aria-label={title}
         data-testid="modal-new-session"
+        data-mode="full"
         data-schedule={scheduling ? (schedule.id ?? 'new') : undefined}
         data-prefill={prefill ? JSON.stringify(prefill) : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
@@ -445,85 +627,11 @@ export function NewSessionModal({
             )}
           </div>
 
-          {peerMachines.length > 0 || lockedMachine ? (
-            <div className="sb-ns-section sb-ns-section--machine" data-testid="ns-section" data-section="machine">
-              <div className="sb-ns-label">Machine</div>
-              <div className="sb-ns-folder-row">
-                <select
-                  className="sb-ns-input sb-ns-select"
-                  data-testid="ns-machine"
-                  aria-label="Machine"
-                  value={peer ?? ''}
-                  disabled={busy || lockedMachine !== null}
-                  title={lockedMachine !== null ? 'A schedule stays on the machine it was saved on' : undefined}
-                  onChange={(event) => pickMachine(event.target.value === '' ? null : event.target.value)}
-                >
-                  <option value="">{`This machine${machines.data ? ` (${machines.data.self.name})` : ''}`}</option>
-                  {peerMachines.map((entry) => (
-                    <option key={entry.id} value={entry.id} disabled={entry.state !== 'online'}>
-                      {entry.state === 'online' ? entry.name : `${entry.name} (${entry.state})`}
-                    </option>
-                  ))}
-                </select>
-                {peer ? (
-                  <span className="sb-ns-folder-check" data-testid="ns-machine-note">
-                    {scheduling
-                      ? 'Folders and models come from that machine; the schedule is saved there and its runs start there.'
-                      : 'Folders, models and the branching check come from that machine; the session runs there.'}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+          {machineRow}
 
           <div className="sb-ns-section sb-ns-section--folder" data-testid="ns-section" data-section="folder" data-kind={folder?.kind}>
             <div className="sb-ns-label">Folder</div>
-            <div className="sb-ns-folder-row">
-              <select
-                className="sb-ns-input sb-ns-select"
-                data-testid="ns-folder"
-                aria-label="Folder"
-                value={form.folder ?? ''}
-                disabled={choices.length === 0}
-                title={target?.path}
-                onChange={(event) => pickFolder(event.target.value)}
-              >
-                {choices.length === 0 ? (
-                  <option value="">{folders.data ? (remoting ? 'No git repo folder saved yet' : 'No folder saved yet') : 'Loading folders…'}</option>
-                ) : null}
-                {choices.map((choice) => (
-                  <option key={choice.id} value={choice.id} title={choice.path}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-              {peer ? null : (
-              <button
-                type="button"
-                className="sb-button sb-ns-browse"
-                data-testid="ns-folder-browse"
-                aria-expanded={adding}
-                onClick={() => setAdding((open) => !open)}
-              >
-                Browse…
-              </button>
-              )}
-              {checkLine ? (
-                <span className="sb-ns-folder-check" data-testid="ns-folder-check" data-ok={String(checkLine.ok)} title={checkLine.text}>
-                  {checkLine.text}
-                </span>
-              ) : null}
-            </div>
-            {adding ? (
-              <AddFolderPanel
-                testId="ns-folder-add"
-                onAdded={(added) => {
-                  setAdding(false);
-                  pickFolder(added.id);
-                }}
-                onCancel={() => setAdding(false)}
-              />
-            ) : null}
+            {folderRow}
             {remoting ? (
               <div className="sb-ns-remote-hint" data-testid="ns-remote-hint">
                 {choices.length === 0 ? NO_REPO_FOLDER_HINT : REPO_FOLDERS_HINT}
@@ -859,13 +967,7 @@ export function NewSessionModal({
                     <div className="sb-ns-toggle-title">{MODEL_ROW_TITLE}</div>
                     <div className="sb-ns-toggle-desc">{MODEL_ROW_DESCRIPTION}</div>
                   </div>
-                  <ModelChoicePicker
-                    testId="ns-model"
-                    picker={formModelPicker(form, modelSettings)}
-                    keepEscape
-                    onPickModel={(value) => update({ model: pickFormModel(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, modelOptions, value) })}
-                    onPickEffort={(value) => update({ model: pickFormEffort(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, value) })}
-                  />
+                  {modelPicker}
                 </div>
               </>
             )}
@@ -936,6 +1038,8 @@ export function NewSessionModal({
               {scheduling ? 'Save schedule' : remoting && busy ? 'Pulling…' : 'Start session'}
             </button>
           </div>
+          {/* D56: the Simple / Full switch, on the Launch label line (out of the flow, after every prototype part). */}
+          {modeToggle ? <div className="sb-ns-mode-slot">{modeToggle}</div> : null}
         </div>
       </div>
     </div>

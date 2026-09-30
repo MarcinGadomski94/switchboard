@@ -8,6 +8,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { stubToolProbes } from './probes.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D14 walkthrough for a **repo folder** on the real path (no demo seed), next to
@@ -83,6 +84,8 @@ test.beforeAll(async () => {
   await git(repo, 'commit', '-q', '-m', 'init');
   await mkdir(path.join(tmp, 'claude-config'), { recursive: true });
   await writeFile(path.join(tmp, 'fake-gh-prs.json'), '{}');
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(path.join(tmp, 'data'), 'full');
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: path.join(tmp, 'data'),

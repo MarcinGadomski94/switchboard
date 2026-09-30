@@ -217,12 +217,13 @@ Screenshots come from the demo seed (`docs/demo.md`); `npm run screenshots` reta
 
 ### Folders
 There is no single workspace root. You save **folders** in **Settings → Folders**, and each session, scan and schedule names the one it works in:
-- A **workspace** (router `AGENTS.md`) gets the router's session-start questions answered up front in the New-session form.
+- A **workspace** (router `AGENTS.md`) gets the router's session-start questions answered up front in the Full New-session form (the Simple form leaves them to the agent).
 - A **git repo** is a single solution.
 
 A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 ### New session
+- **Simple / Full:** a switch at the top of the dialog. **Simple** (the default) asks only for the folder, the message, an optional title (taken from the message when empty), the model and whether to work in its own git worktree (git repo folders; the branch is derived from the title, e.g. `sb/fix-login`, and can be edited). **Full** is the form below. The dialog remembers the last one used, and what you typed carries over when you switch.
 - **Title:** free text, e.g. "JIRA Ticket handling". A kebab-case short name is derived from it for the branch and worktree folder.
 - **Task:** what the agent should do.
 - **Session-start answers:** work type, mode, solutions in scope, phase, mobile coordination, ultracode.

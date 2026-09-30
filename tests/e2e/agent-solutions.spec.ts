@@ -10,6 +10,7 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { openWithHub } from './question-world.ts';
+import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * D38 oracle (E2E, real path, no demo seed, D13): a workspace session started
@@ -93,6 +94,8 @@ test.beforeAll(async () => {
   await makeRepo(path.join(workspace, 'mobile'));
   // D14: the workspace is a saved folder (the default) in the server's database.
   await seedFolderInDataDir(dataDir, workspace);
+  // D56: this spec exercises the Full New-session form (Simple is the fresh-install default).
+  await rememberNewSessionModeInDataDir(dataDir, 'full');
   server = await startServer({
     ...gitEnv,
     SWITCHBOARD_DATA_DIR: dataDir,
