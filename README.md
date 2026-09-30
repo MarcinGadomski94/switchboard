@@ -301,6 +301,13 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 
 [`docs/schedules.md`](docs/schedules.md)
 
+### MCP servers
+- **See** the MCP servers Claude Code loads in each folder, grouped by scope (local, project, user, plugins), with their status, tools and last check. Secrets stay masked.
+- **Check** one or all, **Reconnect**, **Authenticate** (the sign-in page opens in a new tab), **Disable / Enable** for a folder.
+- **Add, edit, remove** servers through the `claude mcp` CLI; the page shows the command it ran.
+
+[`docs/mcp.md`](docs/mcp.md)
+
 ### History
 - Every session, and every **terminal conversation** from `~/.claude/projects`.
 - **Continue in Switchboard:** moves a terminal conversation in as the same conversation.

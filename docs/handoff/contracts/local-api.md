@@ -651,6 +651,45 @@ PUT /api/sidebar/folders/9e10…/position { "index": 0, "parentId": null }
 422 { "error": "invalid", "errors": [{ "field": "parentId", "message": "a folder cannot go into itself or one of its subfolders" }] }
 ```
 
+## MCP servers page (D61, 2026-09-30, additive)
+The `/mcp` page (`docs/mcp.md`). Every route takes `?folder=` (a saved folder's id or path; the default folder when omitted: `409 no-folder`, `404 not-found` as for Solutions), sits behind the usual guard and cookie, and is on the peer API (`PEER_API_ALLOW`), so `/api/machines/{id}/api/mcp…` manages a paired machine's servers. No answer ever carries an env or header value; masked parts read `••••`.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/mcp | | McpView |
+| POST | /api/mcp/check | { name? } | McpActionResult (`claude mcp get <name>`; without a name: `mcp_status`, `claude mcp list` as fallback) |
+| POST | /api/mcp/servers | McpServerInput | 201 McpActionResult (`claude mcp add-json`) |
+| GET | /api/mcp/servers/{name}?scope= | | McpServerDefinition (the Edit form, no secret values) |
+| PUT | /api/mcp/servers/{name}?scope= | McpServerInput | McpActionResult (remove + add-json) |
+| DELETE | /api/mcp/servers/{name}?scope= | | McpActionResult (`claude mcp remove --scope`) |
+| POST | /api/mcp/servers/{name}/reconnect | | McpActionResult (`mcp_reconnect`) |
+| POST | /api/mcp/servers/{name}/toggle | { enabled } | McpActionResult (`mcp_toggle`) |
+| POST | /api/mcp/servers/{name}/auth | { reset? } | McpAuthState (`mcp_clear_auth` when `reset`, then `mcp_authenticate`) |
+| GET | /api/mcp/auth/{id} | | McpAuthState |
+| POST | /api/mcp/auth/{id}/callback | { callbackUrl } | McpAuthState (`mcp_oauth_callback_url`) |
+| DELETE | /api/mcp/auth/{id} | | McpAuthState (cancelled; the helper is stopped) |
+
+Errors: `422 { error: "invalid", message, errors: [{ field, message }] }` (the CLI's rules: name, scope, transport, command / URL, env / header names; a kept value the server does not have), `422 read-only` (a plugin / claude.ai / managed server's edit or remove), `404 not-found`, `409 { error: "cli-failed", message, commands }` (the CLI's words, secrets masked).
+
+```ts
+McpView { folder: { id, path, label }, servers: McpServerView[], checkedAt: string | null, changedAt: string | null }
+McpServerView { name, scope: "local" | "project" | "user" | "plugin" | "claudeai" | …, editable, transport, command: string | null, args: string[], url: string | null,
+  envNames: string[], headerNames: string[], status: "connected" | "failed" | "needs-auth" | "pending" | "pending-approval" | "rejected" | "disabled" | "unchecked",
+  error: string | null, tools: number | null, checkedAt: string | null, canAuthenticate, approval: "approved" | "pending" | "rejected" | null }
+McpServerDefinition { name, scope, transport, command, args, url, env: [{ name, set }], headers: [{ name, set }] }
+McpServerInput { name, scope: "local" | "project" | "user", transport: "stdio" | "http" | "sse" | "ws", command?, args?, url?,
+  env?: [{ name, value? , keep? }], headers?: [{ name, value?, keep? }] }
+McpActionResult { view: McpView, commands: string[], message: string | null }
+McpAuthState { id, server, state: "waiting" | "done" | "failed" | "cancelled", authUrl: string | null, callbackExpected, error: string | null, instructions: string | null }
+```
+
+```json
+POST /api/mcp/servers?folder=f1 { "name": "files", "scope": "user", "transport": "stdio", "command": "npx", "args": ["files-mcp"], "env": [{ "name": "FILES_TOKEN", "value": "…" }] }
+201 { "view": { … }, "commands": ["claude mcp add-json files '{\"type\":\"stdio\",\"command\":\"npx\",\"args\":[\"files-mcp\"],\"env\":{\"FILES_TOKEN\":\"••••\"}}' --scope user"], "message": "Added stdio MCP server files to user config\nFile modified: …" }
+PUT /api/mcp/servers/files?folder=f1&scope=user { "name": "files", "scope": "user", "transport": "stdio", "command": "npx", "args": ["files-mcp", "--verbose"], "env": [{ "name": "FILES_TOKEN", "keep": true }] }
+POST /api/mcp/servers/docs/auth?folder=f1 {} → { "id": "…", "server": "docs", "state": "waiting", "authUrl": "https://auth.example.com/authorize?…", "callbackExpected": true, "error": null, "instructions": null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
