@@ -250,7 +250,7 @@ Developer ruling D32 (`docs/decisions.md` → *Ticket branches and closing sessi
 | Method | Path | Body / Query | Returns |
 |---|---|---|---|
 | POST | /api/sessions | NewSession (+ `branch`) | 201 Session · 422 `invalid` `{ errors: [{ field: "branch" }] }` (with `worktrees: true`: missing, or not a ticket branch) · 409 `branch-exists` `{ message: "<repo> already has a branch <branch>" }` |
-| POST | /api/solutions/{repo}/isolate | IsolateRequest `{ sessionId, branch }` | 201 / 200 Worktree · 422 `invalid` `{ errors: [{ field: "sessionId" \| "branch" }] }` · 409 `branch-exists` (nothing is created or paused) · the other refusals as before |
+| POST | /api/solutions/{repo}/isolate | IsolateRequest `{ sessionId, branch }` | 201 / 200 Worktree · 422 `invalid` `{ errors: [{ field: "sessionId" \| "branch" }] }` · 409 `branch-exists` (nothing is created or paused) · the other refusals as before (D60: `{ sessionId, existingBranch }` instead, see *Move to worktree on an existing branch (D60)*) |
 
 - **NewSession** (and the repo folder's `NewRepoSession`) gains `branch`: **required with `worktrees: true`**, a ticket branch once trimmed (never tidied by the server); the 422 messages: `name the branch after its ticket: the key, its number and a short description, e.g. PROJ-0001-short-description` (missing or blank) and `the branch must be a ticket key, its number and a short kebab-case description, e.g. PROJ-0001-short-description`. The worktree of every solution in scope is created on it (a workspace session: the same branch in each repo); a repo that has it already is 409 `branch-exists` and nothing is created. Without a worktree `branch` is not read. The worktree folders keep `../{repo}-wt-{name}`.
 - **IsolateRequest** (`POST /api/solutions/{repo}/isolate`, "Move … to worktree"): the contract's `{ sessionId }` gains the required `branch`, same rule and messages. A session that already has a worktree for the repo still gets it back unchanged (200).
@@ -629,6 +629,28 @@ InterruptResult  { "session": Session, "outcome": "stopped", "withdrawn": ["…"
 - **Delivery:** images and PDFs go **inline** as stream-json content blocks (`{ "type": "image", "source": { "type": "base64", "media_type", "data" } }`, `{ "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data" }, "title" }`) before the text block; other files, and what the CLI would not take inline (an image over 3.75 MB, a PDF over 20 MiB or 100 pages, beyond 24 MiB of base64 per message), go as paths in the text (`Attached files:` + `- <absolute path> (<size>)`). A hooked terminal session gets only paths. `delivery` is set on a sent message's listing, not on an upload's answer.
 - **Events:** `UserPayload.attachments` lists them (no bytes, no paths); `id: null` is an image a transcript named without its bytes (a placeholder). `sentText` is present when the text sent differs from `text`.
 - **Peers (D48):** the three routes are on `PEER_API_ALLOW`; a remote session id is forwarded as for every session route (uploads with the attachments' body limit; downloads as bytes with their headers); `POST /api/machines/{id}/api/attachments` stages an upload on that machine for a start there.
+
+## Move to worktree on an existing branch (D60, 2026-09-30, additive)
+Developer request D60 (`docs/decisions.md` → *Move to worktree on an existing branch*): the conflict card's "Move … to worktree" may put the worktree on a branch the repo already has, local or remote. Additive: a body with `branch` (D32) is handled exactly as before. No migration.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/solutions/{repo}/branches?session={id}[&fetch=1] | – | 200 RepoBranches (a failed fetch is `fetched: false` + `fetchError`, still 200) · 422 `invalid` on `session` (missing) or `repo` (not a solution of the session's folder) · 404 `session-not-found` · 409 `folder-missing` |
+| POST | /api/solutions/{repo}/isolate | `{ sessionId, existingBranch }` | 201 / 200 Worktree (200: the session already has a worktree of the repo, unchanged) · 409 `branch-checked-out` (checked out in the main checkout or another worktree) · 409 `branch-not-found` · 422 `invalid` on `existingBranch` (not a branch name, or sent with `branch`) · the other refusals as before (404 `session-not-found`, 409 `detached`, …); nothing is created or paused on a refusal |
+
+```json
+RepoBranches { "repo": "alpha-front", "repoPath": "/…/microfrontends/alpha-front",
+               "branches": [RepoBranch], "fetched": true | false | null, "fetchError": "git fetch failed: …" | null }
+RepoBranch   { "name": "origin/PROJ-5-search", "kind": "local" | "remote", "remote": "origin" | null,
+               "localName": "PROJ-5-search", "upstream": "origin/PROJ-5-search" | null, "localExists": false,
+               "subject": "Add search", "committedAt": "2026-09-30T09:00:00+02:00" | null,
+               "checkedOutAt": "/…/alpha-front" | null }
+IsolateRequest { "sessionId": "<id>", "branch": "PROJ-0001-short-description" }
+             | { "sessionId": "<id>", "existingBranch": "origin/PROJ-5-search" }
+```
+- **List:** local branches first, then remote ones (every remote; `<remote>/HEAD` left out), each newest commit first. `fetch=1` runs `git fetch --all --prune` first (bounded, 60 s); without it nothing reaches the network (`fetched: null`, also for a repo without remotes). `checkedOutAt` is where `localName` is checked out; such a branch cannot get the worktree (409 `branch-checked-out`).
+- **existingBranch** is a `RepoBranch.name`. A local branch is used as it is; a remote-only `origin/foo` gets a new local `foo` tracking it; a remote branch whose `localName` exists locally uses the local branch (`localExists: true`). The D32 ticket rule does not apply. The move message names the branch as existing and its upstream.
+- **Peers (D48):** neither route is on `PEER_API_ALLOW` (the isolate route never was: the Solutions view and its conflict card are this machine's).
 
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
