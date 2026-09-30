@@ -25,7 +25,7 @@ Build the real app in the stack described in `ARCHITECTURE.md` (ASP.NET Core + B
 | `prototype/Switchboard App.dc.html` | **Primary reference**: the full clickable prototype |
 | `prototype/Switchboard.dc.html` | Design explorations (turns 1–4). Background only; the App file wins on any conflict |
 | `prototype/support.js` | Runtime the prototypes need to open |
-| `screenshots/01–14-*.png` | Reference captures of every view (inbox, session chat/timeline/diff, solutions, schedules & loops, artifacts, history, Codebase Memory tool, settings, new session, setup wizard, ⌘K palette). Captured at 60% zoom; use the prototype for exact sizes |
+| `screenshots/01–14-*.png` | Reference captures of every view (inbox, session chat/timeline/diff, solutions, schedules & loops, artifacts, history, Codebase Memory tool, settings, new session, setup wizard, ⌘K palette). Captured at 60% zoom (the prototype at 1540×900, device scale 0.6; retake with `node tools/screenshots/handoff.ts`); use the prototype for exact sizes |
 
 ## Where the code lives
 New repo `switchboard`, cloned at `<workspace>/other/switchboard/`. Under the workspace router this is a **non-product solution** (`other/`): edited only on explicit instruction, product per-type rules don't apply, and it follows its own `AGENTS.md` (included here).

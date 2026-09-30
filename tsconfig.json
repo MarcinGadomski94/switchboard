@@ -2,7 +2,8 @@
   // Server, core, tools, tests and tool configs. The server runs these .ts files
   // directly under Node 24 type stripping, so only erasable syntax is allowed.
   // The React UI has its own config (tsconfig.web.json), and so do the Playwright
-  // specs (tsconfig.e2e.json, which adds the DOM lib for page.evaluate).
+  // specs and the screenshot scripts in tools/screenshots (tsconfig.e2e.json,
+  // which adds the DOM lib for page.evaluate).
   "compilerOptions": {
     "target": "ES2024",
     "lib": ["ES2024"],
@@ -32,5 +33,5 @@
     "vitest.config.ts",
     "playwright.config.ts"
   ],
-  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web", "tests/e2e"]
+  "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web", "tests/e2e", "tools/screenshots"]
 }
