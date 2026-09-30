@@ -1,5 +1,7 @@
 # Switchboard
 
+<!-- sponsor-button -->
+
 Switchboard is a local web app for running many Claude Code sessions at once. From one window you can:
 
 - start sessions in your workspace or repos, each in its own git worktree if you want;
@@ -8,6 +10,8 @@ Switchboard is a local web app for running many Claude Code sessions at once. Fr
 - move sessions between Switchboard and a terminal, and back.
 
 It runs on your machine only (`127.0.0.1`). It drives the unmodified `claude` CLI with your own login.
+
+<img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with pinned sessions and a folder">
 
 - [Requirements](#requirements)
 - [Install and run](#install-and-run)
@@ -105,6 +109,23 @@ Everything else, such as saved folders, tools, notification and usage settings, 
 ---
 
 ## Features
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/02-new-session-dark.png" alt="The New session form with solutions picked and the Branching section"><br><sub>New session: solutions, worktrees and epic/task branching</sub></td>
+    <td width="50%"><img src="docs/screenshots/03-inbox-dark.png" alt="The Inbox with a card of three agent questions"><br><sub>Inbox: every agent question in one place</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/04-schedules-dark.png" alt="Schedules and loops with their last 14 runs"><br><sub>Schedules &amp; loops</sub></td>
+    <td width="50%"><img src="docs/screenshots/06-sidebar-dark.png" alt="The Solutions view, with pinned sessions and a Maintenance folder in the sidebar"><br><sub>Solutions, and a sidebar with pins and folders</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/05-machines-dark.png" alt="Settings, Machines: this machine, the peer listener and pairing"><br><sub>Settings → Machines: pair other Switchboards on your tailnet</sub></td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
+Screenshots come from the demo seed (`docs/demo.md`); `npm run screenshots` retakes them.
 
 ### Folders
 There is no single workspace root. You save **folders** in **Settings → Folders**, and each session, scan and schedule names the one it works in:

@@ -15,6 +15,7 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "icons": "node tools/icons/render.ts",
+    "screenshots": "node tools/screenshots/readme.ts",
     "service:install": "node tools/service/install.ts",
     "service:uninstall": "node tools/service/uninstall.ts",
     "frame-helper:safari": "node tools/frame-helper/build-safari.ts"
