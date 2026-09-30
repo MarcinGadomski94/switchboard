@@ -292,7 +292,7 @@ A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
 ### Solutions
 - Every solution of a folder, grouped the way the router groups them.
 - Each one's live branches and worktrees, phase ledger and artifacts.
-- A **conflict card** when two sessions work in the same checkout. **Move … to worktree** isolates one of them onto a ticket branch.
+- A **conflict card** when two sessions work in the same checkout. **Move … to worktree** isolates one of them onto a new ticket branch, or onto an **existing branch** (local or remote) picked from a searchable list.
 
 [`docs/solutions.md`](docs/solutions.md)
 

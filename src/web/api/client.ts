@@ -21,6 +21,7 @@ import type {
   HooksStatus,
   InboxItem,
   IsolateRequest,
+  RepoBranches,
   ModelSettings,
   NewRepoSession,
   NewSimpleSession,
@@ -191,9 +192,11 @@ export const api = {
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),
-  /** "Move … to worktree" (gap #2); D32: `branch` names the new worktree's branch after the ticket (required). */
-  isolate: (repo: string, sessionId: string, branch: string) =>
-    request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, { sessionId, branch } satisfies IsolateRequest),
+  /** "Move … to worktree" (gap #2); D32: `{ sessionId, branch }` names a new branch after the ticket; D60: `{ sessionId, existingBranch }` uses an existing one. */
+  isolate: (repo: string, body: IsolateRequest) => request<Worktree>('POST', `/api/solutions/${enc(repo)}/isolate`, body),
+  /** D60: the repo's local and remote branches for the "Existing branch" picker; `fetch` runs `git fetch --all --prune` first. */
+  repoBranches: (repo: string, sessionId: string, fetch: boolean) =>
+    request<RepoBranches>('GET', `/api/solutions/${enc(repo)}/branches${query({ session: sessionId, fetch: fetch ? '1' : undefined })}`),
 
   schedules: () => request<Schedule[]>('GET', '/api/schedules'),
   createSchedule: (body: unknown) => request<Schedule>('POST', '/api/schedules', body),

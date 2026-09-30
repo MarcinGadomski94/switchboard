@@ -1,6 +1,6 @@
 import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { BranchingPreflightRow, FileDiff, Worktree } from '../../core/api.ts';
+import type { BranchingPreflightRow, FileDiff, RepoBranches, Worktree } from '../../core/api.ts';
 import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
 import {
   PARENT_PR_FIELDS,
@@ -17,12 +17,15 @@ import {
 } from '../../core/stacking.ts';
 import type { UserMessageOrigin } from '../../core/event-payload.ts';
 import {
+  BRANCH_REF_FORMAT,
+  type ExistingBranchNote,
   PR_VIEW_FIELDS,
   type PatchFile,
   type PullRequestInfo,
   isNoPullRequest,
   isSessionWorktree,
   moveToWorktreeMessage,
+  parseBranchRefs,
   parsePatch,
   parsePullRequest,
   parseWorktreeList,
@@ -64,7 +67,9 @@ export type WorktreeErrorCode =
   | 'base-missing'
   | 'branch-checked-out'
   // D47: a typed parent key names several origin branches in a repo.
-  | 'parent-ambiguous';
+  | 'parent-ambiguous'
+  // D60: the existing branch picked for isolate is not a branch of the repo.
+  | 'branch-not-found';
 
 /** A refusal of the worktree manager. Nothing was changed on disk when it is thrown. */
 export class WorktreeError extends Error {
@@ -211,11 +216,29 @@ export interface PreflightInput {
   readonly parent?: ParentRef | null;
 }
 
+/** Options of {@link WorktreeManager.isolate}. */
+export interface IsolateOptions extends WorktreeBranchOptions {
+  /**
+   * D60: put the worktree on this existing branch instead of a new one: a local
+   * branch (`PROJ-7-login`) or a remote one (`origin/PROJ-7-login`, a local
+   * branch of that name tracking it is made unless one exists). Wins over `branch`.
+   */
+  readonly existingBranch?: string;
+}
+
 /** Result of {@link WorktreeManager.isolate}. */
 export interface IsolateResult {
   readonly worktree: WorktreeRecord;
   /** `false` when the session already had a worktree for that repo (nothing was done). */
   readonly created: boolean;
+  /** D60: how the existing branch was used; `null` for a new branch (or nothing created). */
+  readonly existing: ExistingBranchNote | null;
+}
+
+/** Options of {@link WorktreeManager.listBranches} (D60). */
+export interface ListBranchesOptions {
+  /** Run `git fetch --all --prune` first (bounded by the fetch timeout); a failure is reported, the list still returned. */
+  readonly fetch?: boolean;
 }
 
 /** Options for {@link WorktreeManager.startPolling}. */
@@ -894,19 +917,40 @@ export class WorktreeManager implements DiffProvider {
    * stashed, reset or checked out. A session that already has a worktree for `repo`
    * gets nothing new (`created: false`). Refused while the session is detached.
    * `repo` resolves in the session's own folder (D14). D32: the worktree is on
-   * `options.branch` (the route requires it), else `session/{name}`.
+   * `options.branch` (the route requires it), else `session/{name}`. D60:
+   * `options.existingBranch` puts it on an existing local or remote branch
+   * instead ({@link #planExisting}), and the move message says so.
    */
-  async isolate(repo: string, sessionId: string, options: WorktreeBranchOptions = {}): Promise<IsolateResult> {
+  async isolate(repo: string, sessionId: string, options: IsolateOptions = {}): Promise<IsolateResult> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) throw new WorktreeError('session-not-found', `no session ${sessionId}`);
     const existing = (await this.#store.worktrees.list({ sessionId, repo }))[0];
-    if (existing) return { worktree: existing, created: false };
+    if (existing) return { worktree: existing, created: false, existing: null };
     if (!session.attached) throw new WorktreeError('detached', 'the session continues in a terminal; attach it first');
     const control = this.#sessions;
     if (!control) throw new Error('isolate needs the session supervisor');
     const folder = folderOfSession(session);
     if (!folder) throw new WorktreeError('folder-missing', `the session ${session.name} has no folder`);
-    const [worktree] = await this.createForSession(session.name, [repo], folder, session.id, options);
+    let worktree: WorktreeRecord | undefined;
+    let note: ExistingBranchNote | null = null;
+    if (options.existingBranch !== undefined) {
+      const plan = await this.#planExisting(repo, session.name, folder, options.existingBranch);
+      worktree = await this.#createTask(plan.task);
+      try {
+        worktree = (await this.#store.worktrees.update(worktree.id, { sessionId: session.id })) ?? worktree;
+      } catch (error) {
+        await this.discard([worktree]);
+        throw error;
+      }
+      note = plan.note;
+      if (plan.task.reuse === 'origin') {
+        // The new local branch tracks the remote one (`--track`): its upstream is what the message names.
+        const upstream = await this.#upstreamOf(worktree.path, worktree.branch);
+        note = { ...note, upstream: upstream ?? note.upstream };
+      }
+    } else {
+      [worktree] = await this.createForSession(session.name, [repo], folder, session.id, options);
+    }
     if (!worktree) throw new Error('no worktree was created');
     if (control.isLive(sessionId)) await control.pause(sessionId);
     await control.sendMessage(
@@ -917,10 +961,138 @@ export class WorktreeManager implements DiffProvider {
         worktreePath: worktree.path,
         branch: worktree.branch,
         base: worktree.baseRef ?? 'HEAD',
+        existing: note,
       }),
       'service',
     );
-    return { worktree, created: true };
+    return { worktree, created: true, existing: note };
+  }
+
+  /**
+   * D60 (`GET /api/solutions/{repo}/branches`): the branches of `repo` as the
+   * session sees it (resolved in the session's folder, D14), for the conflict
+   * card's "Existing branch" picker: local branches, then remote ones (every
+   * remote, its `HEAD` left out), each newest first, with the tip's subject and
+   * date and where the branch the worktree would be on is checked out (`git
+   * worktree list --porcelain`: the main checkout or another worktree). With
+   * `fetch`, `git fetch --all --prune` runs first (the fetch timeout, one network
+   * call per repo at a time); when it fails the list is what git knew before and
+   * `fetchError` says why. Read-only: nothing is created or checked out.
+   */
+  async listBranches(repo: string, sessionId: string, options: ListBranchesOptions = {}): Promise<RepoBranches> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) throw new WorktreeError('session-not-found', `no session ${sessionId}`);
+    const folder = folderOfSession(session);
+    if (!folder) throw new WorktreeError('folder-missing', `the session ${session.name} has no folder`);
+    const { repoPath } = await this.resolveRepo(repo, folder);
+    const remotes = await this.#remotes(repoPath);
+    let fetched: boolean | null = null;
+    let fetchError: string | null = null;
+    if (options.fetch && remotes.length > 0) {
+      const result = await this.#fetch(repoPath, ['fetch', '--all', '--prune']);
+      fetched = succeeded(result);
+      if (!fetched) fetchError = `git fetch failed: ${failureText(result)}`;
+    }
+    const refs = await this.#runGit(repoPath, ['for-each-ref', '--sort=-committerdate', `--format=${BRANCH_REF_FORMAT}`, 'refs/heads', 'refs/remotes']);
+    if (!succeeded(refs)) throw new WorktreeError('git-failed', `git for-each-ref failed in ${repo}: ${failureText(refs)}`);
+    const branches = parseBranchRefs(refs.stdout, remotes, await this.#checkedOutBranches(repoPath));
+    return { repo, repoPath, branches, fetched, fetchError };
+  }
+
+  /**
+   * D60: where an isolate onto an existing branch comes from. A local branch is
+   * checked out as it is (`git worktree add <path> <branch>`, never deleted by
+   * {@link discard}); a remote branch `origin/foo` gets a new local `foo`
+   * tracking it (`git worktree add --track -b foo <path> origin/foo`), unless a
+   * local `foo` exists: then the worktree is on the local one (`pickedRemote`
+   * says so). A branch checked out anywhere (the main checkout, another
+   * worktree) is `branch-checked-out`; an unknown name `branch-not-found`. The
+   * row's base (the Diff's merge-base) is the origin default branch when git
+   * knows it locally (`origin/HEAD`), else the main checkout's branch (or commit).
+   */
+  async #planExisting(solution: string, sessionName: string, folder: FolderRef, picked: string): Promise<{ readonly task: TaskPlan; readonly note: ExistingBranchNote }> {
+    const { repoPath } = await this.resolveRepo(solution, folder);
+    const target = worktreePath(repoPath, sessionName);
+    if ((await pathExists(target)) || (await this.#store.worktrees.getLiveByPath(target))) {
+      throw new WorktreeError('path-exists', `${target} already exists`);
+    }
+    let branch: string;
+    let reuse: 'local' | 'origin';
+    let pickedRemote: string | null = null;
+    if (await this.#refExists(repoPath, `refs/heads/${picked}`)) {
+      branch = picked;
+      reuse = 'local';
+    } else if (!picked.endsWith('/HEAD') && (await this.#refExists(repoPath, `refs/remotes/${picked}`))) {
+      const remote = (await this.#remotes(repoPath)).sort((a, b) => b.length - a.length).find((name) => picked.startsWith(`${name}/`)) ?? picked.split('/')[0] ?? '';
+      branch = picked.slice(remote.length + 1);
+      if (branch === '') throw new WorktreeError('branch-not-found', `${solution} has no branch ${picked}`);
+      if (await this.#refExists(repoPath, `refs/heads/${branch}`)) {
+        // ASSUMED D60-local-wins: the local branch of that name is used, never moved to the remote's commit.
+        reuse = 'local';
+        pickedRemote = picked;
+      } else {
+        reuse = 'origin';
+      }
+    } else {
+      throw new WorktreeError('branch-not-found', `${solution} has no branch ${picked}`);
+    }
+    const elsewhere = (await this.#checkedOutBranches(repoPath)).get(branch);
+    if (elsewhere !== undefined) throw new WorktreeError('branch-checked-out', `${solution}: ${branch} is checked out at ${elsewhere}`);
+    const base = await this.#existingBase(repoPath);
+    const upstream = reuse === 'origin' ? picked : await this.#upstreamOf(repoPath, branch);
+    const task: TaskPlan = {
+      solution,
+      repoPath,
+      branch,
+      path: target,
+      reuse,
+      start: reuse === 'origin' ? picked : branch,
+      from: null,
+      base,
+      resolved: null,
+      parentStatus: null,
+      parent: {},
+    };
+    return { task, note: { upstream, createdFromRemote: reuse === 'origin', pickedRemote } };
+  }
+
+  /** D60: the Diff base of a worktree on an existing branch: `origin/<default>` when `origin/HEAD` is known locally, else the main checkout's branch or commit. */
+  async #existingBase(repoPath: string): Promise<string> {
+    const symbolic = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    const origin = symbolic.stdout.trim();
+    if (succeeded(symbolic) && origin.startsWith('origin/') && (await this.#refExists(repoPath, `refs/remotes/${origin}`))) return origin;
+    const head = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    if (succeeded(head) && head.stdout.trim() !== '') return head.stdout.trim();
+    const sha = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    return succeeded(sha) && sha.stdout.trim() !== '' ? sha.stdout.trim() : 'HEAD';
+  }
+
+  /** D60: a local branch's upstream (`origin/foo`), `null` when it tracks nothing. */
+  async #upstreamOf(cwd: string, branch: string): Promise<string | null> {
+    const result = await this.#runGit(cwd, ['for-each-ref', '--format=%(upstream:short)', `refs/heads/${branch}`]);
+    const upstream = result.stdout.trim();
+    return succeeded(result) && upstream !== '' ? upstream : null;
+  }
+
+  /** D60: the repo's remote names (`git remote`, config only). */
+  async #remotes(repoPath: string): Promise<string[]> {
+    const result = await this.#runGit(repoPath, ['remote']);
+    if (!succeeded(result)) return [];
+    return result.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '');
+  }
+
+  /** D60: every checked-out branch of the repo and the worktree it is in (the main checkout included; `prunable` ones left out). */
+  async #checkedOutBranches(repoPath: string): Promise<Map<string, string>> {
+    const listed = await this.#runGit(repoPath, ['worktree', 'list', '--porcelain']);
+    const map = new Map<string, string>();
+    if (!succeeded(listed)) return map;
+    for (const entry of parseWorktreeList(listed.stdout)) {
+      if (entry.branch !== null && !entry.prunable && !map.has(entry.branch)) map.set(entry.branch, entry.path);
+    }
+    return map;
   }
 
   // ── remove (gap #3) ───────────────────────────────────────────────────

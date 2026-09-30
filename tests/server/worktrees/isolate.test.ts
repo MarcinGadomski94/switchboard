@@ -124,7 +124,7 @@ describe('WorktreeManager · isolate (gap #2)', () => {
 
     // Asking again does nothing new.
     const again = await m.isolate('web-front', session.id, { branch: 'PROJ-5-other' });
-    expect(again).toEqual({ worktree: result.worktree, created: false });
+    expect(again).toEqual({ worktree: result.worktree, created: false, existing: null });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(await spawnedArgv(s.logFile)).toHaveLength(2);
   });
