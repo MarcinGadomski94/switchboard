@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 (2026-09-30)
+
+### Fixed
+- **1.1.0 did not start on an existing database** ("migration 2 (default_tools) was changed after it was applied"). A wording change in an old migration made its checksum differ from the one existing databases recorded. Switchboard now accepts that known earlier checksum; any other change to an applied migration is still refused. If 1.1.0 would not start for you, install 1.1.1 the same way (the updater can't reach it from a 1.1.0 that doesn't start).
+- The Start-at-login preview of the macOS steps (`service:install` / `service:uninstall` with `--dry-run --platform darwin`) no longer crashes on a machine without a numeric user id (Windows); it shows `gui/<uid>`.
+- The service tests pass on Windows.
+
 ## 1.1.0 (2026-09-30)
 
 ### Updates from GitHub releases
