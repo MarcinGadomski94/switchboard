@@ -8,7 +8,7 @@ import { FolderTag } from '../folders/FolderTag.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
 import { useModals } from '../modals/ModalHost.tsx';
-import { Link } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { formatAge, statusColor } from '../shell/format.ts';
 import {
   ALL_CLEAR,
@@ -19,6 +19,7 @@ import {
   formatToolInput,
   linksSession,
   newSessionAfter,
+  routeAfter,
   refusalText,
   selectedItem,
   visibleItems,
@@ -213,6 +214,7 @@ export function InboxView() {
   const inbox = useApi(api.inbox);
   const { tagOf } = useFolderTags();
   const modals = useModals();
+  const { navigate } = useRouter();
   const now = useNow(30_000);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -286,7 +288,10 @@ export function InboxView() {
               // D52: a peer's failed run opens the form on that machine (the prefill's folder is its folder).
               const prefill = newSessionAfter(current, action.id);
               const machine = current.machine?.id ?? null;
-              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), prefill ? () => modals.open('new-session', { prefill, machine }) : undefined);
+              // D55: "What's new" of an update item opens Settings → Updates once the item is closed.
+              const route = routeAfter(current, action.id);
+              const after = prefill ? () => modals.open('new-session', { prefill, machine }) : route ? () => navigate(route) : undefined;
+              void run(current, () => api.inboxAction(current.id, action.id, message ? { message } : undefined), after);
             }}
           />
         ) : null}

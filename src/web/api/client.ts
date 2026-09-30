@@ -47,6 +47,7 @@ import type {
   WorkflowAgentChat,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
+import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
 
 /**
@@ -155,6 +156,14 @@ export const api = {
   deleteSidebarFolder: (id: string) => request<SidebarLayout>('DELETE', `/api/sidebar/folders/${enc(id)}`),
   /** D54: pin, unpin, put into / take out of a folder, or re-order a session. */
   placeSidebarSession: (input: SidebarPlaceInput) => request<SidebarLayout>('POST', '/api/sidebar/place', input),
+  /** D55, additive: the updater (`docs/updates.md`); 501 when it is off (the demo, `SWITCHBOARD_UPDATES=off`). */
+  updates: () => request<UpdateStatus>('GET', '/api/updates'),
+  /** D55: check GitHub releases now. */
+  checkUpdates: () => request<UpdateStatus>('POST', '/api/updates/check'),
+  /** D55: start the update to `version` (202; the progress comes as `updateChanged`). */
+  installUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/install', { version } satisfies UpdateVersionInput),
+  /** D55: hide the banner of `version`. */
+  dismissUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/dismiss', { version } satisfies UpdateVersionInput),
   /** D33: reopen a closed session (no process starts). */
   reopenSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reopen`),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),

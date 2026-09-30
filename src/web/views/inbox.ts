@@ -84,3 +84,16 @@ export function newSessionAfter(item: InboxItem, actionId: string): NewSessionPr
   if (item.kind !== 'system' || actionId !== OPEN_FIX_SESSION) return null;
   return item.prefill ?? {};
 }
+
+/** D55: the update item's action that closes it and opens Settings → Updates (the notes and the Update button). */
+export const WHATS_NEW = 'whats-new';
+
+/**
+ * D55: where the page goes after `actionId` succeeded on `item`:
+ * `/settings/updates` for "What's new" of this machine's update item (a paired
+ * machine's item only closes: its updates are that machine's), else `null`.
+ */
+export function routeAfter(item: InboxItem, actionId: string): string | null {
+  if (item.kind !== 'system' || actionId !== WHATS_NEW || item.machine) return null;
+  return '/settings/updates';
+}

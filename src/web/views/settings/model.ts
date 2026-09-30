@@ -22,6 +22,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'github', label: 'GitHub' },
   // D48 (docs/peers.md): paired machines; after the prototype's seven.
   { key: 'machines', label: 'Machines' },
+  // D55 (docs/updates.md): GitHub releases, the update and its state.
+  { key: 'updates', label: 'Updates' },
 ] as const;
 
 /** A section key. */

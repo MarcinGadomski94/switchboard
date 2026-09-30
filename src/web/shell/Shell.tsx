@@ -2,6 +2,7 @@ import { FirstRunGate } from '../modals/FirstRunGate.tsx';
 import { ModalHost } from '../modals/ModalHost.tsx';
 import { type Route, useRouter } from '../router.tsx';
 import { ToastHost } from '../toast/ToastHost.tsx';
+import { UpdateBanner } from '../updates/UpdateBanner.tsx';
 import { ArtifactsView } from '../views/ArtifactsView.tsx';
 import { HistoryView } from '../views/HistoryView.tsx';
 import { InboxView } from '../views/InboxView.tsx';
@@ -52,6 +53,7 @@ export function Shell() {
         <View route={route} />
       </main>
       {state.sidebarHidden ? <PaneHandle pane="sidebar" /> : null}
+      <UpdateBanner />
       <ToastHost />
       <ModalHost />
       <FirstRunGate />

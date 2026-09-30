@@ -5,9 +5,10 @@ import { NewSessionModal } from './NewSessionModal.tsx';
 import { Palette } from './Palette.tsx';
 import type { ScheduleDraft } from './schedule-form.ts';
 import { SetupWizard } from './SetupWizard.tsx';
+import { UpdateDialog } from '../updates/UpdateDialog.tsx';
 
 /** The app's modals (SPEC → Modals). */
-export type ModalName = 'new-session' | 'setup-wizard' | 'palette';
+export type ModalName = 'new-session' | 'setup-wizard' | 'palette' | 'update';
 
 /** Extra state a modal opens with. */
 export interface ModalOptions {
@@ -21,6 +22,8 @@ export interface ModalOptions {
    * its machine from the schedule's remote id instead.
    */
   readonly machine?: string | null;
+  /** D55: the update dialog opens at its confirmation (the banner's **Update**). */
+  readonly updateConfirm?: boolean;
 }
 
 interface ModalValue {
@@ -31,6 +34,8 @@ interface ModalValue {
   readonly schedule: ScheduleDraft | null;
   /** D52: the machine the open New-session modal starts on (`null` = this one). */
   readonly machine: string | null;
+  /** D55: the open update dialog starts at its confirmation. */
+  readonly updateConfirm: boolean;
   readonly open: (name: ModalName, options?: ModalOptions) => void;
   readonly close: () => void;
 }
@@ -46,7 +51,9 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
   const [prefill, setPrefill] = useState<NewSessionPrefill | null>(null);
   const [schedule, setSchedule] = useState<ScheduleDraft | null>(null);
   const [machine, setMachine] = useState<string | null>(null);
+  const [updateConfirm, setUpdateConfirm] = useState(false);
   const open = useCallback((name: ModalName, options?: ModalOptions) => {
+    setUpdateConfirm(name === 'update' && options?.updateConfirm === true);
     setPrefill(name === 'new-session' ? (options?.prefill ?? null) : null);
     setSchedule(name === 'new-session' ? (options?.schedule ?? null) : null);
     setMachine(name === 'new-session' ? (options?.machine ?? null) : null);
@@ -67,7 +74,7 @@ export function ModalProvider({ children }: { readonly children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, machine, open, close }), [modal, prefill, schedule, machine, open, close]);
+  const value = useMemo<ModalValue>(() => ({ modal, prefill, schedule, machine, updateConfirm, open, close }), [modal, prefill, schedule, machine, updateConfirm, open, close]);
   return <ModalContext.Provider value={value}>{children}</ModalContext.Provider>;
 }
 
@@ -80,9 +87,10 @@ export function useModals(): ModalValue {
 
 /** Renders the open modal over the shell (positioned against `.sb-shell`). */
 export function ModalHost() {
-  const { modal, prefill, schedule, machine, close } = useModals();
+  const { modal, prefill, schedule, machine, updateConfirm, close } = useModals();
   if (modal === 'new-session') return <NewSessionModal onClose={close} prefill={prefill} schedule={schedule} machine={machine} />;
   if (modal === 'setup-wizard') return <SetupWizard onClose={close} />;
   if (modal === 'palette') return <Palette onClose={close} />;
+  if (modal === 'update') return <UpdateDialog onClose={close} confirm={updateConfirm} />;
   return null;
 }
