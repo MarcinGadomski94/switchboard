@@ -420,6 +420,53 @@ describe('0015 session context (D49)', () => {
   });
 });
 
+describe('0021 sidebar subfolders (D58)', () => {
+  it("on top of 0019 with D54 folders: every folder stays top level with its places; parent_id nests, with no self-parent and a cascade", async () => {
+    const file = path.join(tmp, 'switchboard.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version <= 19));
+    const ts = '2026-09-29T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s1', 'one', 'c1', ts, ts);
+    const folder = database.prepare('INSERT INTO sidebar_folders (id, name, position, collapsed, created_at) VALUES (?, ?, ?, ?, ?)');
+    folder.run('fa', 'Work', 0, 0, ts);
+    folder.run('fb', 'Later', 1, 1, ts);
+    const place = database.prepare('INSERT INTO sidebar_places (session_id, folder_id, position) VALUES (?, ?, ?)');
+    place.run('s1', 'fb', 0);
+    place.run('r~abcdefghijkl~x', null, 0);
+    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 19).map((m) => m.version));
+    expect(database.prepare('SELECT id, name, position, collapsed, created_at, parent_id FROM sidebar_folders ORDER BY position').all()).toEqual([
+      { id: 'fa', name: 'Work', position: 0, collapsed: 0, created_at: ts, parent_id: null },
+      { id: 'fb', name: 'Later', position: 1, collapsed: 1, created_at: ts, parent_id: null },
+    ]);
+    expect(database.prepare('SELECT session_id, folder_id, position FROM sidebar_places ORDER BY session_id').all()).toEqual([
+      { session_id: 'r~abcdefghijkl~x', folder_id: null, position: 0 },
+      { session_id: 's1', folder_id: 'fb', position: 0 },
+    ]);
+    const parent = database.prepare(`SELECT type, "notnull", dflt_value FROM pragma_table_info('sidebar_folders') WHERE name = 'parent_id'`).get();
+    expect(parent).toEqual({ type: 'TEXT', notnull: 0, dflt_value: null });
+    // Nesting: a known parent only, never itself.
+    database.prepare("UPDATE sidebar_folders SET parent_id = 'fa' WHERE id = 'fb'").run();
+    expect(() => database.prepare("UPDATE sidebar_folders SET parent_id = 'gone' WHERE id = 'fb'").run()).toThrow(/FOREIGN KEY/);
+    expect(() => database.prepare("UPDATE sidebar_folders SET parent_id = 'fa' WHERE id = 'fa'").run()).toThrow(/CHECK/);
+    expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    database.close();
+    // The repository reads the tree (fb is now inside fa).
+    const store = await openStore(file);
+    try {
+      expect(await store.sidebar.read()).toEqual({
+        pinned: ['r~abcdefghijkl~x'],
+        folders: [
+          { id: 'fa', name: 'Work', collapsed: false, sessionIds: [], parentId: null },
+          { id: 'fb', name: 'Later', collapsed: true, sessionIds: ['s1'], parentId: 'fa' },
+        ],
+      });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
 describe('0003 folders (D14)', () => {
   /** A database at version 2 (before D14), with what a pre-D14 install holds. */
   async function beforeD14(settingValue: unknown | undefined) {

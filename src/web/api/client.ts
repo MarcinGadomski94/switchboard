@@ -154,13 +154,14 @@ export const api = {
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
   /** D54, additive: the sidebar's pins and folders (this machine's; `docs/sidebar.md`). Every write answers the new layout. */
   sidebarLayout: () => request<SidebarLayout>('GET', '/api/sidebar'),
-  /** D54: a new folder, at the end of the folders (201). */
-  createSidebarFolder: (name: string) => request<SidebarLayout>('POST', '/api/sidebar/folders', { name }),
+  /** D54: a new folder, at the end of the folders (201); D58: `parentId` = at the end of that folder's subfolders. */
+  createSidebarFolder: (name: string, parentId: string | null = null) => request<SidebarLayout>('POST', '/api/sidebar/folders', parentId === null ? { name } : { name, parentId }),
   /** D54: rename and / or collapse / expand a folder. */
   updateSidebarFolder: (id: string, patch: SidebarFolderPatch) => request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}`, patch),
-  /** D54: a folder's final position among the folders. */
-  moveSidebarFolder: (id: string, index: number) => request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}/position`, { index }),
-  /** D54: delete a folder (its sessions become loose). */
+  /** D54: a folder's final position among the folders of its level; D58: `parentId` moves it into that folder (`null` = the top level). */
+  moveSidebarFolder: (id: string, index: number, parentId?: string | null) =>
+    request<SidebarLayout>('PUT', `/api/sidebar/folders/${enc(id)}/position`, parentId === undefined ? { index } : { index, parentId }),
+  /** D54: delete a folder (its sessions become loose; D58: in a subfolder they go to its parent, and its subfolders move up a level). */
   deleteSidebarFolder: (id: string) => request<SidebarLayout>('DELETE', `/api/sidebar/folders/${enc(id)}`),
   /** D54: pin, unpin, put into / take out of a folder, or re-order a session. */
   placeSidebarSession: (input: SidebarPlaceInput) => request<SidebarLayout>('POST', '/api/sidebar/place', input),
