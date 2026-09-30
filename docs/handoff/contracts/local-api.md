@@ -651,6 +651,27 @@ PUT /api/sidebar/folders/9e10…/position { "index": 0, "parentId": null }
 422 { "error": "invalid", "errors": [{ "field": "parentId", "message": "a folder cannot go into itself or one of its subfolders" }] }
 ```
 
+## Plain folders (D59, 2026-09-30, additive)
+Developer request D59 (`docs/decisions.md` → *Simple mode starts in any folder*): a Simple session may start in any folder. Additive: `FolderKind` gains `plain`; nothing else changes shape.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/folders/check?path= | – | FolderCheck: a folder with no `AGENTS.md` that is not a git main checkout is `kind: "plain"` (before D59: `kind: null`, `problem: "unsupported"`) |
+| POST | /api/folders | `{ path, label? }` | 201 / 200 Folder, also for a plain folder · 422 `invalid` only when it is not absolute, missing, a file or a linked git worktree |
+| POST | /api/sessions | NewSimpleSession, `folder` = a plain folder | 201 Session (`folderKind: "plain"`, `solutions: []`, `cwd` = the folder) · 422 on `worktrees` (`true`) or `solutions` (not empty) |
+| POST | /api/sessions | NewSession / NewRepoSession, `folder` = a plain folder | 422 `{ errors: [{ field: "folder", message: "this folder has no AGENTS.md and isn't a git repository: start a Simple session there" }] }` |
+| POST | /api/schedules | ScheduleInput, `template.folder` = a plain folder | 422 on `template.folder` (a run is a Full start) |
+
+```json
+FolderCheck { "path": "/Users/dev/notes", "canonicalPath": "/Users/dev/notes", "exists": true, "kind": "plain",
+              "router": null, "solutionCount": 0, "repoName": null, "problem": null, "message": "" }
+Folder      { "id": "<uuid>", "path": "/Users/dev/notes", "name": "notes", "kind": "plain", …, "check": FolderCheck }
+Session     { …, "folderKind": "plain", "solutions": [], "cwd": "/Users/dev/notes" }
+```
+- **Kinds:** `FolderKind` = `"workspace" | "repo" | "plain"` wherever it appears (`Folder.kind`, `FolderCheck.kind`, `Session.folderKind`, `HistoryItem`'s folder). A client that knew two kinds should read an unknown one as "neither a workspace nor a repo".
+- **First message:** a plain folder's session gets the message alone (and D57's attachment lines); no router answers, no worktree note.
+- **Elsewhere:** `GET /api/solutions?folder=<plain>` answers `[]`; `GET /api/codebase-memory?folder=<plain>` an empty list; a History move of a conversation inside a saved plain folder continues there (`solutions: []`), and one outside every workspace and repo gets `409 folder-not-saved` with its start folder's `kind: "plain"` check (before D59: `422 not-in-a-folder`). Peers (D48) proxy these unchanged.
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
