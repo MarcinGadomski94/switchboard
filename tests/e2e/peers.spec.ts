@@ -169,11 +169,14 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   await expect(row.getByTestId('machine-tag')).toHaveText(`${aName} · unreachable`, { timeout: 15_000 });
   // Ruling D48-cache-persist: its last known state stays readable; nothing can be done until A is back.
   await row.click();
-  await expect(page.getByTestId('session-offline-note')).toHaveText(`${aName} is offline — reconnect to continue`);
+  // Fix · peer reconnects: after the grace period: unreachable, retrying, with the last error and Reconnect now.
+  await expect(page.getByTestId('session-offline-note-text')).toHaveText(new RegExp(`^${aName} is unreachable( · (retrying in \\d+ s|trying now…))?$`), { timeout: 15_000 });
+  await expect(page.getByTestId('session-offline-note-reconnect')).toBeVisible();
   await expect(page.getByTestId('view-session').getByTestId('chat-text').first()).toBeVisible();
   await expect(page.getByTestId('chat-input')).toBeDisabled();
   await expect(page.getByTestId('chat-send')).toBeDisabled();
-  await expect(page.getByTestId('chat-blocked')).toHaveText(`${aName} is offline — reconnect to continue`);
+  await expect(page.getByTestId('chat-blocked-text')).toHaveText(new RegExp(`^${aName} is unreachable`));
+  await expect(page.getByTestId('chat-blocked-reconnect')).toBeVisible();
   await expect(page.getByTestId('session-pause')).toBeDisabled();
   await expect(page.getByTestId('session-close')).toBeDisabled();
 });

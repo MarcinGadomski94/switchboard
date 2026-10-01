@@ -1,6 +1,6 @@
 import type { HubEventName, HubEvents, InboxItem, Session } from '../../core/api.ts';
 import { HUB_EVENT_NAMES } from '../../core/api.ts';
-import type { MachineState } from '../../core/peers.ts';
+import { type MachineState, PEER_GRACE_MS, PEER_STALL_MS, type PeerFailureKind, peerFailureText } from '../../core/peers.ts';
 import { readSse } from './sse.ts';
 
 /**
@@ -12,12 +12,22 @@ import { readSse } from './sse.ts';
  * nothing here logs it.
  */
 
-/** Backoff between connection attempts: 1 s doubling up to 60 s, back to 1 s after a success. */
-export const RECONNECT_MIN_MS = 1_000;
-export const RECONNECT_MAX_MS = 60_000;
+/**
+ * Fix · peer reconnects (`docs/peers.md` → *Connection states*): the waits before
+ * each attempt after a drop: at once, then 1 s, 2 s, 5 s, 10 s, then every
+ * {@link RECONNECT_MAX_MS} (ASSUMED reconnect-schedule), each with ±20 % jitter
+ * (the first stays immediate).
+ */
+export const RECONNECT_SCHEDULE_MS: readonly number[] = [0, 1_000, 2_000, 5_000, 10_000];
+export const RECONNECT_MAX_MS = 15_000;
+/** ± share of a wait that is random, so two machines do not retry in lockstep. */
+export const RECONNECT_JITTER = 0.2;
 
 /** Default time limit of one request to a peer. */
 export const PEER_REQUEST_TIMEOUT_MS = 15_000;
+
+/** How many recent failure kinds are kept (for the hint). */
+const RECENT_FAILURES = 5;
 
 /** An answer from a peer: status and parsed JSON body (`null` for none). */
 export interface PeerAnswer {
@@ -47,6 +57,19 @@ export interface PeerTarget {
   readonly token: string;
 }
 
+/** The connection's retry state (`Machine.connection` without the hint and with epoch ms). */
+export interface PeerConnectionStatus {
+  readonly state: MachineState;
+  readonly lastError: string | null;
+  readonly attempt: number;
+  readonly trying: boolean;
+  readonly nextAttemptAt: number | null;
+  readonly graceUntil: number | null;
+  readonly lastFailure: { readonly kind: PeerFailureKind; readonly message: string; readonly at: number } | null;
+  /** The newest failure kinds, oldest first (since the last time it was online). */
+  readonly recentFailures: readonly PeerFailureKind[];
+}
+
 /** Options of {@link PeerConnection}. */
 export interface PeerConnectionOptions {
   /** The machine (its address and token may change: read on every attempt). */
@@ -55,31 +78,99 @@ export interface PeerConnectionOptions {
   readonly ownAddress: () => string | null;
   /** A raw event from the peer's stream (not mapped yet). */
   readonly onEvent: <K extends HubEventName>(name: K, payload: HubEvents[K]) => void;
-  /** The state changed (online / offline / auth-failed / no-address). */
+  /** The state changed (online / reconnecting / offline / auth-failed / no-address). */
   readonly onState: (state: MachineState, error: string | null) => void;
+  /** Anything of {@link PeerConnection.status} changed (an attempt started or failed, the next one was scheduled). */
+  readonly onStatus?: (status: PeerConnectionStatus) => void;
   /** The session or Inbox cache changed. */
   readonly onCache: () => void;
   /** A successful contact (hello). */
   readonly onSeen: (info: { readonly name: string | null }) => void;
   readonly onError?: (error: unknown) => void;
-  readonly minBackoffMs?: number;
+  /** The waits between attempts ({@link RECONNECT_SCHEDULE_MS}); the last one repeats up to `maxBackoffMs`. */
+  readonly schedule?: readonly number[];
   readonly maxBackoffMs?: number;
+  /** Jitter share ({@link RECONNECT_JITTER}; 0 in tests that time the schedule). */
+  readonly jitter?: number;
+  /** `reconnecting` → `offline` after this long without success ({@link PEER_GRACE_MS}). */
+  readonly graceMs?: number;
+  /** A stream with nothing (no event, no keepalive) for this long is dropped and reconnected ({@link PEER_STALL_MS}). */
+  readonly stallMs?: number;
+  /** Time limit of the hello and of the event stream's answer (headers). */
+  readonly connectTimeoutMs?: number;
+  /** Randomness of the jitter (tests). */
+  readonly random?: () => number;
   /** The fetch to use (tests). */
   readonly fetch?: typeof fetch;
+}
+
+/** The wait before the attempt after `failures` failed ones (0 = right after a drop, or the first). */
+export function reconnectDelay(failures: number, options: { readonly schedule?: readonly number[]; readonly maxMs?: number; readonly jitter?: number; readonly random?: () => number } = {}): number {
+  const schedule = options.schedule ?? RECONNECT_SCHEDULE_MS;
+  const max = options.maxMs ?? RECONNECT_MAX_MS;
+  const base = Math.min(failures < schedule.length ? (schedule[failures] as number) : max, max);
+  if (base <= 0) return 0;
+  const jitter = options.jitter ?? RECONNECT_JITTER;
+  const random = options.random ?? Math.random;
+  return Math.max(0, Math.min(max, Math.round(base * (1 + (random() * 2 - 1) * jitter))));
+}
+
+/** The kind of a failed fetch / stream read (the cause's code where there is one). */
+export function classifyFailure(error: unknown): PeerFailureKind {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const { name, code, message } = current as { name?: unknown; code?: unknown; message?: unknown };
+    if (name === 'TimeoutError' || code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT') return 'timeout';
+    if (code === 'ECONNREFUSED') return 'refused';
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH' || code === 'EHOSTDOWN' || code === 'ENETDOWN' || code === 'EADDRNOTAVAIL') return 'route';
+    if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET' || code === 'ECONNABORTED' || (typeof message === 'string' && /other side closed|terminated|socket hang up/i.test(message) && !(current as { cause?: unknown }).cause)) return 'reset';
+    current = (current as { cause?: unknown }).cause;
+  }
+  return 'other';
+}
+
+/** A pending "the running attempt is over" (Reconnect now waits on it; never two attempts at once). */
+interface AttemptWaiter {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+}
+
+function waiter(): AttemptWaiter {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 /** One paired machine's connection and caches. */
 export class PeerConnection {
   readonly #options: PeerConnectionOptions;
   readonly #fetch: typeof fetch;
-  #state: MachineState = 'offline';
+  // Fix · peer reconnects: a new connection is `reconnecting` (within the grace) until its first attempt settles it.
+  #state: MachineState = 'reconnecting';
   #error: string | null = null;
   #sessions: Session[] = [];
   #inbox: InboxItem[] = [];
   #closed = false;
   #abort: AbortController | null = null;
   #timer: NodeJS.Timeout | undefined;
-  #backoffMs: number;
+  #graceTimer: NodeJS.Timeout | undefined;
+  #graceUntil: number | null = null;
+  /** Failed attempts since the last time it was online. */
+  #failures = 0;
+  #trying = false;
+  #nextAttemptAt: number | null = null;
+  #lastFailure: { kind: PeerFailureKind; message: string; at: number } | null = null;
+  #recent: PeerFailureKind[] = [];
+  /** Why this service is about to cut its own stream (a kick, a stall). */
+  #cut: PeerFailureKind | null = null;
+  #attemptDone: AttemptWaiter | null = null;
+  /** The next attempt starts without a wait (after a kick). */
+  #immediate = false;
+  #settled: Array<() => void> = [];
   #running: Promise<void> | null = null;
   #inboxRefresh: Promise<void> | null = null;
   #inboxAgain = false;
@@ -87,7 +178,6 @@ export class PeerConnection {
   constructor(options: PeerConnectionOptions) {
     this.#options = options;
     this.#fetch = options.fetch ?? fetch;
-    this.#backoffMs = options.minBackoffMs ?? RECONNECT_MIN_MS;
   }
 
   get state(): MachineState {
@@ -98,14 +188,32 @@ export class PeerConnection {
     return this.#error;
   }
 
+  /** The retry state (fix · peer reconnects). */
+  get status(): PeerConnectionStatus {
+    return {
+      state: this.#state,
+      lastError: this.#error,
+      attempt: this.#failures,
+      trying: this.#trying,
+      nextAttemptAt: this.#nextAttemptAt,
+      graceUntil: this.#state === 'reconnecting' ? this.#graceUntil : null,
+      lastFailure: this.#lastFailure,
+      recentFailures: [...this.#recent],
+    };
+  }
+
   /** The peer's open sessions as last known (raw, not mapped). */
   get sessions(): readonly Session[] {
     return this.#sessions;
   }
 
-  /** The peer's Inbox items as last known (raw). Empty while not online (an unreachable peer's items cannot be answered). */
+  /**
+   * The peer's Inbox items as last known (raw). Empty while it cannot be reached
+   * (an unreachable peer's items cannot be answered); kept while `reconnecting`
+   * (an answer is held until it is back).
+   */
   get inbox(): readonly InboxItem[] {
-    return this.#state === 'online' ? this.#inbox : [];
+    return this.#state === 'online' || this.#state === 'reconnecting' ? this.#inbox : [];
   }
 
   /**
@@ -119,6 +227,7 @@ export class PeerConnection {
   /** Starts the connect loop (idempotent). */
   start(): void {
     if (this.#closed || this.#running) return;
+    if (this.#state === 'reconnecting' && this.#graceTimer === undefined) this.#startGrace();
     this.#running = this.#loop().finally(() => {
       this.#running = null;
     });
@@ -126,125 +235,320 @@ export class PeerConnection {
 
   /** Connects again now (after a new pairing or an address change), dropping the current stream. */
   kick(): void {
-    this.#backoffMs = this.#options.minBackoffMs ?? RECONNECT_MIN_MS;
-    clearTimeout(this.#timer);
-    this.#timer = undefined;
-    this.#wake?.();
+    this.#cut = 'restart';
+    this.#cutWait();
     this.#abort?.abort();
     this.start();
   }
 
   /** Cuts a reconnect backoff short (the machine just reached us); an attempt in progress is left alone. */
   wake(): void {
-    this.#backoffMs = this.#options.minBackoffMs ?? RECONNECT_MIN_MS;
-    if (this.#abort) return;
-    clearTimeout(this.#timer);
-    this.#timer = undefined;
-    this.#wake?.();
+    if (this.#closed || this.#state === 'online' || this.#trying) return;
+    this.#cutWait();
+  }
+
+  /**
+   * Fix · peer reconnects: **Reconnect now**. Cuts any wait and tries at once; when
+   * an attempt is already running it waits for that one instead (never two at
+   * once). Resolves with the state the attempt left (`online` on success), at the
+   * latest after `timeoutMs`.
+   */
+  async reconnectNow(timeoutMs = 2 * PEER_REQUEST_TIMEOUT_MS): Promise<MachineState> {
+    if (this.#closed || this.#state === 'online') return this.#state;
+    this.#attemptDone ??= waiter();
+    const done = this.#attemptDone.promise;
+    if (!this.#trying) {
+      this.#cutWait();
+      this.start();
+    }
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      done,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+        timer.unref();
+      }),
+    ]);
+    clearTimeout(timer);
+    return this.#state;
+  }
+
+  /**
+   * Fix · peer reconnects: resolves once the connection is no longer
+   * `reconnecting` (online, or the grace ended), at the latest after `maxMs`.
+   * What a held action waits on.
+   */
+  whenSettled(maxMs: number): Promise<MachineState> {
+    if (this.#state !== 'reconnecting' || this.#closed) return Promise.resolve(this.#state);
+    return new Promise((resolve) => {
+      const finish = (): void => {
+        clearTimeout(timer);
+        this.#settled = this.#settled.filter((entry) => entry !== finish);
+        resolve(this.#state);
+      };
+      const timer = setTimeout(finish, maxMs);
+      timer.unref();
+      this.#settled.push(finish);
+    });
   }
 
   /** Stops for good (the machine was removed, or the service stops). */
   async close(): Promise<void> {
     this.#closed = true;
     clearTimeout(this.#timer);
+    clearTimeout(this.#graceTimer);
     this.#wake?.();
     this.#abort?.abort();
+    for (const finish of [...this.#settled]) finish();
+    this.#attemptDone?.resolve();
     await this.#running;
   }
 
   #wake: (() => void) | null = null;
 
+  /** Ends the wait before the next attempt (if one is running). */
+  #cutWait(): void {
+    clearTimeout(this.#timer);
+    this.#timer = undefined;
+    this.#wake?.();
+  }
+
   async #sleep(ms: number): Promise<void> {
+    if (ms <= 0) return;
     await new Promise<void>((resolve) => {
       this.#wake = resolve;
       this.#timer = setTimeout(resolve, ms);
       this.#timer.unref();
     });
     this.#wake = null;
+    this.#timer = undefined;
+  }
+
+  #emitStatus(): void {
+    this.#options.onStatus?.(this.status);
   }
 
   #setState(state: MachineState, error: string | null): void {
     if (this.#state === state && this.#error === error) return;
+    const before = this.#state;
     this.#state = state;
     this.#error = error;
+    if (state !== 'reconnecting') {
+      clearTimeout(this.#graceTimer);
+      this.#graceTimer = undefined;
+      this.#graceUntil = null;
+    }
     this.#options.onState(state, error);
+    if (before === 'reconnecting' && state !== 'reconnecting') for (const finish of [...this.#settled]) finish();
+  }
+
+  #startGrace(): void {
+    clearTimeout(this.#graceTimer);
+    const graceMs = this.#options.graceMs ?? PEER_GRACE_MS;
+    this.#graceUntil = Date.now() + graceMs;
+    this.#graceTimer = setTimeout(() => {
+      this.#graceTimer = undefined;
+      if (this.#closed || this.#state !== 'reconnecting') return;
+      this.#setState('offline', this.#error ?? 'not reached within the grace period');
+      this.#emitStatus();
+    }, graceMs);
+    this.#graceTimer.unref();
+  }
+
+  /** The open stream dropped: `reconnecting` within the grace period (actions held, reads from the cache). */
+  #dropped(kind: PeerFailureKind, detail: string | null): void {
+    this.#recordFailure(kind, detail);
+    if (this.#state === 'online') {
+      this.#setState('reconnecting', this.#lastFailure?.message ?? null);
+      this.#startGrace();
+    }
+  }
+
+  #recordFailure(kind: PeerFailureKind, detail: string | null): void {
+    const words = peerFailureText(kind);
+    const message = detail ? `${words} (${detail})` : words;
+    this.#lastFailure = { kind, message, at: Date.now() };
+    this.#recent = [...this.#recent, kind].slice(-RECENT_FAILURES);
+  }
+
+  /** One attempt failed: offline (unless still within the grace), auth failed or no address. */
+  #failed(kind: PeerFailureKind, detail: string | null, state?: 'auth-failed' | 'no-address'): void {
+    // An attempt this service cut itself (a kick) is no failure of the machine: the next one starts at once.
+    if (kind === 'restart') {
+      this.#immediate = true;
+      return;
+    }
+    this.#failures += 1;
+    this.#recordFailure(kind, detail);
+    const message = this.#lastFailure?.message ?? null;
+    if (state) this.#setState(state, message);
+    // Within the grace period it stays `reconnecting` (the status carries the failure).
+    else if (this.#state === 'reconnecting') this.#error = message;
+    else this.#setState('offline', message);
+  }
+
+  #attemptOver(): void {
+    const done = this.#attemptDone;
+    this.#attemptDone = null;
+    done?.resolve();
   }
 
   async #loop(): Promise<void> {
     while (!this.#closed) {
-      let next = this.#backoffMs;
+      this.#trying = true;
+      this.#nextAttemptAt = null;
+      this.#emitStatus();
+      let streamed = false;
       try {
-        const outcome = await this.#connectOnce();
-        if (outcome === 'streamed') next = this.#options.minBackoffMs ?? RECONNECT_MIN_MS;
+        streamed = await this.#connectOnce();
       } catch (error) {
-        if (!this.#closed) this.#options.onError?.(error);
+        if (!this.#closed) {
+          this.#options.onError?.(error);
+          this.#failed('other', describe(error));
+        }
       }
+      this.#trying = false;
+      this.#attemptOver();
       if (this.#closed) break;
-      this.#backoffMs = Math.min(next * 2, this.#options.maxBackoffMs ?? RECONNECT_MAX_MS);
-      await this.#sleep(next);
+      // Right after a drop the next attempt starts at once; after failed attempts it waits along the schedule.
+      const immediate = streamed || this.#immediate;
+      this.#immediate = false;
+      const wait = immediate
+        ? 0
+        : reconnectDelay(this.#failures, {
+            ...(this.#options.schedule ? { schedule: this.#options.schedule } : {}),
+            ...(this.#options.maxBackoffMs !== undefined ? { maxMs: this.#options.maxBackoffMs } : {}),
+            ...(this.#options.jitter !== undefined ? { jitter: this.#options.jitter } : {}),
+            ...(this.#options.random ? { random: this.#options.random } : {}),
+          });
+      this.#nextAttemptAt = Date.now() + wait;
+      this.#emitStatus();
+      await this.#sleep(wait);
     }
   }
 
-  /** One attempt: hello, the caches, then the stream until it ends. */
-  async #connectOnce(): Promise<'streamed' | 'failed'> {
+  /** One attempt: hello, the caches, then the stream until it ends. `true` when it was online (and then dropped). */
+  async #connectOnce(): Promise<boolean> {
     const target = await this.#options.target();
-    if (!target) return 'failed';
+    if (!target) {
+      this.#failed('other', 'the machine is not paired');
+      return false;
+    }
     if (!target.address) {
+      this.#failures += 1;
       this.#setState('no-address', 'the machine has not told an address (its peer listener is off)');
-      return 'failed';
+      return false;
     }
     const abort = new AbortController();
     this.#abort = abort;
+    this.#cut = null;
+    let online = false;
+    let stall: NodeJS.Timeout | undefined;
+    const connectTimeoutMs = this.#options.connectTimeoutMs ?? PEER_REQUEST_TIMEOUT_MS;
     try {
-      const hello = await this.#call(target, 'POST', '/peer/v1/hello', { address: this.#options.ownAddress() }, { signal: abort.signal });
+      let hello: PeerAnswer;
+      try {
+        hello = await this.#call(target, 'POST', '/peer/v1/hello', { address: this.#options.ownAddress() }, { signal: abort.signal, timeoutMs: connectTimeoutMs });
+      } catch (error) {
+        this.#failed(this.#cut ?? classifyFailure(error), describe(error));
+        return false;
+      }
       if (hello.status === 401) {
-        this.#setState('auth-failed', 'the machine refused this pairing (revoked there?): pair again');
-        return 'failed';
+        this.#failed('auth', null, 'auth-failed');
+        return false;
       }
       if (hello.status !== 200) {
-        this.#setState('offline', `hello answered HTTP ${hello.status}`);
-        return 'failed';
+        this.#failed('http', `hello answered HTTP ${hello.status}`);
+        return false;
       }
       const info = hello.body as { name?: unknown } | null;
       this.#options.onSeen({ name: typeof info?.name === 'string' ? info.name : null });
-      const response = await this.#fetch(`http://${target.address}/peer/v1/events`, {
-        headers: { authorization: `Bearer ${target.token}`, accept: 'text/event-stream' },
-        signal: abort.signal,
-      });
+      // The stream's answer (its headers) must come within the time limit too: a peer that took the connection
+      // but never answers would otherwise hold the attempt for ever.
+      const headers = setTimeout(() => {
+        this.#cut = 'timeout';
+        abort.abort();
+      }, connectTimeoutMs);
+      let response: Response;
+      try {
+        response = await this.#fetch(`http://${target.address}/peer/v1/events`, {
+          headers: { authorization: `Bearer ${target.token}`, accept: 'text/event-stream' },
+          signal: abort.signal,
+        });
+      } catch (error) {
+        this.#failed(this.#cut ?? classifyFailure(error), describe(error));
+        return false;
+      } finally {
+        clearTimeout(headers);
+      }
       if (response.status === 401) {
-        this.#setState('auth-failed', 'the machine refused this pairing (revoked there?): pair again');
-        return 'failed';
+        this.#failed('auth', null, 'auth-failed');
+        return false;
       }
       if (response.status !== 200 || !response.body) {
-        this.#setState('offline', `the event stream answered HTTP ${response.status}`);
-        return 'failed';
+        this.#failed('http', `the event stream answered HTTP ${response.status}`);
+        return false;
       }
+      // A stream that goes quiet (no event, no keepalive) is cut and reconnected, not left for TCP to notice.
+      const stallMs = this.#options.stallMs ?? PEER_STALL_MS;
+      const armStall = (): void => {
+        clearTimeout(stall);
+        stall = setTimeout(() => {
+          this.#cut = 'stalled';
+          abort.abort();
+        }, stallMs);
+        stall.unref();
+      };
+      armStall();
       // Online once the stream is open; the caches follow (their events are already flowing).
-      await this.#refreshSessions(target, abort.signal);
+      try {
+        await this.#refreshSessions(target, abort.signal);
+      } catch (error) {
+        this.#failed(this.#cut ?? classifyFailure(error), describe(error));
+        return false;
+      }
+      online = true;
+      this.#trying = false;
+      this.#failures = 0;
+      this.#recent = [];
       this.#setState('online', null);
+      this.#attemptOver();
+      this.#emitStatus();
       void this.refreshInbox();
-      await readSse(
-        response.body,
-        (frame) => {
-          const name = frame.event as HubEventName;
-          if (!HUB_EVENT_NAMES.includes(name)) return;
-          let payload: unknown;
-          try {
-            payload = JSON.parse(frame.data);
-          } catch {
-            return;
-          }
-          this.#apply(name, payload as HubEvents[typeof name]);
-        },
-        abort.signal,
-      );
-      if (!this.#closed) this.#setState('offline', 'the event stream ended');
-      return 'streamed';
-    } catch (error) {
-      if (!this.#closed) this.#setState('offline', describe(error));
-      return 'failed';
+      let readError: unknown = null;
+      try {
+        await readSse(
+          response.body,
+          (frame) => {
+            const name = frame.event as HubEventName;
+            if (!HUB_EVENT_NAMES.includes(name)) return;
+            let payload: unknown;
+            try {
+              payload = JSON.parse(frame.data);
+            } catch {
+              return;
+            }
+            this.#apply(name, payload as HubEvents[typeof name]);
+          },
+          abort.signal,
+          armStall,
+        );
+      } catch (error) {
+        readError = error;
+      }
+      if (!this.#closed) {
+        const stallSeconds = Math.round(stallMs / 1000);
+        if (this.#cut === 'stalled') this.#dropped('stalled', `nothing for ${stallSeconds} s`);
+        else if (this.#cut) this.#dropped(this.#cut, null);
+        else if (readError) this.#dropped(classifyFailure(readError), describe(readError));
+        else this.#dropped('ended', null);
+      }
+      return true;
     } finally {
+      clearTimeout(stall);
       if (this.#abort === abort) this.#abort = null;
+      // A failed attempt never leaves a half-open stream behind.
+      if (!online) abort.abort();
     }
   }
 
@@ -336,7 +640,7 @@ export class PeerConnection {
         signal: AbortSignal.timeout(options.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
-      throw new PeerUnreachableError(`${target.address} could not be reached: ${describe(error)}`);
+      throw new PeerUnreachableError(`${target.address} could not be reached: ${describe(error)}`, { cause: error });
     }
     const bytes = Buffer.from(await response.arrayBuffer());
     const headers: Record<string, string> = {};
@@ -369,7 +673,7 @@ export class PeerConnection {
         signal: AbortSignal.any(signals),
       });
     } catch (error) {
-      throw new PeerUnreachableError(`${target.address} could not be reached: ${describe(error)}`);
+      throw new PeerUnreachableError(`${target.address} could not be reached: ${describe(error)}`, { cause: error });
     }
     const text = await response.text();
     let parsed: unknown = null;

@@ -238,7 +238,7 @@ describe('D52 · offline: the snapshot stays listed, every action is refused', (
     ] as const) {
       const refused = await b.call(method, route, body);
       expect(refused.status, `${method} ${route}`).toBe(502);
-      expect(refused.body).toMatchObject({ error: 'peer-unreachable', message: expect.stringMatching(/is offline — reconnect to continue$/) });
+      expect(refused.body).toMatchObject({ error: 'peer-unreachable', message: expect.stringMatching(/ is unreachable — /) });
     }
 
     // A is back: live again.

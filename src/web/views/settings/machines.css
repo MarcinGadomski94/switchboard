@@ -88,3 +88,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Fix · peer reconnects: the connection's status under the address (countdown, last error, hint). */
+.sb-mach-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-mach-state .sb-machine-spinner {
+  margin-right: 5px;
+  vertical-align: -1px;
+}

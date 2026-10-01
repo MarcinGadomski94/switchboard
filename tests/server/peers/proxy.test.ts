@@ -146,10 +146,11 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
     const id = remoteId(aId, local.id);
     await waitFor('listed on B', async () => ((await b.call('GET', '/api/sessions')).body as Session[]).some((session) => session.id === id));
     await a.server.stop();
+    // Fix · peer reconnects: `reconnecting` within the grace period (3 s for test servers), then `offline`.
     const listed = await waitFor('shown as offline', async () => {
       const sessions = (await b.call('GET', '/api/sessions')).body as Session[];
       const session = sessions.find((entry) => entry.id === id);
-      return session && session.machine?.state !== 'online' ? session : null;
+      return session && session.machine?.state === 'offline' ? session : null;
     });
     expect(listed.machine?.state).toBe('offline');
     const detail = await b.call('GET', `/api/sessions/${encodeURIComponent(id)}`);
@@ -189,7 +190,7 @@ describe('D48 ruling D48-cache-persist: the last known state survives a restart;
     for (const [method, route, body] of [['POST', '/messages', { text: 'hello' }], ['POST', '/pause', undefined], ['PUT', '/title', { title: 'x' }]] as const) {
       const refused = await b.call(method, `${path_}${route}`, body);
       expect(refused.status, route).toBe(502);
-      expect(refused.body).toMatchObject({ error: 'peer-unreachable', message: expect.stringMatching(/is offline — reconnect to continue$/) });
+      expect(refused.body).toMatchObject({ error: 'peer-unreachable', message: expect.stringMatching(/ is unreachable — /) });
     }
     expect((await b.call('GET', `${path_}/diff`)).status).toBe(502);
 

@@ -4,6 +4,7 @@ import { ApiError, api, machineApi } from '../api/client.ts';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent, useHubStatus } from '../api/useHub.ts';
+import { useMachineStateChange } from '../api/useMachines.ts';
 import { useRouter } from '../router.tsx';
 import { CELL_COLOR, TERMINAL_LOOP_NOTE, type LoopCardModel, loopCards } from './loops.ts';
 import './loops.css';
@@ -37,6 +38,8 @@ export function LoopCards() {
     if (fetched.data) setSessions(fetched.data);
   }, [fetched.data]);
 
+  // Fix · peer reconnects: a paired machine's state changed: its terminal loops' blocks follow at once.
+  useMachineStateChange(terminal.reload);
   useHubEvent('sessionUpdated', (session) => {
     setSessions((current) => {
       if (current === null) return current;

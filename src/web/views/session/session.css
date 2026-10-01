@@ -1190,3 +1190,10 @@ a.sb-agent--link:focus-visible {
 .sb-chat-message[data-queued-note='true'] .sb-chat-queued {
   bottom: 34px;
 }
+
+/* Fix · peer reconnects: the non-blocking note under the composer while a peer's machine reconnects. */
+.sb-chat-reconnecting {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-2);
+}

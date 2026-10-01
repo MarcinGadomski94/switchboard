@@ -12,6 +12,7 @@ import type { ApiContext } from '../routes.ts';
  * - `POST /api/machines/pairing-code` → `{ code, expiresAt }` ("Allow a new peer").
  * - `POST /api/machines` `{ address, code }` → 201 Machine ("Add machine").
  * - `PUT /api/machines/{id}` `{ name }`, `DELETE /api/machines/{id}` (revoke).
+ * - `POST /api/machines/{id}/reconnect` → ReconnectResult (Reconnect now; fix · peer reconnects).
  * - `/api/machines/{id}/api/*`: that machine's peer API (its folders, models,
  *   branching preflight, new sessions, terminal sessions and hooks), answers namespaced.
  *
@@ -56,6 +57,30 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
       return sendPeerError(reply, error);
     }
   });
+
+  // Fix · peer reconnects: Reconnect now (cuts the wait; joins an attempt already running; never two at once).
+  app.post<{ Params: { id: string } }>('/api/machines/:id/reconnect', async (request, reply) => {
+    try {
+      return await peers.reconnect(request.params.id);
+    } catch (error) {
+      return sendPeerError(reply, error);
+    }
+  });
+
+  // Fix · peer reconnects, tests only (`SWITCHBOARD_PEER_TEST_HOOKS=1`): a dropped stream and an outage of the listener.
+  if (context.config.peerTestHooks) {
+    app.post('/api/test/peers/drop', async () => ({ dropped: peers.testDropStreams() }));
+    app.post('/api/test/peers/outage', async (request, reply) => {
+      const ms = (request.body as { ms?: unknown } | null)?.ms;
+      if (typeof ms !== 'number' || !Number.isInteger(ms) || ms < 0 || ms > 600_000) return reply.code(422).send({ error: 'invalid', message: 'ms must be 0–600000' });
+      await peers.testOutage(ms);
+      return reply.code(204).send();
+    });
+    app.delete('/api/test/peers/outage', async (_request, reply) => {
+      await peers.testEndOutage();
+      return reply.code(204).send();
+    });
+  }
 
   app.delete<{ Params: { id: string } }>('/api/machines/:id', async (request, reply) => {
     try {

@@ -14,7 +14,9 @@ import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
 import { SubagentChatView, isEditing } from './SubagentChat.tsx';
 import { OVERLAY_SELECTOR, mainChatPlace, rememberMainChat } from './subagent-chat.ts';
-import { offlineReason } from '../../../core/peers.ts';
+import { type SessionMachine, offlineReason } from '../../../core/peers.ts';
+import { useLiveMachine } from '../../api/useMachines.ts';
+import { MachineStatusNote } from '../../components/MachineStatusNote.tsx';
 import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPING_LABEL, withdrawnDraft } from '../../../core/stop-turn.ts';
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
@@ -103,7 +105,9 @@ interface MainChatProps {
 function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
   // D57: the composer's attachments upload to this session as soon as they are added (paste, drop, 📎).
-  const blockedEarly = offlineReason(session?.machine);
+  // Fix · peer reconnects: the machine's live state; `reconnecting` blocks nothing (actions are held until it is back).
+  const machine = useLiveMachine(session?.machine);
+  const blockedEarly = offlineReason(machine);
   const attachments = useAttachmentDraft(blockedEarly === null ? (body) => api.uploadAttachment(sessionId, body) : undefined);
   const drop = useFileDrop(attachments.add, blockedEarly === null);
   const clearAttachments = attachments.clear;
@@ -150,7 +154,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   };
 
   // D48 ruling D48-cache-persist: an unreachable machine's session is readable (its last known state), nothing more.
-  const blocked = offlineReason(session?.machine);
+  const blocked = offlineReason(machine);
   const answer = async (batchId: string, body: AnswerBatch): Promise<void> => {
     setAnswering({ batchId, busy: true, error: null });
     stick.current = true;
@@ -194,6 +198,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <Composer
         sessionId={sessionId}
         blocked={blocked}
+        machine={machine ?? null}
         attachments={attachments}
         // D50: while a turn runs, Send becomes ■ Stop (and Esc stops it).
         stoppable={session !== null && blocked === null && canStop({ live: session.live, status: session.status, activity, hooked: session.hooked === true })}
@@ -258,6 +263,7 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
 function Composer({
   sessionId,
   blocked,
+  machine,
   attachments,
   stoppable: turnRuns,
   background,
@@ -270,6 +276,8 @@ function Composer({
   readonly stoppable: boolean;
   /** D48 ruling D48-cache-persist: why nothing can be sent now (the machine is offline); `null` = send as usual. */
   readonly blocked: string | null;
+  /** Fix · peer reconnects: a peer's session's machine (live state): its note (with Reconnect now) under the composer. */
+  readonly machine: SessionMachine | null;
   /** D57: the draft's attachments (chips above the field; paste, drop and 📎 add to them). */
   readonly attachments: AttachmentDraft;
   readonly background: readonly BackgroundTask[];
@@ -495,10 +503,9 @@ function Composer({
           </button>
         )}
       </div>
-      {blocked ? (
-        <div className="sb-chat-error" data-testid="chat-blocked" role="note">
-          {blocked}
-        </div>
+      {/* Fix · peer reconnects: offline → the blocked note with the countdown and Reconnect now; reconnecting → a note only. */}
+      {machine && machine.state !== 'online' ? (
+        <MachineStatusNote machine={machine} testId={blocked ? 'chat-blocked' : 'chat-reconnecting'} className={blocked ? 'sb-chat-error' : 'sb-chat-reconnecting'} />
       ) : null}
       {stopTimedOut ? (
         <div className="sb-chat-error" data-testid="chat-stop-timeout" role="alert">

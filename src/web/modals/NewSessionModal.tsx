@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useId, useState } from 'react';
 import type { Folder, HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
 import { DEFAULT_MODEL_CHOICE } from '../../core/model-choice.ts';
+import { machineTagSuffix } from '../../core/peers.ts';
 import type { NewSessionMode } from '../../core/settings.ts';
 import { formatHistoryDate } from '../../core/history.ts';
 import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
@@ -502,8 +503,9 @@ export function NewSessionModal({
           >
             <option value="">{`This machine${machines.data ? ` (${machines.data.self.name})` : ''}`}</option>
             {peerMachines.map((entry) => (
-              <option key={entry.id} value={entry.id} disabled={entry.state !== 'online'}>
-                {entry.state === 'online' ? entry.name : `${entry.name} (${entry.state})`}
+              // Fix · peer reconnects: a reconnecting machine can be chosen (its calls wait for the reconnection).
+              <option key={entry.id} value={entry.id} disabled={entry.state !== 'online' && entry.state !== 'reconnecting'}>
+                {entry.state === 'online' ? entry.name : `${entry.name} (${machineTagSuffix(entry.state) ?? entry.state})`}
               </option>
             ))}
           </select>

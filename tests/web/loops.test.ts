@@ -181,7 +181,7 @@ describe('D52 · a peer\'s loops and terminal sessions\' loops', () => {
     const [card] = loopCards([], NOW, [entry]);
     expect(card).toMatchObject({ sessionId: 'cs1', sessionName: 'Terminal · repo-a', status: 'run', terminalId: 'cs1', machine: PEER, blocked: null });
     const [offline] = loopCards([], NOW, [{ ...entry, terminal: { ...entry.terminal, name: 'pc-loop', status: 'waiting' }, machine: { ...PEER, state: 'offline' as const } }]);
-    expect(offline).toMatchObject({ sessionName: 'pc-loop', status: 'need', border: NEED_BORDER, blocked: 'pc-office is offline — reconnect to continue' });
+    expect(offline).toMatchObject({ sessionName: 'pc-loop', status: 'need', border: NEED_BORDER, blocked: 'pc-office is unreachable' });
     // Sorted with the sessions' loops by start.
     const both = loopCards([session({ loops: [loop({ createdAt: '2026-09-28T12:00:00.000Z' })] })], NOW, [entry]);
     expect(both.map((c) => c.terminalId)).toEqual(['cs1', null]);

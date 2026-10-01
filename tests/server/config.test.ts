@@ -18,6 +18,8 @@ describe('loadConfig', () => {
       openCommand: null,
       tailscaleCommand: ['tailscale'],
       peerTestLoopback: false,
+      peerTimings: {},
+      peerTestHooks: false,
     });
     expect(DEFAULT_PORT).toBe(13001);
     expect(LOOPBACK_HOST).toBe('127.0.0.1');
@@ -118,5 +120,25 @@ describe('defaultDataDir (gap #18)', () => {
     expect(defaultDataDir('linux', {}, '/home/dev')).toBe('/home/dev/.local/share/switchboard');
     expect(defaultDataDir('linux', { XDG_DATA_HOME: '/data/xdg' }, '/home/dev')).toBe('/data/xdg/switchboard');
     expect(defaultDataDir('linux', { XDG_DATA_HOME: 'relative' }, '/home/dev')).toBe('/home/dev/.local/share/switchboard');
+  });
+});
+
+describe('peer timings and test hooks (fix · peer reconnects)', () => {
+  it('reads the grace, stall and hold times in milliseconds; unset keeps the defaults', () => {
+    expect(loadConfig({ env: {} }).peerTimings).toEqual({});
+    expect(loadConfig({ env: { SWITCHBOARD_PEER_GRACE_MS: '3000', SWITCHBOARD_PEER_STALL_MS: ' 1500 ', SWITCHBOARD_PEER_HOLD_MS: '' } }).peerTimings).toEqual({ graceMs: 3000, stallMs: 1500 });
+    expect(loadConfig({ env: { SWITCHBOARD_PEER_HOLD_MS: '250' } }).peerTimings).toEqual({ holdMs: 250 });
+  });
+
+  it('refuses a value that is not whole milliseconds in 100–600000', () => {
+    for (const raw of ['abc', '99', '600001', '1.5', '-5']) {
+      expect(() => loadConfig({ env: { SWITCHBOARD_PEER_GRACE_MS: raw } }), raw).toThrow(ConfigError);
+    }
+  });
+
+  it('turns the test hooks on only for SWITCHBOARD_PEER_TEST_HOOKS=1', () => {
+    expect(loadConfig({ env: {} }).peerTestHooks).toBe(false);
+    expect(loadConfig({ env: { SWITCHBOARD_PEER_TEST_HOOKS: 'true' } }).peerTestHooks).toBe(false);
+    expect(loadConfig({ env: { SWITCHBOARD_PEER_TEST_HOOKS: '1' } }).peerTestHooks).toBe(true);
   });
 });

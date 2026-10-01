@@ -143,7 +143,7 @@ test('with A gone, A\'s schedule stays listed (unreachable) and its actions are 
   const page = await pageOf(browser, b, '/schedules');
   const row = page.locator('[data-testid="schedule-row"][data-schedule="kept"]');
   await expect(row.getByTestId('schedule-machine')).toContainText('unreachable', { timeout: 30_000 });
-  const reason = /is offline — reconnect to continue$/;
+  const reason = /is unreachable$/;
   for (const id of ['schedule-run', 'schedule-pause', 'schedule-edit']) {
     await expect(row.getByTestId(id)).toBeDisabled();
     await expect(row.getByTestId(id)).toHaveAttribute('title', reason);

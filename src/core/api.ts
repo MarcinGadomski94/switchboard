@@ -18,7 +18,7 @@ import type { UpdateStatus } from './updates.ts';
 import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
-import type { SessionMachine } from './peers.ts';
+import type { MachineStateEvent, SessionMachine } from './peers.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type {
   AgentKind,
@@ -1882,6 +1882,14 @@ export interface HubEvents {
    * `GET /api/updates` answer. This machine's only: never forwarded between peers.
    */
   readonly updateChanged: UpdateStatus;
+  /**
+   * Additive (fix · peer reconnects): a paired machine's connection changed
+   * (state, an attempt started or failed, the next try scheduled), or it was
+   * paired, renamed or removed; the payload is that machine as `GET
+   * /api/machines` lists it (`removed: true` once removed). This machine's only:
+   * never forwarded between peers.
+   */
+  readonly machineState: MachineStateEvent;
 }
 
 /** D52: what happened to a schedule (`schedulesChanged`). */
@@ -1903,6 +1911,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'schedulesChanged',
   'sidebarLayoutChanged',
   'updateChanged',
+  'machineState',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

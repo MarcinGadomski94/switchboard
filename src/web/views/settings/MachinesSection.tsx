@@ -2,13 +2,20 @@ import { useEffect, useState } from 'react';
 import type { Machine, PairingCode } from '../../../core/peers.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
+import { useHubEvent } from '../../api/useHub.ts';
+import { rememberMachine, rememberMachines } from '../../api/useMachines.ts';
+import { ReconnectButton } from '../../components/MachineStatusNote.tsx';
+import { machineStatusView } from '../../components/machine-status.ts';
 import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText } from './machines.ts';
 import { Row, SectionTitle } from './rows.tsx';
 import { MachineHooks } from './MachineHooks.tsx';
 import './machines.css';
 
-/** Refreshes the state dots while the section is open. */
-const REFRESH_MS = 3_000;
+/**
+ * A fallback refresh while the section is open: the rows follow the `/hub` event
+ * `machineState` live (fix · peer reconnects; before it, a 3 s poll).
+ */
+const REFRESH_MS = 15_000;
 
 function errorText(caught: unknown, fallback: string): string {
   return caught instanceof ApiError ? refusalText(caught.body, fallback) : fallback;
@@ -24,6 +31,14 @@ function errorText(caught: unknown, fallback: string): string {
  */
 export function MachinesSection() {
   const view = useApi(api.machines);
+  // Fix · peer reconnects: every connection change (state, an attempt, the next try) shows at once.
+  useHubEvent('machineState', (machine) => {
+    rememberMachine(machine);
+    view.reload();
+  });
+  useEffect(() => {
+    if (view.data) rememberMachines(view.data.machines);
+  }, [view.data]);
   const [tick, setTick] = useState(0);
   const [code, setCode] = useState<PairingCode | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -159,7 +174,7 @@ export function MachinesSection() {
           ) : null}
           <div className="sb-mach-list" data-testid="machines-list">
             {data.machines.map((machine) => (
-              <MachineRow key={machine.id} machine={machine} busy={busy !== null} run={run} />
+              <MachineRow key={machine.id} machine={machine} busy={busy !== null} run={run} now={now} />
             ))}
             {data.machines.length === 0 ? (
               <div className="sb-set-note" data-testid="machines-empty">
@@ -182,13 +197,17 @@ function MachineRow({
   machine,
   busy,
   run,
+  now,
 }: {
   readonly machine: Machine;
   readonly busy: boolean;
   readonly run: (key: string, action: () => Promise<unknown>, fallback: string) => Promise<void>;
+  readonly now: number;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(machine.name);
+  // Fix · peer reconnects: what the connection is doing (countdown, last error, hint) and Reconnect now.
+  const status = machineStatusView(machine, machine.connection, now);
   return (
     <div className="sb-set-row sb-mach" data-testid="machine" data-machine-id={machine.id} data-state={machine.state}>
       <div className="sb-set-row-text">
@@ -200,16 +219,25 @@ function MachineRow({
             <span data-testid="machine-name">{machine.name}</span>
           )}
           <span className="sb-mach-state" data-testid="machine-state">
+            {status?.busy ? <span className="sb-machine-spinner" data-testid="machine-spinner" aria-hidden="true" /> : null}
             {machineStateLabel(machine.state)}
           </span>
         </div>
         <div className="sb-set-row-desc" data-mono="" data-testid="machine-detail">
           {machineDetail(machine)}
         </div>
+        {status ? (
+          <div className="sb-set-row-desc sb-mach-status" data-testid="machine-status" role="status">
+            <span data-testid="machine-status-text">{status.line}</span>
+            {status.detail ? <span data-testid="machine-status-detail">{status.detail}</span> : null}
+            {status.hint ? <span data-testid="machine-status-hint">{status.hint}</span> : null}
+          </div>
+        ) : null}
         {/* D48 P4: that machine's terminal sessions and hooks, through its peer API. */}
         {machine.state === 'online' ? <MachineHooks machine={machine.id} name={machine.name} /> : null}
       </div>
       <div className="sb-set-folder-actions">
+        {status?.canReconnect ? <ReconnectButton id={machine.id} className="sb-set-action" testId="machine-reconnect" /> : null}
         {renaming ? (
           <>
             <button

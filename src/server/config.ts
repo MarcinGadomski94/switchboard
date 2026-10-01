@@ -50,6 +50,35 @@ export interface ServerConfig {
    * peer listener binds only a Tailscale address (100.64.0.0/10).
    */
   readonly peerTestLoopback: boolean;
+  /**
+   * Fix · peer reconnects (`docs/peers.md` → *Connection states*): the peer
+   * connections' grace period, stall limit and hold time, from
+   * `SWITCHBOARD_PEER_GRACE_MS`, `SWITCHBOARD_PEER_STALL_MS` and
+   * `SWITCHBOARD_PEER_HOLD_MS` (whole milliseconds, 100–600000); unset = the
+   * defaults. Meant for tests and tuning.
+   */
+  readonly peerTimings: { readonly graceMs?: number; readonly stallMs?: number; readonly holdMs?: number };
+  /**
+   * Fix · peer reconnects, **tests only**: `SWITCHBOARD_PEER_TEST_HOOKS=1` adds
+   * `POST /api/test/peers/drop` (cut the peers' open streams) and
+   * `POST|DELETE /api/test/peers/outage` (stop the peer listener for a while).
+   */
+  readonly peerTestHooks: boolean;
+}
+
+/** A millisecond setting of the peer timings; `undefined` when unset. */
+function parsePeerMs(name: string, raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value < 100 || value > 600_000) throw new ConfigError(`${name} must be whole milliseconds between 100 and 600000`);
+  return value;
+}
+
+function parsePeerTimings(env: NodeJS.ProcessEnv): ServerConfig['peerTimings'] {
+  const graceMs = parsePeerMs('SWITCHBOARD_PEER_GRACE_MS', env['SWITCHBOARD_PEER_GRACE_MS']);
+  const stallMs = parsePeerMs('SWITCHBOARD_PEER_STALL_MS', env['SWITCHBOARD_PEER_STALL_MS']);
+  const holdMs = parsePeerMs('SWITCHBOARD_PEER_HOLD_MS', env['SWITCHBOARD_PEER_HOLD_MS']);
+  return { ...(graceMs === undefined ? {} : { graceMs }), ...(stallMs === undefined ? {} : { stallMs }), ...(holdMs === undefined ? {} : { holdMs }) };
 }
 
 /** Thrown when an environment variable has an unusable value. */
@@ -167,5 +196,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,
     tailscaleCommand: parseCommand('SWITCHBOARD_TAILSCALE_BIN', env['SWITCHBOARD_TAILSCALE_BIN'], 'tailscale'),
     peerTestLoopback: env['SWITCHBOARD_PEER_TEST_LOOPBACK'] === '1',
+    peerTimings: parsePeerTimings(env),
+    peerTestHooks: env['SWITCHBOARD_PEER_TEST_HOOKS'] === '1',
   };
 }

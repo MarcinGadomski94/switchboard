@@ -8,6 +8,8 @@ import { InlineTitle } from '../../components/InlineTitle.tsx';
 import { PhoneGlyph } from '../../components/PhoneGlyph.tsx';
 import { MachineTag } from '../../components/MachineTag.tsx';
 import { offlineReason } from '../../../core/peers.ts';
+import { useLiveMachine } from '../../api/useMachines.ts';
+import { MachineStatusNote } from '../../components/MachineStatusNote.tsx';
 import { Link, type SessionTab, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import {
@@ -113,7 +115,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   // D48 P4: a hooked terminal session: what hooks cannot do is not offered (the note says where it stays).
   const hooked = session?.hooked === true;
   // D48 ruling D48-cache-persist: an unreachable machine's session shows its last known state; every action waits for the reconnection.
-  const blocked = offlineReason(session?.machine);
+  // Fix · peer reconnects: the machine's live state (a block lifts the moment it is back); `reconnecting` blocks nothing.
+  const machine = useLiveMachine(session?.machine);
+  const blocked = offlineReason(machine);
   const pause = session && !hooked ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
   const remote = session && !hooked ? remoteToggle(session) : null;
@@ -243,11 +247,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           )}
         </div>
       </div>
-      {blocked ? (
-        <div className="sb-sv-remote-copy" data-testid="session-offline-note">
-          {blocked}
-        </div>
-      ) : null}
+      {/* Fix · peer reconnects: "Reconnecting to …" (nothing blocked) or "… is unreachable · retrying in 8 s" with Reconnect now. */}
+      <MachineStatusNote machine={machine} testId="session-offline-note" className="sb-sv-remote-copy" />
       {hooked ? (
         <div className="sb-sv-remote-copy" data-testid="session-hooked-note">
           {HOOKED_NOTE}

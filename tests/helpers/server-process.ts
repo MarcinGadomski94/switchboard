@@ -64,6 +64,8 @@ export function testServerDefaults(): Record<string, string> {
     // Never the real home's login service (settings.spec read the developer's plist as "on").
     SWITCHBOARD_SERVICE_HOME: TEST_SERVICE_HOME,
     SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),
+    // Fix · peer reconnects: a paired machine that dropped is `reconnecting` for 3 s (not 20 s) before `offline`.
+    SWITCHBOARD_PEER_GRACE_MS: '3000',
   };
 }
 

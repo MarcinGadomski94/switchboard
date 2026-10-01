@@ -53,7 +53,7 @@ import type {
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
-import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState } from '../../core/peers.ts';
+import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
 /**
  * Typed client for the local API (`docs/handoff/contracts/local-api.md`). Every
@@ -272,6 +272,8 @@ export const api = {
   addMachine: (body: AddMachineInput) => request<Machine>('POST', '/api/machines', body),
   renameMachine: (id: string, name: string) => request<Machine>('PUT', `/api/machines/${enc(id)}`, { name }),
   removeMachine: (id: string) => request<null>('DELETE', `/api/machines/${enc(id)}`),
+  /** Fix · peer reconnects: Reconnect now (cuts the wait, tries at once; answers when the attempt is over). */
+  reconnectMachine: (id: string) => request<ReconnectResult>('POST', `/api/machines/${enc(id)}/reconnect`),
 } as const;
 
 /**

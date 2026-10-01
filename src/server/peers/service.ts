@@ -12,7 +12,9 @@ import {
   type PairingCode,
   type PeerListenerInput,
   type PeerListenerState,
+  type ReconnectResult,
   cleanMachineName,
+  connectionHint,
   formatPeerAddress,
   isMachineId,
   isPort,
@@ -28,7 +30,7 @@ import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { KEEPALIVE_FRAME, SSE_CONTENT_TYPE, formatEvent } from '../hub/hub.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { TOKEN_COOKIE } from '../security.ts';
-import { PEER_RAW_HEADERS, PeerConnection, PeerUnreachableError } from './client.ts';
+import { PEER_RAW_HEADERS, PeerConnection, type PeerConnectionStatus, PeerUnreachableError } from './client.ts';
 import { type PeerApiAnswer, type PeerHandlers, buildPeerApp, listenPeer } from './listener.ts';
 import { PairingCodes } from './pairing.ts';
 import { tailscaleIPv4 } from './tailscale.ts';
@@ -66,6 +68,12 @@ export const PEER_LONG_TIMEOUT_MS = 180_000;
 
 /** Time limit of the other forwarded calls. */
 export const PEER_FORWARD_TIMEOUT_MS = 30_000;
+
+/**
+ * Fix · peer reconnects: how long an action on a `reconnecting` machine is held
+ * for the reconnection before it is refused (ASSUMED reconnect-hold).
+ */
+export const PEER_HOLD_MS = 10_000;
 
 /** D52: a peer's schedules / terminal loops are fetched again when a list read finds them older than this. */
 export const PEER_LIST_STALE_MS = 10_000;
@@ -161,8 +169,23 @@ export interface PeerServiceOptions {
   readonly onError?: (error: unknown) => void;
   /** The service's version, told to peers. */
   readonly version?: string;
-  /** Reconnect backoff bounds (tests shorten them). */
-  readonly backoff?: { readonly minMs: number; readonly maxMs: number };
+  /**
+   * Fix · peer reconnects: the connections' timings (`ServerConfig.peerTimings`;
+   * tests shorten them). Absent fields keep the defaults.
+   */
+  readonly timings?: PeerTimings;
+  /** Connection state changes and failed attempts (default: `console.info` / `console.warn`). Never a token. */
+  readonly log?: (level: 'info' | 'warn', message: string) => void;
+}
+
+/** Fix · peer reconnects: tunable timings of the peer connections. */
+export interface PeerTimings {
+  /** `reconnecting` → `offline` after this long (default `PEER_GRACE_MS`). */
+  readonly graceMs?: number;
+  /** A quiet stream counts as stalled after this long (default `PEER_STALL_MS`). */
+  readonly stallMs?: number;
+  /** An action on a `reconnecting` machine waits at most this long (default {@link PEER_HOLD_MS}). */
+  readonly holdMs?: number;
 }
 
 /** A refusal of a machines action, sent as `{ error, message }` with `status`. */
@@ -192,7 +215,12 @@ export class PeerService implements PeerHandlers {
   readonly #token: string;
   readonly #onError: (error: unknown) => void;
   readonly #version: string;
-  readonly #backoff: { readonly minMs: number; readonly maxMs: number } | undefined;
+  readonly #timings: PeerTimings;
+  readonly #log: (level: 'info' | 'warn', message: string) => void;
+  /** Per machine: the state last logged and the failed attempt last logged (so the log tells each change once). */
+  readonly #logged = new Map<string, { state: MachineState | null; attempt: number; failures: number }>();
+  /** Tests only (`SWITCHBOARD_PEER_TEST_HOOKS`): the end of a simulated outage of the listener. */
+  #outage: NodeJS.Timeout | undefined;
   readonly #pairing = new PairingCodes();
   readonly #connections = new Map<string, PeerConnection>();
   /** The machines' records, by id (kept in step with the store by every change here). */
@@ -223,7 +251,13 @@ export class PeerService implements PeerHandlers {
     this.#token = options.token;
     this.#onError = options.onError ?? ((error) => console.error('switchboard peers:', error));
     this.#version = options.version ?? '0.1.0';
-    this.#backoff = options.backoff;
+    this.#timings = options.timings ?? options.config.peerTimings ?? {};
+    this.#log =
+      options.log ??
+      ((level, message) => {
+        if (level === 'warn') console.warn(`switchboard peers: ${message}`);
+        else console.info(`switchboard peers: ${message}`);
+      });
   }
 
   /** The local app the peer API injects into (set once it is built). */
@@ -260,6 +294,7 @@ export class PeerService implements PeerHandlers {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    clearTimeout(this.#outage);
     await this.#listenerChange.catch(() => undefined);
     for (const stream of [...this.#inbound]) stream.close();
     await Promise.all([...this.#connections.values()].map((connection) => connection.close()));
@@ -389,6 +424,8 @@ export class PeerService implements PeerHandlers {
 
   #machine(record: MachineRecord): Machine {
     const connection = this.#connections.get(record.id);
+    const status = connection?.status;
+    const iso = (ms: number | null | undefined): string | null => (ms === null || ms === undefined ? null : new Date(ms).toISOString());
     return {
       id: record.id,
       name: record.name,
@@ -397,7 +434,100 @@ export class PeerService implements PeerHandlers {
       lastError: connection?.lastError ?? null,
       lastSeenAt: record.lastSeenAt,
       pairedAt: record.pairedAt,
+      connection: {
+        attempt: status?.attempt ?? 0,
+        trying: status?.trying ?? false,
+        nextAttemptAt: status && !status.trying && status.state !== 'online' ? iso(status.nextAttemptAt) : null,
+        graceUntil: iso(status?.graceUntil),
+        lastFailure: status?.lastFailure ? { kind: status.lastFailure.kind, message: status.lastFailure.message, at: new Date(status.lastFailure.at).toISOString() } : null,
+        hint: status && status.state !== 'online' ? connectionHint(record.name, status.recentFailures) : null,
+      },
     };
+  }
+
+  /**
+   * Fix · peer reconnects: **Reconnect now** (`POST /api/machines/{id}/reconnect`).
+   * Cuts the wait and tries at once (joining an attempt that already runs: never
+   * two at once); answers when that attempt is over.
+   */
+  async reconnect(id: string): Promise<ReconnectResult> {
+    const record = this.#records.get(id);
+    const connection = this.#connections.get(id);
+    if (!record || !connection) throw new PeerError(404, 'not-found', `no machine ${id}`);
+    if (connection.state !== 'online') this.#log('info', `${this.#label(record)}: Reconnect now`);
+    const outcome = await connection.reconnectNow();
+    const current = this.#records.get(id) ?? record;
+    return { outcome, machine: this.#machine(current) };
+  }
+
+  /** `name (id)` for the log. */
+  #label(record: MachineRecord): string {
+    return `${record.name} (${record.id})`;
+  }
+
+  /** Publishes a machine's status on `/hub` (`machineState`: Settings → Machines and every note follow it live). */
+  #publishMachine(id: string): void {
+    const record = this.#records.get(id);
+    if (!record || this.#closed) return;
+    this.#bus.publish('machineState', this.#machine(record));
+  }
+
+  /** Logs a state change (with the reason and attempt count) and each failed attempt, once. */
+  #logStatus(id: string, status: PeerConnectionStatus): void {
+    const record = this.#records.get(id);
+    if (!record) return;
+    const seen = this.#logged.get(id) ?? { state: null, attempt: 0, failures: 0 };
+    const label = this.#label(record);
+    const reason = status.lastFailure?.message ?? status.lastError ?? 'unknown';
+    if (seen.state !== status.state) {
+      const from = seen.state ?? 'start';
+      if (status.state === 'online') this.#log('info', `${label}: ${from} → online${seen.failures > 0 ? ` after ${seen.failures} failed attempt${seen.failures === 1 ? '' : 's'}` : ''}`);
+      else if (status.state === 'reconnecting') this.#log(seen.state === 'online' ? 'warn' : 'info', seen.state === null ? `${label}: connecting` : `${label}: ${from} → reconnecting (${reason})`);
+      else this.#log('warn', `${label}: ${from} → ${status.state} (${reason}; ${status.attempt} failed attempt${status.attempt === 1 ? '' : 's'})`);
+      seen.state = status.state;
+    }
+    if (status.state === 'online') {
+      seen.attempt = 0;
+      seen.failures = 0;
+    } else if (!status.trying && status.attempt > seen.attempt) {
+      seen.attempt = status.attempt;
+      seen.failures = status.attempt;
+      // Every failed attempt while reconnecting, then the first five and every 20th (a long outage stays readable).
+      if (status.state === 'reconnecting' || status.attempt <= 5 || status.attempt % 20 === 0) {
+        const next = status.nextAttemptAt === null ? '' : `; next try in ${Math.max(0, Math.round((status.nextAttemptAt - Date.now()) / 1000))} s`;
+        this.#log('info', `${label}: attempt ${status.attempt} failed (${reason})${next}`);
+      }
+    }
+    this.#logged.set(id, seen);
+  }
+
+  /**
+   * Tests only (`SWITCHBOARD_PEER_TEST_HOOKS=1`): closes every peer's open event
+   * stream to this machine, as a dropped connection would (they reconnect at once).
+   */
+  testDropStreams(): number {
+    const streams = [...this.#inbound];
+    for (const stream of streams) stream.res.destroy();
+    return streams.length;
+  }
+
+  /**
+   * Tests only (`SWITCHBOARD_PEER_TEST_HOOKS=1`): an outage of this machine's
+   * peer listener: it stops now (peers get "connection refused") and starts again
+   * after `ms`, or at {@link testEndOutage}.
+   */
+  async testOutage(ms: number): Promise<void> {
+    clearTimeout(this.#outage);
+    await this.#listenerChange.catch(() => undefined);
+    await this.#stopListener();
+    this.#outage = setTimeout(() => void this.testEndOutage(), ms);
+  }
+
+  /** Tests only: ends a {@link testOutage} now (the listener starts again). */
+  async testEndOutage(): Promise<void> {
+    clearTimeout(this.#outage);
+    this.#outage = undefined;
+    if (!this.#closed) await this.#applyListener();
   }
 
   #ref(machineId: string): PeerMachineRef | null {
@@ -462,6 +592,7 @@ export class PeerService implements PeerHandlers {
     if (!record) throw new PeerError(404, 'not-found', `no machine ${id}`);
     this.#records.set(id, record);
     this.#publishMachineSessions(id);
+    this.#publishMachine(id);
     return this.#machine(record);
   }
 
@@ -477,8 +608,11 @@ export class PeerService implements PeerHandlers {
   async #forget(id: string): Promise<void> {
     const sessions = this.#connections.get(id)?.sessions ?? [];
     const ref = this.#ref(id);
+    const record = this.#records.get(id);
+    const gone = record ? this.#machine(record) : null;
     await this.#connections.get(id)?.close();
     this.#connections.delete(id);
+    this.#logged.delete(id);
     await this.#store.peerSnapshots.deleteMachine(id);
     await this.#store.machines.delete(id);
     this.#records.delete(id);
@@ -486,6 +620,8 @@ export class PeerService implements PeerHandlers {
     this.#lists.delete(id);
     for (const stream of [...this.#inbound]) if (stream.machineId === id) stream.close();
     if (ref) for (const session of sessions) this.#publishFromPeer('sessionUpdated', peerSession({ ...ref, state: 'offline' }, session));
+    // Fix · peer reconnects: Settings → Machines (and every note) drop it at once.
+    if (gone && !this.#closed) this.#bus.publish('machineState', { ...gone, removed: true });
     await this.#publishInboxCount();
   }
 
@@ -504,6 +640,10 @@ export class PeerService implements PeerHandlers {
       ownAddress: () => this.#listening,
       onEvent: (name, payload) => this.#onPeerEvent(id, name, payload),
       onState: (state) => this.#onPeerState(id, state),
+      onStatus: (status) => {
+        this.#logStatus(id, status);
+        this.#publishMachine(id);
+      },
       onCache: () => {
         void this.#saveSessions(id);
       },
@@ -511,7 +651,8 @@ export class PeerService implements PeerHandlers {
         void this.#touch(id);
       },
       onError: (error) => this.#onError(error),
-      ...(this.#backoff ? { minBackoffMs: this.#backoff.minMs, maxBackoffMs: this.#backoff.maxMs } : {}),
+      ...(this.#timings.graceMs !== undefined ? { graceMs: this.#timings.graceMs } : {}),
+      ...(this.#timings.stallMs !== undefined ? { stallMs: this.#timings.stallMs } : {}),
     });
     this.#connections.set(id, connection);
     if (this.#started) connection.start();
@@ -539,6 +680,9 @@ export class PeerService implements PeerHandlers {
   }
 
   #onPeerState(id: string, state: MachineState): void {
+    const connection = this.#connections.get(id);
+    if (connection) this.#logStatus(id, connection.status);
+    this.#publishMachine(id);
     this.#publishMachineSessions(id);
     void this.#publishInboxCount();
     // D52: (re)connected: its schedules and terminal loops are fetched again.
@@ -708,8 +852,14 @@ export class PeerService implements PeerHandlers {
         const stored = await this.#store.peerSnapshots.get(machineId, snapshot.kind, snapshot.key);
         if (stored !== undefined) return { status: 200, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, stored) };
       }
-      return { status: 502, body: { error: 'peer-unreachable', message: offlineMessage(ref.name), reason } };
+      const current = this.#ref(machineId) ?? ref;
+      return { status: 502, body: { error: 'peer-unreachable', message: unreachableMessage(current), reason, state: current.state } };
     };
+    // Fix · peer reconnects: while it reconnects, a read with a snapshot answers from it at once; anything else is
+    // held for the reconnection (at most the hold time, or until the grace ends).
+    if (connection.state === 'reconnecting' && !(snapshot && (await this.#store.peerSnapshots.get(machineId, snapshot.kind, snapshot.key)) !== undefined)) {
+      await connection.whenSettled(this.#timings.holdMs ?? PEER_HOLD_MS);
+    }
     // Nothing is sent to a machine that is not connected: reads come from the snapshot, everything else is refused at once.
     if (connection.state !== 'online') return offline(connection.lastError ?? connection.state);
     let answer: { status: number; body: unknown };
@@ -742,7 +892,11 @@ export class PeerService implements PeerHandlers {
     const connection = this.#connections.get(machineId);
     const ref = this.#ref(machineId);
     if (!connection || !ref) return { status: 404, bytes: null, headers: {}, body: { error: 'not-found', message: `no paired machine ${machineId}` } };
-    const offline = (reason: string) => ({ status: 502, bytes: null, headers: {}, body: { error: 'peer-unreachable', message: offlineMessage(ref.name), reason } });
+    const offline = (reason: string) => {
+      const current = this.#ref(machineId) ?? ref;
+      return { status: 502, bytes: null, headers: {}, body: { error: 'peer-unreachable', message: unreachableMessage(current), reason, state: current.state } };
+    };
+    if (connection.state === 'reconnecting') await connection.whenSettled(this.#timings.holdMs ?? PEER_HOLD_MS);
     if (connection.state !== 'online') return offline(connection.lastError ?? connection.state);
     try {
       const answer = await connection.requestRaw(`/peer/v1${path}`, { timeoutMs: PEER_LONG_TIMEOUT_MS });
@@ -916,9 +1070,20 @@ function pairingRefusalText(reason: string): string {
   }
 }
 
-/** D48 ruling D48-cache-persist: what the UI says (and the 502's message) while a machine cannot be reached. */
+/**
+ * D48 ruling D48-cache-persist, reworded by the fix · peer reconnects: the 502's
+ * message while a machine cannot be reached (the UI shows its own line with the
+ * retry countdown and **Reconnect now**).
+ */
 export function offlineMessage(name: string): string {
-  return `${name} is offline — reconnect to continue`;
+  return `${name} is unreachable — it retries by itself; Reconnect now tries at once`;
+}
+
+/** Fix · peer reconnects: the 502's message for the machine's state now (a held action that timed out says so). */
+export function unreachableMessage(machine: { readonly name: string; readonly state: MachineState }): string {
+  if (machine.state === 'reconnecting') return `${machine.name} is still reconnecting — try again in a moment`;
+  if (machine.state === 'auth-failed') return `${machine.name} refused this pairing (revoked there?): pair again`;
+  return offlineMessage(machine.name);
 }
 
 /** The snapshot a forwarded read is kept as: a session's detail, or its whole event list (no `since`); `null` for anything else. */

@@ -449,6 +449,21 @@ TerminalSession    { "id": "7b6d7a38-…", "pid": 48150, "cwd": "C:\\Users\\me\\
 HooksStatus        { "state": "installed", "settingsPath": "C:\\Users\\me\\.claude\\settings.json", "cliVersion": "2.1.284 (Claude Code)", "rewake": "internal", "lastBackup": null, "error": null }
 ```
 
+## Peer reconnects (fix, 2026-10-01, additive)
+Developer report (`docs/decisions.md` → *Fix: peer reconnects*; design `docs/peers.md` → *Connection states*). Additive: a new state value, a new optional field, a new route and a new `/hub` event; no existing route or field changes shape. No migration.
+
+- **`MachineState`** gains `"reconnecting"` (Machine, Session / InboxItem / Schedule / TerminalLoop `machine.state`): the stream dropped (or the service just started) and the 20 s grace period runs. Reads answer from the cache and the snapshots as for an unreachable machine; any other request is **held** until the machine is back (at most 10 s or the end of the grace) and then sent; still away → 502 `{ error: "peer-unreachable", message: "<machine> is still reconnecting — try again in a moment", reason, state }`. A reconnecting machine's Inbox items stay in `GET /api/inbox`.
+- **502 `peer-unreachable`** (D48-cache-persist) keeps its code; its `message` now reads `"<machine> is unreachable — it retries by itself; Reconnect now tries at once"`, and the body gains `state` (the machine's state).
+- **Machine** gains `connection?: { attempt, trying, nextAttemptAt, graceUntil, lastFailure: { kind, message, at } | null, hint }` (`MachineConnection`, `src/core/peers.ts`); `kind` is one of `refused`, `timeout`, `route`, `auth`, `http`, `reset`, `ended`, `stalled`, `restart`, `other`.
+- **`POST /api/machines/{id}/reconnect`** → 200 `ReconnectResult` `{ outcome: MachineState, machine: Machine }` once the attempt is over (`outcome` `online` on success); joins an attempt already running (never two at once); 404 `not-found`. Not on the peer API.
+- **`/hub` `machineState`**: `Machine` (plus `removed: true` once the machine was removed) on every change of a paired machine's connection (state, an attempt starting or failing, the next try scheduled), pairing, rename and removal. This machine's only: never forwarded between peers.
+
+```json
+Machine          { "id": "k3v7q2m9x4ab", "name": "studio-pc", "address": "100.64.0.7:13002", "state": "offline", "lastError": "connection refused — is Switchboard running there with its peer listener on? (…)", "lastSeenAt": "2026-10-01T09:58:12.000Z", "pairedAt": "2026-09-29T12:00:00.000Z", "connection": { "attempt": 6, "trying": false, "nextAttemptAt": "2026-10-01T10:00:08.000Z", "graceUntil": null, "lastFailure": { "kind": "refused", "message": "connection refused — is Switchboard running there with its peer listener on? (…)", "at": "2026-10-01T09:59:53.000Z" }, "hint": null } }
+ReconnectResult  { "outcome": "online", "machine": { "id": "k3v7q2m9x4ab", "state": "online", …, "connection": { "attempt": 0, "trying": false, "nextAttemptAt": null, "graceUntil": null, "lastFailure": { … }, "hint": null } } }
+machineState     { "id": "k3v7q2m9x4ab", "name": "studio-pc", "state": "reconnecting", …, "connection": { "attempt": 2, "trying": false, "nextAttemptAt": "2026-10-01T10:00:02.000Z", "graceUntil": "2026-10-01T10:00:15.000Z", … } }
+```
+
 ## Context window meter (D49, 2026-09-29, additive)
 Developer request D49 (`docs/decisions.md` → *Context window meter*): the composer shows how full the session's context window is. No new route or event name; migration `0015_session_context.sql`. Details: `docs/chat.md` → *Context bar*.
 
@@ -756,3 +771,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
 | sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
+| machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |

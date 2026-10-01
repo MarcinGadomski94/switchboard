@@ -3,6 +3,7 @@ import type { NewSessionPrefill, Schedule } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
+import { useMachineStateChange } from '../api/useMachines.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
@@ -62,6 +63,8 @@ export function ScheduleTable() {
   // D52 (ruling D52-peer-edits-live): a schedule saved, paused, resumed or deleted here or on a paired machine shows at once.
   useHubEvent('schedulesChanged', () => reload());
   useHubEvent('sessionUpdated', useThrottled(reload, SESSIONS_RELOAD_MS));
+  // Fix · peer reconnects: a paired machine's state changed: its rows' tags and blocks follow at once.
+  useMachineStateChange(reload);
 
   // After "Save schedule" the modal closes: show the new or edited row.
   const lastModal = useRef(modal);

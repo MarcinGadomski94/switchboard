@@ -11,8 +11,10 @@ export function machineStateLabel(state: MachineState): string {
   switch (state) {
     case 'online':
       return 'online';
+    case 'reconnecting':
+      return 'reconnecting…';
     case 'offline':
-      return 'offline';
+      return 'unreachable';
     case 'auth-failed':
       return 'auth failed';
     case 'no-address':
@@ -20,11 +22,13 @@ export function machineStateLabel(state: MachineState): string {
   }
 }
 
-/** The state dot's color: green online, amber no address, red auth failed, grey offline. */
+/** The state dot's color: green online, blue reconnecting, amber no address, red auth failed, grey offline. */
 export function machineStateColor(state: MachineState): string {
   switch (state) {
     case 'online':
       return '#34c38f';
+    case 'reconnecting':
+      return '#8ab4e8';
     case 'no-address':
       return '#e0a44a';
     case 'auth-failed':
@@ -34,10 +38,13 @@ export function machineStateColor(state: MachineState): string {
   }
 }
 
-/** The machine's second line: its address and why it is not online. */
+/**
+ * The machine's second line: its address, and (fix · peer reconnects) why it is
+ * not online when no status line says so (an older service without `connection`).
+ */
 export function machineDetail(machine: Machine): string {
   const parts = [machine.address ?? 'address unknown (its peer listener is off)'];
-  if (machine.state !== 'online' && machine.lastError) parts.push(machine.lastError);
+  if (machine.state !== 'online' && machine.lastError && !machine.connection) parts.push(machine.lastError);
   return parts.join(' · ');
 }
 

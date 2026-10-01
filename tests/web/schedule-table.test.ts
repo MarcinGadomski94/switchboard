@@ -169,7 +169,7 @@ describe('D52 · a peer\'s schedules', () => {
     const [peer] = scheduleRows([schedule({ id: 'r~abcdefghijkl~x', machine: PEER })], NOW);
     expect(peer).toMatchObject({ machine: PEER, blocked: null });
     const [offline] = scheduleRows([schedule({ id: 'r~abcdefghijkl~x', machine: { ...PEER, state: 'offline' } })], NOW);
-    expect(offline?.blocked).toBe('pc-office is offline — reconnect to continue');
+    expect(offline?.blocked).toBe('pc-office is unreachable');
   });
 
   it('an Edit stays on the schedule\'s machine; Delete refusals read "Not deleted: …"', () => {

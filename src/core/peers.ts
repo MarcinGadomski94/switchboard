@@ -11,7 +11,14 @@
 export type MachineState =
   /** Connected: the peer's live event stream is open. */
   | 'online'
-  /** Not connected yet, or reconnecting after a drop (backoff). */
+  /**
+   * Fix · peer reconnects (2026-10-01): the stream dropped (or this service just
+   * started) and the connection is retrying within its grace period
+   * ({@link PEER_GRACE_MS}). Reads keep working from the cache and the snapshot;
+   * actions are held until it is back (or the grace ends). Additive value.
+   */
+  | 'reconnecting'
+  /** Not reached within the grace period: retrying on the backoff (actions are refused at once). */
   | 'offline'
   /** The peer refused our token (401): revoked there, or the pairing is gone. */
   | 'auth-failed'
@@ -32,6 +39,115 @@ export interface Machine {
   /** Last successful contact (ISO), `null` before the first. */
   readonly lastSeenAt: string | null;
   readonly pairedAt: string;
+  /** Additive (fix · peer reconnects): what the connection is doing now; absent from older services. */
+  readonly connection?: MachineConnection;
+}
+
+/**
+ * Additive (fix · peer reconnects, `docs/peers.md` → *Connection states*): the
+ * connection's retry state, so the UI can say what is happening ("attempt 3 ·
+ * next try in 8 s") and why the last attempt failed.
+ */
+export interface MachineConnection {
+  /** Failed attempts since the machine was last online (0 while online). */
+  readonly attempt: number;
+  /** An attempt is running now. */
+  readonly trying: boolean;
+  /** When the next attempt starts (ISO); `null` while one runs, while online, or with no address. */
+  readonly nextAttemptAt: string | null;
+  /** While `reconnecting`: when it becomes `offline` unless reached first (ISO). */
+  readonly graceUntil: string | null;
+  /** The last failure: its kind, plain words and time; `null` before any (and after a success it stays as history). */
+  readonly lastFailure: PeerFailure | null;
+  /** A hint when the failures point somewhere (every recent one a timeout: is it awake and on Tailscale?). */
+  readonly hint: string | null;
+}
+
+/** Why one connection attempt (or an open stream) failed. */
+export type PeerFailureKind =
+  /** Nothing listens at the address (Switchboard not running there, or its peer listener off). */
+  | 'refused'
+  /** No answer in time (asleep, off the tailnet, a relay that went quiet). */
+  | 'timeout'
+  /** No route / name to the address (Tailscale down here, or the address changed). */
+  | 'route'
+  /** The peer refused our token (401). */
+  | 'auth'
+  /** The peer answered, but not as expected (an HTTP status). */
+  | 'http'
+  /** The open connection was cut (reset, closed by the other side). */
+  | 'reset'
+  /** The open stream ended cleanly (the peer closed it, e.g. it restarted). */
+  | 'ended'
+  /** The open stream went quiet: no event and no keepalive for {@link PEER_STALL_MS}. */
+  | 'stalled'
+  /** This service closed the stream to reconnect (a new address, a refused token, Reconnect now). */
+  | 'restart'
+  | 'other';
+
+/** One failure, as the UI shows it. */
+export interface PeerFailure {
+  readonly kind: PeerFailureKind;
+  /** Plain words (`connection refused — is Switchboard running there?`), plus a detail where it helps. */
+  readonly message: string;
+  /** ISO time. */
+  readonly at: string;
+}
+
+/** Grace period after a drop: `reconnecting` (non-blocking) for this long before `offline` (ASSUMED reconnect-grace). */
+export const PEER_GRACE_MS = 20_000;
+
+/** The open stream counts as stalled after this long without an event or a keepalive (the peer sends one every 10 s). */
+export const PEER_STALL_MS = 25_000;
+
+/**
+ * The `/hub` event `machineState` (fix · peer reconnects): the machine as `GET
+ * /api/machines` lists it; `removed: true` once it was removed (here or by the
+ * other machine).
+ */
+export type MachineStateEvent = Machine & { readonly removed?: true };
+
+/** `POST /api/machines/{id}/reconnect` answer (fix · peer reconnects). */
+export interface ReconnectResult {
+  /** `online` when the attempt reached it; otherwise the state it is left in. */
+  readonly outcome: MachineState;
+  readonly machine: Machine;
+}
+
+/** Plain words for a failure kind (the start of {@link PeerFailure.message}). */
+export function peerFailureText(kind: PeerFailureKind): string {
+  switch (kind) {
+    case 'refused':
+      return 'connection refused — is Switchboard running there with its peer listener on?';
+    case 'timeout':
+      return 'no answer in time';
+    case 'route':
+      return 'no route to the machine — is Tailscale up on both machines?';
+    case 'auth':
+      return 'it refused this pairing (revoked there?): pair again';
+    case 'http':
+      return 'it answered with an error';
+    case 'reset':
+      return 'the connection was cut';
+    case 'ended':
+      return 'the connection was closed by the other side';
+    case 'stalled':
+      return 'the connection went quiet (no keepalive)';
+    case 'restart':
+      return 'reconnecting on request';
+    case 'other':
+      return 'the connection failed';
+  }
+}
+
+/**
+ * The hint shown with a machine that cannot be reached: when the last few
+ * failures (at least 3) were all timeouts, the machine is most likely asleep or
+ * off the tailnet. `null` when nothing points anywhere.
+ */
+export function connectionHint(name: string, recent: readonly PeerFailureKind[]): string | null {
+  if (recent.length >= 3 && recent.every((kind) => kind === 'timeout')) return `Check that ${name} is awake and on Tailscale.`;
+  return null;
 }
 
 /** The local peer listener (`GET /api/machines`, `PUT /api/machines/listener`). */
@@ -215,11 +331,36 @@ export function isPort(value: unknown): value is number {
 }
 
 /**
- * D48 ruling D48-cache-persist: why a peer's session cannot be acted on now
- * (`<machine> is offline — reconnect to continue`), `null` for this machine's own
- * sessions and a connected machine's. Its last known state stays readable.
+ * D48 ruling D48-cache-persist: why a peer's session cannot be acted on now,
+ * `null` for this machine's own sessions, a connected machine's and (fix · peer
+ * reconnects) one that is `reconnecting` (non-blocking: actions are held until it
+ * is back). Its last known state stays readable. The UI adds the retry countdown
+ * and **Reconnect now** next to it.
  */
 export function offlineReason(machine: SessionMachine | null | undefined): string | null {
-  if (!machine || machine.state === 'online') return null;
-  return `${machine.name} is offline — reconnect to continue`;
+  if (!machine || machine.state === 'online' || machine.state === 'reconnecting') return null;
+  if (machine.state === 'auth-failed') return `${machine.name} refused this pairing — pair again in Settings → Machines`;
+  if (machine.state === 'no-address') return `${machine.name} has not told its address (its peer listener is off)`;
+  return `${machine.name} is unreachable`;
+}
+
+/** Fix · peer reconnects: the non-blocking note while a machine is `reconnecting`; `null` otherwise. */
+export function reconnectingNote(machine: SessionMachine | null | undefined): string | null {
+  return machine?.state === 'reconnecting' ? `Reconnecting to ${machine.name}…` : null;
+}
+
+/** What a machine tag says after the name (`studio-pc · unreachable`); `null` while online. */
+export function machineTagSuffix(state: MachineState): string | null {
+  switch (state) {
+    case 'online':
+      return null;
+    case 'reconnecting':
+      return 'reconnecting…';
+    case 'offline':
+      return 'unreachable';
+    case 'auth-failed':
+      return 'auth failed';
+    case 'no-address':
+      return 'no address';
+  }
 }

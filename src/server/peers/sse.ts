@@ -44,8 +44,12 @@ export class SseParser {
   }
 }
 
-/** Reads `body` to its end (or until `signal` aborts), calling `onFrame` per frame. */
-export async function readSse(body: ReadableStream<Uint8Array>, onFrame: (frame: SseFrame) => void, signal?: AbortSignal): Promise<void> {
+/**
+ * Reads `body` to its end (or until `signal` aborts), calling `onFrame` per frame
+ * and `onChunk` for every chunk received (keepalive comments too: the stall check
+ * of the peer connection).
+ */
+export async function readSse(body: ReadableStream<Uint8Array>, onFrame: (frame: SseFrame) => void, signal?: AbortSignal, onChunk?: () => void): Promise<void> {
   const parser = new SseParser();
   const decoder = new TextDecoder();
   const reader = body.getReader();
@@ -57,6 +61,7 @@ export async function readSse(body: ReadableStream<Uint8Array>, onFrame: (frame:
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      onChunk?.();
       for (const frame of parser.push(decoder.decode(value, { stream: true }))) onFrame(frame);
     }
   } finally {

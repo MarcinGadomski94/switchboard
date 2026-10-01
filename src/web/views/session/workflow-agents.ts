@@ -177,6 +177,7 @@ export function resumeRunMessage(run: Pick<WorkflowRun, 'runId' | 'name' | 'resu
  */
 export function resumeBlocked(session: Pick<Session, 'closedAt'> & { readonly machine?: Session['machine'] }): string | null {
   if (session.closedAt) return 'Reopen the session to resume the run';
-  if (session.machine && session.machine.state !== 'online') return `${session.machine.name} is unreachable`;
+  // Fix · peer reconnects: a reconnecting machine takes it (held until it is back).
+  if (session.machine && session.machine.state !== 'online' && session.machine.state !== 'reconnecting') return `${session.machine.name} is unreachable`;
   return null;
 }

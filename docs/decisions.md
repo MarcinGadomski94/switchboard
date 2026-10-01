@@ -578,6 +578,17 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Kept working:** the opened session's row is scrolled into the list (palette, Inbox, links; ASSUMED sidebar-scroll-reveal); ⋯ menus are not clipped and flip above their ⋯ near the window's bottom, scrolling closes them (ASSUMED sidebar-scroll-menu); drag and drop scrolls the list at its edges (the browser's own; VERIFIED in Chromium); D41 keeps the scroll position. No API, storage or migration change.
   - Details: `docs/sidebar.md` → *Layout and scrolling*; choices: `.loop/questions.md` → *Fix · sidebar scrolling*.
 
+## Fix: peer reconnects (added 2026-10-01)
+- **A paired machine that drops is reconnecting, not offline; the retries show; Reconnect now.** Developer report, 2026-10-01: "For remote sessions I'm sometimes getting: '<machine> is offline — reconnect to continue'. There's no refresh button, so what should I do? I also can't see that it's reconnecting in the background (no loading state), and sometimes it reconnects by itself." Cause: the Mac reaches the PC over a relayed Tailscale path (DERP), which drops long-lived streams (the D48 event stream) more often; every drop blocked interaction at once, the retries backed off up to 60 s unseen, and nothing was logged. Builds on D48 (rulings D48-cache-persist, D48-hello-wakes) and D53.
+  - **Retries:** right after a drop at once, then 1 s, 2 s, 5 s, 10 s and every 15 s (was: doubling to 60 s), ±20 % jitter (ASSUMED reconnect-schedule).
+  - **Grace period:** 20 s `reconnecting` after a drop (and at start) before `offline` (a new additive state). Reads keep working from the cache and the snapshots; actions are **held** for the reconnection (at most 10 s) and then sent, rather than refused (ASSUMED reconnect-hold). `offline` keeps D48-cache-persist's block.
+  - **Stalls:** a stream with no event and no keepalive for 25 s is cut and reconnected (ASSUMED reconnect-stall).
+  - **Why and when:** each failed attempt records its kind (refused, timeout, route, auth, HTTP, cut, closed, stalled), in plain words and with its time, and when the next attempt starts; all timeouts → "Check that <machine> is awake and on Tailscale."
+  - **Reconnect now:** `POST /api/machines/{id}/reconnect` (never two attempts at once) and a button in the session header note, the blocked composer note and each Settings → Machines row; it spins while trying, the blocks lift at once on success, the reason shows on failure.
+  - **UI words:** "Reconnecting to studio-pc… · attempt 3 · next try in 8 s" (spinner, nothing blocked), "studio-pc is unreachable · retrying in 8 s · Reconnect now" with the last error and its time; tags "· reconnecting…" / "· unreachable" / "· auth failed" / "· no address". Live through the additive `/hub` event `machineState` (Settings → Machines no longer polls every 3 s).
+  - **Log:** every state change (online → reconnecting → offline → online) and failed attempt, with the machine's name and id, the reason and the attempt count; never a token.
+  - Details: `docs/peers.md` → *Connection states*, `docs/handoff/contracts/local-api.md` → *Peer reconnects*, `docs/hub.md`; choices: `.loop/questions.md` → *Fix · peer reconnects*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
