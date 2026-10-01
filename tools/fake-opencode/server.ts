@@ -328,6 +328,12 @@ export async function serve(args: readonly string[], options: { readonly log: (e
     const url = new URL(request.url ?? '/', 'http://fake');
     const method = request.method ?? 'GET';
     await options.log({ kind: 'http', method, path: url.pathname, query: Object.fromEntries(url.searchParams), auth: request.headers.authorization ? 'basic' : null });
+    if (method === 'POST' && url.pathname === '/__fake/cut-events') {
+      // Tests only (no auth: the test does not know the bridge's random password): cut every open event stream.
+      for (const client of clients) client.destroy();
+      clients.clear();
+      return json(response, 200, true);
+    }
     if (!authorized(request)) {
       response.writeHead(401, { 'www-authenticate': 'Basic realm="opencode"' });
       response.end('Unauthorized');
@@ -359,6 +365,9 @@ export async function serve(args: readonly string[], options: { readonly log: (e
       return json(response, 200, session);
     }
     if (method === 'GET' && url.pathname === '/session') return json(response, 200, store.sessions);
+    if (method === 'GET' && url.pathname === '/session/status') {
+      return json(response, 200, Object.fromEntries(store.sessions.map((session) => [String(session['id']), { type: turns.has(String(session['id'])) ? 'busy' : 'idle' }])));
+    }
     if (segments[0] === 'session' && segments[1]) {
       const session = sessionOf(segments[1]);
       if (!session) return json(response, 404, { name: 'NotFoundError', data: { message: `Session not found: ${segments[1]}` } });

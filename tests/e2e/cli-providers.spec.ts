@@ -77,7 +77,7 @@ test('Settings → CLIs: the three CLIs with their state; a missing Codex reads 
   await expect(cards.locator('.sb-set-cli-name')).toHaveText(['Claude Code', 'Codex CLI', 'OpenCode']);
   const codex = page.locator('[data-testid="settings-cli"][data-provider="codex"]');
   await expect(codex.getByTestId('settings-cli-state')).toHaveText('✓ codex-cli 0.159.3 · signed in (Logged in using ChatGPT)');
-  await expect(page.locator('[data-testid="settings-cli"][data-provider="opencode"]').getByTestId('settings-cli-state')).toHaveText('Not supported by this Switchboard');
+  await expect(page.locator('[data-testid="settings-cli"][data-provider="opencode"]').getByTestId('settings-cli-state')).toHaveText('✓ 1.18.34 · signed in (1 credential)');
   // Claude Code's command is the environment's (no field).
   await expect(page.locator('[data-testid="settings-cli"][data-provider="claude"]').getByTestId('settings-cli-command')).toHaveCount(0);
   await expect(page.getByTestId('settings-cli-default')).toHaveValue('claude');
@@ -99,8 +99,7 @@ test('the Simple form starts a Codex session: the CLI row, its own models, the r
   await page.goto(`${server.baseUrl}/inbox`);
   const modal = await openSimple(page);
   const cli = modal.getByTestId('ns-cli');
-  // (OpenCode's adapter lands with P4: until then it is listed, not supported.)
-  await expect(cli.locator('option')).toHaveText(['Claude Code', 'Codex CLI', 'OpenCode (not supported)']);
+  await expect(cli.locator('option')).toHaveText(['Claude Code', 'Codex CLI', 'OpenCode']);
   await expect(cli).toHaveValue('claude');
   await cli.selectOption('codex');
   // Codex's own models (read from `codex app-server` → model/list when its status was checked), not Claude Code's aliases.
@@ -120,6 +119,22 @@ test('the Simple form starts a Codex session: the CLI row, its own models, the r
   await expect
     .poll(async () => page.evaluate(async () => ((await (await fetch('/api/models?provider=codex')).json()) as { options: Array<{ value: string }> | null }).options?.map((option) => option.value) ?? null))
     .toEqual(['default', 'gpt-5.5-codex', 'gpt-5.5-mini']);
+});
+
+test('an OpenCode session from the Simple form: its models (provider/model), the reply in the chat', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  const modal = await openSimple(page);
+  await modal.getByTestId('ns-cli').selectOption('opencode');
+  await modal.getByTestId('ns-model-button').click();
+  await expect(modal.locator('[data-testid="model-option"]')).toHaveCount(3);
+  expect(await modal.locator('[data-testid="model-option"]').evaluateAll((options) => options.map((option) => option.getAttribute('data-value')))).toEqual(['default', 'anthropic/claude-sonnet-5', 'openai/gpt-5.5']);
+  await page.keyboard.press('Escape');
+  await modal.getByTestId('ns-message').fill('[fake:say "Hello from **OpenCode**"]');
+  await modal.getByTestId('ns-start').click();
+  const view = page.getByTestId('view-session');
+  await expect(view).toBeVisible();
+  await expect(view.locator('strong', { hasText: 'OpenCode' })).toBeVisible();
+  expect((await listSessions(page)).some((entry) => entry.provider === 'opencode')).toBe(true);
 });
 
 test('a signed-out Codex is listed but cannot be chosen, with the reason', async ({ page }) => {
