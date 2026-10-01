@@ -461,7 +461,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 ### How changes are made
 - **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D63). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
-- **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `master` with the full suites green.
+- **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `master` with their tests green (the full suites run before a release).
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.
 - **Commits** stay local; nothing is pushed without the developer's say.
 
