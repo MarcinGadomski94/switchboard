@@ -1,3 +1,4 @@
+import { CLI_SHORT_LABELS } from '../../core/cli-providers.ts';
 import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
@@ -176,6 +177,35 @@ export function usageRows(system: SystemInfo | null, now: number = Date.now()): 
       (w): UsageRow => ({ key: 'model', label: w.label, model: `cli:${w.provider}:${w.label}`, ...windowMeter({ key: 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt ?? '' }, now) }),
     ),
   ];
+}
+
+/** D63: one account in the footer's per-account line ("Default 62%", "Private out until 14:05"). */
+export interface AccountUsageItem {
+  readonly key: string;
+  readonly cli: string;
+  readonly text: string;
+  readonly active: boolean;
+  readonly spent: boolean;
+}
+
+/**
+ * D63 (`docs/accounts.md` → *Usage per account*): the footer's compact line under the
+ * bars (which are the active account's): each account of a CLI with more than one,
+ * "Default 62% · Private 10%", the active one marked, a spent one with when it is
+ * usable again. Empty while no CLI has more than one enabled account.
+ */
+export function accountUsageItems(system: SystemInfo | null, now: number = Date.now()): AccountUsageItem[] {
+  return (system?.accountUsage ?? []).map((row) => {
+    const spent = row.exhaustedUntil !== null && Date.parse(row.exhaustedUntil) > now;
+    const label = row.cli === 'claude' ? row.name : `${CLI_SHORT_LABELS[row.cli]} ${row.name}`;
+    return {
+      key: row.profileId,
+      cli: row.cli,
+      text: spent ? `${label} out until ${clockTime(new Date(row.exhaustedUntil as string))}` : `${label} ${row.pct === null ? '—' : `${Math.round(row.pct)}%`}`,
+      active: row.active,
+      spent,
+    };
+  });
 }
 
 /** `3 bg processes` (gap #11: live supervised claude processes). */

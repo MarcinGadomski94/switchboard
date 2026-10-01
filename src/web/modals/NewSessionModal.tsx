@@ -15,6 +15,7 @@ import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWarningText, terminalConversations } from '../views/history-move.ts';
 import { ModelChoicePicker } from '../views/session/ModelPicker.tsx';
+import { AccountPicker } from '../components/AccountPicker.tsx';
 import { CliPicker } from '../components/CliPicker.tsx';
 import { effectiveCli } from '../components/cli.ts';
 import { type CliProviderId, unavailableText } from '../../core/cli-providers.ts';
@@ -250,7 +251,7 @@ export function NewSessionModal({
   // What the summary and the bodies read: the form with its model choice and its CLI filled in.
   const launch = { ...withFormModel(form, modelSettings, provider), provider };
   /** D62: another CLI: its own models, so the model choice starts over. */
-  const pickProvider = (next: CliProviderId): void => update({ provider: next, model: null });
+  const pickProvider = (next: CliProviderId): void => update({ provider: next, model: null, profileId: null });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -588,7 +589,13 @@ export function NewSessionModal({
     />
   );
   // D62: the CLI choice (Simple: its own row; Full: beside the model picker in the Model row).
-  const cliPicker = <CliPicker testId="ns-cli" value={provider} overview={clis.data ?? null} onPick={pickProvider} disabled={busy} />;
+  // D63: with more than one account on the CLI, the account the session starts on (automatic by default).
+  const cliPicker = (
+    <span className="sb-cli-picker-group">
+      <CliPicker testId="ns-cli" value={provider} overview={clis.data ?? null} onPick={pickProvider} disabled={busy} />
+      <AccountPicker machine={peer} provider={provider} value={form.profileId} onPick={(profileId) => update({ profileId })} testId="ns-account" disabled={busy} />
+    </span>
+  );
   const modeToggle = mode !== null && offersModeToggle(scheduling) ? <ModeToggle mode={mode} onPick={pickMode} disabled={busy} /> : null;
 
   if (mode === null || simple) {

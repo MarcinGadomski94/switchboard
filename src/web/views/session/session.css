@@ -1262,3 +1262,8 @@ a.sb-agent--link:focus-visible {
   min-width: 0;
   text-align: center;
 }
+
+/* D63: the header's account picker and pin. */
+.sb-sv-account {
+  gap: 6px;
+}

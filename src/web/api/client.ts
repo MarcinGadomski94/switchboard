@@ -1,5 +1,8 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
+import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
+  AccountsOverview,
+  NewProfileInput,
   CliMcpServerInput,
   CliMcpView,
   CliInfo,
@@ -245,6 +248,11 @@ export const api = {
   /** D62 P5: switches a session to another CLI with a handover (202 once it started; progress on `sessionUpdated`). */
   switchProvider: (id: string, provider: CliProviderId) => request<ProviderSwitchResult>('POST', `/api/sessions/${enc(id)}/provider`, { provider }),
 
+  /** D63 P5: moves a session to another account profile of its CLI (answers when the switch is over). */
+  switchAccount: (id: string, profileId: string) => request<Session>('POST', `/api/sessions/${enc(id)}/account`, { profileId }),
+  /** D63: pins a session to its account (automatic switching leaves it) or unpins it. */
+  pinProfile: (id: string, pinned: boolean) => request<Session>('PUT', `/api/sessions/${enc(id)}/profile-pin`, { pinned }),
+
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),
   probeTool: (id: string) => request<ToolProbe>('POST', `/api/tools/${enc(id)}/probe`),
@@ -310,11 +318,33 @@ export function onMachine(machine: string | null, path: string): string {
   return machine ? `/api/machines/${enc(machine)}${path}` : path;
 }
 
+/** D63 (`docs/accounts.md`): Settings → Accounts' calls on a machine (`null` = this one; a paired machine's go through its peer API). */
+export function accountsApi(machine: string | null) {
+  const at = (path: string): string => onMachine(machine, path);
+  return {
+    overview: (refresh = false) => request<AccountsOverview>('GET', at(`/api/accounts${refresh ? '?refresh=1' : ''}`)),
+    saveSettings: (body: Partial<AccountSettings> | Record<string, unknown>) => request<AccountSettings>('PUT', at('/api/accounts/settings'), body),
+    createProfile: (body: NewProfileInput) => request<AccountProfile>('POST', at('/api/accounts/profiles'), body),
+    updateProfile: (id: string, body: { name?: string; enabled?: boolean; shareSettings?: boolean }) => request<AccountProfile>('PUT', at(`/api/accounts/profiles/${enc(id)}`), body),
+    deleteProfile: (id: string, removeFiles = false) => request<null>('DELETE', at(`/api/accounts/profiles/${enc(id)}${removeFiles ? '?removeFiles=1' : ''}`)),
+    order: (cli: CliProviderId, order: readonly string[]) => request<AccountsOverview>('PUT', at('/api/accounts/order'), { cli, order }),
+    check: (id: string) => request<AccountProfile>('POST', at(`/api/accounts/profiles/${enc(id)}/check`)),
+    syncSettings: (id: string) => request<{ shared: string[]; mcp: string }>('POST', at(`/api/accounts/profiles/${enc(id)}/sync-settings`)),
+    signIn: (id: string, body: { email?: string; deviceCode?: boolean; provider?: string; apiKey?: string } = {}) => request<AccountSignIn>('POST', at(`/api/accounts/profiles/${enc(id)}/signin`), body),
+    signInState: (id: string) => request<AccountSignIn>('GET', at(`/api/accounts/signin/${enc(id)}`)),
+    pasteBack: (id: string, value: string) => request<AccountSignIn>('POST', at(`/api/accounts/signin/${enc(id)}/paste`), { value }),
+    cancelSignIn: (id: string) => request<AccountSignIn>('DELETE', at(`/api/accounts/signin/${enc(id)}`)),
+    signOut: (id: string) => request<{ ok: boolean; message: string; profile?: AccountProfile }>('POST', at(`/api/accounts/profiles/${enc(id)}/signout`)),
+  };
+}
+
 /** D48 (P3): the New-session form's calls on the chosen machine (`null` = this one). */
 export function machineApi(machine: string | null) {
   return {
     savedFolders: () => request<Folder[]>('GET', onMachine(machine, '/api/folders')),
     models: (provider?: CliProviderId) => request<ModelSettings>('GET', onMachine(machine, `/api/models${query({ provider })}`)),
+    /** D63: that machine's account profiles (the forms' Account row). */
+    accounts: () => request<AccountsOverview>('GET', onMachine(machine, '/api/accounts')),
     /** D62: that machine's CLIs (the forms' CLI row for a start there). */
     clis: () => request<CliOverview>('GET', onMachine(machine, '/api/clis')),
     solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
@@ -360,4 +390,20 @@ export function mcpApi(machine: string | null, folder: string | undefined) {
     cliAdd: (provider: CliProviderId, input: CliMcpServerInput) => request<CliMcpView>('POST', at(`/api/mcp/cli/${enc(provider)}/servers`), input),
     cliRemove: (provider: CliProviderId, name: string) => request<CliMcpView>('DELETE', at(`/api/mcp/cli/${enc(provider)}/servers/${enc(name)}`)),
   };
+}
+
+/** D63: one sign-in as the server answers it (`src/server/accounts/signin.ts`). */
+export interface AccountSignIn {
+  readonly id: string;
+  readonly profileId: string;
+  readonly cli: CliProviderId;
+  readonly state: 'starting' | 'waiting' | 'done' | 'failed' | 'cancelled' | 'timeout';
+  readonly url: string | null;
+  readonly code: string | null;
+  readonly instructions: string | null;
+  readonly error: string | null;
+  readonly command: string;
+  readonly canPasteBack: boolean;
+  readonly startedAt: string;
+  readonly expiresAt: string;
 }

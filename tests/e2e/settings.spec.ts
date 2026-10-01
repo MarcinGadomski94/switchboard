@@ -134,6 +134,7 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'GitHub',
     // D62: after the prototype's seven.
     'CLIs',
+    'Accounts',
     // D48: after the prototype's seven.
     'Machines',
     // D55: after Machines.

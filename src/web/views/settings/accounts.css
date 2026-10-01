@@ -1,0 +1,184 @@
+/* D63 · Settings → Accounts (docs/accounts.md). Built on the Settings blocks (.sb-set-*). */
+.sb-acc-rules {
+  margin-bottom: 8px;
+}
+
+.sb-acc-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.sb-acc-percent {
+  width: 56px;
+  text-align: right;
+}
+
+.sb-acc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-acc-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-acc-profile {
+  border: 1px solid var(--border-row);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-acc-profile[data-enabled='false'] {
+  opacity: 0.6;
+}
+
+.sb-acc-profile[data-spent='true'] {
+  border-color: var(--status-need);
+}
+
+.sb-acc-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sb-acc-order {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: grab;
+}
+
+.sb-acc-arrow {
+  background: transparent;
+  border: 1px solid var(--border-row);
+  color: var(--text-2);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.sb-acc-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sb-acc-rank {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+  width: 14px;
+}
+
+.sb-acc-name {
+  font-weight: 600;
+  min-width: 90px;
+}
+
+.sb-acc-name-input {
+  width: 160px;
+}
+
+.sb-acc-status {
+  flex: 1;
+  min-width: 0;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-acc-status[data-state='signed-in'] {
+  color: var(--status-done);
+}
+
+.sb-acc-status[data-state='signed-out'] {
+  color: var(--status-need);
+}
+
+.sb-acc-usage,
+.sb-acc-sessions {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  white-space: nowrap;
+}
+
+.sb-acc-spent {
+  font-size: 12px;
+  color: var(--status-need);
+}
+
+.sb-acc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sb-acc-muted {
+  font-size: 12px;
+  color: var(--muted-3);
+}
+
+.sb-acc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-acc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-acc-signin,
+.sb-acc-confirm {
+  border-top: 1px dashed var(--border-row);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.sb-acc-signin-form,
+.sb-acc-signin-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-acc-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-acc-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}

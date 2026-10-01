@@ -9,6 +9,7 @@ import { ClaudeSection, GithubSection, NotifySection, type SaveSettings, Schedul
 import { ToolsSection } from './settings/ToolsSection.tsx';
 import { MachinesSection } from './settings/MachinesSection.tsx';
 import { ClisSection } from './settings/ClisSection.tsx';
+import { AccountsSection } from './settings/AccountsSection.tsx';
 import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import './settings.css';
@@ -31,6 +32,8 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
       return <GithubSection settings={settings} />;
     case 'clis':
       return <ClisSection />;
+    case 'accounts':
+      return <AccountsSection />;
     case 'machines':
       return <MachinesSection />;
     case 'updates':

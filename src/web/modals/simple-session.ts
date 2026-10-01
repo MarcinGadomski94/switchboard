@@ -126,6 +126,8 @@ export function toSimpleBody({ form, folder, branch, takenNames }: SimpleStart):
     ...(form.model ? { model: form.model.model, effort: form.model.effort } : {}),
     // D62: the CLI the session runs on.
     ...(form.provider ? { provider: form.provider } : {}),
+    // D63: the account the session starts on (omitted = automatic).
+    ...(form.provider && form.profileId ? { profileId: form.profileId } : {}),
   };
 }
 

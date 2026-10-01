@@ -30,6 +30,7 @@ import {
 } from './session-header.ts';
 import { ModelPicker } from './ModelPicker.tsx';
 import { useProviderSwitcher } from './ProviderSwitcher.tsx';
+import { useAccountSwitcher } from './AccountSwitcher.tsx';
 import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
 import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
@@ -98,6 +99,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const shownError = error ?? closer.error?.text ?? loadError;
   // D62 P5: the CLI switcher (its picker among the actions, its confirmation under the top row).
   const switcher = useProviderSwitcher(session, onChanged);
+  // D63: the account the session runs on, Switch account and the pin (shown when its CLI has more than one account).
+  const accounts = useAccountSwitcher(session, onChanged);
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -171,6 +174,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         <div className="sb-sv-actions">
           {/* D62 P5: the CLI the session runs on, and switching it (sessions Switchboard runs; not the demo's, not hooked). */}
           {session && !blocked && offersSwitcher(session) ? switcher.picker : null}
+          {session && !blocked && offersSwitcher(session) ? accounts.picker : null}
           {session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
           <button
             type="button"
@@ -284,6 +288,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         </div>
       ) : null}
       {session && offersSwitcher(session) ? switcher.panel : null}
+      {session && offersSwitcher(session) ? accounts.panel : null}
       {warning ? (
         <div className="sb-sv-warning" role="alertdialog" aria-label="Attach here" data-testid="attach-warning">
           <div className="sb-sv-warning-text" data-testid="attach-warning-text">

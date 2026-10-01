@@ -844,3 +844,20 @@
   gap: 8px;
   margin-top: 14px;
 }
+
+/* D63: the footer's per-account usage line under the bars (hover: the full list, the active account marked). */
+.sb-usage-accounts {
+  margin-top: 4px;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-3);
+  line-height: 1.4;
+}
+
+.sb-usage-accounts [data-active='true'] {
+  color: var(--text-1, #f0efeb);
+  font-weight: 600;
+}
+
+.sb-usage-accounts [data-spent='true'] {
+  color: var(--status-need);
+}

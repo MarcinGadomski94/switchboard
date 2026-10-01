@@ -99,6 +99,7 @@ describe('defaults and prefill', () => {
       model: null,
       // D62: the default CLI applies until one is picked.
       provider: null,
+      profileId: null,
     });
     expect(RECOMMENDED).toEqual({ workType: 'feature', mode: 'single', phase: 'ui-first', coordination: 'sequential' });
     expect(formFromPrefill(null)).toBe(DEFAULT_FORM);

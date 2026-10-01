@@ -79,6 +79,11 @@ export interface NewSessionForm {
    * another CLI clears {@link model} (each CLI names its models differently).
    */
   readonly provider: CliProviderId | null;
+  /**
+   * D63: the account profile the session starts on; `null` = automatic (Settings →
+   * Accounts' rule: the first account with allowance). Picking another CLI clears it.
+   */
+  readonly profileId: string | null;
 }
 
 /**
@@ -135,6 +140,7 @@ export const DEFAULT_FORM: NewSessionForm = {
   branch: null,
   model: null,
   provider: null,
+  profileId: null,
 };
 
 /** A pill option: value + the prototype's label. */
@@ -341,8 +347,8 @@ export function toNewSession(form: NewSessionForm): NewSession {
 }
 
 /** D62: the body's `provider` once the form has one (the modal fills in the default CLI first). */
-export function providerFields(form: Pick<NewSessionForm, 'provider'>): { readonly provider?: CliProviderId } {
-  return form.provider ? { provider: form.provider } : {};
+export function providerFields(form: Pick<NewSessionForm, 'provider'> & { readonly profileId?: string | null }): { readonly provider?: CliProviderId; readonly profileId?: string } {
+  return { ...(form.provider ? { provider: form.provider } : {}), ...(form.provider && form.profileId ? { profileId: form.profileId } : {}) };
 }
 
 /** D42: the body's `model` / `effort` (`null` = the CLI's default), once the form has a choice. */

@@ -25,6 +25,7 @@ import {
   processCount,
   ramMeter,
   urlHost,
+  accountUsageItems,
   usageRows,
 } from './format.ts';
 
@@ -255,6 +256,17 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
           {usageRows(info, now).map((row) => (
             <MeterRow key={row.model ? `model:${row.model}` : row.key} label={row.label} name={row.key} meter={row} {...(row.model ? { model: row.model } : {})} {...(row.pace ? { pace: row.pace } : {})} />
           ))}
+          {/* D63: each account's usage (the bars are the active account's), only while a CLI has more than one. */}
+          {accountUsageItems(info, now).length > 0 ? (
+            <div className="sb-usage-accounts" data-testid="usage-accounts" title={accountUsageItems(info, now).map((item) => `${item.active ? '● ' : '  '}${item.text}`).join('\n')}>
+              {accountUsageItems(info, now).map((item, index) => (
+                <span key={item.key} data-testid="usage-account" data-active={String(item.active)} data-spent={String(item.spent)}>
+                  {index > 0 ? ' · ' : ''}
+                  {item.text}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </aside>

@@ -337,8 +337,9 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       block = null;
       const lifecycle = payload as LifecyclePayload;
       // D62 P5: a switch of CLI is the chat's divider (a failed switch stays an error step on the timeline).
-      if (lifecycle.action === 'switched' && event.kind === 'text') {
-        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.from ?? null, to: lifecycle.to ?? null });
+      // D63: so is a switch of account ("Switched account: A → B (session limit, resets 14:05)").
+      if ((lifecycle.action === 'switched' || lifecycle.action === 'account-switched') && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.fromProfile ?? lifecycle.from ?? null, to: lifecycle.toProfile ?? lifecycle.to ?? null });
       }
     } else {
       const mark = stepMark(event);
