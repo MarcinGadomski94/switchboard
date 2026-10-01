@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 (2026-10-01)
+
+### Accounts and automatic switching
+- **Settings → Accounts:** add more accounts (profiles) for Claude Code, Codex CLI and OpenCode, put them in priority order, and **sign in / sign out from the UI** (the sign-in opens in a new tab; device code for Codex, API keys for OpenCode providers that use them; paste-back for a paired machine). Each account can share the Default's settings, instructions and MCP servers; logins and conversations stay separate.
+- **Automatic switching** when an account hits its session (5-hour) or weekly limit, or earlier at a threshold you set (98 % by default). Claude Code continues the **same conversation** on the next account; Codex the same where possible; OpenCode with a handover. After the reset: switch back or stay. When every account is spent: stop and notify, or hand over to another CLI.
+- **Per session:** choose the account in both New-session forms; **Switch account** and **Pin** (never switch automatically) in the session header. The chat shows "Switched account: A → B (session limit, resets 14:05)".
+- The footer shows the active account's bars and a compact line with every account's usage.
+- Signing in runs each CLI's own login; Switchboard never sees or stores your tokens.
+
+### Database
+- Migration 0024 (accounts) runs by itself on first start; existing sessions stay on the Default account.
+
 ## 1.4.0 (2026-10-01)
 
 ### Codex CLI and OpenCode
