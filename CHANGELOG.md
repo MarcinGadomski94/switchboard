@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.0 (2026-10-01)
+
+### Codex CLI and OpenCode
+- Sessions can run on **Claude Code**, **Codex CLI** or **OpenCode**. Settings → **CLIs** shows each one's command, version, sign-in and models (or how to install it); nothing needs to be installed until you choose it.
+- Both New-session forms have a **CLI** choice; the model list follows it. Schedules remember their CLI.
+- **Switch CLI mid-session** from the session header: the outgoing agent writes a handover when it still has capacity, otherwise the incoming agent reads the exported chat; the chat shows a divider. Switching back reopens that CLI's own earlier conversation.
+- The sidebar footer's CLI menu sets the default for new sessions and **switches running sessions** in one go (pick which). Session rows show a CLI badge.
+- Chat, tool steps, permissions (with the CLI's own "always" option), questions, Stop, pause/resume, models and effort, the context bar, subagents, worktrees, attachments, schedules and peers work for all three. Claude-only features (Workflow agents, Remote Control, teleport, hooks into terminal sessions, background tasks) are shown as not available, with the reason. The full matrix is in `docs/providers.md`.
+- Built from the CLIs' documented protocols (Codex `rust-v0.159.3`, OpenCode `v1.18.34`) and not yet tried against the real tools: `docs/spike-providers.md` lists the checks to run once you install them.
+
+### Fixed
+- A paired machine that restarts its listener no longer stays "unreachable" for ~20 s (open connections are dropped at once).
+- An OpenCode server is stopped even if Switchboard itself is killed.
+
+### Database
+- Migration 0023 (the session's CLI) runs by itself on first start; existing sessions stay on Claude Code.
+
 ## 1.3.2 (2026-10-01)
 
 ### Fixed
