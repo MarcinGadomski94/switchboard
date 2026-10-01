@@ -104,6 +104,11 @@ export class ProviderRepository {
       .run(sessionId, provider, nativeId, ts, ts);
   }
 
+  /** D63: forgets `provider`'s own id for the session (an account switch that could not carry the conversation over starts a new one). */
+  async forgetNative(sessionId: string, provider: CliProviderId): Promise<void> {
+    this.#ctx.db.prepare('DELETE FROM session_providers WHERE session_id = ? AND provider = ?').run(sessionId, provider);
+  }
+
   /** The session whose `provider` conversation is `nativeId`, `null` when none (History: already in Switchboard). */
   async sessionByNative(provider: CliProviderId, nativeId: string): Promise<string | null> {
     const row = this.#ctx.db.prepare('SELECT session_id FROM session_providers WHERE provider = ? AND native_id = ?').get(provider, nativeId);

@@ -111,6 +111,16 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D62: that machine's CLIs (the New-session form's CLI row for a start there) and a switch of its session's CLI.
   ['GET', /^\/api\/clis$/],
   ['POST', /^\/api\/sessions\/[^/]+\/provider$/],
+  // D63: that machine's account profiles (list, rules, profiles, sign in / out with the paste-back) and a session's account / pin.
+  ['GET', /^\/api\/accounts$/],
+  ['PUT', /^\/api\/accounts\/(?:settings|order|profiles\/[^/]+)$/],
+  ['POST', /^\/api\/accounts\/profiles(?:\/[^/]+\/(?:check|sync-settings|signin|signout))?$/],
+  ['DELETE', /^\/api\/accounts\/profiles\/[^/]+$/],
+  ['GET', /^\/api\/accounts\/signin\/[^/]+$/],
+  ['POST', /^\/api\/accounts\/signin\/[^/]+\/paste$/],
+  ['DELETE', /^\/api\/accounts\/signin\/[^/]+$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/account$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/profile-pin$/],
   ['GET', /^\/api\/solutions$/],
   ['POST', /^\/api\/branching\/preflight$/],
   ['GET', /^\/api\/terminal-sessions$/],

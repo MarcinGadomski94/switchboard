@@ -7,6 +7,7 @@
  */
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { authLogin, authLogout, authStatus } from './auth.ts';
 import { CLI_VERSION, type FakeCommand, UsageError, parseArgv } from './args.ts';
 import { FixtureStore } from './fixtures.ts';
 import { runMcpCommand } from './mcp.ts';
@@ -60,9 +61,19 @@ async function main(argv: readonly string[]): Promise<void> {
     case 'version':
       await writeOut(`${CLI_VERSION} (Claude Code)\n`);
       return exit(0);
-    case 'auth-status':
-      // Callers rely on the exit code only; the real output was never captured (M0).
-      return exit(process.env['FAKE_CLAUDE_SIGNED_OUT'] === '1' ? 1 : 0);
+    case 'auth-status': {
+      // Callers rely on the exit code; D63 also prints the JSON the real CLI prints (read from its binary, 2.1.285).
+      const status = await authStatus(configDir, process.env, command.json);
+      await writeOut(status.out);
+      return exit(status.code);
+    }
+    case 'auth-login':
+      return exit(await authLogin({ email: command.email }, configDir, process.env, (text) => void process.stdout.write(text), process.stdin));
+    case 'auth-logout': {
+      const result = await authLogout(configDir);
+      await writeOut(result.out);
+      return exit(result.code);
+    }
     case 'agents': {
       const rows = await listAgents(configDir, command.cwd === null ? null : await canonical(command.cwd));
       if (command.json) await writeOut(`${JSON.stringify(rows)}\n`);

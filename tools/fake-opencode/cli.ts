@@ -1,5 +1,6 @@
-import { appendFile } from 'node:fs/promises';
-import { loadStore, saveStore } from './store.ts';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { authFile, loadAuth, loadStore, saveStore } from './store.ts';
 import { serve } from './server.ts';
 
 /** The version the fake reports (OpenCode `v1.18.34`, the release read for D62). */
@@ -32,10 +33,25 @@ export function log(entry: Record<string, unknown>): Promise<void> {
  * credential (OpenAI, api), none with `FAKE_OPENCODE_SIGNED_OUT=1`.
  */
 async function authList(): Promise<number> {
-  const signedOut = env['FAKE_OPENCODE_SIGNED_OUT'] === '1';
+  // D63: a data folder with a fake auth file (or `FAKE_OPENCODE_AUTH_REQUIRED=1`) lists what that file holds.
+  const stored = await loadAuth(env);
+  const providers = stored !== null ? stored : env['FAKE_OPENCODE_AUTH_REQUIRED'] === '1' ? [] : env['FAKE_OPENCODE_SIGNED_OUT'] === '1' ? [] : ['openai'];
   await out('┌  Credentials ~/.local/share/opencode/auth.json\n│\n');
-  if (!signedOut) await out('●  OpenAI \u001b[90mapi\u001b[39m\n│\n');
-  await out(`└  ${signedOut ? 0 : 1} credentials\n`);
+  for (const provider of providers) await out(`●  ${provider} \u001b[90mapi\u001b[39m\n│\n`);
+  await out(`└  ${providers.length} credentials\n`);
+  return 0;
+}
+
+/**
+ * D63: `opencode auth logout` is interactive in the real CLI; the fake's account tests reach the same state through
+ * the server's `DELETE /auth/{id}`. `__fake-login <provider>` (tests only) stores a credential without a server.
+ */
+async function fakeLogin(provider: string): Promise<number> {
+  const file = authFile(env);
+  if (!file) return 1;
+  await mkdir(path.dirname(file), { recursive: true });
+  const held = (await loadAuth(env)) ?? [];
+  await writeFile(file, JSON.stringify({ providers: [...new Set([...held, provider])] }));
   return 0;
 }
 
@@ -105,6 +121,7 @@ export async function runCli(argv: readonly string[]): Promise<number | null> {
     await saveStore(env, store);
     return 0;
   }
+  if (first === 'auth' && rest[0] === '__fake-login') return fakeLogin(rest[1] ?? 'openai');
   if (first === 'serve') return serve(rest, { log });
   await err(`fake-opencode: unknown command ${argv.join(' ')}\n`);
   return 1;

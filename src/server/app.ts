@@ -1,3 +1,6 @@
+import { AccountService } from './accounts/service.ts';
+import { AutoSwitcher } from './accounts/auto-switch.ts';
+import { SignInManager } from './accounts/signin.ts';
 import { CliRegistry } from './cli/registry.ts';
 import { CliStatusService, envCommandFlags } from './cli/status.ts';
 import { cliAdapters, cliModelListers } from './cli/adapters.ts';
@@ -183,6 +186,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const config = options.config;
   // D62: Settings → CLIs, the New-session forms' CLI row, the sidebar's switcher.
   const clis = options.clis ?? createCliStatus(config, options.store, supervisor.cliRegistry);
+  // D63: the account profiles (the supervisor's own, so a switch and the pages see the same ones), signing in and out, the automatic switches.
+  const accounts = supervisor.accounts ?? new AccountService({ store: options.store, dataDir: config.dataDir, registry: supervisor.cliRegistry });
+  const signIn = new SignInManager({ accounts, registry: supervisor.cliRegistry, dataDir: config.dataDir });
+  app.addHook('preClose', async () => {
+    await signIn.close();
+  });
+  const autoSwitcher = new AutoSwitcher({ store: options.store, supervisor, accounts, dataDir: config.dataDir, systemItems, clis });
+  autoSwitcher.start();
+  app.addHook('preClose', async () => {
+    await autoSwitcher.stop();
+  });
   let scheduler = options.scheduler;
   if (!scheduler) {
     const own = new Scheduler({ store: options.store, sessions: { store: options.store, providers, supervisor, worktrees, folders, clis }, updates: supervisor, bus, systemItems });
@@ -228,7 +242,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     mcp = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
@@ -258,9 +272,12 @@ export function createCliStatus(config: ServerConfig, store: Store, registry: Cl
 
 /** A supervisor for the configured CLI command and extra args (D14: each session brings its own folder). */
 export function createSupervisor(config: ServerConfig, store: Store, controlHandler?: ControlRequestHandler): SessionSupervisor {
+  const providers = createCliRegistry(config, store);
   return new SessionSupervisor({
     store,
-    providers: createCliRegistry(config, store),
+    providers,
+    // D63: the account profiles (docs/accounts.md): each process gets its profile's folder variable.
+    accounts: new AccountService({ store, dataDir: config.dataDir, registry: providers }),
     claudeCommand: config.claudeCommand,
     claudeExtraArgs: config.claudeExtraArgs,
     // M4.1: the "Attach here" warning asks `claude agents --json` (in the session's cwd) whether a terminal holds the session.

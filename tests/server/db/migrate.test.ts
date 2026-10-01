@@ -898,7 +898,8 @@ describe('0023 session provider (D62)', () => {
     const source = await db(file);
     const before = dump(source);
     source.close();
-    const store = await openStore(file);
+    // D63: later migrations (0024) are their own test's concern: up to 0023.
+    const store = await openStore(file, { migrations: shipped.filter((m) => m.version <= 23) });
     try {
       expect(store.migrations.applied).toEqual([23]);
       const sessions = await store.sessions.list();
@@ -926,6 +927,52 @@ describe('0023 session provider (D62)', () => {
       await store.sessions.delete(one.id);
       expect(rowsOf(store.db, 'session_providers')).toEqual([]);
       expect(rowsOf(store.db, 'provider_switches')).toEqual([]);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0024 CLI accounts (D63)', () => {
+  it('on a database with sessions and usage readings: every session and reading is the Default\'s; the three Default profiles exist; earlier rows are kept', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd63', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 24) });
+    try {
+      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      await earlier.sessions.create({ name: 'older-claude', claudeSessionId: 'c-older' });
+      await earlier.sessions.create({ name: 'older-codex', claudeSessionId: 'c-codex', provider: 'codex' });
+      await earlier.usage.add({ source: 'get_usage', sessionId: null, fiveHourPct: 12, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, raw: {} });
+    } finally {
+      await earlier.close();
+    }
+    const source = await db(file);
+    const sessionsBefore = source.prepare('SELECT COUNT(*) AS n FROM sessions').get()?.['n'];
+    source.close();
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual([24]);
+      expect((await store.profiles.list()).map((p) => [p.id, p.cli, p.name, p.dir, p.builtin, p.enabled, p.position])).toEqual([
+        ['default-claude', 'claude', 'Default', null, true, true, 0],
+        ['default-codex', 'codex', 'Default', null, true, true, 0],
+        ['default-opencode', 'opencode', 'Default', null, true, true, 0],
+      ]);
+      const sessions = await store.sessions.list();
+      expect(sessions).toHaveLength(Number(sessionsBefore));
+      // Every existing session is on the Default of its CLI, unpinned.
+      for (const session of sessions) {
+        expect(session.profileId).toBe(`default-${session.provider}`);
+        expect(session.profilePinned).toBe(false);
+      }
+      expect(sessions.find((s) => s.name === 'older-codex')?.profileId).toBe('default-codex');
+      expect((await store.usage.latest())?.profileId).toBe('default-claude');
+      expect((await store.usage.latest(undefined, 'default-claude'))?.fiveHourPct).toBe(12);
+      // The CHECK refuses an unknown CLI; a new profile goes last in its CLI's order; a session's profile is free text (a deleted profile is set back to NULL by the service).
+      expect(() => store.db.prepare("INSERT INTO cli_profiles (id, cli, name, position, created_at) VALUES ('x', 'nope', 'X', 0, 'now')").run()).toThrow();
+      const added = await store.profiles.create({ cli: 'codex', name: 'Second' });
+      expect(added).toMatchObject({ position: 1, enabled: true, shareSettings: true, builtin: false });
+      await store.profiles.reorder('codex', [added.id]);
+      expect((await store.profiles.list('codex')).map((p) => p.name)).toEqual(['Second', 'Default']);
     } finally {
       await store.close();
     }

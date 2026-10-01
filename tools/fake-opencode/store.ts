@@ -47,3 +47,34 @@ export function saveStore(env: NodeJS.ProcessEnv, store: FakeStore): Promise<voi
   });
   return writes;
 }
+
+/** D63: `$XDG_DATA_HOME/opencode/fake-auth.json` (`{providers: string[]}`): the providers a data folder is signed in to. */
+export function authFile(env: NodeJS.ProcessEnv): string | null {
+  const data = env['XDG_DATA_HOME'];
+  return data && data.trim() !== '' ? path.join(data, 'opencode', 'fake-auth.json') : null;
+}
+
+/** The signed-in providers, `null` when the folder has no auth file. */
+export async function loadAuth(env: NodeJS.ProcessEnv): Promise<string[] | null> {
+  const file = authFile(env);
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as { providers?: unknown };
+    return Array.isArray(parsed.providers) ? parsed.providers.filter((p): p is string => typeof p === 'string') : [];
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAuth(env: NodeJS.ProcessEnv, providers: readonly string[]): Promise<void> {
+  const file = authFile(env);
+  if (!file) return;
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify({ providers }));
+}
+
+/** D63: `$XDG_DATA_HOME/opencode/fake-limit` exists: every turn of this data folder fails with the provider's 429. */
+export function limitFile(env: NodeJS.ProcessEnv): string | null {
+  const data = env['XDG_DATA_HOME'];
+  return data && data.trim() !== '' ? path.join(data, 'opencode', 'fake-limit') : null;
+}

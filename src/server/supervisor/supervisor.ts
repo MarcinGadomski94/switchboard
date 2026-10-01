@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, realpath } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
@@ -42,7 +42,10 @@ import type { AgentProcess } from '../cli/agent-process.ts';
 import { CliRegistry } from '../cli/registry.ts';
 import type { ProviderUsage } from '../cli/bridge-common.ts';
 import { CLI_LABELS, type CliProviderId, type HandoverSource, switchDividerLabel, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
-import { chatMarkdown, findCodexRollout, handoverRequest, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
+import { chatMarkdown, findCodexRollout, handoverRequest, incomingAfterAccountSwitch, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
+import { CONTINUE_AFTER_SWITCH, accountSwitchLabel, sessionProfileId } from '../../core/accounts.ts';
+import type { AccountService } from '../accounts/service.ts';
+import { copyClaudeConversation, copyCodexRollout } from '../accounts/transplant.ts';
 import type { ProviderSwitchRecord } from '../db/repos/providers.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
@@ -264,6 +267,8 @@ export interface SupervisorOptions {
   readonly providers?: CliRegistry;
   /** D62 P7: a CLI's own usage limits as its bridge read them (Codex's rate limits). */
   readonly onProviderUsage?: (sessionId: string, usage: ProviderUsage) => void;
+  /** D63: the account profiles: the folder variable each process gets, the profile new sessions start on (`docs/accounts.md`). */
+  readonly accounts?: AccountService;
 }
 
 /** Options of {@link SessionSupervisor.close} (D33). */
@@ -381,6 +386,16 @@ interface TeleportState {
   readonly output: string[];
   /** The remote history still has to be imported from the local copy's transcript. */
   importPending: boolean;
+}
+
+/** D63: options of {@link SessionSupervisor.switchAccount}. */
+export interface AccountSwitchOptions {
+  /** Why, as the divider says it ("session limit, resets 14:05"). */
+  readonly reason: string;
+  /** Where the exported chat goes when the conversation cannot be copied (`<dataDir>/handovers`). */
+  readonly handoverDir: string;
+  /** A turn was interrupted by the switch (default: whether one runs now): it is picked up with a "continue" message. */
+  readonly interrupted?: boolean;
 }
 
 /** D62 P5: how long the outgoing agent may take to write its handover (ms). */
@@ -501,6 +516,14 @@ export class SessionSupervisor {
   /** D62 P5: their runs (shutdown waits for them once the processes are stopped). */
   readonly #switchRuns = new Set<Promise<unknown>>();
   #onProviderUsage: ((sessionId: string, usage: ProviderUsage) => void) | null;
+  /** D63: the account profiles (`null` = none: every process uses the base environment). */
+  readonly #accounts: AccountService | null;
+  /** D63: the sessions an account switch runs for. */
+  readonly #accountSwitches = new Set<string>();
+  /** D63: when each session last switched account (epoch ms): the automatic switcher's cooldown. */
+  readonly #lastAccountSwitch = new Map<string, number>();
+  /** D63: the profile each live process was started on (a switch changes the stored one only once its new process starts). */
+  readonly #profileOfLive = new Map<string, string>();
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -522,6 +545,7 @@ export class SessionSupervisor {
     this.#attachments = options.attachments ?? null;
     this.#providers = options.providers ?? new CliRegistry({ commands: { claude: options.claudeCommand } });
     this.#onProviderUsage = options.onProviderUsage ?? null;
+    this.#accounts = options.accounts ?? null;
     this.#workflows = new WorkflowService({
       configDir: () => claudeConfigDir(this.#env),
       onChange: (sessionId) => this.#workflowChanged(sessionId),
@@ -530,7 +554,7 @@ export class SessionSupervisor {
     });
     registerWorkflowSource(this.#store, this.#workflows);
     // D62 P5: `Session.providerSwitch`.
-    registerSwitchSource(this.#store, { current: (sessionId) => this.currentSwitch(sessionId) });
+    registerSwitchSource(this.#store, { current: (sessionId) => this.currentSwitch(sessionId), accountSwitching: (sessionId) => this.#accountSwitches.has(sessionId) });
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -543,6 +567,11 @@ export class SessionSupervisor {
   /** D62: the base environment of the children (History reads `CODEX_HOME` from it). */
   get environment(): NodeJS.ProcessEnv {
     return this.#env;
+  }
+
+  /** D63: the account profiles, `null` when this supervisor has none. */
+  get accounts(): AccountService | null {
+    return this.#accounts;
   }
 
   /** D62: the CLIs sessions run on (commands and adapters). */
@@ -659,6 +688,8 @@ export class SessionSupervisor {
       effort: input.effort ?? null,
       // D62: the CLI it runs on (validated by the caller; Claude Code when none is named).
       provider: input.provider ?? 'claude',
+      // D63: the chosen account profile, else the rule's pick (the first with allowance); null = the Default.
+      profileId: input.profileId ?? (await this.#accounts?.pick(input.provider ?? 'claude')) ?? null,
     });
     await this.#store.agents.create({
       sessionId: session.id,
@@ -938,6 +969,7 @@ export class SessionSupervisor {
   #assertNotSwitching(session: SessionRecord): void {
     const running = this.#switches.get(session.id);
     if (running) throw new SupervisorError('switching', `${session.title ?? session.name} is switching to ${CLI_LABELS[running.to]}: wait for it to finish`);
+    if (this.#accountSwitches.has(session.id)) throw new SupervisorError('switching', `${session.title ?? session.name} is switching account: wait for it to finish`);
   }
 
   /** D62 P5: the switch in progress for the session (`Session.providerSwitch`), `null` when none runs. */
@@ -1034,7 +1066,7 @@ export class SessionSupervisor {
       await this.#switchStep(sessionId, state, 'starting');
       // Each CLI has its own models and its own context: both start over (a switch back to a CLI reopens its own conversation).
       session =
-        (await this.#store.sessions.update(sessionId, { provider: to, model: null, effort: null, modelOptions: null, context: null, remoteEnabled: false, status: 'idle' })) ?? session;
+        (await this.#store.sessions.update(sessionId, { provider: to, profileId: (await this.#accounts?.pick(to)) ?? null, profilePinned: false, model: null, effort: null, modelOptions: null, context: null, remoteEnabled: false, status: 'idle' })) ?? session;
       await this.#setMainAgentStatus(sessionId, 'idle');
       const claudeRan = to === 'claude' && (await this.#store.providers.nativeId(sessionId, 'claude')) !== null;
       const start: ClaudeStart = to === 'claude' && !claudeRan ? { kind: 'new', claudeSessionId: session.claudeSessionId } : { kind: 'resume', claudeSessionId: session.claudeSessionId };
@@ -1102,6 +1134,166 @@ export class SessionSupervisor {
     const reply = [...events].reverse().find((event) => (event.payload as { type?: string } | null)?.type === 'assistant' && event.agentId === mainAgentId);
     const text = (reply?.payload as { text?: string } | undefined)?.text ?? '';
     return text.trim() === '' ? { reason: `${CLI_LABELS[target.provider]} wrote no handover` } : { text };
+  }
+
+  // ── account profiles (D63, docs/accounts.md) ─────────────────────────────
+
+  /** D63: the live Claude Code sessions, the profile each runs on, and whether it is between turns (the usage meter reads per profile). */
+  liveClaudeSessions(): Array<{ readonly id: string; readonly profileId: string; readonly idle: boolean }> {
+    return this.#liveSessions().filter((s) => s.provider === 'claude').map((s) => ({ id: s.id, profileId: s.profileId, idle: s.idle }));
+  }
+
+  /** D63: every live session with its CLI, profile and whether it is between turns (the automatic switcher's view). */
+  liveSessions(): Array<{ readonly id: string; readonly provider: CliProviderId; readonly profileId: string; readonly idle: boolean }> {
+    return this.#liveSessions();
+  }
+
+  #liveSessions(): Array<{ id: string; provider: CliProviderId; profileId: string; idle: boolean }> {
+    const out: Array<{ id: string; provider: CliProviderId; profileId: string; idle: boolean }> = [];
+    for (const live of this.#live.values()) {
+      if (!live.proc.running || live.stopping) continue;
+      out.push({ id: live.sessionId, provider: live.provider, profileId: this.#profileOfLive.get(live.sessionId) ?? `default-${live.provider}`, idle: !live.recorder.turnBusy() });
+    }
+    return out;
+  }
+
+  /** D63: an account switch of the session is running. */
+  accountSwitching(sessionId: string): boolean {
+    return this.#accountSwitches.has(sessionId);
+  }
+
+  /** D63: when the session last switched account (epoch ms), `null` when it has not since this Switchboard started. */
+  lastAccountSwitch(sessionId: string): number | null {
+    return this.#lastAccountSwitch.get(sessionId) ?? null;
+  }
+
+  /** D63: the pin: automatic switching leaves the session on its profile. */
+  async setProfilePinned(sessionId: string, pinned: boolean): Promise<SessionRecord> {
+    const session = await this.#get(sessionId);
+    const updated = (await this.#store.sessions.update(sessionId, { profilePinned: pinned })) ?? session;
+    await this.#emitSession(sessionId);
+    return updated;
+  }
+
+  /**
+   * D63: moves the session to another account profile of its CLI, in the same
+   * Switchboard session (same chat, same cwd): the process is stopped (D7's stop),
+   * the CLI's own conversation is **copied** to the new profile's folder (Claude
+   * Code: the transcript and its subagents folder; Codex: the rollout file), and the
+   * CLI is resumed with the new profile's folder in its environment (`--resume`,
+   * `thread/resume`). Where the conversation cannot be carried over (OpenCode's
+   * storage is not copyable, a Codex rollout that is missing) the D62 handover is
+   * used inside the same CLI: the chat is exported and the agent on the new account
+   * reads it. A turn the switch interrupted is picked up with a short "continue"
+   * message (ASSUMED D63-continue). The chat shows "Switched account: A → B (reason)".
+   * A paused session only changes profile (the divider is recorded; nothing starts).
+   * @throws {SupervisorError} `not-found`, `closed`, `detached`, `not-available`
+   * (hooked, no profiles, a profile of another CLI or a disabled one), `switching`
+   * (one runs, or it already runs on that profile), `switch-failed`, `closing`.
+   */
+  async switchAccount(sessionId: string, toProfileId: string, options: AccountSwitchOptions): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const accounts = this.#accounts;
+    if (!accounts) throw new SupervisorError('not-available', 'account profiles are not set up in this Switchboard');
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (session.hooked) throw new SupervisorError('not-available', 'a hooked terminal session runs its own CLI in its terminal: it cannot switch account here');
+    if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
+    const fromId = sessionProfileId(session);
+    if (fromId === toProfileId) throw new SupervisorError('switching', `${session.title ?? session.name} already runs on this account`);
+    const to = await accounts.find(toProfileId);
+    if (!to || to.cli !== session.provider) throw new SupervisorError('not-available', `no ${CLI_LABELS[session.provider]} account ${toProfileId}`);
+    if (!to.enabled) throw new SupervisorError('not-available', `the account ${to.name} is disabled`);
+    const from = await accounts.find(fromId);
+    const fromName = from?.name ?? 'Default';
+    this.#accountSwitches.add(sessionId);
+    await this.#emitSession(sessionId);
+    const provider = session.provider;
+    const outgoing = this.#live.get(sessionId);
+    let stoppedOld = false;
+    try {
+      const interrupted = options.interrupted ?? (outgoing?.recorder.turnBusy() ?? false);
+      if (outgoing) {
+        await this.#stop(outgoing, 'pause');
+        stoppedOld = true;
+      }
+      this.#assertOpen();
+      const fromDir = await accounts.dirOf(fromId, provider);
+      const toDir = await accounts.dirOf(toProfileId, provider);
+      let start: ClaudeStart = { kind: 'resume', claudeSessionId: session.claudeSessionId };
+      let carried = true;
+      let why = '';
+      if (provider === 'claude' && fromDir && toDir) {
+        const copied = await copyClaudeConversation(fromDir, toDir, session.claudeSessionId).catch((error: unknown) => ({ ok: false as const, reason: error instanceof Error ? error.message : String(error) }));
+        if (!copied.ok) {
+          carried = false;
+          why = copied.reason;
+          start = { kind: 'new', claudeSessionId: session.claudeSessionId };
+        }
+      } else if (provider === 'codex') {
+        const native = await this.#store.providers.nativeId(sessionId, 'codex');
+        if (native && fromDir && toDir) {
+          const copied = await copyCodexRollout(fromDir, toDir, native).catch((error: unknown) => ({ ok: false as const, reason: error instanceof Error ? error.message : String(error) }));
+          if (!copied.ok) {
+            carried = false;
+            why = copied.reason;
+          }
+        } else if (native) {
+          carried = false;
+          why = 'the Codex folders are not known';
+        }
+        if (!carried) await this.#store.providers.forgetNative(sessionId, 'codex');
+      } else if (provider === 'opencode') {
+        carried = false;
+        why = "OpenCode's storage cannot be copied between accounts";
+        await this.#store.providers.forgetNative(sessionId, 'opencode');
+      } else {
+        carried = false;
+        why = 'the folders are not known';
+      }
+      let message: string | null = interrupted ? CONTINUE_AFTER_SWITCH : null;
+      if (!carried) {
+        // The D62 handover inside the same CLI: the exported chat (and the CLI's own record when it is still readable).
+        const at = new Date();
+        const cwd = session.cwd ?? '';
+        const events = await this.#store.events.list(sessionId);
+        const markdown = chatMarkdown({ title: session.title ?? session.name, cwd, from: provider, to: provider, at, events, mainAgentId: await this.#mainAgentId(session) });
+        const exportPath = await writeExport(options.handoverDir, sessionId, provider, provider, at, markdown);
+        const transcriptPath = provider === 'claude' ? await this.findTranscript(session.claudeSessionId) : null;
+        message = incomingAfterAccountSwitch({ cli: provider, cwd, fromName, toName: to.name, reason: options.reason, exportPath, transcriptPath });
+        await this.recordServiceEvent(sessionId, 'text', `The conversation was not carried over (${why}): the new account reads the exported chat`, { type: 'lifecycle', action: 'account-switched', message: why }).catch(() => undefined);
+      }
+      const label = accountSwitchLabel(fromName, to.name, options.reason);
+      const updated =
+        (await this.#store.sessions.update(sessionId, { profileId: toProfileId, status: outgoing ? 'idle' : session.status, ...(carried ? {} : { context: null }) })) ?? session;
+      if (!outgoing) {
+        // Paused: only the profile changes; the next resume runs there. The divider is the chat's record of it.
+        await this.#recordStandalone(sessionId, 'account-switched', label);
+        return updated;
+      }
+      await this.#setMainAgentStatus(sessionId, 'idle');
+      const live = await this.#spawn(updated, start, 'account-switched', undefined, { label, payload: { fromProfile: fromName, toProfile: to.name, reason: options.reason } });
+      if (message !== null) await this.#send(live, message, 'service');
+      else await this.#enqueue(live, () => this.#refreshStatus(live));
+      return await this.#get(sessionId);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      this.#onError(error);
+      await this.recordServiceEvent(sessionId, 'error', `Could not switch to the account ${to.name}: ${text}`, { type: 'lifecycle', action: 'account-switched', message: text }).catch(() => undefined);
+      await this.#store.sessions.update(sessionId, { profileId: session.profileId }).catch(() => undefined);
+      // The session was running: bring it back up on the account it had.
+      if (stoppedOld && !this.#closing) {
+        const back = await this.#get(sessionId).catch(() => null);
+        if (back && !this.#live.has(sessionId)) await this.#spawn({ ...back, profileId: session.profileId }, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed').catch((e: unknown) => this.#onError(e));
+      }
+      throw new SupervisorError('switch-failed', `could not switch to the account ${to.name}: ${text}`);
+    } finally {
+      this.#accountSwitches.delete(sessionId);
+      this.#lastAccountSwitch.set(sessionId, Date.now());
+      if (!this.#closing) void this.#emitSession(sessionId).catch((error: unknown) => this.#onError(error));
+    }
   }
 
   // ── close and reopen (D33, docs/supervisor.md → Close and reopen) ────────
@@ -1220,7 +1412,7 @@ export class SessionSupervisor {
     if (this.#live.has(sessionId)) return command;
     const claude = session.provider === 'claude';
     // D62: only Claude Code's transcript is read back (another CLI's terminal turns are not imported, docs/providers.md).
-    const transcript = claude ? await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId) : null;
+    const transcript = claude ? await this.findTranscript(session.claudeSessionId) : null;
     if (options.confirm !== true) {
       const lister = this.#listLive;
       const listLive = lister ? () => lister(session.cwd) : null;
@@ -1243,8 +1435,17 @@ export class SessionSupervisor {
    * The transcript of a CLI session id, `<configDir>/projects/*\/<id>.jsonl` with
    * the children's `CLAUDE_CONFIG_DIR` (else `~/.claude`); `null` when there is none.
    */
-  findTranscript(claudeSessionId: string): Promise<string | null> {
-    return findTranscriptFile(claudeConfigDir(this.#env), claudeSessionId);
+  async findTranscript(claudeSessionId: string): Promise<string | null> {
+    // D63: a session's transcript is in the config folder of the profile it ran on (or an earlier one): the newest copy wins.
+    const dirs = this.#accounts ? await this.#accounts.claudeConfigDirs() : [claudeConfigDir(this.#env)];
+    let best: { readonly file: string; readonly mtimeMs: number } | null = null;
+    for (const dir of dirs) {
+      const file = await findTranscriptFile(dir, claudeSessionId);
+      if (!file) continue;
+      const mtimeMs = (await stat(file).catch(() => null))?.mtimeMs ?? 0;
+      if (!best || mtimeMs > best.mtimeMs) best = { file, mtimeMs };
+    }
+    return best?.file ?? null;
   }
 
   /**
@@ -1491,7 +1692,7 @@ export class SessionSupervisor {
    */
   async #importRemoteHistory(live: Live, state: TeleportState): Promise<void> {
     const session = await this.#get(live.sessionId);
-    const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
+    const transcript = await this.findTranscript(session.claudeSessionId);
     if (!transcript) return;
     state.importPending = false;
     try {
@@ -1941,8 +2142,12 @@ export class SessionSupervisor {
       })) ?? session;
     // D49 ruling D49-autocompact-mark: the auto-compact settings this process runs with (env + settings files), on the session's meter.
     // D62: only Claude Code's own threshold is known; another CLI's meter has no auto-compact tick (ASSUMED D62-autocompact).
+    // D63: the profile's folder (a profile that shares the Default's settings links them in, so its files are read the same way).
+    const profileEnv = (await this.#accounts?.envFor(prepared.profileId, session.provider)) ?? {};
     const autoCompact =
-      session.provider === 'claude' ? autoCompactConfig(childEnv(this.#env), await readClaudeSettings(claudeConfigDir(this.#env), cwd)) : { ...DEFAULT_AUTO_COMPACT, enabled: false };
+      session.provider === 'claude'
+        ? autoCompactConfig({ ...childEnv(this.#env), ...profileEnv }, await readClaudeSettings(claudeConfigDir({ ...this.#env, ...profileEnv }), cwd))
+        : { ...DEFAULT_AUTO_COMPACT, enabled: false };
     // D49-backfill: a session from before D49 starts from its transcript's meter (read once; Claude Code's transcripts only).
     const stored =
       prepared.context === null ? (session.provider === 'claude' ? await this.#transcriptContext(prepared.claudeSessionId) : EMPTY_CONTEXT) : readContextState(prepared.context);
@@ -1996,7 +2201,7 @@ export class SessionSupervisor {
       nativeId,
       permissionMode,
       cwd,
-      env: childEnv(this.#env),
+      env: { ...childEnv(this.#env), ...profileEnv },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       onLine: (line) => {
@@ -2016,6 +2221,7 @@ export class SessionSupervisor {
       },
       onUsage: (usage) => {
         this.#providerUsage.set(usage.provider, usage);
+        this.#accounts?.recordProviderUsage(sessionProfileId(prepared), usage);
         this.#onProviderUsage?.(session.id, usage);
       },
     });
@@ -2057,6 +2263,7 @@ export class SessionSupervisor {
     };
     holder.live = live;
     this.#live.set(session.id, live);
+    this.#profileOfLive.set(session.id, sessionProfileId(prepared));
     // D24: `initialize` goes out first (before any user message); its reply says whether Remote Control is available.
     live.remote.handshake().catch((error: unknown) => this.#onError(error));
     live.finished = proc.exited.then((exit) => this.#enqueue(live, () => this.#onExit(live, exit)));
@@ -2348,7 +2555,7 @@ export class SessionSupervisor {
   /** D49-backfill: the meter from a session's transcript; the empty meter when it is missing or unreadable. */
   async #transcriptContext(claudeSessionId: string): Promise<ContextState> {
     try {
-      const file = await findTranscriptFile(claudeConfigDir(this.#env), claudeSessionId);
+      const file = await this.findTranscript(claudeSessionId);
       if (file) return contextFromTranscript(EMPTY_CONTEXT, newestChain(parseTranscript(await readFile(file, 'utf8'))));
     } catch {
       // Unreadable: the empty meter all the same (read once).
@@ -2428,4 +2635,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   closed: 'Closed',
   reopened: 'Reopened',
   switched: 'Switched CLI',
+  'account-switched': 'Switched account',
 };

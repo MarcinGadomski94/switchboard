@@ -196,11 +196,14 @@ export class StreamRecorder {
   readonly #onContext: (() => void) | undefined;
   readonly #onWorkflow: ((signal: WorkflowSignal) => void) | undefined;
   readonly #now: () => Date;
+  readonly #profileId: string;
 
   constructor(options: RecorderOptions) {
     this.#store = options.store;
     this.#sessionId = options.session.id;
     this.#sessionName = options.session.name;
+    // D63: the Claude Code profile this process's usage readings belong to.
+    this.#profileId = options.session.profileId ?? 'default-claude';
     const cwd = options.session.cwd;
     this.#place = cwd ? { root: options.session.root ?? cwd, kind: options.session.rootKind ?? 'workspace', cwd } : null;
     this.#requestedMode = options.session.requestedPermissionMode;
@@ -900,6 +903,7 @@ export class StreamRecorder {
     await this.#store.usage.add({
       source: 'rate_limit_event',
       sessionId: this.#sessionId,
+      profileId: this.#profileId,
       fiveHourPct: reading.fiveHourPct,
       fiveHourResetsAt: reading.fiveHourResetsAt,
       sevenDayPct: reading.sevenDayPct,

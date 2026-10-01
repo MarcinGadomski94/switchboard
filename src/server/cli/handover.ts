@@ -57,6 +57,32 @@ export function incomingFromHistory(input: {
   ].join('\n');
 }
 
+/**
+ * D63: the first message after an account switch that could not carry the CLI's own
+ * conversation over (OpenCode's storage is not copyable; a Codex rollout that could not
+ * be copied): the same CLI on another account reads the exported chat and continues.
+ */
+export function incomingAfterAccountSwitch(input: {
+  readonly cli: CliProviderId;
+  readonly cwd: string;
+  readonly fromName: string;
+  readonly toName: string;
+  readonly reason: string;
+  readonly exportPath: string;
+  readonly transcriptPath: string | null;
+}): string {
+  const sources = [`the session's chat so far, exported by Switchboard: ${input.exportPath}`];
+  if (input.transcriptPath) sources.push(`${CLI_LABELS[input.cli]}'s own record of it: ${input.transcriptPath}`);
+  return [
+    `You are continuing a session in this folder: ${input.cwd}. Switchboard moved it from the account "${input.fromName}" to "${input.toName}" (${input.reason}); the earlier conversation could not be carried over, so it was exported.`,
+    '',
+    `Read ${sources.length === 1 ? 'this file' : 'these'} first:`,
+    ...sources.map((source) => `- ${source}`),
+    '',
+    'Then summarize where things stand (the goal, decisions made, files changed, open tasks, the next step), check `git status` for anything uncommitted, and continue. The turn that was running when the limit hit was interrupted: finish it.',
+  ].join('\n');
+}
+
 /** Bytes of chat an export keeps (the newest part when a session's chat is longer). */
 export const EXPORT_LIMIT_BYTES = 2 * 1024 * 1024;
 

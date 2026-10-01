@@ -522,3 +522,20 @@ export function applyMaxTurns(steps: readonly Step[], maxTurns: number, resultTe
   }
   return steps;
 }
+
+/**
+ * D63: a turn at the account's usage limit: the turn's start (`system/init`, the replay)
+ * and then a failed `result` carrying the CLI's limit text ("You've hit your session limit
+ * · resets 2pm", VERIFIED in the 2.1.285 binary), no assistant message.
+ */
+export function limitSteps(steps: readonly Step[], text: string): readonly Step[] {
+  const start = steps.filter((step) => step.t === 'replay' || (step.t === 'line' && step.line['type'] === 'system' && step.line['subtype'] === 'init'));
+  const template = steps.find((step) => step.t === 'line' && step.line['type'] === 'result');
+  const result = template?.t === 'line' ? clone(template.line) : ({ type: 'result' } as JsonObject);
+  result['subtype'] = 'success';
+  result['is_error'] = true;
+  result['result'] = text;
+  delete result['errors'];
+  result['num_turns'] = 1;
+  return [...start, { t: 'line', line: result }];
+}

@@ -1,3 +1,4 @@
+import { sessionProfileId } from '../../core/accounts.ts';
 import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
@@ -55,6 +56,8 @@ export function registerHookSource(store: Store, source: HookSource): void {
 export interface SwitchSource {
   /** The switch in progress for the session, `null` when none runs. */
   current(sessionId: string): SessionProviderSwitch | null;
+  /** D63: an account switch of the session runs. */
+  accountSwitching?(sessionId: string): boolean;
 }
 
 const switchSources = new WeakMap<Store, SwitchSource>();
@@ -203,6 +206,11 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     // D62: the session's CLI and a switch in progress.
     provider: record.provider,
     providerSwitch: switchSources.get(store)?.current(record.id) ?? null,
+    // D63: the account profile (its name for the header), the pin, a profile switch in progress.
+    profileId: sessionProfileId(record),
+    profileName: (await store.profiles.get(sessionProfileId(record)))?.name ?? 'Default',
+    profilePinned: record.profilePinned,
+    accountSwitching: switchSources.get(store)?.accountSwitching?.(record.id) ?? false,
   };
 }
 

@@ -36,6 +36,9 @@ export interface RunArgs {
 export type FakeCommand =
   | { kind: 'version' }
   | { kind: 'auth-status'; json: boolean }
+  /** D63: `claude auth login [--claudeai | --console] [--email <e>] [--sso]` / `auth logout` (`auth.ts`). */
+  | { kind: 'auth-login'; email: string | null }
+  | { kind: 'auth-logout' }
   | { kind: 'agents'; json: boolean; all: boolean; cwd: string | null }
   /** D61: `claude mcp …` (`mcp.ts`): the rest of the argv after `mcp`. */
   | { kind: 'mcp'; argv: string[] }
@@ -108,6 +111,15 @@ function parseSubcommandFlags(
  */
 export function parseArgv(argv: readonly string[]): FakeCommand {
   if (argv[0] === 'auth') {
+    if (argv[1] === 'login') {
+      const flags = parseSubcommandFlags('auth login', argv.slice(2), { '--claudeai': 'bool', '--console': 'bool', '--sso': 'bool', '--email': 'value' });
+      const email = flags.get('--email');
+      return { kind: 'auth-login', email: typeof email === 'string' ? email : null };
+    }
+    if (argv[1] === 'logout') {
+      parseSubcommandFlags('auth logout', argv.slice(2), {});
+      return { kind: 'auth-logout' };
+    }
     if (argv[1] !== 'status') throw new UsageError(`error: unknown command 'auth ${argv[1] ?? ''}'`.trimEnd());
     const flags = parseSubcommandFlags('auth status', argv.slice(2), { '--json': 'bool', '--text': 'bool' });
     return { kind: 'auth-status', json: flags.has('--json') };

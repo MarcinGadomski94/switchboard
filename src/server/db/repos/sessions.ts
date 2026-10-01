@@ -129,6 +129,13 @@ export interface SessionRecord {
    * from before D62); a mid-session switch changes it (`docs/providers.md`).
    */
   readonly provider: CliProviderId;
+  /**
+   * D63 (0024): the account profile the session's process runs on (`cli_profiles.id`);
+   * `null` = the Default of its CLI. A switch changes it.
+   */
+  readonly profileId: string | null;
+  /** D63: automatic account switching leaves the session on its profile. */
+  readonly profilePinned: boolean;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -197,6 +204,8 @@ const SPEC: TableSpec<SessionRecord> = {
     hooked: ['hooked', 'bool'],
     transcriptPath: ['transcript_path', 'text'],
     provider: ['provider', 'text'],
+    profileId: ['profile_id', 'text'],
+    profilePinned: ['profile_pinned', 'bool'],
   },
 };
 

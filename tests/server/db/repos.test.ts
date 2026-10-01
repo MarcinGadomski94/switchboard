@@ -92,6 +92,8 @@ describe('sessions', () => {
       hooked: false,
       transcriptPath: null,
       provider: 'claude',
+      profileId: null,
+      profilePinned: false,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

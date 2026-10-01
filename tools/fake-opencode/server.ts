@@ -2,7 +2,8 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http';
 import path from 'node:path';
-import { type FakeStore, type StoredMessage, loadStore, saveStore } from './store.ts';
+import { existsSync } from 'node:fs';
+import { type FakeStore, type StoredMessage, limitFile, loadAuth, loadStore, saveAuth, saveStore } from './store.ts';
 
 type Json = Record<string, unknown>;
 
@@ -218,6 +219,12 @@ export async function serve(args: readonly string[], options: { readonly log: (e
     };
     const aborted = (): Promise<void> => end({ name: 'MessageAbortedError', data: { message: 'The operation was aborted.' } });
 
+    // D63: a data folder at its limit (`fake-limit`, or `FAKE_OPENCODE_LIMIT=1`): the provider's 429, no content.
+    const limitMarker = limitFile(env);
+    if (env['FAKE_OPENCODE_LIMIT'] === '1' || (limitMarker !== null && existsSync(limitMarker))) {
+      return end({ name: 'APIError', data: { message: 'Rate limit exceeded: 429 Too Many Requests (usage limit reached)', statusCode: 429, isRetryable: false } });
+    }
+
     part({ type: 'step-start' });
     part({ type: 'reasoning', text: 'fake-opencode is thinking', time: { start: Date.now(), end: Date.now() } });
     let reply = files.length > 0 ? `[fake-opencode: ${files.length} file part${files.length === 1 ? '' : 's'}: ${files.map((file) => String(file['mime'])).join(', ')}]` : 'OK';
@@ -356,6 +363,39 @@ export async function serve(args: readonly string[], options: { readonly log: (e
     if (method === 'GET' && url.pathname === '/config/providers') {
       const providers = env['FAKE_OPENCODE_PROVIDERS'] === 'none' ? [] : FAKE_OPENCODE_PROVIDERS;
       return json(response, 200, { providers, default: providers.length > 0 ? { anthropic: 'claude-sonnet-5' } : {} });
+    }
+    // D63: provider sign-in (VERIFIED routes and shapes, `packages/sdk/openapi.json` at v1.18.34).
+    if (method === 'GET' && url.pathname === '/provider/auth') {
+      return json(response, 200, { anthropic: [{ type: 'oauth', label: 'Claude Pro/Max' }, { type: 'api', label: 'API key' }], openai: [{ type: 'api', label: 'API key' }] });
+    }
+    if (method === 'GET' && url.pathname === '/provider') {
+      const connected = (await loadAuth(env)) ?? [];
+      return json(response, 200, { all: FAKE_OPENCODE_PROVIDERS, default: { anthropic: 'claude-sonnet-5' }, connected });
+    }
+    if (method === 'POST' && segments[0] === 'provider' && segments[1] && segments[2] === 'oauth' && segments[3] === 'authorize') {
+      const input = await body(request);
+      await options.log({ kind: 'oauth-authorize', provider: segments[1], body: input });
+      const code = env['FAKE_OPENCODE_OAUTH_METHOD'] === 'code';
+      return json(response, 200, { url: env['FAKE_OPENCODE_LOGIN_URL'] ?? `https://login.fake-opencode.example.test/authorize?provider=${segments[1]}&state=${id('st')}`, method: code ? 'code' : 'auto', instructions: code ? 'Paste the authorization code here' : 'Complete the sign-in in your browser' });
+    }
+    if (method === 'POST' && segments[0] === 'provider' && segments[1] && segments[2] === 'oauth' && segments[3] === 'callback') {
+      const input = await body(request);
+      await options.log({ kind: 'oauth-callback', provider: segments[1], hasCode: isRecord(input) && typeof input['code'] === 'string' });
+      if (env['FAKE_OPENCODE_LOGIN_MODE'] === 'never') await new Promise(() => undefined);
+      if (!(isRecord(input) && typeof input['code'] === 'string')) await new Promise((resolve) => setTimeout(resolve, Number(env['FAKE_OPENCODE_LOGIN_MS'] ?? 300)));
+      await saveAuth(env, [...new Set([...((await loadAuth(env)) ?? []), segments[1]])]);
+      return json(response, 200, true);
+    }
+    if (segments[0] === 'auth' && segments[1] && method === 'PUT') {
+      const input = await body(request);
+      // The key is never logged or kept: only that the provider is signed in.
+      await options.log({ kind: 'auth-set', provider: segments[1], type: isRecord(input) ? input['type'] : null });
+      await saveAuth(env, [...new Set([...((await loadAuth(env)) ?? []), segments[1]])]);
+      return json(response, 200, true);
+    }
+    if (segments[0] === 'auth' && segments[1] && method === 'DELETE') {
+      await saveAuth(env, ((await loadAuth(env)) ?? []).filter((provider) => provider !== segments[1]));
+      return json(response, 200, true);
     }
     if (method === 'GET' && url.pathname === '/mcp') return json(response, 200, Object.fromEntries(Object.keys(store.mcp).map((name) => [name, { status: 'connected' }])));
     if (method === 'POST' && url.pathname === '/session') {

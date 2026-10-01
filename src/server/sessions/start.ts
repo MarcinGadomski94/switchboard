@@ -42,6 +42,27 @@ export async function resolveSessionProvider(
   return { ok: true, provider };
 }
 
+/**
+ * D63: the account profile a NewSession names (`profileId`): omitted / `null` = the
+ * rule of Settings → Accounts (the supervisor picks); 422 on field `profileId` for
+ * a profile that is not `provider`'s, is disabled or does not exist.
+ */
+export async function resolveSessionProfile(
+  context: Pick<SessionStartContext, 'supervisor'>,
+  body: unknown,
+  provider: CliProviderId,
+): Promise<{ readonly ok: true; readonly profileId: string | null } | { readonly ok: false; readonly status: number; readonly body: RefusalBody }> {
+  const raw = isRecord(body) ? body['profileId'] : undefined;
+  if (raw === undefined || raw === null) return { ok: true, profileId: null };
+  const invalid = (message: string) => ({ ok: false as const, status: 422, body: { error: 'invalid', errors: [{ field: 'profileId', message }] } });
+  if (typeof raw !== 'string') return invalid('profileId must be a profile id');
+  const profile = await context.supervisor.accounts?.find(raw);
+  if (!profile) return invalid('no such account profile');
+  if (profile.cli !== provider) return invalid(`that account belongs to ${CLI_LABELS[profile.cli]}, not ${CLI_LABELS[provider]}`);
+  if (!profile.enabled) return invalid(`the account ${profile.name} is disabled`);
+  return { ok: true, profileId: profile.id };
+}
+
 /** Options for {@link startNewSession}. */
 export interface StartNewSessionOptions {
   /** Runs once the session is stored and its worktrees are linked, before its process starts (M7.1 links the scheduled run here). */
@@ -123,6 +144,9 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   const cli = await resolveSessionProvider(context, body);
   if (!cli.ok) return cli;
   const { provider } = cli;
+  // D63: the account profile (the rule's pick when none is named).
+  const account = await resolveSessionProfile(context, body, provider);
+  if (!account.ok) return account;
   const scan = providers.solutions;
   const readOnly =
     scan && folder.kind === 'workspace'
@@ -163,7 +187,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   // without an epic); dropped repos get no worktree and leave the session's solutions.
   const branching = result.value.worktrees && result.value.branch ? (result.value.branching ?? null) : null;
   const solutions = branching ? result.value.solutions.filter((solution) => !branching.dropped.includes(solution)) : result.value.solutions;
-  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}), provider };
+  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}), provider, ...(account.profileId !== null ? { profileId: account.profileId } : {}) };
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
   // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
   // D38: a workspace session without solutions gets none up front: its agent creates them (and Switchboard adopts them).

@@ -14,6 +14,7 @@
  * `FAKE_CODEX_MODELS=none`. Behaviour per message: `docs/fake-codex.md`.
  */
 import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -90,8 +91,21 @@ export const FAKE_CODEX_MODELS: readonly Json[] = [
 /** The context window every fake model reports. */
 export const FAKE_CODEX_WINDOW = 272_000;
 
+/** D63: `<CODEX_HOME>/.fake-rate-limits` (`<primary>,<secondary>`) sets this account's windows, over `FAKE_CODEX_RATE_LIMITS`. */
+function rateLimitsSetting(): string {
+  const home = env['CODEX_HOME'];
+  if (home && home.trim() !== '') {
+    try {
+      return readFileSync(path.join(home, '.fake-rate-limits'), 'utf8').trim();
+    } catch {
+      // No file: the environment's.
+    }
+  }
+  return env['FAKE_CODEX_RATE_LIMITS'] ?? '12,40';
+}
+
 function rateLimits(): Json {
-  const [primary, secondary] = (env['FAKE_CODEX_RATE_LIMITS'] ?? '12,40').split(',').map((part) => Number(part.trim()));
+  const [primary, secondary] = rateLimitsSetting().split(',').map((part) => Number(part.trim()));
   const now = Math.floor(Date.now() / 1000);
   return {
     limitId: 'codex',
@@ -726,6 +740,52 @@ async function appServer(): Promise<number> {
   return 0;
 }
 
+/**
+ * D63: the sign-in state of a home is `<CODEX_HOME>/.fake-auth.json` (`{loggedIn}`). Without the file a home is
+ * signed in (as before D63) unless `FAKE_CODEX_SIGNED_OUT=1`, or `FAKE_CODEX_AUTH_REQUIRED=1` (then only a home with the file is).
+ */
+async function signedIn(): Promise<boolean> {
+  if (env['FAKE_CODEX_SIGNED_OUT'] === '1') return false;
+  if (codexHome) {
+    try {
+      return (JSON.parse(await readFile(path.join(codexHome, '.fake-auth.json'), 'utf8')) as { loggedIn?: unknown }).loggedIn === true;
+    } catch {
+      // No file: the rule above.
+    }
+  }
+  return env['FAKE_CODEX_AUTH_REQUIRED'] !== '1';
+}
+
+/**
+ * D63 `codex login [--device-auth]` (ASSUMED output shapes: the real CLI's wording was never captured, see
+ * `docs/spike-providers.md`): the browser flow prints the local-server line and the authorize URL; the device flow
+ * the verification URL and a one-time code. `FAKE_CODEX_LOGIN_MODE`: `auto` (default, signs in after
+ * `FAKE_CODEX_LOGIN_MS`, 300 ms), `never` (waits until stopped), `fail` (exit 1).
+ */
+async function login(device: boolean): Promise<number> {
+  const mode = env['FAKE_CODEX_LOGIN_MODE'] ?? 'auto';
+  const url = env['FAKE_CODEX_LOGIN_URL'] ?? `https://auth.fake-codex.example.test/oauth/authorize?state=${randomUUID().slice(0, 8)}`;
+  if (device) {
+    await err(`Welcome to Codex [v${FAKE_CODEX_VERSION}]\nFollow these steps to sign in with ChatGPT using device code authorization:\n\n1. Open this link in your browser and sign in to your account\n   https://auth.fake-codex.example.test/codex/device\n\n2. Enter this one-time code (expires in 15 minutes)\n   ABCD-12345\n`);
+  } else {
+    await err(`Starting local login server on http://localhost:1455.\nIf your browser did not open, navigate to this URL to authenticate:\n\n${url}\n`);
+  }
+  if (!codexHome) {
+    await err('fake-codex: CODEX_HOME is not set\n');
+    return 1;
+  }
+  if (mode === 'fail') {
+    await err('Error logging in: the fake refused\n');
+    return 1;
+  }
+  if (mode === 'never') await new Promise<never>(() => setInterval(() => undefined, 1 << 30));
+  await sleep(Number(env['FAKE_CODEX_LOGIN_MS'] ?? 300));
+  await mkdir(codexHome, { recursive: true });
+  await writeFile(path.join(codexHome, '.fake-auth.json'), `${JSON.stringify({ loggedIn: true })}\n`);
+  await err('Successfully logged in\n');
+  return 0;
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   await log({ kind: 'argv', argv, cwd: process.cwd(), env: Object.fromEntries(Object.entries(env).filter(([key]) => key === 'CODEX_HOME' || key.startsWith('FAKE_CODEX_'))) });
@@ -735,11 +795,22 @@ async function main(): Promise<number> {
     return 0;
   }
   if (first === 'login' && rest[0] === 'status') {
-    if (env['FAKE_CODEX_SIGNED_OUT'] === '1') {
+    if (!(await signedIn())) {
       await err('Not logged in\n');
       return 1;
     }
     await err('Logged in using ChatGPT\n');
+    return 0;
+  }
+  if (first === 'login') return login(rest.includes('--device-auth'));
+  if (first === 'logout') {
+    if (!codexHome) {
+      await err('fake-codex: CODEX_HOME is not set\n');
+      return 1;
+    }
+    await mkdir(codexHome, { recursive: true });
+    await writeFile(path.join(codexHome, '.fake-auth.json'), `${JSON.stringify({ loggedIn: false })}\n`);
+    await err('Successfully logged out\n');
     return 0;
   }
   if (first === 'mcp') return mcp(rest);

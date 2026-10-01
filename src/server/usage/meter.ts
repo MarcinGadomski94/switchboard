@@ -45,14 +45,32 @@ const PRUNE_EVERY_MS = 60 * 60_000;
 export interface UsageSessions {
   /** Live supervised processes. */
   readonly liveCount: number;
+  /** D63: the live Claude Code sessions with the profile each runs on and whether it is between turns (per-profile readings). */
+  liveClaudeSessions?(): ReadonlyArray<{ readonly id: string; readonly profileId: string; readonly idle: boolean }>;
   /** Live sessions between turns (where `get_usage` may go). */
   idleLiveSessionIds(): string[];
   /** One stdin control request → its `control_response`, `null` when none came. */
   controlRequest(sessionId: string, line: ControlRequestLine, timeoutMs: number): Promise<ControlResponseMessage | null>;
 }
 
+/**
+ * D63: the Claude Code account profiles the meter reads (`docs/accounts.md` →
+ * *Usage per profile*): each enabled profile gets its own readings (a live
+ * session of it between turns, else a poller with its `CLAUDE_CONFIG_DIR`).
+ */
+export interface UsageProfiles {
+  /** The enabled Claude Code profile ids, in priority order. */
+  claudeProfiles(): Promise<readonly string[]>;
+  /** A poller for a profile (`null` = the base poller, the Default's). */
+  pollerFor(profileId: string): UsageFetcher | null;
+  /** The profile the main footer bars show: the one a new session would start on. */
+  active(): Promise<string>;
+}
+
 /** Options for {@link UsageMeter}. */
 export interface UsageMeterOptions {
+  /** D63: per-profile readings; without it the meter reads one account, as before 0024. */
+  readonly profiles?: UsageProfiles;
   readonly store: Store;
   readonly sessions: UsageSessions;
   /** The short-lived poller (`UsagePoller`) used while no session is live. */
@@ -105,8 +123,12 @@ export class UsageMeter {
   readonly #onWarning: (warning: UsageWarning) => void;
   readonly #onError: (error: unknown) => void;
   #viewers: () => number;
+  readonly #profiles: UsageProfiles | null;
   #lastLiveAt = Number.NEGATIVE_INFINITY;
   #lastPollAt = Number.NEGATIVE_INFINITY;
+  /** D63: per profile, the last live request / poller run. */
+  readonly #profileLive = new Map<string, number>();
+  readonly #profilePoll = new Map<string, number>();
   #lastPruneAt = Number.NEGATIVE_INFINITY;
   #timer: NodeJS.Timeout | undefined;
   #ticking: Promise<UsageTick> | null = null;
@@ -125,6 +147,7 @@ export class UsageMeter {
     this.#onWarning = options.onWarning ?? (() => undefined);
     this.#onError = options.onError ?? ((error) => console.error('switchboard usage:', error));
     this.#viewers = options.viewers ?? (() => 0);
+    this.#profiles = options.profiles ?? null;
   }
 
   /** Sets where the number of connected `/hub` clients comes from (buildApp: `SseHub.clientCount`). */
@@ -165,14 +188,19 @@ export class UsageMeter {
 
   /** The meter now, from the newest reading. */
   async state(): Promise<UsageState> {
-    return usageState(await this.#store.usage.latest(), this.#now());
+    return usageState(await this.#store.usage.latest(undefined, await this.#active()), this.#now());
+  }
+
+  /** D63: the profile whose readings drive the bars (`undefined` = any, the single-account meter). */
+  async #active(): Promise<string | undefined> {
+    return this.#profiles ? this.#profiles.active() : undefined;
   }
 
   /** The usage fields of `GET /api/system` / the `system` event (fires due warnings first). */
   async systemFields(): Promise<SystemUsageFields> {
     const now = this.#now();
     const warned = await this.#evaluate(now);
-    const latest = await this.#store.usage.latest();
+    const latest = await this.#store.usage.latest(undefined, await this.#active());
     return systemUsageFields(usageState(latest, now), activeWarnings(warned, now), usageWindows(latest, await this.#modelWindows(now), now));
   }
 
@@ -184,7 +212,7 @@ export class UsageMeter {
    * reset has passed is dropped as before (`usageWindows`).
    */
   async #modelWindows(now: Date): Promise<ModelWindowReading[]> {
-    const reading = await this.#store.usage.latest('get_usage');
+    const reading = await this.#store.usage.latest('get_usage', await this.#active());
     if (!reading) return [];
     const age = now.getTime() - Date.parse(reading.receivedAt);
     const windows = modelWindowsFromGetUsage(reading.raw);
@@ -192,8 +220,9 @@ export class UsageMeter {
   }
 
   /** Stores a reading taken now (`get_usage` from a live session or the poller). */
-  async record(reading: ParsedUsage, sessionId: string | null): Promise<void> {
+  async record(reading: ParsedUsage, sessionId: string | null, profileId?: string): Promise<void> {
     await this.#store.usage.add({
+      ...(profileId !== undefined ? { profileId } : {}),
       receivedAt: this.#now().toISOString(),
       source: reading.source,
       sessionId,
@@ -219,6 +248,7 @@ export class UsageMeter {
     await this.#evaluate(new Date(now));
     await this.#prune(now);
     if (this.#viewers() <= 0) return null;
+    if (this.#profiles) return this.#profileTick(now);
     if (this.#sessions.liveCount > 0) {
       if (now - this.#lastLiveAt < this.#liveIntervalMs) return null;
       // Every live session is mid-turn: its turns bring rate_limit_events instead.
@@ -238,13 +268,45 @@ export class UsageMeter {
     return 'poller';
   }
 
+  /**
+   * D63: one reading per tick at most, for the first enabled Claude Code profile
+   * that is due: a live session of it between turns (at most one request per
+   * `liveIntervalMs`), else, while none of its sessions is live and its newest
+   * reading is older than `pollerIntervalMs`, a poller with its folder.
+   */
+  async #profileTick(now: number): Promise<UsageTick> {
+    const profiles = this.#profiles as UsageProfiles;
+    const live = this.#sessions.liveClaudeSessions?.() ?? [];
+    for (const profileId of await profiles.claudeProfiles()) {
+      const mine = live.filter((s) => s.profileId === profileId);
+      if (mine.length > 0) {
+        const idle = mine.find((s) => s.idle);
+        // Mid-turn sessions bring rate_limit_events; no request goes to them.
+        if (!idle || now - (this.#profileLive.get(profileId) ?? Number.NEGATIVE_INFINITY) < this.#liveIntervalMs) continue;
+        this.#profileLive.set(profileId, now);
+        const response = await this.#sessions.controlRequest(idle.id, getUsageLine(`sb-usage-${randomUUID()}`), this.#liveTimeoutMs);
+        await this.record(readingFromGetUsage(response ? { kind: 'response', message: response } : { kind: 'failed', error: 'no get_usage answer from the live session' }), idle.id, profileId);
+        return 'live';
+      }
+      if (now - (this.#profilePoll.get(profileId) ?? Number.NEGATIVE_INFINITY) < this.#pollerIntervalMs) continue;
+      const latest = await this.#store.usage.latest(undefined, profileId);
+      if (latest && now - Date.parse(latest.receivedAt) < this.#pollerIntervalMs) continue;
+      const poller = profiles.pollerFor(profileId);
+      if (!poller) continue;
+      this.#profilePoll.set(profileId, now);
+      await this.record(readingFromGetUsage(await poller.getUsage()), null, profileId);
+      return 'poller';
+    }
+    return null;
+  }
+
   /** Fires the due warnings and stores the warned state; returns it. */
   #evaluate(now: Date): Promise<WarnedState> {
     const run = this.#evaluating.then(async () => {
       const stored = await this.#store.settings.get(WARNED_SETTING);
       const warned = readWarnedState(stored);
       const threshold = warnThreshold(await this.#store.settings.get(WARN_AT_PCT_SETTING));
-      const result = dueWarnings(await this.#store.usage.latest(), warned, threshold, now, await this.#modelWindows(now));
+      const result = dueWarnings(await this.#store.usage.latest(undefined, await this.#active()), warned, threshold, now, await this.#modelWindows(now));
       if (JSON.stringify(result.warned) !== JSON.stringify(stored ?? {})) await this.#store.settings.set(WARNED_SETTING, result.warned);
       for (const warning of result.fire) {
         try {

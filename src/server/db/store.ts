@@ -13,6 +13,7 @@ import { LoopRepository } from './repos/loops.ts';
 import { MachineRepository } from './repos/machines.ts';
 import { PeerSnapshotRepository } from './repos/peer-snapshots.ts';
 import { PendingMessageRepository } from './repos/pending-messages.ts';
+import { ProfileRepository } from './repos/profiles.ts';
 import { PermissionRepository } from './repos/permissions.ts';
 import { ProviderRepository } from './repos/providers.ts';
 import { QuestionRepository } from './repos/questions.ts';
@@ -62,6 +63,8 @@ export interface Store {
   readonly attachments: AttachmentRepository;
   /** D62 (0023): each CLI's own conversation id per session, and the mid-session switches. */
   readonly providers: ProviderRepository;
+  /** D63 (0024): account profiles per CLI. */
+  readonly profiles: ProfileRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -123,6 +126,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     sidebar: new SidebarLayoutRepository(ctx),
     attachments: new AttachmentRepository(ctx),
     providers: new ProviderRepository(ctx),
+    profiles: new ProfileRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

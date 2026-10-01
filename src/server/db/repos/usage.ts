@@ -18,6 +18,8 @@ export interface UsageReadingRecord {
   readonly sevenDayResetsAt: string | null;
   /** The reading verbatim. */
   readonly raw: unknown;
+  /** D63 (0024): the Claude Code profile it belongs to (`default-claude` for the built-in Default). */
+  readonly profileId: string;
 }
 
 /** Input of {@link UsageRepository.add}; `receivedAt` defaults to now. */
@@ -36,6 +38,7 @@ const SPEC: TableSpec<UsageReadingRecord> = {
     sevenDayPct: ['seven_day_pct', 'real'],
     sevenDayResetsAt: ['seven_day_resets_at', 'text'],
     raw: ['raw', 'json'],
+    profileId: ['profile_id', 'text'],
   },
 };
 
@@ -54,10 +57,19 @@ export class UsageRepository {
   }
 
   /** The newest reading (D17: of that `source` when given), or `null`. */
-  async latest(source?: UsageSource): Promise<UsageReadingRecord | null> {
-    return source === undefined
-      ? this.#table.first('', [], 'received_at DESC, id DESC')
-      : this.#table.first('source = ?', [source], 'received_at DESC, id DESC');
+  async latest(source?: UsageSource, profileId?: string): Promise<UsageReadingRecord | null> {
+    const where: string[] = [];
+    const params: string[] = [];
+    if (source !== undefined) {
+      where.push('source = ?');
+      params.push(source);
+    }
+    // D63: one Claude Code profile's readings (omitted: any profile, as before 0024).
+    if (profileId !== undefined) {
+      where.push('profile_id = ?');
+      params.push(profileId);
+    }
+    return this.#table.first(where.join(' AND '), params, 'received_at DESC, id DESC');
   }
 
   /** Readings received after `sinceTs` (all when omitted), oldest first. */

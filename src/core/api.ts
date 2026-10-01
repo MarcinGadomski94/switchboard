@@ -13,6 +13,7 @@
  */
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
+import type { AccountProfile, AccountSettings } from './accounts.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
 import type { UpdateStatus } from './updates.ts';
@@ -126,6 +127,13 @@ export interface NewSession {
    * one that cannot be chosen now (not installed, signed out), with the reason.
    */
   readonly provider?: CliProviderId | null;
+  /**
+   * Additive (D63, `docs/accounts.md`): the account profile the session starts on
+   * (`GET /api/accounts`). Omitted / `null` = the rule of Settings → Accounts (the
+   * first profile with allowance). 422 on field `profileId` for a profile that is
+   * not the chosen CLI's, or is disabled.
+   */
+  readonly profileId?: string | null;
 }
 
 /**
@@ -281,6 +289,8 @@ export interface NewRepoSession {
   readonly attachments?: readonly string[];
   /** Additive (D62): as {@link NewSession.provider}. */
   readonly provider?: CliProviderId | null;
+  /** Additive (D63): as {@link NewSession.profileId}. */
+  readonly profileId?: string | null;
 }
 
 /**
@@ -318,6 +328,8 @@ export interface NewSimpleSession {
   readonly attachments?: readonly string[];
   /** Additive (D62): as {@link NewSession.provider}. */
   readonly provider?: CliProviderId | null;
+  /** Additive (D63): as {@link NewSession.profileId}. */
+  readonly profileId?: string | null;
 }
 
 /**
@@ -685,6 +697,15 @@ export interface Session {
    * sidebar's "Switching to Codex…"); `null` / absent when none runs.
    */
   readonly providerSwitch?: SessionProviderSwitch | null;
+  /**
+   * Additive (D63, migration 0024, `docs/accounts.md`): the account profile the
+   * session runs on (its name for the header), whether automatic switching is
+   * pinned off for it, and a profile switch in progress. Absent = the CLI's Default.
+   */
+  readonly profileId?: string;
+  readonly profileName?: string;
+  readonly profilePinned?: boolean;
+  readonly accountSwitching?: boolean;
 }
 
 /** Additive (D62 P5): a running switch of a session to another CLI. */
@@ -1746,6 +1767,25 @@ export interface SystemInfo {
    * they are known. Omitted when none is.
    */
   readonly cliUsage?: readonly CliUsageWindow[];
+  /**
+   * Additive (D63, `docs/accounts.md` → *Usage per profile*): each account profile's
+   * usage while a CLI has more than one enabled profile (the footer's "A 62% · B 10%"
+   * line; the main bars are the active profile's).
+   */
+  readonly accountUsage?: readonly AccountUsageRow[];
+}
+
+/** Additive (D63): one profile's usage in `SystemInfo.accountUsage`. */
+export interface AccountUsageRow {
+  readonly profileId: string;
+  readonly cli: CliProviderId;
+  readonly name: string;
+  /** The profile new sessions start on (its bars are the footer's). */
+  readonly active: boolean;
+  /** The higher of its windows (0-100), `null` when unknown. */
+  readonly pct: number | null;
+  /** Set while the profile is spent: when it is usable again (ISO). */
+  readonly exhaustedUntil: string | null;
 }
 
 /** Additive (D62 P7): one usage window of another CLI (`SystemInfo.cliUsage`). */
@@ -2092,3 +2132,27 @@ export interface CliMcpServerInput {
   readonly url?: string;
 }
 
+
+/** Additive (D63): `GET /api/accounts` (`?refresh=1` runs each CLI's status command again). */
+export interface AccountsOverview {
+  readonly profiles: readonly AccountProfile[];
+  readonly settings: AccountSettings;
+}
+
+/** Additive (D63): body of `POST /api/accounts/profiles`. */
+export interface NewProfileInput {
+  readonly cli: CliProviderId;
+  readonly name: string;
+  /** Use the Default's settings / instructions / MCP config (default `true`). */
+  readonly shareSettings?: boolean;
+}
+
+/** Additive (D63): body of `POST /api/sessions/{id}/account`: switch the session to another profile of its CLI. */
+export interface AccountSwitchInput {
+  readonly profileId: string;
+}
+
+/** Additive (D63): body of `PUT /api/sessions/{id}/profile-pin`. */
+export interface ProfilePinInput {
+  readonly pinned: boolean;
+}

@@ -223,7 +223,9 @@ export type LifecycleAction =
   /** D33: the developer reopened a closed session (no process is started). */
   | 'reopened'
   /** D62 P5: the session switched to another CLI (the chat's divider; `from`, `to`, `handoverBy`). */
-  | 'switched';
+  | 'switched'
+  /** D63: the session moved to another account profile of its CLI (the chat's divider; `fromProfile`, `toProfile`, `reason`). */
+  | 'account-switched';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -244,6 +246,10 @@ export interface LifecyclePayload {
   readonly to?: CliProviderId;
   readonly handoverBy?: HandoverSource;
   readonly exportPath?: string | null;
+  /** D63 (`account-switched`): the profile names the session left and runs on now, and why ("session limit, resets 14:05"). */
+  readonly fromProfile?: string;
+  readonly toProfile?: string;
+  readonly reason?: string;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */

@@ -23,6 +23,7 @@ import {
   REMOTE_CONTROL_UNAVAILABLE,
   WRITE_CONTENT,
   applyMaxTurns,
+  limitSteps,
   backgroundToken,
   fireToken,
   formatAnswers,
@@ -510,7 +511,7 @@ export class Runner {
       case 'stop_task':
         return this.stopTask(requestId, request ?? {});
       case 'get_usage':
-        return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_usage', -1] : ['usage-ctl', 'get_usage', 0]);
+        return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_usage', -1] : ['usage-ctl', 'get_usage', 0], async (response) => this.patchAccountUsage(response));
       case 'get_session_cost':
         return this.replyFrom(requestId, this.turnsCompleted > 0 ? ['usage-turn', 'get_session_cost', -1] : ['usage-ctl', 'get_session_cost', 0]);
       case 'initialize':
@@ -628,11 +629,33 @@ export class Runner {
     waiter.resolve({ kind: 'response', response: phoneAnswer(open) });
   }
 
+  /** D63: `<CLAUDE_CONFIG_DIR>/.fake-usage.json` (`{five_hour, seven_day}` in %) sets this account's windows, resetting in 3 hours / 3 days. */
+  private async patchAccountUsage(response: JsonObject): Promise<void> {
+    if (this.configDir === null) return;
+    let wanted: { five_hour?: number; seven_day?: number };
+    try {
+      wanted = JSON.parse(await readFile(path.join(this.configDir, '.fake-usage.json'), 'utf8')) as typeof wanted;
+    } catch {
+      return;
+    }
+    const limits = asObject(response['rate_limits']);
+    if (!limits) return;
+    const set = (name: 'five_hour' | 'seven_day', pct: number | undefined, ms: number): void => {
+      const window = asObject(limits[name]);
+      if (window && typeof pct === 'number') {
+        window['utilization'] = pct;
+        window['resets_at'] = new Date(Date.now() + ms).toISOString();
+      }
+    };
+    set('five_hour', wanted.five_hour, 3 * 3_600_000);
+    set('seven_day', wanted.seven_day, 3 * 86_400_000);
+  }
+
   /** Replies with the recorded `control_response` to the `nth` stdin request of `subtype` in `fixture` (-1 = last); `patch` may change the inner `response`. */
   private async replyFrom(
     requestId: string,
     [fixtureName, subtype, nth]: [string, string, number],
-    patch?: (response: JsonObject) => void,
+    patch?: (response: JsonObject) => void | Promise<void>,
   ): Promise<void> {
     const fixture = await this.o.store.fixture(fixtureName);
     const requests = fixture.stdin.filter((l) => l['type'] === 'control_request' && requestOf(l)?.['subtype'] === subtype);
@@ -645,7 +668,7 @@ export class Runner {
     const response = asObject(line['response']);
     if (response) response['request_id'] = requestId;
     const inner = asObject(response?.['response']);
-    if (patch && inner) patch(inner);
+    if (patch && inner) await patch(inner);
     this.writeJson(line);
   }
 
@@ -840,6 +863,13 @@ export class Runner {
       steps = turns[turnIndex] ?? this.core.base.turns[0] ?? [];
     }
 
+    // D63 (`docs/fake-claude.md` → *Accounts*): a config folder at its usage limit ends every turn with the CLI's limit error.
+    const limited = await this.limitText();
+    if (limited !== null) {
+      steps = limitSteps(steps, limited);
+      scenario = DEFAULT_FIXTURE;
+    }
+
     if (!this.stdio && steps.some((s) => s.t === 'request')) {
       // Without --permission-prompt-tool stdio there is no host: the request is denied at once (M0.2 perm-noflag).
       steps = this.core.permNoflag.turns[0] ?? steps;
@@ -877,6 +907,22 @@ export class Runner {
     }
     if (wakeAfterMs !== null && outcome === 'done') this.scheduleBackground(wakeAfterMs, { content: FIRE_PROMPT, text: FIRE_PROMPT, uuid: randomUUID(), fired: true });
     return outcome;
+  }
+
+  /**
+   * D63: the limit text while this process's config folder is at its limit: the content of
+   * `<CLAUDE_CONFIG_DIR>/.fake-limit` (a time may follow "resets"), or `FAKE_CLAUDE_LIMIT`; `null` = no limit.
+   */
+  private async limitText(): Promise<string | null> {
+    const fromEnv = this.o.env['FAKE_CLAUDE_LIMIT'];
+    if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
+    if (this.configDir === null) return null;
+    try {
+      const text = (await readFile(path.join(this.configDir, '.fake-limit'), 'utf8')).trim();
+      return text === '' ? "You've hit your session limit · resets 2pm" : text;
+    } catch {
+      return null;
+    }
   }
 
   /** D51: the session folder next to the transcript (`<projects>/<slug>/<sessionId>`), `null` without one. */

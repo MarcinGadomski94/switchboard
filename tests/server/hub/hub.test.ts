@@ -104,6 +104,10 @@ const SESSION_KEYS = keys<Session>()([
   // additive, D62 (the session's CLI, a switch in progress)
   'provider',
   'providerSwitch',
+  'profileId',
+  'profileName',
+  'profilePinned',
+  'accountSwitching',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',
@@ -165,7 +169,7 @@ const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'session
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
 const SYSTEM_REQUIRED_KEYS = ['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes'].sort();
-keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings', 'usageWindows', 'cliUsage']);
+keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings', 'usageWindows', 'cliUsage', 'accountUsage']);
 
 function keysOf(value: unknown): string[] {
   return Object.keys(value as object).sort();

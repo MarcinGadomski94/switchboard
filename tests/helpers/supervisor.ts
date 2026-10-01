@@ -13,6 +13,7 @@ import { fakeClaudeCommand } from '../../tools/fake-claude/command.ts';
 import { fakeCodexCommand } from '../../tools/fake-codex/command.ts';
 import { fakeOpencodeCommand } from '../../tools/fake-opencode/command.ts';
 import { CliRegistry } from '../../src/server/cli/registry.ts';
+import { AccountService } from '../../src/server/accounts/service.ts';
 import { makeTempDir, removeTempDir } from './net.ts';
 import { openTempStore } from './store.ts';
 
@@ -37,6 +38,10 @@ export interface SupervisorWorld {
   /** The children's base env; tests change `FAKE_CLAUDE_SCENARIO` between spawns. */
   readonly env: NodeJS.ProcessEnv;
   readonly supervisor: SessionSupervisor;
+  /** D63: the account profiles of this world (the supervisor's own; profile folders under `<root>/profiles`). */
+  readonly accounts: AccountService;
+  /** D63: the CLI registry (fakes). */
+  readonly registry: CliRegistry;
   readonly errors: unknown[];
   cleanup(): Promise<void>;
 }
@@ -102,10 +107,14 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
   };
   const errors: unknown[] = [];
   const claudeCommand = options.command ?? fakeClaudeCommand();
+  const registry = new CliRegistry({ commands: { claude: claudeCommand, codex: fakeCodexCommand(), opencode: fakeOpencodeCommand() }, settings: store.settings });
+  const accounts = new AccountService({ store, dataDir: root, registry, env, timeoutMs: 15_000 });
   const supervisor = new SessionSupervisor({
     store,
     // D62: the fakes stand in for every CLI (tests never run a real one).
-    providers: new CliRegistry({ commands: { claude: claudeCommand, codex: fakeCodexCommand(), opencode: fakeOpencodeCommand() }, settings: store.settings }),
+    providers: registry,
+    // D63: the account profiles (the fakes' folders; nothing of the developer's).
+    accounts,
     claudeCommand,
     claudeExtraArgs: options.extraArgs ?? [],
     env,
@@ -131,6 +140,8 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     store,
     env,
     supervisor,
+    accounts,
+    registry,
     errors,
     async cleanup() {
       await supervisor.shutdown();
