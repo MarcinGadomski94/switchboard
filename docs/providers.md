@@ -158,5 +158,12 @@ While a switch runs, `Session.providerSwitch` says its step (`handover` → `exp
 ## Restart recovery
 A Codex / OpenCode session whose recorded pid is still alive after a crash is not resumed and its process is not signalled (`claude agents --json` cannot tell it from pid reuse); the session is left paused with the reason. A Codex app-server ends with its stdin (ASSUMED); an `opencode serve` does not, so a SIGKILLed Switchboard can leave one running (OPEN D62-orphan-opencode).
 
+### Servers that outlive Switchboard
+A Codex app-server ends with its stdin (ASSUMED); an `opencode serve` does not watch its stdin, so a Switchboard killed before its own shutdown has stopped it (a SIGKILL, a crash, launchd's exit timeout: a clean stop of a busy CLI can take up to ~30 s — interrupt, result, exit, signals — and test servers are SIGKILLed after 5 s) used to leave it running. Now (`src/server/cli/reaper.ts`):
+- the OpenCode server runs in its own process group (POSIX), and every stop signals the group, so the server's own children stop with it;
+- it is registered with the **orphan reaper**: one small Node process per Switchboard (`src/server/cli/reaper-main.ts`, started with the first server, in its own process group, not keeping Switchboard alive), fed `+<pid>` / `-<pid>` lines on its stdin. When that pipe ends — Switchboard is gone, however it ended — every server still listed gets SIGTERM to its group, SIGKILL 2 s later; then the reaper exits. A server Switchboard stopped itself was unregistered on its exit, so a clean stop leaves the reaper nothing to do.
+- Windows has no process groups here: the reaper signals the pid alone.
+Tests: `tests/server/cli/reaper.test.ts` (a SIGKILLed stand-in; its server and the server's child are stopped; an unregistered server is left alone).
+
 ## Tests
 Fakes: `tools/fake-codex` (`docs/fake-codex.md`), `tools/fake-opencode` (`docs/fake-opencode.md`); every test server and supervisor world points `SWITCHBOARD_CODEX_BIN` / `SWITCHBOARD_OPENCODE_BIN` at them with `CODEX_HOME` / `XDG_DATA_HOME` in a temp folder. Oracles: `tests/server/cli/*.test.ts` (registry, status, codex, opencode, switch, parity), `tests/server/api/clis.test.ts`, `tests/server/history/cli-history.test.ts`, `tests/server/db/migrate.test.ts` (0023), `tests/tools/fake-codex.test.ts`, `tests/tools/fake-opencode.test.ts`, `tests/web/cli-*.test.ts`, `tests/web/provider-switch.test.ts`, `tests/e2e/cli-providers.spec.ts`.

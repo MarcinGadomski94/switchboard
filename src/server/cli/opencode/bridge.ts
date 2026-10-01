@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { LineSplitter } from '../../../core/stream-json.ts';
 import type { AgentProcess, ProcessExit } from '../agent-process.ts';
+import { registerServer, serverSpawnOptions, signalServer, unregisterServer } from '../reaper.ts';
 import { type BridgeCommon, type JsonRecord, contentBlocks, controlError, controlSuccess, isRecord, mapAnswers, num, str } from '../bridge-common.ts';
 
 /** How long `opencode serve` may take to print its listening line (ms). */
@@ -94,7 +95,9 @@ export function configContent(existing: string | undefined): string {
  *   usage-only `assistant` line from a completed assistant message (D49),
  *   `result` on `session.status` idle (an abort as `aborted_streaming`, D50).
  * The server never exits on stdin EOF, so EOF ends it with SIGTERM once the
- * running prompt is over.
+ * running prompt is over. It runs in its own process group (signals reach its
+ * children too) and is registered with the orphan reaper (`../reaper.ts`), which
+ * stops it if Switchboard dies without stopping it (OPEN D62-orphan-opencode).
  */
 export class OpenCodeBridge implements AgentProcess {
   readonly #options: BridgeCommon;
@@ -162,7 +165,7 @@ export class OpenCodeBridge implements AgentProcess {
 
   kill(signal: NodeJS.Signals): boolean {
     if (this.#ended || !this.#child) return false;
-    return this.#child.kill(signal);
+    return signalServer(this.#child, signal);
   }
 
   async waitForExit(ms: number): Promise<boolean> {
@@ -227,8 +230,10 @@ export class OpenCodeBridge implements AgentProcess {
       OPENCODE_SERVER_USERNAME: 'opencode',
       OPENCODE_CONFIG_CONTENT: configContent(this.#options.env['OPENCODE_CONFIG_CONTENT']),
     };
-    const child = spawn(cmd, [...prefix, 'serve', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: this.#options.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(cmd, [...prefix, 'serve', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: this.#options.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...serverSpawnOptions });
     this.#child = child;
+    const pid = child.pid;
+    if (pid !== undefined) registerServer(pid);
     let listening: (url: string) => void = () => undefined;
     const url = new Promise<string>((resolve) => {
       listening = resolve;
@@ -248,7 +253,10 @@ export class OpenCodeBridge implements AgentProcess {
     child.once('error', (error: Error) => {
       if (child.pid === undefined) setImmediate(() => this.#settle({ code: null, signal: null, spawnError: error }));
     });
-    child.once('close', (code: number | null, signal: NodeJS.Signals | null) => this.#settle({ code, signal, spawnError: null }));
+    child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      if (pid !== undefined) unregisterServer(pid);
+      this.#settle({ code, signal, spawnError: null });
+    });
     let timer: NodeJS.Timeout | undefined;
     const outcome = await Promise.race([
       url,
@@ -261,7 +269,7 @@ export class OpenCodeBridge implements AgentProcess {
     if (!outcome) {
       if (!this.#ended) {
         this.#note(`Switchboard: opencode serve did not report its address within ${OPENCODE_START_TIMEOUT_MS / 1000} s`);
-        child.kill('SIGTERM');
+        signalServer(child, 'SIGTERM');
       }
       return false;
     }
@@ -280,7 +288,7 @@ export class OpenCodeBridge implements AgentProcess {
       return true;
     } catch (error) {
       this.#note(`Switchboard: OpenCode did not start: ${error instanceof Error ? error.message : String(error)}`);
-      child.kill('SIGTERM');
+      signalServer(child, 'SIGTERM');
       return false;
     }
   }
@@ -418,7 +426,7 @@ export class OpenCodeBridge implements AgentProcess {
 
   #stopWhenIdle(): void {
     if (this.#turn || this.#ended) return;
-    this.#child?.kill('SIGTERM');
+    if (this.#child) signalServer(this.#child, 'SIGTERM');
   }
 
   // ── prompts ───────────────────────────────────────────────────────────────
