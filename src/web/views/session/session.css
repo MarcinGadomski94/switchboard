@@ -1224,3 +1224,41 @@ a.sb-agent--link:focus-visible {
   color: var(--status-fail);
   white-space: normal;
 }
+
+/* D62 P5: the header's CLI switcher (left of the model picker) and its confirmation under the top row. */
+.sb-sv-cli {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sb-sv-cli-progress {
+  font: 400 12px var(--font-mono);
+  color: var(--status-run, var(--text-2));
+  white-space: nowrap;
+}
+
+
+/* D62 P5: a switch of CLI in the chat: a thin rule with the line in the middle (muted, mono). */
+.sb-chat-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-chat-divider::before,
+.sb-chat-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-row);
+}
+
+.sb-chat-divider-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-align: center;
+}

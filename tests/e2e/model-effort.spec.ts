@@ -73,7 +73,8 @@ test('pick a model and an effort in a running session: step lines, the chosen mo
   await expect(button).toBeEnabled();
   await expect(button).toHaveAttribute('title', `Model and effort. ${MODEL_APPLIES_LIVE}`);
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
-  expect(actions).toEqual(['session-model', 'session-close', 'session-remote', 'session-pause', 'session-handoff']);
+  // D62 P5: the CLI switcher comes first.
+  expect(actions).toEqual(['session-cli', 'session-model', 'session-close', 'session-remote', 'session-pause', 'session-handoff']);
   await expect(button).toHaveCSS('font-size', '12px');
   await expect(button).toHaveCSS('border-top-left-radius', '6px');
   const pause = page.getByTestId('session-pause');

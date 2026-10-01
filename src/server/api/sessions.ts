@@ -10,7 +10,9 @@ import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachme
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { restoreFullEvent } from '../sessions/full-event.ts';
 import { startNewSession } from '../sessions/start.ts';
-import { supports } from '../../core/cli-providers.ts';
+import { isCliProviderId, supports } from '../../core/cli-providers.ts';
+import { outgoingCapacity } from '../cli/capacity.ts';
+import path from 'node:path';
 import { SessionTeleporter } from '../sessions/teleport.ts';
 import { rememberModelChoice } from '../settings/models.ts';
 import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
@@ -187,6 +189,32 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     try {
       const updated = await supervisor.setRemote(record.id, enabled);
       return await toSession(store, updated, supervisor.activity(updated.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D62 P5 (additive): switch the session to another CLI with a handover (`{ provider }` → 202 `{ session, switchId }`
+  // once the switch started; its progress is `Session.providerSwitch` on `sessionUpdated`). 422 for an unknown CLI or
+  // one that cannot be chosen now (the reason); 409 `switching` / `detached` / `closed` / `not-available` (hooked).
+  app.post<{ Params: IdParams }>('/api/sessions/:id/provider', async (request, reply) => {
+    const body = request.body as Record<string, unknown> | null | undefined;
+    const provider = body && typeof body === 'object' ? body['provider'] : undefined;
+    if (!isCliProviderId(provider)) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'provider', message: 'provider must be claude, codex or opencode' }] });
+    const session = await store.sessions.get(request.params.id);
+    if (!session) return notFound(reply, request.params.id);
+    const refusal = await context.clis.refusal(provider);
+    if (refusal) return reply.code(422).send({ error: 'invalid', errors: [{ field: 'provider', message: refusal }] });
+    try {
+      const capacity = await outgoingCapacity({
+        provider: session.provider,
+        clis: context.clis,
+        supported: supervisor.cliRegistry.hasAdapter(session.provider),
+        claudeUsage: await store.usage.latest(),
+        providerUsage: supervisor.providerUsage(session.provider),
+      });
+      const started = await supervisor.switchProvider(session.id, provider, { capacity, handoverDir: path.join(context.config.dataDir, 'handovers') });
+      return reply.code(202).send({ session: await toSession(store, started.record, supervisor.activity(started.record.id)), switchId: started.switchRecord.id });
     } catch (error) {
       return sendError(reply, error);
     }

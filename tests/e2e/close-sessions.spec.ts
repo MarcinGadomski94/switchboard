@@ -133,7 +133,8 @@ test('a running session closes from the header after the confirmation; Cancel ke
   }
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
   // D31's model picker (when the session reports models) comes first, then Close (merged header order).
-  expect(actions.filter((a) => a !== 'session-model')[0]).toBe('session-close');
+  // D62 P5: the CLI switcher, then D31's model picker, then Close.
+  expect(actions.filter((a) => a !== 'session-model' && a !== 'session-cli')[0]).toBe('session-close');
 
   // The confirmation; Cancel keeps it running.
   await close.click();

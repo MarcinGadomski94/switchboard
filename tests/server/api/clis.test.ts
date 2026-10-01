@@ -11,7 +11,7 @@ import { fakeOpencodeCommand } from '../../../tools/fake-opencode/command.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { seedFolder } from '../../helpers/folders.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 const PORT = 4872;
 const HOST = `127.0.0.1:${PORT}`;
@@ -138,5 +138,24 @@ describe('D62 /api/sessions with a CLI that cannot be chosen', () => {
     const refused = await call('POST', '/api/sessions', { ...newSession({ name: 'signed-out' }), provider: 'codex' });
     expect(refused.statusCode).toBe(422);
     expect(refused.json().errors).toEqual([{ field: 'provider', message: expect.stringMatching(/^Codex CLI is signed out/) }]);
+  });
+});
+
+describe('D62 P5 POST /api/sessions/{id}/provider', () => {
+  it('202 with the switch started; the session ends on the new CLI; 422 / 404 / 409 refusals', async () => {
+    const w = await setup();
+    const started = await call('POST', '/api/sessions', newSession({ name: 'to-switch' }));
+    const session = started.json() as Session;
+    await waitForStatus(w.store, session.id, ['done']);
+    expect((await call('POST', `/api/sessions/${session.id}/provider`, { provider: 'gpt' })).statusCode).toBe(422);
+    expect((await call('POST', '/api/sessions/nope/provider', { provider: 'codex' })).statusCode).toBe(404);
+    const same = await call('POST', `/api/sessions/${session.id}/provider`, { provider: 'claude' });
+    expect(same.statusCode).toBe(409);
+    expect(same.json()).toMatchObject({ error: 'switching', message: 'to-switch already runs on Claude Code' });
+    const switched = await call('POST', `/api/sessions/${session.id}/provider`, { provider: 'codex' });
+    expect(switched.statusCode).toBe(202);
+    expect(switched.json()).toMatchObject({ session: { id: session.id, providerSwitch: { from: 'claude', to: 'codex', step: 'handover' } }, switchId: expect.any(String) });
+    await until(async () => ((await call('GET', `/api/sessions/${session.id}`)).json() as Session).provider === 'codex', 'the switch');
+    await until(async () => ((await call('GET', `/api/sessions/${session.id}`)).json() as Session).providerSwitch === null, 'the switch to finish');
   });
 });

@@ -159,8 +159,13 @@ export async function recoverSessions(options: RecoveryOptions): Promise<Recover
     let leftover: { pid: number; stoppedBy: string } | undefined;
     const pid = session.pid;
 
-    // 1. A process left behind by the service that died: stop it when it is this session's.
-    if (pid !== null && processes.isAlive(pid)) {
+    // D62: another CLI's leftover (a Codex app-server, an OpenCode server) cannot be told from pid reuse
+    // (`claude agents --json` knows Claude Code only): it is not signalled, and the session is not resumed
+    // while it may still run (never two processes on one conversation; ASSUMED D62-recovery).
+    if (pid !== null && session.provider !== 'claude' && processes.isAlive(pid)) {
+      reason = `the ${session.provider === 'codex' ? 'Codex CLI' : 'OpenCode'} process left from before the restart (pid ${pid}) may still run; Switchboard cannot check it is this session's, so it was left alone`;
+    } else if (pid !== null && processes.isAlive(pid)) {
+      // 1. A process left behind by the service that died: stop it when it is this session's.
       const live = await list(session.cwd);
       if (live === null) {
         reason = `could not check whether pid ${pid} is still this session's claude process (claude agents --json failed)`;

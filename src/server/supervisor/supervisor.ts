@@ -3,7 +3,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
-import type { AttachWarningReason, InterruptOutcome, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
+import type { AttachWarningReason, InterruptOutcome, NewSession, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
@@ -31,7 +31,7 @@ import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { FolderRef } from '../folders/ref.ts';
-import { registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
+import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
@@ -40,7 +40,9 @@ import type { ProcessExit } from './process.ts';
 import type { AgentProcess } from '../cli/agent-process.ts';
 import { CliRegistry } from '../cli/registry.ts';
 import type { ProviderUsage } from '../cli/bridge-common.ts';
-import { CLI_LABELS, type CliProviderId, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
+import { CLI_LABELS, type CliProviderId, type HandoverSource, switchDividerLabel, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
+import { chatMarkdown, findCodexRollout, handoverRequest, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
+import type { ProviderSwitchRecord } from '../db/repos/providers.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
@@ -366,6 +368,41 @@ interface TeleportState {
   importPending: boolean;
 }
 
+/** D62 P5: how long the outgoing agent may take to write its handover (ms). */
+export const HANDOVER_TIMEOUT_MS = 10 * 60_000;
+
+/** D62 P5: whether the outgoing CLI can still write a handover (it can run and is not out of usage). */
+export interface SwitchCapacity {
+  readonly ok: boolean;
+  /** Why not (shown in the incoming agent's first message and the switch record). */
+  readonly reason: string | null;
+}
+
+/** D62 P5: options of {@link SessionSupervisor.switchProvider}. */
+export interface SwitchProviderOptions {
+  readonly capacity: SwitchCapacity;
+  /** Where history exports go (`<dataDir>/handovers`). */
+  readonly handoverDir: string;
+  /** Default {@link HANDOVER_TIMEOUT_MS}. */
+  readonly handoverTimeoutMs?: number;
+}
+
+/** D62 P5: a started switch. */
+export interface SwitchStart {
+  readonly record: SessionRecord;
+  readonly switchRecord: ProviderSwitchRecord;
+  /** Resolves when the switch is over (done or failed; never rejects). */
+  readonly done: Promise<ProviderSwitchRecord>;
+}
+
+interface RunningSwitch {
+  readonly id: string;
+  readonly from: CliProviderId;
+  readonly to: CliProviderId;
+  step: SessionProviderSwitch['step'];
+  handoverBy: HandoverSource | null;
+}
+
 /** One live `claude` process of a session. */
 interface Live {
   readonly sessionId: string;
@@ -442,6 +479,12 @@ export class SessionSupervisor {
   readonly #attachments: AttachmentService | null;
   /** D62: the CLIs and their adapters. */
   readonly #providers: CliRegistry;
+  /** D62 P7: each CLI's latest own usage limits (Codex's rate limits), as its bridges read them. */
+  readonly #providerUsage = new Map<CliProviderId, ProviderUsage>();
+  /** D62 P5: the switches in progress, by session. */
+  readonly #switches = new Map<string, RunningSwitch>();
+  /** D62 P5: their runs (shutdown waits for them once the processes are stopped). */
+  readonly #switchRuns = new Set<Promise<unknown>>();
   #onProviderUsage: ((sessionId: string, usage: ProviderUsage) => void) | null;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
@@ -471,6 +514,8 @@ export class SessionSupervisor {
       onError: (error) => this.#onError(error),
     });
     registerWorkflowSource(this.#store, this.#workflows);
+    // D62 P5: `Session.providerSwitch`.
+    registerSwitchSource(this.#store, { current: (sessionId) => this.currentSwitch(sessionId) });
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -621,6 +666,7 @@ export class SessionSupervisor {
     const session = await this.#get(sessionId);
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
     let live = this.#live.get(sessionId);
     // D50: a message sent while a Stop waits for the CLI goes out after it (the Stop never takes it back).
     if (live?.interrupting) await live.interrupting;
@@ -833,6 +879,7 @@ export class SessionSupervisor {
     const session = await this.#get(sessionId);
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
     if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
     const live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
     await this.#send(live, RESUME_MESSAGE, 'resume');
@@ -858,6 +905,183 @@ export class SessionSupervisor {
   async #resumeCommand(session: SessionRecord): Promise<string> {
     if (session.provider === 'claude') return resumeCommand(session.claudeSessionId);
     return terminalResumeCommand(session.provider, await this.#store.providers.nativeId(session.id, session.provider)) ?? resumeCommand(session.claudeSessionId);
+  }
+
+  // ── switching CLIs (D62 P5, docs/providers.md → Switching CLIs) ───────────
+
+  /** D62 P7: `provider`'s latest own usage limits (Codex's rate limits), `null` while none was read. */
+  providerUsage(provider: CliProviderId): ProviderUsage | null {
+    return this.#providerUsage.get(provider) ?? null;
+  }
+
+  /** D62 P5: messages, Resume and Attach wait for nothing while a switch runs: they are refused (the switch sends the first message itself). */
+  #assertNotSwitching(session: SessionRecord): void {
+    const running = this.#switches.get(session.id);
+    if (running) throw new SupervisorError('switching', `${session.title ?? session.name} is switching to ${CLI_LABELS[running.to]}: wait for it to finish`);
+  }
+
+  /** D62 P5: the switch in progress for the session (`Session.providerSwitch`), `null` when none runs. */
+  currentSwitch(sessionId: string): SessionProviderSwitch | null {
+    const running = this.#switches.get(sessionId);
+    return running ? { id: running.id, from: running.from, to: running.to, step: running.step, handoverBy: running.handoverBy } : null;
+  }
+
+  /**
+   * D62 P5: hands the session over to another CLI in the same Switchboard session
+   * (same chat, same cwd). Checks and starts the switch, then returns; the switch
+   * runs on (`done`), its progress on `sessionUpdated` (`providerSwitch`):
+   * 1. **Handover by the outgoing agent** while `options.capacity.ok` (the caller
+   *    checked that its CLI can run and is not out of usage): Switchboard asks it
+   *    for a handover (a service message), waits for that turn (at most
+   *    `handoverTimeoutMs`) and takes its last reply;
+   * 2. **else, or when that fails**, the chat is exported to a file under
+   *    `options.handoverDir` and the incoming agent is told to read it (and the
+   *    outgoing CLI's own transcript when it has one) and summarize it first;
+   * 3. the outgoing process is stopped (D7's stop), the session's CLI becomes
+   *    `to` (its model choice and meter start over: each CLI has its own), the
+   *    incoming CLI starts in the same cwd, reopening its own earlier
+   *    conversation of the session when it has one (Claude Code: `--resume`), with
+   *    the handover as its first message; the chat's divider is the lifecycle
+   *    event `switched` ("Switched from Claude Code to Codex CLI · handover by …").
+   * @throws {SupervisorError} `not-found`, `closed`, `detached`, `not-available`
+   * (a hooked terminal session), `switching` (one runs, or the session already
+   * runs on `to`), `cli-unavailable` (no adapter for `to`), `closing`.
+   */
+  async switchProvider(sessionId: string, to: CliProviderId, options: SwitchProviderOptions): Promise<SwitchStart> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (session.hooked) throw new SupervisorError('not-available', 'a hooked terminal session runs its own CLI in its terminal: it cannot switch here');
+    if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    const running = this.#switches.get(sessionId);
+    if (running) throw new SupervisorError('switching', `${session.title ?? session.name} is already switching to ${CLI_LABELS[running.to]}`);
+    if (session.provider === to) throw new SupervisorError('switching', `${session.title ?? session.name} already runs on ${CLI_LABELS[to]}`);
+    if (!this.#providers.hasAdapter(to)) throw new SupervisorError('cli-unavailable', `${CLI_LABELS[to]} is not supported by this Switchboard`);
+    const record = await this.#store.providers.createSwitch(sessionId, session.provider, to);
+    const state: RunningSwitch = { id: record.id, from: session.provider, to, step: options.capacity.ok ? 'handover' : 'export', handoverBy: null };
+    this.#switches.set(sessionId, state);
+    await this.#emitSession(sessionId);
+    const done = this.#runSwitch(sessionId, state, options).finally(() => {
+      this.#switches.delete(sessionId);
+      this.#switchRuns.delete(done);
+      if (!this.#closing) void this.#emitSession(sessionId).catch((error: unknown) => this.#onError(error));
+    });
+    this.#switchRuns.add(done);
+    return { record: await this.#get(sessionId), switchRecord: record, done };
+  }
+
+  async #switchStep(sessionId: string, state: RunningSwitch, step: SessionProviderSwitch['step']): Promise<void> {
+    state.step = step;
+    await this.#emitSession(sessionId);
+  }
+
+  async #runSwitch(sessionId: string, state: RunningSwitch, options: SwitchProviderOptions): Promise<ProviderSwitchRecord> {
+    const { from, to } = state;
+    try {
+      let handover: string | null = null;
+      let reason = options.capacity.reason ?? `${CLI_LABELS[from]} cannot take a turn now`;
+      if (options.capacity.ok) {
+        const asked = await this.#askHandover(sessionId, to, options.handoverTimeoutMs ?? HANDOVER_TIMEOUT_MS);
+        if ('text' in asked) handover = asked.text;
+        else reason = asked.reason;
+      }
+      let session = await this.#get(sessionId);
+      const cwd = session.cwd ?? '';
+      let exportPath: string | null = null;
+      let message: string;
+      if (handover !== null) {
+        state.handoverBy = 'outgoing';
+        message = incomingWithHandover(from, to, cwd, handover);
+      } else {
+        state.handoverBy = 'history';
+        await this.#switchStep(sessionId, state, 'export');
+        const at = new Date();
+        const events = await this.#store.events.list(sessionId);
+        const markdown = chatMarkdown({ title: session.title ?? session.name, cwd, from, to, at, events, mainAgentId: await this.#mainAgentId(session) });
+        exportPath = await writeExport(options.handoverDir, sessionId, from, to, at, markdown);
+        const native = from === 'claude' ? session.claudeSessionId : await this.#store.providers.nativeId(sessionId, from);
+        const transcriptPath =
+          from === 'claude' ? await this.findTranscript(session.claudeSessionId) : from === 'codex' && native ? await findCodexRollout(childEnv(this.#env), native) : null;
+        const nativeHint = from === 'opencode' && native ? `OpenCode's own record of it: run \`opencode export ${native}\` (read only)` : null;
+        message = incomingFromHistory({ from, to, cwd, reason, exportPath, transcriptPath, nativeHint });
+      }
+      await this.#switchStep(sessionId, state, 'stopping');
+      const outgoing = this.#live.get(sessionId);
+      if (outgoing) await this.#stop(outgoing, 'pause');
+      // Nothing new starts while the service shuts down (the session stays on its CLI; the switch fails).
+      this.#assertOpen();
+      await this.#switchStep(sessionId, state, 'starting');
+      // Each CLI has its own models and its own context: both start over (a switch back to a CLI reopens its own conversation).
+      session =
+        (await this.#store.sessions.update(sessionId, { provider: to, model: null, effort: null, modelOptions: null, context: null, remoteEnabled: false, status: 'idle' })) ?? session;
+      await this.#setMainAgentStatus(sessionId, 'idle');
+      const claudeRan = to === 'claude' && (await this.#store.providers.nativeId(sessionId, 'claude')) !== null;
+      const start: ClaudeStart = to === 'claude' && !claudeRan ? { kind: 'new', claudeSessionId: session.claudeSessionId } : { kind: 'resume', claudeSessionId: session.claudeSessionId };
+      const by = state.handoverBy;
+      const label = switchDividerLabel(from, to, by);
+      const live = await this.#spawn(session, start, 'switched', undefined, { label, payload: { from, to, handoverBy: by, exportPath } });
+      await this.#send(live, message, 'service');
+      return (
+        (await this.#store.providers.updateSwitch(state.id, { status: 'done', handoverBy: by, exportPath, finishedAt: new Date().toISOString() })) ??
+        (await this.#store.providers.getSwitch(state.id))!
+      );
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      this.#onError(error);
+      await this.recordServiceEvent(sessionId, 'error', `Could not switch to ${CLI_LABELS[to]}: ${text}`, { type: 'lifecycle', action: 'switched', from, to, message: text }).catch(() => undefined);
+      return (
+        (await this.#store.providers.updateSwitch(state.id, { status: 'failed', error: text, handoverBy: state.handoverBy, finishedAt: new Date().toISOString() })) ??
+        (await this.#store.providers.getSwitch(state.id))!
+      );
+    }
+  }
+
+  /**
+   * D62 P5: asks the outgoing agent for a handover and waits for its turn: its
+   * last main-agent reply after the request, or why there is none (the turn
+   * failed, the process ended, it took longer than `timeoutMs`). A paused session
+   * is resumed for it (the same CLI, `--resume` / its own conversation).
+   */
+  async #askHandover(sessionId: string, to: CliProviderId, timeoutMs: number): Promise<{ readonly text: string } | { readonly reason: string }> {
+    let live = this.#live.get(sessionId);
+    if (live?.stopping) {
+      await live.finished;
+      live = undefined;
+    }
+    try {
+      if (!live) {
+        const session = await this.#get(sessionId);
+        live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
+      }
+    } catch (error) {
+      return { reason: error instanceof Error ? error.message : String(error) };
+    }
+    const target = live;
+    const before = (await this.#store.events.list(sessionId)).length;
+    const deadline = Date.now() + timeoutMs;
+    await this.#send(target, handoverRequest(to), 'service');
+    // The request's turn ends when nothing is pending or open any more (a running turn's own result may come first).
+    for (;;) {
+      let idle = false;
+      await this.#enqueue(target, async () => {
+        idle = !target.recorder.turnBusy();
+      });
+      if (idle || !target.proc.running) break;
+      const left = deadline - Date.now();
+      if (left <= 0) return { reason: `${CLI_LABELS[target.provider]} did not write a handover within ${Math.round(timeoutMs / 1000)} s` };
+      await this.#waitFor(target, (m) => m.kind === 'result', Math.min(left, 1_000));
+    }
+    const events = (await this.#store.events.list(sessionId)).slice(before);
+    if (!target.proc.running && !events.some((event) => (event.payload as { type?: string } | null)?.type === 'result')) {
+      return { reason: `${CLI_LABELS[target.provider]} ended before it wrote a handover` };
+    }
+    const failed = [...events].reverse().find((event) => (event.payload as { type?: string } | null)?.type === 'result');
+    if (failed && (failed.payload as { isError?: boolean }).isError) return { reason: failed.label };
+    const mainAgentId = await this.#mainAgentId(await this.#get(sessionId));
+    const reply = [...events].reverse().find((event) => (event.payload as { type?: string } | null)?.type === 'assistant' && event.agentId === mainAgentId);
+    const text = (reply?.payload as { text?: string } | undefined)?.text ?? '';
+    return text.trim() === '' ? { reason: `${CLI_LABELS[target.provider]} wrote no handover` } : { text };
   }
 
   // ── close and reopen (D33, docs/supervisor.md → Close and reopen) ────────
@@ -971,6 +1195,7 @@ export class SessionSupervisor {
     this.#assertOpen();
     const session = await this.#get(sessionId);
     this.#assertNotClosed(session);
+    this.#assertNotSwitching(session);
     const command = { resumeCommand: await this.#resumeCommand(session) };
     if (this.#live.has(sessionId)) return command;
     const claude = session.provider === 'claude';
@@ -1589,6 +1814,9 @@ export class SessionSupervisor {
   async shutdown(): Promise<void> {
     this.#closing = true;
     await Promise.all([...this.#live.values()].map((live) => this.#stop(live, 'shutdown')));
+    // D62 P5: a switch in progress ends (failed: "the service is shutting down") once its processes are stopped.
+    await Promise.allSettled([...this.#switchRuns]);
+    await Promise.all([...this.#live.values()].map((live) => this.#stop(live, 'shutdown')));
     this.#workflows.close();
   }
 
@@ -1624,7 +1852,7 @@ export class SessionSupervisor {
     return created.id;
   }
 
-  async #spawn(session: SessionRecord, start: ClaudeStart, action: LifecycleAction, message?: string): Promise<Live> {
+  async #spawn(session: SessionRecord, start: ClaudeStart, action: LifecycleAction, message?: string, lifecycle?: { readonly label: string; readonly payload: Partial<LifecyclePayload> }): Promise<Live> {
     // D14: a session always runs in its own stored cwd (its folder or its repo worktree), never a global root.
     const cwd = session.cwd;
     if (!cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
@@ -1713,7 +1941,10 @@ export class SessionSupervisor {
           });
         }
       },
-      onUsage: (usage) => this.#onProviderUsage?.(session.id, usage),
+      onUsage: (usage) => {
+        this.#providerUsage.set(usage.provider, usage);
+        this.#onProviderUsage?.(session.id, usage);
+      },
     });
     const live: Live = {
       sessionId: session.id,
@@ -1758,7 +1989,7 @@ export class SessionSupervisor {
     live.finished = proc.exited.then((exit) => this.#enqueue(live, () => this.#onExit(live, exit)));
     await this.#store.sessions.update(session.id, { pid: proc.pid });
     await this.#enqueue(live, async () => {
-      await recorder.recordLifecycle('text', LIFECYCLE_LABELS[action], { type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
+      await recorder.recordLifecycle('text', lifecycle?.label ?? LIFECYCLE_LABELS[action], { ...lifecycle?.payload, type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
     });
     // D62: Claude Code's own id is the session's (a switch back resumes it); a teleport learns its id at `init`.
     if (provider === 'claude' && start.kind !== 'teleport') await this.#store.providers.rememberNative(session.id, 'claude', start.claudeSessionId);
@@ -2123,4 +2354,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   teleported: 'Continued from a remote session',
   closed: 'Closed',
   reopened: 'Reopened',
+  switched: 'Switched CLI',
 };

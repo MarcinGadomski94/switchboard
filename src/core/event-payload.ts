@@ -12,6 +12,7 @@
  * → *What is clipped*).
  */
 
+import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AnsweredOn } from './remote-control.ts';
 
@@ -220,7 +221,9 @@ export type LifecycleAction =
   /** D33: the developer closed the session (its process, if any, was stopped as by Pause first). */
   | 'closed'
   /** D33: the developer reopened a closed session (no process is started). */
-  | 'reopened';
+  | 'reopened'
+  /** D62 P5: the session switched to another CLI (the chat's divider; `from`, `to`, `handoverBy`). */
+  | 'switched';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -236,6 +239,11 @@ export interface LifecyclePayload {
   readonly message?: string;
   /** M2.4: the pid of the process left from before the restart. */
   readonly leftoverPid?: number;
+  /** D62 P5 (`switched`): the CLI the session left, the one it runs on now, who wrote the handover, the exported chat. */
+  readonly from?: CliProviderId;
+  readonly to?: CliProviderId;
+  readonly handoverBy?: HandoverSource;
+  readonly exportPath?: string | null;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */

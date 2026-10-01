@@ -134,6 +134,14 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
       </div>
     );
   }
+  if (item.kind === 'divider') {
+    // D62 P5: the session switched to another CLI here.
+    return (
+      <div className="sb-chat-divider" data-testid="chat-divider" data-from={item.from ?? undefined} data-to={item.to ?? undefined} role="separator">
+        <span className="sb-chat-divider-text">{item.text}</span>
+      </div>
+    );
+  }
   if (item.waiting && readOnlyNote) {
     return <QuestionCard questions={item.questions} variant="chat" note={readOnlyNote(item.batchId)} onSend={() => undefined} />;
   }

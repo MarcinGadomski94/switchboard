@@ -15,6 +15,7 @@ import type {
   ResultPayload,
   ToolPayload,
   UserPayload,
+  LifecyclePayload,
 } from '../../../core/event-payload.ts';
 
 /**
@@ -120,7 +121,9 @@ export type ChatItem =
    */
   | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly cut: CutRef | null; readonly steps: readonly ChatStep[] }
   /** A question batch: the inline card while it waits, else the answers bubble. */
-  | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean };
+  | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean }
+  /** D62 P5: the session switched to another CLI: a divider ("Switched from Claude Code to Codex CLI · handover by …"). */
+  | { readonly kind: 'divider'; readonly key: string; readonly id: number; readonly text: string; readonly from: string | null; readonly to: string | null };
 
 /**
  * D44: the clock's tooltip on a message the agent has not taken up yet
@@ -332,6 +335,11 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       }
     } else if (type === 'lifecycle') {
       block = null;
+      const lifecycle = payload as LifecyclePayload;
+      // D62 P5: a switch of CLI is the chat's divider (a failed switch stays an error step on the timeline).
+      if (lifecycle.action === 'switched' && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.from ?? null, to: lifecycle.to ?? null });
+      }
     } else {
       const mark = stepMark(event);
       if (mark) pushStep(event, mark);

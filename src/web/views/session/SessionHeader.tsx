@@ -29,6 +29,8 @@ import {
   tabLabels,
 } from './session-header.ts';
 import { ModelPicker } from './ModelPicker.tsx';
+import { useProviderSwitcher } from './ProviderSwitcher.tsx';
+import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
 import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
 
@@ -94,6 +96,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const [error, setError] = useState<string | null>(null);
   const [popover, setPopover] = useState(false);
   const shownError = error ?? closer.error?.text ?? loadError;
+  // D62 P5: the CLI switcher (its picker among the actions, its confirmation under the top row).
+  const switcher = useProviderSwitcher(session, onChanged);
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -165,6 +169,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
         <div className="sb-sv-actions">
+          {/* D62 P5: the CLI the session runs on, and switching it (sessions Switchboard runs; not the demo's, not hooked). */}
+          {session && !blocked && offersSwitcher(session) ? switcher.picker : null}
           {session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
           <button
             type="button"
@@ -277,6 +283,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           </a>
         </div>
       ) : null}
+      {session && offersSwitcher(session) ? switcher.panel : null}
       {warning ? (
         <div className="sb-sv-warning" role="alertdialog" aria-label="Attach here" data-testid="attach-warning">
           <div className="sb-sv-warning-text" data-testid="attach-warning-text">

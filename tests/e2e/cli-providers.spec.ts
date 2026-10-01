@@ -137,6 +137,28 @@ test('an OpenCode session from the Simple form: its models (provider/model), the
   expect((await listSessions(page)).some((entry) => entry.provider === 'opencode')).toBe(true);
 });
 
+test('switch mid-session (D62 P5): the header\'s CLI switcher asks first, Claude Code writes the handover, Codex continues; the divider', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  const modal = await openSimple(page);
+  await modal.getByTestId('ns-cli').selectOption('claude');
+  await modal.getByTestId('ns-message').fill('Remember the code word: zeppelin.');
+  await modal.getByTestId('ns-start').click();
+  const view = page.getByTestId('view-session');
+  await expect(view).toBeVisible();
+  const header = page.getByTestId('session-header');
+  await expect(header.getByTestId('session-cli')).toHaveAttribute('data-provider', 'claude');
+  await expect(view.getByTestId('chat-message').filter({ hasText: 'OK' }).first()).toBeVisible();
+  await header.getByTestId('session-cli-picker').selectOption('codex');
+  await expect(header.getByTestId('session-cli-confirm')).toContainText('Switch this session from Claude Code to Codex CLI?');
+  await header.getByTestId('session-cli-switch').click();
+  await expect(view.getByTestId('chat-divider')).toHaveText('Switched from Claude Code to Codex CLI · handover by Claude Code (outgoing agent)');
+  await expect(header.getByTestId('session-cli')).toHaveAttribute('data-provider', 'codex');
+  await expect(header.getByTestId('session-cli-picker')).toHaveValue('codex');
+  // The incoming agent got the handover as its first message (a Switchboard bubble) and answered.
+  await expect(view.locator('[data-testid="chat-message"][data-origin="service"]').last()).toContainText('You are continuing a session that Claude Code worked on until now');
+  await expect.poll(async () => (await listSessions(page)).find((entry) => entry.provider === 'codex' && entry.status === 'done') !== undefined).toBe(true);
+});
+
 test('a signed-out Codex is listed but cannot be chosen, with the reason', async ({ page }) => {
   const dataDir = path.join(tmp, 'data-2');
   await seedFolderInDataDir(dataDir, folder, { kind: 'plain' });

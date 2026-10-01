@@ -207,6 +207,10 @@ async function recover(
       onError: (error) => app.log.error(error),
     });
     if (report.sessions.length > 0) app.log.info({ recovery: report.sessions }, 'restart recovery');
+    // D62 P5: a CLI switch the restart cut short is over (failed); the session runs on whichever CLI it was stored on.
+    for (const running of await store.providers.runningSwitches()) {
+      await store.providers.updateSwitch(running.id, { status: 'failed', error: 'Switchboard stopped during the switch', finishedAt: new Date().toISOString() });
+    }
   } catch (error) {
     app.log.error(error, 'restart recovery failed');
   }
