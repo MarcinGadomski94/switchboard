@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2 (2026-10-01)
+
+### Fixed
+- **Long messages were cut off in the chat.** Agent messages, subagent briefs and workflow-agent chats were stored cut at 4,000 characters. They are now stored whole (up to a 1,000,000-character safety cap); tool inputs and outputs stay limited to 4,000. Messages already stored cut show **Show full message**, which restores them from Claude Code's transcript for good (a cut tool output offers **Show full output**).
+- **Remote machines dropping offline.** A dropped connection to a paired machine now shows **Reconnecting…** (with the attempt and a countdown) for 20 seconds before it counts as unreachable; reads keep working and actions are held until it's back. Retries start at once and run at most 15 seconds apart (was 60); a stalled connection is detected and reconnected. **Reconnect now** in the session and in Settings → Machines tries at once; the status updates live; connection changes are written to the service log.
+
 ## 1.3.1 (2026-09-30)
 
 ### Fixed
