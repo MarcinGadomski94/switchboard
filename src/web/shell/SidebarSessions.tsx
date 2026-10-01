@@ -273,6 +273,8 @@ export interface SidebarSessionsProps {
   readonly closer: CloseSessionControl;
   readonly isCurrent: (sessionId: string) => boolean;
   readonly tagOf: (session: Session) => string | null;
+  /** D62 P6: the row's CLI badge (`codex`), `null` = none (a list of Claude Code sessions only). */
+  readonly cliBadge?: (session: Session) => string | null;
   readonly now: number;
 }
 
@@ -324,7 +326,7 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  * subfolder. The layout is stored by the service and live in every tab
  * (`sidebarLayoutChanged`).
  */
-export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, now }: SidebarSessionsProps) {
+export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now }: SidebarSessionsProps) {
   const { layout, run, error } = useSidebarLayout();
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
@@ -543,6 +545,12 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
           <div className="sb-session-mode">
             {/* D48: a peer's session carries its machine's tag (and "unreachable" while it is offline). */}
             <MachineTag machine={session.machine} />
+            {/* D62 P6: the session's CLI (rows carry it once the list mixes CLIs). */}
+            {cliBadge?.(session) ? (
+              <span className="sb-cli-badge" data-testid="session-cli-badge" data-provider={session.provider ?? 'claude'}>
+                {cliBadge(session)}
+              </span>
+            ) : null}
             <FolderTag name={tagOf(session)} title={session.folderPath} />
             <SessionActivityOr activity={activity}>{modeLine(session)}</SessionActivityOr>
           </div>

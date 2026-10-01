@@ -159,6 +159,51 @@ test('switch mid-session (D62 P5): the header\'s CLI switcher asks first, Claude
   await expect.poll(async () => (await listSessions(page)).find((entry) => entry.provider === 'codex' && entry.status === 'done') !== undefined).toBe(true);
 });
 
+test('the sidebar footer sets the default CLI; "Switch running sessions…" hands every live session over; rows carry CLI badges', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/inbox`);
+  // Two live Claude Code sessions (the default CLI again first: an earlier test may have changed it).
+  await page.evaluate(async () => {
+    await fetch('/api/clis/default', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'claude' }) });
+  });
+  for (const message of ['bulk one', 'bulk two']) {
+    const modal = await openSimple(page);
+    await modal.getByTestId('ns-cli').selectOption('claude');
+    await modal.getByTestId('ns-message').fill(message);
+    await modal.getByTestId('ns-start').click();
+    await expect(page.getByTestId('view-session')).toBeVisible();
+  }
+  const footer = page.getByTestId('footer-cli');
+  await expect(footer).toHaveText('claude code');
+  await footer.click();
+  await page.locator('[data-testid="footer-cli-option"][data-provider="opencode"]').click();
+  await expect(footer).toHaveText('opencode');
+  await expect.poll(async () => page.evaluate(async () => ((await (await fetch('/api/clis')).json()) as { default: string }).default)).toBe('opencode');
+  // The forms start on it.
+  const modal = await openSimple(page);
+  await expect(modal.getByTestId('ns-cli')).toHaveValue('opencode');
+  await page.keyboard.press('Escape');
+
+  await footer.click();
+  await page.getByTestId('footer-cli-bulk').click();
+  const dialog = page.getByTestId('bulk-switch');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('bulk-switch-target')).toHaveValue('opencode');
+  const live = (await listSessions(page)).filter((entry) => entry.live && entry.provider === 'claude');
+  expect(live.length).toBeGreaterThanOrEqual(2);
+  // Every live Claude Code session is ticked; one on OpenCode already is not offered.
+  for (const entry of live) await expect(dialog.locator(`[data-testid="bulk-switch-item"][data-session-id="${entry.id}"] [data-testid="bulk-switch-check"]`)).toBeChecked();
+  await dialog.getByTestId('bulk-switch-start').click();
+  for (const entry of live) {
+    await expect(dialog.locator(`[data-testid="bulk-switch-item"][data-session-id="${entry.id}"]`)).toHaveAttribute('data-state', 'done', { timeout: 20_000 });
+  }
+  await dialog.getByTestId('bulk-switch-close').click();
+  await expect.poll(async () => (await listSessions(page)).filter((entry) => live.some((one) => one.id === entry.id) && entry.provider === 'opencode').length).toBe(live.length);
+  // The list mixes CLIs: every row carries its badge.
+  const badges = page.getByTestId('session-cli-badge');
+  await expect(badges.first()).toBeVisible();
+  expect(await badges.count()).toBe((await listSessions(page)).length);
+});
+
 test('a signed-out Codex is listed but cannot be chosen, with the reason', async ({ page }) => {
   const dataDir = path.join(tmp, 'data-2');
   await seedFolderInDataDir(dataDir, folder, { kind: 'plain' });

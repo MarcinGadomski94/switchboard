@@ -15,6 +15,8 @@ import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
 import { PANE_ID, PaneHideButton } from './Panes.tsx';
 import { SidebarSessions } from './SidebarSessions.tsx';
+import { CliSwitcher } from './CliSwitcher.tsx';
+import { cliBadgeOf } from './cli-switch.ts';
 import {
   type Meter,
   type PaceView,
@@ -217,6 +219,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         closer={closer}
         isCurrent={(id) => isActive(route, 'session', id)}
         tagOf={tagOf}
+        cliBadge={cliBadgeOf(sessionList)}
         now={now}
       />
       {closer.error ? (
@@ -238,7 +241,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
       <div className="sb-footer" data-testid="machine-footer">
         <div className="sb-footer-service">
           <span className="sb-footer-dot" data-state={reachable === false ? 'down' : 'up'} />
-          <span className="sb-footer-label">claude code</span>
+          {/* D62 P6: the default CLI for new sessions (its label in the prototype's place and style) and "Switch running sessions…". */}
+          <CliSwitcher sessions={sessionList} />
           <span data-testid="process-count">{processCount(info)}</span>
           <span className="sb-footer-address" data-testid="service-address">
             {window.location.host}

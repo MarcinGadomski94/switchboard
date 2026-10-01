@@ -676,3 +676,171 @@
     transition: none;
   }
 }
+
+/* D62 P6: the footer's CLI label is a button in the label's own style; its menu opens above the footer. */
+.sb-footer-service {
+  position: relative;
+}
+
+.sb-footer-cli {
+  /* A button that reads like the label: the footer's own font, the label's color. */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-footer-cli:hover,
+.sb-footer-cli:focus-visible {
+  text-decoration: underline;
+}
+
+.sb-footer-cli-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  background: var(--bg-sidebar);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
+.sb-footer-cli-title {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.sb-footer-cli-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sb-footer-cli-item:hover:not(:disabled) {
+  background: var(--border-row);
+}
+
+.sb-footer-cli-item:disabled {
+  color: var(--muted-3);
+  cursor: default;
+}
+
+.sb-footer-cli-check {
+  width: 10px;
+  font-size: 9px;
+}
+
+.sb-footer-cli-bulk {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-row);
+  border-radius: 0;
+  padding-top: 8px;
+}
+
+.sb-footer-cli-error {
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--status-fail);
+}
+
+/* The bulk switch dialog. */
+.sb-bulk-switch {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 18px 20px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
+
+.sb-bulk-switch-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.sb-bulk-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.sb-bulk-switch-note,
+.sb-bulk-switch-empty {
+  margin: 10px 0;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+
+.sb-bulk-switch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-row);
+}
+
+.sb-bulk-switch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-row);
+  font-size: 12.5px;
+}
+
+.sb-bulk-switch-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-bulk-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-bulk-switch-state {
+  flex: none;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-bulk-switch-state[data-kind='done'] {
+  color: var(--status-done);
+}
+
+.sb-bulk-switch-state[data-kind='failed'] {
+  color: var(--status-fail);
+}
+
+.sb-bulk-switch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
