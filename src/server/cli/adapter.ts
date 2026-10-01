@@ -2,6 +2,7 @@ import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { ClaudeStart } from '../supervisor/argv.ts';
 import type { AgentProcess } from './agent-process.ts';
+import type { ProviderUsage } from './bridge-common.ts';
 
 /**
  * D62: what the supervisor asks of a provider when it starts a process for a
@@ -32,8 +33,12 @@ export interface SpawnRequest {
   readonly onLine: (line: string) => void;
   /** A bridge learned (or created) the provider's own conversation id: stored so later spawns reopen it. */
   readonly onNativeId?: (nativeId: string) => void;
-  /** D57: where a message's attachments live (the bridges hand image paths to their CLI). */
-  readonly attachmentPath?: (attachmentId: string) => string | null;
+  /** Something the developer should know that is no chat line (a conversation a bridge could not reopen): recorded as an error step. */
+  readonly onNotice?: (text: string) => void;
+  /** D62 P7: the CLI's own usage limits, when it reports them (Codex). */
+  readonly onUsage?: (usage: ProviderUsage) => void;
+  /** Switchboard's version (told to a bridge's CLI as the client's). */
+  readonly clientVersion?: string;
 }
 
 /** One CLI behind the {@link AgentProcess} seam. */

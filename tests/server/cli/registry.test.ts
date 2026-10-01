@@ -33,9 +33,11 @@ describe('D62 CliRegistry', () => {
     expect(readCommandOverride([])).toBeNull();
     expect(readCommandOverride(['a', ''])).toBeNull();
     expect(readCommandOverride('codex')).toBeNull();
-    const registry = new CliRegistry({ commands: {} });
+    const registry = new CliRegistry({ commands: {}, adapters: {} });
     expect(registry.adapter('claude').id).toBe('claude');
     expect(registry.hasAdapter('codex')).toBe(false);
     expect(() => registry.adapter('codex')).toThrow(MissingAdapterError);
+    // By default every adapter of this build is there.
+    expect(new CliRegistry({ commands: {} }).hasAdapter('codex')).toBe(true);
   });
 });

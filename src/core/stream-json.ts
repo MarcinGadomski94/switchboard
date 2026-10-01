@@ -135,6 +135,13 @@ export interface CanUseToolMessage extends Base {
   readonly agentId: string | null;
   readonly description: string | null;
   readonly decisionReason: string | null;
+  /**
+   * D62: a Codex / OpenCode bridge's "always" choice for this request (its
+   * `switchboard_always`), which makes the Inbox offer the CLI's own "always"
+   * (`docs/providers.md` → *Permissions*). Absent on every Claude Code line (the
+   * real CLI never sends the field; D6 stays Allow once / Deny there).
+   */
+  readonly hookSuggestions?: readonly unknown[];
 }
 
 /** Any other `control_request` the CLI sends (answered with an error by the supervisor). */
@@ -472,6 +479,7 @@ function parseControlRequest(obj: JsonRecord, base: Base): StreamMessage {
       agentId: str(request['agent_id']),
       description: str(request['description']),
       decisionReason: str(request['decision_reason']),
+      ...(Array.isArray(request['switchboard_always']) && request['switchboard_always'].length > 0 ? { hookSuggestions: request['switchboard_always'] as unknown[] } : {}),
     };
   }
   return { ...base, kind: 'control-request', requestId, subtype, request };

@@ -2,6 +2,7 @@ import { CLI_DEFAULT_COMMAND, CLI_LABELS, type CliProviderId } from '../../core/
 import type { SettingRepository } from '../db/repos/settings.ts';
 import type { CliAdapter } from './adapter.ts';
 import { claudeAdapter } from './claude.ts';
+import { cliAdapters } from './adapters.ts';
 
 /** D62: the settings row of a provider's command override (`string[]`, an argv prefix); Claude Code has none (env only). */
 export function cliCommandKey(provider: CliProviderId): string {
@@ -17,7 +18,7 @@ export interface CliRegistryOptions {
   readonly commands: Partial<Record<CliProviderId, readonly string[]>>;
   /** The settings table: Codex / OpenCode command overrides from Settings → CLIs. Without it only the configured commands count. */
   readonly settings?: SettingRepository;
-  /** The adapters; Claude Code's is built in. A provider without one cannot start sessions (tests, or before its adapter exists). */
+  /** The adapters; Claude Code's is built in, the others default to this build's ({@link cliAdapters}). A provider without one cannot start sessions. */
   readonly adapters?: Partial<Record<CliProviderId, CliAdapter>>;
 }
 
@@ -41,7 +42,8 @@ export class CliRegistry {
   constructor(options: CliRegistryOptions) {
     this.#commands = options.commands;
     this.#settings = options.settings ?? null;
-    this.#adapters = { claude: claudeAdapter, ...options.adapters };
+    // D62: every adapter this build has, unless the caller names its own.
+    this.#adapters = { claude: claudeAdapter, ...(options.adapters ?? cliAdapters()) };
   }
 
   /** The configured command (env), without the settings override. */

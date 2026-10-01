@@ -1362,6 +1362,15 @@ The BLOCKED lines for M4.4, M4.5, M4.6, M7.2, M8.3 are resolved by this merge. T
 - ASSUMED D62-settings-nav · Settings → **CLIs** sits after the prototype's seven sections, before Machines (the visual settings oracle compares nav items 1–7)
 - ASSUMED D62-pdfs-codex · Codex takes images only (`localImage` / `image`): a PDF to a Codex session goes as a file path line (D57's file delivery)
 - ASSUMED D62-demo · in the demo (`SWITCHBOARD_DEMO=1`) `GET /api/clis` answers fixed data (Claude Code and Codex installed, OpenCode not) and runs nothing
+- ASSUMED D62-codex-experimental · the Codex bridge opts into `capabilities.experimentalApi: true` at `initialize`, because `item/tool/requestUserInput` (questions) is marked EXPERIMENTAL; probe 5 in `docs/spike-providers.md` checks whether questions arrive without it · revert: `CodexBridge.#start`
+- ASSUMED D62-codex-policy · Codex threads start with `approvalPolicy: "on-request"` + `sandbox: "workspace-write"` (Codex's own "Auto": edits and commands inside the workspace run, leaving the sandbox asks), the nearest to D6's `auto` / `acceptEdits`; D6's fallback (`set_permission_mode`) is a no-op there
+- ASSUMED D62-codex-context · Codex's `tokenUsage.last.inputTokens` already includes `cachedInputTokens` (OpenAI's usage convention), so the D49 meter's tokens = `inputTokens`; the window = `modelContextWindow`; no auto-compact tick for another CLI than Claude Code (its threshold is unknown) · probe 3
+- ASSUMED D62-codex-eof · at EOF (Pause, Detach, shutdown) the bridge starts no queued message, waits for the running turn (the supervisor interrupted it first) and then closes the app-server's stdin; the supervisor's own escalation (10 s, then signals) applies when it does not exit
+- ASSUMED D62-codex-resume-fallback · a thread `thread/resume` refuses (its rollout gone) → a new thread starts and the chat gets an error step "Codex could not reopen its thread <id> (…); a new thread started"; the new id is stored
+- ASSUMED D62-attach-warning · Attach here on a Codex / OpenCode session always asks first (liveness unknown: no CLI but Claude Code can say whether a terminal holds its conversation), and imports no terminal turns (marked in the capability matrix)
+- ASSUMED D62-codex-files · a Codex file change shows as Write (add) / Edit (update) / Delete with `file_path` (one tool step per changed file, ids `<item>#<n>` when several), so D38's "solution written", artifacts and the activity line read it like Claude Code's
+- ASSUMED D62-codex-subagent · a `collabAgentToolCall` `spawnAgent` is an Agent call (one subagent card, its prompt as the description, the agents' final messages as its result); the subagent threads' items carry it as `parent_tool_use_id`
+- FOUND D62-preexisting-inbox-labels · `tests/server/inbox/inbox-list.test.ts` › "system items: the kind label…" fails on master too (D55 added `update-available`); untouched here
 - FOUND D62-preexisting-model-picker · `tests/web/model-picker.test.ts` › "a change is ✓, a refusal ✕" fails on master `d5ca654` too (the long-messages fix added `cut` to chat items); untouched here
 
 ## Known flaky tests

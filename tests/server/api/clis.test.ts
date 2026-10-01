@@ -11,7 +11,7 @@ import { fakeOpencodeCommand } from '../../../tools/fake-opencode/command.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { seedFolder } from '../../helpers/folders.ts';
-import { type SupervisorWorld, makeSupervisorWorld, newSession } from '../../helpers/supervisor.ts';
+import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
 
 const PORT = 4872;
 const HOST = `127.0.0.1:${PORT}`;
@@ -113,5 +113,30 @@ describe('D62 /api/clis', () => {
     const started = await call('POST', '/api/sessions', newSession({ name: 'on-claude' }));
     expect(started.statusCode).toBe(201);
     expect((started.json() as Session).provider).toBe('claude');
+  });
+
+  it('POST /api/sessions on Codex: 201, the session says codex, its terminal command is `codex resume <thread>`; a signed-out Codex is a 422 with the reason', async () => {
+    const w = await setup();
+    const started = await call('POST', '/api/sessions', { ...newSession({ name: 'on-codex' }), provider: 'codex' });
+    expect(started.statusCode).toBe(201);
+    const session = started.json() as Session;
+    expect(session.provider).toBe('codex');
+    await waitForStatus(w.store, session.id, ['done']);
+    const thread = await w.store.providers.nativeId(session.id, 'codex');
+    expect((await call('GET', `/api/sessions/${session.id}`)).json().resumeCommand).toBe(`codex resume ${thread}`);
+    // D42 per CLI: a start that names a model is Codex's last choice, not Claude Code's.
+    const picked = await call('POST', '/api/sessions', { ...newSession({ name: 'codex-model' }), provider: 'codex', model: 'gpt-5.5-mini', effort: 'low' });
+    expect(picked.statusCode).toBe(201);
+    expect((await call('GET', '/api/models?provider=codex')).json().last).toEqual({ model: 'gpt-5.5-mini', effort: 'low' });
+    expect((await call('GET', '/api/models')).json().last).toBeNull();
+  });
+});
+
+describe('D62 /api/sessions with a CLI that cannot be chosen', () => {
+  it('422 on field provider with the reason', async () => {
+    await setup({ FAKE_CODEX_SIGNED_OUT: '1' });
+    const refused = await call('POST', '/api/sessions', { ...newSession({ name: 'signed-out' }), provider: 'codex' });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().errors).toEqual([{ field: 'provider', message: expect.stringMatching(/^Codex CLI is signed out/) }]);
   });
 });

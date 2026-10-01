@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { type ContextState, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
+import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
@@ -39,7 +39,8 @@ import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFi
 import type { ProcessExit } from './process.ts';
 import type { AgentProcess } from '../cli/agent-process.ts';
 import { CliRegistry } from '../cli/registry.ts';
-import { CLI_LABELS } from '../../core/cli-providers.ts';
+import type { ProviderUsage } from '../cli/bridge-common.ts';
+import { CLI_LABELS, type CliProviderId, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
@@ -239,10 +240,13 @@ export interface SupervisorOptions {
   /** D57: stores the images of imported terminal prompts (Attach, a move, a teleport); without it they show as placeholders. */
   readonly attachments?: AttachmentService;
   /**
-   * D62: the CLIs sessions can run on (`docs/providers.md`). Default: Claude Code
-   * with {@link claudeCommand} only.
+   * D62: the CLIs sessions can run on (`docs/providers.md`). Default: every
+   * adapter of this build, Claude Code with {@link claudeCommand}, the others by
+   * their bare names.
    */
   readonly providers?: CliRegistry;
+  /** D62 P7: a CLI's own usage limits as its bridge read them (Codex's rate limits). */
+  readonly onProviderUsage?: (sessionId: string, usage: ProviderUsage) => void;
 }
 
 /** Options of {@link SessionSupervisor.close} (D33). */
@@ -367,6 +371,8 @@ interface Live {
   readonly sessionId: string;
   /** D62: the CLI itself (Claude Code) or a bridge to it (Codex CLI, OpenCode); stream-json either way. */
   readonly proc: AgentProcess;
+  /** D62: which CLI this process is. */
+  readonly provider: CliProviderId;
   readonly recorder: StreamRecorder;
   /** D19: the session's `activity` notifications, at most one per interval. */
   readonly activity: LatestThrottle<SessionActivity | null>;
@@ -436,6 +442,7 @@ export class SessionSupervisor {
   readonly #attachments: AttachmentService | null;
   /** D62: the CLIs and their adapters. */
   readonly #providers: CliRegistry;
+  #onProviderUsage: ((sessionId: string, usage: ProviderUsage) => void) | null;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -456,6 +463,7 @@ export class SessionSupervisor {
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
     this.#attachments = options.attachments ?? null;
     this.#providers = options.providers ?? new CliRegistry({ commands: { claude: options.claudeCommand } });
+    this.#onProviderUsage = options.onProviderUsage ?? null;
     this.#workflows = new WorkflowService({
       configDir: () => claudeConfigDir(this.#env),
       onChange: (sessionId) => this.#workflowChanged(sessionId),
@@ -843,7 +851,13 @@ export class SessionSupervisor {
       await this.#recordStandalone(sessionId, 'detached', 'Continued in a terminal');
       await this.#emitSession(sessionId);
     }
-    return { resumeCommand: resumeCommand(session.claudeSessionId) };
+    return { resumeCommand: await this.#resumeCommand(session) };
+  }
+
+  /** D62: the terminal command that continues the session on its CLI (`claude --resume`, `codex resume`, `opencode --session`). */
+  async #resumeCommand(session: SessionRecord): Promise<string> {
+    if (session.provider === 'claude') return resumeCommand(session.claudeSessionId);
+    return terminalResumeCommand(session.provider, await this.#store.providers.nativeId(session.id, session.provider)) ?? resumeCommand(session.claudeSessionId);
   }
 
   // ── close and reopen (D33, docs/supervisor.md → Close and reopen) ────────
@@ -957,13 +971,16 @@ export class SessionSupervisor {
     this.#assertOpen();
     const session = await this.#get(sessionId);
     this.#assertNotClosed(session);
-    const command = { resumeCommand: resumeCommand(session.claudeSessionId) };
+    const command = { resumeCommand: await this.#resumeCommand(session) };
     if (this.#live.has(sessionId)) return command;
-    const transcript = await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId);
+    const claude = session.provider === 'claude';
+    // D62: only Claude Code's transcript is read back (another CLI's terminal turns are not imported, docs/providers.md).
+    const transcript = claude ? await findTranscriptFile(claudeConfigDir(this.#env), session.claudeSessionId) : null;
     if (options.confirm !== true) {
       const lister = this.#listLive;
       const listLive = lister ? () => lister(session.cwd) : null;
-      const reasons = await attachWarnings({ transcript, claudeSessionId: session.claudeSessionId, listLive, now: Date.now() });
+      // D62: no CLI but Claude Code can say whether a terminal holds its conversation: always ask first (ASSUMED D62-attach-warning).
+      const reasons: AttachWarningReason[] = claude ? await attachWarnings({ transcript, claudeSessionId: session.claudeSessionId, listLive, now: Date.now() }) : [{ kind: 'liveness-unknown' }];
       if (reasons.length > 0) throw new AttachWarningError(reasons);
     }
     this.#assertOpen();
@@ -1278,7 +1295,8 @@ export class SessionSupervisor {
    */
   idleLiveSessionIds(): string[] {
     return [...this.#live.values()]
-      .filter((live) => !live.stopping && live.proc.running && !live.proc.inputClosed && !live.recorder.turnBusy())
+      // D62: `get_usage` (M9.2) is Claude Code's; a Codex / OpenCode bridge has none.
+      .filter((live) => live.provider === 'claude' && !live.stopping && live.proc.running && !live.proc.inputClosed && !live.recorder.turnBusy())
       .map((live) => live.sessionId);
   }
 
@@ -1323,7 +1341,10 @@ export class SessionSupervisor {
   async setRemote(sessionId: string, enabled: boolean): Promise<SessionRecord> {
     await this.#gate;
     this.#assertOpen();
-    await this.#get(sessionId);
+    const session = await this.#get(sessionId);
+    // D62: Remote Control is Claude Code's (claude.ai on the phone).
+    const missing = unavailableText(session.provider, 'remote-control');
+    if (missing) throw new SupervisorError('not-available', missing);
     const live = this.#live.get(sessionId);
     if (!live || live.stopping || !live.proc.running) {
       throw new SupervisorError('not-live', 'Remote Control needs a running claude process: resume the session first');
@@ -1618,9 +1639,12 @@ export class SessionSupervisor {
         remoteAvailable: false,
       })) ?? session;
     // D49 ruling D49-autocompact-mark: the auto-compact settings this process runs with (env + settings files), on the session's meter.
-    const autoCompact = autoCompactConfig(childEnv(this.#env), await readClaudeSettings(claudeConfigDir(this.#env), cwd));
-    // D49-backfill: a session from before D49 starts from its transcript's meter (read once).
-    const stored = prepared.context === null ? await this.#transcriptContext(prepared.claudeSessionId) : readContextState(prepared.context);
+    // D62: only Claude Code's own threshold is known; another CLI's meter has no auto-compact tick (ASSUMED D62-autocompact).
+    const autoCompact =
+      session.provider === 'claude' ? autoCompactConfig(childEnv(this.#env), await readClaudeSettings(claudeConfigDir(this.#env), cwd)) : { ...DEFAULT_AUTO_COMPACT, enabled: false };
+    // D49-backfill: a session from before D49 starts from its transcript's meter (read once; Claude Code's transcripts only).
+    const stored =
+      prepared.context === null ? (session.provider === 'claude' ? await this.#transcriptContext(prepared.claudeSessionId) : EMPTY_CONTEXT) : readContextState(prepared.context);
     const withConfig = reduceContext(stored, { kind: 'config', autoCompact });
     if (withConfig !== stored || prepared.context === null) prepared = (await this.#store.sessions.update(session.id, { context: withConfig })) ?? prepared;
     const mainAgentId = await this.#mainAgentId(prepared);
@@ -1681,10 +1705,20 @@ export class SessionSupervisor {
       onNativeId: (id) => {
         void this.#store.providers.rememberNative(session.id, provider, id).catch((error: unknown) => this.#onError(error));
       },
+      onNotice: (text) => {
+        const live = holder.live;
+        if (live) {
+          void this.#enqueue(live, async () => {
+            await live.recorder.recordLifecycle('error', text, { type: 'lifecycle', action, message: text });
+          });
+        }
+      },
+      onUsage: (usage) => this.#onProviderUsage?.(session.id, usage),
     });
     const live: Live = {
       sessionId: session.id,
       proc,
+      provider,
       recorder,
       activity,
       waiters: new Set(),
