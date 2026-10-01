@@ -10,6 +10,9 @@ import { type LiveProcessLister, claudeAgentsLister } from '../../src/server/sup
 import { type ControlRequestHandler, type SessionPlace, SessionSupervisor, type StopTimeouts } from '../../src/server/supervisor/supervisor.ts';
 import { folderRef } from './folders.ts';
 import { fakeClaudeCommand } from '../../tools/fake-claude/command.ts';
+import { fakeCodexCommand } from '../../tools/fake-codex/command.ts';
+import { fakeOpencodeCommand } from '../../tools/fake-opencode/command.ts';
+import { CliRegistry } from '../../src/server/cli/registry.ts';
 import { makeTempDir, removeTempDir } from './net.ts';
 import { openTempStore } from './store.ts';
 
@@ -24,6 +27,12 @@ export interface SupervisorWorld {
   readonly place: SessionPlace;
   readonly configDir: string;
   readonly logFile: string;
+  /** D62: the fake Codex CLI's `CODEX_HOME` (its threads' rollout files) and log. */
+  readonly codexHome: string;
+  readonly codexLog: string;
+  /** D62: the fake OpenCode's `XDG_DATA_HOME` (its sessions) and log. */
+  readonly opencodeData: string;
+  readonly opencodeLog: string;
   readonly store: Store;
   /** The children's base env; tests change `FAKE_CLAUDE_SCENARIO` between spawns. */
   readonly env: NodeJS.ProcessEnv;
@@ -47,6 +56,15 @@ export interface WorldOptions {
   readonly teleportInitTimeoutMs?: number;
 }
 
+/** Parent env without CODEX* / OPENCODE* / FAKE_* of the other fakes either (D62). */
+function withoutProviderEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!key.startsWith('CODEX') && !key.startsWith('OPENCODE') && !key.startsWith('FAKE_CODEX_') && !key.startsWith('FAKE_OPENCODE_')) out[key] = value;
+  }
+  return out;
+}
+
 /** Parent env without CLAUDE* / FAKE_CLAUDE_* (the test runner may run inside Claude Code). */
 function cleanParentEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -63,18 +81,31 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
   await mkdir(workspace, { recursive: true });
   await mkdir(configDir, { recursive: true });
   const logFile = path.join(root, 'fake.log');
+  const codexHome = path.join(root, 'codex-home');
+  const opencodeData = path.join(root, 'opencode-data');
+  const codexLog = path.join(root, 'fake-codex.log');
+  const opencodeLog = path.join(root, 'fake-opencode.log');
+  await mkdir(codexHome, { recursive: true });
+  await mkdir(opencodeData, { recursive: true });
   const store = await openTempStore(root);
   const env: NodeJS.ProcessEnv = {
-    ...cleanParentEnv(),
+    ...withoutProviderEnv(cleanParentEnv()),
     ...options.parentEnv,
     CLAUDE_CONFIG_DIR: configDir,
     FAKE_CLAUDE_LOG: logFile,
+    // D62: the fake Codex / OpenCode keep their state in the world (never the home folder).
+    CODEX_HOME: codexHome,
+    FAKE_CODEX_LOG: codexLog,
+    XDG_DATA_HOME: opencodeData,
+    FAKE_OPENCODE_LOG: opencodeLog,
     ...(options.scenario ? { FAKE_CLAUDE_SCENARIO: options.scenario } : {}),
   };
   const errors: unknown[] = [];
   const claudeCommand = options.command ?? fakeClaudeCommand();
   const supervisor = new SessionSupervisor({
     store,
+    // D62: the fakes stand in for every CLI (tests never run a real one).
+    providers: new CliRegistry({ commands: { claude: claudeCommand, codex: fakeCodexCommand(), opencode: fakeOpencodeCommand() }, settings: store.settings }),
     claudeCommand,
     claudeExtraArgs: options.extraArgs ?? [],
     env,
@@ -93,6 +124,10 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
     place: { folder, cwd: workspace },
     configDir,
     logFile,
+    codexHome,
+    codexLog,
+    opencodeData,
+    opencodeLog,
     store,
     env,
     supervisor,

@@ -10,6 +10,7 @@ import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachme
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { restoreFullEvent } from '../sessions/full-event.ts';
 import { startNewSession } from '../sessions/start.ts';
+import { supports } from '../../core/cli-providers.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
 import { rememberModelChoice } from '../settings/models.ts';
 import { AttachWarningError, ModelChoiceError, SupervisorError, type SupervisorErrorCode } from '../supervisor/supervisor.ts';
@@ -37,6 +38,11 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   // D31 (PUT /api/sessions/{id}/model): a model / effort not on offer (sent as 422 `invalid` with its field); the CLI refused the change.
   'invalid-model': 422,
   'model-failed': 502,
+  // D62
+  'cli-unavailable': 409,
+  'not-available': 409,
+  switching: 409,
+  'switch-failed': 502,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,
@@ -134,7 +140,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       // D42: a start that names a model or effort is the developer's last choice (the form's next default).
       // Scheduled runs start through `startNewSession` too, but not here: they never change it.
       const { model, effort } = outcome.session;
-      if (model !== undefined || effort !== undefined) await rememberModelChoice(store.settings, { model: model ?? null, effort: effort ?? null });
+      // D62: the last choice of the session's CLI (each CLI names its models differently).
+      if (model !== undefined || effort !== undefined) await rememberModelChoice(store.settings, { model: model ?? null, effort: effort ?? null }, outcome.record.provider);
       return reply.code(201).send(await toSession(store, outcome.record, supervisor.activity(outcome.record.id)));
     } catch (error) {
       return sendError(reply, error);
@@ -214,9 +221,11 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       const hooked = await isHooked(context, request.params.id);
       let prepared = NO_ATTACHMENTS;
       if (ids.length > 0) {
-        if (!(await store.sessions.get(request.params.id))) return notFound(reply, request.params.id);
+        const target = await store.sessions.get(request.params.id);
+        if (!target) return notFound(reply, request.params.id);
         // D57 ruling: images and PDFs inline, other files as paths; a hooked session (hooks carry text) gets only paths.
-        prepared = await context.attachments.prepare(await context.attachments.resolve(request.params.id, ids), { inline: !hooked });
+        // D62: a CLI that takes no PDFs (Codex) gets them as paths.
+        prepared = await context.attachments.prepare(await context.attachments.resolve(request.params.id, ids), { inline: !hooked, pdfs: supports(target.provider, 'pdfs') });
       }
       // D48 P4: a hooked terminal session's message waits in its mailbox for its next idle waiter.
       if (hooked) await context.hooks.sendMessage(request.params.id, text, prepared);

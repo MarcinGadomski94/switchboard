@@ -8,6 +8,7 @@ import { SETTINGS_SECTIONS, type SettingsSection, resolveSection } from './setti
 import { ClaudeSection, GithubSection, NotifySection, type SaveSettings, SchedulesSection, SessionsSection } from './settings/sections.tsx';
 import { ToolsSection } from './settings/ToolsSection.tsx';
 import { MachinesSection } from './settings/MachinesSection.tsx';
+import { ClisSection } from './settings/ClisSection.tsx';
 import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import './settings.css';
@@ -28,6 +29,8 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
       return <ToolsSection />;
     case 'github':
       return <GithubSection settings={settings} />;
+    case 'clis':
+      return <ClisSection />;
     case 'machines':
       return <MachinesSection />;
     case 'updates':

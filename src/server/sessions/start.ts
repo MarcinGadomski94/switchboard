@@ -9,6 +9,8 @@ import type { ApiContext } from '../routes.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
 import { type TaskWorktree, WorktreeError } from '../worktrees/manager.ts';
 import { buildFirstTurn } from './first-turn.ts';
+import { CLI_LABELS, type CliProviderId, isCliProviderId, supports } from '../../core/cli-providers.ts';
+import type { CliStatusService } from '../cli/status.ts';
 import { AttachmentError, type AttachmentService, NO_ATTACHMENTS, type PreparedAttachments, parseAttachmentIds } from '../attachments/service.ts';
 import type { AttachmentRecord } from '../db/repos/attachments.ts';
 import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } from './validate.ts';
@@ -17,7 +19,28 @@ import { type ValidNewSession, type WorktreeBranchRule, validateNewSession } fro
 export type SessionStartContext = Pick<ApiContext, 'store' | 'providers' | 'supervisor' | 'worktrees' | 'folders'> & {
   /** D57: staged uploads a start's first message carries (`NewSession.attachments`); without it a start takes none. */
   readonly attachments?: AttachmentService;
+  /** D62: which CLIs can be chosen (installed, signed in) and the default; without it only the adapters are checked and the default is Claude Code. */
+  readonly clis?: CliStatusService;
 };
+
+/**
+ * D62: the CLI a NewSession names (`provider`): omitted / `null` = the default CLI
+ * (`cli.default`); 422 on field `provider` for an unknown one, one this
+ * Switchboard has no adapter for, or one that cannot be chosen now (the reason).
+ */
+export async function resolveSessionProvider(
+  context: Pick<SessionStartContext, 'supervisor' | 'clis'>,
+  body: unknown,
+): Promise<{ readonly ok: true; readonly provider: CliProviderId } | { readonly ok: false; readonly status: number; readonly body: RefusalBody }> {
+  const raw = isRecord(body) ? body['provider'] : undefined;
+  const invalid = (message: string) => ({ ok: false as const, status: 422, body: { error: 'invalid', errors: [{ field: 'provider', message }] } });
+  if (raw !== undefined && raw !== null && !isCliProviderId(raw)) return invalid('provider must be claude, codex or opencode');
+  const provider: CliProviderId = isCliProviderId(raw) ? raw : ((await context.clis?.defaultProvider()) ?? 'claude');
+  if (!context.supervisor.cliRegistry.hasAdapter(provider)) return invalid(`${CLI_LABELS[provider]} is not supported by this Switchboard`);
+  const refusal = context.clis ? await context.clis.refusal(provider) : null;
+  if (refusal) return invalid(refusal);
+  return { ok: true, provider };
+}
 
 /** Options for {@link startNewSession}. */
 export interface StartNewSessionOptions {
@@ -96,6 +119,10 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   const resolved = await resolveSessionFolder(context, body);
   if (!resolved.ok) return resolved;
   const { folder } = resolved;
+  // D62: the CLI the session runs on (its model list checks the model below).
+  const cli = await resolveSessionProvider(context, body);
+  if (!cli.ok) return cli;
+  const { provider } = cli;
   const scan = providers.solutions;
   const readOnly =
     scan && folder.kind === 'workspace'
@@ -110,8 +137,8 @@ export async function startNewSession(context: SessionStartContext, body: unknow
     nameTaken: async (name) => (await store.sessions.getByName(name)) !== null,
     folder: { kind: folder.kind, repoName: repoSolutionName(folder) },
     worktreeBranch: options.worktreeBranch ?? 'ticket',
-    // D42: a `model` / `effort` is checked against the latest list any claude process reported.
-    modelOptions: await readModelOptionsSetting(store.settings),
+    // D42: a `model` / `effort` is checked against the latest list any claude process reported (D62: of the session's CLI).
+    modelOptions: await readModelOptionsSetting(store.settings, provider),
     ...(readOnly ? { readOnly } : {}),
   });
   if (!result.ok) return { ok: false, status: 422, body: { error: 'invalid', errors: result.errors } };
@@ -136,7 +163,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   // without an epic); dropped repos get no worktree and leave the session's solutions.
   const branching = result.value.worktrees && result.value.branch ? (result.value.branching ?? null) : null;
   const solutions = branching ? result.value.solutions.filter((solution) => !branching.dropped.includes(solution)) : result.value.solutions;
-  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}) };
+  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}), provider };
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
   // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
   // D38: a workspace session without solutions gets none up front: its agent creates them (and Switchboard adopts them).
@@ -178,7 +205,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
         await worktrees.assign(created, session.id);
         if (firstTurn.message === '' && firstTurn.block !== '') await store.pendingMessages.enqueue({ sessionId: session.id, kind: SESSION_START_KIND, text: firstTurn.block });
         // D57: the staged uploads become the new session's (moved into its folder), then go with the first message.
-        if (context.attachments && staged.length > 0) prepared = await context.attachments.prepare(await context.attachments.bind(staged, session.id), { inline: true });
+        if (context.attachments && staged.length > 0) prepared = await context.attachments.prepare(await context.attachments.bind(staged, session.id), { inline: true, pdfs: supports(provider, 'pdfs') });
         if (options.beforeSpawn) await options.beforeSpawn(session);
       },
       attachments: () => prepared,

@@ -39,6 +39,7 @@ import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFi
 import type { ProcessExit } from './process.ts';
 import type { AgentProcess } from '../cli/agent-process.ts';
 import { CliRegistry } from '../cli/registry.ts';
+import { CLI_LABELS } from '../../core/cli-providers.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
@@ -288,7 +289,14 @@ export type SupervisorErrorCode =
   /** D33: closing a session whose process is live, or that runs or waits, needs `confirm`. */
   | 'close-needs-confirm'
   /** D33: the session is closed; reopen it first (a message, Resume or Attach). */
-  | 'closed';
+  | 'closed'
+  /** D62: the session's CLI cannot run here (no adapter, not installed); the message says why. */
+  | 'cli-unavailable'
+  /** D62: the feature is not available on the session's CLI (`unavailableText`). */
+  | 'not-available'
+  /** D62 P5: a switch of the session's CLI is running, or it cannot switch now. */
+  | 'switching'
+  | 'switch-failed';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -464,6 +472,11 @@ export class SessionSupervisor {
     return () => set.delete(listener);
   }
 
+  /** D62: the CLIs sessions run on (commands and adapters). */
+  get cliRegistry(): CliRegistry {
+    return this.#providers;
+  }
+
   /** Number of live supervised processes (gap #11). */
   get liveCount(): number {
     return this.#live.size;
@@ -571,6 +584,8 @@ export class SessionSupervisor {
       // D42: the model and effort chosen at the start (normalized by the validation); the first spawn passes them.
       model: input.model ?? null,
       effort: input.effort ?? null,
+      // D62: the CLI it runs on (validated by the caller; Claude Code when none is named).
+      provider: input.provider ?? 'claude',
     });
     await this.#store.agents.create({
       sessionId: session.id,
@@ -1147,6 +1162,8 @@ export class SessionSupervisor {
       return;
     }
     await this.#store.sessions.update(live.sessionId, { claudeSessionId: id });
+    // D62: the local copy's id is Claude Code's own id for the session.
+    await this.#store.providers.rememberNative(live.sessionId, 'claude', id);
     if (!live.recorder.turnBusy()) await this.#importRemoteHistory(live, state);
   }
 
@@ -1387,7 +1404,7 @@ export class SessionSupervisor {
           // The process took the model before it refused the effort: store what it runs on.
           const taken: ModelChoice = { model: next.model, effort: session.effort };
           await this.#store.sessions.update(sessionId, { model: taken.model });
-          await rememberModelChoice(this.#store.settings, taken);
+          await rememberModelChoice(this.#store.settings, taken, session.provider);
           await this.#recordModel(sessionId, 'text', modelStepLabel(taken, available), { type: 'model', action: 'changed', ...taken, live: true });
         }
         await this.#recordModel(sessionId, 'error', `Could not change the effort: ${failure}`, {
@@ -1403,7 +1420,7 @@ export class SessionSupervisor {
     }
     await this.#store.sessions.update(sessionId, { model: next.model, effort: next.effort });
     // D42: a stored choice is the developer's last one (the New-session form starts on it).
-    await rememberModelChoice(this.#store.settings, next);
+    await rememberModelChoice(this.#store.settings, next, session.provider);
     await this.#recordModel(sessionId, 'text', modelStepLabel(next, available), { type: 'model', action: 'changed', ...next, live: live !== null });
     await this.#emitSession(sessionId);
     return this.#get(sessionId);
@@ -1641,19 +1658,28 @@ export class SessionSupervisor {
       });
       teleport = { init, resolveInit, initSeen: false, initError: null, output: [], importPending: true };
     }
-    // D62: the session's CLI behind the provider seam (Claude Code: the baseline argv, as before; `cli/claude.ts`).
-    const proc = this.#providers.adapter('claude').spawn({
+    // D62: the session's CLI behind the provider seam (Claude Code: the baseline argv, as before; `cli/claude.ts`;
+    // Codex / OpenCode: a bridge that speaks stream-json to this side, reopening the CLI's own conversation when it has one).
+    const provider = prepared.provider;
+    if (!this.#providers.hasAdapter(provider)) {
+      throw new SupervisorError('cli-unavailable', `${CLI_LABELS[provider]} is not supported by this Switchboard, so ${prepared.title ?? prepared.name} cannot run here`);
+    }
+    const nativeId = provider === 'claude' ? null : await this.#store.providers.nativeId(session.id, provider);
+    const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,
-      nativeId: null,
+      nativeId,
       permissionMode,
       cwd,
       env: childEnv(this.#env),
-      command: this.#command,
-      extraArgs: this.#extraArgs,
+      command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
+      extraArgs: provider === 'claude' ? this.#extraArgs : [],
       onLine: (line) => {
         const live = holder.live;
         if (live) void this.#enqueue(live, () => this.#onLine(live, line));
+      },
+      onNativeId: (id) => {
+        void this.#store.providers.rememberNative(session.id, provider, id).catch((error: unknown) => this.#onError(error));
       },
     });
     const live: Live = {
@@ -1686,7 +1712,7 @@ export class SessionSupervisor {
           const options = parseInitializeModels(response);
           if (options === null) return;
           await this.#store.sessions.update(session.id, { modelOptions: options });
-          await rememberModelOptions(this.#store.settings, options);
+          await rememberModelOptions(this.#store.settings, options, prepared.provider);
         },
       }),
       teleport,
@@ -1700,6 +1726,8 @@ export class SessionSupervisor {
     await this.#enqueue(live, async () => {
       await recorder.recordLifecycle('text', LIFECYCLE_LABELS[action], { type: 'lifecycle', action, pid: proc.pid, ...(message ? { message } : {}) });
     });
+    // D62: Claude Code's own id is the session's (a switch back resumes it); a teleport learns its id at `init`.
+    if (provider === 'claude' && start.kind !== 'teleport') await this.#store.providers.rememberNative(session.id, 'claude', start.claudeSessionId);
     return live;
   }
 

@@ -265,7 +265,8 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
   await expect(modal.getByTestId('ns-chip')).toHaveText(['✓ tool-repo']);
   await expect(chip(modal, 'tool-repo')).toBeDisabled();
   await expect(chip(modal, 'tool-repo')).toHaveAttribute('data-fixed', 'true');
-  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree', 'Ultracode (workflows)', 'Model']);
+  // D62: the CLI row under the Model row.
+  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree', 'Ultracode (workflows)', 'Model', 'CLI']);
   // D32: the worktree's branch is named after its ticket. A title that starts with a ticket key pre-fills it.
   const branch = modal.getByTestId('ns-branch');
   const start = modal.getByTestId('ns-start');
@@ -336,6 +337,8 @@ test('New session: the Folder row switches the chips; a repo folder hides the ro
     // D42: the Model row's choice (the CLI default).
     model: null,
     effort: null,
+    // D62: the CLI row (the default CLI: Claude Code).
+    provider: 'claude',
   });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId('view-session')).toBeVisible();

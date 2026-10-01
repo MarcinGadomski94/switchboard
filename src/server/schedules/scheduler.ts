@@ -8,6 +8,7 @@ import type { HubBus } from '../hub/bus.ts';
 import { type ScheduleRunner, SystemItemError } from '../inbox/system-items.ts';
 import { type FolderRef, repoSolutionName } from '../folders/ref.ts';
 import { type SessionStartContext, resolveSessionFolder, startNewSession } from '../sessions/start.ts';
+import { templateProvider } from './validate.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
 import { type FieldError, SESSION_NAME } from '../sessions/validate.ts';
 import { type ValidScheduleInput, validateScheduleInput } from './validate.ts';
@@ -260,8 +261,8 @@ export class Scheduler {
       },
       ...(scan?.isReadOnly && readOnlyIn ? { readOnly: (solution: string) => scan.isReadOnly!(solution, readOnlyIn) } : {}),
       ...(folder ? { folder: { id: folder.id, kind: folder.kind, repoName: repoSolutionName(folder) } } : {}),
-      // D42: a template's model / effort are checked against the latest reported list, like a new session's.
-      modelOptions: await readModelOptionsSetting(this.#store.settings),
+      // D42: a template's model / effort are checked against the latest reported list, like a new session's (D62: of its CLI).
+      modelOptions: await readModelOptionsSetting(this.#store.settings, templateProvider(isRecord(body) ? body['template'] : undefined)),
     });
     if (!result.ok) throw new SchedulerError('invalid', result.errors.map((e) => e.message).join('; '), result.errors);
     const record = await this.#persist(result.value);
@@ -452,7 +453,8 @@ export class Scheduler {
         // D14: the run starts in the schedule's folder (a schedule without one: the default folder at run time).
         const folder = schedule.folderId ?? (typeof template['folder'] === 'string' ? template['folder'] : null);
         // D22: the run's title is the schedule's name (its short name stays `<schedule>-<MMDD>-<HHMM>`).
-        const body = { ...template, folder, name: await this.#freeName(schedule.name, now), title: schedule.name };
+        // D62: the run's CLI is the template's (Claude Code for a template saved before D62).
+        const body = { ...template, folder, name: await this.#freeName(schedule.name, now), title: schedule.name, provider: templateProvider(template) };
         const outcome = await startNewSession(this.#sessions, body, {
           // D32 *Unchanged*: a scheduled run's worktrees keep `session/{name}` (each run has its own name).
           worktreeBranch: 'session',

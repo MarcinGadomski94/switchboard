@@ -1,4 +1,5 @@
-import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
+import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
 import type { AgentRecord } from '../db/repos/agents.ts';
@@ -45,6 +46,33 @@ const hookSources = new WeakMap<Store, HookSource>();
 /** D53: registers the hooked sessions' activity and delivery state `toSession` adds for this store's sessions. */
 export function registerHookSource(store: Store, source: HookSource): void {
   hookSources.set(store, source);
+}
+
+/**
+ * D62 P5: a session's running CLI switch (the supervisor's, registered when it is
+ * created), keyed by the store like {@link registerWorkflowSource}.
+ */
+export interface SwitchSource {
+  /** The switch in progress for the session, `null` when none runs. */
+  current(sessionId: string): SessionProviderSwitch | null;
+}
+
+const switchSources = new WeakMap<Store, SwitchSource>();
+
+/** D62 P5: registers where `toSession` reads a session's switch in progress. */
+export function registerSwitchSource(store: Store, source: SwitchSource): void {
+  switchSources.set(store, source);
+}
+
+/**
+ * D62: the terminal command that continues the session: Claude Code's
+ * `claude --resume <id>`, else the session's CLI's own (`codex resume <thread>`,
+ * `opencode --session <id>`) once that CLI has an id for it, else Claude's.
+ */
+export async function sessionResumeCommand(store: Store, record: Pick<SessionRecord, 'id' | 'provider' | 'claudeSessionId'>): Promise<string> {
+  if (record.provider === 'claude') return resumeCommand(record.claudeSessionId);
+  const native = await store.providers.nativeId(record.id, record.provider);
+  return terminalResumeCommand(record.provider, native) ?? resumeCommand(record.claudeSessionId);
 }
 
 /** An agent row as the API returns it. */
@@ -156,7 +184,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     origin: record.origin,
     live: record.pid !== null,
     activity: live,
-    resumeCommand: resumeCommand(record.claudeSessionId),
+    resumeCommand: await sessionResumeCommand(store, record),
     chips: sessionChips(record, loops),
     loops: loops.map(toLoop),
     title: record.title,
@@ -172,6 +200,9 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     hooked: record.hooked,
     // D53: what a message to it waits on (hooked sessions only).
     ...(record.hooked ? { hookStatus } : {}),
+    // D62: the session's CLI and a switch in progress.
+    provider: record.provider,
+    providerSwitch: switchSources.get(store)?.current(record.id) ?? null,
   };
 }
 

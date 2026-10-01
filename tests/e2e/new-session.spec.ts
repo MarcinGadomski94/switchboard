@@ -320,8 +320,9 @@ test('the form: sections, chips from the scan, visibility rules, toggles, live s
   expect(await wt.boundingBox()).toMatchObject({ width: 32, height: 18 });
   await expect(wt).toHaveCSS('background-color', 'rgb(232, 231, 227)');
   await expect(ultra).toHaveCSS('background-color', 'rgb(51, 52, 58)');
-  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree per solution', 'Ultracode (workflows)', 'Model']);
-  await expect(modal.locator('.sb-ns-toggle-desc')).toHaveText(['Kept until the PR is merged on GitHub', 'Dispatch via the Workflow tool', 'Starts on your last choice']);
+  // D62: the CLI row under the Model row.
+  await expect(modal.locator('.sb-ns-toggle-title')).toHaveText(['Worktree per solution', 'Ultracode (workflows)', 'Model', 'CLI']);
+  await expect(modal.locator('.sb-ns-toggle-desc')).toHaveText(['Kept until the PR is merged on GitHub', 'Dispatch via the Workflow tool', 'Starts on your last choice', 'The agent CLI it runs on']);
   await wt.click();
   await expect(wt).toHaveAttribute('aria-checked', 'false');
   expect(await summary(modal)).toContain('# no worktrees · edits in place');
@@ -413,6 +414,8 @@ test('Start session posts the form, opens the session, and creates the worktrees
     // D42: the Model row's choice (the CLI default).
     model: null,
     effort: null,
+    // D62: the CLI row (the default CLI: Claude Code).
+    provider: 'claude',
   });
   await expect(modal).toHaveCount(0);
   const view = page.getByTestId('view-session');

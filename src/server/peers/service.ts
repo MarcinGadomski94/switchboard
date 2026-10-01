@@ -108,6 +108,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],
   ['GET', /^\/api\/folders$/],
   ['GET', /^\/api\/models$/],
+  // D62: that machine's CLIs (the New-session form's CLI row for a start there) and a switch of its session's CLI.
+  ['GET', /^\/api\/clis$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/provider$/],
   ['GET', /^\/api\/solutions$/],
   ['POST', /^\/api\/branching\/preflight$/],
   ['GET', /^\/api\/terminal-sessions$/],

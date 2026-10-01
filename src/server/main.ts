@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { usageWindowLabel } from '../core/usage.ts';
-import { buildApp, createSessionServices, createWorktreeManager } from './app.ts';
+import { buildApp, createCliStatus, createSessionServices, createWorktreeManager } from './app.ts';
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
@@ -126,14 +126,16 @@ async function main(): Promise<void> {
           });
     if (updates) providers = { ...providers, updates };
     // M7.1 (docs/schedules.md): cron runs from templates; "Retry run" of the failed-run items goes through it.
-    const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
+    // D62: the CLIs' status (Settings → CLIs, the forms' CLI row); scheduled runs check theirs too.
+    const clis = createCliStatus(config, store, supervisor.cliRegistry);
+    const scheduler = new Scheduler({ store, sessions: { store, providers, supervisor, worktrees, folders, clis }, updates: supervisor, bus, systemItems });
     systemItems.useScheduleRunner(scheduleRunnerFor(scheduler));
     // D48 (docs/peers.md): paired machines and the optional peer listener; started once the UI port is ours. The demo has none.
     const peers = new PeerService({ config, store, bus, token });
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, ...(usage ? { usage } : {}), logger: true });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();

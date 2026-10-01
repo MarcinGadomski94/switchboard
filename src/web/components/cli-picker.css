@@ -1,0 +1,52 @@
+/* D62: the CLI choice (forms, the sidebar footer, the session header): a compact native select on the SPEC control tokens. */
+.sb-cli-picker {
+  min-width: 0;
+  max-width: 100%;
+  appearance: none;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card);
+  padding: 4px 24px 4px 9px;
+  font: 400 12px var(--font-mono);
+  color: var(--text);
+  background-color: var(--bg-sidebar);
+  /* The ▾ of a dropdown, drawn in the muted text color (as the form's selects). */
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted-2) 50%), linear-gradient(135deg, var(--muted-2) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+}
+
+.sb-cli-picker:disabled {
+  cursor: default;
+  color: var(--muted-3);
+}
+
+.sb-cli-picker option {
+  background: var(--bg-sidebar);
+  color: var(--text);
+}
+
+.sb-cli-picker option:disabled {
+  color: var(--muted-3);
+}
+
+/* A small CLI badge (sidebar rows, the header). */
+.sb-cli-badge {
+  flex: none;
+  display: inline-block;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  padding: 0 4px;
+  font: 500 9.5px/14px var(--font-mono);
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+
+.sb-cli-note {
+  font-size: 11.5px;
+  color: var(--muted-2);
+}

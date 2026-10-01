@@ -20,6 +20,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'schedules', label: 'Schedules' },
   { key: 'tools', label: 'Embedded tools' },
   { key: 'github', label: 'GitHub' },
+  // D62 (docs/providers.md): the CLIs sessions run on; after the prototype's seven.
+  { key: 'clis', label: 'CLIs' },
   // D48 (docs/peers.md): paired machines; after the prototype's seven.
   { key: 'machines', label: 'Machines' },
   // D55 (docs/updates.md): GitHub releases, the update and its state.

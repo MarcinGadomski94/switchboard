@@ -1,3 +1,6 @@
+import { CliRegistry } from './cli/registry.ts';
+import { CliStatusService, envCommandFlags } from './cli/status.ts';
+import { cliAdapters, cliModelListers } from './cli/adapters.ts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServerConfig } from './config.ts';
 import type { Store } from './db/store.ts';
@@ -112,6 +115,8 @@ export interface AppOptions {
   readonly attachments?: AttachmentService;
   /** D61: the MCP servers page's service (default: one over `config`'s CLI command and `process.env`, closed with the app). */
   readonly mcp?: McpService;
+  /** D62: the CLIs' status (default: one over the supervisor's registry). */
+  readonly clis?: CliStatusService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -176,9 +181,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const folders = options.folders ?? (await FolderService.open({ store: options.store }));
   const setup = options.setup ?? new SetupService({ store: options.store, folders });
   const config = options.config;
+  // D62: Settings → CLIs, the New-session forms' CLI row, the sidebar's switcher.
+  const clis = options.clis ?? createCliStatus(config, options.store, supervisor.cliRegistry);
   let scheduler = options.scheduler;
   if (!scheduler) {
-    const own = new Scheduler({ store: options.store, sessions: { store: options.store, providers, supervisor, worktrees, folders }, updates: supervisor, bus, systemItems });
+    const own = new Scheduler({ store: options.store, sessions: { store: options.store, providers, supervisor, worktrees, folders, clis }, updates: supervisor, bus, systemItems });
     app.addHook('onClose', async () => {
       await own.close();
     });
@@ -221,15 +228,39 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     mcp = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
+}
+
+/**
+ * D62: the CLIs sessions run on: their commands (environment, Settings → CLIs
+ * overrides in `store`) and adapters (`docs/providers.md`).
+ */
+export function createCliRegistry(config: ServerConfig, store: Store): CliRegistry {
+  return new CliRegistry({
+    commands: { claude: config.claudeCommand, codex: config.codexCommand, opencode: config.opencodeCommand },
+    settings: store.settings,
+    adapters: cliAdapters(),
+  });
+}
+
+/** D62: Settings → CLIs' checks over the supervisor's registry. */
+export function createCliStatus(config: ServerConfig, store: Store, registry: CliRegistry): CliStatusService {
+  return new CliStatusService({
+    registry,
+    settings: store.settings,
+    cwd: config.dataDir,
+    envCommands: envCommandFlags({ claude: config.claudeCommand, codex: config.codexCommand, opencode: config.opencodeCommand }),
+    listModels: cliModelListers(),
+  });
 }
 
 /** A supervisor for the configured CLI command and extra args (D14: each session brings its own folder). */
 export function createSupervisor(config: ServerConfig, store: Store, controlHandler?: ControlRequestHandler): SessionSupervisor {
   return new SessionSupervisor({
     store,
+    providers: createCliRegistry(config, store),
     claudeCommand: config.claudeCommand,
     claudeExtraArgs: config.claudeExtraArgs,
     // M4.1: the "Attach here" warning asks `claude agents --json` (in the session's cwd) whether a terminal holds the session.

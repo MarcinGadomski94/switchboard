@@ -1,4 +1,8 @@
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import type {
+  CliInfo,
+  CliOverview,
+  ProviderSwitchResult,
   Attachment,
   AttachmentUpload,
   InterruptResult,
@@ -220,8 +224,18 @@ export const api = {
 
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),
-  /** D42, additive: the latest reported model list and the last model choice (the New-session form's Model row). */
-  models: () => request<ModelSettings>('GET', '/api/models'),
+  /** D42, additive: the latest reported model list and the last model choice (the New-session form's Model row). D62: of a CLI. */
+  models: (provider?: CliProviderId) => request<ModelSettings>('GET', `/api/models${query({ provider })}`),
+  /** D62, additive: the CLIs (Settings → CLIs, the forms' CLI row, the sidebar's switcher); `refresh` checks them again. */
+  clis: (refresh = false) => request<CliOverview>('GET', `/api/clis${refresh ? '?refresh=1' : ''}`),
+  /** D62: the CLI new sessions start on (422 for one that cannot be chosen). */
+  setDefaultCli: (provider: CliProviderId) => request<CliOverview>('PUT', '/api/clis/default', { provider }),
+  /** D62: a Codex / OpenCode command override (`null` = the environment's). */
+  setCliCommand: (provider: CliProviderId, command: readonly string[] | null) => request<CliInfo>('PUT', `/api/clis/${enc(provider)}/command`, { command }),
+  /** D62: checks a CLI again (version, sign-in, models). */
+  checkCli: (provider: CliProviderId) => request<CliInfo>('POST', `/api/clis/${enc(provider)}/check`),
+  /** D62 P5: switches a session to another CLI with a handover (202 once it started; progress on `sessionUpdated`). */
+  switchProvider: (id: string, provider: CliProviderId) => request<ProviderSwitchResult>('POST', `/api/sessions/${enc(id)}/provider`, { provider }),
 
   tools: () => request<Tool[]>('GET', '/api/tools'),
   saveTools: (body: readonly Tool[]) => request<Tool[]>('PUT', '/api/tools', body),
@@ -292,7 +306,9 @@ export function onMachine(machine: string | null, path: string): string {
 export function machineApi(machine: string | null) {
   return {
     savedFolders: () => request<Folder[]>('GET', onMachine(machine, '/api/folders')),
-    models: () => request<ModelSettings>('GET', onMachine(machine, '/api/models')),
+    models: (provider?: CliProviderId) => request<ModelSettings>('GET', onMachine(machine, `/api/models${query({ provider })}`)),
+    /** D62: that machine's CLIs (the forms' CLI row for a start there). */
+    clis: () => request<CliOverview>('GET', onMachine(machine, '/api/clis')),
     solutions: (folder?: string) => request<SolutionGroup[]>('GET', onMachine(machine, `/api/solutions${query({ folder })}`)),
     branchingPreflight: (body: BranchingPreflightRequest) => request<BranchingPreflight>('POST', onMachine(machine, '/api/branching/preflight'), body),
     createSession: (body: NewSession | NewRepoSession | NewSimpleSession) => request<Session>('POST', onMachine(machine, '/api/sessions'), body),

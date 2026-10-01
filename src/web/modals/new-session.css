@@ -869,3 +869,9 @@
   font: 400 11px var(--font-mono);
   opacity: 0.6;
 }
+
+/* D62: the CLI row's picker sits where the switches sit (the row's right edge). */
+.sb-ns-cli-row .sb-cli-picker {
+  flex: none;
+  max-width: 160px;
+}

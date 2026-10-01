@@ -2,6 +2,8 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
+import { fakeCodexBinEnv } from '../../tools/fake-codex/command.ts';
+import { fakeOpencodeBinEnv } from '../../tools/fake-opencode/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { fakeOpenerEnv } from '../../tools/fake-opener/command.ts';
 import { fakeServiceCtlEnv } from '../../tools/fake-servicectl/command.ts';
@@ -53,6 +55,9 @@ export const TEST_SERVICE_HOME = path.join(os.tmpdir(), `switchboard-test-servic
 export function testServerDefaults(): Record<string, string> {
   return {
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
+    // D62: Codex CLI and OpenCode are their fakes too (a test never runs a real CLI, not even `--version`).
+    SWITCHBOARD_CODEX_BIN: fakeCodexBinEnv(),
+    SWITCHBOARD_OPENCODE_BIN: fakeOpencodeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
     SWITCHBOARD_SETUP_WIZARD: 'off',
     SWITCHBOARD_WEB_ROOT: E2E_WEB_ROOT,

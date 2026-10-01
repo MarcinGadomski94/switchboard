@@ -15,6 +15,9 @@ import { useSavedFolders } from '../folders/useFolders.ts';
 import { useRouter } from '../router.tsx';
 import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWarningText, terminalConversations } from '../views/history-move.ts';
 import { ModelChoicePicker } from '../views/session/ModelPicker.tsx';
+import { CliPicker } from '../components/CliPicker.tsx';
+import { effectiveCli } from '../components/cli.ts';
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import { useConversationMoves } from '../views/useConversationMoves.ts';
 import {
   COORDINATION_OPTIONS,
@@ -236,12 +239,18 @@ export function NewSessionModal({
   const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
   // D40: the Branching section's state (epic, base, per-repo choices), next to the form's.
   const [branching, setBranching] = useState<BranchingForm>(() => branchingFromPrefill(prefill));
+  // D62: the machine's CLIs; the session runs on the form's pick, else the default CLI (when it can be chosen).
+  const clis = useApi(() => machineApi(peer).clis().catch(() => null), [peer]);
+  const provider = effectiveCli(form.provider, clis.data ?? null);
   // D42: the latest reported model list and the last choice (the Model row starts on it); a failed read = neither.
-  const models = useApi(() => machineApi(peer).models(), [peer]);
-  const modelSettings: ModelSettings | null = models.data ?? (models.error ? NO_MODEL_SETTINGS : null);
-  const modelOptions = formModelOptions(modelSettings);
-  // What the summary and the bodies read: the form with its model choice filled in.
-  const launch = withFormModel(form, modelSettings);
+  // D62: of the chosen CLI (tagged, so a switch never shows the last CLI's list).
+  const models = useApi(() => machineApi(peer).models(provider).then((settings) => ({ provider, settings })), [peer, provider]);
+  const modelSettings: ModelSettings | null = models.data?.provider === provider ? models.data.settings : models.error ? NO_MODEL_SETTINGS : null;
+  const modelOptions = formModelOptions(modelSettings, provider);
+  // What the summary and the bodies read: the form with its model choice and its CLI filled in.
+  const launch = { ...withFormModel(form, modelSettings, provider), provider };
+  /** D62: another CLI: its own models, so the model choice starts over. */
+  const pickProvider = (next: CliProviderId): void => update({ provider: next, model: null });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -572,12 +581,14 @@ export function NewSessionModal({
   const modelPicker = (
     <ModelChoicePicker
       testId="ns-model"
-      picker={formModelPicker(form, modelSettings)}
+      picker={formModelPicker(form, modelSettings, provider)}
       keepEscape
-      onPickModel={(value) => update({ model: pickFormModel(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, modelOptions, value) })}
-      onPickEffort={(value) => update({ model: pickFormEffort(formModel(form, modelSettings) ?? DEFAULT_MODEL_CHOICE, value) })}
+      onPickModel={(value) => update({ model: pickFormModel(formModel(form, modelSettings, provider) ?? DEFAULT_MODEL_CHOICE, modelOptions, value) })}
+      onPickEffort={(value) => update({ model: pickFormEffort(formModel(form, modelSettings, provider) ?? DEFAULT_MODEL_CHOICE, value) })}
     />
   );
+  // D62: the CLI choice (Simple: its own row; Full: beside the model picker in the Model row).
+  const cliPicker = <CliPicker testId="ns-cli" value={provider} overview={clis.data ?? null} onPick={pickProvider} disabled={busy} />;
   const modeToggle = mode !== null && offersModeToggle(scheduling) ? <ModeToggle mode={mode} onPick={pickMode} disabled={busy} /> : null;
 
   if (mode === null || simple) {
@@ -611,6 +622,7 @@ export function NewSessionModal({
               machineRow={machineRow}
               folderRow={folderRow}
               modelPicker={modelPicker}
+              cliPicker={cliPicker}
               error={error}
               busy={busy}
               attachments={attach}
@@ -1010,6 +1022,14 @@ export function NewSessionModal({
                     <div className="sb-ns-toggle-desc">{MODEL_ROW_DESCRIPTION}</div>
                   </div>
                   {modelPicker}
+                </div>
+                {/* D62: the CLI the session runs on (its own Launch row under D42's Model row; the model list follows it). */}
+                <div className="sb-ns-toggle-row sb-ns-cli-row" data-testid="ns-cli-row">
+                  <div className="sb-ns-toggle-text">
+                    <div className="sb-ns-toggle-title">CLI</div>
+                    <div className="sb-ns-toggle-desc">The agent CLI it runs on</div>
+                  </div>
+                  {cliPicker}
                 </div>
               </>
             )}

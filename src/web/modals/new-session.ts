@@ -1,4 +1,5 @@
 import type { Folder, ModelSettings, NewRepoSession, NewSession, NewSessionPrefill, SessionModelOption, SolutionGroup } from '../../core/api.ts';
+import { CLI_LABELS, type CliProviderId, isCliProviderId } from '../../core/cli-providers.ts';
 import { CLI_MODEL_ALIASES, DEFAULT_MODEL_CHOICE, type ModelChoice, fitModelChoice, normalizeEffort, normalizeModel, readModelChoice, readModelOptions } from '../../core/model-choice.ts';
 import {
   COORDINATIONS,
@@ -72,6 +73,12 @@ export interface NewSessionForm {
    * ({@link withFormModel}).
    */
   readonly model: ModelChoice | null;
+  /**
+   * D62: the CLI the session runs on; `null` while the developer has not picked
+   * one, so the default CLI applies (`GET /api/clis` → `default`). Picking
+   * another CLI clears {@link model} (each CLI names its models differently).
+   */
+  readonly provider: CliProviderId | null;
 }
 
 /**
@@ -127,6 +134,7 @@ export const DEFAULT_FORM: NewSessionForm = {
   folder: null,
   branch: null,
   model: null,
+  provider: null,
 };
 
 /** A pill option: value + the prototype's label. */
@@ -328,7 +336,13 @@ export function toNewSession(form: NewSessionForm): NewSession {
     ultracode: form.ultracode,
     ...(form.folder ? { folder: form.folder } : {}),
     ...modelFields(form),
+    ...providerFields(form),
   };
+}
+
+/** D62: the body's `provider` once the form has one (the modal fills in the default CLI first). */
+export function providerFields(form: Pick<NewSessionForm, 'provider'>): { readonly provider?: CliProviderId } {
+  return form.provider ? { provider: form.provider } : {};
 }
 
 /** D42: the body's `model` / `effort` (`null` = the CLI's default), once the form has a choice. */
@@ -346,6 +360,7 @@ export function toNewRepoSession(form: NewSessionForm, folder: Pick<FormFolder, 
     worktrees: form.worktrees,
     ultracode: form.ultracode,
     ...modelFields(form),
+    ...providerFields(form),
   };
 }
 
@@ -394,6 +409,8 @@ export function formFromPrefill(prefill: NewSessionPrefill | null | undefined): 
   if (typeof prefill.folder === 'string' && prefill.folder.trim() !== '') form.folder = prefill.folder.trim();
   // D32: a prefilled branch counts as typed (the title no longer replaces it).
   if (typeof prefill.branch === 'string' && prefill.branch.trim() !== '') form.branch = prefill.branch.trim();
+  // D62: a prefill's CLI (a schedule's template) counts as picked.
+  if (isCliProviderId(prefill.provider)) form.provider = prefill.provider;
   // D42: a prefill's model / effort (a schedule's template) count as picked (the last choice no longer applies).
   if (prefill.model !== undefined || prefill.effort !== undefined) {
     const choice = readModelChoice({ model: prefill.model ?? null, effort: prefill.effort ?? null });
@@ -611,7 +628,7 @@ export function summaryLines(
   if (showsQa(form)) lines.push(value(`stack     ${form.stack ?? '—'}`));
   else if (showsCoordination(form)) lines.push(value(`mobile    ${COORDINATION_SUMMARY[form.coordination]}`));
   lines.push(value(`ultracode ${form.ultracode ? 'on' : 'off'}`));
-  if (form.model) lines.push(modelSummaryLine(form.model, modelOptions));
+  if (form.model) lines.push(modelSummaryLine(form.model, modelOptions, form.provider));
   lines.push(value(' '));
   lines.push({ text: form.worktrees ? '# worktrees' : '# no worktrees · edits in place', tone: 'comment' });
   if (line) lines.push(line);
@@ -648,7 +665,7 @@ export function repoSummaryLines(
     value(`folder    ${folder.displayName} · ${FOLDER_KIND_LABEL[folder.kind]}`),
     value(`cwd       ${sessionCwd(folder, form.worktrees, name)}`),
     value(`ultracode ${form.ultracode ? 'on' : 'off'}`),
-    ...(form.model ? [modelSummaryLine(form.model, modelOptions)] : []),
+    ...(form.model ? [modelSummaryLine(form.model, modelOptions, form.provider)] : []),
     value(' '),
     { text: form.worktrees ? '# worktree' : '# no worktree · edits in place', tone: 'comment' },
   ];
@@ -701,8 +718,16 @@ export const MODEL_LINE_KEY = 'model     ';
  * reported (`GET /api/models` → `options`), else the CLI's aliases (`default`,
  * `opus`, `sonnet`, `haiku`, no effort levels).
  */
-export function formModelOptions(models: ModelSettings | null): readonly SessionModelOption[] {
-  return readModelOptions(models?.options ?? null) ?? CLI_MODEL_ALIASES;
+export function formModelOptions(models: ModelSettings | null, provider: CliProviderId = 'claude'): readonly SessionModelOption[] {
+  return readModelOptions(models?.options ?? null) ?? cliFallbackModels(provider);
+}
+
+/**
+ * D62: what a CLI offers while none of its sessions reported a list yet: Claude
+ * Code's aliases (D42), else only that CLI's default model.
+ */
+export function cliFallbackModels(provider: CliProviderId): readonly SessionModelOption[] {
+  return provider === 'claude' ? CLI_MODEL_ALIASES : [{ value: 'default', label: 'Default', description: `${CLI_LABELS[provider]}'s default model` }];
 }
 
 /**
@@ -713,25 +738,25 @@ export function formModelOptions(models: ModelSettings | null): readonly Session
  * effort the model lacks to Default). `null` while nothing is picked and
  * `models` has not loaded yet (`null`).
  */
-export function formModel(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null): ModelChoice | null {
-  const options = formModelOptions(models);
+export function formModel(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null, provider: CliProviderId = 'claude'): ModelChoice | null {
+  const options = formModelOptions(models, provider);
   if (form.model) return fitModelChoice(form.model, options);
   if (models === null) return null;
   return fitModelChoice(readModelChoice(models.last) ?? DEFAULT_MODEL_CHOICE, options);
 }
 
 /** D42: the form with its model choice filled in ({@link formModel}): what the summary and the bodies read. */
-export function withFormModel(form: NewSessionForm, models: ModelSettings | null): NewSessionForm {
-  return { ...form, model: formModel(form, models) };
+export function withFormModel(form: NewSessionForm, models: ModelSettings | null, provider: CliProviderId = 'claude'): NewSessionForm {
+  return { ...form, model: formModel(form, models, provider) };
 }
 
 /**
  * D42: the Model row's picker: D31's (`modelChoicePicker`) over the offered
  * models, with the at-start note; disabled while the models load.
  */
-export function formModelPicker(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null): ModelPicker {
-  const choice = formModel(form, models) ?? DEFAULT_MODEL_CHOICE;
-  const picker = modelChoicePicker({ current: choice.model, effort: choice.effort, available: formModelOptions(models) }, MODEL_APPLIES_AT_START);
+export function formModelPicker(form: Pick<NewSessionForm, 'model'>, models: ModelSettings | null, provider: CliProviderId = 'claude'): ModelPicker {
+  const choice = formModel(form, models, provider) ?? DEFAULT_MODEL_CHOICE;
+  const picker = modelChoicePicker({ current: choice.model, effort: choice.effort, available: formModelOptions(models, provider) }, MODEL_APPLIES_AT_START);
   return models === null && !form.model ? { ...picker, disabled: true, reason: MODELS_LOADING, title: MODELS_LOADING } : picker;
 }
 
@@ -749,8 +774,12 @@ export function pickFormEffort(choice: ModelChoice, effort: string | null): Mode
   return { model: choice.model, effort: normalizeEffort(effort) };
 }
 
-/** D42: the summary's model line: `model     <model> · <effort>`, the trigger's text (`model     Default`, `model     Opus 5.5 · high`). */
-export function modelSummaryLine(choice: ModelChoice, options: readonly SessionModelOption[]): SummaryLine {
+/**
+ * D42: the summary's model line: `model     <model> · <effort>`, the trigger's text (`model     Default`, `model     Opus 5.5 · high`).
+ * D62: another CLI than Claude Code is named first (`model     Codex CLI · GPT-5.5 Codex · high`).
+ */
+export function modelSummaryLine(choice: ModelChoice, options: readonly SessionModelOption[], provider: CliProviderId | null = null): SummaryLine {
   const picker = modelChoicePicker({ current: choice.model, effort: choice.effort, available: options }, MODEL_APPLIES_AT_START);
-  return { text: `${MODEL_LINE_KEY}${picker.label}`, tone: 'value' };
+  const cli = provider && provider !== 'claude' ? `${CLI_LABELS[provider]} · ` : '';
+  return { text: `${MODEL_LINE_KEY}${cli}${picker.label}`, tone: 'value' };
 }

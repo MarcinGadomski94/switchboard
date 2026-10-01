@@ -1,8 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { ModelSettings } from '../../core/api.ts';
 import type { KnownSettings } from '../../core/settings.ts';
 import type { ApiContext } from '../routes.ts';
-import { readModelSettings } from '../settings/models.ts';
 import { readSettings, validateSettingsPatch } from '../settings/settings.ts';
 import type { PendingRoute } from './not-implemented.ts';
 
@@ -35,5 +33,5 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
 
-  app.get('/api/models', async (): Promise<ModelSettings> => readModelSettings(store.settings));
+  // D62: `GET /api/models` (D42) moved to api/clis.ts, where it takes `?provider=`.
 }

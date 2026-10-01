@@ -1,3 +1,5 @@
+import type { CliStatusService } from './cli/status.ts';
+import { registerCliRoutes } from './api/clis.ts';
 import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
 import { registerAttachmentRoutes } from './api/attachments.ts';
@@ -40,6 +42,8 @@ import type { WorktreeManager } from './worktrees/manager.ts';
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
   readonly config: ServerConfig;
+  /** D62: the CLIs sessions run on: status, default, command overrides (docs/providers.md). */
+  readonly clis: CliStatusService;
   /** The database repositories (db/store.ts, docs/database.md). */
   readonly store: Store;
   /** Computed data sources (providers.ts); demo implementations when SWITCHBOARD_DEMO=1. */
@@ -89,6 +93,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerArtifactRoutes(app, context);
   await registerHistoryRoutes(app, context);
   await registerSettingsRoutes(app, context);
+  await registerCliRoutes(app, context);
   await registerToolRoutes(app, context);
   await registerFrameHelperRoutes(app, context);
   await registerSystemRoutes(app, context);

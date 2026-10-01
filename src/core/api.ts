@@ -11,6 +11,7 @@
  * refine them, additively where it can, and must keep the server and the UI in
  * step because both import this file.
  */
+import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { SessionChip } from './derive/chips.ts';
 import type { StatusTableFormat } from './derive/status-table.ts';
@@ -118,6 +119,13 @@ export interface NewSession {
    * an empty `task`.
    */
   readonly attachments?: readonly string[];
+  /**
+   * Additive (D62, `docs/providers.md`): the CLI the session runs on. Omitted or
+   * `null` = the default CLI (`GET /api/clis` → `default`; a schedule saved
+   * before D62 runs on Claude Code). 422 on field `provider` for an unknown CLI or
+   * one that cannot be chosen now (not installed, signed out), with the reason.
+   */
+  readonly provider?: CliProviderId | null;
 }
 
 /**
@@ -271,6 +279,8 @@ export interface NewRepoSession {
   readonly effort?: string | null;
   /** Additive (D57): as {@link NewSession.attachments}. */
   readonly attachments?: readonly string[];
+  /** Additive (D62): as {@link NewSession.provider}. */
+  readonly provider?: CliProviderId | null;
 }
 
 /**
@@ -306,6 +316,8 @@ export interface NewSimpleSession {
   readonly effort?: string | null;
   /** Additive (D57): as {@link NewSession.attachments}. */
   readonly attachments?: readonly string[];
+  /** Additive (D62): as {@link NewSession.provider}. */
+  readonly provider?: CliProviderId | null;
 }
 
 /**
@@ -661,6 +673,29 @@ export interface Session {
    * undelivered message waits on. Absent / `null` for every other session.
    */
   readonly hookStatus?: HookStatus | null;
+  /**
+   * Additive (D62, migration 0023, `docs/providers.md`): the CLI the session runs
+   * on. `claude` for every session from before D62. The server always sends it;
+   * optional so older payloads (a peer on an older version) and fixtures
+   * type-check: absent = `claude`.
+   */
+  readonly provider?: CliProviderId;
+  /**
+   * Additive (D62 P5): a mid-session switch in progress (the header's and the
+   * sidebar's "Switching to Codex…"); `null` / absent when none runs.
+   */
+  readonly providerSwitch?: SessionProviderSwitch | null;
+}
+
+/** Additive (D62 P5): a running switch of a session to another CLI. */
+export interface SessionProviderSwitch {
+  readonly id: string;
+  readonly from: CliProviderId;
+  readonly to: CliProviderId;
+  /** What it is doing now: asking the outgoing agent, exporting the history, stopping the outgoing CLI, starting the incoming one. */
+  readonly step: 'handover' | 'export' | 'stopping' | 'starting';
+  /** Who writes the handover, once decided. */
+  readonly handoverBy: HandoverSource | null;
 }
 
 /** Additive (D53): what a message to a hooked terminal session waits on (`src/core/derive/hooked-activity.ts`). */
@@ -1935,3 +1970,61 @@ export interface NotImplementedBody {
   /** The backlog item that implements the route (`docs/lanes.md`). */
   readonly item: string;
 }
+
+/**
+ * Additive (D62, `docs/providers.md`): one CLI in Settings → CLIs, the
+ * New-session forms' CLI row and the sidebar's CLI switcher
+ * (`GET /api/clis`).
+ */
+export interface CliInfo {
+  readonly provider: CliProviderId;
+  /** `Claude Code`, `Codex CLI`, `OpenCode`. */
+  readonly label: string;
+  /** The argv prefix sessions spawn (masked nothing: a path or a command name). */
+  readonly command: readonly string[];
+  /** Where {@link command} comes from: Settings → CLIs, the environment (`SWITCHBOARD_<X>_BIN`), or the bare default name. */
+  readonly commandSource: 'settings' | 'env' | 'default';
+  /** The environment variable that sets it. */
+  readonly envVar: string;
+  /** The resolved executable (the PATH lookup of a bare name), when found. */
+  readonly path: string | null;
+  /** `<cli> --version` exited 0. */
+  readonly installed: boolean;
+  /** Its first line, as printed (`codex-cli 0.159.3`, `1.18.34`, `2.1.285 (Claude Code)`). */
+  readonly version: string | null;
+  /** The CLI's own sign-in check: `true` / `false`, `null` when it cannot tell (OpenCode with no stored credentials may use a local model). */
+  readonly signedIn: boolean | null;
+  /** What the sign-in check said, in one line (`Logged in using ChatGPT`, `2 credentials`). */
+  readonly account: string | null;
+  /** This Switchboard can start sessions on it (it has an adapter). */
+  readonly supported: boolean;
+  /** It can be chosen for a session now. */
+  readonly available: boolean;
+  /** Why not, when {@link available} is `false` (shown next to the disabled choice). */
+  readonly reason: string | null;
+  /** The models its CLI reported last (a session's `initialize`, a Settings check), `null` while unknown. */
+  readonly models: readonly SessionModelOption[] | null;
+  /** When it was checked (ISO). */
+  readonly checkedAt: string;
+  /** Install and sign-in help (links and commands; Switchboard never installs a CLI). */
+  readonly install: { readonly docs: string; readonly commands: readonly string[]; readonly signIn: string };
+}
+
+/** Additive (D62): `GET /api/clis`. */
+export interface CliOverview {
+  /** The CLI new sessions start on (the sidebar's switcher; settings row `cli.default`). */
+  readonly default: CliProviderId;
+  readonly clis: readonly CliInfo[];
+}
+
+/** Additive (D62 P5): body of `POST /api/sessions/{id}/provider`. */
+export interface ProviderSwitchInput {
+  readonly provider: CliProviderId;
+}
+
+/** Additive (D62 P5): the answer of `POST /api/sessions/{id}/provider`: the session with its switch started. */
+export interface ProviderSwitchResult {
+  readonly session: Session;
+  readonly switchId: string;
+}
+

@@ -14,6 +14,7 @@ import { MachineRepository } from './repos/machines.ts';
 import { PeerSnapshotRepository } from './repos/peer-snapshots.ts';
 import { PendingMessageRepository } from './repos/pending-messages.ts';
 import { PermissionRepository } from './repos/permissions.ts';
+import { ProviderRepository } from './repos/providers.ts';
 import { QuestionRepository } from './repos/questions.ts';
 import { ScheduleRepository } from './repos/schedules.ts';
 import { SessionRepository } from './repos/sessions.ts';
@@ -59,6 +60,8 @@ export interface Store {
   readonly sidebar: SidebarLayoutRepository;
   /** Attachments of chat messages (D57, `docs/chat.md` → *Attachments*). */
   readonly attachments: AttachmentRepository;
+  /** D62 (0023): each CLI's own conversation id per session, and the mid-session switches. */
+  readonly providers: ProviderRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -119,6 +122,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     peerSnapshots: new PeerSnapshotRepository(ctx),
     sidebar: new SidebarLayoutRepository(ctx),
     attachments: new AttachmentRepository(ctx),
+    providers: new ProviderRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

@@ -26,6 +26,10 @@ export interface ServerConfig {
    * D13 real-CLI smoke). Default none.
    */
   readonly claudeExtraArgs: readonly string[];
+  /** D62: `SWITCHBOARD_CODEX_BIN` as an argv prefix, default `["codex"]` (Settings → CLIs may override it). */
+  readonly codexCommand: readonly string[];
+  /** D62: `SWITCHBOARD_OPENCODE_BIN` as an argv prefix, default `["opencode"]` (Settings → CLIs may override it). */
+  readonly opencodeCommand: readonly string[];
   /** `SWITCHBOARD_GH_BIN` as an argv prefix, default `["gh"]`. */
   readonly ghCommand: readonly string[];
   /** `SWITCHBOARD_DEMO=1` loads the demo seed (decisions gap #21). Anything else = off. */
@@ -191,6 +195,8 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     dataDir: parseDir(env['SWITCHBOARD_DATA_DIR'], cwd) ?? defaultDataDir(platform, env, home),
     claudeCommand: parseCommand('SWITCHBOARD_CLAUDE_BIN', env['SWITCHBOARD_CLAUDE_BIN'], 'claude'),
     claudeExtraArgs: parseArgList('SWITCHBOARD_CLAUDE_EXTRA_ARGS', env['SWITCHBOARD_CLAUDE_EXTRA_ARGS']),
+    codexCommand: parseCommand('SWITCHBOARD_CODEX_BIN', env['SWITCHBOARD_CODEX_BIN'], 'codex'),
+    opencodeCommand: parseCommand('SWITCHBOARD_OPENCODE_BIN', env['SWITCHBOARD_OPENCODE_BIN'], 'opencode'),
     ghCommand: parseCommand('SWITCHBOARD_GH_BIN', env['SWITCHBOARD_GH_BIN'], 'gh'),
     demo: env['SWITCHBOARD_DEMO'] === '1',
     openCommand: env['SWITCHBOARD_OPEN_COMMAND']?.trim() ? parseCommand('SWITCHBOARD_OPEN_COMMAND', env['SWITCHBOARD_OPEN_COMMAND'], '') : null,

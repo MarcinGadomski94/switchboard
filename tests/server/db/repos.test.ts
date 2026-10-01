@@ -91,6 +91,7 @@ describe('sessions', () => {
       // D48 P4 (0017): not a hooked terminal session.
       hooked: false,
       transcriptPath: null,
+      provider: 'claude',
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

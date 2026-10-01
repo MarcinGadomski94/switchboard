@@ -124,6 +124,8 @@ export function toSimpleBody({ form, folder, branch, takenNames }: SimpleStart):
     ...(title !== null ? { title } : {}),
     ...(worktrees ? { branch: simpleBranch(form, branch, takenNames).trim() } : {}),
     ...(form.model ? { model: form.model.model, effort: form.model.effort } : {}),
+    // D62: the CLI the session runs on.
+    ...(form.provider ? { provider: form.provider } : {}),
   };
 }
 

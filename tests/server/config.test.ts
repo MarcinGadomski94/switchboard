@@ -13,6 +13,9 @@ describe('loadConfig', () => {
       dataDir: '/Users/dev/Library/Application Support/Switchboard',
       claudeCommand: ['claude'],
       claudeExtraArgs: [],
+      // D62
+      codexCommand: ['codex'],
+      opencodeCommand: ['opencode'],
       ghCommand: ['gh'],
       demo: false,
       openCommand: null,

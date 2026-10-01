@@ -66,6 +66,8 @@ export interface SimpleSessionFormProps {
   readonly folderRow: ReactNode;
   /** D42's model picker, starting on the last choice. */
   readonly modelPicker: ReactNode;
+  /** D62: the CLI choice (Claude Code / Codex CLI / OpenCode), on the default CLI. */
+  readonly cliPicker?: ReactNode;
   readonly error: string | null;
   readonly busy: boolean;
   /** D57: the message's attachments (uploaded at Start); `undefined` = none offered. */
@@ -169,6 +171,16 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
           onChange={(event) => update({ name: event.target.value })}
         />
       </div>
+
+      {props.cliPicker ? (
+        <div className="sb-ns-simple-row" data-testid="ns-simple-cli">
+          <div className="sb-ns-toggle-text">
+            <div className="sb-ns-toggle-title">CLI</div>
+            <div className="sb-ns-toggle-desc">The agent CLI the session runs on</div>
+          </div>
+          {props.cliPicker}
+        </div>
+      ) : null}
 
       <div className="sb-ns-simple-row" data-testid="ns-simple-model">
         <div className="sb-ns-toggle-text">

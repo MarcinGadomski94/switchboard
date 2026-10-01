@@ -101,6 +101,9 @@ const SESSION_KEYS = keys<Session>()([
   'workflows',
   // additive, D53 (a hooked session's delivery state; absent on every other session)
   'hookStatus',
+  // additive, D62 (the session's CLI, a switch in progress)
+  'provider',
+  'providerSwitch',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',

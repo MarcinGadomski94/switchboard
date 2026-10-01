@@ -56,6 +56,9 @@ export function carriedEnvironment(config: ServerConfig, realDataDir: string = d
   if (config.port !== DEFAULT_PORT) env['SWITCHBOARD_PORT'] = String(config.port);
   if (path.resolve(config.dataDir) !== path.resolve(realDataDir)) env['SWITCHBOARD_DATA_DIR'] = config.dataDir;
   if (!(config.claudeCommand.length === 1 && config.claudeCommand[0] === 'claude')) env['SWITCHBOARD_CLAUDE_BIN'] = commandValue(config.claudeCommand);
+  // D62: Codex CLI / OpenCode commands set in the environment (Settings → CLIs overrides live in the database).
+  if (!(config.codexCommand.length === 1 && config.codexCommand[0] === 'codex')) env['SWITCHBOARD_CODEX_BIN'] = commandValue(config.codexCommand);
+  if (!(config.opencodeCommand.length === 1 && config.opencodeCommand[0] === 'opencode')) env['SWITCHBOARD_OPENCODE_BIN'] = commandValue(config.opencodeCommand);
   if (!(config.ghCommand.length === 1 && config.ghCommand[0] === 'gh')) env['SWITCHBOARD_GH_BIN'] = commandValue(config.ghCommand);
   return env;
 }

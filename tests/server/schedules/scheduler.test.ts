@@ -146,7 +146,8 @@ describe('Scheduler · Save schedule (D8)', () => {
     // D14: the stored template carries the folder the runs start in (the default folder here).
     const folder = (await r.w.store.folders.getDefault())?.id;
     expect(created.folder).toBe(folder);
-    expect(created.template).toEqual({ ...template({ task: 'Check the build and report.\nThen stop.' }), folder });
+    // D62: and the CLI its runs start on (a template without one: Claude Code).
+    expect(created.template).toEqual({ ...template({ task: 'Check the build and report.\nThen stop.' }), folder, provider: 'claude' });
 
     // The name is unique among schedules.
     const duplicate = await save(r, { cron: '0 3 * * *', template: template() }).catch((caught: unknown) => caught);

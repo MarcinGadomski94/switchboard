@@ -1,3 +1,4 @@
+import { type CliProviderId, isCliProviderId } from '../../core/cli-providers.ts';
 import type { SessionModelOption } from '../../core/api.ts';
 import { parseCron } from '../../core/cron.ts';
 import { type FieldError, type ValidNewSession, type ValidationFolder, validateNewSession } from '../sessions/validate.ts';
@@ -37,8 +38,18 @@ export interface ScheduleInputChecks {
    * template. Without it the template is validated as a workspace session.
    */
   readonly folder?: ValidationFolder & { readonly id: string | null };
-  /** D42: the latest reported model list: a template's `model` / `effort` are checked against it (the New-session rule). */
+  /** D42: the latest reported model list: a template's `model` / `effort` are checked against it (the New-session rule). D62: of the template's CLI. */
   readonly modelOptions?: readonly SessionModelOption[] | null;
+}
+
+/**
+ * D62: the CLI a schedule template names (`template.provider`): a known one, else
+ * Claude Code (every schedule saved before D62 ran on it; ASSUMED
+ * D62-schedule-default: a template without one keeps Claude Code even when the
+ * default CLI changes). Whether it is installed is checked when a run starts.
+ */
+export function templateProvider(template: unknown): CliProviderId {
+  return isRecord(template) && isCliProviderId(template['provider']) ? template['provider'] : 'claude';
 }
 
 /** Longest description kept from the prompt's first line. */
@@ -85,6 +96,9 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
   }
 
   const template = body['template'];
+  if (isRecord(template) && template['provider'] !== undefined && template['provider'] !== null && !isCliProviderId(template['provider'])) {
+    errors.push({ field: 'template.provider', message: 'provider must be claude, codex or opencode' });
+  }
   let session: ValidNewSession | null = null;
   if (!isRecord(template)) {
     errors.push({ field: 'template', message: 'template must be the NewSession each run starts' });
@@ -111,7 +125,8 @@ export async function validateScheduleInput(body: unknown, checks: ScheduleInput
   const value: ValidScheduleInput = {
     id,
     cron,
-    template: { ...session, task: session.task.trim(), folder: checks.folder?.id ?? null },
+    // D62: the runs' CLI is stored with the template.
+    template: { ...session, task: session.task.trim(), folder: checks.folder?.id ?? null, provider: templateProvider(template) },
     name: session.name,
     description: scheduleDescription(session.task),
   };

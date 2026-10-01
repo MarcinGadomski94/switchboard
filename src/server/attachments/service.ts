@@ -222,16 +222,17 @@ export class AttachmentService {
    * A message's attachments for the agent (D57 ruling): images and PDFs inline as
    * content blocks when the CLI takes them (`planDelivery`), everything else as
    * the lines naming their absolute paths. `inline: false` (a hooked terminal
-   * session) sends every one as a file.
+   * session) sends every one as a file. D62: `pdfs: false` (a CLI that takes
+   * images only, Codex) sends PDFs as files.
    */
-  async prepare(records: readonly AttachmentRecord[], options: { readonly inline: boolean }): Promise<PreparedAttachments> {
+  async prepare(records: readonly AttachmentRecord[], options: { readonly inline: boolean; readonly pdfs?: boolean }): Promise<PreparedAttachments> {
     if (records.length === 0) return NO_ATTACHMENTS;
     const plan = planDelivery(records.map((record) => ({ kind: record.kind, size: record.size, ...(record.pages !== null ? { pages: record.pages } : {}) })), options);
     const refs: Attachment[] = [];
     const blocks: UserContentBlock[] = [];
     const files: AttachedFile[] = [];
     for (const [index, record] of records.entries()) {
-      const delivery = plan[index] ?? 'file';
+      const delivery = record.kind === 'pdf' && options.pdfs === false ? 'file' : (plan[index] ?? 'file');
       refs.push(toAttachment(record, delivery));
       if (delivery === 'inline' && record.kind !== 'file') {
         const bytes = await readFile(this.pathOf(record));

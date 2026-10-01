@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SessionModelOption } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
+import type { CliProviderId } from '../../../core/cli-providers.ts';
 import type { ContextState } from '../../../core/context-meter.ts';
 import type { Coordination, FolderKind, Phase, QaStack, SessionMode, SessionOrigin, SessionStatus, WorkType } from '../../../core/model.ts';
 import { type CreateInput, type Patch, type RepoContext, placeholders } from '../context.ts';
@@ -123,6 +124,11 @@ export interface SessionRecord {
   readonly hooked: boolean;
   /** D48 P4: the transcript its hooks reported; `null` when unknown. */
   readonly transcriptPath: string | null;
+  /**
+   * D62 (0023): the CLI the session's process runs (`claude` for every session
+   * from before D62); a mid-session switch changes it (`docs/providers.md`).
+   */
+  readonly provider: CliProviderId;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -190,6 +196,7 @@ const SPEC: TableSpec<SessionRecord> = {
     context: ['context', 'json'],
     hooked: ['hooked', 'bool'],
     transcriptPath: ['transcript_path', 'text'],
+    provider: ['provider', 'text'],
   },
 };
 

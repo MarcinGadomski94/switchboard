@@ -789,7 +789,9 @@ describe('0022 plain folders (D59)', () => {
     const before = dump(database);
     const schemaBefore = schemaDump(database).filter((line) => !/ folders(_default|_label)?: /.test(line));
 
-    expect(migrate(database, shipped).applied).toEqual([22]);
+    // D62: later migrations (0023) are this test's concern no more: up to 0022.
+    const upTo22 = shipped.filter((m) => m.version <= 22);
+    expect(migrate(database, upTo22).applied).toEqual([22]);
     expect(dump(database)).toEqual(before);
     expect(rowsOf(database, 'folders').map((row) => (row as { id: string }).id)).toEqual(['f-ws', 'c-repo', 'a-repo']);
     // Nothing but the folders table (and its indexes) changed in the schema.
@@ -803,7 +805,7 @@ describe('0022 plain folders (D59)', () => {
     expect(database.prepare("SELECT folder_id FROM sessions WHERE id = 's-repo'").get()).toEqual({ folder_id: null });
     expect(database.prepare("SELECT count(*) AS n FROM events WHERE session_id = 's-repo'").get()).toEqual({ n: 1 });
     // Running again is a no-op.
-    expect(migrate(database, shipped).applied).toEqual([]);
+    expect(migrate(database, upTo22).applied).toEqual([]);
   });
 
   it('a copy of a realistic database (the demo fixtures + saved folders, sessions, schedules, worktrees) keeps every row', async () => {
@@ -829,7 +831,7 @@ describe('0022 plain folders (D59)', () => {
     expect(before['folders']?.length).toBeGreaterThanOrEqual(2);
     expect(before['sessions']?.length).toBeGreaterThanOrEqual(7);
 
-    const store = await openStore(copy);
+    const store = await openStore(copy, { migrations: shipped.filter((m) => m.version <= 22) });
     try {
       expect(store.migrations.applied).toEqual([22]);
       expect(dump(store.db)).toEqual(before);
@@ -870,5 +872,62 @@ describe('0022 plain folders (D59)', () => {
     expect(() => migrate(third, [...base, broken])).toThrow(/foreign key violations/);
     expect(third.prepare('SELECT id FROM p').all()).toEqual([{ id: 'a' }]);
     expect(third.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+  });
+});
+
+describe('0023 session provider (D62)', () => {
+  function rowsOf(database: DatabaseSync, table: string): unknown[] {
+    return database.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all();
+  }
+
+  function dump(database: DatabaseSync): Record<string, unknown[]> {
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    return Object.fromEntries(tables.map((row) => [String(row['name']), rowsOf(database, String(row['name']))]));
+  }
+
+  it('on a database with sessions: every existing session runs on Claude Code; the new tables start empty; earlier rows are kept', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd62', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 23) });
+    try {
+      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older' });
+    } finally {
+      await earlier.close();
+    }
+    const source = await db(file);
+    const before = dump(source);
+    source.close();
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual([23]);
+      const sessions = await store.sessions.list();
+      expect(sessions.length).toBe(before['sessions']?.length);
+      expect(new Set(sessions.map((session) => session.provider))).toEqual(new Set(['claude']));
+      // Every column the sessions had keeps its value.
+      const after = dump(store.db);
+      expect((after['sessions'] ?? []).map((row) => ({ ...(row as Record<string, unknown>), provider: undefined }))).toEqual(
+        (before['sessions'] ?? []).map((row) => ({ ...(row as Record<string, unknown>), provider: undefined })),
+      );
+      expect(rowsOf(store.db, 'session_providers')).toEqual([]);
+      expect(rowsOf(store.db, 'provider_switches')).toEqual([]);
+      // The CHECK refuses an unknown CLI; the repository keeps each CLI's own id and the switches.
+      const one = sessions[0]!;
+      expect(() => store.db.prepare("UPDATE sessions SET provider = 'gpt' WHERE id = ?").run(one.id)).toThrow(/CHECK/);
+      await store.providers.rememberNative(one.id, 'codex', 'thread-1');
+      await store.providers.rememberNative(one.id, 'codex', 'thread-2');
+      expect(await store.providers.nativeId(one.id, 'codex')).toBe('thread-2');
+      expect(await store.providers.sessionByNative('codex', 'thread-2')).toBe(one.id);
+      const started = await store.providers.createSwitch(one.id, 'claude', 'codex');
+      expect(started).toMatchObject({ from: 'claude', to: 'codex', status: 'running', handoverBy: null });
+      await store.providers.updateSwitch(started.id, { status: 'done', handoverBy: 'history', exportPath: '/x.md', finishedAt: '2026-10-01T00:00:00.000Z' });
+      expect(await store.providers.listSwitches(one.id)).toEqual([expect.objectContaining({ status: 'done', handoverBy: 'history', exportPath: '/x.md' })]);
+      // Deleting the session takes its rows along.
+      await store.sessions.delete(one.id);
+      expect(rowsOf(store.db, 'session_providers')).toEqual([]);
+      expect(rowsOf(store.db, 'provider_switches')).toEqual([]);
+    } finally {
+      await store.close();
+    }
   });
 });
