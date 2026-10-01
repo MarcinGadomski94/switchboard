@@ -34,9 +34,11 @@ import type { FolderRef } from '../folders/ref.ts';
 import { registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
-import { type ClaudeStart, DEFAULT_PERMISSION_MODE, buildClaudeArgs, childEnv, resumeCommand } from './argv.ts';
+import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
-import { ClaudeProcess, type ProcessExit } from './process.ts';
+import type { ProcessExit } from './process.ts';
+import type { AgentProcess } from '../cli/agent-process.ts';
+import { CliRegistry } from '../cli/registry.ts';
 import type { LiveProcessLister } from './recovery.ts';
 import { StreamRecorder } from './recorder.ts';
 import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
@@ -235,6 +237,11 @@ export interface SupervisorOptions {
   readonly workflowPollMs?: number;
   /** D57: stores the images of imported terminal prompts (Attach, a move, a teleport); without it they show as placeholders. */
   readonly attachments?: AttachmentService;
+  /**
+   * D62: the CLIs sessions can run on (`docs/providers.md`). Default: Claude Code
+   * with {@link claudeCommand} only.
+   */
+  readonly providers?: CliRegistry;
 }
 
 /** Options of {@link SessionSupervisor.close} (D33). */
@@ -350,7 +357,8 @@ interface TeleportState {
 /** One live `claude` process of a session. */
 interface Live {
   readonly sessionId: string;
-  readonly proc: ClaudeProcess;
+  /** D62: the CLI itself (Claude Code) or a bridge to it (Codex CLI, OpenCode); stream-json either way. */
+  readonly proc: AgentProcess;
   readonly recorder: StreamRecorder;
   /** D19: the session's `activity` notifications, at most one per interval. */
   readonly activity: LatestThrottle<SessionActivity | null>;
@@ -418,6 +426,8 @@ export class SessionSupervisor {
   #gate: Promise<void> = Promise.resolve();
 
   readonly #attachments: AttachmentService | null;
+  /** D62: the CLIs and their adapters. */
+  readonly #providers: CliRegistry;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -437,6 +447,7 @@ export class SessionSupervisor {
     this.#activityIntervalMs = options.activityIntervalMs ?? ACTIVITY_INTERVAL_MS;
     this.#teleportInitTimeoutMs = options.teleportInitTimeoutMs ?? DEFAULT_TELEPORT_INIT_TIMEOUT_MS;
     this.#attachments = options.attachments ?? null;
+    this.#providers = options.providers ?? new CliRegistry({ commands: { claude: options.claudeCommand } });
     this.#workflows = new WorkflowService({
       configDir: () => claudeConfigDir(this.#env),
       onChange: (sessionId) => this.#workflowChanged(sessionId),
@@ -1630,14 +1641,16 @@ export class SessionSupervisor {
       });
       teleport = { init, resolveInit, initSeen: false, initError: null, output: [], importPending: true };
     }
-    // D22: the CLI's display name is the session's title (as it is now: a rename applies from the next spawn), else its name.
-    // D31: the stored model and effort (neither is inherited on `--resume`); `null` = the CLI's default, no flag.
-    const args = buildClaudeArgs({ start, name: prepared.title ?? prepared.name, permissionMode, model: prepared.model, effort: prepared.effort, extraArgs: this.#extraArgs });
-    const proc = new ClaudeProcess({
-      command: this.#command,
-      args,
+    // D62: the session's CLI behind the provider seam (Claude Code: the baseline argv, as before; `cli/claude.ts`).
+    const proc = this.#providers.adapter('claude').spawn({
+      session: prepared,
+      claudeStart: start,
+      nativeId: null,
+      permissionMode,
       cwd,
       env: childEnv(this.#env),
+      command: this.#command,
+      extraArgs: this.#extraArgs,
       onLine: (line) => {
         const live = holder.live;
         if (live) void this.#enqueue(live, () => this.#onLine(live, line));
