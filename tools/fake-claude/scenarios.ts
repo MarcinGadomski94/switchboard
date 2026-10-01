@@ -122,6 +122,44 @@ export function sayToken(text: string): { text: string } | { error: string } | n
   }
 }
 
+/** Longest reply `[fake:say-long]` writes (characters). */
+export const SAY_LONG_MAX = 2_000_000;
+
+/** The last words of every `[fake:say-long]` reply (tests look for them to see the reply whole). */
+export const SAY_LONG_END = 'END OF THE LONG REPLY.';
+
+/**
+ * Fix · long messages: a reply of exactly `chars` characters (more than the
+ * length of {@link SAY_LONG_END}): numbered Markdown paragraphs, cut to fit, ending with
+ * {@link SAY_LONG_END}. Deterministic.
+ */
+export function longReply(chars: number): string {
+  const end = `\n\n${SAY_LONG_END}`;
+  const parts: string[] = [];
+  let length = 0;
+  for (let n = 1; length < chars; n++) {
+    const paragraph = `Paragraph ${n}: fake-claude writes a long reply so the chat can show it whole, past the old 4,000-character cut.\n\n`;
+    parts.push(paragraph);
+    length += paragraph.length;
+  }
+  return `${parts.join('').slice(0, chars - end.length)}${end}`;
+}
+
+/**
+ * `[fake:say-long <chars>]` in a stdin user message (Fix · long messages): the
+ * `default` turn with a reply of exactly `<chars>` characters ({@link longReply};
+ * 30 – {@link SAY_LONG_MAX}), like `[fake:say]`.
+ * @returns the reply text, `{ error }` for a malformed token, `null` without a token.
+ */
+export function sayLongToken(text: string): { text: string } | { error: string } | null {
+  const match = /\[fake:say-long(?:\s+([^\]]*))?\]/.exec(text);
+  if (!match) return null;
+  const raw = (match[1] ?? '').trim();
+  const chars = /^\d{1,7}$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isInteger(chars) || chars < 30 || chars > SAY_LONG_MAX) return { error: `expected [fake:say-long <chars>] with 30–${SAY_LONG_MAX} characters` };
+  return { text: longReply(chars) };
+}
+
 /** D57: the image types the CLI takes inline (its `image` block's `media_type`). */
 const MEDIA_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 

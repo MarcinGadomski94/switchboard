@@ -142,7 +142,7 @@ describe('D36 subagent chat items', () => {
     expect(chat.brief).toBe(BRIEF);
     expect(chat.items.at(-1)).toMatchObject({ kind: 'user', text: 'Also read README.md.', origin: 'agent-prompt' });
     expect(chat.result).toBeNull();
-    expect(subagentChat([], [], subagent)).toEqual({ brief: null, items: [], result: null });
+    expect(subagentChat([], [], subagent)).toEqual({ brief: null, briefCut: null, items: [], result: null, resultCut: null });
   });
 
   it('only its own events (not the main agent\'s, not another subagent\'s), in time order', () => {

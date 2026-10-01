@@ -1,6 +1,8 @@
 import { withoutSessionStartBlock } from '../../../core/first-turn.ts';
 import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
 import type { Agent, Attachment, HookStatus, Question, SessionEvent } from '../../../core/api.ts';
+import { PAYLOAD_TEXT_LIMIT } from '../../../core/event-payload.ts';
+import { type CutRef, messageCut } from './full-text.ts';
 import { isAsyncAgentLaunch } from '../../../core/derive/background.ts';
 import { AGENT_TOOLS } from '../../../core/derive/event-kind.ts';
 import type {
@@ -108,9 +110,15 @@ export type ChatItem =
       readonly queued: QueuedReason | null;
       /** D57: the images and files it carried (none: `[]`). */
       readonly attachments: readonly Attachment[];
+      /** Fix · long messages: a subagent's prompt stored cut (the bubble offers its whole text); `null` otherwise. */
+      readonly cut: CutRef | null;
     }
-  /** Agent text (left) with the step lines that followed it; `text` is empty when the turn started with a tool. */
-  | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly steps: readonly ChatStep[] }
+  /**
+   * Agent text (left) with the step lines that followed it; `text` is empty when
+   * the turn started with a tool. Fix · long messages: `cut` = its text was stored
+   * cut (the bubble offers the whole text), else `null`.
+   */
+  | { readonly kind: 'agent'; readonly key: string; readonly id: number; readonly text: string; readonly cut: CutRef | null; readonly steps: readonly ChatStep[] }
   /** A question batch: the inline card while it waits, else the answers bubble. */
   | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean };
 
@@ -225,6 +233,8 @@ interface ConversationOptions {
   readonly trailingBatches: boolean;
   /** D36: a subagent's prompt lines (`agent-prompt`) are user bubbles (its chat); the main chat has none. */
   readonly prompts: boolean;
+  /** Fix · long messages: cut texts can be restored from the transcript (stored events; not a Workflow agent's chat, read from its files). */
+  readonly restorable: boolean;
 }
 
 /**
@@ -258,7 +268,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
   const grouped = batches(questions);
   const placed = new Set<string>();
   const out: ChatItem[] = [];
-  let block: { kind: 'agent'; key: string; id: number; text: string; steps: ChatStep[] } | null = null;
+  let block: { kind: 'agent'; key: string; id: number; text: string; cut: CutRef | null; steps: ChatStep[] } | null = null;
+  const cutOf = (event: SessionEvent): CutRef | null => (options.restorable ? messageCut(event) : null);
 
   const pushBatch = (batchId: string, list: readonly Question[]): void => {
     placed.add(batchId);
@@ -267,7 +278,7 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
   };
   const pushStep = (event: SessionEvent, mark: StepMark): void => {
     if (!block) {
-      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: '', steps: [] };
+      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: '', cut: null, steps: [] };
       out.push(block);
     }
     const call = agentCall(event);
@@ -291,13 +302,24 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         delivered: user.delivered,
         queued: user.queued ?? null,
         attachments: user.attachments ?? [],
+        cut: null,
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {
-      out.push({ kind: 'user', key: `u:${event.id}`, id: event.id, text: (payload as AgentPromptPayload).text, origin: 'agent-prompt', delivered: true, queued: null, attachments: [] });
+      out.push({
+        kind: 'user',
+        key: `u:${event.id}`,
+        id: event.id,
+        text: (payload as AgentPromptPayload).text,
+        origin: 'agent-prompt',
+        delivered: true,
+        queued: null,
+        attachments: [],
+        cut: cutOf(event),
+      });
       block = null;
     } else if (type === 'assistant') {
-      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, steps: [] };
+      block = { kind: 'agent', key: `a:${event.id}`, id: event.id, text: (payload as AssistantPayload).text, cut: cutOf(event), steps: [] };
       out.push(block);
     } else if (type === 'tool' && (payload as ToolPayload).name === 'AskUserQuestion') {
       const requestId = (payload as ToolPayload).requestId;
@@ -344,7 +366,7 @@ export function chatItems(
   agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[] = [],
 ): ChatItem[] {
   const main = [...events].filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);
-  return conversationItems(main, questions, { chats: subagentChats(agents), trailingBatches: true, prompts: false });
+  return conversationItems(main, questions, { chats: subagentChats(agents), trailingBatches: true, prompts: false, restorable: true });
 }
 
 /** D36: a subagent's result: the text its Agent / Task call returned to the main agent. */
@@ -362,6 +384,8 @@ export interface SubagentChat {
    * was seen.
    */
   readonly brief: string | null;
+  /** Fix · long messages: the brief was stored cut (the Agent / Task call's input, or its first prompt line); `null` otherwise. */
+  readonly briefCut: CutRef | null;
   /** Its messages, tool steps and question batches, by the main chat's rules (its batches only where it asked them). */
   readonly items: readonly ChatItem[];
   /**
@@ -370,6 +394,8 @@ export interface SubagentChat {
    * launch notice (`isAsyncAgentLaunch`).
    */
   readonly result: SubagentResult | null;
+  /** Fix · long messages: the result (the call's `tool_result`) was stored cut; `null` otherwise. */
+  readonly resultCut: CutRef | null;
 }
 
 /**
@@ -387,19 +413,34 @@ export function subagentChat(
   questions: readonly Question[],
   agent: Pick<Agent, 'id' | 'toolUseId'>,
   agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[] = [],
+  options: { readonly restorable?: boolean } = {},
 ): SubagentChat {
-  const call = agent.toolUseId ? (events.map(agentCall).find((tool) => tool !== null && tool.toolUseId === agent.toolUseId) ?? null) : null;
+  const restorable = options.restorable !== false;
+  const callEvent = agent.toolUseId ? (events.find((event) => agentCall(event)?.toolUseId === agent.toolUseId) ?? null) : null;
+  const call = callEvent ? agentCall(callEvent) : null;
   const own = events.filter((event) => event.agentId === agent.id).sort(byTime);
   const firstPrompt = own.find((event) => payloadOf(event)?.type === 'agent-prompt') ?? null;
   const prompt = call && typeof call.input['prompt'] === 'string' && call.input['prompt'] !== '' ? call.input['prompt'] : null;
   const brief = prompt ?? (firstPrompt ? (firstPrompt.payload as AgentPromptPayload).text : null);
+  // Fix · long messages: a brief from the call's input was cut with the input (a prompt exactly at the tool limit).
+  const briefCut =
+    !restorable || brief === null
+      ? null
+      : prompt !== null
+        ? callEvent && call?.inputTruncated === true && prompt.length === PAYLOAD_TEXT_LIMIT
+          ? { eventId: callEvent.id, at: PAYLOAD_TEXT_LIMIT, kind: 'message' as const }
+          : null
+        : firstPrompt
+          ? messageCut(firstPrompt)
+          : null;
   const items = conversationItems(
     own.filter((event) => event !== firstPrompt),
     questions,
-    { chats: subagentChats(agents), trailingBatches: false, prompts: true },
+    { chats: subagentChats(agents), trailingBatches: false, prompts: true, restorable },
   );
   const result = call && call.result !== undefined && !isAsyncAgentLaunch(call.result) ? { text: call.result, isError: call.isError === true } : null;
-  return { brief, items, result };
+  const resultCut = restorable && result && callEvent && call?.resultTruncated === true ? { eventId: callEvent.id, at: result.text.length, kind: 'output' as const } : null;
+  return { brief, briefCut, items, result, resultCut };
 }
 
 /** The line under an answered batch's bubble (prototype `ssAnswered`, SPEC → Session → Chat). */

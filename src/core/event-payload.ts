@@ -4,15 +4,27 @@
  * (plan / impl / loop / ask / ok / tool / text / error) is the timeline color and
  * comes from the derivations in `derive/event-kind.ts`.
  *
- * Long strings inside payloads are cut at {@link PAYLOAD_TEXT_LIMIT} characters
- * (`truncated: true` marks it); the full data stays in the CLI's transcript.
+ * Long strings inside tool inputs, tool results and a turn's `result` are cut at
+ * {@link PAYLOAD_TEXT_LIMIT} characters (`inputTruncated` / `resultTruncated` mark
+ * it); the full data stays in the CLI's transcript. Message text (assistant text,
+ * a subagent's prompt; a user message is never cut) is stored in full up to the
+ * safety cap {@link MESSAGE_TEXT_LIMIT} (Fix · long messages, `docs/derivations.md`
+ * → *What is clipped*).
  */
 
 import type { Attachment } from './attachments.ts';
 import type { AnsweredOn } from './remote-control.ts';
 
-/** Longest string kept in an event payload. */
+/** Longest string kept in a tool input or result (and a turn's `result` text) of an event payload. */
 export const PAYLOAD_TEXT_LIMIT = 4000;
+
+/**
+ * Fix · long messages: longest message text (assistant text, a subagent's prompt)
+ * kept in an event payload, a safety cap against pathological sizes only (about
+ * 1 MB of text; ASSUMED long-messages-cap). A longer text is stored cut with
+ * `truncated: true`.
+ */
+export const MESSAGE_TEXT_LIMIT = 1_000_000;
 
 /** Where a user message came from. */
 export type UserMessageOrigin =
@@ -82,12 +94,21 @@ export interface AssistantPayload {
   readonly type: 'assistant';
   readonly text: string;
   readonly messageId: string | null;
+  /**
+   * Additive (Fix · long messages): `true` = the text was cut at
+   * {@link MESSAGE_TEXT_LIMIT}; `false` = restored from the transcript and whole.
+   * Absent on whole new text, and on events stored before the fix, whose text was
+   * cut at {@link PAYLOAD_TEXT_LIMIT} when longer ({@link textCutAt}).
+   */
+  readonly truncated?: boolean;
 }
 
 /** A subagent's prompt (a `user` text line carrying `parent_tool_use_id`). */
 export interface AgentPromptPayload {
   readonly type: 'agent-prompt';
   readonly text: string;
+  /** Additive (Fix · long messages): as {@link AssistantPayload.truncated}. */
+  readonly truncated?: boolean;
 }
 
 /** A tool call, paired with its `tool_result` (the event's `endTs` is set then). */
@@ -283,6 +304,27 @@ export type EventPayload =
 /** `text` cut to {@link PAYLOAD_TEXT_LIMIT} characters. */
 export function clip(text: string, limit = PAYLOAD_TEXT_LIMIT): { text: string; truncated: boolean } {
   return text.length > limit ? { text: text.slice(0, limit), truncated: true } : { text, truncated: false };
+}
+
+/** Fix · long messages: message text cut to the safety cap {@link MESSAGE_TEXT_LIMIT} (stored in full below it). */
+export function clipMessage(text: string): { text: string; truncated: boolean } {
+  return clip(text, MESSAGE_TEXT_LIMIT);
+}
+
+/**
+ * Fix · long messages: where a message event's text (assistant text, a subagent's
+ * prompt) was cut, in characters; `null` when it is whole (or the payload is no
+ * message text). A payload flagged `truncated: true` was cut at its length (the
+ * cap); an unflagged one exactly {@link PAYLOAD_TEXT_LIMIT} long was stored before
+ * the fix, when every message was cut there (a message of exactly that length
+ * reads as cut too: restoring it marks it `truncated: false`).
+ */
+export function textCutAt(payload: unknown): number | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const record = payload as { type?: unknown; text?: unknown; truncated?: unknown };
+  if ((record.type !== 'assistant' && record.type !== 'agent-prompt') || typeof record.text !== 'string') return null;
+  if (record.truncated === true) return record.text.length;
+  return record.truncated === undefined && record.text.length === PAYLOAD_TEXT_LIMIT ? PAYLOAD_TEXT_LIMIT : null;
 }
 
 /** A copy of `input` whose string values (at any depth) are cut to the limit. */

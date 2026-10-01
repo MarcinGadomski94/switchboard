@@ -1197,3 +1197,30 @@ a.sb-agent--link:focus-visible {
   line-height: 1.45;
   color: var(--muted-2);
 }
+
+/*
+ * Fix · long messages: the muted line under a bubble whose text was stored cut,
+ * "Message cut at 4,000 characters · Show full message" (or a subagent's result:
+ * "Output truncated at … · Show full output"); the button fetches the whole text.
+ */
+.sb-chat-cut {
+  font: 400 11.5px var(--font-mono);
+  line-height: 16px;
+  color: var(--muted-3);
+}
+
+.sb-chat-cut-button {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sb-chat-cut-button:hover {
+  color: var(--text-strong);
+}
+
+.sb-chat-cut-error {
+  margin-top: 2px;
+  color: var(--status-fail);
+  white-space: normal;
+}

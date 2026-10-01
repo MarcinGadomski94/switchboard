@@ -21,6 +21,8 @@ export interface QuestionWorld {
   readonly workspace: string;
   /** The server's `CLAUDE_CONFIG_DIR` (transcripts, live-process files). Additive (M4.1). */
   readonly configDir: string;
+  /** The server's `SWITCHBOARD_DATA_DIR` (its database). Additive (Fix · long messages: tests seed events stored before a fix). */
+  readonly dataDir: string;
   /**
    * Starts a session in `acme-app-front` through `POST /api/sessions` from the page (same origin, the sb_token cookie).
    * With worktrees its branch is the ticket branch `PROJ-1-<name>` (D32).
@@ -89,6 +91,7 @@ export async function startQuestionWorld(label: string, options: { readonly env?
       },
       workspace,
       configDir: path.join(tmp, 'claude-config'),
+      dataDir: path.join(tmp, 'data'),
       async startSession(page, name, task, worktrees = false) {
         const result = await page.evaluate(
           async (body) => {

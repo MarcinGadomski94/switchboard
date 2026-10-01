@@ -148,7 +148,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** Which mapping a forwarded answer gets, by the local API path it came from (method + path without the query). */
 /** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). D51: `workflow-chat`. */
 /** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'none';
+/** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -166,6 +167,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
+  // Fix · long messages: a cut event's whole text carries the event under `event`.
+  if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/.test(pathname)) return 'full-event';
   // D50: the Stop's and the background stop's answers carry the session under `session`.
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/(?:interrupt|background\/stop)$/.test(pathname)) return 'wrapped';
   const match = /^\/api\/sessions\/[^/]+(?:\/([a-z-]+))?$/.exec(pathname);
@@ -192,6 +195,8 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return isRecord(body) && Array.isArray(body['events'])
         ? { ...body, events: body['events'].filter(isRecord).map((event) => peerEvent(machine, event as unknown as SessionEvent)) }
         : body;
+    case 'full-event':
+      return isRecord(body) && isRecord(body['event']) ? { ...body, event: peerEvent(machine, body['event'] as unknown as SessionEvent) } : body;
     case 'inbox':
       return Array.isArray(body) ? body.filter(isRecord).map((item) => peerInboxItem(machine, item as unknown as InboxItem)) : body;
     case 'wrapped':

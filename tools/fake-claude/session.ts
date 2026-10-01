@@ -29,6 +29,7 @@ import {
   messageText,
   reportedPermissionMode,
   resolveInside,
+  sayLongToken,
   sayToken,
   scenarioToken,
   toolResultText,
@@ -718,7 +719,7 @@ export class Runner {
     const toolCall = msg.fired || writePath !== null || worktreeAdd !== null ? null : toolToken(msg.text);
     const fire = msg.fired ? null : fireToken(msg.text);
     const background = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null ? null : backgroundToken(msg.text);
-    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : sayToken(msg.text);
+    const said = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null ? null : (sayToken(msg.text) ?? sayLongToken(msg.text));
     /** D44: `[fake:hold <seconds>]`: the default turn, held before its reply. */
     const hold = msg.fired || writePath !== null || toolCall !== null || worktreeAdd !== null || background !== null || said !== null ? null : holdToken(msg.text);
     /** D57: a message that carries images / PDFs (and no other token, nor a scenario switch) is answered with what it carried. */

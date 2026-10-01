@@ -31,7 +31,7 @@
 import path from 'node:path';
 import type { Agent, AgentWorkflow, SessionEvent, WorkflowAgentAction, WorkflowRun } from '../api.ts';
 import type { SessionStatus } from '../model.ts';
-import { type AgentPromptPayload, type ToolPayload, clip, clipInput } from '../event-payload.ts';
+import { type AgentPromptPayload, type ToolPayload, clip, clipInput, clipMessage } from '../event-payload.ts';
 import { toolSummary } from './activity.ts';
 import { WRITE_TOOLS, textLabel, toolEventKind, toolLabel } from './event-kind.ts';
 import { agentStatusFromTask } from './agents.ts';
@@ -473,11 +473,15 @@ export function runStatus(status: string): SessionStatus {
   return mapped === 'run' ? 'idle' : mapped;
 }
 
-/** The result text an agent's chat shows: a string as it is, anything else as a JSON code block (cut long). */
+/**
+ * The result text an agent's chat shows: a string as it is, anything else as a JSON
+ * code block. Fix · long messages: whole up to the message cap ({@link clipMessage}),
+ * as it is read from the run's files on every request (nothing is stored).
+ */
 export function resultText(result: unknown): string {
-  if (typeof result === 'string') return clip(result).text;
+  if (typeof result === 'string') return clipMessage(result).text;
   const json = JSON.stringify(result, null, 2) ?? String(result);
-  return `\`\`\`json\n${clip(json).text}\n\`\`\``;
+  return `\`\`\`json\n${clipMessage(json).text}\n\`\`\``;
 }
 
 interface Draft {
@@ -756,7 +760,9 @@ export function workflowAgentEvents(entries: readonly Json[], sessionId: string,
     switch (item.kind) {
       case 'prompt': {
         const text = prompts++ === 0 ? cleanWorkflowBrief(item.text) : item.text;
-        const payload: AgentPromptPayload = { type: 'agent-prompt', text: clip(text).text };
+        // Fix · long messages: message text whole up to the message cap (tool inputs and results stay cut).
+        const cut = clipMessage(text);
+        const payload: AgentPromptPayload = { type: 'agent-prompt', text: cut.text, ...(cut.truncated ? { truncated: true } : {}) };
         push({ ts, endTs: null, kind: 'text', label: textLabel(text), payload });
         break;
       }
@@ -766,9 +772,11 @@ export function workflowAgentEvents(entries: readonly Json[], sessionId: string,
         const before = at !== undefined ? events[at] : undefined;
         if (at !== undefined && before) {
           const text = `${(before.payload as { text: string }).text}\n\n${item.text}`;
-          events[at] = { ...before, label: textLabel(text), payload: { type: 'assistant', text: clip(text).text, messageId: item.messageId } };
+          const cut = clipMessage(text);
+          events[at] = { ...before, label: textLabel(text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) } };
         } else {
-          texts.set(key, push({ ts, endTs: null, kind: 'text', label: textLabel(item.text), payload: { type: 'assistant', text: clip(item.text).text, messageId: item.messageId } }));
+          const cut = clipMessage(item.text);
+          texts.set(key, push({ ts, endTs: null, kind: 'text', label: textLabel(item.text), payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) } }));
         }
         break;
       }

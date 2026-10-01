@@ -20,7 +20,7 @@ import path from 'node:path';
 import type { AttachWarningReason } from '../../core/api.ts';
 import { type Attachment, attachmentsLabel, placeholderImage } from '../../core/attachments.ts';
 import { textLabel, toolEventKind, toolLabel, userMessageKind } from '../../core/derive/event-kind.ts';
-import { type ToolPayload, type UserPayload, clip, clipInput } from '../../core/event-payload.ts';
+import { type ToolPayload, type UserPayload, clip, clipInput, clipMessage } from '../../core/event-payload.ts';
 import { type ContextState, contextFromTranscript, readContextState } from '../../core/context-meter.ts';
 import { entriesSince, newestChain, parseTranscript, transcriptItems } from '../../core/transcript-sync.ts';
 import type { EventRecord } from '../db/repos/events.ts';
@@ -192,8 +192,8 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
     switch (item.kind) {
       case 'prompt': {
         if (options.subagent) {
-          const cut = clip(item.text);
-          await append({ sessionId: session.id, agentId: mainAgentId, ts, kind: 'text', label: textLabel(item.text), payload: { type: 'agent-prompt', text: cut.text }, uuid: item.uuid });
+          const cut = clipMessage(item.text);
+          await append({ sessionId: session.id, agentId: mainAgentId, ts, kind: 'text', label: textLabel(item.text), payload: { type: 'agent-prompt', text: cut.text, ...(cut.truncated ? { truncated: true } : {}) }, uuid: item.uuid });
           break;
         }
         if (item.from === 'switchboard') {
@@ -235,21 +235,22 @@ export async function importTerminalTurns(options: ImportOptions): Promise<Impor
         const merged = texts.get(key);
         if (merged) {
           merged.text = `${merged.text}\n\n${item.text}`;
-          const cut = clip(merged.text);
+          // Fix · long messages: stored in full (up to the safety cap), not cut at the tool limit.
+          const cut = clipMessage(merged.text);
           const updated = await store.events.update(merged.eventId, {
             label: textLabel(merged.text),
-            payload: { type: 'assistant', text: cut.text, messageId: item.messageId },
+            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) },
           });
           if (updated) onEvent(updated);
         } else {
-          const cut = clip(item.text);
+          const cut = clipMessage(item.text);
           const event = await append({
             sessionId: session.id,
             agentId: mainAgentId,
             ts,
             kind: 'text',
             label: textLabel(item.text),
-            payload: { type: 'assistant', text: cut.text, messageId: item.messageId },
+            payload: { type: 'assistant', text: cut.text, messageId: item.messageId, ...(cut.truncated ? { truncated: true } : {}) },
             uuid: item.uuid,
             messageId: item.messageId,
           });

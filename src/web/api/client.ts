@@ -49,6 +49,7 @@ import type {
   ToolProbe,
   Worktree,
   WorkflowAgentChat,
+  FullEventAnswer,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
@@ -182,6 +183,8 @@ export const api = {
   attachSession: (id: string, confirm = false) =>
     request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/attach`, confirm ? ({ confirm: true } satisfies AttachRequest) : undefined),
   sessionEvents: (id: string, since?: string) => request<SessionEvent[]>('GET', `/api/sessions/${enc(id)}/events${query({ since })}`),
+  /** Fix · long messages: a cut event's whole text from the session's CLI transcript (message text is written back). */
+  fullEvent: (id: string, eventId: number) => request<FullEventAnswer>('GET', `/api/sessions/${enc(id)}/events/${eventId}/full`),
   /** D51: a Workflow agent's conversation (from its transcript). */
   workflowAgentChat: (id: string, agentId: string) => request<WorkflowAgentChat>('GET', `/api/sessions/${enc(id)}/workflow-agents/${enc(agentId)}/chat`),
   sessionDiff: (id: string, file?: string) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file })}`),

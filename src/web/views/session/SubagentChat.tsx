@@ -6,6 +6,7 @@ import { type Route, routePath, useRouter } from '../../router.tsx';
 import { statusColor } from '../../shell/format.ts';
 import { ChatItemView } from './ChatItems.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
+import { CutNote, useFullText } from './FullText.tsx';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import { hasSubagentChat, subagentChat } from './chat.ts';
 import { agentCards } from './right-panel.ts';
@@ -142,6 +143,8 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
   };
   // D51: a Workflow agent's chat comes from its transcript, not from the session's events.
   const workflowChat = useWorkflowChat(sessionId, session?.agents.find((candidate) => candidate.id === agentId) ?? null);
+  // Fix · long messages: cut texts (the brief, messages, the result) restored from the transcript.
+  const fullText = useFullText(sessionId, events);
 
   if (!session) {
     return (
@@ -169,7 +172,10 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
   }
 
   const workflow = agent.kind === 'workflow';
-  const chat = workflow ? subagentChat(workflowChat.data?.events ?? [], [], agent, session.agents) : subagentChat(events, session.questions, agent, session.agents);
+  // Fix · long messages: a Workflow agent's chat is read whole from its files (nothing to restore).
+  const chat = workflow
+    ? subagentChat(workflowChat.data?.events ?? [], [], agent, session.agents, { restorable: false })
+    : subagentChat(fullText.events, session.questions, agent, session.agents);
   const result = workflow ? (workflowChat.data?.result ?? null) : chat.result;
   const card = agentCards([agent], session)[0];
   const status = card?.status ?? agent.status;
@@ -229,10 +235,19 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
             <div className="sb-chat-bubble" data-testid="chat-text">
               <ChatMarkdown text={chat.brief} />
             </div>
+            {chat.briefCut ? <CutNote cut={chat.briefCut} control={fullText.control} /> : null}
           </div>
         ) : null}
         {chat.items.map((item) => (
-          <ChatItemView key={item.key} sessionId={sessionId} item={item} answering={null} onAnswer={async () => undefined} readOnlyNote={questionNote} />
+          <ChatItemView
+            key={item.key}
+            sessionId={sessionId}
+            item={item}
+            answering={null}
+            onAnswer={async () => undefined}
+            readOnlyNote={questionNote}
+            {...(workflow ? {} : { fullText: fullText.control })}
+          />
         ))}
         {result ? (
           <div className="sb-chat-message sb-subchat-result" data-role="agent" data-testid="subagent-result" data-error={result.isError ? 'true' : 'false'}>
@@ -242,6 +257,7 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
             <div className="sb-chat-bubble sb-subchat-result-body" data-testid="chat-text">
               <ChatMarkdown text={result.text} />
             </div>
+            {!workflow && chat.resultCut ? <CutNote cut={chat.resultCut} control={fullText.control} /> : null}
           </div>
         ) : null}
       </div>

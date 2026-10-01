@@ -6,6 +6,7 @@ import { QuestionCard } from '../../components/QuestionCard.tsx';
 import { answeredLines } from '../../components/question-card.ts';
 import { Link } from '../../router.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
+import { CutNote, type FullTextControl } from './FullText.tsx';
 import type { QueuedReason } from '../../../core/event-payload.ts';
 import { ANSWERS_WRITTEN, type ChatItem, type ChatStep, QUEUED_TOOLTIPS, answeredOnText, batchQueued } from './chat.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
@@ -80,10 +81,12 @@ export interface ChatItemViewProps {
   readonly readOnlyNote?: (batchId: string) => ReactNode;
   /** D53: a hooked session's queued message: what it waits on (the clock's tooltip and a muted line under the bubble). */
   readonly queuedNote?: string | null;
+  /** Fix · long messages: restores a cut bubble's whole text ("Show full message"); absent = no note (a Workflow agent's chat). */
+  readonly fullText?: FullTextControl;
 }
 
 /** One chat item (a user bubble, an agent block with its step lines, a question batch); shared by the main and subagent chats. */
-export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null }: ChatItemViewProps) {
+export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText }: ChatItemViewProps) {
   if (item.kind === 'user') {
     return (
       <div
@@ -100,6 +103,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             <ChatMarkdown text={item.text} />
           </div>
         ) : null}
+        {item.cut ? <CutNote cut={item.cut} control={fullText} /> : null}
         {/* D57: the images and files it carried, under the bubble. */}
         <MessageAttachments sessionId={sessionId} attachments={item.attachments} />
         {item.queued ? <QueuedClock reason={item.queued} note={queuedNote} /> : null}
@@ -119,6 +123,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             <ChatMarkdown text={item.text} />
           </div>
         ) : null}
+        {item.cut ? <CutNote cut={item.cut} control={fullText} /> : null}
         {item.steps.length > 0 ? (
           <div className="sb-chat-steps" data-testid="chat-steps">
             {item.steps.map((step) => (

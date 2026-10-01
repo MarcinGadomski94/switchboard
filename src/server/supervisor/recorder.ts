@@ -11,6 +11,7 @@ import {
   type UserPayload,
   clip,
   clipInput,
+  clipMessage,
 } from '../../core/event-payload.ts';
 import { type ContextInput, type ContextState, readContextState, reduceContext } from '../../core/context-meter.ts';
 import { ActivityTracker } from '../../core/derive/activity.ts';
@@ -723,14 +724,15 @@ export class StreamRecorder {
         const merged = key ? this.#textByMessage.get(key) : undefined;
         if (merged) {
           merged.text = `${merged.text}\n\n${block.text}`;
-          const cut = clip(merged.text);
+          // Fix · long messages: the text is stored in full (up to the safety cap), not cut at the tool limit.
+          const cut = clipMessage(merged.text);
           await this.#update(merged.eventId, {
             label: textLabel(merged.text),
-            payload: { type: 'assistant', text: cut.text, messageId: message.messageId },
+            payload: { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}) },
           });
         } else {
-          const cut = clip(block.text);
-          const event = await this.#append('text', textLabel(block.text), { type: 'assistant', text: cut.text, messageId: message.messageId }, {
+          const cut = clipMessage(block.text);
+          const event = await this.#append('text', textLabel(block.text), { type: 'assistant', text: cut.text, messageId: message.messageId, ...(cut.truncated ? { truncated: true } : {}) }, {
             agentId,
             uuid: message.uuid,
             messageId: message.messageId,
@@ -834,8 +836,8 @@ export class StreamRecorder {
     }
     if (!message.interrupt && message.parentToolUseId && message.text.trim() !== '') {
       const agentId = await this.#agentFor(message.parentToolUseId);
-      const cut = clip(message.text);
-      await this.#append('text', textLabel(message.text), { type: 'agent-prompt', text: cut.text }, { agentId, uuid: message.uuid });
+      const cut = clipMessage(message.text);
+      await this.#append('text', textLabel(message.text), { type: 'agent-prompt', text: cut.text, ...(cut.truncated ? { truncated: true } : {}) }, { agentId, uuid: message.uuid });
     }
     await this.#setTranscriptUuid(message.uuid, message.parentToolUseId);
   }

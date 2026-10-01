@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -8,6 +8,7 @@ import { isPeerRequest } from './machines.ts';
 import { HookError } from '../hooks/service.ts';
 import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachments/service.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
+import { restoreFullEvent } from '../sessions/full-event.ts';
 import { startNewSession } from '../sessions/start.ts';
 import { SessionTeleporter } from '../sessions/teleport.ts';
 import { rememberModelChoice } from '../settings/models.ts';
@@ -337,6 +338,25 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
       }
       const events = await store.events.list(record.id, since === undefined ? {} : { sinceTs: new Date(since).toISOString() });
       return events.map(toEvent);
+    },
+  );
+
+  // Fix · long messages: a cut event with its whole text from the session's CLI transcript (message text is written back).
+  app.get<{ Params: IdParams & { eventId: string } }>(
+    '/api/sessions/:id/events/:eventId/full',
+    async (request, reply): Promise<FullEventAnswer | FastifyReply> => {
+      const eventId = /^[1-9][0-9]{0,15}$/.test(request.params.eventId) ? Number(request.params.eventId) : Number.NaN;
+      const answer = await restoreFullEvent(
+        {
+          store,
+          findTranscript: (claudeSessionId) => supervisor.findTranscript(claudeSessionId),
+          publish: (event) => context.bus.publish('event', { sessionId: event.sessionId, event: toEvent(event) }),
+        },
+        request.params.id,
+        eventId,
+      );
+      if ('status' in answer) return reply.code(answer.status).send({ error: answer.error, message: answer.message });
+      return answer;
     },
   );
 

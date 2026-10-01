@@ -418,6 +418,21 @@ export interface WorkflowResume {
   readonly args: unknown;
 }
 
+/**
+ * Additive (Fix · long messages): `GET /api/sessions/{id}/events/{eventId}/full`:
+ * a cut event with its whole text from the session's CLI transcript.
+ */
+export interface FullEventAnswer {
+  /**
+   * The event with the whole text: assistant text or a subagent's prompt (`text`,
+   * `truncated: false`; `true` only past the safety cap), or a tool call's whole
+   * `input` / `result` (their `…Truncated` flags dropped).
+   */
+  readonly event: SessionEvent;
+  /** `true` when the whole text was written back into the stored event (message text); `false` for a tool call's output (shown, not stored). */
+  readonly saved: boolean;
+}
+
 /** Additive (D51): `GET /api/sessions/{id}/workflow-agents/{agentId}/chat`: a Workflow agent's conversation from its transcript. */
 export interface WorkflowAgentChat {
   /** Its conversation in the event shapes the stream produces (`agentId` = the agent's id; ids are local to this answer). */

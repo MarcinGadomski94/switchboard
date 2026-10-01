@@ -8,6 +8,7 @@ import { AttachButton, type AttachmentDraft, AttachmentChips, pasteFiles, useAtt
 import { attachmentsBlocker, messageToSend } from '../../components/attachments.ts';
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
+import { useFullText } from './FullText.tsx';
 import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
@@ -121,8 +122,10 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const loaded = eventsState === 'ready';
 
   const mainAgentId = session?.agents.find((agent) => agent.kind === 'main')?.id ?? null;
+  // Fix · long messages: messages stored cut, restored from the transcript ("Show full message").
+  const fullText = useFullText(sessionId, events);
   // D45: nothing half-loaded shows while the events are on their way (a failed load shows what there is, as before).
-  const items = session && eventsState !== 'loading' ? chatItems(events, session.questions, mainAgentId, session.agents) : [];
+  const items = session && eventsState !== 'loading' ? chatItems(fullText.events, session.questions, mainAgentId, session.agents) : [];
 
   // Keep the newest item in view while the developer is at the bottom; D36: first, go back to the remembered place.
   useLayoutEffect(() => {
@@ -190,6 +193,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             {...(blocked ? { readOnlyNote: () => blocked } : {})}
             // D53: a hooked session's queued message says what it waits on.
             queuedNote={blocked ? null : hookedQueuedNote(session)}
+            fullText={fullText.control}
           />
         ))}
       </div>
