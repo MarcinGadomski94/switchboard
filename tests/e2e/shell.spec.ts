@@ -87,6 +87,11 @@ test('the shell renders from the real API and shows only what the API returns', 
       // D54: the sidebar's pins and folders; a fresh install has none.
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toEqual({ pinned: [], folders: [] });
+    } else if (call.url === '/api/clis') {
+      // D62: the footer's default-CLI switcher; a fresh install starts new sessions on Claude Code, the three CLIs listed.
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ default: 'claude' });
+      expect((call.body as { clis: Array<{ provider: string }> }).clis.map((cli) => cli.provider).sort(), call.url).toEqual(['claude', 'codex', 'opencode']);
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);
