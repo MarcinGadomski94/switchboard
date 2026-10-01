@@ -2,14 +2,18 @@
 
 <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="48"></a>
 
-Switchboard is a local web app for running many Claude Code sessions at once. From one window you can:
+Switchboard is a local web app for running many coding-agent sessions at once: **Claude Code**, **Codex CLI** and **OpenCode**. From one window you can:
 
-- start sessions in your workspace or repos, each in its own git worktree if you want;
-- watch every agent work live, subagents included;
-- answer their questions from a single Inbox;
+- start sessions in any folder, workspace or repo, each in its own git worktree if you want;
+- watch every agent work live, subagents and workflow agents included;
+- answer their questions and permission prompts from a single Inbox;
+- paste screenshots and files into the chat;
+- switch a session to another CLI or another account mid-way, automatically when a usage limit is hit;
+- manage MCP servers, schedules and loops;
+- connect Switchboards on several machines over Tailscale and drive their sessions from one place;
 - move sessions between Switchboard and a terminal, and back.
 
-It runs on your machine only (`127.0.0.1`). It drives the unmodified `claude` CLI with your own login.
+It runs on your machine only (`127.0.0.1`). It drives the unmodified CLIs with your own logins, and updates itself from GitHub releases.
 
 <img src="docs/screenshots/01-session-dark.png" alt="A session in Switchboard: the chat with three questions relayed from the web, mobile and orchestrator agents, the agent overview and cards on the right, the sidebar with pinned sessions and a folder">
 
@@ -267,6 +271,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - **Stop:** while the agent works, **Send** becomes **■ Stop**, and **Esc** does the same (an open popup takes Esc first). It stops the current turn only, like Ctrl+C in the terminal: the session stays ready for your next message. Messages still queued come back into the message field so you can edit them. When only background tasks are left, **Stop background tasks** stops them after you confirm.
 - **Context bar:** a thin bar above the quick replies shows how full the session's context window is (`Context 62% · 124k / 200k`), green, then yellow from 60 % and red from 80 %. After the CLI compacts the conversation it resets and reads "compacted 14:05" until the next turn. A tick marks where the CLI will compact by itself ("Auto-compact at 84%" on hover).
 - **Questions:** the agent's questions appear as cards in the chat. Besides the offered answers, **Other…** lets you answer in your own words.
+- **Long messages** are shown in full. A message stored cut by an older version shows **Show full message**, which restores it from the CLI's transcript; tool output is kept short (4,000 characters) with **Show full output**.
 
 **Header**
 - **Rename:** click the title.
@@ -291,7 +296,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 
 **Switching sessions:** a session you visited recently opens instantly; one still loading shows placeholders instead of a blank or stale view.
 
-**Organize the sidebar:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels): drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder, collapse a folder to its name and count. Everything else stays sorted newest first. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard. The layout is kept by Switchboard, the same in every tab and after a restart. [`docs/sidebar.md`](docs/sidebar.md)
+**Organize the sidebar:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels): drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder, collapse a folder to its name and count. Everything else stays sorted newest first. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard. The layout is kept by Switchboard, the same in every tab and after a restart. With many sessions only the session list scrolls; the navigation, Tools and the footer stay in place. [`docs/sidebar.md`](docs/sidebar.md)
 
 **More room:** slide the sidebar (**⌘B**) or the right panel (**⌥⌘B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
 
@@ -346,6 +351,7 @@ Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Mac
 - **Start a session on a peer:** the New-session form's **Machine** row picks the machine; its folders, models and the branching check come from there, and the session runs there.
 - **A peer's schedules and loops:** Schedules & loops lists every paired machine's schedules and loops with its tag. Schedules can be created there (the Machine row of **+ New scheduled run**), edited, deleted, run now, paused and resumed from here; they run on that machine. Loops include terminal sessions nobody hooked (read from their transcripts; **Hook into…** opens one). An offline machine's rows stay, with their actions disabled.
 - **Hook into a terminal session:** `claude` sessions you started by hand in a terminal (on this machine or a paired one) can be followed from Switchboard. **Install hooks** once per machine (Switchboard adds only its own entries to that machine's `~/.claude/settings.json`, after a backup), then **Hook into…** picks a session: its chat, permission prompts (Allow once / Always allow / Deny with a message), plan approval and question cards work from here, its subagents and their chats show too, and your messages reach it at its next step or wake it when idle (exactly once, at most 3 a minute). Interrupt, slash commands and model changes stay in the terminal. A checklist for the first run on Windows is in `docs/peers.md`.
+- **Connection drops:** a dropped connection shows **Reconnecting to <machine>…** (attempt and countdown) for 20 seconds; reads keep working and what you send waits until it is back. After that the machine is **unreachable · retrying in N s** with **Reconnect now** (also in Settings → Machines); it keeps retrying every 15 s by itself, and connection changes are written to the service log.
 - **Live activity everywhere:** a hooked session (and any peer's session) shows the same live line as a local one: `Pondering… 1m 23s`, `● Bash: npm test 0:42`, `⏸ Waiting for permission: Bash`, read from its transcript and hooks; `· no activity for 3m` when nothing has moved for 3 minutes, so a stuck turn is visible. A message to a hooked session says what it waits on (e.g. "No hook listening yet — type anything in that terminal once").
 
 [`docs/peers.md`](docs/peers.md)
@@ -363,7 +369,8 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 ### Usage and footer
 The sidebar footer shows RAM in use and two **Max usage** bars:
 - **Session.** It is colored by pace, updated every minute: green while you're under the elapsed share of the 5-hour window, yellow once you're ahead of it.
-- **Week.** It is colored by pace: green while you're under the day's share of the week (14.29% per day from your reset hour), yellow once you're ahead of it.
+- **Week.** It is colored by pace, updated every minute: green while you're under the elapsed share of the 7-day window, yellow once you're ahead of it.
+- **More accounts or CLIs:** with several accounts (see *Accounts*) the bars are the active account's, with a short line listing every account's usage under them; Codex's own limits show as extra rows.
 
 [`docs/usage.md`](docs/usage.md)
 
@@ -424,7 +431,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 
 ### Tests never call the real `claude` or `gh`
 - **`tools/fake-claude`** replays recorded stream-json turns and scenarios. Tokens in a prompt drive it, e.g. `[fake:ask-2q]`, `[fake:say "…"]`, `[fake:background …]`. See [`docs/fake-claude.md`](docs/fake-claude.md).
-- **`tools/fake-gh`** stands in for the GitHub CLI.
+- **`tools/fake-gh`** stands in for the GitHub CLI; **`tools/fake-codex`** and **`tools/fake-opencode`** for Codex CLI and OpenCode (their real protocols are pinned in [`docs/providers.md`](docs/providers.md)).
 - Tests start their own server on a **test port** (`SWITCHBOARD_TEST_PORTS`, default 4871–4879; 13001 is refused) with a temporary data folder. The E2E UI is built into `.e2e-dist/web`, so a test run never changes the UI you're running from the same checkout.
 - The only real-CLI checks are manual and bounded: Haiku, `--max-turns` ≤ 3, in a gitignored sandbox ([`docs/smoke-real-cli.md`](docs/smoke-real-cli.md)).
 
@@ -439,7 +446,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 `SWITCHBOARD_DEMO=1 SWITCHBOARD_DATA_DIR="$(mktemp -d)" SWITCHBOARD_PORT=4871 npm start` loads the prototype's data through the normal API, for screenshots and the visual oracle. [`docs/demo.md`](docs/demo.md)
 
 ### How changes are made
-- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D58). The developer's rulings win where the two differ.
+- **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D63). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
 - **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `main` with the full suites green.
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.
@@ -459,3 +466,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 | Jira shows "needs the Switchboard frame helper" | Click **Set up frame helper** and follow the steps ([`docs/frame-helper.md`](docs/frame-helper.md)); after an update press reload on it in `chrome://extensions`. |
 | A tool "refuses to load in a frame" in Safari | Expected: Safari can't lift framing headers. Use Open in new tab, or Chrome. |
 | A session looks stuck | The chat line shows what it's doing. "⏳ Waiting for …" means a background task is still running. |
+| A paired machine shows "unreachable" | It retries by itself every 15 s; **Reconnect now** tries at once. Check that the machine is awake and on Tailscale (`tailscale ping <machine>` says whether the path is direct or relayed). |
+| A Codex / OpenCode session can't be chosen | **Settings → CLIs** says why (not installed, signed out). Install it, sign in, press **Check**. |
+| An account isn't switched to | **Settings → Accounts**: it must be enabled, signed in and not marked spent; a pinned session never switches by itself. |
+| A long message ends abruptly | Click **Show full message** under it (messages from before 1.3.2 were stored cut). |
