@@ -1,3 +1,4 @@
+import { CliMcpSection } from './CliMcpSection.tsx';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Folder } from '../../core/api.ts';
 import { MCP_EDITABLE_SCOPES, MCP_TRANSPORTS, type McpActionResult, type McpAuthState, type McpFieldError, type McpServerView, type McpView as McpViewData } from '../../core/mcp.ts';
@@ -608,6 +609,8 @@ export function McpView() {
             ))}
           </div>
         ))}
+        {/* D62 P7: the other CLIs' servers, under Claude Code's. */}
+        {target ? <CliMcpSection machine={target.machine} folder={target.folderId} /> : null}
       </div>
     </section>
   );

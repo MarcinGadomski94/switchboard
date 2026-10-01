@@ -171,6 +171,10 @@ export function usageRows(system: SystemInfo | null, now: number = Date.now()): 
     fixed('session'),
     fixed('week'),
     ...windows.filter((w) => w.key === 'model').map((w): UsageRow => ({ key: 'model', label: w.label, model: w.model ?? w.label, ...windowMeter(w, now) })),
+    // D62 P7: another CLI's own windows (Codex's rate limits) while they are known.
+    ...(system?.cliUsage ?? []).map(
+      (w): UsageRow => ({ key: 'model', label: w.label, model: `cli:${w.provider}:${w.label}`, ...windowMeter({ key: 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt ?? '' }, now) }),
+    ),
   ];
 }
 

@@ -254,3 +254,41 @@ export function switchDividerLabel(from: CliProviderId, to: CliProviderId, sourc
   const by = source === 'outgoing' ? `${CLI_LABELS[from]} (outgoing agent)` : `${CLI_LABELS[to]} from the history`;
   return `Switched from ${CLI_LABELS[from]} to ${CLI_LABELS[to]} · handover by ${by}`;
 }
+
+/** Short names of the features a CLI lacks (the CLI pickers' tooltip: "not here: …"). */
+export const CLI_FEATURE_NAMES: Readonly<Record<CliFeature, string>> = {
+  chat: 'chat',
+  images: 'images',
+  pdfs: 'PDFs inline',
+  files: 'files',
+  permissions: 'permission requests',
+  'permission-always': '"always allow"',
+  questions: 'question cards',
+  stop: 'Stop',
+  'pause-resume': 'pause / resume',
+  model: 'model choice',
+  effort: 'effort',
+  'context-meter': 'context meter',
+  'usage-footer': 'usage limits',
+  'background-tasks': 'background tasks',
+  'stop-background': 'stopping background tasks',
+  subagents: 'subagents',
+  'workflow-agents': 'Workflow agents',
+  'remote-control': 'Remote Control',
+  teleport: 'teleport',
+  'terminal-handoff': 'terminal handoff',
+  'history-import': 'History moves',
+  mcp: 'MCP page',
+  hooks: 'hooked terminal sessions',
+  worktrees: 'worktrees',
+  schedules: 'schedules',
+  peers: 'peers',
+  handover: 'handover',
+};
+
+/** "Not here: Remote Control, teleport, …" for a CLI's missing features; `null` when it has them all. */
+export function missingFeaturesText(provider: CliProviderId): string | null {
+  const missing = (Object.keys(CLI_CAPABILITIES[provider]) as CliFeature[]).filter((feature) => feature !== 'permission-always' && !CLI_CAPABILITIES[provider][feature].available);
+  return missing.length > 0 ? `Not in ${CLI_LABELS[provider]}: ${missing.map((feature) => CLI_FEATURE_NAMES[feature]).join(', ')}` : null;
+}
+

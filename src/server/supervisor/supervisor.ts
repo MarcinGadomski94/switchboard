@@ -5,6 +5,7 @@ import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConf
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
 import type { AttachWarningReason, InterruptOutcome, NewSession, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
+import { textLabel } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
 import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
@@ -191,6 +192,20 @@ export interface TeleportInput {
   readonly solutions: readonly string[];
   /** Optional first message, written right after the spawn (stored as the task); empty = none (idle). */
   readonly task: string;
+}
+
+/** D62 P7: what {@link SessionSupervisor.adoptCli} stores for a Codex / OpenCode terminal conversation moved in. */
+export interface AdoptCliInput {
+  readonly provider: Exclude<CliProviderId, 'claude'>;
+  readonly nativeId: string;
+  /** Kebab-case and unique (the caller checked it). */
+  readonly name: string;
+  readonly title?: string | null;
+  /** Its first prompt (stored as the task, never sent). */
+  readonly task: string;
+  readonly solutions: readonly string[];
+  /** The conversation so far, imported as events. */
+  readonly messages: ReadonlyArray<{ readonly role: 'user' | 'assistant'; readonly text: string; readonly ts: string | null }>;
 }
 
 /** Options of {@link SessionSupervisor.teleport}. */
@@ -523,6 +538,11 @@ export class SessionSupervisor {
     const set = this.#listeners[name] as Set<Listener<K>>;
     set.add(listener);
     return () => set.delete(listener);
+  }
+
+  /** D62: the base environment of the children (History reads `CODEX_HOME` from it). */
+  get environment(): NodeJS.ProcessEnv {
+    return this.#env;
   }
 
   /** D62: the CLIs sessions run on (commands and adapters). */
@@ -1283,6 +1303,59 @@ export class SessionSupervisor {
     const live = await this.#spawn(await this.#get(session.id), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'moved');
     await this.#enqueue(live, () => this.#refreshStatus(live));
     // The session is new to every client: announce it even when its status did not change.
+    await this.#emitSession(session.id);
+    return this.#get(session.id);
+  }
+
+  /**
+   * D62 P7: a Codex CLI / OpenCode conversation started in a terminal moves into
+   * Switchboard as the same conversation (`docs/providers.md` → *History*): the
+   * session is stored on that CLI and bound to its own id, the conversation's
+   * messages become its events (prompts with origin `terminal`, replies; their
+   * own times), and the CLI's process starts reopening it (`thread/resume`, the
+   * OpenCode session) with **no** message: idle until the developer writes. The
+   * caller checked the folder, the name and that no session has the id.
+   */
+  async adoptCli(input: AdoptCliInput, place: SessionPlace): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    if (!this.#providers.hasAdapter(input.provider)) throw new SupervisorError('cli-unavailable', `${CLI_LABELS[input.provider]} is not supported by this Switchboard`);
+    const cwd = await canonicalFolder(place.cwd);
+    const session = await this.#store.sessions.create({
+      name: input.name,
+      title: input.title ?? null,
+      task: input.task,
+      claudeSessionId: randomUUID(),
+      status: 'idle',
+      workType: null,
+      mode: null,
+      phase: null,
+      coordination: null,
+      qaStack: null,
+      qaConfluenceUrl: null,
+      qaFigmaUrls: [],
+      solutions: [...input.solutions],
+      worktrees: false,
+      ultracode: false,
+      attached: true,
+      cwd,
+      folderId: place.folder.id,
+      root: place.folder.root,
+      rootKind: place.folder.kind,
+      origin: 'terminal',
+      requestedPermissionMode: DEFAULT_PERMISSION_MODE,
+      provider: input.provider,
+    });
+    const main = await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });
+    await this.#store.providers.rememberNative(session.id, input.provider, input.nativeId);
+    for (const message of input.messages) {
+      const payload = message.role === 'user' ? { type: 'user', text: message.text, origin: 'terminal', delivered: true } : { type: 'assistant', text: message.text };
+      const event = await this.#store.events.append({ sessionId: session.id, agentId: main.id, kind: 'text', label: textLabel(message.text), payload, ...(message.ts ? { ts: message.ts } : {}) });
+      await this.#store.sessions.update(session.id, { lastActivityAt: event.ts });
+    }
+    this.#assertOpen();
+    const live = await this.#spawn(await this.#get(session.id), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'moved');
+    await this.#enqueue(live, () => this.#refreshStatus(live));
     await this.#emitSession(session.id);
     return this.#get(session.id);
   }

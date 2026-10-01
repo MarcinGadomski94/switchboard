@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CliInfo, CliOverview } from '../../src/core/api.ts';
-import { CLI_INSTALL } from '../../src/core/cli-providers.ts';
+import { CLI_INSTALL, missingFeaturesText } from '../../src/core/cli-providers.ts';
 import { cliChoices, effectiveCli } from '../../src/web/components/cli.ts';
 import { DEFAULT_FORM, cliFallbackModels, formFromPrefill, formModelOptions, modelSummaryLine, toNewSession } from '../../src/web/modals/new-session.ts';
 import { toSimpleBody } from '../../src/web/modals/simple-session.ts';
@@ -36,7 +36,8 @@ describe('D62 CLI pickers (web)', () => {
   it('lists every CLI; an unavailable one is disabled with its state and reason', () => {
     expect(cliChoices(OVERVIEW)).toEqual([
       { provider: 'claude', label: 'Claude Code', disabled: false, reason: null },
-      { provider: 'codex', label: 'Codex CLI', disabled: false, reason: null },
+      // An available CLI's tooltip names what it lacks here (D62 "equivalent or marked").
+      { provider: 'codex', label: 'Codex CLI', disabled: false, reason: missingFeaturesText('codex') },
       { provider: 'opencode', label: 'OpenCode (not installed)', disabled: true, reason: 'OpenCode is not installed' },
     ]);
     // Before the overview loads, only Claude Code can be chosen.
@@ -89,3 +90,12 @@ describe('D62 Settings → CLIs (web)', () => {
     expect(modelsText(cli({ provider: 'codex' }))).toBe('Reported by its first session (or Check)');
   });
 });
+
+describe('D62 marking (web)', () => {
+  it('names the missing features per CLI', () => {
+    expect(missingFeaturesText('claude')).toBeNull();
+    expect(missingFeaturesText('codex')).toBe('Not in Codex CLI: PDFs inline, background tasks, stopping background tasks, Workflow agents, Remote Control, teleport, hooked terminal sessions');
+    expect(missingFeaturesText('opencode')).toBe('Not in OpenCode: usage limits, background tasks, stopping background tasks, Workflow agents, Remote Control, teleport, hooked terminal sessions');
+  });
+});
+

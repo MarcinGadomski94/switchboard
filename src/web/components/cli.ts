@@ -1,5 +1,5 @@
 import type { CliInfo, CliOverview } from '../../core/api.ts';
-import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
+import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId, missingFeaturesText } from '../../core/cli-providers.ts';
 
 /**
  * D62 (`docs/providers.md`): what the CLI pickers show (the New-session forms'
@@ -31,7 +31,8 @@ export function cliChoices(overview: CliOverview | null): CliChoice[] {
     const cli = overview?.clis.find((entry) => entry.provider === provider) ?? null;
     if (!cli) return { provider, label: CLI_LABELS[provider], disabled: provider !== 'claude', reason: provider === 'claude' ? null : 'Checking the CLI…' };
     const word = cliStateWord(cli);
-    return { provider, label: word ? `${cli.label} (${word})` : cli.label, disabled: !cli.available, reason: cli.reason };
+    // D62 "equivalent or marked": an available CLI's tooltip names what it lacks here.
+    return { provider, label: word ? `${cli.label} (${word})` : cli.label, disabled: !cli.available, reason: cli.reason ?? missingFeaturesText(provider) };
   });
 }
 

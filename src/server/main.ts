@@ -27,7 +27,7 @@ import { SystemProbe } from './system/probe.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import { HookService } from './hooks/service.ts';
 import { ToolProxies, settingsProxyPorts } from './tools/proxies.ts';
-import { createUsageMeter, withUsage } from './usage/wire.ts';
+import { createUsageMeter, withCliUsage, withUsage } from './usage/wire.ts';
 import { loadDemoData } from './demo/data.ts';
 import { createFrameHelperOpener } from './tools/frame-helper.ts';
 import { demoFolderChecks } from './demo/folders.ts';
@@ -104,6 +104,8 @@ async function main(): Promise<void> {
             onError: (error) => console.error('switchboard usage:', error),
           });
     if (usage) providers = withUsage(providers, usage);
+    // D62 P7: another CLI's own usage windows (Codex's rate limits) next to Claude Code's.
+    if (!config.demo) providers = withCliUsage(providers, supervisor);
     // D35 (docs/frame-helper.md → Guided setup): the setup's OS openers, in demo mode too (they run only on a click);
     // SWITCHBOARD_OPEN_COMMAND puts tests' fake opener in front of them.
     providers = { ...providers, frameHelperOpener: createFrameHelperOpener({ prefix: config.openCommand }) };

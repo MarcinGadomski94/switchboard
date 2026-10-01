@@ -159,3 +159,18 @@ describe('D62 P5 POST /api/sessions/{id}/provider', () => {
     await until(async () => ((await call('GET', `/api/sessions/${session.id}`)).json() as Session).providerSwitch === null, 'the switch to finish');
   });
 });
+
+describe('D62 P7 · a schedule template has a CLI', () => {
+  it('saved with the template; its runs start on it; a template without one keeps Claude Code', async () => {
+    const w = await setup();
+    const saved = await call('POST', '/api/schedules', { cron: '0 2 * * *', template: { ...newSession({ name: 'nightly-codex', task: 'Check the build.' }), provider: 'codex' } });
+    expect(saved.statusCode).toBe(201);
+    const schedule = saved.json() as { id: string; template: { provider?: string } };
+    expect(schedule.template.provider).toBe('codex');
+    expect((await call('POST', '/api/schedules', { cron: '0 2 * * *', template: { ...newSession({ name: 'bad-cli', task: 'x' }), provider: 'gpt' } })).statusCode).toBe(422);
+    expect((await call('POST', `/api/schedules/${schedule.id}/run`)).statusCode).toBeLessThan(300);
+    const run = await until(async () => (await w.store.sessions.list()).find((session) => session.scheduleId === schedule.id), 'the scheduled run');
+    expect(run.provider).toBe('codex');
+    await waitForStatus(w.store, run.id, ['done']);
+  });
+});

@@ -1,5 +1,7 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type {
+  CliMcpServerInput,
+  CliMcpView,
   CliInfo,
   CliOverview,
   ProviderSwitchResult,
@@ -217,10 +219,16 @@ export const api = {
   terminalLoops: () => request<TerminalLoop[]>('GET', '/api/terminal-loops'),
 
   artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
-  history: (q?: string) => request<HistoryItem[]>('GET', `/api/history${query({ q })}`),
+  /** D62 P7: `cli` adds the Codex / OpenCode terminal conversations. */
+  history: (q?: string, cli = false) => request<HistoryItem[]>('GET', `/api/history${query({ q, cli: cli ? '1' : undefined })}`),
   /** D16, additive: a terminal conversation continues in Switchboard as the same conversation (201 Session; 409 `ContinueRefusal`s, docs/derivations.md → History). */
-  continueConversation: (claudeSessionId: string, body: ContinueConversation = {}) =>
-    request<Session>('POST', `/api/history/${enc(claudeSessionId)}/continue`, body),
+  continueConversation: (claudeSessionId: string, body: ContinueConversation = {}) => {
+    // D62 P7: a Codex / OpenCode row's id is `<cli>:<its own id>` and moves through its own route.
+    const cli = /^(codex|opencode):(.+)$/.exec(claudeSessionId);
+    return cli
+      ? request<Session>('POST', `/api/history/cli/${enc(cli[1] as string)}/${enc(cli[2] as string)}/continue`, body)
+      : request<Session>('POST', `/api/history/${enc(claudeSessionId)}/continue`, body);
+  },
 
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (body: Settings) => request<Settings>('PUT', '/api/settings', body),
@@ -347,5 +355,9 @@ export function mcpApi(machine: string | null, folder: string | undefined) {
     authState: (id: string) => request<McpAuthState>('GET', onMachine(machine, `/api/mcp/auth/${enc(id)}`)),
     submitCallback: (id: string, callbackUrl: string) => request<McpAuthState>('POST', onMachine(machine, `/api/mcp/auth/${enc(id)}/callback`), { callbackUrl }),
     cancelAuth: (id: string) => request<McpAuthState>('DELETE', onMachine(machine, `/api/mcp/auth/${enc(id)}`)),
+    // D62 P7: Codex CLI's / OpenCode's servers through their own CLIs.
+    cliView: (provider: CliProviderId) => request<CliMcpView>('GET', at(`/api/mcp/cli/${enc(provider)}`)),
+    cliAdd: (provider: CliProviderId, input: CliMcpServerInput) => request<CliMcpView>('POST', at(`/api/mcp/cli/${enc(provider)}/servers`), input),
+    cliRemove: (provider: CliProviderId, name: string) => request<CliMcpView>('DELETE', at(`/api/mcp/cli/${enc(provider)}/servers/${enc(name)}`)),
   };
 }

@@ -17,7 +17,7 @@ import { CONTINUE_ANYWAY, addFolderLabel, movesSettled, needsFolderText, moveWar
 import { ModelChoicePicker } from '../views/session/ModelPicker.tsx';
 import { CliPicker } from '../components/CliPicker.tsx';
 import { effectiveCli } from '../components/cli.ts';
-import type { CliProviderId } from '../../core/cli-providers.ts';
+import { type CliProviderId, unavailableText } from '../../core/cli-providers.ts';
 import { useConversationMoves } from '../views/useConversationMoves.ts';
 import {
   COORDINATION_OPTIONS,
@@ -688,7 +688,9 @@ export function NewSessionModal({
                 className="sb-button sb-ns-remote-toggle"
                 data-testid="ns-remote"
                 aria-pressed={remoting}
-                disabled={busy || moveRunning}
+                // D62: teleport continues a claude.ai/code session: Claude Code only (marked, never hidden).
+                disabled={busy || moveRunning || (!remoting && provider !== 'claude')}
+                title={!remoting ? (unavailableText(provider, 'teleport') ?? undefined) : undefined}
                 onClick={toggleRemote}
               >
                 {`⇣ ${FROM_REMOTE_SESSION}`}
@@ -840,6 +842,8 @@ export function NewSessionModal({
                 data-testid="ns-resume"
                 aria-expanded={resumeOpen}
                 disabled={moveRunning || remoting}
+                // D62: these are Claude Code's terminal conversations; Codex / OpenCode ones move in from History.
+                title={provider !== 'claude' ? "Claude Code's terminal conversations (they continue on Claude Code); Codex CLI and OpenCode ones move in from History" : undefined}
                 onClick={() => setResumeOpen((open) => !open)}
               >
                 {`↻ ${RESUME_TERMINAL_CONVERSATION}`}

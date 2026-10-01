@@ -45,3 +45,19 @@ describe('D62 P5 · the header switcher and the chat divider (web)', () => {
     expect(sessionProvider({ provider: 'codex' })).toBe('codex');
   });
 });
+
+describe('D62 P7 · marked and added parts (web)', () => {
+  it('Remote Control is disabled with the reason on another CLI\'s session', async () => {
+    const { remoteToggle } = await import('../../src/web/views/session/session-header.ts');
+    const toggle = remoteToggle({ remote: { enabled: false, available: false, url: null } as never, live: true, attached: true, provider: 'codex' });
+    expect(toggle).toMatchObject({ disabled: true, reason: 'Not available in Codex CLI: Remote Control (claude.ai on the phone) is a Claude Code feature.' });
+  });
+
+  it('the footer adds a row per Codex window', async () => {
+    const { usageRows } = await import('../../src/web/shell/format.ts');
+    const now = Date.parse('2026-10-01T12:00:00.000Z');
+    const rows = usageRows({ cliUsage: [{ provider: 'codex', label: 'Codex 5h', pct: 12, resetsAt: '2026-10-01T14:00:00.000Z' }] } as never, now);
+    expect(rows.map((row) => row.label)).toEqual(['Session', 'Week', 'Codex 5h']);
+    expect(rows[2]).toMatchObject({ key: 'model', pct: 12, text: '12% · 2h00' });
+  });
+});

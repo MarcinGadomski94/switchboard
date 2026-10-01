@@ -64,6 +64,17 @@ interface Loaded {
  * (`POST /api/sessions/{id}/reopen`) puts it back in the sidebar and opens it in
  * the session view.
  */
+/** D62 P7: whether History lists Codex / OpenCode conversations (this browser's choice). */
+function readCliHistory(): boolean {
+  try {
+    return window.localStorage.getItem(CLI_HISTORY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+const CLI_HISTORY_KEY = 'sb.history.cli';
+
 export function HistoryView() {
   const { tagOf } = useFolderTags();
   const { navigate } = useRouter();
@@ -94,6 +105,8 @@ export function HistoryView() {
     }
   };
   const [search, setSearch] = useState('');
+  // D62 P7: the Codex / OpenCode terminal conversations, on request (listing them reads those CLIs' records); remembered in this browser.
+  const [withCli, setWithCli] = useState(() => readCliHistory());
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [tick, setTick] = useState(0);
   const q = search.trim();
@@ -105,7 +118,7 @@ export function HistoryView() {
     const delay = lastQ.current === q ? 0 : SEARCH_DELAY_MS;
     lastQ.current = q;
     const timer = setTimeout(() => {
-      api.history(q === '' ? undefined : q).then(
+      api.history(q === '' ? undefined : q, withCli).then(
         (rows) => {
           if (!cancelled) setLoaded({ q, rows });
         },
@@ -118,7 +131,7 @@ export function HistoryView() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [q, tick]);
+  }, [q, tick, withCli]);
 
   const reload = useTrailing(() => setTick((n) => n + 1), HUB_RELOAD_DELAY_MS);
   useHubEvent('sessionUpdated', reload);
@@ -178,6 +191,23 @@ export function HistoryView() {
             {q === '' ? 'No sessions yet.' : 'No sessions match.'}
           </div>
         ) : null}
+        {/* D62 P7: Codex CLI / OpenCode terminal conversations, on request (the rows' last line: the rows box keeps the prototype's size). */}
+        <label className="sb-hist-cli" data-testid="history-cli">
+          <input
+            type="checkbox"
+            data-testid="history-cli-toggle"
+            checked={withCli}
+            onChange={(event) => {
+              setWithCli(event.target.checked);
+              try {
+                window.localStorage.setItem(CLI_HISTORY_KEY, event.target.checked ? '1' : '0');
+              } catch {
+                // A browser without storage forgets it.
+              }
+            }}
+          />
+          Also list Codex CLI and OpenCode terminal conversations
+        </label>
       </div>
       {selectedRows.length > 0 ? (
         <div className="sb-hist-movebar" data-testid="history-movebar">

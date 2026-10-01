@@ -1552,6 +1552,14 @@ export interface HistoryItem {
    * it is open. Absent on a terminal conversation's row.
    */
   readonly closedAt?: string | null;
+  /**
+   * Additive (D62 P7): a Codex CLI / OpenCode terminal conversation's row (with
+   * `?cli=1`): its CLI and its own id (`claudeSessionId` is then `<cli>:<id>`);
+   * it moves into Switchboard with `POST /api/history/cli/{provider}/{nativeId}/continue`.
+   * Absent on Claude Code's rows.
+   */
+  readonly provider?: CliProviderId;
+  readonly nativeId?: string;
 }
 
 /**
@@ -1731,6 +1739,24 @@ export interface SystemInfo {
    * out (never guessed); the field is omitted when none is known.
    */
   readonly usageWindows?: readonly UsageWindow[];
+  /**
+   * Additive (D62 P7, `docs/providers.md` → *Usage*): another CLI's own usage
+   * windows, as its sessions reported them (Codex's rate limits: the primary
+   * 5-hour and the secondary weekly window); the footer adds a row each while
+   * they are known. Omitted when none is.
+   */
+  readonly cliUsage?: readonly CliUsageWindow[];
+}
+
+/** Additive (D62 P7): one usage window of another CLI (`SystemInfo.cliUsage`). */
+export interface CliUsageWindow {
+  readonly provider: CliProviderId;
+  /** The footer row's label: `Codex 5h`, `Codex week`. */
+  readonly label: string;
+  /** Utilization 0–100. */
+  readonly pct: number;
+  /** When it resets (ISO), `null` when the CLI did not say. */
+  readonly resetsAt: string | null;
 }
 
 /** A Max usage window (M9.2): `get_usage` `rate_limits.five_hour` / `seven_day`. */
@@ -2026,5 +2052,43 @@ export interface ProviderSwitchInput {
 export interface ProviderSwitchResult {
   readonly session: Session;
   readonly switchId: string;
+}
+
+/** Additive (D62 P7, `docs/providers.md` → *MCP*): one MCP server of Codex CLI or OpenCode (`GET /api/mcp/cli/{provider}`). */
+export interface CliMcpServer {
+  readonly name: string;
+  /** `stdio` (a command) or `http` (a URL). */
+  readonly transport: 'stdio' | 'http';
+  /** The command and its arguments, or the URL, secrets masked. */
+  readonly target: string;
+  /** Environment variable names (never their values). */
+  readonly envNames: readonly string[];
+  /** `false` when the CLI's config disables it. */
+  readonly enabled: boolean;
+  /** What the CLI said about it (`connected`, `auth: …`), when it says something. */
+  readonly status: string | null;
+}
+
+/** Additive (D62 P7): `GET /api/mcp/cli/{provider}`. */
+export interface CliMcpView {
+  readonly provider: CliProviderId;
+  /** The CLI can be asked (installed and supported); else {@link reason}. */
+  readonly available: boolean;
+  readonly reason: string | null;
+  readonly servers: readonly CliMcpServer[];
+  /** Add / Remove work through the CLI (Codex: `codex mcp add|remove`); else {@link editReason}. */
+  readonly canEdit: boolean;
+  readonly editReason: string | null;
+  /** The command that listed them (shown on the page). */
+  readonly command: string;
+}
+
+/** Additive (D62 P7): body of `POST /api/mcp/cli/{provider}/servers` (Codex): a stdio command or a URL. */
+export interface CliMcpServerInput {
+  readonly name: string;
+  readonly command?: string;
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly url?: string;
 }
 

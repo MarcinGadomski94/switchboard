@@ -1,3 +1,4 @@
+import { readCliProvider, unavailableText } from '../../../core/cli-providers.ts';
 import type { AttachWarningReason, HookStatus, Session, SessionModel, SessionModelInput } from '../../../core/api.ts';
 import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
 import { CLI_EFFORT_LEVELS, DEFAULT_MODEL_VALUE, effortLevelsFor, modelOptionFor, normalizeModel } from '../../../core/model-choice.ts';
@@ -165,13 +166,16 @@ export interface RemoteToggle {
  * with the reason as its tooltip. Remote stays on while paused (the next process
  * reconnects), so a paused session can show it on and disabled.
  */
-export function remoteToggle(session: Pick<Session, 'remote' | 'live' | 'attached'>): RemoteToggle | null {
+export function remoteToggle(session: Pick<Session, 'remote' | 'live' | 'attached'> & Pick<Partial<Session>, 'provider'>): RemoteToggle | null {
   const remote = session.remote;
   if (!remote) return null;
   const on = remote.enabled;
   const url = on ? remote.url : null;
   let reason: string | null = null;
-  if (!session.attached) reason = 'The session continues in a terminal: attach it here first.';
+  // D62: Remote Control is Claude Code's: another CLI's session shows the toggle disabled, with the reason.
+  const missing = unavailableText(readCliProvider(session.provider), 'remote-control');
+  if (missing) reason = `${missing}.`;
+  else if (!session.attached) reason = 'The session continues in a terminal: attach it here first.';
   else if (!session.live) {
     reason = on
       ? 'Remote is on and reconnects when the session resumes: it needs a running claude process.'

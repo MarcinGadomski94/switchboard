@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { CliMcpError, CliMcpService, parseCliMcpInput } from '../mcp/cli-mcp.ts';
 import { parseServerInput } from '../../core/mcp.ts';
 import { McpError, type McpFolder, type McpService } from '../mcp/service.ts';
 import type { ApiContext } from '../routes.ts';
@@ -132,4 +133,47 @@ export async function registerMcpRoutes(app: FastifyInstance, context: ApiContex
       return sendMcpError(reply, error);
     }
   });
+
+  // D62 P7: Codex CLI's and OpenCode's MCP servers, through their own CLIs (docs/providers.md → MCP).
+  const cliMcp = new CliMcpService({ registry: context.supervisor.cliRegistry, clis: context.clis, env: context.supervisor.environment });
+  const cliOf = (raw: string): 'codex' | 'opencode' | null => (raw === 'codex' || raw === 'opencode' ? raw : null);
+  const cliRefusal = (reply: FastifyReply, error: unknown): FastifyReply => {
+    if (error instanceof CliMcpError) return reply.code(error.status).send(error.status === 422 ? { error: 'invalid', errors: [{ field: '', message: error.message }] } : { error: error.code, message: error.message });
+    throw error;
+  };
+  app.get<{ Querystring: FolderQuery; Params: { provider: string } }>('/api/mcp/cli/:provider', async (request, reply) => {
+    const cli = cliOf(request.params.provider);
+    if (!cli) return reply.code(404).send({ error: 'not-found', message: `no CLI ${request.params.provider}` });
+    return handle(reply, request.query.folder, (folder) => cliMcp.view(cli, folder.root));
+  });
+  app.post<{ Querystring: FolderQuery; Params: { provider: string } }>('/api/mcp/cli/:provider/servers', async (request, reply) => {
+    const cli = cliOf(request.params.provider);
+    if (!cli) return reply.code(404).send({ error: 'not-found', message: `no CLI ${request.params.provider}` });
+    let input;
+    try {
+      input = parseCliMcpInput(request.body);
+    } catch (error) {
+      return cliRefusal(reply, error);
+    }
+    const parsed = input;
+    return handle(reply, request.query.folder, async (folder) => {
+      try {
+        return reply.code(201).send(await cliMcp.add(cli, parsed, folder.root));
+      } catch (error) {
+        return cliRefusal(reply, error);
+      }
+    });
+  });
+  app.delete<{ Querystring: FolderQuery; Params: { provider: string; name: string } }>('/api/mcp/cli/:provider/servers/:name', async (request, reply) => {
+    const cli = cliOf(request.params.provider);
+    if (!cli) return reply.code(404).send({ error: 'not-found', message: `no CLI ${request.params.provider}` });
+    return handle(reply, request.query.folder, async (folder) => {
+      try {
+        return await cliMcp.remove(cli, request.params.name, folder.root);
+      } catch (error) {
+        return cliRefusal(reply, error);
+      }
+    });
+  });
 }
+

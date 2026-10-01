@@ -138,6 +138,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/mcp\/auth\/[^/]+$/],
   ['POST', /^\/api\/mcp\/auth\/[^/]+\/callback$/],
   ['DELETE', /^\/api\/mcp\/auth\/[^/]+$/],
+  // D62 P7: that machine's Codex CLI / OpenCode MCP servers.
+  ['GET', /^\/api\/mcp\/cli\/[^/]+$/],
+  ['POST', /^\/api\/mcp\/cli\/[^/]+\/servers$/],
+  ['DELETE', /^\/api\/mcp\/cli\/[^/]+\/servers\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON). */

@@ -1,4 +1,5 @@
-import type { SystemInfo, UsageWarning } from '../../core/api.ts';
+import type { CliUsageWindow, SystemInfo, UsageWarning } from '../../core/api.ts';
+import type { ProviderUsage } from '../cli/bridge-common.ts';
 import type { ServerConfig } from '../config.ts';
 import type { Store } from '../db/store.ts';
 import type { Providers, SystemProvider } from '../providers.ts';
@@ -54,3 +55,35 @@ export function createUsageMeter(input: CreateUsageMeterInput): UsageMeter {
     ...(input.onError ? { onError: input.onError } : {}),
   });
 }
+
+/**
+ * D62 P7: `providers.system` with another CLI's own usage windows
+ * (`SystemInfo.cliUsage`: Codex's rate limits, as its bridges last read them).
+ * The windows that reset already are left out.
+ */
+export function withCliUsage(providers: Providers, source: { providerUsage(provider: 'codex' | 'opencode'): ProviderUsage | null }, now: () => number = Date.now): Providers {
+  const base = providers.system;
+  if (!base) return providers;
+  const system: SystemProvider = {
+    async system(...args: Parameters<SystemProvider['system']>): Promise<SystemInfo> {
+      const info = await base.system(...args);
+      const windows = cliUsageWindows(source.providerUsage('codex'), now());
+      return windows.length > 0 ? { ...info, cliUsage: windows } : info;
+    },
+  };
+  return { ...providers, system };
+}
+
+/** Codex's windows as footer rows: `Codex 5h` (300 minutes), `Codex week` (10 080), else `Codex <n>h`. */
+export function cliUsageWindows(usage: ProviderUsage | null, now: number): CliUsageWindow[] {
+  if (!usage) return [];
+  return usage.windows
+    .filter((window) => window.resetsAt === null || Date.parse(window.resetsAt) > now)
+    .map((window) => ({
+      provider: usage.provider,
+      label: `Codex ${window.minutes === 10_080 ? 'week' : window.minutes === null ? 'limit' : `${Math.round(window.minutes / 60)}h`}`,
+      pct: Math.max(0, Math.min(100, window.pct)),
+      resetsAt: window.resetsAt,
+    }));
+}
+

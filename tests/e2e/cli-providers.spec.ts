@@ -204,6 +204,49 @@ test('the sidebar footer sets the default CLI; "Switch running sessions…" hand
   expect(await badges.count()).toBe((await listSessions(page)).length);
 });
 
+test('History moves a Codex terminal conversation in (on request, confirmed); the MCP page manages Codex\'s servers and marks OpenCode\'s', async ({ page }) => {
+  // A Codex terminal conversation in the saved folder (its rollout file).
+  const thread = '0199a6d1-5f1a-7c3e-9a10-0000000000e2';
+  const day = path.join(tmp, 'codex-home', 'sessions', '2026', '09', '30');
+  await mkdir(day, { recursive: true });
+  const line = (type: string, payload: unknown) => JSON.stringify({ timestamp: '2026-09-30T10:00:00.000Z', type, payload });
+  await writeFile(
+    path.join(day, `rollout-2026-09-30T10-00-00-${thread}.jsonl`),
+    [
+      line('session_meta', { id: thread, timestamp: '2026-09-30T10:00:00.000Z', cwd: folder }),
+      line('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Tidy the notes folder' }] }),
+      line('response_item', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Tidied.' }] }),
+    ].join('\n') + '\n',
+  );
+  await page.goto(`${server.baseUrl}/history`);
+  const toggle = page.getByTestId('history-cli-toggle');
+  await toggle.check();
+  const row = page.getByTestId('history-row').filter({ hasText: 'Tidy the notes folder' });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('terminal · Codex CLI');
+  await row.getByTestId('history-continue').click();
+  await expect(page.getByTestId('move-state')).toHaveAttribute('data-kind', 'terminal-open');
+  await page.getByTestId('move-confirm').click();
+  // A single move opens its session by itself.
+  const view = page.getByTestId('view-session');
+  await expect(view).toBeVisible();
+  await expect(view.getByText('Tidied.')).toBeVisible();
+  await expect(page.getByTestId('session-header').getByTestId('session-cli')).toHaveAttribute('data-provider', 'codex');
+
+  await page.goto(`${server.baseUrl}/mcp`);
+  const codex = page.locator('[data-testid="mcp-cli"][data-provider="codex"]');
+  await expect(codex.getByTestId('mcp-cli-empty')).toBeVisible();
+  await codex.getByTestId('mcp-cli-add').click();
+  await codex.getByTestId('mcp-cli-name').fill('docs');
+  await codex.getByTestId('mcp-cli-target').fill('node docs-server.js');
+  await codex.getByTestId('mcp-cli-save').click();
+  await expect(codex.locator('[data-testid="mcp-cli-server"][data-name="docs"]')).toContainText('node docs-server.js');
+  await codex.locator('[data-testid="mcp-cli-server"][data-name="docs"]').getByTestId('mcp-cli-remove').click();
+  await expect(codex.getByTestId('mcp-cli-empty')).toBeVisible();
+  const opencode = page.locator('[data-testid="mcp-cli"][data-provider="opencode"]');
+  await expect(opencode.getByTestId('mcp-cli-edit-note')).toContainText('Add / Remove: not available in OpenCode here');
+});
+
 test('a signed-out Codex is listed but cannot be chosen, with the reason', async ({ page }) => {
   const dataDir = path.join(tmp, 'data-2');
   await seedFolderInDataDir(dataDir, folder, { kind: 'plain' });

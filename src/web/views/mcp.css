@@ -311,3 +311,38 @@
   display: flex;
   gap: 8px;
 }
+
+/* D62 P7: Codex CLI / OpenCode servers. */
+.sb-mcp-cli {
+  padding: 8px 0;
+  border-top: 1px solid var(--border-row);
+}
+
+.sb-mcp-cli-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.sb-mcp-cli-name {
+  font-weight: 600;
+}
+
+.sb-mcp-cli-server-name {
+  font-weight: 500;
+}
+
+.sb-mcp-cli-target {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-mcp-cli-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
