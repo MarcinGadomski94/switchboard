@@ -23,10 +23,22 @@ import {
  * demo's probe provider answers `down` without touching the network. The strip
  * shows the prototype's dirty list and "16 projects indexed · full mode" from the
  * demo data.
+ *
+ * D61: the app's nav has a sixth item, MCP, which the prototype does not, so
+ * everything under the nav sits one nav row (33 px) lower. As visual/shell does, the
+ * sidebar's TOOLS rows are compared with y relative to the part above them, the
+ * TOOLS label (`anchor`, the same path on both pages); visual/shell gates that
+ * label against the nav item above it. Since the sidebar-scrolling fix the sidebar
+ * itself does not scroll, so the rows are measured where they are.
  */
 
+/** D61: the sidebar's TOOLS label (the same path on both pages; visual/shell gates it against the nav item above). */
+const TOOLS_LABEL: readonly number[] = [0, 3];
+
 /** Child-index paths from the shell grid (harness.measure): `[1]` = main, `[1, 0]` = the tool view. */
-const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonly geometry: Geometry; readonly copy: boolean }>> = {
+const PARTS: Readonly<
+  Record<string, { readonly path: readonly number[]; readonly geometry: Geometry; readonly copy: boolean; /** D61: y relative to this part's top (both pages). */ readonly anchor?: readonly number[] }>
+> = {
   view: { path: [1, 0], geometry: 'box', copy: false },
   toolbar: { path: [1, 0, 0], geometry: 'box', copy: false },
   toolbarDot: { path: [1, 0, 0, 0], geometry: 'box', copy: false },
@@ -59,10 +71,11 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   // on the first line and a URL that does not fit moves to its own line, cut with … (the prototype wraps
   // "Codebase Memory" next to its host). The rows keep the prototype's boxes; the dot sits on the name's
   // line instead of the row's middle (x and size compared). The ruled layout is checked below (`sidebarRuling`).
-  sideCm: { path: [0, 4, 0], geometry: 'box', copy: true },
+  // D61: y relative to the TOOLS label (`TOOLS_LABEL`), which the extra MCP nav row moves down.
+  sideCm: { path: [0, 4, 0], geometry: 'box', copy: true, anchor: TOOLS_LABEL },
   sideCmDot: { path: [0, 4, 0, 0], geometry: 'size', copy: false },
-  sideSw: { path: [0, 4, 1], geometry: 'box', copy: true },
-  sideSwDot: { path: [0, 4, 1, 0], geometry: 'box', copy: false },
+  sideSw: { path: [0, 4, 1], geometry: 'box', copy: true, anchor: TOOLS_LABEL },
+  sideSwDot: { path: [0, 4, 1, 0], geometry: 'box', copy: false, anchor: TOOLS_LABEL },
 };
 
 /** Computed styles compared between the two pages for every part. */
@@ -102,8 +115,9 @@ test('Codebase Memory tool view matches the prototype (tokens, boxes ±2 px, cop
   await appPage.getByText('Reindex 3 now', { exact: true }).waitFor();
 
   const paths = Object.fromEntries(Object.entries(PARTS).map(([name, part]) => [name, part.path]));
-  const proto = await measure(protoPage, paths);
-  const view = await measure(appPage, paths);
+  const anchors = Object.fromEntries(Object.entries(PARTS).flatMap(([, part]) => (part.anchor ? [[`@${part.anchor.join('.')}`, part.anchor]] : [])));
+  const proto = await measure(protoPage, { ...paths, ...anchors });
+  const view = await measure(appPage, { ...paths, ...anchors });
   const failures: string[] = [];
   const rows: string[] = [];
 
@@ -114,7 +128,14 @@ test('Codebase Memory tool view matches the prototype (tokens, boxes ±2 px, cop
       failures.push(`${name}: missing (${p ? 'app' : 'prototype'})`);
       continue;
     }
-    const boxIssues = compareBoxes(name, p.box, a.box, spec.geometry);
+    const anchorName = spec.anchor ? `@${spec.anchor.join('.')}` : null;
+    if (anchorName && (!proto[anchorName] || !view[anchorName])) {
+      failures.push(`${name}: anchor ${anchorName} missing (${proto[anchorName] ? 'app' : 'prototype'})`);
+      continue;
+    }
+    const relative = (part: Part, side: Record<string, Part | null>): Part =>
+      anchorName ? { ...part, box: { ...part.box, y: part.box.y - side[anchorName]!.box.y } } : part;
+    const boxIssues = compareBoxes(name, relative(p, proto).box, relative(a, view).box, spec.geometry).map((m) => (anchorName ? `${m} (y relative to the TOOLS label, D61)` : m));
     failures.push(...boxIssues);
     let copyNote = '';
     if (spec.copy) {
@@ -126,7 +147,7 @@ test('Codebase Memory tool view matches the prototype (tokens, boxes ±2 px, cop
       if (p.style[prop] !== a.style[prop]) styleIssues.push(`${name}.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`);
     }
     failures.push(...styleIssues);
-    rows.push(`| ${name} | ${spec.geometry} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`);
+    rows.push(`| ${name} | ${spec.geometry}${anchorName ? ' (y rel. TOOLS label)' : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`);
   }
 
   // SPEC token checks on the app: surfaces, borders, text, status colors.
