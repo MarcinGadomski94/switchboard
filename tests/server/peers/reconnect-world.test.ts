@@ -120,6 +120,25 @@ describe('fix · peer reconnects: a dropped stream', () => {
   });
 });
 
+describe('fix · peer reconnects: a stopped listener is gone at once', () => {
+  it("stopping A's listener while B's proxied read is in flight refuses B at once (no draining 503s on B's kept-alive socket)", async () => {
+    const { a, b, aId } = await world(10_000);
+    // A proxied read (the session header's CLI switcher asks for the peer's CLIs, D62) is in flight when the listener stops.
+    const inFlight = b.call('GET', `/api/machines/${aId}/api/clis`);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const asked = Date.now();
+    expect((await a.call('POST', '/api/test/peers/outage', { ms: 120_000 })).status).toBe(204);
+    // The listener stops at once instead of draining that socket while B's hellos reuse it (that took ~20 s).
+    expect(Date.now() - asked).toBeLessThan(2_000);
+    await inFlight;
+    const during = await waitFor('reconnecting with a refused attempt', async () => {
+      const machine = await machineOn(b, aId);
+      return machine?.state === 'reconnecting' && machine.connection?.lastFailure?.kind === 'refused' ? machine : null;
+    }, 5_000);
+    expect(during.connection?.lastFailure?.message).not.toMatch(/503/);
+  });
+});
+
 describe('fix · peer reconnects: a long outage and Reconnect now', () => {
   it('offline after the grace period (actions refused at once), Reconnect now answers the reason while A is down and online once it is back', async () => {
     const { a, b, aId } = await world(1_500);

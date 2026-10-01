@@ -82,11 +82,17 @@ function isPairRoute(request: FastifyRequest): boolean {
  * Builds the peer app (not listening). The guard runs first on every request and
  * every 404: Host exact, no Origin, then the bearer token (the pairing exchange
  * excepted).
+ *
+ * Closing it drops every connection at once (`forceCloseConnections`): a stopped
+ * listener is gone for its peers (connection refused), not draining. Otherwise a
+ * peer's keep-alive socket (left by an earlier proxied read, e.g. the session
+ * header's `GET /api/clis`, D62) keeps `close()` waiting while that peer's hellos
+ * reuse it and get 503 — the stop took ~20 s and the peer saw no clean drop.
  */
 export function buildPeerApp(options: { readonly host: string; readonly port: number; readonly handlers: PeerHandlers }): FastifyInstance {
   const { handlers } = options;
   const expectedHost = `${options.host}:${options.port}`;
-  const app = Fastify({ logger: false, trustProxy: false, bodyLimit: PEER_BODY_LIMIT });
+  const app = Fastify({ logger: false, trustProxy: false, bodyLimit: PEER_BODY_LIMIT, forceCloseConnections: true });
   app.decorateRequest('peerMachine', undefined);
   app.addHook('onRequest', async (request, reply) => {
     if ((request.headers.host ?? '').trim().toLowerCase() !== expectedHost) return deny(reply, 403, 'forbidden-host');
