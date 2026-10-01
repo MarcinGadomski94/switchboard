@@ -1,0 +1,14 @@
+# tools/fake-opencode (D62)
+
+A stand-in for OpenCode (`1.18.34`) with the surface Switchboard uses, modelled on the source read at `v1.18.34` (`docs/providers.md` → *Evidence*). Tests never run the real `opencode`; they start this with `fakeOpencodeCommand()` / `fakeOpencodeBinEnv()` (`tools/fake-opencode/command.ts`, as `SWITCHBOARD_OPENCODE_BIN`).
+
+## Commands
+- `--version` → `1.18.34`; `auth list` (`providers list`) → clack output ending `1 credentials` (`0 credentials` with `FAKE_OPENCODE_SIGNED_OUT=1`); `models [provider]` → `anthropic/claude-sonnet-5`, `openai/gpt-5.5`.
+- `session list --format json`, `export <id>`, `mcp list` (`No MCP servers configured`, else `✓ <name> connected` + its target) from `$XDG_DATA_HOME/opencode/fake-store.json` (the real CLI keeps SQLite); `mcp __fake-add <name> <json>` seeds a server (tests only: the real `mcp add` is interactive).
+- `serve --hostname <h> --port <p>`: prints `opencode server listening on http://<h>:<p>`; HTTP Basic when `OPENCODE_SERVER_PASSWORD` is set (user `opencode`). Routes: `GET /global/health`, `GET /event` (SSE `data:` frames, `server.connected` first, heartbeats every `FAKE_OPENCODE_HEARTBEAT_MS`), `GET /config/providers` (`FAKE_OPENCODE_PROVIDERS=none` → none), `GET /mcp`, `POST|GET /session`, `GET /session/status`, `GET /session/:id`, `GET /session/:id/message`, `POST /session/:id/prompt_async` (204; 409 while busy), `POST /session/:id/abort`, `POST /permission/:id/reply`, `POST /question/:id/reply|reject`, and the test-only `POST /__fake/cut-events` (cuts every event stream, no auth). Its `OPENCODE_CONFIG_CONTENT` `permission` rules decide which tools ask.
+
+## A prompt
+`session.status busy`, the user message and its parts, the assistant message, a `step-start` and a `reasoning` part, the text part (two `message.part.delta`s, then the part with `time.end`), a `step-finish`, the completed assistant message with its `tokens` (18 000), `session.status idle`, `session.idle`. Tokens: `[fake:say "<json>"]`, file parts → `[fake-opencode: N file part(s): <mimes>]`, `[fake:hold <s>]` (an abort ends it with `MessageAbortedError`), `[fake:cmd <c>]` / `[fake:approve-cmd <c>]` (a `bash` tool part; asks when `bash` is `ask`), `[fake:write <path>]` (a `write` tool part, the file really written, inside the project only), `[fake:ask]` (`question.asked`), `[fake:subagent <prompt>]` (a `task` tool part and a child session with its own parts), `[fake:fail <message>]` (`session.error` `APIError`), `[fake:usage <tokens>]`, `[fake:handover]`.
+
+## Environment
+`XDG_DATA_HOME` (unset: nothing is kept), `FAKE_OPENCODE_LOG` (argv, every HTTP request with `auth: basic|null`, prompts, permission and question replies), `FAKE_OPENCODE_SIGNED_OUT`, `FAKE_OPENCODE_PROVIDERS`, `FAKE_OPENCODE_HEARTBEAT_MS`, `FAKE_OPENCODE_ASK_ALL`.

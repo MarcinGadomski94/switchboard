@@ -35,6 +35,7 @@ Install these **before** Switchboard:
 | **git** | Worktrees, branches and diffs. On Windows, Git for Windows is also what Claude Code needs. | `git --version` |
 | **Claude Code CLI** (`claude`), signed in with your **claude.ai subscription** (Pro / Max) | Every session is a real `claude` process. An API key alone is not enough for Remote Control. | `claude --version`, `claude auth status` |
 | **A browser**: Chrome (recommended), Edge, Firefox or Safari | The UI. Embedding signed-in sites such as Jira needs Chrome ([Embedded tools](#embedded-tools)). | |
+| **Codex CLI** (`codex`) and / or **OpenCode** (`opencode`), signed in (optional) | Sessions on those CLIs instead of Claude Code ([CLIs](#clis)). Without them, they just can't be chosen. | `codex --version`, `codex login status`; `opencode --version`, `opencode auth list` |
 | **GitHub CLI** (`gh`), signed in (optional) | Detects merged pull requests of session worktrees. | `gh auth status` |
 | **Tailscale** (optional) | Connecting Switchboards on several machines ([Machines (peers)](#machines-peers)). | `tailscale status` |
 
@@ -185,6 +186,8 @@ Settings are environment variables, read at start. An invalid value makes `npm s
 | `SWITCHBOARD_PORT` | `13001` | The port; the address is always `127.0.0.1`. |
 | `SWITCHBOARD_DATA_DIR` | per-user app data (`~/Library/Application Support/Switchboard` on macOS) | The database (`switchboard.db`) and the access token (`sb_token`). |
 | `SWITCHBOARD_CLAUDE_BIN` | `claude` | The Claude Code CLI; a JSON array is used as an argv prefix. |
+| `SWITCHBOARD_CODEX_BIN` | `codex` | The Codex CLI (optional); Settings → CLIs can override it. |
+| `SWITCHBOARD_OPENCODE_BIN` | `opencode` | OpenCode (optional); Settings → CLIs can override it. |
 | `SWITCHBOARD_GH_BIN` | `gh` | The GitHub CLI. |
 | `SWITCHBOARD_SETUP_WIZARD` | on | `off` stops the wizard from opening by itself. |
 | `SWITCHBOARD_UPDATES` | on | `off` stops the hourly check for new releases (and updating). |
@@ -222,6 +225,16 @@ There is no single workspace root. You save **folders** in **Settings → Folder
 - Any other folder (no `AGENTS.md`, not a git repo) can be saved too, for **Simple** sessions.
 
 A folder can have a custom name. [`docs/folders.md`](docs/folders.md)
+
+### CLIs
+Every session runs on **Claude Code**, **Codex CLI** or **OpenCode**:
+- **Settings → CLIs:** each CLI's command (`SWITCHBOARD_CODEX_BIN` / `SWITCHBOARD_OPENCODE_BIN` or set on the page), version, sign-in and models; a CLI that is not installed or signed out says so, with the install steps, and simply can't be chosen.
+- **Per session:** the New-session forms have a **CLI** row (default: the sidebar's default CLI); the model picker shows that CLI's models.
+- **Switch mid-session:** the session header's CLI switcher hands the session over in the same chat and folder. The current agent writes a handover first; if it can't (out of usage, not runnable), the incoming CLI reads the chat history itself. The chat shows a divider ("Switched from Claude Code to Codex CLI · handover by …").
+- **Sidebar:** the footer's CLI label sets the default CLI for new sessions and offers **Switch running sessions…** for all live sessions at once; session rows show a small CLI badge.
+- **The same features where the CLI has them:** chat and tool steps, images, permission requests and questions in the Inbox (with the CLI's own "always"), Stop, pause / resume, model and effort, the context meter, Codex's usage limits in the footer, subagents, History moves (on request), the MCP page (Codex: add / remove), schedules, peers. Claude Code-only features (Remote Control, teleport, Workflow agents, background tasks, hooked terminal sessions) stay visible and say why they are not available.
+
+Neither Codex nor OpenCode was run while this was built: their protocols come from their source, pinned in [`docs/providers.md`](docs/providers.md); [`docs/spike-providers.md`](docs/spike-providers.md) lists the checks to run once they are installed.
 
 ### New session
 - **Simple / Full:** a switch at the top of the dialog. **Simple** (the default) starts in any folder (a workspace, a git repo or any plain folder) and asks only for the folder, the message, an optional title (taken from the message when empty), the model and whether to work in its own git worktree (git repo folders; the branch is derived from the title, e.g. `sb/fix-login`, and can be edited). **Full** is the form below. The dialog remembers the last one used, and what you typed carries over when you switch.

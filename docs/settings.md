@@ -44,3 +44,6 @@ The demo seed stores `service.startAtLogin: true` (`src/server/demo/data/setup.j
 - D34: `tests/web/install-app.test.ts` (the Install as app row's form and the install offer), `tests/e2e/install-app.spec.ts` (the row with a synthetic `beforeinstallprompt`, the Safari hint, neither in standalone) and `tests/e2e/visual/install-row.spec.ts` (the row checked on its own against the prototype's row template; the Settings visual spec never sees it: the test Chromium offers no installation). Install, update and uninstall: `docs/install-app.md`.
 - D14: `tests/e2e/folders.spec.ts` (Add… a repo, a Browse… workspace, a refused plain folder; Make default; Remove).
 - D41: `tests/server/api/settings.test.ts` (the two `ui.*` keys: defaults, persistence, 422, a stored mistyped value) and the pane tests listed in `docs/panes.md` → *Tests*. The Settings view shows no row for them: the panes' own controls change them.
+
+## CLIs (D62)
+Settings → **CLIs** (`/settings/clis`, after the prototype's seven sections): the default CLI, and per CLI its command (Codex / OpenCode overridable: `cli.<id>.command`; Claude Code's is `SWITCHBOARD_CLAUDE_BIN`), where it was found, its version, its sign-in, its models, **Check**, and the install help when it is missing. `docs/providers.md` → *Settings → CLIs*.

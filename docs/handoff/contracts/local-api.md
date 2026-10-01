@@ -760,6 +760,48 @@ PUT /api/mcp/servers/files?folder=f1&scope=user { "name": "files", "scope": "use
 POST /api/mcp/servers/docs/auth?folder=f1 {} → { "id": "…", "server": "docs", "state": "waiting", "authUrl": "https://auth.example.com/authorize?…", "callbackExpected": true, "error": null, "instructions": null }
 ```
 
+## CLI providers (D62, 2026-10-01, additive)
+A session runs on Claude Code (`claude`), Codex CLI (`codex`) or OpenCode (`opencode`) (`docs/providers.md`). Every field and route below is additive; a payload without `provider` is Claude Code.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/clis[?refresh=1] | | CliOverview |
+| PUT | /api/clis/default | { provider } | CliOverview; 422 on `provider` (unknown, or cannot be chosen now: the reason) |
+| PUT | /api/clis/{provider}/command | { command: string[] \| null } | CliInfo (checked again); 422 for Claude Code (`SWITCHBOARD_CLAUDE_BIN` only) or a malformed command; 404 unknown CLI |
+| POST | /api/clis/{provider}/check | | CliInfo (the checks run again; the models read from the CLI where it can list them) |
+| GET | /api/models?provider= | | ModelSettings of that CLI (D42's, per CLI; default `claude`); 422 unknown CLI |
+| POST | /api/sessions/{id}/provider | { provider } | 202 { session: Session, switchId }; 422 on `provider`; 404; 409 `switching` (one runs, or it already runs on that CLI) / `detached` / `closed` / `not-available` (hooked) / `cli-unavailable` |
+| GET | /api/history?cli=1 | | HistoryItem[] with the Codex / OpenCode terminal conversations not in Switchboard yet (`provider`, `nativeId`, `claudeSessionId` = `<cli>:<id>`) |
+| POST | /api/history/cli/{provider}/{nativeId}/continue | { name?, title?, confirm? } | 201 Session; 404; 409 `already-in-switchboard` / `terminal-open` (always without `confirm`); 422 `not-in-a-folder` / `invalid` |
+| GET | /api/mcp/cli/{provider}?folder= | | CliMcpView (`codex` / `opencode`) |
+| POST | /api/mcp/cli/{provider}/servers?folder= | CliMcpServerInput | 201 CliMcpView (`codex mcp add`); 409 `not-available` (OpenCode) / `cli-failed` |
+| DELETE | /api/mcp/cli/{provider}/servers/{name}?folder= | | CliMcpView (`codex mcp remove`); 409 as above |
+
+`NewSession.provider` / `NewSimpleSession.provider` (omitted = the default CLI; 422 on `provider` for an unknown CLI or one that cannot be chosen, with the reason); a schedule `template.provider` (omitted = Claude Code). `GET /api/clis`, `POST /api/sessions/{id}/provider` and the `/api/mcp/cli/…` routes are on the peer API (`PEER_API_ALLOW`).
+
+```ts
+type CliProviderId = "claude" | "codex" | "opencode";
+CliOverview { default: CliProviderId, clis: CliInfo[] }
+CliInfo { provider, label, command: string[], commandSource: "settings" | "env" | "default", envVar, path: string | null, installed: boolean,
+  version: string | null, signedIn: boolean | null, account: string | null, supported: boolean, available: boolean, reason: string | null,
+  models: SessionModelOption[] | null, checkedAt: string, install: { docs: string, commands: string[], signIn: string } }
+Session.provider?: CliProviderId
+Session.providerSwitch?: { id, from: CliProviderId, to: CliProviderId, step: "handover" | "export" | "stopping" | "starting", handoverBy: "outgoing" | "history" | null } | null
+LifecyclePayload (action "switched"): { from, to, handoverBy: "outgoing" | "history", exportPath: string | null }   // the chat's divider
+SystemInfo.cliUsage?: [{ provider, label: "Codex 5h" | "Codex week" | …, pct: number, resetsAt: string | null }]
+HistoryItem.provider?: CliProviderId, HistoryItem.nativeId?: string
+CliMcpView { provider, available, reason: string | null, servers: CliMcpServer[], canEdit, editReason: string | null, command: string }
+CliMcpServer { name, transport: "stdio" | "http", target: string /* masked */, envNames: string[], enabled: boolean, status: string | null }
+CliMcpServerInput { name, command?, args?: string[], env?: Record<string, string>, url? }
+```
+
+```json
+POST /api/sessions { "simple": true, "name": "fix-login", "task": "Fix the login redirect.", "folder": "f1", "provider": "codex" }
+201 { "id": "…", "provider": "codex", "providerSwitch": null, "resumeCommand": "codex resume 0199a6d1-…", … }
+POST /api/sessions/s1/provider { "provider": "opencode" }
+202 { "session": { "id": "s1", "provider": "codex", "providerSwitch": { "id": "w1", "from": "codex", "to": "opencode", "step": "handover", "handoverBy": null }, … }, "switchId": "w1" }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

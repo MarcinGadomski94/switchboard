@@ -16,6 +16,9 @@ The repo lives at `~/RiderProjects/Personal/switchboard` (moved from the workspa
 - Real-CLI probes today (all D11: Haiku, sandbox): D48 3 sessions (the remote PC spike had 5 more, one of which ran away to ~52 turns through a probe-hook bug), D50 1, D51 1.
 - Known flaky under load: the supervisor sync-point test, `session-handoff.spec`, `frame-helper.spec`, and timing-based server tests when several lanes run at once (`.loop/questions.md` → Known flaky tests). `timeline.spec` is fixed. Run unit tests with `--maxWorkers=4`.
 
+## Lane feature/cli-providers (D62, 2026-10-01, not merged)
+- Codex CLI and OpenCode as session providers: `.worktrees/providers`, branch `feature/cli-providers` from master `d5ca654`; commits per milestone P0–P8 (`git log master..feature/cli-providers`). Neither CLI was installed or run: run `docs/spike-providers.md` once they are. Migration 0023. Rulings / choices: `docs/decisions.md` → D62, `.loop/questions.md` → *D62 · Codex CLI and OpenCode*.
+
 ## Working rules
 - The developer runs Switchboard as their own launchd agent (`com.switchboard`, port 13001) from the main checkout; it does `npm ci && npm run build && npm start` on every start. Never touch or restart it; never run tests or builds in the main checkout.
 - Build features in `.worktrees/<lane>` on distinct test ports (`SWITCHBOARD_TEST_PORTS`). Merge in the main checkout; on a code conflict, abort and let the lane merge `master` into its branch. Verify in a detached `.worktrees/verify`.

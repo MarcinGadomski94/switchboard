@@ -108,11 +108,55 @@ Source root `O/` = `https://raw.githubusercontent.com/anomalyco/opencode/v1.18.3
 | Subagents (D21 / D36) | ✓ | ✓ collab `spawnAgent` | ✓ `task` child sessions |
 | Workflow agents (D51) | ✓ | ✗ Claude Code feature | ✗ Claude Code feature |
 | Remote Control (D24), teleport (D25) | ✓ | ✗ claude.ai only | ✗ claude.ai only |
-| Continue in terminal / Attach here | ✓ | ✓ `codex resume <id>`; no terminal-turn import | ✓ `opencode --session <id>`; no terminal-turn import |
-| History import (D16) | ✓ transcripts | ✓ rollout files (read only) | ✓ `opencode session list` / `export` |
-| MCP page (D61) | ✓ | ✓ `codex mcp` | ✓ `opencode mcp` / config |
+| Continue in terminal / Attach here | ✓ | ✓ `codex resume <id>`; Attach always asks first, no terminal-turn import | ✓ `opencode --session <id>`; Attach always asks first, no terminal-turn import |
+| History import (D16) | ✓ transcripts | ✓ rollout files (read only), on request | ✓ `opencode session list` / `export`, on request |
+| MCP page (D61) | ✓ every action | ✓ list / add / remove (`codex mcp`); Check, Reconnect, sign-in ✗ | ✓ list (`opencode mcp list`); add / remove ✗ (interactive) |
 | Hooked terminal sessions (D48 P4) | ✓ | ✗ not bridged | ✗ not bridged |
 | Worktrees (D40 / D47), schedules, peers (D48) | ✓ | ✓ | ✓ |
 | Mid-session switch (D62) | ✓ | ✓ | ✓ |
 
-(The table is completed in P7; rows not built yet are said so in `.loop/questions.md` → *D62*.)
+Every ✗ is a control that stays visible and is disabled with "Not available in <CLI>: <reason>" (the header's Remote toggle, the Full form's "From a remote session", the MCP page's Add / Remove for OpenCode), or a feature with no data on that CLI (background tasks, Workflow agents); every CLI choice's tooltip names what that CLI lacks ("Not in Codex CLI: PDFs inline, background tasks, …", `missingFeaturesText`).
+
+## Settings → CLIs
+`src/server/cli/status.ts` → `CliStatusService`; routes in `src/server/api/clis.ts`; the page in `src/web/views/settings/ClisSection.tsx`.
+
+- **Command:** Claude Code's is `SWITCHBOARD_CLAUDE_BIN` (env only, as before). Codex: `SWITCHBOARD_CODEX_BIN`, OpenCode: `SWITCHBOARD_OPENCODE_BIN` (a name, a path, or a JSON argv array), overridden by the page (settings rows `cli.codex.command` / `cli.opencode.command`, an argv array; **Reset** goes back to the environment's).
+- **Checks** (read-only, argv arrays, 20 s each, never a credential file): `<cli> --version` (its first line), then the sign-in: `claude auth status` (exit code), `codex login status` (exit 0 = signed in, its stderr line shown; signed out with `OPENAI_API_KEY` / `CODEX_API_KEY` set = unknown), `opencode auth list` ("N credentials" + "M environment variables"; none = unknown, since a local model needs no key). Kept 60 s; **Check** runs them again and reads the models (Codex: a short-lived `codex app-server` doing `initialize` + `model/list` only; OpenCode: `opencode models`).
+- **States:** installed / not installed (with the install commands and the docs link; Switchboard never installs a CLI) / signed out (the CLI's sign-in hint) / not supported by this build. A Codex / OpenCode that is not installed or signed out cannot be chosen (forms, the default, a switch, a schedule's run), with that reason. Claude Code stays choosable as before D62 (its failures show at the spawn).
+- **Default CLI** (settings row `cli.default`, Claude Code on a fresh install): what new sessions start on; set here or in the sidebar footer.
+- **Models:** each CLI keeps its own last list and last choice (`models.options.<cli>`, `models.last.<cli>`; Claude Code keeps D42's `models.options` / `models.last`), filled by its sessions' `initialize` and by Check.
+
+## A CLI per session
+- `NewSession.provider` / `NewSimpleSession.provider` (omitted = the default CLI); 422 on `provider` for an unknown or unavailable one. Stored in `sessions.provider` (migration 0023: every older session is `claude`).
+- The **Simple** form has a CLI row above Model; the **Full** form a CLI row under D42's Model row (the visual oracle keeps the Model row's place); picking another CLI clears the model choice and the Model row lists that CLI's models. The summary's `model` line names a CLI other than Claude Code.
+- A **schedule** template stores its CLI; a template without one (saved before D62) runs on Claude Code.
+- Attachments (D57): images inline everywhere; PDFs inline for Claude Code and OpenCode, as file paths for Codex (images only).
+
+## Switching CLIs (P5)
+`SessionSupervisor.switchProvider`, `POST /api/sessions/{id}/provider { provider }` → 202 `{ session, switchId }`; the header's CLI switcher (`ProviderSwitcher.tsx`) asks first ("Switch this session from Claude Code to Codex CLI? …").
+
+1. **Capacity** (`src/server/cli/capacity.ts`): the outgoing CLI is supported, installed, not signed out, and none of its reported usage windows is at 100 % before its reset (Claude Code: the latest D17 reading; Codex: its rate-limit windows; OpenCode reports none).
+2. **With capacity** the outgoing agent gets a service message asking for a handover (goal, decisions, files changed, open tasks, next step, anything uncommitted; `handoverRequest`); a paused session is resumed on its own CLI for it. Switchboard waits for that turn (10 minutes at most) and takes the agent's last reply.
+3. **Without capacity, or when that fails** (the turn's error, e.g. "Codex: You've hit your usage limit", no reply, the process ending, the timeout), the chat is exported as Markdown to `<dataDir>/handovers/<session>/<stamp>-<from>-to-<to>.md` (folder 0700, file 0600; the developer's and Switchboard's messages, the agents' texts, one line per tool step, errors, earlier switches; the newest 2 MB) and the incoming agent's first message tells it to read it, and the outgoing CLI's own record (Claude Code's transcript, Codex's rollout file, `opencode export <id>`), summarize where things stand and continue.
+4. The outgoing process is stopped (D7's stop), the session's CLI becomes the new one, its model / effort choice, model list and context meter start over (each CLI has its own), Remote Control is off, and the incoming CLI starts **in the same cwd**. A CLI that ran the session before reopens **its own** conversation (Claude Code `--resume <id>`, Codex `thread/resume`, OpenCode the same session) and gets the handover of what happened meanwhile; one that never ran it starts new.
+5. The chat shows the divider (the lifecycle event `switched`): "Switched from Claude Code to Codex CLI · handover by Claude Code (outgoing agent)" / "… · handover by Codex CLI from the history".
+
+While a switch runs, `Session.providerSwitch` says its step (`handover` → `export` → `stopping` → `starting`), the header shows "Switching to Codex CLI… asking Claude Code for a handover", and messages, Resume and Attach answer 409 `switching`. Each switch is a `provider_switches` row (`running` → `done` / `failed`); a restart marks a cut switch failed; shutdown waits for a running switch once the processes are stopped. Hooked terminal sessions, closed and detached sessions cannot switch.
+
+## Sidebar (P6)
+- The footer's "claude code" label is the **default-CLI switcher** (its text the default CLI: `claude code`, `codex cli`, `opencode`): a menu with the three CLIs (unavailable ones disabled with their reason) and **Switch running sessions…**.
+- **Switch running sessions…** lists the sessions with a live process (attached, open, not hooked; a paired machine's too), all ticked, the target CLI defaulting to the default CLI; **Switch N sessions** starts each one's own switch (P5) at once; each row shows its progress, "✓ on Codex CLI" or why it failed; the others go on.
+- Rows carry a small CLI badge (`claude`, `codex`, `opencode`) once the list holds a session on another CLI than Claude Code (a Claude-only list looks as before, D14's folder-tag rule).
+
+## Usage, context, history, MCP (P7)
+- **Usage:** Codex's rate limits (`account/rateLimits/read` at the bridge's start, `account/rateLimits/updated`) become footer rows `Codex 5h` / `Codex week` (`SystemInfo.cliUsage`) while known; OpenCode reports a cost per message, no plan limits. Claude Code's `get_usage` poller never asks another CLI's session.
+- **Context:** Codex `thread/tokenUsage/updated` (tokens = `last.inputTokens`, window = `modelContextWindow`); OpenCode a completed assistant message's `tokens` and the model's `limit.context`; no auto-compact tick for either (their thresholds are not known); their compactions reset the meter.
+- **History:** with the page's "Also list Codex CLI and OpenCode terminal conversations" (`GET /api/history?cli=1`; off by default because it reads `$CODEX_HOME/sessions` and runs `opencode session list` in each saved folder) the conversations not in Switchboard yet are rows (`terminal · Codex CLI`); **Continue in Switchboard** (`POST /api/history/cli/{provider}/{id}/continue`) always asks first (no CLI but Claude Code can say whether a terminal holds it), needs a saved folder that holds where it started, imports its prompts and replies, and the CLI reopens it idle (`SessionSupervisor.adoptCli`).
+- **MCP page:** under Claude Code's servers, a *Codex CLI and OpenCode* section (`src/server/mcp/cli-mcp.ts`): Codex's servers through `codex mcp list --json` / `add` / `remove`; OpenCode's through `opencode mcp list` (Add / Remove marked: its `mcp add` is interactive); secrets masked as D61 does.
+- **Peers (D48):** a peer's sessions carry their CLI through the proxy; the forms' CLI row and the header's switcher read that machine's `GET /api/clis`; the switch and the CLI MCP routes are on `PEER_API_ALLOW`. Hooking into terminal sessions (P4) stays Claude Code's.
+
+## Restart recovery
+A Codex / OpenCode session whose recorded pid is still alive after a crash is not resumed and its process is not signalled (`claude agents --json` cannot tell it from pid reuse); the session is left paused with the reason. A Codex app-server ends with its stdin (ASSUMED); an `opencode serve` does not, so a SIGKILLed Switchboard can leave one running (OPEN D62-orphan-opencode).
+
+## Tests
+Fakes: `tools/fake-codex` (`docs/fake-codex.md`), `tools/fake-opencode` (`docs/fake-opencode.md`); every test server and supervisor world points `SWITCHBOARD_CODEX_BIN` / `SWITCHBOARD_OPENCODE_BIN` at them with `CODEX_HOME` / `XDG_DATA_HOME` in a temp folder. Oracles: `tests/server/cli/*.test.ts` (registry, status, codex, opencode, switch, parity), `tests/server/api/clis.test.ts`, `tests/server/history/cli-history.test.ts`, `tests/server/db/migrate.test.ts` (0023), `tests/tools/fake-codex.test.ts`, `tests/tools/fake-opencode.test.ts`, `tests/web/cli-*.test.ts`, `tests/web/provider-switch.test.ts`, `tests/e2e/cli-providers.spec.ts`.

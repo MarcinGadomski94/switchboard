@@ -89,3 +89,6 @@ The MCP routes are on `PEER_API_ALLOW`, so the page manages a paired machine's s
 - `tests/tools/fake-claude-mcp.test.ts`: the fake's `mcp` family and control requests.
 - `tests/web/mcp.test.ts`: labels, groups, folder choices, form ↔ input.
 - E2E `tests/e2e/mcp.spec.ts`: open /mcp, see the folder's servers, check, add, edit (the kept env value), disable / enable, remove with confirm, sign in (the fake's authorization page opens in a new tab).
+
+## Codex CLI and OpenCode (D62)
+Under Claude Code's servers, a *Codex CLI and OpenCode* section lists each CLI's own servers through its CLI: Codex with `codex mcp list --json`, **+ Add server** (a command and its arguments, or an https URL → `codex mcp add`) and **Remove** (`codex mcp remove`); OpenCode with `opencode mcp list`, Add / Remove marked (its `mcp add` is interactive: edit opencode.json). Check, Reconnect and sign-in are Claude Code's control requests and stay Claude Code's. Routes `GET|POST|DELETE /api/mcp/cli/{provider}…` (on the peer API). `docs/providers.md` → *MCP*.
