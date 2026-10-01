@@ -138,6 +138,7 @@ describe('model step lines (D31)', () => {
         key: 'a:1',
         id: 1,
         text: '',
+        cut: null,
         steps: [
           { id: 1, mark: '✓', label: 'Model: Opus 5.5 · effort: high' },
           { id: 2, mark: '✕', label: 'Could not change the model: blocked' },

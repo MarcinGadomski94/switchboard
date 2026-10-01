@@ -58,8 +58,8 @@ describe('QueueTracker.withdraw (D50)', () => {
     queue.sent(2, 'a', 'turn');
     queue.sent(3, 'b', 'turn');
     expect(queue.withdraw()).toEqual([
-      { eventId: 2, text: 'a', wasQueued: true },
-      { eventId: 3, text: 'b', wasQueued: true },
+      { eventId: 2, text: 'a', attachments: [], wasQueued: true },
+      { eventId: 3, text: 'b', attachments: [], wasQueued: true },
     ]);
     expect(queue.queued()).toEqual([]);
     // The running message's echo still delivers it.
@@ -73,7 +73,7 @@ describe('QueueTracker.withdraw (D50)', () => {
   it('the next message forgets the withdrawn ones; so does the process end', () => {
     const queue = new QueueTracker();
     queue.sent(1, 'a', null);
-    expect(queue.withdraw()).toEqual([{ eventId: 1, text: 'a', wasQueued: false }]);
+    expect(queue.withdraw()).toEqual([{ eventId: 1, text: 'a', attachments: [], wasQueued: false }]);
     queue.sent(2, 'b', null);
     // 'a' is no longer matched: an echo with its text now takes the oldest pending message.
     expect(queue.replayed('a')).toEqual({ eventId: 2, wasQueued: false, absorbed: true });

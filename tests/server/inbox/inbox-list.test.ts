@@ -276,7 +276,7 @@ describe('M3.2 · Inbox item rules (prototype copy)', () => {
   });
 
   it('system items: the kind label of the known kinds, else the stored kind', () => {
-    expect(SYSTEM_ITEM_LABELS).toEqual({ 'schedule-run-failed': 'Scheduled run failed', 'worktree-removable': 'PR merged', 'parent-merged': 'Parent merged', 'parent-closed': 'Parent closed' });
+    expect(SYSTEM_ITEM_LABELS).toEqual({ 'schedule-run-failed': 'Scheduled run failed', 'worktree-removable': 'PR merged', 'parent-merged': 'Parent merged', 'parent-closed': 'Parent closed', 'update-available': 'Update available' });
     const record = {
       id: 's',
       kind: 'worktree-removable',
