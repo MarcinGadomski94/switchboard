@@ -1402,6 +1402,9 @@ The BLOCKED lines for M4.4, M4.5, M4.6, M7.2, M8.3 are resolved by this merge. T
 - ASSUMED D62-peers · a peer's sessions carry their `provider` through the proxy (the wire spreads the session); the New-session form's CLI row and the header's switcher read that machine's `GET /api/clis`; the switch and the CLI MCP routes are on `PEER_API_ALLOW`; hooking into a peer's terminal sessions (D48 P4) stays Claude Code's (marked: the hooks bridge speaks its hook protocol)
 - OPEN D62-schedule-table · the Schedules table does not show a schedule's CLI (the Edit form does)
 - FLAKY (load) D62-lane · `tests/server/main.test.ts` (5 tests) and `tests/server/peers/{attachments,live-activity,long-messages,proxy}.test.ts` timed out together under `--maxWorkers=4` (each spawns real servers); every one passed alone and with `--maxWorkers=2` except `proxy.test.ts` › "an unreachable peer's sessions…", which then passed alone
+- FOUND D62-preexisting-stop-turn-core · `tests/core/stop-turn.test.ts` › two `QueueTracker.withdraw (D50)` tests fail on this branch with `attachments: []` added to the withdrawn entries (D57); neither the tracker nor the test changed here (`git diff d5ca654` is empty for both): pre-existing, untouched
+- FOUND D62-preexisting-visual-tools · `tests/e2e/visual/tools.spec.ts` fails on master `d5ca654` too (checked in a temporary detached worktree, removed after): the sidebar's tool rows sit 33 px lower than the prototype's since D61's sixth nav item; untouched
+- FLAKY (load) `tests/e2e/sidebar-scroll.spec.ts` › "a session opened from the ⌘K palette…" failed once in the 110-test run and passed alone right after
 - FOUND D62-preexisting-model-picker · `tests/web/model-picker.test.ts` › "a change is ✓, a refusal ✕" fails on master `d5ca654` too (the long-messages fix added `cut` to chat items); untouched here
 
 ## Known flaky tests
