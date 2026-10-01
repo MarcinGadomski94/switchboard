@@ -464,6 +464,18 @@ ReconnectResult  { "outcome": "online", "machine": { "id": "k3v7q2m9x4ab", "stat
 machineState     { "id": "k3v7q2m9x4ab", "name": "studio-pc", "state": "reconnecting", …, "connection": { "attempt": 2, "trying": false, "nextAttemptAt": "2026-10-01T10:00:02.000Z", "graceUntil": "2026-10-01T10:00:15.000Z", … } }
 ```
 
+## Long messages (fix, 2026-10-01, additive)
+Developer report (`docs/decisions.md` → *Fix: long messages cut off*; design `docs/chat.md` → *Cut messages*, `docs/derivations.md` → *What is clipped*). Additive: one new route, one new optional payload field; no existing route or field changes shape. No migration.
+
+- **Event payloads** `assistant` and `agent-prompt` keep their whole `text` (up to 1,000,000 characters); they gain `truncated?: boolean`: `true` = cut at that cap, `false` = restored from the transcript and whole, absent otherwise. Events stored before this fix carry no flag and were cut at 4,000 characters when longer (a text exactly 4,000 characters long reads as cut). Tool inputs / results (`inputTruncated` / `resultTruncated`) and a turn's `result.text` are still cut at 4,000.
+- **`GET /api/sessions/{id}/events/{eventId}/full`** → 200 `FullEventAnswer` `{ event: Event, saved: boolean }`: the event with its whole text from the session's CLI transcript (its subagents' files too). Message text is written back into the stored event (`saved: true`, published as a `/hub` `event`); a tool call's whole `input` / `result` is only answered (`saved: false`; the database keeps it cut). An event that is not cut is answered as it is. 404 `not-found` (no such session or event), 422 `not-restorable` (an event with no text), 410 `transcript-gone` (the session has no transcript any more), 410 `not-in-transcript` (the transcript does not have that message); `message` is the sentence the chat shows. On the peer API (`PEER_API_ALLOW`); through the proxy the answer's `event` is namespaced like every event.
+
+```json
+GET /api/sessions/s1/events/42/full
+200 { "event": { "id": 42, "sessionId": "s1", "agentId": "a1", "ts": "2026-10-01T09:12:03.000Z", "endTs": null, "kind": "text", "label": "Here is the full plan", "payload": { "type": "assistant", "text": "Here is the full plan … (9,214 characters)", "messageId": "msg_01", "truncated": false } }, "saved": true }
+410 { "error": "transcript-gone", "message": "The session's CLI transcript is gone: the full text cannot be restored." }
+```
+
 ## Context window meter (D49, 2026-09-29, additive)
 Developer request D49 (`docs/decisions.md` → *Context window meter*): the composer shows how full the session's context window is. No new route or event name; migration `0015_session_context.sql`. Details: `docs/chat.md` → *Context bar*.
 
