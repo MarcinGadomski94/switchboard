@@ -47,3 +47,6 @@ The demo seed stores `service.startAtLogin: true` (`src/server/demo/data/setup.j
 
 ## CLIs (D62)
 Settings → **CLIs** (`/settings/clis`, after the prototype's seven sections): the default CLI, and per CLI its command (Codex / OpenCode overridable: `cli.<id>.command`; Claude Code's is `SWITCHBOARD_CLAUDE_BIN`), where it was found, its version, its sign-in, its models, **Check**, and the install help when it is missing. `docs/providers.md` → *Settings → CLIs*.
+
+## Accounts (D63)
+Settings → **Accounts** (`/settings/accounts`, after CLIs): per CLI the account profiles in priority order (sign in / out, enabled, same settings as Default, delete), the add form, and the automatic-switch rules; a *Machine* picker when a paired machine is online. `docs/accounts.md`.

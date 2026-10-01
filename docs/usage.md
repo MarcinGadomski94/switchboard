@@ -116,3 +116,6 @@ The Session row says whether the 5-hour window's usage is on pace: the allowance
 
 ## Other CLIs (D62)
 Codex reports its own plan limits (`account/rateLimits`: a primary 5-hour and a secondary weekly window); its bridges' latest reading becomes footer rows **Codex 5h** / **Codex week** (`SystemInfo.cliUsage`) under Claude Code's Session / Week rows while known and not reset. OpenCode reports a cost per message, no limits. These readings also decide whether an outgoing CLI has capacity to write a handover (`docs/providers.md` → *Switching CLIs*).
+
+## Per account (D63)
+With account profiles (`docs/accounts.md` → *Usage per account*) every Claude Code reading carries its profile (`usage_readings.profile_id`): a live session of a profile between turns answers `get_usage`, a profile with no live session is polled with its own `CLAUDE_CONFIG_DIR` (≤ 1 per 5 minutes, only with a `/hub` client), `rate_limit_event`s are stored under the session's profile. The bars and the warnings are the **active** account's (the one a new session would start on); `SystemInfo.accountUsage` adds the compact per-account line. Tests: `tests/server/accounts/usage.test.ts`.

@@ -123,11 +123,16 @@ export class AutoSwitcher {
       if (!session || session.hooked || session.closedAt !== null || !session.attached) return;
       const accounts = this.#o.accounts;
       const now = this.#now();
+      const settings = await accounts.settings();
+      // Accounts are dormant until a CLI has a second one (or "switch to another CLI" is the rule): a single login is never touched.
+      const enabled = (await this.#o.store.profiles.list(session.provider)).filter((p) => p.enabled).length;
+      if (enabled < 2 && !(trigger.kind === 'limit' && settings.exhausted.action === 'switch-cli')) return;
       const decision = decideAccountSwitch({
-        settings: await accounts.settings(),
+        settings,
         cli: session.provider,
         trigger,
-        profiles: await accounts.snapshots(session.provider),
+        // Each profile's sign-in is read first (cached 60 s): a signed-out account is never a target.
+        profiles: await accounts.snapshots(session.provider, { check: true }),
         currentId: sessionProfileId(session),
         pinned: session.profilePinned,
         idle,

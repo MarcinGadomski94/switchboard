@@ -802,6 +802,55 @@ POST /api/sessions/s1/provider { "provider": "opencode" }
 202 { "session": { "id": "s1", "provider": "codex", "providerSwitch": { "id": "w1", "from": "codex", "to": "opencode", "step": "handover", "handoverBy": null }, … }, "switchId": "w1" }
 ```
 
+## CLI accounts (D63, 2026-10-01, additive)
+Each CLI can have several account profiles; a session moves to another one when its account hits a usage limit (`docs/accounts.md`). Every field and route below is additive; a payload without `profileId` runs on its CLI's Default. All routes are on the peer allow-list (a paired machine's accounts are managed through `/api/machines/{id}/api/accounts…`).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/accounts[?refresh=1] | | AccountsOverview (each profile's status from its CLI's status command, cached 60 s; `refresh` runs them again) |
+| PUT | /api/accounts/settings | partial AccountSettings | AccountSettings; 422 (`exhausted.cli` is needed with `switch-cli`) |
+| POST | /api/accounts/profiles | { cli, name, shareSettings? } | 201 AccountProfile; 422 `name` / `cli`; 409 duplicate name |
+| PUT | /api/accounts/profiles/{id} | { name?, enabled?, shareSettings? } | AccountProfile; 404; 409 name; 422 (the Default keeps its name and is what others share) |
+| DELETE | /api/accounts/profiles/{id}[?removeFiles=1] | | 204; 404; 409 `builtin` / `in-use` (a process runs on it); its sessions go back to the Default; a folder is removed only with `removeFiles` and only inside `<dataDir>/profiles/` |
+| PUT | /api/accounts/order | { cli, order: string[] } | AccountsOverview; 422 (ids must be that CLI's, each once) |
+| POST | /api/accounts/profiles/{id}/check | | AccountProfile (status read again) |
+| POST | /api/accounts/profiles/{id}/sync-settings | | { shared: string[], mcp } (links the Default's settings again) |
+| POST | /api/accounts/profiles/{id}/signin | { email?, deviceCode?, provider?, apiKey? } | AccountSignIn (`waiting` with the `url` once the CLI printed it); 404; 409 `builtin` |
+| GET | /api/accounts/signin/{id} | | AccountSignIn (poll until `done` / `failed` / `timeout` / `cancelled`) |
+| POST | /api/accounts/signin/{id}/paste | { value } | AccountSignIn; 422 (not a loopback redirect URL or a code); 409 `not-waiting` |
+| DELETE | /api/accounts/signin/{id} | | AccountSignIn (`cancelled`) |
+| POST | /api/accounts/profiles/{id}/signout | | { ok, message, profile }; 409 `builtin` |
+| POST | /api/sessions/{id}/account | { profileId } | Session once the switch is over; 404; 409 `switching` (one runs, or already on it) / `detached` / `closed` / `not-available` (hooked, another CLI's or a disabled profile); 502 `switch-failed` |
+| PUT | /api/sessions/{id}/profile-pin | { pinned } | Session; 422 |
+
+`NewSession.profileId` / `NewSimpleSession.profileId` (omitted = the rule: the first account with allowance; 422 on `profileId` for an unknown profile, another CLI's or a disabled one).
+
+```ts
+AccountsOverview { profiles: AccountProfile[], settings: AccountSettings }
+AccountProfile { id, cli: CliProviderId, name, dir: string | null /* null = the built-in Default */, builtin, enabled, position, shareSettings,
+  signIn: "signed-in" | "signed-out" | "unknown", account: string | null, usage: ProfileUsage | null,
+  exhausted: { until: string, window: "session" | "weekly" | "unknown", text: string | null } | null,
+  signInCommand: string /* the terminal fallback */, sessions: number }
+ProfileUsage { fiveHourPct, fiveHourResetsAt, sevenDayPct, sevenDayResetsAt, receivedAt }   // nullable fields
+AccountSettings { enabled, perCli: Record<CliProviderId, boolean>, thresholds: { enabled, fiveHourPct, weeklyPct },
+  afterReset: "stay" | "back-to-first", newSessions: { rule: "first-with-allowance" | "fixed", fixed: { [cli]?: profileId } },
+  exhausted: { action: "notify" | "switch-cli", cli: CliProviderId | null }, cooldownSeconds }
+AccountSignIn { id, profileId, cli, state: "starting" | "waiting" | "done" | "failed" | "cancelled" | "timeout", url: string | null, code: string | null,
+  instructions: string | null, error: string | null, command: string, canPasteBack: boolean, startedAt, expiresAt }
+Session.profileId?: string, Session.profileName?: string, Session.profilePinned?: boolean, Session.accountSwitching?: boolean
+LifecyclePayload (action "account-switched"): { fromProfile, toProfile, reason }   // the chat's divider "Switched account: A → B (session limit, resets 14:05)"
+SystemInfo.accountUsage?: [{ profileId, cli, name, active: boolean, pct: number | null, exhaustedUntil: string | null }]   // only while a CLI has more than one enabled account
+```
+
+```json
+POST /api/accounts/profiles { "cli": "claude", "name": "Private" }
+201 { "id": "8d3f…", "cli": "claude", "name": "Private", "dir": "<dataDir>/profiles/claude/8d3f…", "builtin": false, "enabled": true, "position": 1, "shareSettings": true, "signIn": "unknown", … }
+POST /api/accounts/profiles/8d3f…/signin { "email": "me@example.com" }
+200 { "id": "c1", "state": "waiting", "url": "https://claude.ai/oauth/authorize?…", "canPasteBack": true, "command": "CLAUDE_CONFIG_DIR=<dataDir>/profiles/claude/8d3f… claude auth login --claudeai", … }
+POST /api/sessions/s1/account { "profileId": "8d3f…" }
+200 { "id": "s1", "profileId": "8d3f…", "profileName": "Private", "accountSwitching": false, … }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

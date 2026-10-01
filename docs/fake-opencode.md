@@ -12,3 +12,6 @@ A stand-in for OpenCode (`1.18.34`) with the surface Switchboard uses, modelled 
 
 ## Environment
 `XDG_DATA_HOME` (unset: nothing is kept), `FAKE_OPENCODE_LOG` (argv, every HTTP request with `auth: basic|null`, prompts, permission and question replies), `FAKE_OPENCODE_SIGNED_OUT`, `FAKE_OPENCODE_PROVIDERS`, `FAKE_OPENCODE_HEARTBEAT_MS`, `FAKE_OPENCODE_ASK_ALL`.
+
+## Accounts (D63)
+The server answers the provider sign-in routes (VERIFIED shapes, OpenAPI v1.18.34): `GET /provider/auth`, `GET /provider`, `POST /provider/{id}/oauth/authorize` (`FAKE_OPENCODE_OAUTH_METHOD=code` makes it a `code` flow), `POST /provider/{id}/oauth/callback` (waits `FAKE_OPENCODE_LOGIN_MS`, 300 ms; `FAKE_OPENCODE_LOGIN_MODE=never` never answers), `PUT|DELETE /auth/{id}`; the signed-in providers are `$XDG_DATA_HOME/opencode/fake-auth.json`, which `opencode auth list` reads (a folder with that file, or with `FAKE_OPENCODE_AUTH_REQUIRED=1`, lists exactly what it holds; otherwise as before D63). An API key is never logged (`auth-set` logs the type only). `$XDG_DATA_HOME/opencode/fake-limit` (or `FAKE_OPENCODE_LIMIT=1`) makes every turn of that data folder end with the provider's 429 ("Rate limit exceeded: 429 Too Many Requests"). `opencode auth __fake-login <provider>` (tests only) stores a credential without a server.

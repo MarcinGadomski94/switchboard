@@ -81,6 +81,17 @@ describe('D48 peer API allow-list', () => {
     expect(peerApiAllowed('GET', '/api/sessions/abc?x=1')).toBe(true);
     expect(peerApiAllowed('POST', '/api/sessions/abc/messages')).toBe(true);
     expect(peerApiAllowed('PUT', '/api/sessions/abc/model')).toBe(true);
+    // D63: a machine's account profiles, their sign-in (with the paste-back) and a session's account / pin.
+    expect(peerApiAllowed('GET', '/api/accounts?refresh=1')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/accounts/profiles')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/accounts/profiles/p1/signin')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/accounts/signin/s1/paste')).toBe(true);
+    expect(peerApiAllowed('DELETE', '/api/accounts/profiles/p1')).toBe(true);
+    expect(peerApiAllowed('PUT', '/api/accounts/order')).toBe(true);
+    expect(peerApiAllowed('POST', '/api/sessions/abc/account')).toBe(true);
+    expect(peerApiAllowed('PUT', '/api/sessions/abc/profile-pin')).toBe(true);
+    expect(peerApiAllowed('GET', '/api/accounts/profiles/p1')).toBe(false);
+    expect(peerApiAllowed('POST', '/api/accounts/profiles/p1/other')).toBe(false);
     expect(peerApiAllowed('POST', '/api/questions/batch/b/answers')).toBe(true);
     expect(peerApiAllowed('POST', '/api/inbox/i/actions/allow-once')).toBe(true);
     expect(peerApiAllowed('POST', '/api/branching/preflight')).toBe(true);

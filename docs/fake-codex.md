@@ -24,3 +24,6 @@ Every turn sends `turn/started`, the user item, a reasoning item, an `agentMessa
 
 ## Environment
 `CODEX_HOME` (unset: nothing is kept and `thread/resume` fails), `FAKE_CODEX_LOG` (one JSON line per argv, stdin line and decision / answer), `FAKE_CODEX_SIGNED_OUT`, `FAKE_CODEX_RATE_LIMITS`, `FAKE_CODEX_MODELS`.
+
+## Accounts (D63)
+`codex login [--device-auth]` and `codex logout`; `login status` follows `<CODEX_HOME>/.fake-auth.json` (`{loggedIn}`; without it signed in as before, unless `FAKE_CODEX_AUTH_REQUIRED=1` / `FAKE_CODEX_SIGNED_OUT=1`). The output shapes are **ASSUMED** (the real wording was never captured): the browser flow prints "Starting local login server on http://localhost:1455." and "navigate to this URL to authenticate:" + the URL; `--device-auth` prints the verification page and the one-time code `ABCD-12345`. `FAKE_CODEX_LOGIN_MODE` = `auto` (after `FAKE_CODEX_LOGIN_MS`, 300 ms) / `never` / `fail`; `FAKE_CODEX_LOGIN_URL`. `<CODEX_HOME>/.fake-rate-limits` (`<primary>,<secondary>`; 100 fails every turn with the usage-limit error) sets one home's windows over `FAKE_CODEX_RATE_LIMITS`. Rollout files are per home, so a thread resumes only where its rollout was copied.

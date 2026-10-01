@@ -65,7 +65,7 @@ export function createUsageMeter(input: CreateUsageMeterInput): UsageMeter {
                   return new UsagePoller({ claudeCommand: input.config.claudeCommand, extraArgs: input.config.claudeExtraArgs, cwd: input.config.dataDir, env }).getUsage();
                 },
               },
-        active: async () => (await accounts.pick('claude')) ?? (await input.store.profiles.list('claude')).find((p) => p.enabled)?.id ?? defaultProfileId('claude'),
+        active: async () => (await accounts.pick('claude', { check: false })) ?? (await input.store.profiles.list('claude')).find((p) => p.enabled)?.id ?? defaultProfileId('claude'),
       }
     : undefined;
   return new UsageMeter({
@@ -125,7 +125,7 @@ export function withAccountUsage(providers: Providers, accounts: AccountService,
       for (const cli of ['claude', 'codex'] as const) {
         const list = (await accounts.list({ check: false })).filter((p) => p.cli === cli && p.enabled);
         if (list.length < 2) continue;
-        const active = await accounts.pick(cli);
+        const active = await accounts.pick(cli, { check: false });
         for (const profile of list) {
           const usage = profile.usage;
           const live = (iso: string | null): boolean => iso !== null && Date.parse(iso) > now();

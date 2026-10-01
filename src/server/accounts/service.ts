@@ -308,10 +308,17 @@ export class AccountService {
     await this.#store.profiles.update(profileId, { exhaustedUntil: null, exhaustedWindow: null, exhaustedText: null });
   }
 
-  /** The profiles of a CLI as the switch decision sees them (cached sign-in status only: no command runs). */
-  async snapshots(cli: CliProviderId): Promise<ProfileSnapshot[]> {
+  /**
+   * The profiles of a CLI as the switch decision sees them. Without `check` only the
+   * cached sign-in statuses are used (no command runs: the footer's reads); with it every
+   * enabled profile's status is read first (cached 60 s), so a profile that is signed out
+   * is never picked as a target.
+   */
+  async snapshots(cli: CliProviderId, options: { readonly check?: boolean } = {}): Promise<ProfileSnapshot[]> {
     const out: ProfileSnapshot[] = [];
-    for (const record of await this.#store.profiles.list(cli)) {
+    const records = await this.#store.profiles.list(cli);
+    if (options.check === true) await Promise.all(records.filter((r) => r.enabled).map((r) => this.check(r.id).catch(() => null)));
+    for (const record of records) {
       const checked = this.#checks.get(record.id);
       out.push({
         id: record.id,
@@ -327,8 +334,11 @@ export class AccountService {
   }
 
   /** The profile a new session of `cli` starts on (`null` = the Default / none has allowance). */
-  async pick(cli: CliProviderId): Promise<string | null> {
-    return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli), this.#now());
+  async pick(cli: CliProviderId, options: { readonly check?: boolean } = {}): Promise<string | null> {
+    const records = await this.#store.profiles.list(cli);
+    // One account (the Default only): nothing to choose between, and no status command to run.
+    if (records.filter((r) => r.enabled).length < 2) return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli), this.#now());
+    return pickProfileForNewSession(await this.settings(), cli, await this.snapshots(cli, options.check === false ? {} : { check: true }), this.#now());
   }
 
   // ── the API's view ──────────────────────────────────────────────────────────

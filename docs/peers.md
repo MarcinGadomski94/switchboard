@@ -184,3 +184,6 @@ A checklist for the first live run on the Windows PC (nothing here was run on Wi
 12. **Clean-up (optional):** the PC → *Remove hooks* (only Switchboard's entries leave; a backup is made first); Settings → Machines → *Remove* revokes the pairing on both machines.
 
 Report back what differed, especially: `claude agents --json` on Windows, exec-form hooks, the waiter's exit 2 wake-up (Windows ends async hooks with TerminateProcess), and the Firewall prompt.
+
+## Accounts (D63)
+The account routes (`GET /api/accounts`, the settings, profiles, order, check / sync, sign-in / paste-back / cancel / sign-out, a session's `…/account` and `…/profile-pin`) are on `PEER_API_ALLOW`: Settings → Accounts has a *Machine* picker that manages a paired machine's profiles through `/api/machines/{id}/api/accounts…`. The login runs on that machine; the new tab opens in the browser here; a browser that cannot reach that machine's localhost callback uses the paste-back (`docs/accounts.md` → *Signing in and out*). This is the one place a peer may change another machine's configuration; pairing is the trust. Tested through the allow-list unit test.

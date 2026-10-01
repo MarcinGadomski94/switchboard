@@ -50,6 +50,25 @@ async function turnsOf(w: SupervisorWorld, sessionId: string) {
 }
 
 describe('D63 · automatic switching on a usage limit', () => {
+  it('a signed-out account is never a target; with a single account nothing is touched at all', async () => {
+    const { w, notices } = await make();
+    w.env['FAKE_CLAUDE_AUTH_REQUIRED'] = '1';
+    await writeFile(path.join(w.configDir, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: 'default@example.test' }));
+    const session = await w.supervisor.start(newSession({ task: 'first task' }), w.place);
+    await waitForStatus(w.store, session.id, ['done']);
+    // One account: the feature is dormant (no mark, no item, no switch).
+    await switcher?.onFailedTurn(session.id, "You've hit your session limit");
+    expect(notices).toEqual([]);
+    expect((await w.store.profiles.get('default-claude'))?.exhaustedUntil).toBeNull();
+    // A second account that was never signed in: the limit finds no target.
+    await w.accounts.create({ cli: 'claude', name: 'Private' });
+    await switcher?.onFailedTurn(session.id, "You've hit your session limit · resets 11:59pm");
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.kind).toBe('account-exhausted');
+    expect((await w.store.sessions.get(session.id))?.profileId).toBe('default-claude');
+    expect(await w.accounts.pick('claude')).toBeNull();
+  });
+
   it('the limit error of the Default switches the session to the next profile, which carries on; the Default is marked spent until its reset', async () => {
     const { w, logs } = await make();
     const b = await w.accounts.create({ cli: 'claude', name: 'Private' });

@@ -167,3 +167,6 @@ Tests: `tests/server/cli/reaper.test.ts` (a SIGKILLed stand-in; its server and t
 
 ## Tests
 Fakes: `tools/fake-codex` (`docs/fake-codex.md`), `tools/fake-opencode` (`docs/fake-opencode.md`); every test server and supervisor world points `SWITCHBOARD_CODEX_BIN` / `SWITCHBOARD_OPENCODE_BIN` at them with `CODEX_HOME` / `XDG_DATA_HOME` in a temp folder. Oracles: `tests/server/cli/*.test.ts` (registry, status, codex, opencode, switch, parity), `tests/server/api/clis.test.ts`, `tests/server/history/cli-history.test.ts`, `tests/server/db/migrate.test.ts` (0023), `tests/tools/fake-codex.test.ts`, `tests/tools/fake-opencode.test.ts`, `tests/web/cli-*.test.ts`, `tests/web/provider-switch.test.ts`, `tests/e2e/cli-providers.spec.ts`.
+
+## Accounts (D63)
+Each CLI can have several subscription logins ("account profiles") and a session moves to another one when its account hits a usage limit: `docs/accounts.md`. A profile's process gets its own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_DATA_HOME` (`SpawnRequest.env`); the D62 handover is the fallback when a conversation cannot be carried over, and "switch to another CLI" is one of the rules for a CLI whose accounts are all spent.
