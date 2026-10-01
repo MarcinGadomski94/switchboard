@@ -135,8 +135,9 @@ The first time, a **setup wizard** opens:
 2. It adds your first **folder**: a workspace (a folder with a router `AGENTS.md`) or a git repository.
 3. It scans that folder's solutions.
 4. It sets up notifications.
+5. It shows the usage-warning threshold (changed in Settings → Notifications & usage).
 
-You can skip it and do all of this later in Settings. Your data (the database, the access token, logs) lives in the per-user data folder: `~/Library/Application Support/Switchboard` (macOS), `~/.local/share/switchboard` (Linux), `%LOCALAPPDATA%\Switchboard` (Windows).
+You can skip it and do all of this later in Settings. Your data (the database, the access token, attachments, logs, updated versions) lives in the per-user data folder: `~/Library/Application Support/Switchboard` (macOS), `~/.local/share/switchboard` (Linux), `%LOCALAPPDATA%\Switchboard` (Windows).
 
 ### From source (development)
 
@@ -167,7 +168,7 @@ npm run build    # the UI is served from dist/web, so rebuild it
 
 Database migrations run by themselves on start. Sessions that were live when Switchboard stopped are resumed after the restart. `SWITCHBOARD_UPDATES=off` switches the checks off.
 
-**Making a release** (maintainers): bump the version, then `npm run release:package` writes `dist/release/switchboard-<version>.tar.gz` and its `.sha256`; publish both with `gh release create v<version> … --notes-file <notes>` ([`docs/updates.md`](docs/updates.md) → *Release packages*).
+**Making a release** (maintainers): bump the version (and add the `CHANGELOG.md` entry), commit, then `npm run release:package` writes `dist/release/switchboard-<version>.tar.gz` and its `.sha256`; publish both with `gh release create v<version> … --notes-file <notes>` ([`docs/updates.md`](docs/updates.md) → *Release packages*).
 
 ## Start at login
 
@@ -179,7 +180,7 @@ npm run service:install                # launchd (macOS) / systemd --user (Linux
 npm run service:uninstall
 ```
 
-Run these in the folder you start Switchboard from: the service starts `node src/server/main.ts` there. A release install is ready as it is; a git checkout needs `npm run build` first. `--start` also starts it right away. It starts Switchboard at sign-in and is not restarted after a crash (start it again with `npm run service:install -- --start`). Details: [`docs/service.md`](docs/service.md).
+Run these in the folder you start Switchboard from: the service starts `node src/server/main.ts` there, with the `SWITCHBOARD_*` settings of the shell you install from (port, data folder and the CLI commands when they differ from the defaults). A release install is ready as it is; a git checkout needs `npm run build` first. `--start` also starts it right away. It starts Switchboard at sign-in and is not restarted after a crash (start it again with `npm run service:install -- --start`). Details: [`docs/service.md`](docs/service.md).
 
 ## Configuration
 
@@ -196,10 +197,11 @@ Settings are environment variables, read at start. An invalid value makes `npm s
 | `SWITCHBOARD_SETUP_WIZARD` | on | `off` stops the wizard from opening by itself. |
 | `SWITCHBOARD_UPDATES` | on | `off` stops the hourly check for new releases (and updating). |
 | `SWITCHBOARD_UPDATE_REPO` | `MarcinGadomski94/switchboard` | The GitHub repository whose releases are checked (forks). |
+| `SWITCHBOARD_NPM_BIN` | npm next to `node` | The npm that runs `npm ci --omit=dev` when updating a release install. |
 | `SWITCHBOARD_CLAUDE_EXTRA_ARGS` | none | Dev only: a JSON array of extra flags for every `claude` spawn. |
 | `SWITCHBOARD_TAILSCALE_BIN` | `tailscale` | The Tailscale CLI; `tailscale ip -4` gives the address of the optional peer listener (Machines). |
 
-Everything else, such as saved folders, tools, notification and usage settings, lives in the database and is edited in **Settings**. The full list, with test-only variables, is in [`docs/configuration.md`](docs/configuration.md).
+Everything else, such as saved folders, tools, notification and usage settings, lives in the database and is edited in **Settings**. The full list, with the peer-timing, development and test-only variables, is in [`docs/configuration.md`](docs/configuration.md).
 
 ---
 
@@ -264,7 +266,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 **Chat**
 - **Formatting:** agent and developer messages render as Markdown, with syntax colors and clickable links.
 - **Composer:** **Enter** sends, **Shift+Enter** adds a line.
-- **Images and files:** paste a screenshot or an image (⌘V / Ctrl+V), drop files on the chat, or pick them with **📎**. They show as chips before you send and in your message afterwards (click an image to see it larger). Images and PDFs go to the agent directly; other files (logs, CSV, JSON, source files…) are saved in Switchboard's data folder and the agent gets their paths. The New-session forms take them for the first message too. Up to 20 MB per file, 50 MB per message; kept 30 days.
+- **Images and files:** paste a screenshot or an image (⌘V / Ctrl+V), drop files on the chat, or pick them with **📎**. They show as chips before you send and in your message afterwards (click an image to see it larger). Images and PDFs go to the agent directly; other files (logs, CSV, JSON, source files…) are saved in Switchboard's data folder and the agent gets their paths. The New-session forms take them for the first message too. Up to 20 MB per file, 50 MB and 20 files per message; kept 30 days.
 - **Live activity:** "Pondering… 1m 23s", "● Bash: npm test 0:42".
 - **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.
 - **Queued messages:** a message you send while the agent is busy shows a clock until the agent takes it up. A message to a paused session resumes it.
@@ -298,7 +300,9 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 
 **Organize the sidebar:** pin sessions (a row's **⋯** → **Pin**) into a **Pinned** group at the top, and group them in **folders** (the **+** next to SESSIONS) and **subfolders** (a folder's **⋯** → **New subfolder**, up to five levels): drag sessions into and out of folders, drag a folder onto another to nest it, drag to re-order pinned sessions, folders and the sessions inside a folder, collapse a folder to its name and count. Everything else stays sorted newest first. The ⋯ menus (Move to folder ▸, Move up / down, Rename, Delete) do the same from the keyboard. The layout is kept by Switchboard, the same in every tab and after a restart. With many sessions only the session list scrolls; the navigation, Tools and the footer stay in place. [`docs/sidebar.md`](docs/sidebar.md)
 
-**More room:** slide the sidebar (**⌘B**) or the right panel (**⌥⌘B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
+**Command palette:** **⌘K** / **Ctrl+K**. In the Simple New-session form, **⌘↩** / **Ctrl+↩** starts the session.
+
+**More room:** slide the sidebar (**⌘B** / **Ctrl+B**) or the right panel (**⌥⌘B** / **Ctrl+Alt+B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
 
 [`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md) · [`docs/panes.md`](docs/panes.md)
 
@@ -306,7 +310,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - Every question batch and permission request from every session lands in the **Inbox**. Answer it there or in the session's chat.
 - A new question also raises a **toast**, a chime and an OS notification (when allowed).
 - A notification closes by itself once you open that session or the question is answered.
-- **System items** also appear there: a pull request was merged and its worktree can be removed; a scheduled run failed.
+- **System items** also appear there: a pull request was merged and its worktree can be removed; a scheduled run failed; a newer Switchboard release is available ([Updating](#updating)).
 
 [`docs/inbox.md`](docs/inbox.md) · [`docs/notifications.md`](docs/notifications.md)
 
@@ -345,7 +349,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 
 ### Machines (peers)
 Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Machines**:
-- **Peer listener** (off by default): lets paired machines reach this one on its **Tailscale address** only (port 13002). The UI itself stays on 127.0.0.1.
+- **Peer listener** (off by default): lets paired machines reach this one on its **Tailscale address** only (default port 13002). The UI itself stays on 127.0.0.1.
 - **Allow a new peer** shows a one-time code (10 minutes, single use); on the other machine, **Add machine** with this machine's Tailscale address and the code. One pairing works both ways; each machine shows the other as online / offline / auth failed / no address, reconnects by itself, and can be renamed or removed (which revokes it on both sides).
 - **Remote sessions:** a paired machine's sessions appear in the sidebar with a **machine tag** and open in the normal session view: chat, question cards, queued messages, pause / resume, model and effort, close / reopen, Diff, Artifacts, Timeline, subagent chats. Its questions and permission requests land in your **Inbox** (tagged; toasts and notifications too), and answering here answers there. When the machine is offline its sessions stay listed as **unreachable** (also after a restart of your Switchboard) and readable as last seen, but nothing can be sent or answered until it is back; it keeps running them.
 - **Start a session on a peer:** the New-session form's **Machine** row picks the machine; its folders, models and the branching check come from there, and the session runs there.
@@ -367,15 +371,15 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 [`docs/tools.md`](docs/tools.md) · [`docs/frame-helper.md`](docs/frame-helper.md)
 
 ### Usage and footer
-The sidebar footer shows RAM in use and two **Max usage** bars:
-- **Session.** It is colored by pace, updated every minute: green while you're under the elapsed share of the 5-hour window, yellow once you're ahead of it.
-- **Week.** It is colored by pace, updated every minute: green while you're under the elapsed share of the 7-day window, yellow once you're ahead of it.
+The sidebar footer shows CPU, RAM in use and two usage bars (Claude Code's **Max usage**):
+- **Session.** It is colored by pace, read at most once a minute (every 5 minutes while no session is live): green while you're under the elapsed share of the 5-hour window, yellow once you're ahead of it.
+- **Week.** It is colored by pace, read on the same schedule: green while you're under the elapsed share of the 7-day window, yellow once you're ahead of it.
 - **More accounts or CLIs:** with several accounts (see *Accounts*) the bars are the active account's, with a short line listing every account's usage under them; Codex's own limits show as extra rows.
 
 [`docs/usage.md`](docs/usage.md)
 
 ### Restarts and recovery
-When Switchboard starts, sessions that were live are resumed with `claude --resume` and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
+When Switchboard starts, sessions that were live are resumed (Claude Code: `claude --resume`) and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
 
 ### Install as an app
 Switchboard can run in its own app window with a Dock icon (a PWA):
@@ -395,7 +399,10 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 - The optional **peer listener** (Machines) is a second socket bound only to the Tailscale address. It serves only the peer API, and every call needs that machine's own pairing token (stored hashed); no page, no settings, no folders, no tools.
 - **Terminal hooks** (Machines → Install hooks) call Switchboard only on 127.0.0.1 with a separate hook token (a file only you can read); installing and removing them backs up your `~/.claude/settings.json` first and touches only Switchboard's own entries.
 - Child processes are spawned with argument arrays, never through a shell.
-- Switchboard never reads or passes on your claude.ai credentials. It only runs the `claude` CLI you signed in to.
+- Switchboard never reads or passes on your claude.ai credentials, or any other CLI's (Codex, OpenCode) or account's: sign-in and sign-out are each CLI's own commands, and it only runs the CLIs you signed in to. Account profile folders and handover exports stay in the data folder (mode 0700 / 0600).
+- **Attachments** are stored only in the data folder (never in a repo or the database), typed by their bytes, and never rendered inline unless they are PNG, JPEG, GIF, WebP or PDF.
+- **MCP servers:** secrets never reach the browser; env and header values are masked, and servers are changed only through the CLI's own commands.
+- **Updates** come only from the configured GitHub repository's releases, over HTTPS, and are installed only after their SHA-256 checksum matches; the archive is unpacked by Node itself (no links, no paths outside its folder), and nothing from it runs except `npm ci --omit=dev` and the new server.
 
 [`docs/security.md`](docs/security.md)
 
@@ -414,7 +421,7 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 src/core/     shared types (api.ts = the API contract), pure derivations and rules
 src/server/   Fastify app, supervisor (the claude processes), stores, services, routes
 src/web/      React UI (views, shell, modals, chat, right panel)
-tools/        fake-claude, fake-gh, fake service manager, the frame helper, dev scripts
+tools/        fake CLIs (claude, codex, opencode, gh, tailscale…), fake service manager, the frame helper, release / service / screenshot scripts, dev script
 tests/        unit and integration (Vitest), e2e + visual oracle (Playwright)
 docs/         one doc per area, the decisions log, the handoff spec
 .loop/        progress.md (what was built, with test counts), questions.md (assumptions, rulings, known flaky tests)
@@ -423,13 +430,19 @@ docs/         one doc per area, the decisions log, the handoff spec
 ### Scripts
 | Script | What |
 |---|---|
+| `npm run build` | Builds the UI into `dist/web`. |
+| `npm start` | Runs the server (`node src/server/main.ts`), serving `dist/web`. |
 | `npm run dev` | Rebuilds the UI on change and restarts the server (`node --watch`). No HMR: reload the browser. |
 | `npm run typecheck` | `tsc` over the server, web, e2e and service-worker configs. |
 | `npm test` | Vitest: unit and integration. |
 | `npm run e2e` | Playwright (Chromium, 1440×900) on the real code path, including the visual oracle. |
 | `npm run icons` | Re-renders the app icons (`src/web/public/icons/`) from their SVGs with Playwright's Chromium. |
+| `npm run screenshots` | Retakes `docs/screenshots/` from demo mode. |
+| `npm run service:install` / `service:uninstall` | Start at login ([Start at login](#start-at-login)). |
+| `npm run release:package` | Writes the release `.tar.gz` and its `.sha256` into `dist/release/`. |
+| `npm run frame-helper:safari` | Builds the frame helper for Safari. |
 
-### Tests never call the real `claude` or `gh`
+### Tests never call the real `claude`, `codex`, `opencode` or `gh`
 - **`tools/fake-claude`** replays recorded stream-json turns and scenarios. Tokens in a prompt drive it, e.g. `[fake:ask-2q]`, `[fake:say "…"]`, `[fake:background …]`. See [`docs/fake-claude.md`](docs/fake-claude.md).
 - **`tools/fake-gh`** stands in for the GitHub CLI; **`tools/fake-codex`** and **`tools/fake-opencode`** for Codex CLI and OpenCode (their real protocols are pinned in [`docs/providers.md`](docs/providers.md)).
 - Tests start their own server on a **test port** (`SWITCHBOARD_TEST_PORTS`, default 4871–4879; 13001 is refused) with a temporary data folder. The E2E UI is built into `.e2e-dist/web`, so a test run never changes the UI you're running from the same checkout.
@@ -448,7 +461,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 ### How changes are made
 - **The spec:** the handoff (`docs/handoff/`) plus [`docs/decisions.md`](docs/decisions.md) (D1…D63). The developer's rulings win where the two differ.
 - **The contract:** API changes are additive and noted in `docs/handoff/contracts/local-api.md`.
-- **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `main` with the full suites green.
+- **Parallel work:** features are built in git worktrees under `.worktrees/`, each on its own test ports, then merged into `master` with the full suites green.
 - **Definition of done:** `npm run typecheck`, `npm test` and `npm run e2e` all green, with docs and the `.loop` notes updated.
 - **Commits** stay local; nothing is pushed without the developer's say.
 
@@ -458,7 +471,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 
 | Symptom | Fix |
 |---|---|
-| The UI looks old after an update | `npm run build`, then restart Switchboard. |
+| The UI looks old after an update | Release installs ship the built UI: reload the page. A git checkout: `npm run build`, then restart Switchboard. |
 | `401 unauthorized` / blank data | Open `http://127.0.0.1:13001` by typing it (or a bookmark). Links from other sites don't get the cookie. |
 | `listen EADDRINUSE … 127.0.0.1:13001` on start | Another Switchboard (or another app) holds the port: stop it, or set `SWITCHBOARD_PORT`. |
 | Setup wizard says "Not signed in" | Run `claude` in a terminal and sign in; check `claude auth status`. |
