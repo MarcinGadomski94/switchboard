@@ -38,6 +38,8 @@ export interface ClaudeArgsInput {
   readonly model?: string | null;
   /** D31: `--effort <level>`, the session's stored effort; `null` / absent = the CLI's default (no flag). */
   readonly effort?: string | null;
+  /** D64: `--append-system-prompt <text>`, the standing instruction; `null` / empty / absent = no flag. */
+  readonly standingInstruction?: string | null;
   /** Dev-only flags appended at the end (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`, the D13 real-CLI smoke). */
   readonly extraArgs?: readonly string[];
 }
@@ -60,7 +62,7 @@ function startArgs(start: ClaudeStart): [string, string] {
  * M0.2), the permission mode (not inherited on `--resume`, M0.4), the session id
  * (D25: or `--teleport <session_X>` for a local copy of a remote session), D31's
  * `--model` / `--effort` when the session has a choice (neither is inherited on
- * `--resume`), `--name`, `--forward-subagent-text`, `--replay-user-messages`. No
+ * `--resume`), D64's `--append-system-prompt` (the standing instruction, when on; every spawn, resumes included), `--name`, `--forward-subagent-text`, `--replay-user-messages`. No
  * prompt argument: every message, the first one included, goes through stdin. No
  * `--settings`: no hooks are needed (D6 allows a Switchboard-owned file if that changes).
  */
@@ -79,6 +81,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     ...startArgs(input.start),
     ...(input.model ? ['--model', input.model] : []),
     ...(input.effort ? ['--effort', input.effort] : []),
+    ...(input.standingInstruction ? ['--append-system-prompt', input.standingInstruction] : []),
     '--name',
     input.name,
     '--forward-subagent-text',

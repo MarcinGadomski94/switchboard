@@ -851,6 +851,17 @@ POST /api/sessions/s1/account { "profileId": "8d3f…" }
 200 { "id": "s1", "profileId": "8d3f…", "profileName": "Private", "accountSwitching": false, … }
 ```
 
+## Standing instruction for agents (D64, 2026-10-02, additive)
+
+Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*): one instruction every session's agent gets. Additive; no new route, no `/hub` event, no migration (two rows of the existing `settings` table). Details: `docs/settings.md`, `docs/supervisor.md` → *Spawning*, `docs/providers.md` → *Standing instruction (D64)*.
+
+- **Settings** (`GET/PUT /api/settings`) gains two editable keys: `agents.standingInstruction` (string, default the text below, at most 4,000 characters; an empty or blank text passes nothing) and `agents.standingInstruction.enabled` (boolean, default `true`). `PUT` takes either or both; a non-string text, a text over 4,000 characters or a non-boolean toggle → 422 `invalid` on that key, nothing stored. `GET` always returns both.
+- The service reads them at every spawn (new, resumed, restarted, account switch, CLI switch), so a change applies to sessions started or resumed afterwards; running processes keep what they were started with.
+
+```json
+{ "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.", "agents.standingInstruction.enabled": true }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

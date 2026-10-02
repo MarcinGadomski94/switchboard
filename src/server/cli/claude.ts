@@ -20,6 +20,7 @@ export const claudeAdapter: CliAdapter = {
       permissionMode: request.permissionMode,
       model: session.model,
       effort: session.effort,
+      standingInstruction: request.standingInstruction,
       extraArgs: request.extraArgs,
     });
     return new ClaudeProcess({ command: request.command, args, cwd: request.cwd, env: request.env, onLine: request.onLine });

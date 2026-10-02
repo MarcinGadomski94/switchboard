@@ -29,6 +29,12 @@ export interface SpawnRequest {
   readonly command: readonly string[];
   /** Dev-only flags appended to the CLI's argv (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`; Claude only). */
   readonly extraArgs: readonly string[];
+  /**
+   * D64: the standing instruction for the agent (Settings → Sessions & worktrees), read at
+   * this spawn; `null` = none (off or empty). Claude: `--append-system-prompt`; Codex:
+   * `developerInstructions`; OpenCode: the prompt's `system`.
+   */
+  readonly standingInstruction: string | null;
   /** Every stream-json stdout line, in order. */
   readonly onLine: (line: string) => void;
   /** A bridge learned (or created) the provider's own conversation id: stored so later spawns reopen it. */

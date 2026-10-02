@@ -43,3 +43,26 @@ describe('buildClaudeArgs · model and effort (D31)', () => {
     ).toEqual([...BASE, '--session-id', 'c-2', '--effort', 'xhigh', ...TAIL, '--max-turns', '3']);
   });
 });
+
+describe('buildClaudeArgs · standing instruction (D64)', () => {
+  const START = { kind: 'resume', claudeSessionId: 'c-1' } as const;
+  it('--append-system-prompt <text> goes before --name, one argv entry, on new and resumed sessions', () => {
+    const text = "Ask only about what you wrote. Never say 'above'.";
+    expect(buildClaudeArgs({ start: START, name: 'Free talk', permissionMode: 'auto', standingInstruction: text })).toEqual([
+      ...BASE,
+      '--resume',
+      'c-1',
+      '--append-system-prompt',
+      text,
+      ...TAIL,
+    ]);
+    expect(buildClaudeArgs({ start: { kind: 'new', claudeSessionId: 'c-2' }, name: 'Free talk', permissionMode: 'auto', standingInstruction: text })).toContain(text);
+  });
+
+  it('null, empty or absent: no flag', () => {
+    const expected = [...BASE, '--resume', 'c-1', ...TAIL];
+    for (const standingInstruction of [null, '', undefined]) {
+      expect(buildClaudeArgs({ start: START, name: 'Free talk', permissionMode: 'auto', standingInstruction })).toEqual(expected);
+    }
+  });
+});

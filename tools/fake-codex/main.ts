@@ -641,6 +641,7 @@ async function handleRequest(id: number | string, method: string, params: Json):
     case 'account/rateLimits/read':
       return send({ id, result: { ordinaryUsageAllowed: !limitReached(), rateLimits: rateLimits(), rateLimitsByLimitId: {} } });
     case 'thread/start': {
+      await log({ kind: 'thread-params', method, developerInstructions: params['developerInstructions'] ?? null });
       const cwd = typeof params['cwd'] === 'string' ? params['cwd'] : process.cwd();
       const thread = await newThread(cwd);
       threads.set(thread.id, thread);
@@ -659,6 +660,7 @@ async function handleRequest(id: number | string, method: string, params: Json):
       return notify('thread/started', { thread: threadWire(thread) });
     }
     case 'thread/resume': {
+      await log({ kind: 'thread-params', method, developerInstructions: params['developerInstructions'] ?? null });
       const threadId = String(params['threadId'] ?? '');
       const file = await findRollout(threadId);
       const read = file ? await readThread(file) : null;

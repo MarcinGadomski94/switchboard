@@ -35,6 +35,7 @@ import type { FolderRef } from '../folders/ref.ts';
 import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from '../sessions/wire.ts';
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
+import { standingInstructionFor } from '../settings/settings.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
 import type { ProcessExit } from './process.ts';
@@ -2204,6 +2205,8 @@ export class SessionSupervisor {
       env: { ...childEnv(this.#env), ...profileEnv },
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
+      // D64: read now, so a change applies to every session started or resumed afterwards.
+      standingInstruction: await standingInstructionFor(this.#store.settings),
       onLine: (line) => {
         const live = holder.live;
         if (live) void this.#enqueue(live, () => this.#onLine(live, line));

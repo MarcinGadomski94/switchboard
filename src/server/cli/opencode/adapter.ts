@@ -16,6 +16,7 @@ export const opencodeAdapter: CliAdapter = {
       effort: session.effort,
       permissionMode: request.permissionMode,
       title: session.title ?? session.name,
+      standingInstruction: request.standingInstruction,
       onLine: request.onLine,
       ...(request.onNativeId ? { onNativeId: request.onNativeId } : {}),
       ...(request.onNotice ? { onNotice: request.onNotice } : {}),

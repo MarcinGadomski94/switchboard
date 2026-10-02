@@ -218,6 +218,8 @@ export class CodexBridge implements AgentProcess {
         approvalPolicy: 'on-request',
         sandbox: 'workspace-write',
         ...(this.#model ? { model: this.#model } : {}),
+        // ASSUMED D64-codex-developer-instructions: `developerInstructions` on `thread/start` / `thread/resume` (the standing instruction; `docs/providers.md`).
+        ...(this.#options.standingInstruction ? { developerInstructions: this.#options.standingInstruction } : {}),
       };
       let threadId: string | null = null;
       if (this.#options.nativeId) {

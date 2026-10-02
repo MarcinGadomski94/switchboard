@@ -229,6 +229,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Cleanup',
     'Ultracode by default',
     'Session-start questions',
+    'Standing instruction for agents',
   ]);
   await expect(page.locator('.sb-set-row').getByTestId('setting-value')).toHaveText([
     "the session's folder",
@@ -237,6 +238,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'keep until merged',
     'off',
     'from AGENTS.md',
+    'on',
   ]);
   const ultracode = row(page, 'ultracode').getByRole('switch');
   const worktrees = row(page, 'worktrees').getByRole('switch');

@@ -27,6 +27,10 @@ export interface KnownSettings {
    * `simple` (a fresh install opens the simple form).
    */
   readonly 'newSession.mode': NewSessionMode;
+  /** D64: the standing instruction every new / resumed session's agent gets (`docs/settings.md`). Editable, default {@link DEFAULT_STANDING_INSTRUCTION}. */
+  readonly 'agents.standingInstruction': string;
+  /** D64: whether the standing instruction is passed on. Editable, default `true`. */
+  readonly 'agents.standingInstruction.enabled': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -54,11 +58,32 @@ export function isNewSessionMode(value: unknown): value is NewSessionMode {
   return typeof value === 'string' && (NEW_SESSION_MODES as readonly string[]).includes(value);
 }
 
+/**
+ * D64: the default standing instruction. Short on purpose: it costs tokens in
+ * every session. It stops an agent asking about content it never wrote ("the
+ * table above" that only existed in its head).
+ */
+export const DEFAULT_STANDING_INSTRUCTION =
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.";
+
+/** D64: the longest standing instruction `PUT /api/settings` accepts (characters). */
+export const STANDING_INSTRUCTION_MAX = 4_000;
+
+/**
+ * D64: the text to pass to an agent's CLI: the stored instruction (trimmed) when
+ * the toggle is on and the text is not empty, else `null` (nothing is passed).
+ */
+export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agents.standingInstruction' | 'agents.standingInstruction.enabled'>): string | null {
+  if (!settings['agents.standingInstruction.enabled']) return null;
+  const text = settings['agents.standingInstruction'].trim();
+  return text === '' ? null : text;
+}
+
 /** A known setting key. */
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -74,6 +99,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'ui.sidebarHidden': false,
   'ui.rightPanelHidden': false,
   'newSession.mode': 'simple',
+  'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
+  'agents.standingInstruction.enabled': true,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -98,6 +125,8 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'ui.sidebarHidden': bool('ui.sidebarHidden', SETTING_DEFAULTS['ui.sidebarHidden']),
     'ui.rightPanelHidden': bool('ui.rightPanelHidden', SETTING_DEFAULTS['ui.rightPanelHidden']),
     'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
+    'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? (value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
+    'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

@@ -59,6 +59,11 @@ export interface WorldOptions {
   readonly listLive?: LiveProcessLister | null;
   /** D25: how long a `--teleport` process may take to report `system/init` (the supervisor's default when omitted). */
   readonly teleportInitTimeoutMs?: number;
+  /**
+   * D64: leave the standing instruction as the store has it (on by default). Without it the world
+   * switches it off, so the many tests that assert an exact argv / request stay about their own subject.
+   */
+  readonly standingInstruction?: boolean;
 }
 
 /** Parent env without CODEX* / OPENCODE* / FAKE_* of the other fakes either (D62). */
@@ -93,6 +98,7 @@ export async function makeSupervisorWorld(options: WorldOptions = {}): Promise<S
   await mkdir(codexHome, { recursive: true });
   await mkdir(opencodeData, { recursive: true });
   const store = await openTempStore(root);
+  if (!options.standingInstruction) await store.settings.set('agents.standingInstruction.enabled', false);
   const env: NodeJS.ProcessEnv = {
     ...withoutProviderEnv(cleanParentEnv()),
     ...options.parentEnv,

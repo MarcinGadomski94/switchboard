@@ -449,7 +449,7 @@ export class OpenCodeBridge implements AgentProcess {
     const [providerID, ...rest] = (this.#model ?? '').split('/');
     const model = this.#model && providerID && rest.length > 0 ? { providerID, modelID: rest.join('/') } : null;
     try {
-      await this.#http('POST', `/session/${encodeURIComponent(this.#sessionId)}/prompt_async`, { parts, ...(model ? { model } : {}), ...(this.#variant ? { variant: this.#variant } : {}) });
+      await this.#http('POST', `/session/${encodeURIComponent(this.#sessionId)}/prompt_async`, { parts, ...(this.#options.standingInstruction ? { system: this.#options.standingInstruction } : {}), ...(model ? { model } : {}), ...(this.#variant ? { variant: this.#variant } : {}) });
       turn.posted = true;
     } catch (error) {
       turn.error = error instanceof Error ? error.message : String(error);

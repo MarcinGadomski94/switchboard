@@ -19,6 +19,7 @@
     --permission-prompt-tool stdio --permission-mode acceptEdits
     --session-id <new uuid> | --resume <claudeSessionId> | --teleport <session_X> (D25, first spawn only)
     [--model <sessions.model>] [--effort <sessions.effort>] (D31, when set)
+    [--append-system-prompt <standing instruction>] (D64, when on and not empty)
     --name <session title, else its name> --forward-subagent-text --replay-user-messages
     <SWITCHBOARD_CLAUDE_EXTRA_ARGS…>
 ```
@@ -29,6 +30,7 @@
 - Child env = the service's env without `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_PID`, `CLAUDE_EFFORT`; `CLAUDE_CONFIG_DIR` and everything else pass through.
 - The pid is stored in `sessions.pid` while the process lives; `null` after it ended.
 - `--name` (the CLI's display name and transcript title) is the session's title as stored at that spawn, else its short name (D22). A rename (`PUT /api/sessions/{id}/title`) does not touch a live process; the next spawn (resume, a message to a stopped session, attach, restart recovery) carries it.
+- **D64 standing instruction.** `--append-system-prompt <text>` carries Settings → Sessions & worktrees → *Standing instruction for agents* on **every** spawn (new, resume, a message to a paused session, attach, restart recovery, a D16 move, account switch D63, CLI switch D62), read from the `settings` rows at that spawn (`standingInstructionFor`), so a change reaches the next spawn. No flag when it is off or the text is empty. `SpawnRequest.standingInstruction` hands the same text to the Codex and OpenCode bridges (`docs/providers.md` → *Standing instruction (D64)*). Hooked and terminal-run sessions are not spawned here and are not affected. Oracle: `tests/server/supervisor/argv.test.ts`, `tests/server/supervisor/standing-instruction.test.ts`.
 - **D24 handshake.** The first stdin line of every process is the `initialize` control request (`{"subtype":"initialize","hooks":null}`, no model call; `docs/spike-m0.md` → `ctl-init`), written before any user message. Its reply's `remote_control_available` becomes `sessions.remote_available` (0 from the spawn until the reply, 20 s at most), and (D31) its `models[]` becomes `sessions.model_options` (a reply without a list keeps the last one; `docs/model-effort.md`). Nothing else in the reply is used. Then, if Remote is on for the session, it is reattached (below).
 - **D31 model and effort.** `--model` / `--effort` carry the session's stored choice (`sessions.model` / `sessions.effort`, `PUT /api/sessions/{id}/model`) on every spawn (new, resume, a message to a paused session, attach, restart recovery, a D16 move); neither is inherited on `--resume`. Without a choice neither flag is passed (the CLI's defaults). A change while the process is live goes to it as `set_model` / `apply_flag_settings {effortLevel}` (*Model and effort* below).
 

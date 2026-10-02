@@ -2,11 +2,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type KnownSettings, SETTING_DEFAULTS, readKnownSettings } from '../../../src/core/settings.ts';
+import { DEFAULT_STANDING_INSTRUCTION, type KnownSettings, SETTING_DEFAULTS, effectiveStandingInstruction, readKnownSettings } from '../../../src/core/settings.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
-import { routerTitle, validateSettingsPatch } from '../../../src/server/settings/settings.ts';
+import { routerTitle, standingInstructionFor, validateSettingsPatch } from '../../../src/server/settings/settings.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { seedFolder } from '../../helpers/folders.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -80,6 +80,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'ui.sidebarHidden': false,
       'ui.rightPanelHidden': false,
       'newSession.mode': 'simple',
+      'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
+      'agents.standingInstruction.enabled': true,
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,
@@ -271,5 +273,35 @@ describe('settings helpers (M8.2)', () => {
       'workspace.root': '/w',
       'usage.warnAtPct': 80,
     });
+  });
+
+  it('D64 · the standing instruction: on by default with the default text; edit, toggle and reset are stored; bad values 422', async () => {
+    await setup();
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(300);
+    expect(await standingInstructionFor(store!.settings)).toBe(DEFAULT_STANDING_INSTRUCTION);
+    const edited = await call('PUT', '/api/settings', { 'agents.standingInstruction': 'Be brief.' });
+    expect(edited.json()).toMatchObject({ 'agents.standingInstruction': 'Be brief.', 'agents.standingInstruction.enabled': true });
+    expect(await standingInstructionFor(store!.settings)).toBe('Be brief.');
+    await call('PUT', '/api/settings', { 'agents.standingInstruction.enabled': false });
+    expect(await standingInstructionFor(store!.settings)).toBeNull();
+    // The text is kept while off; "Reset to default" stores the default text.
+    expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'agents.standingInstruction': 'Be brief.', 'agents.standingInstruction.enabled': false });
+    await call('PUT', '/api/settings', { 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION, 'agents.standingInstruction.enabled': true });
+    expect(await standingInstructionFor(store!.settings)).toBe(DEFAULT_STANDING_INSTRUCTION);
+    // Empty text is allowed and passes nothing.
+    await call('PUT', '/api/settings', { 'agents.standingInstruction': '  ' });
+    expect(await standingInstructionFor(store!.settings)).toBeNull();
+    for (const body of [{ 'agents.standingInstruction': 5 }, { 'agents.standingInstruction': 'x'.repeat(4_001) }, { 'agents.standingInstruction.enabled': 'yes' }]) {
+      const refused = await call('PUT', '/api/settings', body);
+      expect(refused.statusCode, JSON.stringify(Object.keys(body))).toBe(422);
+    }
+  });
+
+  it('D64 · effectiveStandingInstruction and readKnownSettings (UI side)', () => {
+    const on = { 'agents.standingInstruction': ' text ', 'agents.standingInstruction.enabled': true } as const;
+    expect(effectiveStandingInstruction(on)).toBe('text');
+    expect(effectiveStandingInstruction({ ...on, 'agents.standingInstruction.enabled': false })).toBeNull();
+    expect(effectiveStandingInstruction({ ...on, 'agents.standingInstruction': '' })).toBeNull();
+    expect(readKnownSettings({ 'agents.standingInstruction': 7 })).toMatchObject({ 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION, 'agents.standingInstruction.enabled': true });
   });
 });

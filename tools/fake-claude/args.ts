@@ -28,6 +28,8 @@ export interface RunArgs {
   resume: string | null;
   forkSession: boolean;
   name: string | null;
+  /** D64: `--append-system-prompt <text>` as given (the standing instruction); `null` without it. The fake only accepts it (the argv log is what tests read). */
+  appendSystemPrompt: string | null;
   /** `--teleport <id>` (D25): a local copy of a remote session (`teleport.ts`); `null` otherwise. */
   teleport: string | null;
 }
@@ -70,6 +72,7 @@ function defaults(): RunArgs {
     resume: null,
     forkSession: false,
     name: null,
+    appendSystemPrompt: null,
     teleport: null,
   };
 }
@@ -208,6 +211,9 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
         break;
       case '--name':
         args.name = value();
+        break;
+      case '--append-system-prompt':
+        args.appendSystemPrompt = value();
         break;
       case '--teleport':
         args.teleport = value();

@@ -1,0 +1,28 @@
+/* "Standing instruction for agents" (D64): the row wraps; the field takes the full width under the text. */
+[data-row='standing-instruction'] {
+  flex-wrap: wrap;
+}
+
+.sb-standing-field {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-standing-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: 400 12px/1.5 var(--font-mono);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 8px 10px;
+}
+
+.sb-standing-buttons {
+  display: flex;
+  gap: 8px;
+}

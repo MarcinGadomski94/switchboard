@@ -40,6 +40,8 @@ export interface BridgeCommon {
   readonly permissionMode: string;
   /** The session's display title (OpenCode names its session after it). */
   readonly title: string;
+  /** D64: the standing instruction (`null` = none). */
+  readonly standingInstruction?: string | null;
   readonly onLine: (line: string) => void;
   readonly onNativeId?: (nativeId: string) => void;
   /** Something the developer should know that is no chat line (a conversation that could not be reopened). */

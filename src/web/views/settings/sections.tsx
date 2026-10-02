@@ -18,6 +18,7 @@ import {
 import { notificationPermission, notifyOS, playChime, requestNotifications } from './notify.ts';
 import { InstallAppRow } from './InstallApp.tsx';
 import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
+import { StandingInstructionRow } from './StandingInstruction.tsx';
 import { StartAtLoginToggle } from './StartAtLogin.tsx';
 
 /**
@@ -71,7 +72,7 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
   );
 }
 
-/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode). */
+/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode) and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
   const flip = (key: 'sessions.worktrees' | 'sessions.ultracode'): void => {
@@ -107,6 +108,7 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
       >
         <Value>from AGENTS.md</Value>
       </Row>
+      <StandingInstructionRow settings={settings} save={save} />
     </>
   );
 }

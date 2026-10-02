@@ -4,7 +4,9 @@ import {
   EDITABLE_SETTINGS,
   type EditableSettings,
   type KnownSettings,
+  effectiveStandingInstruction,
   SETTING_DEFAULTS,
+  STANDING_INSTRUCTION_MAX,
   type SettingKey,
   WARN_AT_PCT_MAX,
   WARN_AT_PCT_MIN,
@@ -45,7 +47,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
  * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
- * `usage.warnAtPct` a whole number 1–100, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
+ * `usage.warnAtPct` a whole number 1–100, D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
@@ -67,6 +69,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
       // D56: the New-session dialog's last used mode.
       if (!isNewSessionMode(raw)) {
         errors.push({ field: key, message: `${key} must be "simple" or "full"` });
+        continue;
+      }
+    } else if (key === 'agents.standingInstruction') {
+      // D64: free text, empty allowed (nothing is passed), bounded.
+      if (typeof raw !== 'string' || raw.length > STANDING_INSTRUCTION_MAX) {
+        errors.push({ field: key, message: `${key} must be text of at most ${STANDING_INSTRUCTION_MAX} characters` });
         continue;
       }
     } else if (typeof raw !== 'boolean') {
@@ -141,4 +149,19 @@ export async function readSettings(
     'workspace.router': defaultFolder?.kind === 'workspace' ? await routerTitle(defaultFolder.path) : null,
     'github.prPollMinutes': DEFAULT_PR_POLL_MS / 60_000,
   };
+}
+
+/**
+ * D64: the standing instruction to give a session's agent right now (read at every
+ * spawn, so a change applies to sessions started or resumed afterwards): the stored
+ * text when enabled and not empty, else `null`.
+ */
+export async function standingInstructionFor(repo: SettingRepository): Promise<string | null> {
+  const stored = await repo.getAll();
+  const text = stored['agents.standingInstruction'];
+  const enabled = stored['agents.standingInstruction.enabled'];
+  return effectiveStandingInstruction({
+    'agents.standingInstruction': typeof text === 'string' ? text : SETTING_DEFAULTS['agents.standingInstruction'],
+    'agents.standingInstruction.enabled': typeof enabled === 'boolean' ? enabled : SETTING_DEFAULTS['agents.standingInstruction.enabled'],
+  });
 }

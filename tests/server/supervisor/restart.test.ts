@@ -10,6 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Session, SessionEvent } from '../../../src/core/api.ts';
 import type { LifecyclePayload, ToolPayload } from '../../../src/core/event-payload.ts';
+import { DEFAULT_STANDING_INSTRUCTION } from '../../../src/core/settings.ts';
 import { storeFile } from '../../../src/server/db/store.ts';
 import { RESTART_MESSAGE, RESTART_NOTE } from '../../../src/server/supervisor/recovery.ts';
 import { TOKEN_FILE } from '../../../src/server/token.ts';
@@ -161,7 +162,7 @@ describe('M2.4 crash recovery (server child process + fake-claude, SIGKILL and r
     expect(newNeedPid).toBeGreaterThan(0);
     for (const [pid, session] of [[newRunPid, run], [newNeedPid, need]] as const) {
       const line = resumed.find((l) => l.pid === pid);
-      expect(line?.argv).toEqual([...BASELINE, '--resume', session.claudeSessionId, '--name', session.name, '--forward-subagent-text', '--replay-user-messages']);
+      expect(line?.argv).toEqual([...BASELINE, '--resume', session.claudeSessionId, '--append-system-prompt', DEFAULT_STANDING_INSTRUCTION, '--name', session.name, '--forward-subagent-text', '--replay-user-messages']);
       expect(line?.cwd).toBe(await realpath(workspace));
     }
 
