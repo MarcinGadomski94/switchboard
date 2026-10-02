@@ -8,12 +8,14 @@ import {
   answerBody,
   cancelOwn,
   confirmOwn,
+  hasOptionDetails,
   initialPicks,
   isOwnPick,
   ownAnswerKeyAction,
   pick,
   pickOther,
   questionCardView,
+  shownPreview,
   typeOwn,
 } from './question-card.ts';
 import './question-card.css';
@@ -62,6 +64,10 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
     picks: initialPicks(questions),
   }));
   // Another batch in the same card resets the picks.
+  // The option the pointer / keyboard is on, per question: its preview shows (like the terminal).
+  const [focus, setFocus] = useState<{ readonly batchId: string; readonly byQuestion: Readonly<Record<string, number>> }>({ batchId, byQuestion: {} });
+  const focused = focus.batchId === batchId ? focus.byQuestion : {};
+  const focusOption = (questionId: string, index: number): void => setFocus({ batchId, byQuestion: { ...focused, [questionId]: index } });
   const picks = state.batchId === batchId ? state.picks : initialPicks(questions);
   const view = questionCardView(questions, picks);
   const body = answerBody(questions, picks);
@@ -99,11 +105,13 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
       {questions.map((question) => {
         const current = picks[question.id];
         const own = isOwnPick(current) ? current : null;
+        const detailed = hasOptionDetails(question.options);
+        const preview = shownPreview(question.options, focused[question.id] ?? null, current);
         return (
           <div key={question.id} className="sb-qcard__question" data-testid="question" data-question-id={question.id}>
             <div className="sb-qcard__source">{question.source}</div>
             <div className="sb-qcard__quote">“{question.text}”</div>
-            <div className="sb-qcard__options" role="group" aria-label={question.text}>
+            <div className={`sb-qcard__options${detailed ? ' sb-qcard__options--detailed' : ''}`} role="group" aria-label={question.text}>
               {question.options.map((option, index) => {
                 const selected = current === index;
                 return (
@@ -116,9 +124,14 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
                     aria-pressed={selected}
                     aria-disabled={readOnly ? true : undefined}
                     title={option.description}
+                    onMouseEnter={() => focusOption(question.id, index)}
+                    onFocus={() => focusOption(question.id, index)}
                     onClick={() => update(pick(picks, question.id, index))}
                   >
-                    {option.label}
+                    <span className="sb-qcard__option-label" data-testid="question-option-label">{option.label}</span>
+                    {option.description ? (
+                      <span className="sb-qcard__option-description" data-testid="question-option-description">{option.description}</span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -136,6 +149,9 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
                 {OTHER_LABEL}
               </button>
             </div>
+            {preview !== null ? (
+              <pre className="sb-qcard__preview" data-testid="question-option-preview" tabIndex={0} aria-label="Option preview">{preview}</pre>
+            ) : null}
             {own?.editing ? (
               <textarea
                 className="sb-qcard__own-input"

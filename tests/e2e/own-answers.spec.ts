@@ -80,8 +80,8 @@ async function answerWithOwnWords(card: Locator, page: Page, words: readonly [st
   const questions = card.getByTestId('question');
   const status = card.getByTestId('question-status');
   const send = card.getByTestId('question-send');
-  await expect(questions.nth(0).getByTestId('question-option')).toHaveText(['Red', 'Green', 'Blue']);
-  await expect(questions.nth(1).getByTestId('question-option')).toHaveText(['Small', 'Large']);
+  await expect(questions.nth(0).getByTestId('question-option-label')).toHaveText(['Red', 'Green', 'Blue']);
+  await expect(questions.nth(1).getByTestId('question-option-label')).toHaveText(['Small', 'Large']);
   await expect(questions.getByTestId('question-other')).toHaveText(['Other…', 'Other…']);
   // Other… is styled like the options (same class and computed look).
   const small = questions.nth(1).getByTestId('question-option').first();

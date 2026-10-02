@@ -112,6 +112,13 @@ type LaunchSpec =
   | { readonly kind: 'workflow'; readonly taskId: string; readonly runId: string; readonly grid: WorkflowGrid | null; readonly seconds: number }
   | { readonly kind: 'task'; readonly taskId: string; readonly taskType: string };
 
+/** Fix · question card details: the token that gives `ask-2q`'s first question long descriptions and previews. */
+export const ASK_DETAIL_TOKEN = '[fake:ask-detail]';
+/** The long description `[fake:ask-detail]` gives the first option (wraps in the card). */
+export const ASK_DETAIL_DESCRIPTION = 'Use a solid red fill with white text so the button stands out on the white card and keeps its contrast in dark mode too.';
+/** The preview `[fake:ask-detail]` gives the first option: a mockup with a very long line (must not widen the card). */
+export const ASK_DETAIL_PREVIEW = `+-----------------+\n|  [ Buy now ]    |\n+-----------------+\nVERY_LONG_LINE_${'x'.repeat(240)}_END`;
+
 /** A `[fake:write]` in progress. */
 interface WriteSpec {
   target: string;
@@ -1365,6 +1372,7 @@ export class Runner {
     if (turn.launch) this.patchLaunch(line, turn.launch);
     if (turn.say !== null) this.patchSay(line, turn.say);
     if (turn.usage) this.patchUsage(line, turn.usage);
+    if (turn.msg.text.includes(ASK_DETAIL_TOKEN)) this.patchAskDetail(line);
     if (line['type'] === 'result') line['result_index'] = this.resultIndex++;
     patch?.(line);
     this.writeJson(line);
@@ -1395,6 +1403,24 @@ export class Runner {
     const tools = asArray(line['tools']).filter((t) => t !== 'AskUserQuestion');
     if (this.stdio) tools.push('AskUserQuestion');
     line['tools'] = tools;
+  }
+
+  /**
+   * Fix · question card details `[fake:ask-detail]` (next to `[fake:ask-2q]`): the
+   * first question's options carry long descriptions and a `preview` (a wide mockup
+   * with a very long line), like the CLI's AskUserQuestion input.
+   */
+  private patchAskDetail(line: JsonObject): void {
+    const request = line['type'] === 'control_request' ? requestOf(line) : undefined;
+    if (!request || request['tool_name'] !== 'AskUserQuestion') return;
+    const questions = asArray(asObject(request['input'])?.['questions']);
+    const options = isObject(questions[0]) ? asArray(questions[0]['options']) : [];
+    const [first, second] = options;
+    if (isObject(first)) {
+      first['description'] = ASK_DETAIL_DESCRIPTION;
+      first['preview'] = ASK_DETAIL_PREVIEW;
+    }
+    if (isObject(second)) second['preview'] = 'Second option mockup';
   }
 
   private patchWrite(line: JsonObject, write: WriteSpec): void {

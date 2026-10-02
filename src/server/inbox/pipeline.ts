@@ -417,7 +417,7 @@ export class QuestionPipeline implements ControlRequestHandler {
 
 /**
  * `input.questions[]` → the stored questions, verbatim (`question`, `header`,
- * option `label` + `description`, `multiSelect`), or `null` when the input has no
+ * option `label` + `description` + `preview`, `multiSelect`), or `null` when the input has no
  * readable questions (not a non-empty array, a question without text, or no options).
  */
 export function parseQuestions(input: unknown): Array<Omit<QuestionCreate, 'source'>> | null {
@@ -433,7 +433,11 @@ export function parseQuestions(input: unknown): Array<Omit<QuestionCreate, 'sour
     for (const raw of rawOptions) {
       const option = asRecord(raw);
       if (typeof option['label'] !== 'string') return null;
-      options.push(typeof option['description'] === 'string' ? { label: option['label'], description: option['description'] } : { label: option['label'] });
+      options.push({
+        label: option['label'],
+        ...(typeof option['description'] === 'string' ? { description: option['description'] } : {}),
+        ...(typeof option['preview'] === 'string' && option['preview'] !== '' ? { preview: option['preview'] } : {}),
+      });
     }
     out.push({
       text,

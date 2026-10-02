@@ -137,8 +137,8 @@ test('a question batch: list + detail, Send stays disabled at 45% until every qu
   await expect(questions).toHaveCount(2);
   await expect(questions.locator('.sb-qcard__source')).toHaveText(['acme-app-front', 'acme-app-front']);
   await expect(questions.locator('.sb-qcard__quote')).toHaveText(['“Which color should the button be?”', '“Which size should it be?”']);
-  await expect(questions.nth(0).getByTestId('question-option')).toHaveText(['Red', 'Green', 'Blue']);
-  await expect(questions.nth(1).getByTestId('question-option')).toHaveText(['Small', 'Large']);
+  await expect(questions.nth(0).getByTestId('question-option-label')).toHaveText(['Red', 'Green', 'Blue']);
+  await expect(questions.nth(1).getByTestId('question-option-label')).toHaveText(['Small', 'Large']);
 
   const send = page.getByTestId('question-send');
   const status = page.getByTestId('question-status');
