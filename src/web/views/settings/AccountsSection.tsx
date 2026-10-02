@@ -558,7 +558,7 @@ function Rules({ settings, profiles, save }: { readonly settings: AccountSetting
             : null}
         </span>
       </Row>
-      <Row id="accounts-exhausted" label="When every account of a CLI is out of usage" description="Stop and tell you in the Inbox, or hand the session over to another CLI (D62's handover).">
+      <Row id="accounts-exhausted" label="When every account of a CLI is out of usage" description="Stop and tell you in the Inbox, or hand the session over to another CLI with a handover summary.">
         <span className="sb-acc-inline">
           <select
             className="sb-set-select"
