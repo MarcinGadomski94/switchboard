@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 (2026-10-02)
+
+### Changed
+- **Question cards are compact again.** 1.5.1's change that listed each option's description under it (and option previews) is rolled back; descriptions are shown on hover, as before.
+
 ## 1.5.1 (2026-10-02)
 
 ### Fixed

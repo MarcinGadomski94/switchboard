@@ -1,6 +1,6 @@
 {
   "name": "switchboard",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "license": "MIT",
   "description": "Local web app to run, supervise and switch many Claude Code, Codex CLI and OpenCode sessions at once.",
   "keywords": [
