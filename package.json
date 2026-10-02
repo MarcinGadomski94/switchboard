@@ -1,6 +1,7 @@
 {
   "name": "switchboard",
-  "version": "1.5.0",
+  "version": "1.5.1",
+  "license": "MIT",
   "private": true,
   "description": "Local web app for running and supervising many Claude Code sessions.",
   "type": "module",

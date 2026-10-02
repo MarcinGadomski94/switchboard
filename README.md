@@ -490,3 +490,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 | A Codex / OpenCode session can't be chosen | **Settings → CLIs** says why (not installed, signed out). Install it, sign in, press **Check**. |
 | An account isn't switched to | **Settings → Accounts**: it must be enabled, signed in and not marked spent; a pinned session never switches by itself. |
 | A long message ends abruptly | Click **Show full message** under it (messages from before 1.3.2 were stored cut). |
+
+## License
+
+[MIT](LICENSE) © 2026 Marcin Gadomski

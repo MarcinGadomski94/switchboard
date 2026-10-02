@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.1 (2026-10-02)
+
+### Fixed
+- **Hooked terminal sessions stopped listening after ~10 minutes idle.** The waiting hook had no timeout, so Claude Code ended it after its 10-minute default and messages from the other machine waited until something was typed in the terminal. It now has a 7-day timeout and keeps retrying while Switchboard on that machine restarts. Existing hooks show as **outdated** in Settings → Machines: click **Update hooks** once per machine.
+- **Question cards hid the agent's clarifications.** Each option's description was only a hover tooltip; it is now shown under the option, and an option's preview is shown too (chat and Inbox).
+- Settings → Accounts: plain wording instead of an internal reference.
+
+### Docs
+- New README screenshots (Simple form, subfolders, MCP page, Accounts) and an Artifacts section.
+- Switchboard is now **MIT licensed**.
+
 ## 1.5.0 (2026-10-01)
 
 ### Accounts and automatic switching
