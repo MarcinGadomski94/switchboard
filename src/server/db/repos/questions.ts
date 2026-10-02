@@ -36,8 +36,6 @@ export interface QuestionBatchRecord {
 export interface QuestionOption {
   readonly label: string;
   readonly description?: string;
-  /** The option's `preview` mockup, verbatim; absent when it has none. */
-  readonly preview?: string;
 }
 
 /** One question of a batch. Its state is its batch's state. */

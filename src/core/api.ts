@@ -1073,8 +1073,6 @@ export interface AttachWarning {
 export interface QuestionOption {
   readonly label: string;
   readonly description?: string;
-  /** The option's `preview` (a markdown / code mockup the CLI shows while it is focused), verbatim; absent when the option has none. */
-  readonly preview?: string;
 }
 
 /** One question of a batch (data model + M0 stored fields). Provisional: M3.1. */

@@ -7,7 +7,6 @@ import {
   OTHER_LABEL,
   answerBody,
   answeredLines,
-  hasOptionDetails,
   cancelOwn,
   confirmOwn,
   initialPicks,
@@ -16,7 +15,6 @@ import {
   pick,
   pickOther,
   questionCardView,
-  shownPreview,
   typeOwn,
 } from '../../src/web/components/question-card.ts';
 
@@ -183,69 +181,5 @@ describe('QuestionCard markup (src/web/components/QuestionCard.tsx)', () => {
     expect(html.match(/aria-disabled="true"/g)).toHaveLength(7);
     // The questions still read verbatim.
     expect(html).toContain('<div class="sb-qcard__quote">“Which size should it be?”</div>');
-  });
-});
-
-describe('Fix · question card details: descriptions and previews', () => {
-  const DETAILED: Question = {
-    ...question('q1', 'Which layout?', ['Compact', 'Wide']),
-    header: 'Layout',
-    options: [
-      { label: 'Compact', description: 'Fits a phone: one column, no sidebar, the long description wraps instead of clipping.', preview: '+----+\n| <b> |\n+----+' },
-      { label: 'Wide', description: 'Two columns', preview: 'WIDE_PREVIEW' },
-      { label: 'Plain' },
-    ],
-  };
-
-  it('hasOptionDetails: only a description or a preview turns the pills into rows', () => {
-    expect(hasOptionDetails([{ label: 'a' }, { label: 'b', description: '  ' }])).toBe(false);
-    expect(hasOptionDetails([{ label: 'a' }, { label: 'b', description: 'x' }])).toBe(true);
-    expect(hasOptionDetails([{ label: 'a', preview: 'p' }])).toBe(true);
-  });
-
-  it('shownPreview: the focused option wins, else the picked one; null without a preview', () => {
-    const { options } = DETAILED;
-    expect(shownPreview(options, null, undefined)).toBeNull();
-    expect(shownPreview(options, 1, 0)).toBe('WIDE_PREVIEW');
-    expect(shownPreview(options, null, 0)).toContain('+----+');
-    expect(shownPreview(options, 2, 0)).toBeNull();
-    expect(shownPreview(options, null, { text: 'own', editing: false })).toBeNull();
-  });
-
-  it('renders every description visibly under its label (inbox and chat, open and answered, read-only), the header data kept', async () => {
-    const { QuestionCard } = (await import(/* @vite-ignore */ COMPONENT)) as { QuestionCard: (props: object) => unknown };
-    for (const props of [
-      { questions: [DETAILED], variant: 'inbox' },
-      { questions: [DETAILED], variant: 'chat' },
-      { questions: [{ ...DETAILED, answerIndex: 1, answeredAt: 'x' }], variant: 'chat' },
-      { questions: [DETAILED], variant: 'chat', note: 'Answer in the main chat' },
-    ]) {
-      const html = renderToStaticMarkup(createElement(QuestionCard as never, { ...props, onSend: () => undefined }));
-      expect(html).toContain('sb-qcard__options sb-qcard__options--detailed');
-      expect(html).toContain('<span class="sb-qcard__option-label" data-testid="question-option-label">Compact</span>');
-      expect(html).toContain('data-testid="question-option-description">Fits a phone: one column, no sidebar, the long description wraps instead of clipping.</span>');
-      expect(html).toContain('data-testid="question-option-description">Two columns</span>');
-      // "Plain" has no description: no empty element.
-      expect(html.match(/data-testid="question-option-description"/g)).toHaveLength(2);
-      expect(html).toContain('data-testid="question-other"');
-    }
-  });
-
-  it('shows the preview of the picked option below the options, escaped, in its own scrolling box; none for an unpicked card', async () => {
-    const { QuestionCard } = (await import(/* @vite-ignore */ COMPONENT)) as { QuestionCard: (props: object) => unknown };
-    const open = renderToStaticMarkup(createElement(QuestionCard as never, { questions: [DETAILED], onSend: () => undefined }));
-    expect(open).not.toContain('question-option-preview');
-    const answered = renderToStaticMarkup(createElement(QuestionCard as never, { questions: [{ ...DETAILED, answerIndex: 0, answeredAt: 'x' }], onSend: () => undefined }));
-    expect(answered).toContain('<pre class="sb-qcard__preview" data-testid="question-option-preview"');
-    expect(answered).toContain('+----+\n| &lt;b&gt; |\n+----+</pre>');
-    const other = renderToStaticMarkup(createElement(QuestionCard as never, { questions: [{ ...DETAILED, answerIndex: 2, answeredAt: 'x' }], onSend: () => undefined }));
-    expect(other).not.toContain('question-option-preview');
-  });
-
-  it('without descriptions or previews the options stay the prototype pills (the visual oracle)', async () => {
-    const { QuestionCard } = (await import(/* @vite-ignore */ COMPONENT)) as { QuestionCard: (props: object) => unknown };
-    const html = renderToStaticMarkup(createElement(QuestionCard as never, { questions: [{ ...DETAILED, options: [{ label: 'A', description: '' }, { label: 'B' }] }], onSend: () => undefined }));
-    expect(html).not.toContain('--detailed');
-    expect(html).not.toContain('question-option-description');
   });
 });

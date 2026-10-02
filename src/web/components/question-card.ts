@@ -25,35 +25,6 @@ export type QuestionPick = number | OwnPick;
 /** Picks so far, by question id. */
 export type QuestionPicks = Readonly<Record<string, QuestionPick>>;
 
-/** An option as the card shows it: its label, the visible description and the optional preview. */
-export interface OptionDetail {
-  readonly label: string;
-  readonly description?: string;
-  readonly preview?: string;
-}
-
-/**
- * Whether a question's options carry anything to show under their labels (a
- * description or a preview). Without any, the options stay the prototype's compact
- * pills; with some, they are listed one per row so each label has its description
- * under it, like the CLI's own list.
- */
-export function hasOptionDetails(options: readonly OptionDetail[]): boolean {
-  return options.some((option) => (option.description ?? '').trim() !== '' || (option.preview ?? '') !== '');
-}
-
-/**
- * The preview to show for a question, like the terminal: the option the pointer or
- * keyboard is on (`focused`), else the picked one; `null` when that option has no
- * preview (or nothing is focused or picked).
- */
-export function shownPreview(options: readonly OptionDetail[], focused: number | null, picked: QuestionPick | undefined): string | null {
-  const index = focused ?? (typeof picked === 'number' ? picked : null);
-  if (index === null) return null;
-  const preview = options[index]?.preview;
-  return preview !== undefined && preview !== '' ? preview : null;
-}
-
 /** What the card shows for the current picks. */
 export interface QuestionCardView {
   /** `1 question · relayed verbatim` / `n questions · relayed verbatim`. */

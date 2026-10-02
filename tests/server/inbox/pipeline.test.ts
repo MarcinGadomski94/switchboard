@@ -28,7 +28,6 @@ import {
 import { inboxCount, permissionItem, questionBatchItem } from '../../../src/server/inbox/wire.ts';
 import type { ControlRequestHandler } from '../../../src/server/supervisor/supervisor.ts';
 import { generateToken } from '../../../src/server/token.ts';
-import { ASK_DETAIL_DESCRIPTION, ASK_DETAIL_PREVIEW } from '../../../tools/fake-claude/session.ts';
 import { FIXTURES_DIR } from '../../../tools/fake-claude/fixtures.ts';
 import { seedFolder } from '../../helpers/folders.ts';
 import { userLine } from '../../helpers/fake-claude.ts';
@@ -245,25 +244,6 @@ describe('M3.1 · question batches (AskUserQuestion → can_use_tool)', () => {
     const again = await call(r, 'POST', url, { answers: [{ questionId: q0.id, answerIndex: 0 }, { questionId: q1.id, answerIndex: 0 }] });
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toBe('already-answered');
-  });
-
-  it('[fake:ask-detail]: long descriptions and a preview survive the pipeline, the store, GET /api/inbox and the /hub event (none clipped)', async () => {
-    const r = await setup('ask-2q');
-    const session = await startSession(r, '[fake:ask-2q] [fake:ask-detail] Ask me about the button.');
-    await waitForStatus(r.w.store, session.id, ['need']);
-    const { questions } = await batchOf(r, session.id);
-    expect(ASK_DETAIL_PREVIEW.length).toBeGreaterThan(240);
-    const expected = [
-      { label: 'Red', description: ASK_DETAIL_DESCRIPTION, preview: ASK_DETAIL_PREVIEW },
-      { label: 'Green', description: 'A green button', preview: 'Second option mockup' },
-      { label: 'Blue', description: 'A blue button' },
-    ];
-    expect(questions[0]?.options).toEqual(expected);
-    const [event] = hub(r, 'questionBatch');
-    expect(event?.questions[0]?.options).toEqual(expected);
-    const inbox = (await call(r, 'GET', '/api/inbox')).json() as Array<{ kind: string; questions?: Array<{ options: unknown }> }>;
-    const item = inbox.find((entry) => entry.kind === 'questions');
-    expect(item?.questions?.[0]?.options).toEqual(expected);
   });
 
   it('ask-multiselect: multiSelect is stored; the one answerIndex becomes that label in answers', async () => {
@@ -619,13 +599,6 @@ describe('M3.1 · pure rules', () => {
     answerIndex: null,
     answerLabel: null,
     answeredAt: null,
-  });
-
-  it('parseQuestions keeps an option\'s preview verbatim (an empty or non-string one is dropped)', () => {
-    const preview = `+---+\n| x |\n+---+\n${'y'.repeat(6000)}`;
-    expect(parseQuestions({ questions: [{ question: 'Q?', options: [{ label: 'A', description: 'd', preview }, { label: 'B', preview: '' }, { label: 'C', preview: 3 }] }] })).toEqual([
-      { text: 'Q?', header: null, options: [{ label: 'A', description: 'd', preview }, { label: 'B' }, { label: 'C' }], multiSelect: false },
-    ]);
   });
 
   it('parseQuestions keeps question, header, option label + description and multiSelect verbatim; unreadable input → null', () => {
