@@ -8,14 +8,18 @@
  *   `--no-build`);
  * - the app with the demo seed (`SWITCHBOARD_DEMO=1`, `docs/demo.md`), fake CLIs and
  *   the setup wizard off, as every test server (`tests/helpers/server-process.ts`);
- * - through its API: two pinned sessions and a "Maintenance" folder in the sidebar
- *   (D54) and the machine name `studio-mac` (its default is this computer's host name).
+ * - through its API: two pinned sessions, a "Maintenance" folder with a "Releases"
+ *   subfolder in the sidebar (D54, D58) and the machine name `studio-mac` (its default is
+ *   this computer's host name);
+ * - through the throwaway Claude config folder (demo mode has no data for them): two example
+ *   MCP servers (`acme-docs`, `example-http`) for the MCP page, and demo sign-ins
+ *   (`dev@example.com`, plus a second profile `team@example.com`) for Settings → Accounts.
  * Not shown, because demo mode cannot: a paired machine (the demo starts no peers,
  * so Settings → Machines shows its empty state) and a live activity line (the demo
  * runs no processes). The app has one (dark) theme, so every view is shot once, as
  * `<nn>-<name>-dark.png`, at 1440×900 and device scale 2 (each file < 600 KB).
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, type Page, chromium } from '@playwright/test';
@@ -25,6 +29,10 @@ import { type PeerNode, startPeerNode } from '../../tests/helpers/peers.ts';
 
 /** Where the screenshots go. */
 export const README_SHOTS_DIR = path.join(REPO_ROOT, 'docs', 'screenshots');
+
+/** Demo e-mail addresses of the two Claude Code accounts (reserved example domain). */
+const DEMO_EMAIL = 'dev@example.com';
+const DEMO_EMAIL_2 = 'team@example.com';
 
 /** Viewport and device scale of every screenshot. */
 const VIEWPORT = { width: 1440, height: 900 } as const;
@@ -56,17 +64,15 @@ const SHOTS: readonly Shot[] = [
       await page.getByTestId('new-session').click();
       const modal = page.getByTestId('modal-new-session');
       await modal.waitFor();
-      // D56: the shot shows the Full form (Simple is the fresh-install default).
-      await modal.getByTestId('ns-mode-full').click();
-      await page.getByTestId('ns-name').fill('free-talk-640');
-      await modal.getByPlaceholder('What should be implemented?').fill('Free talk screen at 640, web and mobile. Figma frame is in the AI handoff page.');
-      await page.getByTestId('ns-branch').fill('PROJ-3021-free-talk-640');
-      await page.getByTestId('ns-pill').filter({ hasText: /^Workspace orchestrator$/ }).click();
-      for (const chip of ['acme-app-front', 'mobile']) await page.getByTestId('ns-chip').filter({ hasText: new RegExp(`^${chip}$`) }).click();
-      await page.getByTestId('br-epic-key').fill('PROJ-3010');
-      await page.getByTestId('br-epic-summary').fill('Free talk');
-      await page.getByTestId('br-parent').fill('PROJ-3020');
-      await page.getByTestId('ns-branching').scrollIntoViewIfNeeded();
+      // D56: the shot shows the Simple form (the default): folder, message, title, model, CLI and worktree.
+      await page.getByTestId('ns-simple-title').fill('Fix the login redirect');
+      await page.getByTestId('ns-message').fill('Users land on a blank page after signing in from the pricing page. Find the cause and fix it.');
+      // D57: one attached screenshot (a 1×1 PNG with a demo name).
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      const chooser = page.waitForEvent('filechooser');
+      await modal.getByTestId('attach-button').click();
+      await (await chooser).setFiles({ name: 'blank-page.png', mimeType: 'image/png', buffer: png });
+      await page.waitForTimeout(1_000);
       // The preflight runs 800 ms after the inputs settle.
       await page.waitForTimeout(2_000);
     },
@@ -89,12 +95,48 @@ const SHOTS: readonly Shot[] = [
     name: '06-sidebar',
     go: (page, base) => open(page, base, '/solutions'),
   },
+  {
+    name: '07-mcp',
+    async go(page, base) {
+      await open(page, base, '/mcp');
+      await page.getByTestId('view-mcp').getByTestId('mcp-server').first().waitFor();
+      // The Codex / OpenCode section runs their CLIs in the demo folder (not on this computer), so it
+      // would print this computer's paths and an error. It is left out of the shot.
+      await page.getByTestId('mcp-cli-section').waitFor();
+      await page.getByTestId('mcp-cli-section').evaluate((node) => node.remove());
+    },
+  },
+  {
+    name: '08-accounts',
+    async go(page, base) {
+      await open(page, base, '/settings/accounts');
+      await page.getByTestId('account-profile').first().waitFor();
+    },
+  },
 ];
 
 /** The demo instance with its sidebar pinned and foldered (D54) and a neutral machine name. */
 async function startWorld(root: string): Promise<PeerNode> {
-  const main = await startPeerNode(root, 'main', { env: { SWITCHBOARD_DEMO: '1' } });
+  // Demo mode has no MCP or account data of its own, so the throwaway Claude config folder
+  // holds two harmless example MCP servers and the fake CLI's signed-in marker (a demo email).
+  const configDir = path.join(root, 'main', 'claude-config');
+  await mkdir(configDir, { recursive: true });
+  await writeFile(
+    path.join(configDir, '.claude.json'),
+    JSON.stringify({
+      mcpServers: {
+        'acme-docs': { type: 'stdio', command: 'npx', args: ['-y', '@acme/docs-mcp'], env: { ACME_DOCS_TOKEN: 'demo' } },
+        'example-http': { type: 'http', url: 'https://mcp.example.com/mcp', headers: { Authorization: 'Bearer demo' } },
+      },
+    }),
+  );
+  await writeFile(path.join(configDir, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL }));
+  const main = await startPeerNode(root, 'main', { env: { SWITCHBOARD_DEMO: '1', FAKE_CLAUDE_AUTH_REQUIRED: '1' } });
   try {
+    const profile = await main.call('POST', '/api/accounts/profiles', { cli: 'claude', name: 'Second account' });
+    if (profile.status !== 201) throw new Error(`profile: HTTP ${profile.status}`);
+    const profileDir = path.join(main.dataDir, 'profiles', 'claude');
+    for (const id of await readdir(profileDir)) await writeFile(path.join(profileDir, id, '.fake-auth.json'), JSON.stringify({ loggedIn: true, email: DEMO_EMAIL_2 }));
     // The default is this computer's host name.
     await main.call('PUT', '/api/machines/self', { name: 'studio-mac' });
     const place = async (sessionId: string, where: Record<string, unknown>) => {
@@ -108,6 +150,11 @@ async function startWorld(root: string): Promise<PeerNode> {
     const folderId = (folder.body.folders as Array<{ id: string; name: string }>).find((f) => f.name === 'Maintenance')?.id;
     await place('calendar-func-fix', { place: 'folder', folderId });
     await place('prod-monitoring', { place: 'folder', folderId });
+    // D58: a subfolder of Maintenance.
+    const sub = await main.call('POST', '/api/sidebar/folders', { name: 'Releases', parentId: folderId });
+    if (sub.status !== 201) throw new Error(`subfolder: HTTP ${sub.status}`);
+    const subId = (sub.body.folders as Array<{ id: string; name: string }>).find((f) => f.name === 'Releases')?.id;
+    await place('button-rollout', { place: 'folder', folderId: subId });
     return main;
   } catch (error) {
     await main.server.stop();

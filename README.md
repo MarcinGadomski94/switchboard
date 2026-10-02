@@ -209,12 +209,16 @@ Everything else, such as saved folders, tools, notification and usage settings, 
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/02-new-session-dark.png" alt="The New session form with solutions picked and the Branching section"><br><sub>New session: solutions, worktrees and epic/task branching</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-new-session-dark.png" alt="The Simple New session form: folder, message with an attached screenshot, title, CLI and account, model"><br><sub>New session: the Simple form (Full adds solutions, worktrees and epic/task branching)</sub></td>
     <td width="50%"><img src="docs/screenshots/03-inbox-dark.png" alt="The Inbox with a card of three agent questions"><br><sub>Inbox: every agent question in one place</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/04-schedules-dark.png" alt="Schedules and loops with their last 14 runs"><br><sub>Schedules &amp; loops</sub></td>
-    <td width="50%"><img src="docs/screenshots/06-sidebar-dark.png" alt="The Solutions view, with pinned sessions and a Maintenance folder in the sidebar"><br><sub>Solutions, and a sidebar with pins and folders</sub></td>
+    <td width="50%"><img src="docs/screenshots/06-sidebar-dark.png" alt="The Solutions view, with pinned sessions, a Maintenance folder and its Releases subfolder in the sidebar"><br><sub>Solutions, and a sidebar with pins, folders and subfolders</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/07-mcp-dark.png" alt="The MCP servers page with a stdio and an HTTP server in the user scope"><br><sub>MCP servers: check, reconnect, sign in, add and edit</sub></td>
+    <td width="50%"><img src="docs/screenshots/08-accounts-dark.png" alt="Settings, Accounts: automatic switching rules and two Claude Code accounts"><br><sub>Settings → Accounts: several logins per CLI, switched on usage limits</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/05-machines-dark.png" alt="Settings, Machines: this machine, the peer listener and pairing"><br><sub>Settings → Machines: pair other Switchboards on your tailnet</sub></td>
@@ -320,6 +324,9 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - A **conflict card** when two sessions work in the same checkout. **Move … to worktree** isolates one of them onto a new ticket branch, or onto an **existing branch** (local or remote) picked from a searchable list.
 
 [`docs/solutions.md`](docs/solutions.md)
+
+### Artifacts
+The **Artifacts** page lists what the sessions produced, derived from their successful tool results (nothing is typed in by hand): diffs per solution and branch, pull requests and branches, docs, contracts, QA matrices, follow-ups and ticket replies. It shows `n of m`, has a search box (artifacts, solutions, branches, session titles) and type filters (**All**, **Diffs**, **PRs / branches**, **Docs & contracts**, **Ticket replies**). Each row shows the type, name, solution and branch, source session, status and age; a row opens its session, and the list refreshes while sessions work. [`docs/derivations.md`](docs/derivations.md) → *Artifacts view*
 
 ### Schedules and loops
 - **Cron schedules:** start sessions from templates.
