@@ -2,8 +2,30 @@
   "name": "switchboard",
   "version": "1.5.1",
   "license": "MIT",
+  "description": "Local web app to run, supervise and switch many Claude Code, Codex CLI and OpenCode sessions at once.",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "ai-agents",
+    "coding-agents",
+    "agent-orchestration",
+    "codex-cli",
+    "opencode",
+    "mcp",
+    "git-worktree",
+    "tailscale",
+    "developer-tools"
+  ],
+  "homepage": "https://github.com/MarcinGadomski94/switchboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarcinGadomski94/switchboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MarcinGadomski94/switchboard/issues"
+  },
   "private": true,
-  "description": "Local web app for running and supervising many Claude Code sessions.",
   "type": "module",
   "engines": {
     "node": ">=24"
