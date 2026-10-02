@@ -242,6 +242,32 @@ async function hookCall(target: PeerNode, kind: 'event' | 'permission' | 'waiter
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
+test('Fix · hook waiter expiring: hooks installed by 1.5.0 show outdated in Settings → Machines; Update hooks rewrites them with a backup', async ({ browser }) => {
+  const { a, b, aId } = await paired();
+  const page = await pageOf(browser, b, '/settings/machines');
+  const machine = page.locator(`[data-testid="machine"][data-machine-id="${aId}"]`);
+  const hooks = machine.getByTestId('machine-hooks');
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'none', { timeout: 15_000 });
+  await hooks.getByTestId('hooks-install').click();
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'installed');
+
+  // The 1.5.0 entries: the waiter without a `timeout`.
+  const file = path.join(a.configDir, 'settings.json');
+  const old = JSON.parse(await readFile(file, 'utf8')) as { hooks: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>> };
+  for (const groups of Object.values(old.hooks)) for (const group of groups) for (const hook of group.hooks) if (hook['asyncRewake'] === true) delete hook['timeout'];
+  await writeFile(file, JSON.stringify(old, null, 2));
+
+  await page.reload();
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'outdated', { timeout: 15_000 });
+  await expect(hooks.getByTestId('hooks-state')).toContainText('outdated');
+  await expect(hooks.getByTestId('hooks-update')).toHaveText('Update hooks');
+  await hooks.getByTestId('hooks-update').click();
+  await expect(hooks.getByTestId('hooks-state')).toHaveAttribute('data-state', 'installed');
+  await expect(hooks.getByTestId('hooks-backup')).toContainText('settings.json.switchboard-backup-');
+  const updated = JSON.parse(await readFile(file, 'utf8')) as typeof old;
+  expect(updated.hooks['Stop']?.some((group) => group.hooks.some((hook) => hook['asyncRewake'] === true && hook['timeout'] === 604_800))).toBe(true);
+});
+
 test('P4: hook into a terminal session on the peer from Settings → Machines; chat, a message that wakes it, Deny with a message', async ({ browser }) => {
   const { a, b, aId, aName } = await paired();
   const id = '7b6d7a38-aaaa-4bbb-8ccc-0123456789ab';

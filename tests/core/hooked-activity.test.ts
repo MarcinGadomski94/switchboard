@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type HookSignals, NO_TURN, hookedActivity, transcriptTurn } from '../../src/core/derive/hooked-activity.ts';
-import { HOOK_DELIVERY_TEXT, STALE_AFTER_MS, hookDelivery, staleFor } from '../../src/core/derive/hooked-status.ts';
+import { HOOK_DELIVERY_TEXT, STALE_AFTER_MS, hookDelivery, hooksOutdatedText, staleFor } from '../../src/core/derive/hooked-status.ts';
 import { REWAKE_MESSAGE } from '../../src/core/hooks.ts';
 import { assistantBlockLines, assistantToolLine, lastUuid, terminalUserLine, toolResultLine } from '../helpers/transcripts.ts';
 
@@ -180,6 +180,11 @@ describe('hookDelivery (D53)', () => {
     expect(hookDelivery({ ...base, waiter: false, queued: 1 })).toBe('no-waiter');
     expect(hookDelivery({ ...base, waiter: false })).toBe('no-waiter');
     expect(hookDelivery(base)).toBeNull();
+    // A waiter that was there and is gone is "stopped", not "never armed".
+    expect(hookDelivery({ ...base, waiter: false, waiterSeen: true })).toBe('waiter-stopped');
+    expect(hookDelivery({ ...base, waiter: false, waiterSeen: true, queued: 1 })).toBe('waiter-stopped');
+    expect(hookDelivery({ ...base, waiter: false, waiterSeen: false })).toBe('no-waiter');
+    expect(hookDelivery({ ...base, waiter: false, waiterSeen: true, running: true })).toBeNull();
     expect(hookDelivery({ ...base, waiter: false, running: true })).toBeNull();
   });
 
@@ -188,7 +193,10 @@ describe('hookDelivery (D53)', () => {
       handed: 'Waiting for the session to take it up (delivered to its hook)',
       turn: 'Waiting for the next turn boundary',
       'no-waiter': 'No hook listening yet — type anything in that terminal once (the hooks were installed after this session started)',
+      'waiter-stopped': 'The hook stopped listening (it expired or Switchboard restarted) — it re-arms at the next turn; update the hooks to prevent this',
       ended: 'Session ended',
     });
+    expect(hooksOutdatedText('Studio PC')).toBe('Hooks are outdated on Studio PC — Update hooks so idle sessions stay reachable');
+    expect(hooksOutdatedText(null)).toBe('Hooks are outdated on this machine — Update hooks so idle sessions stay reachable');
   });
 });

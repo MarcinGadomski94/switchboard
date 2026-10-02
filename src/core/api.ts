@@ -728,10 +728,14 @@ export interface HookStatus {
   /**
    * What an undelivered message waits on (`HOOK_DELIVERY_TEXT` has the words):
    * `handed` (released to the waiter, not taken up yet), `turn` (the next turn
-   * boundary), `no-waiter` (no hook listening yet), `ended` (the terminal session
-   * is gone); `null` when nothing waits and a waiter is armed.
+   * boundary), `no-waiter` (no hook listening yet), `waiter-stopped` (it was
+   * listening and stopped: expired or Switchboard restarted; re-armed at the next
+   * turn), `ended` (the terminal session is gone); `null` when nothing waits and a
+   * waiter is armed.
    */
-  readonly delivery: 'handed' | 'turn' | 'no-waiter' | 'ended' | null;
+  readonly delivery: 'handed' | 'turn' | 'no-waiter' | 'waiter-stopped' | 'ended' | null;
+  /** Additive (fix · hook waiter expiring): Switchboard's hooks on this machine are older than the current entries (Settings → Machines → Update hooks). Absent = up to date / unknown. */
+  readonly hooksOutdated?: boolean;
 }
 
 /**
@@ -1188,7 +1192,7 @@ export interface TerminalSession {
 
 /** Additive (D48 P4): Switchboard's hooks in this machine's user Claude settings (`GET /api/hooks`). */
 export interface HooksStatus {
-  /** `installed`: exactly the current entries; `outdated`: Switchboard's entries, but not the current ones (install again); `unreadable`: the file is not valid JSON (nothing is changed). */
+  /** `installed`: exactly the current entries; `outdated`: Switchboard's entries, but not the current ones (Update hooks); `unreadable`: the file is not valid JSON (nothing is changed). */
   readonly state: 'installed' | 'outdated' | 'none' | 'unreadable';
   readonly settingsPath: string;
   /** `claude --version`, `null` when it could not be read. */

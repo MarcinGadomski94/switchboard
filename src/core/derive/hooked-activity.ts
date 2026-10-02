@@ -22,7 +22,7 @@ import { INTERRUPT_MARKERS, parseStreamObject } from '../stream-json.ts';
 import { SYNTHETIC_MODEL, type TranscriptEntry } from '../transcript-sync.ts';
 import { toolSummary } from './activity.ts';
 
-export { HOOK_DELIVERY_TEXT, type HookDeliveryInput, type HookDeliveryState, STALE_AFTER_MS, hookDelivery, staleFor } from './hooked-status.ts';
+export { HOOK_DELIVERY_TEXT, type HookDeliveryInput, type HookDeliveryState, STALE_AFTER_MS, hookDelivery, hooksOutdatedText, staleFor } from './hooked-status.ts';
 
 
 /** `system` subtypes that end a turn in a transcript. */

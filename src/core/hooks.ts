@@ -32,6 +32,15 @@ export const PERMISSION_HOOK_TIMEOUT_S = 3600;
 /** Event hooks run in the background (`async`): they never delay the terminal. Their own limit. */
 export const EVENT_HOOK_TIMEOUT_S = 30;
 
+/**
+ * The waiter (the `asyncRewake` hook) lives this long at most: 7 days, an explicit `timeout` on its entry. VERIFIED on
+ * the 2.1.285 binary: an async / asyncRewake hook without `timeout` is killed after 10 minutes (the CLI's default,
+ * `600000` ms); the schema takes any positive number, with no maximum. The practical ceiling is the CLI's `setTimeout`
+ * (2^31-1 ms, about 24.8 days: a larger value would fire at once), so 7 days stays far below it. A killed waiter is
+ * re-armed by the CLI only at the next SessionStart / Stop, so the waiter must outlive idle stretches (ruling D48: unlimited).
+ */
+export const WAITER_HOOK_TIMEOUT_S = 7 * 24 * 3600;
+
 /** The prefix the CLI puts before a wake-up message (internal `rewakeMessage`); also the fallback's own first words. */
 export const REWAKE_MESSAGE = 'The developer sent this message from Switchboard:';
 
@@ -71,6 +80,7 @@ export function hookEntry(command: HookCommand, kind: HookKind): HookEntry {
       : { type: 'command', command: [command.nodePath, ...args].map((part) => (part === HOOK_MARKER || /^[\w.-]+$/.test(part) ? part : shellQuote(part))).join(' ') };
   if (kind === 'waiter') {
     run['asyncRewake'] = true;
+    run['timeout'] = WAITER_HOOK_TIMEOUT_S;
     if (command.rewake) {
       run['rewakeMessage'] = REWAKE_MESSAGE;
       run['rewakeSummary'] = REWAKE_SUMMARY;

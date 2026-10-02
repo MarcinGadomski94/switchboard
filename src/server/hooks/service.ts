@@ -199,6 +199,8 @@ export class HookService {
   readonly #terminals = new Map<string, Terminal>();
   readonly #requests = new Map<string, OpenRequest>();
   readonly #waiters = new Map<string, Waiter>();
+  /** Sessions that had a waiter since Switchboard started (a missing waiter is then "stopped", not "never armed"). */
+  readonly #waiterSeen = new Set<string>();
   readonly #limiters = new Map<string, DeliveryLimiter>();
   /**
    * Sessions woken and not yet back at a turn end (one wake-up per turn): when it
@@ -277,7 +279,8 @@ export class HookService {
     for (const throttle of this.#activityEvents.values()) throttle.cancel();
     for (const timer of this.#pumpTimers.values()) clearTimeout(timer);
     for (const request of [...this.#requests.values()]) this.#finishRequest(request, { status: 204, body: null });
-    for (const waiter of [...this.#waiters.values()]) this.#finishWaiter(waiter, { status: 204, body: null });
+    // Not a stop: Switchboard is going away (a restart / update), the hook script keeps trying until it is back.
+    for (const waiter of [...this.#waiters.values()]) this.#finishWaiter(waiter, { status: 503, body: null });
     await Promise.all([...this.#pumps.values()].map((pump) => pump.catch(() => undefined)));
     await Promise.all([...this.#syncs.values()].map((slot) => slot.running?.catch(() => undefined)));
   }
@@ -457,6 +460,10 @@ export class HookService {
 
   /** The session was closed (unhooked): its held permission calls get no decision. Its queued messages stay for a later re-hook. */
   async unhooked(sessionId: string): Promise<void> {
+    // Its waiter is no longer needed (the explicit stop: 204); a later re-hook is armed by the session's next turn.
+    const record = await this.#store.sessions.get(sessionId);
+    const waiter = record ? this.#waiters.get(record.claudeSessionId) : undefined;
+    if (waiter) this.#finishWaiter(waiter, { status: 204, body: null });
     for (const request of [...this.#requests.values()]) {
       if (request.sessionId === sessionId) this.#finishRequest(request, { status: 204, body: null });
     }
@@ -482,17 +489,21 @@ export class HookService {
     const woken = this.#awaitingTurn.get(cs);
     const queued = (await this.#store.pendingMessages.pending(record.id)).filter((message) => message.kind === HOOK_MESSAGE_KIND).length;
     const activity = this.activity(record.id);
+    const outdated = (await hooksState(this.configDir, await this.hookCommand())).state === 'outdated';
     const status: HookStatus = {
       waiter: this.#waiters.has(cs),
       hookSeen: terminal?.lastHookAt != null,
       delivery: hookDelivery({
         ended: terminal?.ended === true || record.status === 'done',
         waiter: this.#waiters.has(cs),
+        // A waiter was held (or its hooks reported) since Switchboard started: none now means it stopped.
+        waiterSeen: this.#waiterSeen.has(cs) || terminal?.lastHookAt != null,
         // The live line, not `terminal.running` (a released wake-up marks it running before the CLI takes it up).
         running: activity !== null,
         released: woken !== undefined && !woken.started,
         queued,
       }),
+      ...(outdated ? { hooksOutdated: true } : {}),
     };
     this.#statusJson.set(record.id, JSON.stringify(status));
     return status;
@@ -928,7 +939,12 @@ export class HookService {
     }
   }
 
-  /** `POST /hook/v1/waiter`: held until a message is released for its session (exit 2) or it is superseded / its session ends (no message). */
+  /**
+   * `POST /hook/v1/waiter`: held until a message is released for its session (`200 { message }`, exit 2). `204` is the
+   * explicit stop ("no longer needed": superseded by a newer waiter, the session ended or was unhooked, not a session
+   * Switchboard hooks); anything else (a dropped connection, `503` at shutdown, an error) is NOT a stop: the hook script
+   * retries (`docs/peers.md` → *Waiter lifetime*).
+   */
   async onWaiter(body: unknown, onAbort: OnAbort): Promise<HookAnswer> {
     const found = this.#terminalOf(body);
     if (!found || this.#closed || found.terminal.ended) return { status: 204, body: null };
@@ -938,6 +954,7 @@ export class HookService {
       if (previous) this.#finishWaiter(previous, { status: 204, body: null });
       const waiter: Waiter = { claudeSessionId: cs, done: false, finish: resolve };
       this.#waiters.set(cs, waiter);
+      this.#waiterSeen.add(cs);
       onAbort(() => {
         if (waiter.done) return;
         waiter.done = true;

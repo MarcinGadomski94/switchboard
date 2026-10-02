@@ -74,7 +74,7 @@ export function hooksStateLabel(status: HooksStatus): string {
     case 'installed':
       return status.rewake === 'internal' ? 'Terminal hooks: installed' : 'Terminal hooks: installed (plain wake-up wording)';
     case 'outdated':
-      return 'Terminal hooks: outdated (install again)';
+      return 'Terminal hooks: outdated (update them so idle sessions stay reachable)';
     case 'none':
       return 'Terminal hooks: not installed';
     case 'unreadable':

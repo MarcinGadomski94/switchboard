@@ -17,7 +17,12 @@
  *   terminal's own dialog decides, as it always can).
  * - `waiter` (SessionStart / Stop, `asyncRewake`): waits for a message for this
  *   session; `200 { message }` → the message on stderr, **exit 2** (the CLI wakes
- *   the session with it); anything else → exit 0.
+ *   the session with it); `204` (the host's explicit "no longer needed": superseded,
+ *   session ended / unhooked) → exit 0. Anything else (connection refused or reset,
+ *   Switchboard restarting, `503`, an error, an empty answer) is NOT a stop: it waits
+ *   again, backing off 1 s → 30 s, for as long as the CLI keeps the hook alive (its
+ *   entry carries a 7-day `timeout`). The host marks a message delivered before it
+ *   answers, so a retried long-poll never takes one twice.
  */
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
@@ -61,6 +66,59 @@ function post(port: number, route: string, token: string, body: string, timeoutM
   });
 }
 
+/** The waiter's retry backoff: 1 s, doubling, 30 s at most. */
+const BACKOFF_MIN_MS = 1_000;
+const BACKOFF_MAX_MS = 30_000;
+/** A held connection that lasted this long was healthy: the backoff starts over. */
+const HEALTHY_MS = 30_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** `false` once the CLI process that runs this hook is gone (its hook is then no longer needed). */
+function claudeAlive(pid: number | null): boolean {
+  if (pid === null) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** The waiter: long-polls until a message (exit 2) or the host's explicit stop (exit 0); retries everything else. */
+async function runWaiter(port: number, tokenFile: string, body: string, claudePid: number | null): Promise<number> {
+  let delay = BACKOFF_MIN_MS;
+  for (;;) {
+    if (!claudeAlive(claudePid)) return 0;
+    const startedAt = Date.now();
+    let answer: { status: number; text: string } | null = null;
+    try {
+      const token = (await readFile(tokenFile, 'utf8')).trim();
+      answer = await post(port, '/hook/v1/waiter', token, body, null);
+    } catch {
+      // Switchboard down or restarting, the connection reset, the token not readable now: try again.
+    }
+    if (answer?.status === 204) return 0;
+    if (answer?.status === 200) {
+      let message: unknown;
+      try {
+        message = (JSON.parse(answer.text) as { message?: unknown }).message;
+      } catch {
+        message = undefined;
+      }
+      if (typeof message === 'string' && message !== '') {
+        process.stderr.write(message);
+        return 2;
+      }
+    }
+    delay = Date.now() - startedAt >= HEALTHY_MS ? BACKOFF_MIN_MS : delay;
+    await sleep(delay);
+    delay = Math.min(delay * 2, BACKOFF_MAX_MS);
+  }
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const at = args.indexOf(MARKER);
@@ -69,7 +127,6 @@ async function main(): Promise<number> {
   const port = Number(portText);
   if (!kind || !tokenFile || !Number.isInteger(port) || port < 1 || port > 65535) return 0;
   if (kind !== 'event' && kind !== 'permission' && kind !== 'waiter') return 0;
-  const token = (await readFile(tokenFile, 'utf8')).trim();
   const input = (await readStdin()).trim();
   let event: unknown;
   try {
@@ -82,17 +139,13 @@ async function main(): Promise<number> {
     claudePid: Number(process.env['CLAUDE_PID']) || null,
     entrypoint: process.env['CLAUDE_CODE_ENTRYPOINT'] ?? null,
   });
+  if (kind === 'waiter') return runWaiter(port, tokenFile, body, Number(process.env['CLAUDE_PID']) || null);
+  const token = (await readFile(tokenFile, 'utf8')).trim();
   const answer = await post(port, `/hook/v1/${kind}`, token, body, kind === 'event' ? 2_000 : null);
   if (answer.status !== 200) return 0;
   if (kind === 'permission') {
     process.stdout.write(answer.text);
     return 0;
-  }
-  if (kind === 'waiter') {
-    const message = (JSON.parse(answer.text) as { message?: unknown }).message;
-    if (typeof message !== 'string' || message === '') return 0;
-    process.stderr.write(message);
-    return 2;
   }
   return 0;
 }

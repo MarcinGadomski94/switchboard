@@ -1,6 +1,6 @@
 import { readCliProvider, unavailableText } from '../../../core/cli-providers.ts';
 import type { AttachWarningReason, HookStatus, Session, SessionModel, SessionModelInput } from '../../../core/api.ts';
-import { HOOK_DELIVERY_TEXT } from '../../../core/derive/hooked-status.ts';
+import { HOOK_DELIVERY_TEXT, hooksOutdatedText } from '../../../core/derive/hooked-status.ts';
 import { CLI_EFFORT_LEVELS, DEFAULT_MODEL_VALUE, effortLevelsFor, modelOptionFor, normalizeModel } from '../../../core/model-choice.ts';
 import { folderName, samePath } from '../../folders/folders.ts';
 
@@ -325,5 +325,11 @@ export const HOOKED_NOTE =
  */
 export function hookedDeliveryNote(session: { readonly hooked?: boolean; readonly hookStatus?: HookStatus | null } | null): string | null {
   const delivery = session?.hooked === true ? (session.hookStatus?.delivery ?? null) : null;
-  return delivery === 'no-waiter' || delivery === 'ended' ? HOOK_DELIVERY_TEXT[delivery] : null;
+  return delivery === 'no-waiter' || delivery === 'waiter-stopped' || delivery === 'ended' ? HOOK_DELIVERY_TEXT[delivery] : null;
+}
+
+/** Fix · hook waiter expiring: "Hooks are outdated on <machine> — Update hooks …" for a hooked session whose machine still has the old entries, `null` otherwise. */
+export function hooksOutdatedNote(session: { readonly hooked?: boolean; readonly hookStatus?: HookStatus | null; readonly machine?: { readonly name?: string | null } | null } | null): string | null {
+  if (session?.hooked !== true || session.hookStatus?.hooksOutdated !== true) return null;
+  return hooksOutdatedText(session.machine?.name ?? null);
 }

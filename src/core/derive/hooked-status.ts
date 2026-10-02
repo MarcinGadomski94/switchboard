@@ -24,16 +24,18 @@ export function staleFor(activity: Pick<SessionActivity, 'state' | 'quietSince'>
  * D53: what a message to a hooked session waits on.
  * - `handed`: released to the session's live waiter; the CLI has not taken it up yet.
  * - `turn`: waits for the next turn boundary (a turn runs; or a wake-up is in flight / the rate limit holds it).
- * - `no-waiter`: no waiter is registered for the session (it has not run a hook since the hooks were installed).
+ * - `no-waiter`: no waiter was ever registered for the session (it has not run a hook since the hooks were installed).
+ * - `waiter-stopped`: the session's waiter was there and is gone (the CLI's timeout killed it, or Switchboard restarted); the CLI re-arms it at the next turn.
  * - `ended`: the terminal session is gone.
  */
-export type HookDeliveryState = 'handed' | 'turn' | 'no-waiter' | 'ended';
+export type HookDeliveryState = 'handed' | 'turn' | 'no-waiter' | 'waiter-stopped' | 'ended';
 
 /** D53: the plain words of each {@link HookDeliveryState} (the clock's tooltip and the line under the bubble). */
 export const HOOK_DELIVERY_TEXT: Readonly<Record<HookDeliveryState, string>> = {
   handed: 'Waiting for the session to take it up (delivered to its hook)',
   turn: 'Waiting for the next turn boundary',
   'no-waiter': 'No hook listening yet — type anything in that terminal once (the hooks were installed after this session started)',
+  'waiter-stopped': 'The hook stopped listening (it expired or Switchboard restarted) — it re-arms at the next turn; update the hooks to prevent this',
   ended: 'Session ended',
 };
 
@@ -42,6 +44,8 @@ export interface HookDeliveryInput {
   readonly ended: boolean;
   /** A waiter is held for the session now. */
   readonly waiter: boolean;
+  /** The session had a waiter (or its hooks reported) since Switchboard started: no waiter now means it stopped, not that it never was. */
+  readonly waiterSeen?: boolean;
   /** A turn runs. */
   readonly running: boolean;
   /** A wake-up was released to a waiter and its turn has not been seen to start. */
@@ -59,12 +63,17 @@ export interface HookDeliveryInput {
  * - still in the mailbox → `turn` with a waiter (held for the running wake-up or
  *   the rate limit) or while a turn runs (its Stop arms the next waiter), else
  *   `no-waiter`;
- * - nothing waits → `no-waiter` when idle without a waiter (the header note warns
- *   before a message is sent), else `null`.
+ * - nothing waits → `no-waiter` (or `waiter-stopped` when one was seen) when idle
+ *   without a waiter (the header note warns before a message is sent), else `null`.
  */
 export function hookDelivery(input: HookDeliveryInput): HookDeliveryState | null {
   if (input.ended) return 'ended';
   if (input.released) return input.running ? 'turn' : 'handed';
   if (input.waiter || input.running) return input.queued > 0 ? 'turn' : null;
-  return 'no-waiter';
+  return input.waiterSeen === true ? 'waiter-stopped' : 'no-waiter';
+}
+
+/** The header note when Switchboard's hooks on the session's machine are older than this version's entries (they lack options such as the waiter's long timeout). */
+export function hooksOutdatedText(machineName: string | null): string {
+  return `Hooks are outdated on ${machineName ?? 'this machine'} — Update hooks so idle sessions stay reachable`;
 }

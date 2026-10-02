@@ -48,8 +48,8 @@ export function MachineHooks({ machine, name }: { readonly machine: string | nul
         {shown ? hooksStateLabel(shown) : status.error ? 'Terminal hooks: unknown' : 'Terminal hooks: …'}
       </span>
       {shown && shown.state !== 'installed' && shown.state !== 'unreadable' ? (
-        <button type="button" className="sb-set-action" data-testid="hooks-install" disabled={busy} onClick={() => void run(async () => setChanged(await client.installHooks()), 'The hooks could not be installed.')}>
-          Install hooks
+        <button type="button" className="sb-set-action" data-testid={shown.state === 'outdated' ? 'hooks-update' : 'hooks-install'} disabled={busy} onClick={() => void run(async () => setChanged(await client.installHooks()), shown.state === 'outdated' ? 'The hooks could not be updated.' : 'The hooks could not be installed.')}>
+          {shown.state === 'outdated' ? 'Update hooks' : 'Install hooks'}
         </button>
       ) : null}
       {shown && (shown.state === 'installed' || shown.state === 'outdated') ? (

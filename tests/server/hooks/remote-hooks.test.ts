@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,11 +24,13 @@ const CS = '7b6d7a38-aaaa-4bbb-8ccc-0123456789ab';
 
 let tmp: string;
 let nodes: PeerNode[] = [];
+const spawned: ChildProcess[] = [];
 
 beforeEach(async () => {
   tmp = await makeTempDir('remote-hooks');
 });
 afterEach(async () => {
+  for (const child of spawned.splice(0)) child.kill('SIGKILL');
   await Promise.all(nodes.map((node) => node.server.stop()));
   nodes = [];
   await removeTempDir(tmp);
@@ -38,6 +40,7 @@ afterEach(async () => {
 function runHook(kind: string, port: number, tokenFile: string, input: unknown): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [SCRIPT, HOOK_MARKER, kind, String(port), tokenFile], { shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_PID: String(process.pid) } });
+    spawned.push(child);
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
@@ -117,6 +120,8 @@ describe('D48 P4 across machines, with the real hook script', () => {
     await writeFile(wrong, 'x'.repeat(43));
     expect(await runHook('permission', port, wrong, { session_id: CS, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: {} })).toEqual({ code: 0, stdout: '', stderr: '' });
     await a.server.stop();
-    expect(await runHook('waiter', port, tokenFile, { session_id: CS, hook_event_name: 'Stop' })).toEqual({ code: 0, stdout: '', stderr: '' });
+    // The waiter is different: a Switchboard that is down is not a stop, it keeps retrying (`waiter-lifetime.test.ts`).
+    const retrying = runHook('waiter', port, tokenFile, { session_id: CS, hook_event_name: 'Stop' });
+    expect(await Promise.race([retrying.then(() => 'exited'), new Promise((resolve) => setTimeout(() => resolve('retrying'), 2_500))])).toBe('retrying');
   });
 });

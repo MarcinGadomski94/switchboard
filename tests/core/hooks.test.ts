@@ -7,6 +7,7 @@ import {
   hookEntry,
   isSwitchboardHook,
   parseTerminalAgents,
+  WAITER_HOOK_TIMEOUT_S,
   rewakeSupported,
   switchboardHooksState,
   switchboardMessageText,
@@ -68,7 +69,9 @@ describe('D48 P4 hook entries', () => {
     const fallback = hookEntry(WINDOWS, 'waiter');
     expect(fallback['asyncRewake']).toBe(true);
     expect(fallback).not.toHaveProperty('rewakeMessage');
-    expect(fallback).not.toHaveProperty('timeout');
+    // Both forms carry the 7-day timeout (the CLI kills a waiter without one after 10 minutes).
+    expect(fallback['timeout']).toBe(WAITER_HOOK_TIMEOUT_S);
+    expect(hookEntry(POSIX, 'waiter')['timeout']).toBe(604_800);
     expect(rewakeSupported('2.1.284 (Claude Code)')).toBe(true);
     expect(rewakeSupported('2.1.299')).toBe(true);
     expect(rewakeSupported('2.1.283')).toBe(false);
@@ -94,6 +97,15 @@ describe('D48 P4 hook entries', () => {
     expect(switchboardHooksState(OTHERS, POSIX)).toBe('none');
     // A file with only Switchboard's hooks loses its `hooks` key, nothing else.
     expect(withoutSwitchboardHooks(withSwitchboardHooks({ theme: 'dark' }, WINDOWS)).settings).toEqual({ theme: 'dark' });
+  });
+
+  it('an old waiter entry (no timeout, as 1.5.0 wrote it) is outdated; the current plan is installed', () => {
+    const current = withSwitchboardHooks({}, POSIX);
+    const old = JSON.parse(JSON.stringify(current)) as { hooks: Record<string, Array<{ hooks: Array<Record<string, unknown>> }>> };
+    for (const groups of Object.values(old.hooks)) for (const group of groups) for (const hook of group.hooks) if (hook['asyncRewake'] === true) delete hook['timeout'];
+    expect(switchboardHooksState(current, POSIX)).toBe('installed');
+    expect(switchboardHooksState(old, POSIX)).toBe('outdated');
+    expect(withSwitchboardHooks(old, POSIX)).toEqual(current);
   });
 
   it('a group mixing a Switchboard hook with another keeps the other', () => {

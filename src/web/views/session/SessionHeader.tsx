@@ -23,6 +23,7 @@ import {
   actionErrorText,
   attachWarningText,
   hookedDeliveryNote,
+  hooksOutdatedNote,
   pauseButton,
   remoteToggle,
   rootLine,
@@ -268,6 +269,14 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               {' '}
               <strong className="sb-sv-hooked-delivery" data-testid="session-hooked-delivery">
                 {hookedDeliveryNote(session)}
+              </strong>
+            </>
+          ) : null}
+          {hooksOutdatedNote(session) ? (
+            <>
+              {' '}
+              <strong className="sb-sv-hooked-delivery" data-testid="session-hooks-outdated">
+                {hooksOutdatedNote(session)}
               </strong>
             </>
           ) : null}

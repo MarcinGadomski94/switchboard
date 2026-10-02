@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionActivity } from '../../src/core/api.ts';
 import { chatActivityLine, formatQuiet, sessionActivityLabel, staleHint, waitingText } from '../../src/web/activity/activity.ts';
 import { hookedQueuedNote } from '../../src/web/views/session/chat.ts';
-import { hookedDeliveryNote } from '../../src/web/views/session/session-header.ts';
+import { hookedDeliveryNote, hooksOutdatedNote } from '../../src/web/views/session/session-header.ts';
 
 /** D53: a hooked session's live line (the staleness hint, waiting for permission) and its queued message's words. */
 
@@ -64,6 +64,17 @@ describe('what a queued message waits on (D53)', () => {
   it('the header note adds only the unusual cases (no hook listening, ended)', () => {
     expect(hookedDeliveryNote({ hooked: true, hookStatus: { waiter: false, hookSeen: true, delivery: 'no-waiter' } })).toContain('No hook listening yet');
     expect(hookedDeliveryNote({ hooked: true, hookStatus: { waiter: false, hookSeen: true, delivery: 'ended' } })).toBe('Session ended');
+    expect(hookedDeliveryNote({ hooked: true, hookStatus: { waiter: false, hookSeen: true, delivery: 'waiter-stopped' } })).toBe(
+      'The hook stopped listening (it expired or Switchboard restarted) — it re-arms at the next turn; update the hooks to prevent this',
+    );
     expect(hookedDeliveryNote({ hooked: true, hookStatus: { waiter: true, hookSeen: true, delivery: 'turn' } })).toBeNull();
+  });
+
+  it('outdated hooks add their own note, with the machine name; up-to-date ones none', () => {
+    const status = { waiter: true, hookSeen: true, delivery: null, hooksOutdated: true } as const;
+    expect(hooksOutdatedNote({ hooked: true, hookStatus: status })).toBe('Hooks are outdated on this machine — Update hooks so idle sessions stay reachable');
+    expect(hooksOutdatedNote({ hooked: true, hookStatus: status, machine: { name: 'Studio PC' } })).toBe('Hooks are outdated on Studio PC — Update hooks so idle sessions stay reachable');
+    expect(hooksOutdatedNote({ hooked: true, hookStatus: { ...status, hooksOutdated: false } })).toBeNull();
+    expect(hooksOutdatedNote({ hooked: false, hookStatus: status })).toBeNull();
   });
 });
