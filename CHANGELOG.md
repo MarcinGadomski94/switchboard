@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3 (2026-10-02)
+
+### Added
+- **Standing instruction for agents** (Settings → Sessions & worktrees): a short instruction Switchboard gives every session it starts or resumes, on by default. The default asks agents to write out a proposal, table, list or plan before asking a question about it, and never to refer to content "above" that they haven't written. Editable, can be switched off, and resettable. Claude Code receives it through `--append-system-prompt`; Codex and OpenCode through their own instruction fields (not yet tried against the real CLIs).
+
 ## 1.5.2 (2026-10-02)
 
 ### Changed
