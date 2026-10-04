@@ -841,9 +841,10 @@ Session.profileId?: string, Session.profileName?: string, Session.profilePinned?
 LifecyclePayload (action "account-switched"): { fromProfile, toProfile, reason }   // the chat's divider "Switched account: A → B (session limit, resets 14:05)"
 SystemInfo.accountUsage?: [{ profileId, cli, name, active: boolean, pct: number | null, exhaustedUntil: string | null, windows?: AccountUsageWindow[] }]   // only while a CLI has more than one enabled account
 AccountUsageWindow { key: "session" | "week" | "model", label: string, pct: number, resetsAt: string | null, model?: string, asOf?: string }   // D66, additive
+SystemInfo.activeAccounts?: [{ cli: CliProviderId, profileId, name }]   // D66, additive: each CLI's (claude, codex) active account, also with a single one
 ```
 
-D66 (additive, `docs/decisions.md` → *Footer usage grid*): each `accountUsage` row lists the profile's own windows known now in `windows` (the footer grid's two bars per account and its tooltip): `session` (5 hours), `week`, and for a Claude Code profile each model's weekly limit in use (`key: "model"`, `model` = its name, `asOf` = the time of an older `get_usage` reading, as `UsageWindow`); read from that profile's own readings with the same rules as `usageWindows` (a window that has reset or is unknown is left out). A Codex profile's come from the windows its sessions reported (`resetsAt` may be `null`). `SystemInfo.cliUsage[].key` (D66, additive): `session` for a window up to 10 hours, `week` for a longer one, `model` when the CLI did not say how long; the grid's line of a CLI with a single account.
+D66 (additive, `docs/decisions.md` → *Footer usage grid*): each `accountUsage` row lists the profile's own windows known now in `windows` (the footer grid's two bars per account and its tooltip): `session` (5 hours), `week`, and for a Claude Code profile each model's weekly limit in use (`key: "model"`, `model` = its name, `asOf` = the time of an older `get_usage` reading, as `UsageWindow`); read from that profile's own readings with the same rules as `usageWindows` (a window that has reset or is unknown is left out). A Codex profile's come from the windows its sessions reported (`resetsAt` may be `null`). `SystemInfo.activeAccounts` (D66, additive): per CLI with an enabled account (Claude Code, Codex) the one new sessions start on, sent also while it is the only one (the footer grid names a single account's line after it); omitted when there is none (demo mode). `SystemInfo.cliUsage[].key` (D66, additive): `session` for a window up to 10 hours, `week` for a longer one, `model` when the CLI did not say how long; the grid's line of a CLI with a single account.
 
 ```json
 GET /api/system
@@ -853,6 +854,7 @@ GET /api/system
   { "profileId": "8d3f…", "cli": "claude", "name": "Private", "active": false, "pct": 40, "exhaustedUntil": null,
     "windows": [{ "key": "session", "label": "Session", "pct": 10, "resetsAt": "2026-10-04T15:30:00.000Z" }, { "key": "week", "label": "Week", "pct": 40, "resetsAt": "2026-10-09T09:00:00.000Z" },
       { "key": "model", "label": "Opus", "model": "Opus", "pct": 55, "resetsAt": "2026-10-09T09:00:00.000Z" }] } ],
+  "activeAccounts": [{ "cli": "claude", "profileId": "default-claude", "name": "Work" }, { "cli": "codex", "profileId": "default-codex", "name": "Default" }],
   "cliUsage": [{ "provider": "codex", "label": "Codex 5h", "pct": 35, "resetsAt": "2026-10-04T15:00:00.000Z", "key": "session" }] }
 ```
 
