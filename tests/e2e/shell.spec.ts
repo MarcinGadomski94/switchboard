@@ -92,6 +92,10 @@ test('the shell renders from the real API and shows only what the API returns', 
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toMatchObject({ default: 'claude' });
       expect((call.body as { clis: Array<{ provider: string }> }).clis.map((cli) => cli.provider).sort(), call.url).toEqual(['claude', 'codex', 'opencode']);
+    } else if (call.url === '/api/machines') {
+      // D48: the sidebar's machines (peers); a fresh install has paired none.
+      expect(call.status, call.url).toBe(200);
+      expect((call.body as { machines: unknown[] }).machines, call.url).toEqual([]);
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);
@@ -113,8 +117,8 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
   await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM']);
   await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/]);
-  // D66: the usage grid's one line (a single Claude Code account): 5h unknown, Week unknown or 18 %.
-  await expect(page.getByTestId('usage-line').locator('.sb-usage-label')).toHaveText(['Claude']);
+  // D66: the usage grid's one line (the single Claude Code account, the built-in Default): 5h unknown, Week unknown or 18 %.
+  await expect(page.getByTestId('usage-line').locator('.sb-usage-label')).toHaveText(['Default']);
   await expect(page.getByTestId('usage-line').locator('.sb-usage-pct')).toHaveText(['—', /^(—|18%)$/]);
 });
 

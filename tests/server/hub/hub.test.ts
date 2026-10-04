@@ -171,7 +171,7 @@ const WORKTREE_KEYS = keys<Worktree>()(['id', 'repo', 'branch', 'path', 'session
 const SCHEDULE_RUN_KEYS = keys<HubEvents['scheduleRun']>()(['scheduleId', 'result']);
 /** The contract's `/api/system` fields; `usagePct` (and the additive `usageResetsAt`) only when known, the additive `usageWarnings` (M9.2) only when any are in force, `usageWindows` (D17) only when any is known. */
 const SYSTEM_REQUIRED_KEYS = ['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes'].sort();
-keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings', 'usageWindows', 'cliUsage', 'accountUsage']);
+keys<SystemInfo>()(['cli', 'cliVersion', 'signedIn', 'ghSignedIn', 'cpu', 'ramUsed', 'ramTotal', 'processes', 'usagePct', 'usageResetsAt', 'usageWarnings', 'usageWindows', 'cliUsage', 'accountUsage', 'activeAccounts']);
 
 function keysOf(value: unknown): string[] {
   return Object.keys(value as object).sort();

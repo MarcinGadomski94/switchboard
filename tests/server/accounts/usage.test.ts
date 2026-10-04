@@ -84,6 +84,7 @@ describe('D63 · usage per account profile', () => {
     await w.store.usage.add({ source: 'get_usage', sessionId: null, profileId: b.id, fiveHourPct: 10, fiveHourResetsAt: soon(3_600_000), sevenDayPct: 5, sevenDayResetsAt: soon(86_400_000), raw: {} });
     const base: Providers = { system: { system: async () => ({ cli: 'claude' }) as unknown as SystemInfo } };
     const rows = async (): Promise<SystemInfo['accountUsage']> => ((await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo).accountUsage;
+    const actives = async (): Promise<SystemInfo['activeAccounts']> => ((await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo).activeAccounts;
     expect(await rows()).toEqual([
       { profileId: 'default-claude', cli: 'claude', name: 'Default', active: true, pct: 62, exhaustedUntil: null, windows: [expect.objectContaining({ key: 'session', pct: 62 }), expect.objectContaining({ key: 'week', pct: 5 })] },
       { profileId: b.id, cli: 'claude', name: 'Private', active: false, pct: 10, exhaustedUntil: null, windows: [expect.objectContaining({ key: 'session', pct: 10 }), expect.objectContaining({ key: 'week', pct: 5 })] },
@@ -91,9 +92,16 @@ describe('D63 · usage per account profile', () => {
     const until1 = soon(3_600_000);
     await w.accounts.markExhausted({ profileId: 'default-claude', until: until1, window: 'session', text: 'x' });
     expect(await rows()).toMatchObject([{ active: false, exhaustedUntil: until1 }, { active: true }]);
+    // D66: each CLI's active account by name (the Codex Default is its only one).
+    expect(await actives()).toEqual([
+      { cli: 'claude', profileId: b.id, name: 'Private' },
+      { cli: 'codex', profileId: 'default-codex', name: 'Default' },
+    ]);
     // A single enabled profile: no line.
     await w.accounts.update(b.id, { enabled: false });
     expect(((await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo).accountUsage).toBeUndefined();
+    // D66: the single account is still named (the footer grid's line label).
+    expect((await actives())?.find((a) => a.cli === 'claude')).toEqual({ cli: 'claude', profileId: 'default-claude', name: 'Default' });
   });
 
   it('D66: each row lists its own windows; with the meter a Claude Code profile\'s include its model limits in use', async () => {

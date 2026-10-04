@@ -1794,6 +1794,20 @@ export interface SystemInfo {
    * footer's usage grid).
    */
   readonly accountUsage?: readonly AccountUsageRow[];
+  /**
+   * Additive (D66, `docs/accounts.md` → *Usage per account*): the account new
+   * sessions start on, per CLI (Claude Code, Codex) that has an enabled one, also
+   * while it has only one (the footer grid's line label then). Omitted when none is.
+   */
+  readonly activeAccounts?: readonly ActiveAccount[];
+}
+
+/** Additive (D66): one CLI's active account in `SystemInfo.activeAccounts`. */
+export interface ActiveAccount {
+  readonly cli: CliProviderId;
+  readonly profileId: string;
+  /** The profile's name (`Default`, `Work`). */
+  readonly name: string;
 }
 
 /** Additive (D63): one profile's usage in `SystemInfo.accountUsage`. */

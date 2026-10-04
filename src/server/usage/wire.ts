@@ -1,4 +1,4 @@
-import type { AccountUsageRow, AccountUsageWindow, CliUsageWindow, SystemInfo, UsageWarning, UsageWindow } from '../../core/api.ts';
+import type { AccountUsageRow, AccountUsageWindow, ActiveAccount, CliUsageWindow, SystemInfo, UsageWarning, UsageWindow } from '../../core/api.ts';
 import type { ProviderUsage } from '../cli/bridge-common.ts';
 import type { ServerConfig } from '../config.ts';
 import type { Store } from '../db/store.ts';
@@ -136,7 +136,8 @@ export function profileUsageWindows(usage: ProfileUsage | null, now: number): Ac
  * only while a CLI has more than one enabled profile. Claude Code profiles have their
  * readings, Codex profiles the windows their sessions reported. D66: each row also
  * lists its `windows` (the footer grid's two bars per account); `windowsOf` (the
- * meter's `profileWindows`) gives a Claude Code profile's, model limits included.
+ * meter's `profileWindows`) gives a Claude Code profile's, model limits included;
+ * `activeAccounts` names each CLI's active account, also while it has only one.
  */
 export function withAccountUsage(
   providers: Providers,
@@ -150,10 +151,15 @@ export function withAccountUsage(
     async system(...args: Parameters<SystemProvider['system']>): Promise<SystemInfo> {
       const info = await base.system(...args);
       const rows: AccountUsageRow[] = [];
+      const actives: ActiveAccount[] = [];
       for (const cli of ['claude', 'codex'] as const) {
         const list = (await accounts.list({ check: false })).filter((p) => p.cli === cli && p.enabled);
-        if (list.length < 2) continue;
+        if (list.length === 0) continue;
         const active = await accounts.pick(cli, { check: false });
+        // D66: the active account's name, also with a single one (the footer grid's line label).
+        const current = list.find((p) => p.id === active) ?? list[0];
+        if (current) actives.push({ cli, profileId: current.id, name: current.name });
+        if (list.length < 2) continue;
         for (const profile of list) {
           const usage = profile.usage;
           const live = (iso: string | null): boolean => iso !== null && Date.parse(iso) > now();
@@ -169,7 +175,7 @@ export function withAccountUsage(
           });
         }
       }
-      return rows.length > 0 ? { ...info, accountUsage: rows } : info;
+      return { ...info, ...(rows.length > 0 ? { accountUsage: rows } : {}), ...(actives.length > 0 ? { activeAccounts: actives } : {}) };
     }
   };
   return { ...providers, system };

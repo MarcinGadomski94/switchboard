@@ -150,10 +150,10 @@ export interface UsageCell extends Meter {
  * model limits.
  */
 export interface UsageGridLine {
-  /** The profile id, or `cli:<id>` for a CLI whose single account is not listed in `accountUsage`. */
+  /** The profile id, or `cli:<id>` for a CLI whose account is not known (no `accountUsage` / `activeAccounts` entry). */
   readonly key: string;
   readonly cli: CliProviderId;
-  /** A Claude Code account's profile name; another CLI's short label (`Codex`, `Codex Work` while it has more than one account). */
+  /** A Claude Code account's profile name (`Claude` while unknown); another CLI's short label and the account's name (`Codex Work`; `Codex` while unknown). */
   readonly label: string;
   /** The account new sessions of its CLI start on (marked ●); only while that CLI has more than one. */
   readonly active: boolean;
@@ -210,18 +210,24 @@ function gridLine(
  * D66 (`docs/accounts.md` → *Usage per account*): the footer's usage grid, one
  * line per account. Claude Code: each enabled account while it has more than one
  * (`accountUsage`; the active one's windows are the meter's `usageWindows`), else
- * one "Claude" line from `usageWindows`; always listed (`—` while unknown or
- * before `/api/system` answers). Codex / OpenCode: each account of a CLI with
- * more than one that has a known window or is spent, else one line from that
- * CLI's `cliUsage` while it has any. Nothing is derived from `pct`: an unknown
- * window stays `—`.
+ * one line from `usageWindows` named after its account (`activeAccounts`;
+ * "Claude" while unknown); always listed (`—` while unknown or before
+ * `/api/system` answers). Codex / OpenCode: each enabled account of a CLI with
+ * more than one (developer ruling 2026-10-04: also with no known window, `— —`),
+ * else one line from that CLI's `cliUsage` while it has any. Nothing is derived
+ * from `pct`: an unknown window stays `—`.
  */
 export function usageGridLines(system: SystemInfo | null, now: number = Date.now()): UsageGridLine[] {
   const rows = system?.accountUsage ?? [];
   const lines: UsageGridLine[] = [];
   const claude = rows.filter((row) => row.cli === 'claude');
+  const single = (cli: CliProviderId): { key: string; label: string } => {
+    const account = system?.activeAccounts?.find((a) => a.cli === cli);
+    if (!account) return { key: `cli:${cli}`, label: CLI_SHORT_LABELS[cli] };
+    return { key: account.profileId, label: cli === 'claude' ? account.name : `${CLI_SHORT_LABELS[cli]} ${account.name}` };
+  };
   if (claude.length === 0) {
-    lines.push(gridLine({ key: 'cli:claude', cli: 'claude', label: CLI_SHORT_LABELS.claude, active: false, exhaustedUntil: null }, system?.usageWindows ?? [], now));
+    lines.push(gridLine({ ...single('claude'), cli: 'claude', active: false, exhaustedUntil: null }, system?.usageWindows ?? [], now));
   }
   for (const row of claude) {
     const windows = row.active ? (system?.usageWindows ?? row.windows ?? []) : (row.windows ?? []);
@@ -230,12 +236,11 @@ export function usageGridLines(system: SystemInfo | null, now: number = Date.now
   for (const cli of ['codex', 'opencode'] as const) {
     const own = rows.filter((row) => row.cli === cli);
     for (const row of own) {
-      const line = gridLine({ key: row.profileId, cli, label: `${CLI_SHORT_LABELS[cli]} ${row.name}`, active: row.active, exhaustedUntil: row.exhaustedUntil }, row.windows ?? [], now);
-      if (line.spent || (row.windows ?? []).length > 0) lines.push(line);
+      lines.push(gridLine({ key: row.profileId, cli, label: `${CLI_SHORT_LABELS[cli]} ${row.name}`, active: row.active, exhaustedUntil: row.exhaustedUntil }, row.windows ?? [], now));
     }
     if (own.length > 0) continue;
     const windows = (system?.cliUsage ?? []).filter((w) => w.provider === cli).map((w): GridWindow => ({ key: w.key ?? 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt }));
-    if (windows.length > 0) lines.push(gridLine({ key: `cli:${cli}`, cli, label: CLI_SHORT_LABELS[cli], active: false, exhaustedUntil: null }, windows, now));
+    if (windows.length > 0) lines.push(gridLine({ ...single(cli), cli, active: false, exhaustedUntil: null }, windows, now));
   }
   return lines;
 }

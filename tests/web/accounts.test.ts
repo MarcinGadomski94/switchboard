@@ -71,10 +71,11 @@ describe('D63 · the footer line and the chat divider (web)', () => {
       ],
     } as unknown as SystemInfo;
     const lines = usageGridLines(system, NOW);
-    // A Codex account without a known window (and not spent) has no line; the other CLI's lines come after Claude Code's.
-    expect(lines.map((l) => [l.label, l.outUntil?.replace(/\d\d:\d\d/, 'HH:MM') ?? null, l.active, l.spent])).toEqual([
-      ['Default', 'out until HH:MM', false, true],
-      ['Private', null, true, false],
+    // Every account gets a line (a Codex one with no known window too, ruling 2026-10-04); the other CLI's lines come after Claude Code's.
+    expect(lines.map((l) => [l.label, l.outUntil?.replace(/\d\d:\d\d/, 'HH:MM') ?? null, l.active, l.spent, l.session.text])).toEqual([
+      ['Default', 'out until HH:MM', false, true, '—'],
+      ['Private', null, true, false, '—'],
+      ['Codex Work', null, true, false, '—'],
     ]);
     // Without accountUsage: the single Claude line.
     expect(usageGridLines({} as SystemInfo, NOW).map((l) => l.key)).toEqual(['cli:claude']);

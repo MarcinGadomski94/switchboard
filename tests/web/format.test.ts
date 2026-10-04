@@ -119,7 +119,7 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
     expect(lines[2]?.title).toContain('Week: 12% · reset unknown');
   });
 
-  it('D66: a Codex account of a CLI with several is labeled with its name and listed only with a known window or while spent; OpenCode without usage is left out', () => {
+  it('D66: every account of a CLI with several gets a line, labeled with its name, `—` for unknown windows (ruling 2026-10-04); OpenCode without usage is left out', () => {
     const system = {
       ...SYSTEM,
       accountUsage: [
@@ -131,7 +131,27 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
     expect(usageGridLines(system, NOW).map((l) => [l.label, l.active, l.session.text, l.week.text])).toEqual([
       ['Claude', false, '62%', '18%'],
       ['Codex Work', true, '35%', UNKNOWN],
+      ['Codex Spare', false, UNKNOWN, UNKNOWN],
     ]);
+  });
+
+  it('D66: a CLI with a single account names its line after that account (activeAccounts, ruling 2026-10-04); "Claude" / "Codex" while unknown', () => {
+    const system: SystemInfo = {
+      ...SYSTEM,
+      activeAccounts: [
+        { cli: 'claude', profileId: 'default-claude', name: 'Default' },
+        { cli: 'codex', profileId: 'default-codex', name: 'Default' },
+      ],
+      cliUsage: [{ provider: 'codex', label: 'Codex 5h', pct: 35, resetsAt: null, key: 'session' }],
+    };
+    expect(usageGridLines(system, NOW).map((l) => [l.key, l.label, l.active])).toEqual([
+      ['default-claude', 'Default', false],
+      ['default-codex', 'Codex Default', false],
+    ]);
+    expect(usageGridLines(system, NOW)[0]?.title.split('\n')[0]).toBe('Default');
+    // A CLI with several accounts takes its names from accountUsage; activeAccounts only names a single one.
+    const several = { ...system, accountUsage: [{ profileId: 'c1', cli: 'codex', name: 'Work', active: true, pct: null, exhaustedUntil: null }] } as SystemInfo;
+    expect(usageGridLines(several, NOW).map((l) => l.label)).toEqual(['Default', 'Codex Work']);
   });
 
   it('D66: a spent account says "out until HH:MM" in place of its bars; a mark whose time has passed does not', () => {
