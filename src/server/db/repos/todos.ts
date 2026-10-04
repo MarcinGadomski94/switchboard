@@ -6,11 +6,13 @@ import { placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
 import { StoreError, Table, type TableSpec } from '../table.ts';
 
-/** D68: a stored todo item (`session_todos`, migration 0026). */
+/** D68: a stored todo item (`session_todos`, migration 0026; D69: 0027's title, description and plan). */
 export interface TodoRecord {
   readonly id: string;
   readonly sessionId: string;
-  readonly text: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly plan: string | null;
   readonly state: TodoState;
   readonly addedBy: TodoAuthor;
   readonly position: number;
@@ -25,7 +27,9 @@ const SPEC: TableSpec<TodoRecord> = {
   fields: {
     id: ['id', 'text'],
     sessionId: ['session_id', 'text'],
-    text: ['text', 'text'],
+    title: ['title', 'text'],
+    description: ['description', 'text'],
+    plan: ['plan', 'text'],
     state: ['state', 'text'],
     addedBy: ['added_by', 'text'],
     position: ['position', 'int'],
@@ -34,6 +38,9 @@ const SPEC: TableSpec<TodoRecord> = {
     doneAt: ['done_at', 'text'],
   },
 };
+
+/** D69: an item's three fields (title 1–120 characters; description and plan `null` when none). */
+export type TodoFields = Pick<TodoRecord, 'title' | 'description' | 'plan'>;
 
 /** A new item's id: 12 hex characters (short enough for an agent to quote). */
 function newId(): string {
@@ -94,32 +101,32 @@ export class TodoRepository {
   }
 
   /** Adds an item at the end of the session's list. */
-  async add(sessionId: string, text: string, addedBy: TodoAuthor): Promise<TodoRecord> {
+  async add(sessionId: string, fields: TodoFields, addedBy: TodoAuthor): Promise<TodoRecord> {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
-      return this.#table.insert({ id: newId(), sessionId, text, state: 'open', addedBy, position: Number(row?.['next'] ?? 0), createdAt: now, updatedAt: now, doneAt: null });
+      return this.#table.insert({ id: newId(), sessionId, title: fields.title, description: fields.description, plan: fields.plan, state: 'open', addedBy, position: Number(row?.['next'] ?? 0), createdAt: now, updatedAt: now, doneAt: null });
     });
   }
 
-  /** Copies items into `sessionId` (a take-over, D65): their text, state, author and order; their done time is kept. */
-  async import(sessionId: string, items: ReadonlyArray<Pick<TodoRecord, 'text' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>>): Promise<number> {
+  /** Copies items into `sessionId` (a take-over, D65): their fields, state, author and order; their done time is kept. */
+  async import(sessionId: string, items: ReadonlyArray<Pick<TodoRecord, 'title' | 'description' | 'plan' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>>): Promise<number> {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
       let position = Number(row?.['next'] ?? 0);
       for (const item of items) {
         const doneAt = item.state === 'done' ? (item.doneAt ?? now) : null;
-        this.#table.insert({ id: newId(), sessionId, text: item.text, state: item.state, addedBy: item.addedBy, position, createdAt: item.createdAt, updatedAt: now, doneAt });
+        this.#table.insert({ id: newId(), sessionId, title: item.title, description: item.description, plan: item.plan, state: item.state, addedBy: item.addedBy, position, createdAt: item.createdAt, updatedAt: now, doneAt });
         position += 1;
       }
       return items.length;
     });
   }
 
-  /** New text; `null` when there is no such item. */
-  async setText(id: string, text: string): Promise<TodoRecord | null> {
-    return this.#table.update(id, { text, updatedAt: this.#ctx.now() });
+  /** D69: new title, description and / or plan (each only when given); `null` when there is no such item. */
+  async setFields(id: string, fields: Partial<TodoFields>): Promise<TodoRecord | null> {
+    return this.#table.update(id, { ...fields, updatedAt: this.#ctx.now() });
   }
 
   /** Ticks (`done`: `done_at` now) or unticks (`open`: no `done_at`) an item; one already in that state is unchanged. */

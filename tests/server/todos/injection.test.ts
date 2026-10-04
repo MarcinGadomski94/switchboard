@@ -148,10 +148,13 @@ describe('injection at spawn, against the fakes', () => {
   });
 });
 
-describe('the standing instruction (D64 + D68)', () => {
-  it('the default tells the agent to use the switchboard todo tools, in one short sentence', () => {
-    expect(DEFAULT_STANDING_INSTRUCTION).toContain("Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.");
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(400);
+describe('the standing instruction (D64 + D68 + D69)', () => {
+  it('the default tells the agent to use the switchboard todo tools and fill all three fields, in one short sentence', () => {
+    // D69: the bound went from 400 to 450 characters for the title / description / handover plan words.
+    expect(DEFAULT_STANDING_INSTRUCTION).toContain(
+      "Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.",
+    );
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(450);
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[0] as string)).toBe(true);
   });
 
@@ -160,6 +163,11 @@ describe('the standing instruction (D64 + D68)', () => {
     expect(currentStandingInstruction(old)).toBe(DEFAULT_STANDING_INSTRUCTION);
     expect(currentStandingInstruction(`  ${old}  `)).toBe(DEFAULT_STANDING_INSTRUCTION);
     expect(currentStandingInstruction('My own rule.')).toBe('My own rule.');
+    // D69: 1.7.0's default (D68's sentence) is a default too: it gets the new sentence.
+    const d68 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[1] as string;
+    expect(d68).toContain('use the switchboard todo tools; mark items done');
+    expect(currentStandingInstruction(d68)).toBe(DEFAULT_STANDING_INSTRUCTION);
+    expect(currentStandingInstruction(`${d68} And mine.`)).toBe(`${d68} And mine.`);
     expect(readKnownSettings({ 'agents.standingInstruction': old })['agents.standingInstruction']).toBe(DEFAULT_STANDING_INSTRUCTION);
     world = await makeSupervisorWorld({ standingInstruction: true });
     await world.store.settings.set('agents.standingInstruction', old);

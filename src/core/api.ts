@@ -2252,6 +2252,13 @@ export interface SessionTodo {
   readonly id: string;
   /** The session it belongs to (a peer's carries its remote id). */
   readonly sessionId: string;
+  /** D69: one short line, 1–120 characters. */
+  readonly title: string;
+  /** D69: for the developer: plain, brief Markdown; `null` when there is none. */
+  readonly description: string | null;
+  /** D69: the handover plan for an AI agent (context, files, steps, acceptance criteria), Markdown; `null` when there is none. */
+  readonly plan: string | null;
+  /** D68 name of {@link title}, kept for a peer still on 1.7.0 (D48): always equal to `title`. */
   readonly text: string;
   readonly state: TodoState;
   readonly addedBy: TodoAuthor;
@@ -2286,14 +2293,28 @@ export interface TodoGroup {
   readonly todos: readonly SessionTodo[];
 }
 
-/** D68: body of `POST /api/sessions/{id}/todos`. */
+/**
+ * D68 / D69: body of `POST /api/sessions/{id}/todos` (and the agent's `POST /agent/v1/todos`):
+ * `title` (or its D68 alias `text`), optional `description` and `plan`.
+ */
 export interface NewTodoInput {
-  readonly text: string;
+  readonly title?: string;
+  /** D68 alias of `title` (a 1.7.0 client); `title` wins when both are given. */
+  readonly text?: string;
+  readonly description?: string | null;
+  readonly plan?: string | null;
 }
 
-/** D68: body of `PUT /api/sessions/{id}/todos/{todoId}`: new text, and / or tick (`done`) / untick (`open`). */
+/**
+ * D68 / D69: body of `PUT /api/sessions/{id}/todos/{todoId}`: a new title (or `text`),
+ * description, plan (`''` or `null` removes it), and / or tick (`done`) / untick (`open`).
+ */
 export interface TodoPatchInput {
+  readonly title?: string;
+  /** D68 alias of `title`. */
   readonly text?: string;
+  readonly description?: string | null;
+  readonly plan?: string | null;
   readonly state?: TodoState;
 }
 

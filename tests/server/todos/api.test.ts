@@ -123,6 +123,42 @@ describe('the UI routes (D68)', () => {
   });
 });
 
+describe('title, description and plan (D69)', () => {
+  it('the UI adds and edits all three; `text` is an alias of title on input and equals it on output; limits are 422', async () => {
+    const id = await session('fields');
+    const added = await ui('POST', `/api/sessions/${id}/todos`, { title: '  Fix the login test flake ', description: 'Retries hide a race.', plan: '## Steps\n1. Find the race' });
+    expect(added.statusCode).toBe(201);
+    const item = (added.json() as SessionTodoList).todos[0]!;
+    expect(item).toMatchObject({ title: 'Fix the login test flake', text: 'Fix the login test flake', description: 'Retries hide a race.', plan: '## Steps\n1. Find the race' });
+    // A 1.7.0 client sends `text` only: it is the title; title wins when both come.
+    const legacy = ((await ui('POST', `/api/sessions/${id}/todos`, { text: 'Rename PROJ-12 keys' })).json() as SessionTodoList).todos[1]!;
+    expect(legacy).toMatchObject({ title: 'Rename PROJ-12 keys', text: 'Rename PROJ-12 keys', description: null, plan: null });
+    expect(((await ui('POST', `/api/sessions/${id}/todos`, { title: 'Title wins', text: 'ignored' })).json() as SessionTodoList).todos[2]).toMatchObject({ title: 'Title wins' });
+    // Edit: only the given fields change; '' or null removes a description / plan.
+    const edited = (await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { description: '' })).json() as SessionTodoList;
+    expect(edited.todos[0]).toMatchObject({ title: 'Fix the login test flake', description: null, plan: '## Steps\n1. Find the race' });
+    expect(((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { plan: null, title: 'Fix it' })).json() as SessionTodoList).todos[0]).toMatchObject({ title: 'Fix it', text: 'Fix it', plan: null });
+    expect(((await ui('PUT', `/api/sessions/${id}/todos/${legacy.id}`, { text: 'Renamed by 1.7.0' })).json() as SessionTodoList).todos[1]).toMatchObject({ title: 'Renamed by 1.7.0' });
+    // Limits: title 1–120, one line; description 4,000; plan 8,000.
+    for (const body of [{ title: 'x'.repeat(121) }, { title: 'two\nlines' }, { title: 'ok', description: 'd'.repeat(4_001) }, { title: 'ok', plan: 'p'.repeat(8_001) }, { title: 'ok', plan: 5 }]) {
+      expect((await ui('POST', `/api/sessions/${id}/todos`, body)).statusCode, JSON.stringify(body).slice(0, 40)).toBe(422);
+    }
+    expect((await ui('POST', `/api/sessions/${id}/todos`, { title: 'x'.repeat(120), description: 'd'.repeat(4_000), plan: 'p'.repeat(8_000) })).statusCode).toBe(201);
+    expect((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { title: '' })).statusCode).toBe(422);
+  });
+
+  it('the agent reads one item in full (todo_get), only in its own session', async () => {
+    const a = await session('get-a');
+    const b = await session('get-b');
+    const bearer = agentTokenFor(token, a);
+    const { todo } = (await agent(a, bearer, 'POST', '/agent/v1/todos', { title: 'Plan me', description: 'For you.', plan: 'For the next agent.' })).json() as { todo: { id: string } };
+    expect((await agent(a, bearer, 'GET', `/agent/v1/todos/${todo.id}`)).json()).toMatchObject({ id: todo.id, title: 'Plan me', description: 'For you.', plan: 'For the next agent.', addedBy: 'agent' });
+    expect((await agent(a, bearer, 'GET', '/agent/v1/todos/nope')).statusCode).toBe(404);
+    const itemB = ((await ui('POST', `/api/sessions/${b}/todos`, { title: 'B only' })).json() as SessionTodoList).todos[0]!;
+    expect((await agent(a, bearer, 'GET', `/agent/v1/todos/${itemB.id}`)).statusCode).toBe(404);
+  });
+});
+
 describe("the agent routes: scoped to the token's session (D68)", () => {
   it("the agent adds (addedBy agent), lists, ticks, renames and removes its own session's items", async () => {
     const id = await session('agent');
@@ -187,14 +223,16 @@ describe('peers (D48 / D68)', () => {
     expect(peerApiAllowed('GET', '/api/sessions/r~abcdefghijkl~s1/todos')).toBe(false);
   });
 
-  it("a peer's answers and todosChanged carry its remote session ids", () => {
-    const list: SessionTodoList = { sessionId: 's1', openCount: 1, doneCount: 0, todos: [{ id: 't1', sessionId: 's1', text: 'x', state: 'open', addedBy: 'agent', position: 0, createdAt: 'a', updatedAt: 'a', doneAt: null, removeAt: null }] };
+  it("a peer's answers and todosChanged carry its remote session ids; a 1.7.0 peer's items get title = text (D69)", () => {
+    // A peer still on 1.7.0 answers items with `text` only.
+    const legacyItem = { id: 't1', sessionId: 's1', text: 'x', state: 'open', addedBy: 'agent', position: 0, createdAt: 'a', updatedAt: 'a', doneAt: null, removeAt: null } as unknown as SessionTodoList['todos'][number];
+    const list: SessionTodoList = { sessionId: 's1', openCount: 1, doneCount: 0, todos: [legacyItem] };
     expect(peerAnswerKind('PUT', '/api/sessions/s1/todos/t1')).toBe('todo-list');
     expect(peerAnswerKind('POST', '/api/sessions/s1/todos/clear-done')).toBe('todo-list');
     expect(peerAnswerKind('GET', '/api/todos')).toBe('todo-groups');
     const mapped = mapPeerAnswer(MACHINE, 'todo-list', list) as SessionTodoList;
     expect(mapped.sessionId).toBe('r~abcdefghijkl~s1');
-    expect(mapped.todos[0]).toMatchObject({ id: 't1', sessionId: 'r~abcdefghijkl~s1' });
+    expect(mapped.todos[0]).toMatchObject({ id: 't1', sessionId: 'r~abcdefghijkl~s1', title: 'x', text: 'x', description: null, plan: null });
     const group: TodoGroup = { sessionId: 's1', title: 'T', solutions: [], folderPath: null, machine: null, lastActivityAt: null, todos: list.todos };
     expect((mapPeerAnswer(MACHINE, 'todo-groups', [group]) as TodoGroup[])[0]).toMatchObject({ sessionId: 'r~abcdefghijkl~s1', machine: { id: MACHINE.id, name: 'studio-pc' } });
     expect(peerHubEvent(MACHINE, 'todosChanged', { sessionId: 's1', openCount: 2, doneCount: 0 })).toEqual({ sessionId: 'r~abcdefghijkl~s1', openCount: 2, doneCount: 0 });

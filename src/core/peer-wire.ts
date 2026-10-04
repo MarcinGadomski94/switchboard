@@ -100,7 +100,9 @@ export function peerTerminalLoop(machine: PeerMachineRef, entry: TerminalLoop): 
 
 /** D68: a peer's todo item: its session id namespaced (the item id stays: the routes name it under its session). */
 export function peerTodo(machine: PeerMachineRef, todo: SessionTodo): SessionTodo {
-  return { ...todo, sessionId: ns(machine, todo.sessionId) };
+  // D69: a peer still on 1.7.0 sends `text` only: it is the title, with no description or plan.
+  const title = typeof todo.title === 'string' ? todo.title : String(todo.text ?? '');
+  return { ...todo, sessionId: ns(machine, todo.sessionId), title, text: title, description: todo.description ?? null, plan: todo.plan ?? null };
 }
 
 /** D68: a peer's session todo list (`GET /api/sessions/{id}/todos` and every write's answer). */

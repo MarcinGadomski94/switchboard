@@ -11,7 +11,12 @@ function sendTodoError(reply: FastifyReply, error: unknown): FastifyReply {
 }
 
 function field(body: unknown, name: string): unknown {
-  return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>)[name] : undefined;
+  return fields(body)[name];
+}
+
+/** The JSON object body, `{}` for anything else. */
+function fields(body: unknown): Readonly<Record<string, unknown>> {
+  return body !== null && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
 /** The session the agent token was checked for (`security.ts` refused the request without a valid one). */
@@ -25,15 +30,16 @@ function agentSession(request: FastifyRequest): string {
  *
  * - The UI's routes (the `sb_token` cookie; a peer's session id `r~<machine>~<id>`
  *   is forwarded to its machine like every session route):
- *   `GET /api/sessions/{id}/todos`, `POST …/todos` `{ text }` (201),
- *   `PUT …/todos/order` `{ ids }`, `PUT …/todos/{todoId}` `{ text?, state? }`,
+ *   `GET /api/sessions/{id}/todos`, `POST …/todos` `{ title, description?, plan? }`
+ *   (201; D69, `text` is accepted for `title`), `PUT …/todos/order` `{ ids }`,
+ *   `PUT …/todos/{todoId}` `{ title?, description?, plan?, state? }`,
  *   `DELETE …/todos/{todoId}`, `POST …/todos/clear-done`: each answers the
  *   session's whole list (`SessionTodoList`). 404 `not-found` (no session, or no
  *   such item in it), 422 `invalid`, 409 `too-many`.
  * - `GET /api/todos`: every open session's items, grouped (`TodoGroup[]`), this
  *   machine's first, then the paired machines' as last known (a peer's request
  *   gets this machine's own only).
- * - The agent's routes, `/agent/v1/todos[/{todoId}]` (GET, POST, PUT, DELETE):
+ * - The agent's routes, `/agent/v1/todos[/{todoId}]` (GET, POST, PUT, DELETE; D69: GET of one item):
  *   only with the session's agent token (`security.ts`); the session is the one
  *   the token belongs to, never one named in the path.
  */
@@ -50,7 +56,7 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/todos', async (request, reply) => {
     try {
-      const { list } = await todos.add(request.params.id, field(request.body, 'text'), 'developer');
+      const { list } = await todos.add(request.params.id, fields(request.body), 'developer');
       return reply.code(201).send(list);
     } catch (error) {
       return sendTodoError(reply, error);
@@ -75,7 +81,7 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.put<{ Params: { id: string; todoId: string } }>('/api/sessions/:id/todos/:todoId', async (request, reply) => {
     try {
-      const { list } = await todos.update(request.params.id, request.params.todoId, { text: field(request.body, 'text'), state: field(request.body, 'state') });
+      const { list } = await todos.update(request.params.id, request.params.todoId, fields(request.body));
       return list;
     } catch (error) {
       return sendTodoError(reply, error);
@@ -104,7 +110,16 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.post('/agent/v1/todos', async (request, reply) => {
     try {
-      return reply.code(201).send(await todos.add(agentSession(request), field(request.body, 'text'), 'agent'));
+      return reply.code(201).send(await todos.add(agentSession(request), fields(request.body), 'agent'));
+    } catch (error) {
+      return sendTodoError(reply, error);
+    }
+  });
+
+  // D69: one item in full (the agent's `todo_get`).
+  app.get<{ Params: { todoId: string } }>('/agent/v1/todos/:todoId', async (request, reply) => {
+    try {
+      return await todos.get(agentSession(request), request.params.todoId);
     } catch (error) {
       return sendTodoError(reply, error);
     }
@@ -112,7 +127,7 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.put<{ Params: { todoId: string } }>('/agent/v1/todos/:todoId', async (request, reply) => {
     try {
-      return await todos.update(agentSession(request), request.params.todoId, { text: field(request.body, 'text'), state: field(request.body, 'state') });
+      return await todos.update(agentSession(request), request.params.todoId, fields(request.body));
     } catch (error) {
       return sendTodoError(reply, error);
     }

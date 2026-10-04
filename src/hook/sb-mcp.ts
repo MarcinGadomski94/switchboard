@@ -6,8 +6,8 @@
  * ≥ 24 runs it directly.
  *
  * It speaks MCP over stdio (newline-delimited JSON-RPC 2.0: `initialize`,
- * `tools/list`, `tools/call`, `ping`) and serves five tools, `todo_list`,
- * `todo_add`, `todo_update`, `todo_done`, `todo_remove`, each one call to the
+ * `tools/list`, `tools/call`, `ping`) and serves six tools, `todo_list`,
+ * `todo_get` (D69), `todo_add`, `todo_update`, `todo_done`, `todo_remove`, each one call to the
  * local Switchboard's `/agent/v1/todos` (127.0.0.1 only). The token authorizes
  * that one session's list and nothing else; the helper never reads any other
  * file or variable. A failing call answers a tool error the agent can read
@@ -15,7 +15,7 @@
  */
 import http from 'node:http';
 import type { SessionTodo, SessionTodoList } from '../core/api.ts';
-import { AGENT_MCP_MARKER, AGENT_MCP_SERVER, AGENT_SESSION_HEADER, AGENT_TOKEN_ENV, TODO_TOOLS, todoLine, todoListText } from '../core/todos.ts';
+import { AGENT_MCP_INSTRUCTIONS, AGENT_MCP_MARKER, AGENT_MCP_SERVER, AGENT_SESSION_HEADER, AGENT_TOKEN_ENV, TODO_TOOLS, todoDetailText, todoLine, todoListText } from '../core/todos.ts';
 
 /** The MCP protocol versions this helper speaks; it answers the client's when it is one of them, else the newest. */
 export const MCP_PROTOCOL_VERSIONS: readonly string[] = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -97,6 +97,19 @@ function listOf(body: unknown): SessionTodoList | null {
   return Array.isArray(list['todos']) ? (list as unknown as SessionTodoList) : null;
 }
 
+/** D69: the description and plan a call gives (strings only; `''` removes one on update). */
+function notes(input: Record<string, unknown>): { description?: string; plan?: string } {
+  return {
+    ...(typeof input['description'] === 'string' ? { description: input['description'] } : {}),
+    ...(typeof input['plan'] === 'string' ? { plan: input['plan'] } : {}),
+  };
+}
+
+function isTodo(body: unknown): body is SessionTodo {
+  const value = record(body);
+  return typeof value['id'] === 'string' && typeof (value['title'] ?? value['text']) === 'string';
+}
+
 /** Runs one tool call against the API. */
 export async function callTool(api: AgentApi, name: string, args: unknown): Promise<ToolResult> {
   const input = record(args);
@@ -108,15 +121,25 @@ export async function callTool(api: AgentApi, name: string, args: unknown): Prom
       case 'todo_list':
         answer = await api('GET', '/agent/v1/todos');
         break;
-      case 'todo_add':
-        if (typeof input['text'] !== 'string') return textResult('Give the item text.', true);
-        answer = await api('POST', '/agent/v1/todos', { text: input['text'] });
-        break;
-      case 'todo_update':
+      case 'todo_get':
         if (needId()) return needId() as ToolResult;
-        if (typeof input['text'] !== 'string') return textResult('Give the new text.', true);
-        answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, { text: input['text'] });
+        answer = await api('GET', `/agent/v1/todos/${encodeURIComponent(id)}`);
         break;
+      case 'todo_add': {
+        // D69: `text` (the D68 field) still names the title.
+        const title = input['title'] ?? input['text'];
+        if (typeof title !== 'string') return textResult('Give the item a title (one short line); add a description and a handover plan too.', true);
+        answer = await api('POST', '/agent/v1/todos', { title, ...notes(input) });
+        break;
+      }
+      case 'todo_update': {
+        if (needId()) return needId() as ToolResult;
+        const title = input['title'] ?? input['text'];
+        const patch = { ...(typeof title === 'string' ? { title } : {}), ...notes(input) };
+        if (Object.keys(patch).length === 0) return textResult('Give a new title, description and / or plan.', true);
+        answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, patch);
+        break;
+      }
       case 'todo_done':
         if (needId()) return needId() as ToolResult;
         answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, { state: input['done'] === false ? 'open' : 'done' });
@@ -136,6 +159,8 @@ export async function callTool(api: AgentApi, name: string, args: unknown): Prom
   const todo = record(answer.body)['todo'] as SessionTodo | undefined;
   const summary = list ? todoListText(list) : '';
   switch (name) {
+    case 'todo_get':
+      return textResult(isTodo(answer.body) ? todoDetailText(answer.body) : 'Switchboard did not answer with the item.', !isTodo(answer.body));
     case 'todo_add':
       return textResult(todo ? `Added ${todoLine(todo)}\n\n${summary}` : summary);
     case 'todo_update':
@@ -173,7 +198,7 @@ export async function handleMessage(message: unknown, api: AgentApi, version = '
         protocolVersion: MCP_PROTOCOL_VERSIONS.includes(asked) ? asked : MCP_PROTOCOL_VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: AGENT_MCP_SERVER, version },
-        instructions: "This session's todo list in Switchboard. When the user asks to add something to the todo list, use todo_add; mark items done with todo_done when finished; use todo_list when asked what is left.",
+        instructions: AGENT_MCP_INSTRUCTIONS,
       });
     }
     case 'ping':

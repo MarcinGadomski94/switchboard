@@ -1,5 +1,5 @@
 import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoState } from '../../core/api.ts';
-import { TODO_DONE_TTL_MS, TODO_MAX_PER_SESSION, checkTodoText, todoRemoveAt } from '../../core/todos.ts';
+import { TODO_DESCRIPTION_MAX, TODO_DONE_TTL_MS, TODO_MAX_PER_SESSION, TODO_PLAN_MAX, checkNewTodo, checkTodoNote, checkTodoPatch, checkTodoTitle, legacyTodoFields, todoRemoveAt } from '../../core/todos.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
@@ -35,7 +35,11 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
   return {
     id: record.id,
     sessionId: record.sessionId,
-    text: record.text,
+    title: record.title,
+    description: record.description,
+    plan: record.plan,
+    // D69: the D68 name, for a peer still on 1.7.0.
+    text: record.title,
     state: record.state,
     addedBy: record.addedBy,
     position: record.position,
@@ -44,6 +48,25 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     doneAt: record.doneAt,
     removeAt: todoRemoveAt(record.doneAt, ttlMs),
   };
+}
+
+/**
+ * D69: a taken-over item's fields: its title, description and plan when the source
+ * sent them (1.8 and later), else its D68 text split like migration 0027
+ * ({@link legacyTodoFields}). A field that does not fit is cut rather than the item lost.
+ */
+function importedFields(item: Readonly<Record<string, unknown>>): Pick<TodoRecord, 'title' | 'description' | 'plan'> | null {
+  const title = checkTodoTitle(item['title']);
+  if (title.ok) {
+    const note = (field: 'description' | 'plan'): string | null => {
+      const value = item[field];
+      const checked = checkTodoNote(typeof value === 'string' ? value.trim().slice(0, field === 'plan' ? TODO_PLAN_MAX : TODO_DESCRIPTION_MAX) : null, field);
+      return checked.ok ? checked.value : null;
+    };
+    return { title: title.value, description: note('description'), plan: note('plan') };
+  }
+  const legacy = legacyTodoFields(item['title'] ?? item['text']);
+  return legacy ? { ...legacy, plan: null } : null;
 }
 
 /** Timers longer than this are capped (`setTimeout` fires at once past 2^31-1 ms); the sweep then re-arms. */
@@ -112,35 +135,44 @@ export class TodoService {
     return { sessionId, todos, openCount: todos.filter((t) => t.state === 'open').length, doneCount: todos.filter((t) => t.state === 'done').length };
   }
 
-  /** Adds an item at the end. */
-  async add(sessionId: string, text: unknown, addedBy: TodoAuthor): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+  /** The session's item `todoId` (`GET /agent/v1/todos/{todoId}`: the agent's `todo_get`). */
+  async get(sessionId: string, todoId: string): Promise<SessionTodo> {
     await this.#session(sessionId);
-    const checked = checkTodoText(text);
+    return toTodo(await this.#item(sessionId, todoId), this.#ttl);
+  }
+
+  /**
+   * Adds an item at the end. D69: `input` carries `title` (or its D68 alias `text`)
+   * and optionally `description` and `plan`.
+   */
+  async add(sessionId: string, input: Readonly<Record<string, unknown>>, addedBy: TodoAuthor): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+    await this.#session(sessionId);
+    const checked = checkNewTodo(input);
     if (!checked.ok) throw new TodoError(422, 'invalid', checked.message);
     if ((await this.#store.todos.count(sessionId)) >= TODO_MAX_PER_SESSION) {
       throw new TodoError(409, 'too-many', `a session keeps at most ${TODO_MAX_PER_SESSION} todos: remove or clear some first`);
     }
-    const record = await this.#store.todos.add(sessionId, checked.text, addedBy);
+    const record = await this.#store.todos.add(sessionId, checked.value, addedBy);
     return { todo: toTodo(record, this.#ttl), list: await this.#changed(sessionId) };
   }
 
-  /** New text and / or state (`done` ticks, `open` unticks: the hour's removal is cancelled). */
-  async update(sessionId: string, todoId: string, patch: { readonly text?: unknown; readonly state?: unknown }): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+  /**
+   * New title (or its D68 alias `text`), description, plan (`''` / `null` removes
+   * it) and / or state (`done` ticks, `open` unticks: the hour's removal is cancelled).
+   */
+  async update(sessionId: string, todoId: string, patch: Readonly<Record<string, unknown>>): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
     await this.#session(sessionId);
     await this.#item(sessionId, todoId);
-    if (patch.text === undefined && patch.state === undefined) throw new TodoError(422, 'invalid', 'give text and / or state');
-    let text: string | null = null;
-    if (patch.text !== undefined) {
-      const checked = checkTodoText(patch.text);
-      if (!checked.ok) throw new TodoError(422, 'invalid', checked.message);
-      text = checked.text;
-    }
+    const given = ['title', 'text', 'description', 'plan', 'state'].some((key) => patch[key] !== undefined);
+    if (!given) throw new TodoError(422, 'invalid', 'give title, description, plan and / or state');
+    const fields = checkTodoPatch(patch);
+    if (!fields.ok) throw new TodoError(422, 'invalid', fields.message);
     let state: TodoState | null = null;
-    if (patch.state !== undefined) {
-      if (patch.state !== 'open' && patch.state !== 'done') throw new TodoError(422, 'invalid', 'state must be open or done');
-      state = patch.state;
+    if (patch['state'] !== undefined) {
+      if (patch['state'] !== 'open' && patch['state'] !== 'done') throw new TodoError(422, 'invalid', 'state must be open or done');
+      state = patch['state'];
     }
-    if (text !== null) await this.#store.todos.setText(todoId, text);
+    if (Object.keys(fields.value).length > 0) await this.#store.todos.setFields(todoId, fields.value);
     if (state !== null) await this.#store.todos.setState(todoId, state);
     const record = await this.#item(sessionId, todoId);
     return { todo: toTodo(record, this.#ttl), list: await this.#changed(sessionId) };
@@ -200,15 +232,15 @@ export class TodoService {
 
   /** Copies a taken-over session's items into the new session (D65); publishes nothing (the session is not announced yet). */
   async import(sessionId: string, todos: readonly unknown[]): Promise<number> {
-    const items: Array<Pick<TodoRecord, 'text' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>> = [];
+    const items: Array<Pick<TodoRecord, 'title' | 'description' | 'plan' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>> = [];
     for (const raw of todos.slice(0, TODO_MAX_PER_SESSION)) {
       if (typeof raw !== 'object' || raw === null) continue;
       const item = raw as Record<string, unknown>;
-      const checked = checkTodoText(item['text']);
-      if (!checked.ok) continue;
+      const fields = importedFields(item);
+      if (!fields) continue;
       const state: TodoState = item['state'] === 'done' ? 'done' : 'open';
       items.push({
-        text: checked.text,
+        ...fields,
         state,
         addedBy: item['addedBy'] === 'agent' ? 'agent' : 'developer',
         createdAt: typeof item['createdAt'] === 'string' ? item['createdAt'] : new Date(this.#now()).toISOString(),
