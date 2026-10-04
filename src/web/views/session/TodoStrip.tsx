@@ -121,6 +121,7 @@ export function TodoCards({
                 if (ids) void run(() => api.reorderTodos(sessionId, ids));
               },
               onDelete: () => void run(() => api.deleteTodo(sessionId, todo.id)),
+              onPriority: (priority) => void run(() => api.updateTodo(sessionId, todo.id, { priority })),
               onStart: onStart && todo.state === 'open' ? () => onStart(todo) : null,
             }}
           />

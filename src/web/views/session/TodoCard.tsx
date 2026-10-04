@@ -236,19 +236,35 @@ export interface TodoCardActions {
   readonly onDelete: () => void;
   /** ▶ Start (open items); `null` = not offered. */
   readonly onStart: (() => void) | null;
+  /** D70: ⋯ → Priority (open items): sets the item's priority (the list re-sorts). */
+  readonly onPriority: (priority: TodoPriority) => void;
 }
 
-/** One entry of the ⋯ menu. */
+/** One entry of a submenu (D70: ⋯ → Priority): a radio item, the current one checked. */
+interface SubEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly checked: boolean;
+  readonly run: () => void;
+}
+
+/** One entry of the ⋯ menu; with `submenu` it opens one (→ / Enter / click) instead of running. */
 interface MenuEntry {
   readonly id: string;
   readonly label: string;
   readonly disabled: boolean;
   readonly run: () => void;
+  readonly submenu?: readonly SubEntry[];
 }
 
-/** The ⋯ menu: a `role="menu"` under its button; arrows move, Esc closes (focus back on ⋯), a click outside closes. */
+/**
+ * The ⋯ menu: a `role="menu"` under its button; arrows move, Esc closes (focus back on ⋯), a click
+ * outside closes. D70: an entry with a submenu (Priority) opens it with → / Enter / a click (focus on
+ * the checked item); in the submenu ↑ ↓ move, ← or Esc close it (focus back on its entry), Enter picks.
+ */
 function CardMenu({ entries, label, onClose, anchor }: { readonly entries: readonly MenuEntry[]; readonly label: string; readonly onClose: () => void; readonly anchor: HTMLButtonElement | null }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   // Opens upwards when there is no room under the ⋯ inside the scrolling list (the last card above the composer).
   const [up, setUp] = useState(false);
   useLayoutEffect(() => {
@@ -261,15 +277,22 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
     if (rect.bottom > bottom && (anchor?.getBoundingClientRect().top ?? 0) - top > rect.height) setUp(true);
   }, [anchor]);
   useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    ref.current?.querySelector<HTMLButtonElement>('button[data-level="1"]:not(:disabled)')?.focus({ preventScroll: true });
     const outside = (event: globalThis.MouseEvent): void => {
       if (!ref.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose();
     };
     document.addEventListener('mousedown', outside);
     return () => document.removeEventListener('mousedown', outside);
   }, [anchor, onClose]);
+  // The submenu takes the focus on its checked item when it opens.
+  useEffect(() => {
+    if (openSub === null) return;
+    const sub = ref.current?.querySelector<HTMLElement>(`[data-submenu="${openSub}"]`);
+    (sub?.querySelector<HTMLButtonElement>('button[aria-checked="true"]') ?? sub?.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
+  }, [openSub]);
+  const focusEntry = (id: string): void => ref.current?.querySelector<HTMLButtonElement>(`button[data-level="1"][data-entry="${id}"]`)?.focus();
   const keys = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+    const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button[data-level="1"]:not(:disabled)') ?? [])];
     const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -278,30 +301,101 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
       anchor?.focus();
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
+      setOpenSub(null);
       buttons[(at + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+    } else if (event.key === 'ArrowRight') {
+      const id = (document.activeElement as HTMLElement | null)?.dataset['entry'];
+      if (id && entries.find((entry) => entry.id === id)?.submenu) {
+        event.preventDefault();
+        setOpenSub(id);
+      }
     } else if (event.key === 'Tab') {
       onClose();
     }
   };
+  const subKeys = (id: string) => (event: KeyboardEvent<HTMLDivElement>): void => {
+    const items = [...(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'))];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpenSub(null);
+      focusEntry(id);
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      items[(at + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
   return (
     <div ref={ref} className="sb-todo-menu" role="menu" aria-label={label} data-testid="todo-menu" data-placement={up ? 'top' : 'bottom'} onKeyDown={keys}>
-      {entries.map((entry) => (
-        <button
-          key={entry.id}
-          type="button"
-          role="menuitem"
-          className="sb-todo-menu-item"
-          data-testid={`todo-menu-${entry.id}`}
-          disabled={entry.disabled}
-          data-danger={entry.id === 'delete' ? 'true' : undefined}
-          onClick={() => {
-            onClose();
-            entry.run();
-          }}
-        >
-          {entry.label}
-        </button>
-      ))}
+      {entries.map((entry) =>
+        entry.submenu ? (
+          <div key={entry.id} className="sb-todo-submenu-anchor" role="none">
+            <button
+              type="button"
+              role="menuitem"
+              className="sb-todo-menu-item sb-todo-menu-parent"
+              data-level="1"
+              data-entry={entry.id}
+              data-testid={`todo-menu-${entry.id}`}
+              disabled={entry.disabled}
+              aria-haspopup="menu"
+              aria-expanded={openSub === entry.id}
+              onClick={() => setOpenSub((current) => (current === entry.id ? null : entry.id))}
+            >
+              {entry.label}
+              <span className="sb-todo-menu-caret" aria-hidden="true">
+                ▸
+              </span>
+            </button>
+            {openSub === entry.id ? (
+              <div className="sb-todo-menu sb-todo-submenu" role="menu" aria-label={entry.label} data-submenu={entry.id} data-testid={`todo-submenu-${entry.id}`} onKeyDown={subKeys(entry.id)}>
+                {entry.submenu.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={item.checked}
+                    className="sb-todo-menu-item"
+                    data-testid={`todo-menu-${entry.id}-${item.id}`}
+                    onClick={() => {
+                      onClose();
+                      anchor?.focus();
+                      if (!item.checked) item.run();
+                    }}
+                  >
+                    {/* The ✓ is drawn by CSS (aria-checked carries it for screen readers). */}
+                    <span className="sb-todo-menu-check" aria-hidden="true" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <button
+            key={entry.id}
+            type="button"
+            role="menuitem"
+            className="sb-todo-menu-item"
+            data-level="1"
+            data-entry={entry.id}
+            data-testid={`todo-menu-${entry.id}`}
+            disabled={entry.disabled}
+            data-danger={entry.id === 'delete' ? 'true' : undefined}
+            onClick={() => {
+              onClose();
+              entry.run();
+            }}
+          >
+            {entry.label}
+          </button>
+        ),
+      )}
     </div>
   );
 }
@@ -310,7 +404,7 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
  * D69 · one todo as a card (`docs/todos.md` → *Cards*): a round box to tick,
  * the bold title, D70 its priority label and estimate (an open card is tinted by its
  * priority: `data-priority`), the description (Markdown, two lines until the card is
- * opened), who added it and how long ago, a ⋯ menu (Edit, Move up, Move down,
+ * opened), who added it and how long ago, a ⋯ menu (Edit, D70 Priority ▸, Move up, Move down,
  * Delete), **▸ Handover plan** when it has one, and **▶ Start**. A click on the
  * card (or its title) opens it in place: the full description and the plan.
  * A done item: the box filled, the title struck through, no description, and
@@ -392,6 +486,18 @@ export function TodoCard({
 
   const entries: MenuEntry[] = [
     ...(isDone ? [] : [{ id: 'edit', label: 'Edit', disabled, run: () => setEditing(true) }]),
+    // D70: one-click priority (open items); the list re-sorts after the change.
+    ...(isDone
+      ? []
+      : [
+          {
+            id: 'priority',
+            label: 'Priority',
+            disabled,
+            run: () => undefined,
+            submenu: TODO_PRIORITIES.map((level) => ({ id: level, label: TODO_PRIORITY_LABELS[level], checked: level === priority, run: () => actions.onPriority(level) })),
+          },
+        ]),
     { id: 'up', label: 'Move up', disabled: disabled || index <= 0, run: () => actions.onMove(-1) },
     { id: 'down', label: 'Move down', disabled: disabled || index >= count - 1, run: () => actions.onMove(1) },
     { id: 'delete', label: 'Delete', disabled, run: actions.onDelete },

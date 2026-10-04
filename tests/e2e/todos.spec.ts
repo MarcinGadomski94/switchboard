@@ -173,6 +173,9 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await first.getByTestId('todo-menu-down').click();
   await expect(items.getByTestId('todo-title')).toHaveText(['Rename PROJ-12 settings keys', 'Fix the login flake']);
   await items.nth(1).getByTestId('todo-menu-button').click();
+  // D70: Edit, Priority ▸, Move up, ….
+  await page.keyboard.press('ArrowDown');
+  await expect(items.nth(1).getByTestId('todo-menu-priority')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(items.nth(1).getByTestId('todo-menu-up')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -377,6 +380,43 @@ test('D70 · priorities sort and tint the cards, estimates and totals show; the 
   await review.getByTestId('todo-menu-up').click();
   await expect(titles).toHaveText(['Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog', 'Tidy the README']);
 
+  // D70 · ⋯ → Priority ▸ by keyboard: → opens the submenu on the current level (checked), ← / Esc close it, ↑ ↓ move, Enter picks; the list re-sorts.
+  const changelog = items.filter({ has: page.getByTestId('todo-title').getByText('Write the changelog', { exact: true }) });
+  await changelog.getByTestId('todo-menu-button').click();
+  const priorityEntry = changelog.getByTestId('todo-menu-priority');
+  await expect(priorityEntry).toHaveAttribute('aria-haspopup', 'menu');
+  await page.keyboard.press('ArrowDown');
+  await expect(priorityEntry).toBeFocused();
+  await expect(priorityEntry).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('ArrowRight');
+  const submenu = changelog.getByTestId('todo-submenu-priority');
+  await expect(submenu).toHaveAttribute('role', 'menu');
+  await expect(submenu.getByRole('menuitemradio')).toHaveText(['Urgent', 'High', 'Medium', 'Low']);
+  await expect(changelog.getByTestId('todo-menu-priority-medium')).toHaveAttribute('aria-checked', 'true');
+  await expect(changelog.getByTestId('todo-menu-priority-medium')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(submenu).toHaveCount(0);
+  await expect(priorityEntry).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Escape');
+  await expect(submenu).toHaveCount(0);
+  await expect(changelog.getByTestId('todo-menu')).toBeVisible();
+  await expect(priorityEntry).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowUp');
+  await expect(changelog.getByTestId('todo-menu-priority-high')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(changelog.getByTestId('todo-menu')).toHaveCount(0);
+  await expect(titles).toHaveText(['Restore the login page', 'Write the changelog', 'Review the upload fix', 'Fix the flaky upload test', 'Tidy the README']);
+  await expect(changelog.getByTestId('todo-priority')).toHaveText('High');
+  // By mouse: back to Medium (its old place).
+  await changelog.getByTestId('todo-menu-button').click();
+  await changelog.getByTestId('todo-menu-priority').click();
+  await expect(changelog.getByTestId('todo-menu-priority-high')).toHaveAttribute('aria-checked', 'true');
+  await changelog.getByTestId('todo-menu-priority-medium').click();
+  await expect(titles).toHaveText(['Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog', 'Tidy the README']);
+  await expect(changelog.getByTestId('todo-priority')).toHaveText('Medium');
+
   // Edit: the low item becomes urgent (it re-sorts into the urgent level by its own place: it was added first); the changelog gets an estimate.
   const editCard = async (title: string): Promise<void> => {
     const card = items.filter({ has: page.getByTestId('todo-title').getByText(title, { exact: true }) });
@@ -421,4 +461,17 @@ test('D70 · priorities sort and tint the cards, estimates and totals show; the 
   await expect(group.getByTestId('todos-group-estimate')).toHaveText('~3h 30m+');
   await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-title')).toHaveText(['Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog']);
   await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-priority')).toHaveText(['Urgent', 'High', 'High', 'Medium']);
+  // ⋯ → Priority on the Todos page too: the changelog becomes urgent and moves up (by its own place within the level).
+  const pageCard = group.locator('[data-testid="todo-item"][data-state="open"]').filter({ has: page.getByTestId('todo-title').getByText('Write the changelog', { exact: true }) });
+  await pageCard.getByTestId('todo-menu-button').click();
+  await pageCard.getByTestId('todo-menu-priority').click();
+  await pageCard.getByTestId('todo-menu-priority-urgent').click();
+  await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-title')).toHaveText(['Write the changelog', 'Restore the login page', 'Review the upload fix', 'Fix the flaky upload test']);
+  await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-priority')).toHaveText(['Urgent', 'Urgent', 'High', 'High']);
+  // Done cards have no Priority entry.
+  await page.getByTestId('todos-show-done').check();
+  const doneCard = group.getByTestId('todos-group-done').getByTestId('todo-item');
+  await doneCard.getByTestId('todo-menu-button').click();
+  await expect(doneCard.getByTestId('todo-menu-priority')).toHaveCount(0);
+  await page.keyboard.press('Escape');
 });

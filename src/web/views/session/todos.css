@@ -371,6 +371,56 @@
   cursor: default;
 }
 
+/* D70: ⋯ → Priority ▸ opens a submenu to the left of the menu (the card's right edge is near the list's). */
+.sb-todo-submenu-anchor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-todo-menu-parent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-todo-menu-parent[aria-expanded='true'] {
+  background: var(--bg-selected-nav);
+}
+
+.sb-todo-menu-caret {
+  margin-left: auto;
+  color: var(--muted-3);
+  font-size: 10px;
+}
+
+.sb-todo-menu.sb-todo-submenu {
+  top: -5px;
+  right: calc(100% + 6px);
+  min-width: 120px;
+}
+
+.sb-todo-menu[data-placement='top'] .sb-todo-submenu {
+  top: auto;
+  bottom: -5px;
+}
+
+.sb-todo-submenu .sb-todo-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-todo-menu-check {
+  width: 12px;
+  color: var(--text-2);
+  flex: none;
+}
+
+[aria-checked='true'] > .sb-todo-menu-check::before {
+  content: '✓';
+}
+
 .sb-todo-card-body {
   padding-left: 25px;
   display: flex;
