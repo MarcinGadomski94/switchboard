@@ -152,6 +152,11 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/mcp\/cli\/[^/]+$/],
   ['POST', /^\/api\/mcp\/cli\/[^/]+\/servers$/],
   ['DELETE', /^\/api\/mcp\/cli\/[^/]+\/servers\/[^/]+$/],
+  // D65: taking a session over: each end's operations (the initiating machine's runner drives them) and the leftover temp branches.
+  ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback)$/],
+  ['POST', /^\/api\/takeover\/target\/(?:plan|chunk|apply|abort|resume|close)$/],
+  ['GET', /^\/api\/takeover\/leftovers$/],
+  ['POST', /^\/api\/takeover\/leftovers\/[^/]+\/delete$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON). */
@@ -861,7 +866,7 @@ export class PeerService implements PeerHandlers {
     // D52: Save schedule (a folder scan) and Run now (a start with worktrees) take the long limit too.
     // D57: an upload (up to 20 MiB over the tailnet) takes the long limit too.
     const long =
-      (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
+      (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/takeover/') || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
       path.endsWith('/hook');
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.

@@ -24,6 +24,7 @@ import { registerSetupRoutes } from './api/setup.ts';
 import { registerSidebarRoutes } from './api/sidebar.ts';
 import { registerSolutionRoutes } from './api/solutions.ts';
 import { registerSystemRoutes } from './api/system.ts';
+import { registerTakeoverRoutes } from './api/takeover.ts';
 import { registerToolRoutes } from './api/tools.ts';
 import { registerUpdateRoutes } from './api/updates.ts';
 import type { ServerConfig } from './config.ts';
@@ -40,6 +41,8 @@ import type { Providers } from './providers.ts';
 import type { Scheduler } from './schedules/scheduler.ts';
 import type { SetupService } from './setup/service.ts';
 import type { SessionSupervisor } from './supervisor/supervisor.ts';
+import type { TakeoverRunner } from './takeover/runner.ts';
+import type { TakeoverService } from './takeover/service.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
@@ -81,6 +84,10 @@ export interface ApiContext {
   readonly attachments: AttachmentService;
   /** D61: the MCP servers page: list, check, reconnect, sign in, enable / disable, add / edit / remove (docs/mcp.md). */
   readonly mcp: McpService;
+  /** D65: this machine's side of taking a session over to / from a paired machine (docs/peers.md). */
+  readonly takeover: TakeoverService;
+  /** D65: the initiating machine's runner (preview, start, progress). */
+  readonly takeoverRunner: TakeoverRunner;
 }
 
 /**
@@ -110,6 +117,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerFolderRoutes(app, context);
   await registerBranchingRoutes(app, context);
   await registerMachineRoutes(app, context);
+  await registerTakeoverRoutes(app, context);
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerUpdateRoutes(app, context);

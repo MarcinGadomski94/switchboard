@@ -136,6 +136,24 @@ export interface SessionRecord {
   readonly profileId: string | null;
   /** D63: automatic account switching leaves the session on its profile. */
   readonly profilePinned: boolean;
+  /**
+   * D65 (0025): set on the **source** session once it was taken over to another
+   * machine (it is closed and read-only; `docs/peers.md` → *Taking a session over*).
+   */
+  readonly movedTo: SessionMove | null;
+  /** D65 (0025): set on the **new** session: the machine and session it was taken over from. */
+  readonly movedFrom: SessionMove | null;
+}
+
+/** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
+export interface SessionMove {
+  /** The other machine's own id (the namespace of its remote ids). */
+  readonly machineId: string;
+  readonly machineName: string;
+  /** The session's id on that machine (raw, not a remote id). */
+  readonly sessionId: string;
+  /** ISO time of the take-over. */
+  readonly at: string;
 }
 
 /** Input of {@link SessionRepository.create}; `id` defaults to a random UUID, `status` to `idle`. */
@@ -206,6 +224,8 @@ const SPEC: TableSpec<SessionRecord> = {
     provider: ['provider', 'text'],
     profileId: ['profile_id', 'text'],
     profilePinned: ['profile_pinned', 'bool'],
+    movedTo: ['moved_to', 'json'],
+    movedFrom: ['moved_from', 'json'],
   },
 };
 

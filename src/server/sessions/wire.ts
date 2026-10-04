@@ -211,6 +211,9 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     profileName: (await store.profiles.get(sessionProfileId(record)))?.name ?? 'Default',
     profilePinned: record.profilePinned,
     accountSwitching: switchSources.get(store)?.accountSwitching?.(record.id) ?? false,
+    // D65: taken over to / from another machine.
+    movedTo: record.movedTo,
+    movedFrom: record.movedFrom,
   };
 }
 

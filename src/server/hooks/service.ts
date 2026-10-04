@@ -29,6 +29,7 @@ import { LatestThrottle } from '../supervisor/activity-throttle.ts';
 import type { LoopEventInput } from '../../core/derive/loops.ts';
 import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
+import { type StopHow, type StopProcessOptions, stopProcess } from './terminal-stop.ts';
 
 /**
  * D48 P4 "hook into hand-started terminal sessions" (`docs/peers.md` → *Hooked
@@ -146,6 +147,8 @@ export interface HookServiceOptions {
   readonly limit?: { readonly max: number; readonly windowMs: number };
   readonly now?: () => number;
   readonly onError?: (error: unknown) => void;
+  /** D65: how a hooked terminal's `claude` is stopped (tests shorten the grace time / replace the signal). */
+  readonly stop?: StopProcessOptions;
 }
 
 /** A refusal of a hooks action, sent as `{ error, message }`. */
@@ -196,6 +199,7 @@ export class HookService {
   readonly #limit: { readonly max: number; readonly windowMs: number } | undefined;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
+  readonly #stopOptions: StopProcessOptions;
   readonly #terminals = new Map<string, Terminal>();
   readonly #requests = new Map<string, OpenRequest>();
   readonly #waiters = new Map<string, Waiter>();
@@ -249,6 +253,7 @@ export class HookService {
     this.#limit = options.limit;
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? ((error) => console.error('switchboard hooks:', error));
+    this.#stopOptions = options.stop ?? {};
     // D53: `toSession` adds a hooked session's activity and delivery state from here.
     registerHookSource(this.#store, { activity: (sessionId) => this.activity(sessionId), status: (record) => this.hookStatus(record) });
   }
@@ -445,6 +450,43 @@ export class HookService {
     void this.#pump(claudeSessionId);
     const fresh = (await this.#store.sessions.get(record.id)) ?? record;
     return { session: await toSession(this.#store, fresh), created };
+  }
+
+  /**
+   * D65: the pid of a hooked session's terminal `claude`, **verified**: the live
+   * registry (`claude agents --json`, asked fresh) must list that pid with this
+   * session's id (a pid the hooks reported earlier may have been reused since).
+   * `null` when the session is not hooked, the terminal is gone, or the registry
+   * cannot be read.
+   */
+  async terminalPid(sessionId: string): Promise<number | null> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || !record.hooked) return null;
+    const rows = await this.#listAgents(true);
+    const row = rows?.find((entry) => entry.sessionId === record.claudeSessionId);
+    return row ? row.pid : null;
+  }
+
+  /**
+   * D65: stops a hooked session's terminal `claude` (`terminal-stop.ts`: SIGTERM /
+   * `taskkill`, the force after a grace time). Only the verified process
+   * ({@link terminalPid}) is touched; a terminal that is already gone is `gone`.
+   * Its waiter and held hook calls end as the session's process exits (the
+   * liveness poll marks the session `done`).
+   * @throws {HookError} `not-hooked` (404), `agents-unavailable` (502: the registry cannot confirm the process), `stop-failed` (502).
+   */
+  async stopTerminal(sessionId: string): Promise<{ readonly pid: number | null; readonly how: StopHow }> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || !record.hooked) throw new HookError(404, 'not-hooked', `no hooked terminal session ${sessionId}`);
+    const rows = await this.#listAgents(true);
+    if (rows === null) throw new HookError(502, 'agents-unavailable', "the terminal's process could not be confirmed: `claude agents --json` could not be read, so nothing was stopped");
+    const row = rows.find((entry) => entry.sessionId === record.claudeSessionId);
+    if (!row) return { pid: null, how: 'gone' };
+    try {
+      return { pid: row.pid, how: await stopProcess(row.pid, this.#stopOptions) };
+    } catch (error) {
+      throw new HookError(502, 'stop-failed', `could not stop the terminal's claude (pid ${row.pid}): ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /** `true` when `sessionId` is an open hooked session. */

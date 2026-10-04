@@ -706,6 +706,23 @@ export interface Session {
   readonly profileName?: string;
   readonly profilePinned?: boolean;
   readonly accountSwitching?: boolean;
+  /**
+   * Additive (D65, migration 0025, `docs/peers.md` → *Taking a session over*): set
+   * once the session was taken over to another machine (it is closed and read-only:
+   * the header says "Moved to <machine>" and links to the new session). Absent /
+   * `null` otherwise.
+   */
+  readonly movedTo?: SessionMoveInfo | null;
+  /** Additive (D65): set on a session taken over from another machine ("Taken over from <machine>"). */
+  readonly movedFrom?: SessionMoveInfo | null;
+}
+
+/** Additive (D65): the other end of a take-over. `sessionId` is raw (on `machineId`); a link to it is `r~<machineId>~<sessionId>` unless `machineId` is this machine. */
+export interface SessionMoveInfo {
+  readonly machineId: string;
+  readonly machineName: string;
+  readonly sessionId: string;
+  readonly at: string;
 }
 
 /** Additive (D62 P5): a running switch of a session to another CLI. */

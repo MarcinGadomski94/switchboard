@@ -37,10 +37,15 @@ export interface PeerNodeOptions {
   readonly env?: Record<string, string>;
   /** Make a git repo `repo-<label>` (one commit) and save it as the node's default folder (a repo folder), so sessions can start there. */
   readonly repo?: boolean;
+  /**
+   * D65 tests: runs after the data folder exists and before the server starts (seed folders, clones); the folder id it
+   * returns becomes {@link PeerNode.folderId}, its path {@link PeerNode.repo}.
+   */
+  readonly prepare?: (context: { readonly root: string; readonly label: string; readonly dataDir: string; readonly configDir: string }) => Promise<{ readonly folderId?: string; readonly repo?: string } | void>;
 }
 
 /** The git identity and config of test repos (no global or system config). */
-function gitEnv(root: string): Record<string, string> {
+export function gitEnv(root: string): Record<string, string> {
   return {
     GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig'),
     GIT_CONFIG_NOSYSTEM: '1',
@@ -73,6 +78,11 @@ export async function startPeerNode(root: string, label: string, options: PeerNo
   if (options.repo) {
     repo = await makeRepo(root, path.join(root, label, `repo-${label}`));
     folderId = (await seedFolderInDataDir(dataDir, repo, { kind: 'repo' })).id;
+  }
+  if (options.prepare) {
+    const prepared = await options.prepare({ root, label, dataDir, configDir });
+    if (prepared?.folderId) folderId = prepared.folderId;
+    if (prepared?.repo) repo = prepared.repo;
   }
   const server = await startServer({
     SWITCHBOARD_DATA_DIR: dataDir,

@@ -18,6 +18,8 @@ import { registerPeerForwarding } from './api/machines.ts';
 import { AttachmentService } from './attachments/service.ts';
 import { PeerService } from './peers/service.ts';
 import { HookService } from './hooks/service.ts';
+import { TakeoverRunner } from './takeover/runner.ts';
+import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
@@ -242,7 +244,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     mcp = own;
   }
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn });
+  // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
+  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, self: () => peers.self() });
+  const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

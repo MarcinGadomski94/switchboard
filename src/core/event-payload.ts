@@ -225,7 +225,11 @@ export type LifecycleAction =
   /** D62 P5: the session switched to another CLI (the chat's divider; `from`, `to`, `handoverBy`). */
   | 'switched'
   /** D63: the session moved to another account profile of its CLI (the chat's divider; `fromProfile`, `toProfile`, `reason`). */
-  | 'account-switched';
+  | 'account-switched'
+  /** D65: the session was taken over from another machine (the chat's divider "Taken over from <machine>"; `fromMachine`). */
+  | 'taken-over'
+  /** D65: the session was taken over to another machine (a note on the closed source session: "Moved to <machine>"). */
+  | 'moved-away';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -250,6 +254,10 @@ export interface LifecyclePayload {
   readonly fromProfile?: string;
   readonly toProfile?: string;
   readonly reason?: string;
+  /** D65 (`taken-over` / `moved-away`): the other machine's name and the session's id there. */
+  readonly machine?: string;
+  readonly machineId?: string;
+  readonly remoteSessionId?: string;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */

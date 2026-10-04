@@ -212,6 +212,42 @@ export interface AdoptCliInput {
   readonly messages: ReadonlyArray<{ readonly role: 'user' | 'assistant'; readonly text: string; readonly ts: string | null }>;
 }
 
+/**
+ * D65: what {@link SessionSupervisor.takeOver} stores for a session taken over
+ * from another machine (`docs/peers.md` → *Taking a session over*): the source
+ * session's settings, the conversation (a Claude Code transcript's text, or the
+ * messages of a Codex / OpenCode chat) and the machine it came from.
+ */
+export interface TakeOverInput {
+  /** Kebab-case and unique (the caller made it so). */
+  readonly name: string;
+  readonly title: string | null;
+  readonly task: string;
+  readonly provider: CliProviderId;
+  /** Claude Code: the conversation's id (kept: its transcript was copied under it). Others: a fresh id. */
+  readonly claudeSessionId: string;
+  /** Codex thread / OpenCode session id to reopen (`null` = start a new native conversation). */
+  readonly nativeId: string | null;
+  readonly solutions: readonly string[];
+  readonly worktrees: boolean;
+  readonly branch: string | null;
+  readonly branching: SessionRecord['branching'];
+  readonly origin: SessionRecord['origin'];
+  readonly model: string | null;
+  readonly effort: string | null;
+  readonly ultracode: boolean;
+  readonly profileId: string | null;
+  /** The copied Claude Code transcript's text (imported as the chat). */
+  readonly transcript: string | null;
+  /** The chat of a Codex / OpenCode session (imported as events). */
+  readonly messages: ReadonlyArray<{ readonly role: 'user' | 'assistant'; readonly text: string; readonly ts: string | null }>;
+  readonly movedFrom: NonNullable<SessionRecord['movedFrom']>;
+  /** The chat's divider ("Taken over from <machine>"). */
+  readonly dividerLabel: string;
+  /** The agent's short first message. */
+  readonly firstMessage: string;
+}
+
 /** Options of {@link SessionSupervisor.teleport}. */
 export interface TeleportOptions {
   /** Runs after the session is stored, before its process is spawned (link its worktree). */
@@ -1375,6 +1411,8 @@ export class SessionSupervisor {
     if (running) await running.catch(() => undefined);
     const session = await this.#get(sessionId);
     if (session.closedAt === null) return session;
+    // D65: a session taken over to another machine continues there; reopening it would fork the conversation.
+    if (session.movedTo) throw new SupervisorError('closed', `${session.title ?? session.name} was taken over to ${session.movedTo.machineName}: continue it there`);
     await this.#store.sessions.update(sessionId, { closedAt: null });
     await this.#recordStandalone(sessionId, 'reopened', LIFECYCLE_LABELS.reopened);
     await this.#emitSession(sessionId);
@@ -1560,6 +1598,105 @@ export class SessionSupervisor {
     await this.#enqueue(live, () => this.#refreshStatus(live));
     await this.#emitSession(session.id);
     return this.#get(session.id);
+  }
+
+  /**
+   * D65 (`docs/peers.md` → *Taking a session over*): stores a session taken over
+   * from another machine and resumes it: bound to the same conversation (Claude
+   * Code: the transcript was copied under the target cwd's project folder; Codex:
+   * its rollout under `CODEX_HOME`, else a new thread), the chat imported, the
+   * chat divider "Taken over from <machine>" recorded with the spawn, and the
+   * agent's first message sent as a service message **after** the spawn with the
+   * D44 `resuming` mark (it waits for the CLI to take it up, like the message that
+   * resumes a paused session). `options.beforeSpawn` runs after the row is stored
+   * (the caller links the session's worktrees there). On any failure the row is
+   * deleted again and the error thrown; nothing else is left.
+   */
+  async takeOver(input: TakeOverInput, place: SessionPlace, options: { readonly beforeSpawn?: (session: SessionRecord) => Promise<void> } = {}): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    if (!this.#providers.hasAdapter(input.provider)) throw new SupervisorError('cli-unavailable', `${CLI_LABELS[input.provider]} is not supported by this Switchboard`);
+    const cwd = await canonicalFolder(place.cwd);
+    const session = await this.#store.sessions.create({
+      name: input.name,
+      title: input.title,
+      task: input.task,
+      claudeSessionId: input.claudeSessionId,
+      status: 'idle',
+      workType: null,
+      mode: null,
+      phase: null,
+      coordination: null,
+      qaStack: null,
+      qaConfluenceUrl: null,
+      qaFigmaUrls: [],
+      solutions: [...input.solutions],
+      worktrees: input.worktrees,
+      ultracode: input.ultracode,
+      attached: true,
+      cwd,
+      folderId: place.folder.id,
+      root: place.folder.root,
+      rootKind: place.folder.kind,
+      origin: input.origin,
+      requestedPermissionMode: DEFAULT_PERMISSION_MODE,
+      provider: input.provider,
+      profileId: input.profileId,
+      model: input.model,
+      effort: input.effort,
+      branch: input.branch,
+      branching: input.branching,
+      movedFrom: input.movedFrom,
+    });
+    try {
+      const main = await this.#store.agents.create({ sessionId: session.id, kind: 'main', name: mainAgentName(null, session.solutions), status: 'idle' });
+      if (input.provider === 'claude') {
+        if (input.transcript !== null) await this.#importTranscript(session, input.transcript);
+      } else {
+        if (input.nativeId) await this.#store.providers.rememberNative(session.id, input.provider, input.nativeId);
+        for (const message of input.messages) {
+          const payload = message.role === 'user' ? { type: 'user', text: message.text, origin: input.origin, delivered: true } : { type: 'assistant', text: message.text };
+          const event = await this.#store.events.append({ sessionId: session.id, agentId: main.id, kind: 'text', label: textLabel(message.text), payload, ...(message.ts ? { ts: message.ts } : {}) });
+          await this.#store.sessions.update(session.id, { lastActivityAt: event.ts });
+        }
+      }
+      if (options.beforeSpawn) await options.beforeSpawn(await this.#get(session.id));
+      this.#assertOpen();
+      const live = await this.#spawn(await this.#get(session.id), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'taken-over', undefined, {
+        label: input.dividerLabel,
+        payload: { machine: input.movedFrom.machineName, machineId: input.movedFrom.machineId, remoteSessionId: input.movedFrom.sessionId },
+      });
+      await this.#send(live, input.firstMessage, 'service', { resuming: true });
+    } catch (error) {
+      await this.#stopLive(session.id);
+      await this.#store.sessions.delete(session.id).catch(() => undefined);
+      throw error;
+    }
+    await this.#emitSession(session.id);
+    return this.#get(session.id);
+  }
+
+  /** Stops the session's live process, if any, without recording anything (a failed take-over's cleanup). */
+  async #stopLive(sessionId: string): Promise<void> {
+    const live = this.#live.get(sessionId);
+    if (live) await this.#stop(live, 'pause').catch((error: unknown) => this.#onError(error));
+  }
+
+  /**
+   * D65: starts a session's process again after a take-over was rolled back, with
+   * **no** message (an idle session stays idle); a process that is live is left
+   * alone. A session whose turn the take-over interrupted is resumed with
+   * {@link resume}'s "Continue." instead (the caller decides).
+   */
+  async respawn(sessionId: string): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (this.#live.has(sessionId)) return session;
+    const live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
+    await this.#enqueue(live, () => this.#refreshStatus(live));
+    return this.#get(sessionId);
   }
 
   // ── remote sessions continued locally (D25, docs/supervisor.md → Teleport) ─
@@ -2639,4 +2776,6 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   reopened: 'Reopened',
   switched: 'Switched CLI',
   'account-switched': 'Switched account',
+  'taken-over': 'Taken over from another machine',
+  'moved-away': 'Moved to another machine',
 };
