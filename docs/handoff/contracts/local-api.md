@@ -875,7 +875,7 @@ Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*
 - The service reads them at every spawn (new, resumed, restarted, account switch, CLI switch), so a change applies to sessions started or resumed afterwards; running processes keep what they were started with.
 
 ```json
-{ "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.", "agents.standingInstruction.enabled": true }
+{ "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.", "agents.standingInstruction.enabled": true }
 ```
 
 ## Take-over (D65, 2026-10-04, additive)
@@ -971,6 +971,20 @@ The agent's routes, called by the built-in `switchboard` MCP server (`src/hook/s
   "openCount": 1,
   "doneCount": 1
 }
+```
+
+## Todo title, description and handover plan (D69, 2026-10-04, additive)
+
+Each item of a session's todo list has three fields instead of one text (`docs/todos.md`, `docs/decisions.md` → D69). Migration 0027 renames the column `text` to `title` and adds `description` and `plan`.
+
+- **`SessionTodo`** gains **`title`** (trimmed, 1–120 characters, one line), **`description`** (for the developer: plain, brief Markdown, at most 4,000 characters; `null` = none) and **`plan`** (the handover plan for an AI agent: context, relevant files, steps, acceptance criteria; Markdown, at most 8,000 characters; `null` = none). **`text`** stays, always equal to `title`, so a paired machine still on 1.7.0 reads the items (D48).
+- **Input:** `POST …/todos` and `POST /agent/v1/todos` take `{ title, description?, plan? }`; `PUT …/todos/{todoId}` and `PUT /agent/v1/todos/{todoId}` take `{ title?, description?, plan?, state? }` (only the given fields change; `""` or `null` removes a description or plan). `text` is accepted as an alias of `title` on input (`title` wins when both come). A title over 120 characters or with a line break, a description over 4,000 or a plan over 8,000 is 422 `invalid`.
+- **New agent route:** `GET /agent/v1/todos/{todoId}` → `SessionTodo` (one item in full; the `todo_get` tool); 404 for an item of another session. Same guard as the other agent routes.
+- **Take-over (D65):** `SourceInspect.todos[]` items also carry `title`, `description` and `plan` (`text` = title stays for a 1.7.0 target). An item from a 1.7.0 source (`text` only) is split like migration 0027: the first line is the title (cut to 119 characters + `…`), the whole text the description when it is longer.
+- **Peers (D48):** a 1.7.0 peer's items (no `title`) are read with `title` = `text` and no description or plan. The UI sends `text` with `title` on add and edit, so a 1.7.0 peer adds and renames the item (any 120-character title fits its 1,000-character text). Gap: that peer drops the description and plan (it has no columns for them), and a 1.7.0 UI can add a text over 120 characters or with a line break only to a 1.7.0 machine (this version answers 422).
+
+```json
+{ "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "title": "Fix the login test flake", "text": "Fix the login test flake", "description": "Retries hide a race in the session cookie refresh; happens ~1 in 20 runs on CI.", "plan": "## Context\nThe flake is in `tests/login.spec.ts`…\n\n## Steps\n1. …\n\n## Done when\n- 50 runs pass", "state": "open", "addedBy": "agent", "position": 0, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)
