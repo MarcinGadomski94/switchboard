@@ -63,6 +63,24 @@
   --diff-del-fg: oklch(0.76 0.13 25);
   --diff-del-bg: oklch(0.22 0.04 25);
 
+  /*
+   * Todo priority (D70, docs/todos.md): an open card's 3px left edge, its label, and a
+   * barely visible tint over the card fill (dark theme; text contrast unchanged).
+   * urgent = red, high = amber, medium = neutral, low = blue-grey.
+   */
+  --todo-urgent: oklch(0.66 0.17 25);
+  --todo-high: oklch(0.78 0.14 70);
+  --todo-medium: #4a4945;
+  --todo-low: oklch(0.64 0.045 250);
+  --todo-urgent-fg: oklch(0.78 0.12 25);
+  --todo-high-fg: oklch(0.84 0.11 75);
+  --todo-medium-fg: var(--muted-2);
+  --todo-low-fg: oklch(0.78 0.04 250);
+  --todo-urgent-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.66 0.17 25) 6%);
+  --todo-high-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.78 0.14 70) 4%);
+  --todo-medium-tint: var(--bg-card-2);
+  --todo-low-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.64 0.045 250) 5%);
+
   /* Type: Geist (UI) and Geist Mono (paths, branches, labels, terminal), self-hosted (gap #19) */
   --font-ui: Geist, system-ui, sans-serif;
   --font-mono: 'Geist Mono', monospace;

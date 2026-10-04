@@ -174,7 +174,15 @@ export const api = {
   sessionTodos: (id: string) => request<SessionTodoList>('GET', `/api/sessions/${enc(id)}/todos`),
   // D69: title, description, plan; `text` (= title) too, so a paired machine still on 1.7.0 adds the item (without the notes).
   addTodo: (id: string, fields: TodoFieldsInput) =>
-    request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos`, { title: fields.title, text: fields.title, description: fields.description, plan: fields.plan } satisfies NewTodoInput),
+    request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos`, {
+      title: fields.title,
+      text: fields.title,
+      description: fields.description,
+      plan: fields.plan,
+      // D70: an older peer ignores them (its item is medium, not estimated).
+      priority: fields.priority,
+      estimateMinutes: fields.estimateMinutes,
+    } satisfies NewTodoInput),
   updateTodo: (id: string, todoId: string, patch: TodoPatchInput) =>
     request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch.title === undefined ? patch : { ...patch, text: patch.title }),
   deleteTodo: (id: string, todoId: string) => request<SessionTodoList>('DELETE', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`),

@@ -14,6 +14,9 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * (through the agent route its `switchboard` MCP tools call, with the session's
  * own token), the sidebar row's count and the Todos nav count, and the Todos page
  * (cards per session, Open session, ▶ Start opening the session with its composer filled).
+ * D70: priorities sort the open cards (tinted, labelled), estimates and their totals,
+ * the priority changed in the edit form re-sorts, Move stays within a level, and the
+ * add form is prefilled (No plan, medium).
  */
 let world: QuestionWorld;
 
@@ -26,7 +29,7 @@ test.afterAll(async () => {
 });
 
 /** What the agent's MCP helper does: one call to `/agent/v1/todos` with the session's agent token (src/server/todos/agent-token.ts). */
-async function agentAdds(sessionId: string, fields: Record<string, string>): Promise<number> {
+async function agentAdds(sessionId: string, fields: Record<string, string | number>): Promise<number> {
   const secret = (await readFile(path.join(world.dataDir, 'sb_token'), 'utf8')).trim();
   const token = createHmac('sha256', secret).update(`switchboard-agent-todos:${sessionId}`).digest('base64url');
   const url = new URL(world.baseUrl);
@@ -64,24 +67,26 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await expect(strip).toBeVisible();
   await expect(form).toHaveAttribute('data-mode', 'add');
   await expect(form.getByTestId('todo-form-title')).toBeFocused();
-  // The plan's field is behind "Add handover plan" until asked for.
-  await expect(form.getByTestId('todo-form-plan')).toHaveCount(0);
+  // D70: the plan is required: prefilled "No plan", medium, no estimate, so adding stays quick.
+  await expect(form.getByTestId('todo-form-plan')).toHaveValue('No plan');
+  await expect(form.getByTestId('todo-form-priority')).toHaveValue('medium');
+  await expect(form.getByTestId('todo-form-estimate')).toHaveValue('');
   await form.getByTestId('todo-form-title').fill('Fix the login test flake');
   await form.getByTestId('todo-form-description').fill('Retries hide a race in the **session cookie** refresh;\nhappens ~1 in 20 runs on CI.');
-  await form.getByTestId('todo-form-plan-toggle').click();
-  await expect(form.getByTestId('todo-form-plan')).toBeFocused();
   await form.getByTestId('todo-form-plan').fill('## Context\nThe flake is in `tests/login.spec.ts`.\n\n## Steps\n1. Remove the retry\n2. Await the refresh\n\n## Done when\n- 50 runs pass');
   await form.getByTestId('todo-form-save').click();
   await expect(items).toHaveCount(1);
-  // D69 ruling: the add form stays open for the next item, cleared, the plan behind its button again, the title focused.
+  // D69 ruling: the add form stays open for the next item, cleared (D70: the plan back to "No plan"), the title focused.
   await expect(form).toHaveAttribute('data-mode', 'add');
   await expect(form.getByTestId('todo-form-title')).toHaveValue('');
   await expect(form.getByTestId('todo-form-description')).toHaveValue('');
-  await expect(form.getByTestId('todo-form-plan')).toHaveCount(0);
+  await expect(form.getByTestId('todo-form-plan')).toHaveValue('No plan');
   await expect(form.getByTestId('todo-form-title')).toBeFocused();
   const first = items.nth(0);
   await expect(first.getByTestId('todo-title')).toHaveText('Fix the login test flake');
   await expect(first.getByTestId('todo-meta')).toHaveText(/^you · (now|\d+m)$/);
+  await expect(first.getByTestId('todo-priority')).toHaveText('Medium');
+  await expect(first.getByTestId('todo-estimate')).toHaveCount(0);
   await expect(first.getByTestId('todo-description').locator('strong')).toHaveText('session cookie');
   await expect(first.getByTestId('todo-description')).toHaveAttribute('data-clamped', 'true');
   await expect(first.getByTestId('todo-plan')).toHaveCount(0);
@@ -98,7 +103,7 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await expect(form).toHaveCount(0);
   await expect(items.getByTestId('todo-title')).toHaveText(['Fix the login test flake', 'Rename PROJ-12 settings keys']);
   const second = items.nth(1);
-  // No plan, no description: no disclosure, no body row; ▶ Start sits on the title row (D69 review).
+  // "No plan", no description: no disclosure, no body row; ▶ Start sits on the title row (D69 review, D70).
   await expect(second.getByTestId('todo-plan-toggle')).toHaveCount(0);
   await expect(second.getByTestId('todo-description')).toHaveCount(0);
   await expect(second.locator('.sb-todo-card-row').getByTestId('todo-start')).toBeVisible();
@@ -237,7 +242,6 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   const form = strip.getByTestId('todo-form');
   await form.getByTestId('todo-form-title').fill('Fix the login test flake');
   await form.getByTestId('todo-form-description').fill('Retries hide a race.');
-  await form.getByTestId('todo-form-plan-toggle').click();
   await form.getByTestId('todo-form-plan').fill('1. Remove the retry\n2. Await the refresh');
   await form.getByTestId('todo-form-save').click();
   await expect(strip.getByTestId('todo-item')).toHaveCount(1);
@@ -256,7 +260,7 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   await expect(input).toBeFocused();
   await expect(messages).toHaveCount(1);
 
-  // A draft is never replaced: the message goes after it. No plan: the description.
+  // A draft is never replaced: the message goes after it. "No plan" (D70): the description.
   await input.fill('My own draft');
   await items.nth(1).getByTestId('todo-start').click();
   await expect(input).toHaveValue(`My own draft\n\nWork on todo [${readmeId}]: Update the README\n\nThe install section is stale.`);
@@ -294,4 +298,127 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   await group.getByTestId('todos-open-session').click();
   await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));
   await expect(page.getByTestId('todo-count')).toHaveText('0 open · 2 done');
+});
+
+test('D70 · priorities sort and tint the cards, estimates and totals show; the form changes them; moves stay within a level; the Todos page totals', async ({ page }) => {
+  await page.goto(world.baseUrl);
+  const { id } = await world.startSession(page, 'todo-priority', 'Reply with just OK.');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const strip = page.getByTestId('todo-strip');
+  const items = strip.locator('[data-testid="todo-item"][data-state="open"]');
+  const titles = items.getByTestId('todo-title');
+
+  // The agent adds four items with different priorities (one without an estimate: an older tool shape).
+  expect(await agentAdds(id, { title: 'Tidy the README', plan: 'No plan: wording only', priority: 'low', estimateMinutes: 15 })).toBe(201);
+  expect(await agentAdds(id, { title: 'Write the changelog', plan: 'List the D70 changes.', priority: 'medium' })).toBe(201);
+  expect(await agentAdds(id, { title: 'Restore the login page', description: 'Production login is down.', plan: '1. Roll back PROJ-7\n2. Check the logs', priority: 'urgent', estimateMinutes: 30 })).toBe(201);
+  expect(await agentAdds(id, { title: 'Fix the flaky upload test', plan: 'Await the upload before asserting.', priority: 'high', estimateMinutes: 90 })).toBe(201);
+  if ((await strip.getAttribute('data-expanded')) !== 'true') await page.getByTestId('todo-toggle').click();
+
+  // Sorted urgent → low; each card labelled and tinted by its priority; the estimates and the header total (+: one is unknown).
+  await expect(titles).toHaveText(['Restore the login page', 'Fix the flaky upload test', 'Write the changelog', 'Tidy the README']);
+  await expect(items.getByTestId('todo-priority')).toHaveText(['Urgent', 'High', 'Medium', 'Low']);
+  await expect(items.nth(0).getByTestId('todo-estimate')).toHaveText('~30m');
+  await expect(items.nth(1).getByTestId('todo-estimate')).toHaveText('~1h 30m');
+  await expect(items.nth(2).getByTestId('todo-estimate')).toHaveCount(0);
+  await expect(items.nth(3).getByTestId('todo-estimate')).toHaveText('~15m');
+  await expect(page.getByTestId('todo-count')).toHaveText('4 open · ~2h 15m+ · 0 done');
+  const edge = (index: number) => items.nth(index).evaluate((el) => ({ width: getComputedStyle(el).borderLeftWidth, color: getComputedStyle(el).borderLeftColor, background: getComputedStyle(el).backgroundColor }));
+  const [urgent, high, medium, low] = [await edge(0), await edge(1), await edge(2), await edge(3)];
+  for (const card of [urgent, high, medium, low]) expect(card.width).toBe('3px');
+  expect(new Set([urgent.color, high.color, medium.color, low.color]).size).toBe(4);
+  // The tint is faint: urgent / high / low differ from the plain medium card, but only slightly.
+  expect(urgent.background).not.toBe(medium.background);
+  expect(low.background).not.toBe(medium.background);
+  // "No plan: <reason>" is not offered as a plan; a real plan is.
+  await expect(items.nth(3).getByTestId('todo-plan-toggle')).toHaveCount(0);
+  await expect(items.nth(2).getByTestId('todo-plan-toggle')).toBeVisible();
+
+  // Collapsed, the next item is the top one by priority.
+  await page.getByTestId('todo-toggle').click();
+  await expect(page.getByTestId('todo-next')).toHaveText('Restore the login page');
+  await page.getByTestId('todo-toggle').click();
+
+  // + Add: prefilled No plan / medium / no estimate; the developer picks High and 1h 30m; a bad estimate blocks Save.
+  await strip.getByTestId('todo-add').click();
+  const form = strip.getByTestId('todo-form');
+  await expect(form.getByTestId('todo-form-plan')).toHaveValue('No plan');
+  await expect(form.getByTestId('todo-form-priority')).toHaveValue('medium');
+  await expect(form.getByTestId('todo-form-estimate')).toHaveValue('');
+  await form.getByTestId('todo-form-title').fill('Review the upload fix');
+  await form.getByTestId('todo-form-priority').selectOption('high');
+  await form.getByTestId('todo-form-estimate').fill('soon');
+  await expect(form.getByTestId('todo-form-estimate-error')).toBeVisible();
+  await expect(form.getByTestId('todo-form-save')).toBeDisabled();
+  await form.getByTestId('todo-form-estimate').fill('1h 30m');
+  await expect(form.getByTestId('todo-form-estimate-error')).toHaveCount(0);
+  // An emptied plan blocks Save too (write "No plan" instead).
+  await form.getByTestId('todo-form-plan').fill('');
+  await expect(form.getByTestId('todo-form-save')).toBeDisabled();
+  await form.getByTestId('todo-form-plan').fill('No plan');
+  await form.getByTestId('todo-form-save').click();
+  await expect(titles).toHaveText(['Restore the login page', 'Fix the flaky upload test', 'Review the upload fix', 'Write the changelog', 'Tidy the README']);
+  await expect(form.getByTestId('todo-form-priority')).toHaveValue('medium');
+  await expect(form.getByTestId('todo-form-estimate')).toHaveValue('');
+  await form.getByTestId('todo-form-cancel').click();
+  const review = items.nth(2);
+  await expect(review.getByTestId('todo-priority')).toHaveText('High');
+  await expect(review.getByTestId('todo-estimate')).toHaveText('~1h 30m');
+  await expect(review.getByTestId('todo-by')).toHaveText('you');
+  await expect(page.getByTestId('todo-count')).toHaveText('5 open · ~3h 45m+ · 0 done');
+
+  // ⋯ Move stays within the level: the only urgent item cannot move; the last high one moves up, not down into medium.
+  await items.nth(0).getByTestId('todo-menu-button').click();
+  await expect(items.nth(0).getByTestId('todo-menu-up')).toBeDisabled();
+  await expect(items.nth(0).getByTestId('todo-menu-down')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await review.getByTestId('todo-menu-button').click();
+  await expect(review.getByTestId('todo-menu-down')).toBeDisabled();
+  await review.getByTestId('todo-menu-up').click();
+  await expect(titles).toHaveText(['Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog', 'Tidy the README']);
+
+  // Edit: the low item becomes urgent (it re-sorts into the urgent level by its own place: it was added first); the changelog gets an estimate.
+  const editCard = async (title: string): Promise<void> => {
+    const card = items.filter({ has: page.getByTestId('todo-title').getByText(title, { exact: true }) });
+    await card.getByTestId('todo-menu-button').click();
+    await card.getByTestId('todo-menu-edit').click();
+  };
+  await editCard('Tidy the README');
+  const edit = strip.locator('[data-testid="todo-form"][data-mode="edit"]');
+  await expect(edit.getByTestId('todo-form-priority')).toHaveValue('low');
+  await expect(edit.getByTestId('todo-form-estimate')).toHaveValue('15m');
+  await expect(edit.getByTestId('todo-form-plan')).toHaveValue('No plan: wording only');
+  await edit.getByTestId('todo-form-priority').selectOption('urgent');
+  await edit.getByTestId('todo-form-save').click();
+  await expect(titles).toHaveText(['Tidy the README', 'Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog']);
+  await expect(items.nth(0).getByTestId('todo-priority')).toHaveText('Urgent');
+  await editCard('Write the changelog');
+  await expect(edit.getByTestId('todo-form-estimate')).toHaveValue('');
+  await edit.getByTestId('todo-form-estimate').fill('45');
+  await edit.getByTestId('todo-form-estimate').press('ControlOrMeta+Enter');
+  await expect(items.nth(4).getByTestId('todo-estimate')).toHaveText('~45m');
+  // Every estimate known now: no +.
+  await expect(page.getByTestId('todo-count')).toHaveText('5 open · ~4h 30m · 0 done');
+  // Removing an estimate in the form brings the + back.
+  await editCard('Write the changelog');
+  await edit.getByTestId('todo-form-estimate').fill('');
+  await edit.getByTestId('todo-form-save').click();
+  await expect(page.getByTestId('todo-count')).toHaveText('5 open · ~3h 45m+ · 0 done');
+
+  // A done card: no tint, no label, no estimate (muted as before); the total counts open items only.
+  await items.nth(0).getByTestId('todo-check').click();
+  await expect(page.getByTestId('todo-count')).toHaveText('4 open · ~3h 30m+ · 1 done');
+  await page.getByTestId('todo-done-toggle').click();
+  const done = strip.locator('[data-testid="todo-item"][data-state="done"]');
+  await expect(done.getByTestId('todo-priority')).toHaveCount(0);
+  await expect(done.getByTestId('todo-estimate')).toHaveCount(0);
+  expect(await done.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe('1px');
+
+  // The Todos page: the same order and labels, and the session's estimate total.
+  await page.getByTestId('nav-todos').click();
+  const group = page.locator(`[data-testid="todos-group"][data-session-id="${id}"]`);
+  await expect(group.getByTestId('todos-group-count')).toHaveText('4 open');
+  await expect(group.getByTestId('todos-group-estimate')).toHaveText('~3h 30m+');
+  await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-title')).toHaveText(['Restore the login page', 'Review the upload fix', 'Fix the flaky upload test', 'Write the changelog']);
+  await expect(group.locator('[data-testid="todo-item"][data-state="open"]').getByTestId('todo-priority')).toHaveText(['Urgent', 'High', 'High', 'Medium']);
 });

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { SessionTodoList, TodoGroup } from '../../core/api.ts';
-import { splitTodos, todoStartMessage } from '../../core/todos.ts';
+import { splitTodos, todoEstimateTotal, todoStartMessage } from '../../core/todos.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -23,7 +23,8 @@ function placeOf(group: TodoGroup): string {
 /**
  * D68 / D69 · the Todos page (`docs/todos.md` → *Todos page*): every open
  * session's items as the same cards as the session's strip, grouped under a
- * session header (its title, machine tag, where it works, its open count and
+ * session header (its title, machine tag, where it works, its open count, D70 its
+ * open items' estimate total, and
  * **Open session**); the done ones behind **Show done**. **▶ Start** opens the
  * session and fills its composer (never sends).
  */
@@ -96,6 +97,12 @@ export function TodosView() {
                 <span className="sb-todos-group-count" data-testid="todos-group-count">
                   {openItems.length} open
                 </span>
+                {/* D70: the session's open items' known estimates. */}
+                {todoEstimateTotal(group.todos) ? (
+                  <span className="sb-todos-group-estimate" data-testid="todos-group-estimate" title="Estimated time for an AI agent (open items)">
+                    {todoEstimateTotal(group.todos)}
+                  </span>
+                ) : null}
                 <Link to={session} className="sb-todos-group-open" data-testid="todos-open-session">
                   Open session
                 </Link>

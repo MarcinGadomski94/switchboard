@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { SessionTodo, SessionTodoList, TodoFieldsInput } from '../../../core/api.ts';
-import { moveTodo, splitTodos, todoStartMessage } from '../../../core/todos.ts';
+import type { SessionTodo, SessionTodoList, TodoFieldsInput, TodoPatchInput } from '../../../core/api.ts';
+import { moveTodo, splitTodos, todoEstimateTotal, todoMoveScope, todoStartMessage } from '../../../core/todos.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { TodoCard, TodoForm } from './TodoCard.tsx';
@@ -74,9 +74,9 @@ export function useMinuteClock(): number {
   return now;
 }
 
-/** The PUT that saves a form: every field (an emptied description or plan is removed). */
-export function savePatch(fields: TodoFieldsInput): { readonly title: string; readonly description: string; readonly plan: string } {
-  return { title: fields.title, description: fields.description ?? '', plan: fields.plan ?? '' };
+/** The PUT that saves a form: every field (an emptied description is removed; D70: the plan, priority and estimate, `null` = none). */
+export function savePatch(fields: TodoFieldsInput): TodoPatchInput {
+  return { title: fields.title, description: fields.description ?? '', plan: fields.plan, priority: fields.priority, estimateMinutes: fields.estimateMinutes };
 }
 
 /** D69: the list's cards with their actions, for the strip and the Todos page. */
@@ -92,7 +92,7 @@ export function TodoCards({
   readonly sessionId: string;
   /** Every item of the session (the order Move up / down rewrites). */
   readonly all: readonly SessionTodo[];
-  /** The ones to show, in order (one state). */
+  /** The ones to show, in order (one state; D70: open ones by priority). */
   readonly items: readonly SessionTodo[];
   readonly disabled: boolean;
   readonly run: (write: () => Promise<SessionTodoList>) => Promise<boolean>;
@@ -102,34 +102,39 @@ export function TodoCards({
 }) {
   return (
     <ul className="sb-todos-list">
-      {items.map((todo, index) => (
-        <TodoCard
-          key={todo.id}
-          todo={todo}
-          index={index}
-          count={items.length}
-          disabled={disabled}
-          now={now}
-          actions={{
-            onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
-            onSave: (fields) => run(() => api.updateTodo(sessionId, todo.id, savePatch(fields))),
-            onMove: (step) => {
-              const ids = moveTodo(all, todo.id, step);
-              if (ids) void run(() => api.reorderTodos(sessionId, ids));
-            },
-            onDelete: () => void run(() => api.deleteTodo(sessionId, todo.id)),
-            onStart: onStart && todo.state === 'open' ? () => onStart(todo) : null,
-          }}
-        />
-      ))}
+      {items.map((todo) => {
+        // D70: Move up / down stays within the item's priority level (open), or among the done ones.
+        const scope = todoMoveScope(all, todo);
+        return (
+          <TodoCard
+            key={todo.id}
+            todo={todo}
+            index={scope.findIndex((t) => t.id === todo.id)}
+            count={scope.length}
+            disabled={disabled}
+            now={now}
+            actions={{
+              onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
+              onSave: (fields) => run(() => api.updateTodo(sessionId, todo.id, savePatch(fields))),
+              onMove: (step) => {
+                const ids = moveTodo(all, todo.id, step);
+                if (ids) void run(() => api.reorderTodos(sessionId, ids));
+              },
+              onDelete: () => void run(() => api.deleteTodo(sessionId, todo.id)),
+              onStart: onStart && todo.state === 'open' ? () => onStart(todo) : null,
+            }}
+          />
+        );
+      })}
     </ul>
   );
 }
 
 /**
  * D68 / D69 · the session's todo strip, just above the composer (`docs/todos.md` →
- * *In the session*): a header with **TODO**, `3 open · 1 done`, a thin progress
- * bar and **+ Add**, collapsed (the next open item's title) or expanded (kept in
+ * *In the session*): a header with **TODO**, `3 open · ~2h 15m · 1 done` (D70: the open
+ * items' estimate total), a thin progress
+ * bar and **+ Add**, collapsed (the next open item's title: D70, the top one by priority) or expanded (kept in
  * this browser); expanded, the open items as cards ({@link TodoCard}), the add
  * form at the top, and the done items under a collapsed **Done (n)** with **Clear
  * done**. With no items it is not shown: the composer's **+ Todo** opens it with
@@ -184,6 +189,8 @@ export function TodoStrip({
   };
 
   const total = open.length + done.length;
+  // D70: the open items' known estimates (`~2h 15m`, `+` when some have none).
+  const estimateTotal = todoEstimateTotal(all);
   const progress = total === 0 ? 0 : done.length / total;
 
   return (
@@ -195,7 +202,7 @@ export function TodoStrip({
           </span>
           <span className="sb-todos-title">Todo</span>
           <span className="sb-todos-counts" data-testid="todo-count">
-            {open.length} open · {done.length} done
+            {open.length} open{estimateTotal ? <span data-testid="todo-estimate-total"> · {estimateTotal}</span> : null} · {done.length} done
           </span>
           {!expanded && open[0] ? (
             <span className="sb-todos-next" data-testid="todo-next">

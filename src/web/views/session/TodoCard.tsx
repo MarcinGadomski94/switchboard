@@ -1,6 +1,20 @@
 import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { SessionTodo, TodoFieldsInput } from '../../../core/api.ts';
-import { TODO_DESCRIPTION_MAX, TODO_PLAN_MAX, TODO_TITLE_MAX, todoRemovalLabel } from '../../../core/todos.ts';
+import type { SessionTodo, TodoFieldsInput, TodoPriority } from '../../../core/api.ts';
+import {
+  DEFAULT_TODO_PRIORITY,
+  TODO_DESCRIPTION_MAX,
+  TODO_NO_PLAN,
+  TODO_PLAN_MAX,
+  TODO_PRIORITIES,
+  TODO_PRIORITY_LABELS,
+  TODO_TITLE_MAX,
+  isTodoPriority,
+  parseTodoEstimate,
+  todoEstimateInput,
+  todoEstimateLabel,
+  todoHasPlan,
+  todoRemovalLabel,
+} from '../../../core/todos.ts';
 import { formatAge } from '../../shell/format.ts';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 
@@ -28,9 +42,10 @@ function AutoTextarea({ value, onChange, ...rest }: { readonly value: string; re
 
 /**
  * D69 · the item form (`docs/todos.md` → *Cards*): title (required, one line),
- * description and handover plan (Markdown, optional; the plan behind **Add
- * handover plan** until it has text). **Save** / **Cancel**; Esc cancels, ⌘ / Ctrl
- * + Enter saves (Enter too in the title). Used by **+ Add** and by **Edit**.
+ * description (Markdown, optional) and handover plan (Markdown). D70: the plan is
+ * required (a new item's is prefilled `No plan`), a priority (prefilled medium) and
+ * the estimate (optional: `45m`, `2h`, `1h 30m`). **Save** / **Cancel**; Esc cancels,
+ * ⌘ / Ctrl + Enter saves (Enter too in the title). Used by **+ Add** and by **Edit**.
  */
 export function TodoForm({
   initial,
@@ -48,10 +63,10 @@ export function TodoForm({
 }) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [plan, setPlan] = useState(initial?.plan ?? '');
-  const [planShown, setPlanShown] = useState((initial?.plan ?? '') !== '');
-  // The plan's field takes the focus when Add handover plan opened it (not when the form opens with a plan).
-  const [focusPlan, setFocusPlan] = useState(false);
+  // D70: the plan is required; a new item's starts as "No plan" so adding stays quick.
+  const [plan, setPlan] = useState(initial?.plan ?? TODO_NO_PLAN);
+  const [priority, setPriority] = useState<TodoPriority>(initial?.priority ?? DEFAULT_TODO_PRIORITY);
+  const [estimate, setEstimate] = useState(todoEstimateInput(initial?.estimateMinutes));
   const [saving, setSaving] = useState(false);
   const titleInput = useRef<HTMLInputElement | null>(null);
   const ids = useId();
@@ -60,22 +75,29 @@ export function TodoForm({
     titleInput.current?.focus();
   }, []);
 
-  const canSave = title.trim() !== '' && !saving && !disabled;
+  const parsedEstimate = parseTodoEstimate(estimate);
+  const canSave = title.trim() !== '' && plan.trim() !== '' && parsedEstimate.ok && !saving && !disabled;
   const save = async (): Promise<void> => {
-    if (!canSave) return;
-    const sent = { title: title.trim(), description: description.trim() === '' ? null : description.trim(), plan: plan.trim() === '' ? null : plan.trim() };
-    const typed = { title, description, plan };
+    if (!canSave || !parsedEstimate.ok) return;
+    const sent: TodoFieldsInput = {
+      title: title.trim(),
+      description: description.trim() === '' ? null : description.trim(),
+      plan: plan.trim(),
+      priority,
+      estimateMinutes: parsedEstimate.value,
+    };
+    const typed = { title, description, plan, priority, estimate };
     setSaving(true);
     try {
       const ok = await onSave(sent);
       // D69 ruling: + Add stays open for the next item, cleared and on the title (unless the fields were edited meanwhile).
       if (ok && mode === 'add') {
-        const unchanged = (current: string, before: string): boolean => current === before;
-        setTitle((current) => (unchanged(current, typed.title) ? '' : current));
-        setDescription((current) => (unchanged(current, typed.description) ? '' : current));
-        setPlan((current) => (unchanged(current, typed.plan) ? '' : current));
-        setPlanShown(false);
-        setFocusPlan(false);
+        const reset = <T,>(before: T, empty: T) => (current: T): T => (current === before ? empty : current);
+        setTitle(reset(typed.title, ''));
+        setDescription(reset(typed.description, ''));
+        setPlan(reset(typed.plan, TODO_NO_PLAN));
+        setPriority(reset<TodoPriority>(typed.priority, DEFAULT_TODO_PRIORITY));
+        setEstimate(reset(typed.estimate, ''));
         titleInput.current?.focus();
       }
     } finally {
@@ -127,6 +149,45 @@ export function TodoForm({
           }
         }}
       />
+      <div className="sb-todo-form-row">
+        <label className="sb-todo-form-label" htmlFor={`${ids}-priority`}>
+          Priority
+        </label>
+        <select
+          id={`${ids}-priority`}
+          className="sb-todo-form-select"
+          data-testid="todo-form-priority"
+          value={priority}
+          disabled={disabled}
+          onChange={(event) => setPriority(isTodoPriority(event.target.value) ? event.target.value : DEFAULT_TODO_PRIORITY)}
+        >
+          {TODO_PRIORITIES.map((level) => (
+            <option key={level} value={level}>
+              {TODO_PRIORITY_LABELS[level]}
+            </option>
+          ))}
+        </select>
+        <label className="sb-todo-form-label" htmlFor={`${ids}-estimate`}>
+          Estimate <span className="sb-todo-form-hint">AI agent · optional</span>
+        </label>
+        <input
+          id={`${ids}-estimate`}
+          className="sb-todo-form-estimate"
+          data-testid="todo-form-estimate"
+          placeholder="e.g. 45m, 2h"
+          value={estimate}
+          maxLength={16}
+          disabled={disabled}
+          aria-invalid={!parsedEstimate.ok}
+          aria-describedby={parsedEstimate.ok ? undefined : `${ids}-estimate-error`}
+          onChange={(event) => setEstimate(event.target.value)}
+        />
+      </div>
+      {!parsedEstimate.ok ? (
+        <div className="sb-todo-form-error" id={`${ids}-estimate-error`} data-testid="todo-form-estimate-error" role="alert">
+          {parsedEstimate.message}
+        </div>
+      ) : null}
       <label className="sb-todo-form-label" htmlFor={`${ids}-description`}>
         Description <span className="sb-todo-form-hint">for you · Markdown · optional</span>
       </label>
@@ -140,36 +201,20 @@ export function TodoForm({
         disabled={disabled}
         onChange={setDescription}
       />
-      {planShown ? (
-        <>
-          <label className="sb-todo-form-label" htmlFor={`${ids}-plan`}>
-            Handover plan <span className="sb-todo-form-hint">for an agent · Markdown · optional</span>
-          </label>
-          <AutoTextarea
-            id={`${ids}-plan`}
-            className="sb-todo-form-area sb-todo-form-plan"
-            data-testid="todo-form-plan"
-            placeholder={'Context, relevant files, steps, acceptance criteria: enough for an agent to pick it up cold'}
-            value={plan}
-            maxLength={TODO_PLAN_MAX}
-            disabled={disabled}
-            onChange={setPlan}
-            autoFocus={focusPlan}
-          />
-        </>
-      ) : (
-        <button
-          type="button"
-          className="sb-todo-form-add-plan"
-          data-testid="todo-form-plan-toggle"
-          onClick={() => {
-            setFocusPlan(true);
-            setPlanShown(true);
-          }}
-        >
-          + Add handover plan
-        </button>
-      )}
+      <label className="sb-todo-form-label" htmlFor={`${ids}-plan`}>
+        Handover plan <span className="sb-todo-form-hint">for an agent · Markdown · required (“{TODO_NO_PLAN}” when there is none)</span>
+      </label>
+      <AutoTextarea
+        id={`${ids}-plan`}
+        className="sb-todo-form-area sb-todo-form-plan"
+        data-testid="todo-form-plan"
+        placeholder={'Context, relevant files, steps, acceptance criteria: enough for an agent to pick it up cold'}
+        value={plan}
+        maxLength={TODO_PLAN_MAX}
+        required
+        disabled={disabled}
+        onChange={setPlan}
+      />
       <div className="sb-todo-form-actions">
         <span className="sb-todo-form-keys">Esc cancels · ⌘/Ctrl+Enter saves</span>
         <button type="button" className="sb-todo-form-cancel" data-testid="todo-form-cancel" onClick={onCancel}>
@@ -263,7 +308,8 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
 
 /**
  * D69 · one todo as a card (`docs/todos.md` → *Cards*): a round box to tick,
- * the bold title, the description (Markdown, two lines until the card is
+ * the bold title, D70 its priority label and estimate (an open card is tinted by its
+ * priority: `data-priority`), the description (Markdown, two lines until the card is
  * opened), who added it and how long ago, a ⋯ menu (Edit, Move up, Move down,
  * Delete), **▸ Handover plan** when it has one, and **▶ Start**. A click on the
  * card (or its title) opens it in place: the full description and the plan.
@@ -279,7 +325,7 @@ export function TodoCard({
   now,
 }: {
   readonly todo: SessionTodo;
-  /** Its place among the items of its state (for Move up / down). */
+  /** Its place among the items it moves among (D70: the open items of its priority, or the done ones; for Move up / down). */
   readonly index: number;
   readonly count: number;
   /** Nothing can change (an unreachable machine's session). */
@@ -295,7 +341,11 @@ export function TodoCard({
   const ids = useId();
   const isDone = todo.state === 'done';
   const title = todo.title ?? todo.text;
-  const showPlan = todo.plan !== null && !isDone && (planOpen || expanded);
+  // D70: "No plan" (or "No plan: <reason>") is not offered as a handover plan.
+  const hasPlan = todoHasPlan(todo.plan);
+  const showPlan = hasPlan && !isDone && (planOpen || expanded);
+  const priority = isTodoPriority(todo.priority) ? todo.priority : DEFAULT_TODO_PRIORITY;
+  const estimate = todoEstimateLabel(todo.estimateMinutes);
   // D69 review: opening the card or its plan keeps its title row in view (the list scrolls, the row stays).
   const row = useRef<HTMLDivElement | null>(null);
   const opened = useRef(false);
@@ -312,7 +362,7 @@ export function TodoCard({
       <li className="sb-todo-card" data-testid="todo-item" data-todo-id={todo.id} data-state={todo.state} data-added-by={todo.addedBy} data-editing="true">
         <TodoForm
           mode="edit"
-          initial={{ title, description: todo.description, plan: todo.plan }}
+          initial={{ title, description: todo.description, plan: todo.plan, priority, estimateMinutes: todo.estimateMinutes }}
           disabled={disabled}
           onCancel={() => setEditing(false)}
           onSave={async (fields) => {
@@ -354,6 +404,7 @@ export function TodoCard({
       data-todo-id={todo.id}
       data-state={todo.state}
       data-added-by={todo.addedBy}
+      data-priority={priority}
       data-expanded={expanded ? 'true' : 'false'}
       onClick={onCardClick}
     >
@@ -378,6 +429,18 @@ export function TodoCard({
         >
           {title}
         </button>
+        {isDone ? null : (
+          <span className="sb-todo-tags">
+            <span className="sb-todo-priority" data-testid="todo-priority" data-priority={priority} title={`Priority: ${TODO_PRIORITY_LABELS[priority]}`}>
+              {TODO_PRIORITY_LABELS[priority]}
+            </span>
+            {estimate ? (
+              <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
+                {estimate}
+              </span>
+            ) : null}
+          </span>
+        )}
         <span className="sb-todo-meta" data-testid="todo-meta">
           {isDone ? (
             <span data-testid="todo-removal">{todoRemovalLabel(todo.removeAt, Math.max(now, Date.now()))}</span>
@@ -392,7 +455,7 @@ export function TodoCard({
           )}
         </span>
         {/* D69 review: without a plan, ▶ Start sits on the title row (no row of its own). */}
-        {todo.plan === null ? startButton : null}
+        {hasPlan ? null : startButton}
         <span className="sb-todo-menu-anchor">
           <button
             ref={menuButton}
@@ -409,14 +472,14 @@ export function TodoCard({
           {menuOpen ? <CardMenu entries={entries} label={`Actions for ${title}`} anchor={menuButton.current} onClose={() => setMenuOpen(false)} /> : null}
         </span>
       </div>
-      {!isDone && (todo.description || todo.plan !== null) ? (
+      {!isDone && (todo.description || hasPlan) ? (
         <div className="sb-todo-card-body" id={`${ids}-body`}>
           {todo.description ? (
             <div className="sb-todo-description" data-testid="todo-description" data-clamped={expanded ? 'false' : 'true'}>
               <ChatMarkdown text={todo.description} testId="todo-description-markdown" />
             </div>
           ) : null}
-          {todo.plan !== null ? (
+          {hasPlan ? (
             <div className="sb-todo-card-foot">
               <button
                 type="button"

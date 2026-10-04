@@ -1,8 +1,10 @@
 /*
- * D68 / D69 · the session's todo strip above the composer (docs/todos.md → In the session,
+ * D68 / D69 / D70 · the session's todo strip above the composer (docs/todos.md → In the session,
  * Cards), the cards and their form (shared with the Todos page), the composer's compact
  * "+ Todo". Colors and sizes are the app's tokens (styles/tokens.css); the cards follow
  * the Inbox cards and Settings → Accounts (a quiet border, the selected-card fill on hover).
+ * D70: an open card's priority shows as a 3px left edge, a barely visible tint and a small
+ * label (tokens --todo-*); done cards stay untinted.
  */
 .sb-todos {
   border-top: 1px solid var(--border-divider);
@@ -36,7 +38,6 @@
 .sb-todo-more:focus-visible,
 .sb-todo-plan-toggle:focus-visible,
 .sb-todo-start:focus-visible,
-.sb-todo-form-add-plan:focus-visible,
 .sb-todo-form-save:focus-visible,
 .sb-todo-form-cancel:focus-visible,
 .sb-todos-done-toggle:focus-visible,
@@ -169,6 +170,66 @@
 .sb-todo-card-row > .sb-todo-start {
   margin-left: 0;
   flex: none;
+}
+
+/* ── D70: priority (open cards only; the edit form's card has no data-priority) ── */
+.sb-todo-card[data-priority='urgent'] {
+  --todo-edge: var(--todo-urgent);
+  --todo-fg: var(--todo-urgent-fg);
+  --todo-tint: var(--todo-urgent-tint);
+}
+
+.sb-todo-card[data-priority='high'] {
+  --todo-edge: var(--todo-high);
+  --todo-fg: var(--todo-high-fg);
+  --todo-tint: var(--todo-high-tint);
+}
+
+.sb-todo-card[data-priority='medium'] {
+  --todo-edge: var(--todo-medium);
+  --todo-fg: var(--todo-medium-fg);
+  --todo-tint: var(--todo-medium-tint);
+}
+
+.sb-todo-card[data-priority='low'] {
+  --todo-edge: var(--todo-low);
+  --todo-fg: var(--todo-low-fg);
+  --todo-tint: var(--todo-low-tint);
+}
+
+.sb-todo-card[data-state='open'][data-priority] {
+  border-left: 3px solid var(--todo-edge);
+  /* The 3px edge takes 2px more than the 1px border: the content stays where it was. */
+  padding-left: 10px;
+  background: var(--todo-tint);
+}
+
+.sb-todo-card[data-state='open'][data-priority]:hover {
+  background: color-mix(in oklch, var(--todo-tint), var(--bg-selected-card) 60%);
+  border-left-color: var(--todo-edge);
+}
+
+.sb-todo-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.sb-todo-priority {
+  font: 500 10px var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--todo-fg, var(--muted-2));
+  border: 1px solid color-mix(in oklch, var(--todo-edge, var(--border-control)), transparent 45%);
+  border-radius: var(--radius-chip);
+  padding: 0 5px;
+  line-height: 16px;
+}
+
+.sb-todo-estimate {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-1);
 }
 
 /* The round box: a native checkbox (keyboard and screen readers as usual), drawn round. */
@@ -467,17 +528,54 @@
   border-color: var(--muted-3);
 }
 
-.sb-todo-form-add-plan {
-  all: unset;
-  align-self: flex-start;
+/* D70: priority and estimate on one row under the title. */
+.sb-todo-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-top: 3px;
-  font: 500 var(--fs-mono-meta) var(--font-mono);
-  color: var(--muted-2);
-  cursor: pointer;
 }
 
-.sb-todo-form-add-plan:hover {
+.sb-todo-form-row > .sb-todo-form-label {
+  margin-top: 0;
+}
+
+.sb-todo-form-row > .sb-todo-form-label + .sb-todo-form-estimate,
+.sb-todo-form-row > .sb-todo-form-label + .sb-todo-form-select {
+  margin-right: 8px;
+}
+
+.sb-todo-form-select,
+.sb-todo-form-estimate {
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
   color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 3px 6px;
+}
+
+.sb-todo-form-estimate {
+  width: 96px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.sb-todo-form-estimate[aria-invalid='true'] {
+  border-color: var(--status-fail);
+}
+
+.sb-todo-form-select:focus,
+.sb-todo-form-estimate:focus {
+  outline: none;
+  border-color: var(--muted-3);
+}
+
+.sb-todo-form-error {
+  color: oklch(0.72 0.16 25);
+  font-size: 12px;
 }
 
 /* Save / Cancel stay in view: stuck to the bottom of the scrolling list while the form is taller than it. */

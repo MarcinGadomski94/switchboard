@@ -95,6 +95,13 @@
   flex: none;
 }
 
+/* D70: the session's open items' estimate total, next to its open count. */
+.sb-todos-group-estimate {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-1);
+  flex: none;
+}
+
 .sb-todos-group-open {
   font-size: 12px;
   color: var(--muted-1);
