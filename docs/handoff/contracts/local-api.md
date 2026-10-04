@@ -788,7 +788,7 @@ CliInfo { provider, label, command: string[], commandSource: "settings" | "env" 
 Session.provider?: CliProviderId
 Session.providerSwitch?: { id, from: CliProviderId, to: CliProviderId, step: "handover" | "export" | "stopping" | "starting", handoverBy: "outgoing" | "history" | null } | null
 LifecyclePayload (action "switched"): { from, to, handoverBy: "outgoing" | "history", exportPath: string | null }   // the chat's divider
-SystemInfo.cliUsage?: [{ provider, label: "Codex 5h" | "Codex week" | …, pct: number, resetsAt: string | null }]
+SystemInfo.cliUsage?: [{ provider, label: "Codex 5h" | "Codex week" | …, pct: number, resetsAt: string | null, key?: "session" | "week" | "model" /* D66 */ }]
 HistoryItem.provider?: CliProviderId, HistoryItem.nativeId?: string
 CliMcpView { provider, available, reason: string | null, servers: CliMcpServer[], canEdit, editReason: string | null, command: string }
 CliMcpServer { name, transport: "stdio" | "http", target: string /* masked */, envNames: string[], enabled: boolean, status: string | null }
@@ -839,7 +839,21 @@ AccountSignIn { id, profileId, cli, state: "starting" | "waiting" | "done" | "fa
   instructions: string | null, error: string | null, command: string, canPasteBack: boolean, startedAt, expiresAt }
 Session.profileId?: string, Session.profileName?: string, Session.profilePinned?: boolean, Session.accountSwitching?: boolean
 LifecyclePayload (action "account-switched"): { fromProfile, toProfile, reason }   // the chat's divider "Switched account: A → B (session limit, resets 14:05)"
-SystemInfo.accountUsage?: [{ profileId, cli, name, active: boolean, pct: number | null, exhaustedUntil: string | null }]   // only while a CLI has more than one enabled account
+SystemInfo.accountUsage?: [{ profileId, cli, name, active: boolean, pct: number | null, exhaustedUntil: string | null, windows?: AccountUsageWindow[] }]   // only while a CLI has more than one enabled account
+AccountUsageWindow { key: "session" | "week" | "model", label: string, pct: number, resetsAt: string | null, model?: string, asOf?: string }   // D66, additive
+```
+
+D66 (additive, `docs/decisions.md` → *Footer usage grid*): each `accountUsage` row lists the profile's own windows known now in `windows` (the footer grid's two bars per account and its tooltip): `session` (5 hours), `week`, and for a Claude Code profile each model's weekly limit in use (`key: "model"`, `model` = its name, `asOf` = the time of an older `get_usage` reading, as `UsageWindow`); read from that profile's own readings with the same rules as `usageWindows` (a window that has reset or is unknown is left out). A Codex profile's come from the windows its sessions reported (`resetsAt` may be `null`). `SystemInfo.cliUsage[].key` (D66, additive): `session` for a window up to 10 hours, `week` for a longer one, `model` when the CLI did not say how long; the grid's line of a CLI with a single account.
+
+```json
+GET /api/system
+200 { "cli": "claude", …, "accountUsage": [
+  { "profileId": "default-claude", "cli": "claude", "name": "Work", "active": true, "pct": 62, "exhaustedUntil": null,
+    "windows": [{ "key": "session", "label": "Session", "pct": 62, "resetsAt": "2026-10-04T14:05:00.000Z" }, { "key": "week", "label": "Week", "pct": 18, "resetsAt": "2026-10-07T15:00:00.000Z" }] },
+  { "profileId": "8d3f…", "cli": "claude", "name": "Private", "active": false, "pct": 40, "exhaustedUntil": null,
+    "windows": [{ "key": "session", "label": "Session", "pct": 10, "resetsAt": "2026-10-04T15:30:00.000Z" }, { "key": "week", "label": "Week", "pct": 40, "resetsAt": "2026-10-09T09:00:00.000Z" },
+      { "key": "model", "label": "Opus", "model": "Opus", "pct": 55, "resetsAt": "2026-10-09T09:00:00.000Z" }] } ],
+  "cliUsage": [{ "provider": "codex", "label": "Codex 5h", "pct": 35, "resetsAt": "2026-10-04T15:00:00.000Z", "key": "session" }] }
 ```
 
 ```json
