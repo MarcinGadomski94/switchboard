@@ -19,14 +19,15 @@ import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
 import {
   type Meter,
-  type PaceView,
+  type UsageCell,
+  type UsageGridLine,
+  USAGE_GRID_COLUMNS,
   conflictCount,
   cpuMeter,
   processCount,
   ramMeter,
   urlHost,
-  accountUsageItems,
-  usageRows,
+  usageGridLines,
 } from './format.ts';
 
 /** `sessionUpdated` comes in bursts; the Solutions badge source reloads at most this often (M6.3). */
@@ -63,21 +64,62 @@ function isActive(route: Route, view: Route['view'], id?: string): boolean {
   return 'id' in route && route.id === id;
 }
 
-/**
- * One footer meter: label, 4 px bar, value. D23 / D46: with a `pace` (the known
- * Week or Session row) the row carries `data-pace` (the bar's color, shell.css)
- * and the pace `title`, and the bar a 2 px marker at the allowance.
- */
-export function MeterRow({ label, meter, name, model, pace }: { readonly label: string; readonly meter: Meter; readonly name: string; readonly model?: string; readonly pace?: PaceView }) {
+/** One footer meter (CPU, RAM): label, 4 px bar, value. */
+export function MeterRow({ label, meter, name }: { readonly label: string; readonly meter: Meter; readonly name: string }) {
   return (
-    <div className="sb-meter" data-meter={name} data-model={model} data-pace={pace?.state} title={pace?.title}>
+    <div className="sb-meter" data-meter={name}>
       <span>{label}</span>
       <div className="sb-meter-track">
         <div className="sb-meter-fill" style={{ width: `${meter.pct}%` }} />
-        {pace ? <div className="sb-meter-marker" data-testid="pace-marker" style={{ left: `calc(${pace.markerPct}% - 1px)` }} /> : null}
       </div>
       <span className="sb-meter-value">{meter.text}</span>
     </div>
+  );
+}
+
+/**
+ * D66: one mini-bar of a usage grid line (its 4 px bar and its %). D23 / D46: with
+ * a `pace` it carries `data-pace` (the bar's color, shell.css) and the bar a 2 px
+ * marker at the allowance. `display: contents`: the bar and the % sit in the grid's columns.
+ */
+export function UsageCellView({ name, cell }: { readonly name: 'session' | 'week'; readonly cell: UsageCell }) {
+  return (
+    <span className="sb-usage-cell" data-window={name} data-known={String(cell.known)} data-pace={cell.pace?.state}>
+      <span className="sb-meter-track">
+        <span className="sb-meter-fill" style={{ width: `${cell.pct}%` }} />
+        {cell.pace ? <span className="sb-meter-marker" data-testid="pace-marker" style={{ left: `calc(${cell.pace.markerPct}% - 1px)` }} /> : null}
+      </span>
+      <span className="sb-usage-pct">{cell.text}</span>
+    </span>
+  );
+}
+
+/** D66: one account's line of the usage grid; a click opens Settings → Accounts. */
+function UsageLine({ line }: { readonly line: UsageGridLine }) {
+  return (
+    <Link
+      to={{ view: 'settings', section: 'accounts' }}
+      className="sb-usage-line"
+      data-testid="usage-line"
+      data-cli={line.cli}
+      data-account={line.key}
+      data-active={String(line.active)}
+      data-spent={String(line.spent)}
+      title={line.title}
+    >
+      <span className="sb-usage-dot">{line.active ? '●' : ''}</span>
+      <span className="sb-usage-label">{line.label}</span>
+      {line.outUntil ? (
+        <span className="sb-usage-out" data-testid="usage-out">
+          {line.outUntil}
+        </span>
+      ) : (
+        <>
+          <UsageCellView name="session" cell={line.session} />
+          <UsageCellView name="week" cell={line.week} />
+        </>
+      )}
+    </Link>
   );
 }
 
@@ -251,22 +293,19 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         </div>
         <MeterRow label="CPU" name="cpu" meter={cpuMeter(info)} />
         <MeterRow label="RAM" name="ram" meter={ramMeter(info)} />
-        {/* D17: Session + Week (+ a model's weekly limit while in use) replace the prototype's one "Max" row. */}
+        {/* D66: the usage grid (one line per account, the 5-hour and the weekly window) replaces D17's rows and D63's line. */}
         <div className="sb-usage" data-testid="usage-meters">
-          {usageRows(info, now).map((row) => (
-            <MeterRow key={row.model ? `model:${row.model}` : row.key} label={row.label} name={row.key} meter={row} {...(row.model ? { model: row.model } : {})} {...(row.pace ? { pace: row.pace } : {})} />
+          <div className="sb-usage-head" data-testid="usage-grid-header" aria-hidden="true">
+            <span className="sb-usage-col" data-col="session">
+              {USAGE_GRID_COLUMNS.session}
+            </span>
+            <span className="sb-usage-col" data-col="week">
+              {USAGE_GRID_COLUMNS.week}
+            </span>
+          </div>
+          {usageGridLines(info, now).map((line) => (
+            <UsageLine key={line.key} line={line} />
           ))}
-          {/* D63: each account's usage (the bars are the active account's), only while a CLI has more than one. */}
-          {accountUsageItems(info, now).length > 0 ? (
-            <div className="sb-usage-accounts" data-testid="usage-accounts" title={accountUsageItems(info, now).map((item) => `${item.active ? '● ' : '  '}${item.text}`).join('\n')}>
-              {accountUsageItems(info, now).map((item, index) => (
-                <span key={item.key} data-testid="usage-account" data-active={String(item.active)} data-spent={String(item.spent)}>
-                  {index > 0 ? ' · ' : ''}
-                  {item.text}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
       </div>
     </aside>

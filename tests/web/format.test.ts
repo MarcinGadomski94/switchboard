@@ -1,8 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { SystemInfo, UsageWindow } from '../../src/core/api.ts';
-import { UNKNOWN, conflictCount, cpuMeter, formatAge, formatResetsIn, modeLine, processCount, ramMeter, statusColor, urlHost, usageRows } from '../../src/web/shell/format.ts';
+import type { AccountUsageRow, SystemInfo, UsageWindow } from '../../src/core/api.ts';
+import { UNKNOWN, conflictCount, cpuMeter, formatAge, formatResetsIn, modeLine, processCount, ramMeter, statusColor, urlHost, usageGridLines } from '../../src/web/shell/format.ts';
 
 const NOW = Date.parse('2026-09-28T12:00:00.000Z');
 const GIB = 1024 ** 3;
@@ -52,37 +52,101 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
     expect(formatResetsIn('2026-09-28T12:48:00.000Z', NOW)).toBe('48m');
   });
 
-  it('D17: Session and Week rows (bar = %, % · time to reset); a model row only when the server lists one', () => {
-    // The Week row's D23 pace is checked in its own describe below.
-    expect(usageRows(SYSTEM, NOW).map(({ pace: _pace, ...row }) => row)).toEqual([
-      { key: 'session', label: 'Session', pct: 62, text: '62% · 1h48' },
-      { key: 'week', label: 'Week', pct: 18.4, text: '18% · 73h00' },
-    ]);
+  it('D66: a single Claude Code account is one grid line: both windows as bar + %, the resets and the model limits in its tooltip', () => {
     const fable = { key: 'model', label: 'Fable', pct: 104, resetsAt: '2026-09-28T12:45:00.000Z', model: 'Fable' } as const;
-    expect(usageRows({ ...SYSTEM, usageWindows: [...(SYSTEM.usageWindows ?? []), fable] }, NOW)[2]).toEqual({
-      key: 'model',
-      label: 'Fable',
-      model: 'Fable',
-      pct: 100,
-      text: '104% · 45m',
-    });
+    const lines = usageGridLines({ ...SYSTEM, usageWindows: [...(SYSTEM.usageWindows ?? []), fable] }, NOW);
+    expect(lines).toHaveLength(1);
+    const [line] = lines;
+    expect(line).toMatchObject({ key: 'cli:claude', cli: 'claude', label: 'Claude', active: false, spent: false, outUntil: null });
+    expect(line?.session).toMatchObject({ known: true, pct: 62, text: '62%' });
+    expect(line?.week).toMatchObject({ known: true, pct: 18.4, text: '18%' });
+    // The model limit has no bar of its own: it is a tooltip line.
+    expect(line?.title.split('\n').filter((l) => !l.startsWith('  '))).toEqual(['Claude', '5h: 62% · resets in 1h48', 'Week: 18% · resets in 73h00', 'Fable week: 104% · resets in 45m', 'Settings → Accounts']);
     // An old reading (developer ruling 2026-09-28): the last value stays, marked with its age.
     const old = { ...fable, pct: 4, asOf: new Date(NOW - 25 * 60_000).toISOString() };
-    expect(usageRows({ ...SYSTEM, usageWindows: [...(SYSTEM.usageWindows ?? []), old] }, NOW)[2]).toMatchObject({ label: 'Fable', pct: 4, text: '4% · as of 25m' });
+    expect(usageGridLines({ ...SYSTEM, usageWindows: [...(SYSTEM.usageWindows ?? []), old] }, NOW)[0]?.title).toContain('Fable week: 4% · as of 25m');
   });
 
-  it('D17: a window the server does not list reads "unknown", never derived from usagePct; "—" before /api/system answers', () => {
+  it('D66: a window the server does not list reads "—" (never derived from usagePct); before /api/system answers the Claude line is "—" too', () => {
     const onlyWeek = { ...SYSTEM, usageWindows: SYSTEM.usageWindows?.filter((w) => w.key === 'week') };
-    expect(usageRows(onlyWeek, NOW).map((row) => [row.label, row.text])).toEqual([
-      ['Session', 'unknown'],
-      ['Week', '18% · 73h00'],
-    ]);
+    const [line] = usageGridLines(onlyWeek, NOW);
+    expect(line?.session).toEqual({ known: false, pct: 0, text: UNKNOWN });
+    expect(line?.week).toMatchObject({ known: true, text: '18%' });
+    expect(line?.title).toContain('5h: unknown');
     const { usageWindows: _omit, ...none } = SYSTEM;
-    expect(usageRows(none, NOW)).toEqual([
-      { key: 'session', label: 'Session', pct: 0, text: 'unknown' },
-      { key: 'week', label: 'Week', pct: 0, text: 'unknown' },
+    expect(usageGridLines(none, NOW).map((l) => [l.label, l.session.text, l.week.text])).toEqual([['Claude', UNKNOWN, UNKNOWN]]);
+    expect(usageGridLines(null, NOW).map((l) => [l.label, l.session.text, l.week.text])).toEqual([['Claude', UNKNOWN, UNKNOWN]]);
+  });
+
+  it('D66: several Claude Code accounts and Codex: a line each, the active one marked, its bars the meter\'s; Codex by its CLI label', () => {
+    const reset = (minutes: number): string => new Date(NOW + minutes * 60_000).toISOString();
+    const accountUsage: AccountUsageRow[] = [
+      { profileId: 'default-claude', cli: 'claude', name: 'Work', active: true, pct: 62, exhaustedUntil: null, windows: [{ key: 'session', label: 'Session', pct: 1, resetsAt: reset(60) }] },
+      {
+        profileId: 'p2',
+        cli: 'claude',
+        name: 'Private',
+        active: false,
+        pct: 40,
+        exhaustedUntil: null,
+        windows: [
+          { key: 'session', label: 'Session', pct: 10, resetsAt: reset(120) },
+          { key: 'week', label: 'Week', pct: 40, resetsAt: reset(3 * 24 * 60) },
+          { key: 'model', label: 'Opus', model: 'Opus', pct: 55, resetsAt: reset(3 * 24 * 60) },
+        ],
+      },
+    ];
+    const system: SystemInfo = {
+      ...SYSTEM,
+      accountUsage,
+      cliUsage: [
+        { provider: 'codex', label: 'Codex 5h', pct: 35, resetsAt: reset(90), key: 'session' },
+        { provider: 'codex', label: 'Codex week', pct: 12, resetsAt: null, key: 'week' },
+      ],
+    };
+    const lines = usageGridLines(system, NOW);
+    expect(lines.map((l) => [l.key, l.label, l.active, l.session.text, l.week.text])).toEqual([
+      // The active account's bars are the meter's usageWindows (62 / 18), not its row's windows.
+      ['default-claude', 'Work', true, '62%', '18%'],
+      ['p2', 'Private', false, '10%', '40%'],
+      ['cli:codex', 'Codex', false, '35%', '12%'],
     ]);
-    expect(usageRows(null, NOW).map((row) => row.text)).toEqual([UNKNOWN, UNKNOWN]);
+    expect(lines[0]?.title.split('\n')[0]).toBe('Work · new sessions start here');
+    // A Claude Code account's bars have a pace, Codex's none; the model limit is in the tooltip.
+    expect(lines[1]?.session.pace).toBeDefined();
+    expect(lines[2]?.session.pace).toBeUndefined();
+    expect(lines[1]?.title).toContain('Opus week: 55% · resets in 72h00');
+    expect(lines[2]?.title).toContain('Week: 12% · reset unknown');
+  });
+
+  it('D66: a Codex account of a CLI with several is labeled with its name and listed only with a known window or while spent; OpenCode without usage is left out', () => {
+    const system = {
+      ...SYSTEM,
+      accountUsage: [
+        { profileId: 'c1', cli: 'codex', name: 'Work', active: true, pct: 35, exhaustedUntil: null, windows: [{ key: 'session', label: 'Session', pct: 35, resetsAt: null }] },
+        { profileId: 'c2', cli: 'codex', name: 'Spare', active: false, pct: null, exhaustedUntil: null, windows: [] },
+      ],
+      cliUsage: [{ provider: 'codex', label: 'Codex 5h', pct: 99, resetsAt: null, key: 'session' }],
+    } as SystemInfo;
+    expect(usageGridLines(system, NOW).map((l) => [l.label, l.active, l.session.text, l.week.text])).toEqual([
+      ['Claude', false, '62%', '18%'],
+      ['Codex Work', true, '35%', UNKNOWN],
+    ]);
+  });
+
+  it('D66: a spent account says "out until HH:MM" in place of its bars; a mark whose time has passed does not', () => {
+    const until = new Date(NOW + 30 * 60_000);
+    const rows: AccountUsageRow[] = [
+      { profileId: 'a', cli: 'claude', name: 'Work', active: false, pct: 100, exhaustedUntil: until.toISOString(), windows: [{ key: 'session', label: 'Session', pct: 100, resetsAt: until.toISOString() }] },
+      { profileId: 'b', cli: 'claude', name: 'Private', active: true, pct: 10, exhaustedUntil: new Date(NOW - 60_000).toISOString() },
+    ];
+    const lines = usageGridLines({ ...SYSTEM, accountUsage: rows }, NOW);
+    const hhmm = `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
+    expect(lines.map((l) => [l.label, l.spent, l.outUntil])).toEqual([
+      ['Work', true, `out until ${hhmm}`],
+      ['Private', false, null],
+    ]);
+    expect(lines[0]?.title).toContain(`Out of usage until ${hhmm}`);
   });
 
   it('maps statuses, hosts and conflicts', () => {
@@ -97,7 +161,7 @@ describe('sidebar formatting (src/web/shell/format.ts)', () => {
 /** The component module, imported at run time (the server tsconfig has no JSX; Vitest transforms it). */
 const SIDEBAR = '../../src/web/shell/Sidebar.tsx';
 
-describe('D23, continuous (ruling 2026-09-29): the Week row shows its pace by the minute (src/web/shell/format.ts → usageRows, Sidebar MeterRow)', () => {
+describe('D23, continuous (ruling 2026-09-29): the Week row shows its pace by the minute (src/web/shell/format.ts → usageGridLines, Sidebar UsageCellView)', () => {
   // Local times (the tooltip reads the local time), in a July week: no daylight-saving change anywhere.
   // A Thursday 15:00 reset: the window runs Thu 9 July 15:00 → Thu 16 July 15:00; Mon 14:59 is its 5 760th minute (57.14 %).
   const RESET = new Date(2026, 6, 16, 15, 0).toISOString();
@@ -111,14 +175,13 @@ describe('D23, continuous (ruling 2026-09-29): the Week row shows its pace by th
       ...extra,
     ],
   });
-  const weekRow = (info: SystemInfo | null, now: number) => usageRows(info, now).find((row) => row.key === 'week');
+  const weekRow = (info: SystemInfo | null, now: number) => usageGridLines(info, now)[0]?.week;
 
   it('below the allowance: on pace (green), the marker at the allowance, the tooltip with the next step in local time', () => {
     expect(weekRow(system({ pct: 33 }), MON_1459)).toEqual({
-      key: 'week',
-      label: 'Week',
+      known: true,
       pct: 33,
-      text: '33% · 72h01',
+      text: '33%',
       pace: { state: 'on', markerPct: 57.14, title: 'On pace: 33% of 57.14% until 15:00' },
     });
   });
@@ -136,43 +199,49 @@ describe('D23, continuous (ruling 2026-09-29): the Week row shows its pace by th
     expect(weekRow(system({ pct: 99 }), new Date(2026, 6, 16, 14, 59, 30).getTime())?.pace).toEqual({ state: 'on', markerPct: 100, title: 'On pace: 99% of 100% until 15:00' });
   });
 
-  it('the Week pace is the Week row\'s own: model rows keep no pace, whatever their numbers; the Session row has its own (D46)', () => {
+  it('the Week pace is the Week bar\'s own: a model limit has no bar (D66: a tooltip line, no pace); the Session bar has its own (D46)', () => {
     const fable: UsageWindow = { key: 'model', label: 'Fable', model: 'Fable', pct: 93, resetsAt: RESET };
-    const rows = usageRows(system({ pct: 62 }, [fable]), MON_1459);
+    const [line] = usageGridLines(system({ pct: 62 }, [fable]), MON_1459);
     // The Session (62 %, reset at 16:48, 1h49 ahead: in its 192nd minute, 64 % allowed) is on pace by its own rule.
-    expect(rows.map((row) => [row.key, row.pace?.state ?? null, row.pace?.markerPct ?? null])).toEqual([
-      ['session', 'on', 64],
-      ['week', 'ahead', 57.14],
-      ['model', null, null],
+    expect([line?.session, line?.week].map((cell) => [cell?.pace?.state ?? null, cell?.pace?.markerPct ?? null])).toEqual([
+      ['on', 64],
+      ['ahead', 57.14],
+    ]);
+    // The tooltip has each pace under its window; the model line has none.
+    expect(line?.title.split('\n')).toEqual([
+      'Claude',
+      '5h: 62% · resets in 1h49',
+      '  On pace: 62% of 64% until 15:00',
+      'Week: 62% · resets in 72h01',
+      '  Ahead of pace: 62% of 57.14% until 15:00',
+      'Fable week: 93% · resets in 72h01',
+      'Settings → Accounts',
     ]);
   });
 
   it('unknown stays unknown: no pace without a Week window, before /api/system answers, or once its reset has passed', () => {
-    expect(weekRow(system(null), MON_1459)).toEqual({ key: 'week', label: 'Week', pct: 0, text: 'unknown' });
-    expect(weekRow(null, MON_1459)).toEqual({ key: 'week', label: 'Week', pct: 0, text: UNKNOWN });
+    expect(weekRow(system(null), MON_1459)).toEqual({ known: false, pct: 0, text: UNKNOWN });
+    expect(weekRow(null, MON_1459)).toEqual({ known: false, pct: 0, text: UNKNOWN });
     expect(weekRow(system({ pct: 33 }), Date.parse(RESET) + 60_000)?.pace).toBeUndefined();
   });
 
-  it('MeterRow: data-pace (the bar color in shell.css), the title and a marker at the allowance; without a pace the D17 markup', async () => {
-    const { MeterRow } = (await import(/* @vite-ignore */ SIDEBAR)) as { MeterRow: (props: object) => unknown };
-    const known = weekRow(system({ pct: 33 }), MON_1459);
-    const html = renderToStaticMarkup(createElement(MeterRow as never, { label: 'Week', name: 'week', meter: known, pace: known?.pace }));
+  it('UsageCellView: data-pace (the bar color in shell.css) and a marker at the allowance; without a pace no color, no marker', async () => {
+    const { UsageCellView } = (await import(/* @vite-ignore */ SIDEBAR)) as { UsageCellView: (props: object) => unknown };
+    const html = renderToStaticMarkup(createElement(UsageCellView as never, { name: 'week', cell: weekRow(system({ pct: 33 }), MON_1459) }));
     expect(html).toBe(
-      '<div class="sb-meter" data-meter="week" data-pace="on" title="On pace: 33% of 57.14% until 15:00"><span>Week</span>' +
-        '<div class="sb-meter-track"><div class="sb-meter-fill" style="width:33%"></div>' +
-        '<div class="sb-meter-marker" data-testid="pace-marker" style="left:calc(57.14% - 1px)"></div></div>' +
-        '<span class="sb-meter-value">33% · 72h01</span></div>',
+      '<span class="sb-usage-cell" data-window="week" data-known="true" data-pace="on">' +
+        '<span class="sb-meter-track"><span class="sb-meter-fill" style="width:33%"></span>' +
+        '<span class="sb-meter-marker" data-testid="pace-marker" style="left:calc(57.14% - 1px)"></span></span>' +
+        '<span class="sb-usage-pct">33%</span></span>',
     );
-    const ahead = weekRow(system({ pct: 62 }), MON_1459);
-    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Week', name: 'week', meter: ahead, pace: ahead?.pace }))).toContain('data-pace="ahead"');
-    const unknown = weekRow(system(null), MON_1459);
-    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Week', name: 'week', meter: unknown }))).toBe(
-      '<div class="sb-meter" data-meter="week"><span>Week</span><div class="sb-meter-track"><div class="sb-meter-fill" style="width:0%"></div></div><span class="sb-meter-value">unknown</span></div>',
+    expect(renderToStaticMarkup(createElement(UsageCellView as never, { name: 'week', cell: weekRow(system({ pct: 62 }), MON_1459) }))).toContain('data-pace="ahead"');
+    expect(renderToStaticMarkup(createElement(UsageCellView as never, { name: 'week', cell: weekRow(system(null), MON_1459) }))).toBe(
+      '<span class="sb-usage-cell" data-window="week" data-known="false"><span class="sb-meter-track"><span class="sb-meter-fill" style="width:0%"></span></span><span class="sb-usage-pct">—</span></span>',
     );
   });
 });
 
-describe('D46: the Session row shows its pace by the minute (src/web/shell/format.ts → usageRows, Sidebar MeterRow)', () => {
+describe('D46: the Session row shows its pace by the minute (src/web/shell/format.ts → usageGridLines, Sidebar UsageCellView)', () => {
   // Local times (the tooltip reads the local time), on a July day: no daylight-saving change anywhere.
   // A 16:35 reset: the window runs 11:35 → 16:35, so 14:04 is in its 150th minute (50 % allowed) until the step at 14:05.
   const RESET = new Date(2026, 6, 13, 16, 35).toISOString();
@@ -181,14 +250,13 @@ describe('D46: the Session row shows its pace by the minute (src/web/shell/forma
     ...SYSTEM,
     usageWindows: [...(session ? [{ key: 'session' as const, label: 'Session', pct: 38, resetsAt: RESET, ...session }] : []), ...extra],
   });
-  const sessionRow = (info: SystemInfo | null, now: number) => usageRows(info, now).find((row) => row.key === 'session');
+  const sessionRow = (info: SystemInfo | null, now: number) => usageGridLines(info, now)[0]?.session;
 
   it('below the allowance: on pace (green), the marker at the allowance, the tooltip with the next minute in local time', () => {
     expect(sessionRow(system({ pct: 38 }), at(14, 4, 30))).toEqual({
-      key: 'session',
-      label: 'Session',
+      known: true,
       pct: 38,
-      text: '38% · 2h31',
+      text: '38%',
       pace: { state: 'on', markerPct: 50, title: 'On pace: 38% of 50% until 14:05' },
     });
   });
@@ -207,39 +275,33 @@ describe('D46: the Session row shows its pace by the minute (src/web/shell/forma
     expect(sessionRow(system({ pct: 92.5 }), at(16, 34, 59))?.pace).toEqual({ state: 'on', markerPct: 100, title: 'On pace: 92.5% of 100% until 16:35' });
   });
 
-  it('unknown stays unknown: no Session window, before /api/system answers, a reset past or more than 5 h ahead → the D17 row', () => {
-    expect(sessionRow(system(null), at(14, 4))).toEqual({ key: 'session', label: 'Session', pct: 0, text: 'unknown' });
-    expect(sessionRow(null, at(14, 4))).toEqual({ key: 'session', label: 'Session', pct: 0, text: UNKNOWN });
-    expect(sessionRow(system({ pct: 38 }), at(16, 35))).toEqual({ key: 'session', label: 'Session', pct: 38, text: '38% · 0m' });
-    expect(sessionRow(system({ pct: 38 }), at(11, 34, 59))).toEqual({ key: 'session', label: 'Session', pct: 38, text: '38% · 5h00' });
+  it('unknown stays unknown: no Session window, before /api/system answers, a reset past or more than 5 h ahead → no pace', () => {
+    expect(sessionRow(system(null), at(14, 4))).toEqual({ known: false, pct: 0, text: UNKNOWN });
+    expect(sessionRow(null, at(14, 4))).toEqual({ known: false, pct: 0, text: UNKNOWN });
+    expect(sessionRow(system({ pct: 38 }), at(16, 35))).toEqual({ known: true, pct: 38, text: '38%' });
+    expect(sessionRow(system({ pct: 38 }), at(11, 34, 59))).toEqual({ known: true, pct: 38, text: '38%' });
     expect(sessionRow(system({ pct: 38 }), at(11, 0))?.pace).toBeUndefined();
   });
 
-  it('the Week keeps its own pace next to it (by the minute over the week); a model row gets none', () => {
+  it('the Week keeps its own pace next to it (by the minute over the week); a model limit gets none', () => {
     const week: UsageWindow = { key: 'week', label: 'Week', pct: 18, resetsAt: new Date(2026, 6, 16, 15, 0).toISOString() };
     const fable: UsageWindow = { key: 'model', label: 'Fable', model: 'Fable', pct: 93, resetsAt: RESET };
-    const rows = usageRows(system({ pct: 62 }, [week, fable]), at(14, 4));
-    expect(rows.map((row) => [row.key, row.pace?.title ?? null])).toEqual([
-      ['session', 'Ahead of pace: 62% of 50% until 14:05'],
-      ['week', 'On pace: 18% of 56.6% until 14:05'],
-      ['model', null],
-    ]);
+    const [line] = usageGridLines(system({ pct: 62 }, [week, fable]), at(14, 4));
+    expect([line?.session.pace?.title, line?.week.pace?.title]).toEqual(['Ahead of pace: 62% of 50% until 14:05', 'On pace: 18% of 56.6% until 14:05']);
+    expect(line?.title).toContain('Fable week: 93% · resets in 2h31\nSettings → Accounts');
   });
 
-  it('MeterRow: the Session row with data-pace, the title and the marker; without a pace the D17 markup', async () => {
-    const { MeterRow } = (await import(/* @vite-ignore */ SIDEBAR)) as { MeterRow: (props: object) => unknown };
-    const known = sessionRow(system({ pct: 38 }), at(14, 4));
-    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: known, pace: known?.pace }))).toBe(
-      '<div class="sb-meter" data-meter="session" data-pace="on" title="On pace: 38% of 50% until 14:05"><span>Session</span>' +
-        '<div class="sb-meter-track"><div class="sb-meter-fill" style="width:38%"></div>' +
-        '<div class="sb-meter-marker" data-testid="pace-marker" style="left:calc(50% - 1px)"></div></div>' +
-        '<span class="sb-meter-value">38% · 2h31</span></div>',
+  it('UsageCellView: the Session bar with data-pace and the marker; without a pace no color, no marker', async () => {
+    const { UsageCellView } = (await import(/* @vite-ignore */ SIDEBAR)) as { UsageCellView: (props: object) => unknown };
+    expect(renderToStaticMarkup(createElement(UsageCellView as never, { name: 'session', cell: sessionRow(system({ pct: 38 }), at(14, 4)) }))).toBe(
+      '<span class="sb-usage-cell" data-window="session" data-known="true" data-pace="on">' +
+        '<span class="sb-meter-track"><span class="sb-meter-fill" style="width:38%"></span>' +
+        '<span class="sb-meter-marker" data-testid="pace-marker" style="left:calc(50% - 1px)"></span></span>' +
+        '<span class="sb-usage-pct">38%</span></span>',
     );
-    const ahead = sessionRow(system({ pct: 62 }), at(14, 4));
-    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: ahead, pace: ahead?.pace }))).toContain('data-pace="ahead"');
-    const past = sessionRow(system({ pct: 38 }), at(16, 40));
-    expect(renderToStaticMarkup(createElement(MeterRow as never, { label: 'Session', name: 'session', meter: past, ...(past?.pace ? { pace: past.pace } : {}) }))).toBe(
-      '<div class="sb-meter" data-meter="session"><span>Session</span><div class="sb-meter-track"><div class="sb-meter-fill" style="width:38%"></div></div><span class="sb-meter-value">38% · 0m</span></div>',
+    expect(renderToStaticMarkup(createElement(UsageCellView as never, { name: 'session', cell: sessionRow(system({ pct: 62 }), at(14, 4)) }))).toContain('data-pace="ahead"');
+    expect(renderToStaticMarkup(createElement(UsageCellView as never, { name: 'session', cell: sessionRow(system({ pct: 38 }), at(16, 40)) }))).toBe(
+      '<span class="sb-usage-cell" data-window="session" data-known="true"><span class="sb-meter-track"><span class="sb-meter-fill" style="width:38%"></span></span><span class="sb-usage-pct">38%</span></span>',
     );
   });
 });

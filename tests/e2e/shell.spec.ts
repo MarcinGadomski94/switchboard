@@ -102,8 +102,8 @@ test('the shell renders from the real API and shows only what the API returns', 
     }
   }
 
-  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3, D17: memory in use), the real address. D17: Session
-  // and Week rows; fake-claude's recorded 5-hour window has reset, so Session stays unknown; Week is unknown until the
+  // Nothing invented: no rows, no badges, the machine's CPU / RAM (M5.3, D17: memory in use), the real address. D66: the usage
+  // grid's Claude line; fake-claude's recorded 5-hour window has reset, so 5h stays unknown; Week is unknown until the
   // meter's first reading with this page connected (then the recorded 18 % while its reset is ahead).
 
   await expect(page.getByTestId('sidebar-sessions').locator('a')).toHaveCount(0);
@@ -111,8 +111,11 @@ test('the shell renders from the real API and shows only what the API returns', 
   await expect(page.locator('.sb-badge')).toHaveText(['', '', '', '', '', '']); // D61: six nav items (MCP)
   await expect(page.getByTestId('service-address')).toHaveText(`127.0.0.1:${server.port}`);
   await expect(page.getByTestId('process-count')).toHaveText('0 bg processes');
-  await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM', 'Session', 'Week']);
-  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/, 'unknown', /^(unknown|18% · \d+h\d\d)$/]);
+  await expect(page.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM']);
+  await expect(page.locator('.sb-meter-value')).toHaveText([/^\d+%$/, /^\d+\.\d\/\d+ GB$/]);
+  // D66: the usage grid's one line (a single Claude Code account): 5h unknown, Week unknown or 18 %.
+  await expect(page.getByTestId('usage-line').locator('.sb-usage-label')).toHaveText(['Claude']);
+  await expect(page.getByTestId('usage-line').locator('.sb-usage-pct')).toHaveText(['—', /^(—|18%)$/]);
 });
 
 test('the nav switches views client-side and deep links load the right view', async ({ page }) => {

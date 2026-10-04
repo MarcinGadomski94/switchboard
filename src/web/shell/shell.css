@@ -460,45 +460,108 @@
 }
 
 /*
- * D17: the usage rows (Session, Week, a model while in use) under CPU / RAM, each
- * styled like the prototype's Max row (bright fill). "Session" is wider than the
- * prototype's 34 px label column, so these rows share their own columns (a
- * subgrid): the widest label and the widest value, at least 34 / 76 px. Their bars
- * line up with each other and end where the CPU / RAM bars end.
+ * D66: the usage grid under CPU / RAM (docs/accounts.md → Usage per account): a
+ * small header ("5h", "Week"), then one line per account, all lines one fixed
+ * height: the active-account dot, the label, and per window a 4 px bar (styled like
+ * the prototype's Max bar, bright fill) and its %. The lines share the grid's
+ * columns (subgrid), so every bar and % lines up; the Week % ends where the RAM
+ * value ends. A line is a link to Settings → Accounts.
  */
 .sb-usage {
   display: grid;
-  grid-template-columns: minmax(34px, max-content) minmax(0, 1fr) minmax(76px, max-content);
-  column-gap: 8px;
-  row-gap: 7px;
+  grid-template-columns: 8px minmax(0, 1fr) 30px 28px 30px 28px;
+  column-gap: 6px;
+  row-gap: 6px;
 }
 
-.sb-usage .sb-meter {
+.sb-usage-head,
+.sb-usage-line {
   grid-column: 1 / -1;
+  display: grid;
   grid-template-columns: subgrid;
+  align-items: center;
 }
 
-.sb-usage .sb-meter-fill {
-  background: var(--text);
+.sb-usage-head {
+  height: 11px;
+  font-size: 9.5px;
+  color: var(--muted-3);
 }
 
-/*
- * D23: the Week row while its pace is known (`data-pace`, docs/usage.md → Weekly
- * pace): the bar is green (status done) below the day's allowance and yellow
- * (status need) at or above it, with a 2 px marker at the allowance. Without a
- * pace (unknown week or reset) the row keeps the D17 look: no color, no marker.
- * D46: the Session row the same, against its allowance by the minute
- * (docs/usage.md → Session pace).
- */
-.sb-usage .sb-meter[data-pace] .sb-meter-track {
+.sb-usage-col[data-col='session'] {
+  grid-column: 3 / 5;
+}
+
+.sb-usage-col[data-col='week'] {
+  grid-column: 5 / 7;
+}
+
+.sb-usage-line {
+  height: 14px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 3px;
+}
+
+.sb-usage-line:hover .sb-usage-label,
+.sb-usage-line:focus-visible .sb-usage-label {
+  color: var(--text-strong);
+}
+
+.sb-usage-line:focus-visible {
+  outline: 1px solid var(--muted-3);
+  outline-offset: 1px;
+}
+
+.sb-usage-dot {
+  color: var(--text-2);
+  font-size: 8px;
+  text-align: center;
+}
+
+.sb-usage-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sb-usage-cell {
+  display: contents;
+}
+
+.sb-usage .sb-meter-track {
   position: relative;
 }
 
-.sb-usage .sb-meter[data-pace='on'] .sb-meter-fill {
+.sb-usage .sb-meter-fill {
+  display: block;
+  background: var(--text);
+}
+
+.sb-usage-pct {
+  text-align: right;
+}
+
+/* A spent account: "out until 14:05" across both windows' columns. */
+.sb-usage-out {
+  grid-column: 3 / -1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--status-need);
+}
+
+/*
+ * D23 / D46 on a Claude Code account's bars while the pace is known (`data-pace`,
+ * docs/usage.md → Weekly / Session pace): green (status done) below the allowance,
+ * yellow (status need) at or above it, with a 2 px marker at the allowance. Without
+ * a pace the bar keeps the bright fill and has no marker.
+ */
+.sb-usage-cell[data-pace='on'] .sb-meter-fill {
   background: var(--status-done);
 }
 
-.sb-usage .sb-meter[data-pace='ahead'] .sb-meter-fill {
+.sb-usage-cell[data-pace='ahead'] .sb-meter-fill {
   background: var(--status-need);
 }
 
@@ -843,21 +906,4 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 14px;
-}
-
-/* D63: the footer's per-account usage line under the bars (hover: the full list, the active account marked). */
-.sb-usage-accounts {
-  margin-top: 4px;
-  font: 400 11px var(--font-mono);
-  color: var(--muted-3);
-  line-height: 1.4;
-}
-
-.sb-usage-accounts [data-active='true'] {
-  color: var(--text-1, #f0efeb);
-  font-weight: 600;
-}
-
-.sb-usage-accounts [data-spent='true'] {
-  color: var(--status-need);
 }

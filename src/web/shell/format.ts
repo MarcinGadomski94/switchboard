@@ -1,9 +1,9 @@
-import { CLI_SHORT_LABELS } from '../../core/cli-providers.ts';
-import type { Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
+import { CLI_SHORT_LABELS, type CliProviderId } from '../../core/cli-providers.ts';
+import type { AccountUsageWindow, Session, SolutionGroup, SystemInfo, UsageWindow } from '../../core/api.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
-import { USAGE_ROW_LABELS, sessionPace, weeklyPace } from '../../core/usage.ts';
+import { sessionPace, weeklyPace } from '../../core/usage.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -102,17 +102,6 @@ export interface PaceView {
   readonly title: string;
 }
 
-/** One usage row of the footer (D17): Session, Week, or a model's weekly limit. */
-export interface UsageRow extends Meter {
-  /** `session`, `week` or `model` (the `data-meter` value). */
-  readonly key: UsageWindow['key'];
-  readonly label: string;
-  /** `key: 'model'`: the model's name. */
-  readonly model?: string;
-  /** D23 (`key: 'week'`) and D46 (`key: 'session'`) only: the pace while the window and its reset are known. */
-  readonly pace?: PaceView;
-}
-
 /** A percentage with up to 2 decimals and no trailing zeros: `33%`, `57.14%`, `100%`. */
 function pacePct(value: number): string {
   return `${Number(value.toFixed(2))}%`;
@@ -143,69 +132,112 @@ function paceView(key: 'session' | 'week', window: UsageWindow, now: number): Pa
   };
 }
 
-/** The value of a known window: `62% · 1h48` (bar = the %); an old model reading reads `4% · as of 25m`. */
-function windowMeter(window: UsageWindow, now: number): Meter {
-  const when = window.asOf ? `as of ${formatAge(window.asOf, now)}` : formatResetsIn(window.resetsAt, now);
-  return { pct: clampPct(window.pct), text: `${Math.round(window.pct)}% · ${when}` };
+/** D66: the footer grid's column headers (the 5-hour window, the weekly one). */
+export const USAGE_GRID_COLUMNS = { session: '5h', week: 'Week' } as const;
+
+/** D66: one mini-bar of a footer grid line (the 5-hour or the weekly window): bar width 0–100 and `62%`, or `—` while unknown. */
+export interface UsageCell extends Meter {
+  /** `false` while the window is unknown (empty bar, `—`). */
+  readonly known: boolean;
+  /** D23 / D46: a Claude Code account's pace while the window and its reset are known (color, allowance marker). */
+  readonly pace?: PaceView;
 }
 
 /**
- * The footer's usage rows (D17, `docs/usage.md`): always **Session** and **Week**
- * (`unknown` while `usageWindows` has no such window, `—` before `/api/system`
- * answers), then one row per model window the server lists (it lists them only
- * while in use). Nothing is derived from `usagePct`: unknown stays unknown. D23:
- * a known Week row carries its `pace` (color, allowance marker, tooltip); D46: so
- * does a known Session row.
+ * D66 (`docs/accounts.md` → *Usage per account*): one line of the footer's usage
+ * grid, an account (or a CLI with a single account): its two mini-bars, or "out
+ * until 14:05" while it is spent; the tooltip has the resets, the pace and the
+ * model limits.
  */
-export function usageRows(system: SystemInfo | null, now: number = Date.now()): UsageRow[] {
-  const windows = system?.usageWindows ?? [];
-  const fixed = (key: 'session' | 'week'): UsageRow => {
-    const label = USAGE_ROW_LABELS[key];
-    const window = windows.find((w) => w.key === key);
-    if (window) {
-      const pace = paceView(key, window, now);
-      return { key, label, ...windowMeter(window, now), ...(pace ? { pace } : {}) };
-    }
-    return { key, label, pct: 0, text: system ? 'unknown' : UNKNOWN };
-  };
-  return [
-    fixed('session'),
-    fixed('week'),
-    ...windows.filter((w) => w.key === 'model').map((w): UsageRow => ({ key: 'model', label: w.label, model: w.model ?? w.label, ...windowMeter(w, now) })),
-    // D62 P7: another CLI's own windows (Codex's rate limits) while they are known.
-    ...(system?.cliUsage ?? []).map(
-      (w): UsageRow => ({ key: 'model', label: w.label, model: `cli:${w.provider}:${w.label}`, ...windowMeter({ key: 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt ?? '' }, now) }),
-    ),
-  ];
-}
-
-/** D63: one account in the footer's per-account line ("Default 62%", "Private out until 14:05"). */
-export interface AccountUsageItem {
+export interface UsageGridLine {
+  /** The profile id, or `cli:<id>` for a CLI whose single account is not listed in `accountUsage`. */
   readonly key: string;
-  readonly cli: string;
-  readonly text: string;
+  readonly cli: CliProviderId;
+  /** A Claude Code account's profile name; another CLI's short label (`Codex`, `Codex Work` while it has more than one account). */
+  readonly label: string;
+  /** The account new sessions of its CLI start on (marked ●); only while that CLI has more than one. */
   readonly active: boolean;
   readonly spent: boolean;
+  /** Set while spent: `out until 14:05`, shown in place of the bars. */
+  readonly outUntil: string | null;
+  readonly session: UsageCell;
+  readonly week: UsageCell;
+  /** The line's tooltip: each window's reset, the pace, each model's weekly limit. */
+  readonly title: string;
+}
+
+/** A window as the grid reads it, from `usageWindows`, `accountUsage[].windows` or `cliUsage`. */
+type GridWindow = Pick<AccountUsageWindow, 'key' | 'label' | 'pct' | 'resetsAt' | 'model' | 'asOf'>;
+
+function usageCell(key: 'session' | 'week', window: GridWindow | undefined, withPace: boolean, now: number): UsageCell {
+  if (!window) return { known: false, pct: 0, text: UNKNOWN };
+  const pace = withPace && window.resetsAt ? paceView(key, { key, label: window.label, pct: window.pct, resetsAt: window.resetsAt }, now) : null;
+  return { known: true, pct: clampPct(window.pct), text: `${Math.round(window.pct)}%`, ...(pace ? { pace } : {}) };
+}
+
+/** A tooltip line of a known window: `5h: 62% · resets in 1h48`; an old model reading `Fable week: 4% · as of 25m`. */
+function windowLine(name: string, window: GridWindow, now: number): string {
+  const when = window.asOf ? `as of ${formatAge(window.asOf, now)}` : window.resetsAt ? `resets in ${formatResetsIn(window.resetsAt, now)}` : 'reset unknown';
+  return `${name}: ${Math.round(window.pct)}% · ${when}`;
+}
+
+function gridLine(
+  input: { readonly key: string; readonly cli: CliProviderId; readonly label: string; readonly active: boolean; readonly exhaustedUntil: string | null },
+  windows: readonly GridWindow[],
+  now: number,
+): UsageGridLine {
+  const withPace = input.cli === 'claude';
+  const spent = input.exhaustedUntil !== null && Date.parse(input.exhaustedUntil) > now;
+  const cells = {
+    session: usageCell('session', windows.find((w) => w.key === 'session'), withPace, now),
+    week: usageCell('week', windows.find((w) => w.key === 'week'), withPace, now),
+  };
+  const outUntil = spent ? `out until ${clockTime(new Date(input.exhaustedUntil as string))}` : null;
+  const title: string[] = [input.active ? `${input.label} · new sessions start here` : input.label];
+  if (outUntil) title.push(`Out of usage until ${clockTime(new Date(input.exhaustedUntil as string))}`);
+  for (const key of ['session', 'week'] as const) {
+    const window = windows.find((w) => w.key === key);
+    title.push(window ? windowLine(USAGE_GRID_COLUMNS[key], window, now) : `${USAGE_GRID_COLUMNS[key]}: unknown`);
+    const pace = cells[key].pace;
+    if (pace) title.push(`  ${pace.title}`);
+  }
+  for (const window of windows.filter((w) => w.key === 'model')) title.push(windowLine(window.model ? `${window.label} week` : window.label, window, now));
+  title.push('Settings → Accounts');
+  return { key: input.key, cli: input.cli, label: input.label, active: input.active, spent, outUntil, ...cells, title: title.join('\n') };
 }
 
 /**
- * D63 (`docs/accounts.md` → *Usage per account*): the footer's compact line under the
- * bars (which are the active account's): each account of a CLI with more than one,
- * "Default 62% · Private 10%", the active one marked, a spent one with when it is
- * usable again. Empty while no CLI has more than one enabled account.
+ * D66 (`docs/accounts.md` → *Usage per account*): the footer's usage grid, one
+ * line per account. Claude Code: each enabled account while it has more than one
+ * (`accountUsage`; the active one's windows are the meter's `usageWindows`), else
+ * one "Claude" line from `usageWindows`; always listed (`—` while unknown or
+ * before `/api/system` answers). Codex / OpenCode: each account of a CLI with
+ * more than one that has a known window or is spent, else one line from that
+ * CLI's `cliUsage` while it has any. Nothing is derived from `pct`: an unknown
+ * window stays `—`.
  */
-export function accountUsageItems(system: SystemInfo | null, now: number = Date.now()): AccountUsageItem[] {
-  return (system?.accountUsage ?? []).map((row) => {
-    const spent = row.exhaustedUntil !== null && Date.parse(row.exhaustedUntil) > now;
-    const label = row.cli === 'claude' ? row.name : `${CLI_SHORT_LABELS[row.cli]} ${row.name}`;
-    return {
-      key: row.profileId,
-      cli: row.cli,
-      text: spent ? `${label} out until ${clockTime(new Date(row.exhaustedUntil as string))}` : `${label} ${row.pct === null ? '—' : `${Math.round(row.pct)}%`}`,
-      active: row.active,
-      spent,
-    };
-  });
+export function usageGridLines(system: SystemInfo | null, now: number = Date.now()): UsageGridLine[] {
+  const rows = system?.accountUsage ?? [];
+  const lines: UsageGridLine[] = [];
+  const claude = rows.filter((row) => row.cli === 'claude');
+  if (claude.length === 0) {
+    lines.push(gridLine({ key: 'cli:claude', cli: 'claude', label: CLI_SHORT_LABELS.claude, active: false, exhaustedUntil: null }, system?.usageWindows ?? [], now));
+  }
+  for (const row of claude) {
+    const windows = row.active ? (system?.usageWindows ?? row.windows ?? []) : (row.windows ?? []);
+    lines.push(gridLine({ key: row.profileId, cli: row.cli, label: row.name, active: row.active, exhaustedUntil: row.exhaustedUntil }, windows, now));
+  }
+  for (const cli of ['codex', 'opencode'] as const) {
+    const own = rows.filter((row) => row.cli === cli);
+    for (const row of own) {
+      const line = gridLine({ key: row.profileId, cli, label: `${CLI_SHORT_LABELS[cli]} ${row.name}`, active: row.active, exhaustedUntil: row.exhaustedUntil }, row.windows ?? [], now);
+      if (line.spent || (row.windows ?? []).length > 0) lines.push(line);
+    }
+    if (own.length > 0) continue;
+    const windows = (system?.cliUsage ?? []).filter((w) => w.provider === cli).map((w): GridWindow => ({ key: w.key ?? 'model', label: w.label, pct: w.pct, resetsAt: w.resetsAt }));
+    if (windows.length > 0) lines.push(gridLine({ key: `cli:${cli}`, cli, label: CLI_SHORT_LABELS[cli], active: false, exhaustedUntil: null }, windows, now));
+  }
+  return lines;
 }
 
 /** `3 bg processes` (gap #11: live supervised claude processes). */

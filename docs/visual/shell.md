@@ -5,13 +5,13 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24): full page **0.70%**, sidebar (0,0 256×900) **3.39%**.
+Pixel diff (advisory, channel threshold 24): full page **1.74%**, sidebar (0,0 256×900) **9.24%**.
 The app's routes answer 501 until the lanes land, so the prototype's data (badges, tool and session rows, footer values, the Inbox view) is missing from the app; that is most of the difference.
 
 Side by side (prototype left, app right): `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`.
 
 ## Boxes (±2 px) and copy
-Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row) · `(y rel. footer)` = y measured from the footer's top on both pages (D17: the footer is taller by the Week row, its bottom edge stays).
+Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on the data above) · `bottom` = x, width, bottom edge · `none` = copy and styles only (the box depends on data in the same row) · `(y rel. footer)` = y measured from the footer's top on both pages (D17 / D66: the footer is taller by the usage grid, its bottom edge stays).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
@@ -28,32 +28,43 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height (y depends on
 | navSolutionsLabel | box | 18,131 55.8×17 | 18,131 55.8×17 | ok | "Solutions" |
 | navSchedules | box | 10,157 235×31 | 10,157 235×31 | ok |  |
 | navSchedulesLabel | box | 18,164 109.3×17 | 18,164 109.3×17 | ok | "Schedules & loops" |
-| navArtifacts | box | 10,190 235×31 | 10,190 235×31 | ok |  |
-| navArtifactsLabel | box | 18,197 50.3×17 | 18,197 50.3×17 | ok | "Artifacts" |
-| navHistory | box | 10,223 235×31 | 10,223 235×31 | ok |  |
-| navHistoryLabel | box | 18,230 42.2×17 | 18,230 42.2×17 | ok | "History" |
-| toolsLabel | box | 0,254 255×36 | 0,254 255×36 | ok | "Tools+ Add" |
-| toolsAdd | box | 202.3,270 34.7×14 | 202.3,270 34.7×14 | ok | "+ Add" |
-| sessionsLabel | size | 0,371 255×36 | 0,371 255×36 | ok |  |
-| settings | size | 10,747 235×31 | 10,726 235×31 | ok | "Settings" |
-| footer | bottom | 0,784 255×116 | 0,763 255×137 | ok |  |
-| footerLabel | none | 27.4,795 45.8×28 | 27.4,774 45.8×28 | ok | "claude code" |
-| cpuLabel | box (y rel. footer) | 16,830 34×14 | 16,809 34×14 | ok | "CPU" |
-| cpuTrack | box (y rel. footer) | 58,835 97×4 | 58,814 97×4 | ok |  |
-| ramLabel | box (y rel. footer) | 16,851 34×14 | 16,830 34×14 | ok | "RAM" |
-| ramTrack | box (y rel. footer) | 58,856 97×4 | 58,835 97×4 | ok |  |
+| navArtifacts | box (y rel. item above) | 10,190 235×31 | 10,223 235×31 | ok |  |
+| navArtifactsLabel | box (y rel. item above) | 18,197 50.3×17 | 18,230 50.3×17 | ok | "Artifacts" |
+| navHistory | box (y rel. item above) | 10,223 235×31 | 10,256 235×31 | ok |  |
+| navHistoryLabel | box (y rel. item above) | 18,230 42.2×17 | 18,263 42.2×17 | ok | "History" |
+| toolsLabel | box (y rel. item above) | 0,254 255×36 | 0,287 255×36 | ok | "Tools+ Add" |
+| toolsAdd | box (y rel. item above) | 202.3,270 34.7×14 | 202.3,303 34.7×14 | ok | "+ Add" |
+| sessionsLabel | size | 0,371 255×36 | 0,404 255×36 | ok |  |
+| settings | size | 10,747 235×31 | 10,730 235×31 | ok | "Settings" |
+| footer | bottom | 0,784 255×116 | 0,767 255×133 | ok |  |
+| footerLabel | none | 27.4,795 45.8×28 | 27.4,778 45.8×28 | ok | "claude code" |
+| cpuLabel | box (y rel. footer) | 16,830 34×14 | 16,813 34×14 | ok | "CPU" |
+| cpuTrack | box (y rel. footer) | 58,835 97×4 | 58,818 97×4 | ok |  |
+| ramLabel | box (y rel. footer) | 16,851 34×14 | 16,834 34×14 | ok | "RAM" |
+| ramTrack | box (y rel. footer) | 58,856 97×4 | 58,839 97×4 | ok |  |
 
-## D17 usage rows (listed, not compared with the prototype)
-The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. `listed` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a row with a pace, the demo's Session, fills with status done / need and carries the allowance marker), 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
+## D66 usage grid (listed, not compared with the prototype)
+The prototype's footer has one "Max" row; D66 shows the usage grid in its place: a **5h** / **Week** header and one line per account (the demo: one, Claude). `listed` rows record the grid next to the prototype's Max row. The gated rows check the footer's own rules: the header, one fixed line height, label and % text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a bar with a pace, the demo's 5h, fills with status done / need and carries the allowance marker), the header 7 px below the RAM row and 6 px between grid rows, the Week % ending where the RAM value ends, the bars lined up, and the footer's bottom edge kept while it grows by exactly the grid less the Max row.
 
 | Part | Prototype | App | Result | Notes |
 |---|---|---|---|---|
-| usage:Session | Max row 16,872 223×14 "Max62% · 1h48" | 16,851 223×14 "Session 62% · 1h48" | listed | D17 addition: label 16,851 46.2×14, bar 70.2,856 84.8×4, value 163,851 76×14 |
-| usage:Week | — (none) | 16,872 223×14 "Week unknown" | listed | D17 addition: label 16,872 46.2×14, bar 70.2,877 84.8×4, value 163,872 76×14 |
-| usage:labels | "Max" | ["Session","Week"] | ok | Session, Week first (D17) |
-| usage:Session:style | Max bar 4 px rgb(232, 231, 227) | 16,851 223×14, bar 70.2,856 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill oklch(0.74 0.13 150) (pace on, marker at calc(64% - 1px): "On pace: 62% of 64% until 08:49"); 7 px below the row above; x / width and right edges = RAM row |
-| usage:Week:style | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14, bar 70.2,877 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
-| usage:footer | 0,784 255×116 | 0,763 255×137 | ok | bottom edge kept; 21 px taller = the 1 added row(s) + 7 px gaps |
+| usage:header | Max row 16,872 223×14 "Max62% · 1h48" | 16,855 223×11 "5h Week" | listed | D66 addition: the grid header |
+| usage:Claude | — (none) | 16,872 223×14 "Claude62%—" | listed | D66 addition: label 30,872 69×14, 5h bar 105,877 30×4, Week bar 175,877 30×4 |
+| usage:header | "Max" | 16,855 223×11 | ok | 5h, Week; 7 px below the RAM row, its x / width |
+| usage:Claude:style | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14 | ok | 14 px line, 6 px below the row above; text styles = RAM row; bars 4 px, the Max bar's radius / track / fill (session pace on, marker at calc(64% - 1px)); Week % right edge = RAM value's |
+| usage:columns | — | 1 line(s) | ok | each window's bars line up across lines |
+| usage:footer | 0,784 255×116 | 0,767 255×133 | ok | bottom edge kept; 17 px taller = the grid (31 px) less the Max row (14 px) |
+
+## Sidebar scrolling (Fix: sidebar scrolling)
+Only the SESSIONS list scrolls (`docs/sidebar.md` → *Layout and scrolling*). The prototype has five nav items and its sidebar fits; D61's sixth (MCP) made the app's whole sidebar scroll by 24 px with the demo seed. Now the sidebar itself does not scroll, the footer is measured where it is (its bottom edge the prototype's, above), and the SESSIONS list is shorter than its rows and scrolls.
+
+| Check | Expected | App | Result |
+|---|---|---|---|
+| sidebar scroll height − client height | 0 | 0 | ok |
+| footer bottom (no scrolling) | ≤ 900 | 900 | ok |
+| SESSIONS list overflow-y / overflow-x | auto / hidden | auto / hidden | ok |
+| SESSIONS list scrolls (scroll height − client height) | > 0 | 20 | ok |
+| SESSIONS list sideways (scroll width − client width) | 0 | 0 | ok |
 
 ## SPEC color tokens defined as CSS variables
 | Token | SPEC values | Result |

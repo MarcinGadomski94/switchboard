@@ -41,7 +41,7 @@ import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
  *   once it is implemented.
  * - Advisory pixel diff of the page and of the main area / panel, and a
  *   side-by-side PNG of every surface that is implemented here.
- * - D17: the prototype's footer has one "Max" row, the app Session + Week rows. The
+ * - D17 / D66: the prototype's footer has one "Max" row, the app the usage grid. The
  *   footer keeps its bottom edge and grows upward, so Settings and the footer's
  *   rows above the usage rows are compared with y relative to the footer's top;
  *   the usage rows are listed and checked on the footer's own rules
@@ -413,7 +413,7 @@ interface Row {
   /** Which part of the page (the report prints the sidebar once in full). */
   readonly group?: 'sidebar' | 'content';
   readonly part: string;
-  readonly geometry: Geometry | 'relative' | 'listed' | 'D17 rules';
+  readonly geometry: Geometry | 'relative' | 'listed' | 'D66 rules';
   readonly proto: string;
   readonly app: string;
   readonly result: 'ok' | 'FAIL' | 'pending' | 'listed';
@@ -546,7 +546,7 @@ function sidebarChecks(served: Served): PartCheck[] {
     });
   }
   const systemPending = served.system ? undefined : `${AREAS.system.url} answers 501 (${AREAS.system.item})`;
-  // D17: the footer keeps its bottom edge and grows upward by the Week row (usage-rows.ts gates by how much), so
+  // D17 / D66: the footer keeps its bottom edge and grows upward by the usage grid (usage-rows.ts gates by how much), so
   // Settings and the footer's rows are compared with y relative to the footer's top.
   const inFooter = { geometry: 'relative' as const, anchor: FOOTER, anchorName: "the footer's top (D17)" };
   out.push({ name: 'settings', path: SETTINGS, ...(served.tools && served.system ? inFooter : { geometry: 'size' as const }), copy: true, styles: text });
@@ -554,7 +554,7 @@ function sidebarChecks(served: Served): PartCheck[] {
   out.push({ name: 'footer:service', path: [...FOOTER, 0], ...(served.system ? inFooter : { geometry: 'bottom' as const }), copy: false, styles: text });
   out.push({ name: 'footer:label', path: [...FOOTER, 0, 1], ...(served.system ? inFooter : { geometry: 'none' as const }), copy: true, styles: text });
   out.push({ name: 'footer:processes', path: [...FOOTER, 0, 2], ...inFooter, copy: true, styles: text, pending: systemPending });
-  // The prototype's third meter, "Max", has no counterpart: D17's Session + Week rows (usage-rows.ts).
+  // The prototype's third meter, "Max", has no counterpart: D66's usage grid (usage-rows.ts).
   ['CPU', 'RAM'].forEach((label, i) => {
     const meter = [...FOOTER, i + 1];
     out.push({ name: `footer:${label}`, path: [...meter, 0], ...inFooter, copy: true, styles: text });
@@ -762,12 +762,12 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:MCP (D61)', geometry: 'relative', proto: '—', app: 'vs nav:Schedules & loops', result: mcpIssues.length ? 'FAIL' : 'ok', note: mcpIssues.join('; ') });
       await setMcpNavHidden(appPage, true);
       track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, appNavPaths(paths))), sidebarTally, 'sidebar');
-      // D17: the usage rows, listed next to the prototype's Max row and gated on the footer's own rules.
+      // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.
       const usage = await usageRowChecks(protoPage, appPage, surface.id);
       await setMcpNavHidden(appPage, false);
       track(
         {
-          rows: usage.checks.map((c) => ({ surface: surface.id, part: c.part, geometry: c.result === 'listed' ? 'listed' : 'D17 rules', proto: c.proto, app: c.app, result: c.result, note: c.note })),
+          rows: usage.checks.map((c) => ({ surface: surface.id, part: c.part, geometry: c.result === 'listed' ? 'listed' : 'D66 rules', proto: c.proto, app: c.app, result: c.result, note: c.note })),
           failures: usage.failures,
         },
         sidebarTally,
@@ -926,7 +926,7 @@ ${table.join('\n')}
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on \`${first ?? '—'}\`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
-Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · \`none\` = copy and styles only · \`listed\` = recorded, not gated · \`D17 rules\` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, D23 / D46: status done / need and the allowance marker on a row with a pace, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
+Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height · \`bottom\` = x, width, bottom edge · \`relative\` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17 / D66: the footer is taller by the usage grid and keeps its bottom edge) · \`none\` = copy and styles only · \`listed\` = recorded, not gated · \`D66 rules\` = the usage grid gated on the footer's own rules (the 5h / Week header, one fixed line height, text styles = the RAM row, the prototype Max bar's height / radius / colors, D23 / D46: status done / need and the allowance marker on a bar with a pace, the header 7 px below the RAM row and 6 px between grid rows, the Week % ending at the RAM value, the bars lined up, the footer growing by exactly the grid less the Max row), not against the prototype, which has one "Max" row there.
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|

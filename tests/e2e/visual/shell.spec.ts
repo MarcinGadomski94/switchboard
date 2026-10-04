@@ -27,10 +27,11 @@ import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
  * rows, badges, footer values) are empty, so those parts are compared only where
  * their geometry does not depend on the data (`size` / `bottom` below).
  *
- * D17: the prototype's one "Max" row became Session + Week rows, so the footer is
- * taller (its bottom edge stays). The rows above them are compared with y relative
- * to the footer's top (`anchor`); the new rows are listed and checked on the
- * footer's own rules (`usage-rows.ts`), not against the prototype.
+ * D17 / D66: the prototype's one "Max" row became the usage grid (a header and a
+ * line per account), so the footer is taller (its bottom edge stays). The rows
+ * above it are compared with y relative to the footer's top (`anchor`); the grid
+ * is listed and checked on the footer's own rules (`usage-rows.ts`), not against
+ * the prototype.
  *
  * D61: the nav has a sixth item, MCP, after Schedules & loops (the prototype has
  * five). The app's Artifacts / History items are its 5th / 6th (`appPath`), and they
@@ -196,8 +197,8 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
     );
   }
 
-  // D17: the Session / Week rows, listed next to the prototype's Max row and gated on the footer's own rules.
-  const usage = await usageRowChecks(protoPage, appPage, 'D17');
+  // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.
+  const usage = await usageRowChecks(protoPage, appPage, 'D66');
   failures.push(...usage.failures);
   const usageRows = usage.checks.map((c) => `| ${c.part} | ${c.proto.replaceAll('|', '\\|')} | ${c.app.replaceAll('|', '\\|')} | ${c.result} | ${c.note.replaceAll('|', '\\|')} |`);
 
@@ -314,14 +315,14 @@ The app's routes answer 501 until the lanes land, so the prototype's data (badge
 Side by side (prototype left, app right): \`shell-side-by-side.png\`, \`shell-sidebar-side-by-side.png\`.
 
 ## Boxes (±2 px) and copy
-Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height (y depends on the data above) · \`bottom\` = x, width, bottom edge · \`none\` = copy and styles only (the box depends on data in the same row) · \`(y rel. footer)\` = y measured from the footer's top on both pages (D17: the footer is taller by the Week row, its bottom edge stays).
+Geometry: \`box\` = x, y, width, height · \`size\` = x, width, height (y depends on the data above) · \`bottom\` = x, width, bottom edge · \`none\` = copy and styles only (the box depends on data in the same row) · \`(y rel. footer)\` = y measured from the footer's top on both pages (D17 / D66: the footer is taller by the usage grid, its bottom edge stays).
 
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
 ${input.rows.join('\n')}
 
-## D17 usage rows (listed, not compared with the prototype)
-The prototype's footer has one "Max" row; D17 shows **Session** and **Week** (and a model row while one is in use) in its place. \`listed\` rows record the new rows next to the prototype's Max row. The gated rows check the footer's own rules: labels, text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a row with a pace, the demo's Session, fills with status done / need and carries the allowance marker), 7 px rhythm, right edges equal to the RAM row's, and the footer's bottom edge kept while it grows by exactly the added rows.
+## D66 usage grid (listed, not compared with the prototype)
+The prototype's footer has one "Max" row; D66 shows the usage grid in its place: a **5h** / **Week** header and one line per account (the demo: one, Claude). \`listed\` rows record the grid next to the prototype's Max row. The gated rows check the footer's own rules: the header, one fixed line height, label and % text styles equal to the RAM row, the prototype Max bar's height / radius / colors (D23 / D46: a bar with a pace, the demo's 5h, fills with status done / need and carries the allowance marker), the header 7 px below the RAM row and 6 px between grid rows, the Week % ending where the RAM value ends, the bars lined up, and the footer's bottom edge kept while it grows by exactly the grid less the Max row.
 
 | Part | Prototype | App | Result | Notes |
 |---|---|---|---|---|

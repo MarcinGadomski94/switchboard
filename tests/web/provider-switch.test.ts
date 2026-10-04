@@ -53,11 +53,23 @@ describe('D62 P7 · marked and added parts (web)', () => {
     expect(toggle).toMatchObject({ disabled: true, reason: 'Not available in Codex CLI: Remote Control (claude.ai on the phone) is a Claude Code feature.' });
   });
 
-  it('the footer adds a row per Codex window', async () => {
-    const { usageRows } = await import('../../src/web/shell/format.ts');
+  it('D66: the footer grid adds a Codex line from its windows (5h and week bars; a window the CLI did not size only in the tooltip)', async () => {
+    const { usageGridLines } = await import('../../src/web/shell/format.ts');
     const now = Date.parse('2026-10-01T12:00:00.000Z');
-    const rows = usageRows({ cliUsage: [{ provider: 'codex', label: 'Codex 5h', pct: 12, resetsAt: '2026-10-01T14:00:00.000Z' }] } as never, now);
-    expect(rows.map((row) => row.label)).toEqual(['Session', 'Week', 'Codex 5h']);
-    expect(rows[2]).toMatchObject({ key: 'model', pct: 12, text: '12% · 2h00' });
+    const lines = usageGridLines(
+      {
+        cliUsage: [
+          { provider: 'codex', label: 'Codex 5h', pct: 12, resetsAt: '2026-10-01T14:00:00.000Z', key: 'session' },
+          { provider: 'codex', label: 'Codex limit', pct: 5, resetsAt: null, key: 'model' },
+        ],
+      } as never,
+      now,
+    );
+    expect(lines.map((line) => [line.label, line.session.text, line.week.text])).toEqual([
+      ['Claude', '—', '—'],
+      ['Codex', '12%', '—'],
+    ]);
+    expect(lines[1]?.title).toContain('5h: 12% · resets in 2h00');
+    expect(lines[1]?.title).toContain('Codex limit: 5% · reset unknown');
   });
 });

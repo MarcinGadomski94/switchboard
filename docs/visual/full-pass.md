@@ -17,27 +17,28 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (72) | green (3) | 0.70% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (72) | green (4) | 9.80% | 11.19% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (72) | green (3) | 9.89% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (72) | green (3) | 7.12% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (72) | green (3) | 4.69% | 4.96% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
-| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (72) | green (3) | 0.61% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (72) | green (3) | 0.91% | 0.37% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (72) | green (3) | 2.31% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
-| History | History | M7.4 | gated | green (72) | green (3) | 0.60% | 0.00% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (72) | green (3) | 0.60% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (72) | green (3) | 0.77% | 0.20% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (72) | green (3) | 6.14% | 8.67% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (72) | green (3) | 0.56% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
-| Palette | Modals → Palette | M8.3 | gated | green (72) | green (3) | 0.51% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (73) | green (3) | 1.74% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (73) | green (4) | 10.85% | 11.20% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (73) | green (3) | 10.93% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (73) | green (3) | 8.16% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (73) | green (3) | 5.73% | 4.96% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (73) | green (3) | 1.65% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (73) | green (3) | 1.97% | 0.40% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (73) | green (3) | 3.36% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
+| History | History | M7.4 | gated | green (73) | green (3) | 1.76% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (73) | green (3) | 1.66% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (73) | green (3) | 1.85% | 0.26% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (73) | green (3) | 7.03% | 8.87% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (73) | green (3) | 1.31% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Palette | Modals → Palette | M8.3 | gated | green (73) | green (3) | 1.41% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on `inbox`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
-Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` = x, width, bottom edge · `relative` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17: the footer is taller by the Week row and keeps its bottom edge) · `none` = copy and styles only · `listed` = recorded, not gated · `D17 rules` = the Session / Week rows gated on the footer's own rules (labels, text styles = the RAM row, the prototype Max bar's height / radius / colors, D23 / D46: status done / need and the allowance marker on a row with a pace, 7 px rhythm, right edges = the RAM row, the footer growing by exactly the added rows), not against the prototype, which has one "Max" row there.
+Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` = x, width, bottom edge · `relative` = box with y relative to its anchor: the SESSIONS label (while the tool rows above it are pending) or the footer's top (D17 / D66: the footer is taller by the usage grid and keeps its bottom edge) · `none` = copy and styles only · `listed` = recorded, not gated · `D66 rules` = the usage grid gated on the footer's own rules (the 5h / Week header, one fixed line height, text styles = the RAM row, the prototype Max bar's height / radius / colors, D23 / D46: status done / need and the allowance marker on a bar with a pace, the header 7 px below the RAM row and 6 px between grid rows, the Week % ending at the RAM value, the bars lined up, the footer growing by exactly the grid less the Max row), not against the prototype, which has one "Max" row there.
 
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|
+| inbox | nav:MCP (D61) | relative | — | vs nav:Schedules & loops | ok |  |
 | inbox | sidebar | box | 0,0 256×900 | 0,0 256×900 | ok |  |
 | inbox | brand | box | 0,0 255×50 | 0,0 255×50 | ok | copy "SSwitchboard⌘K" |
 | inbox | paletteKey | box | 211.8,17 27.2×20 | 211.8,17 27.2×20 | ok | copy "⌘K" |
@@ -95,23 +96,23 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | session5:name | box | 36,670 98.8×17 | 36,670 98.8×17 | ok | copy "prod-monitoring" |
 | inbox | session5:age | box | 217.2,670 19.8×17 | 217.2,670 19.8×17 | ok | copy "41m" |
 | inbox | session5:mode | box | 36,689 201×14 | 36,689 201×14 | ok | copy listed: prototype "/loop 1h · expires in 6d" · app "" (mode line derived from the stored work type · mode · phase (D13, docs/derivations.md → Session chips); the prototype hand-writes it) |
-| inbox | settings | relative | 10,747 235×31 | 10,726 235×31 | ok | copy "Settings" |
-| inbox | footer | bottom | 0,784 255×116 | 0,763 255×137 | ok |  |
-| inbox | footer:service | relative | 16,795 223×28 | 16,774 223×28 | ok |  |
-| inbox | footer:label | relative | 27.4,795 45.8×28 | 27.4,774 45.8×28 | ok | copy "claude code" |
-| inbox | footer:processes | relative | 80.2,795 59.4×28 | 80.2,774 59.4×28 | ok | copy "9 bg processes" |
-| inbox | footer:CPU | relative | 16,830 34×14 | 16,809 34×14 | ok | copy "CPU" |
-| inbox | footer:CPU:track | relative | 58,835 97×4 | 58,814 97×4 | ok |  |
-| inbox | footer:CPU:value | relative | 163,830 76×14 | 163,809 76×14 | ok | copy "38%" |
-| inbox | footer:RAM | relative | 16,851 34×14 | 16,830 34×14 | ok | copy "RAM" |
-| inbox | footer:RAM:track | relative | 58,856 97×4 | 58,835 97×4 | ok |  |
-| inbox | footer:RAM:value | relative | 163,851 76×14 | 163,830 76×14 | ok | copy "11.2/32 GB" |
-| inbox | usage:Session | listed | Max row 16,872 223×14 "Max62% · 1h48" | 16,851 223×14 "Session 62% · 1h48" | listed | D17 addition: label 16,851 46.2×14, bar 70.2,856 84.8×4, value 163,851 76×14 |
-| inbox | usage:Week | listed | — (none) | 16,872 223×14 "Week unknown" | listed | D17 addition: label 16,872 46.2×14, bar 70.2,877 84.8×4, value 163,872 76×14 |
-| inbox | usage:labels | D17 rules | "Max" | ["Session","Week"] | ok | Session, Week first (D17) |
-| inbox | usage:Session:style | D17 rules | Max bar 4 px rgb(232, 231, 227) | 16,851 223×14, bar 70.2,856 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill oklch(0.74 0.13 150) (pace on, marker at calc(64% - 1px): "On pace: 62% of 64% until 08:54"); 7 px below the row above; x / width and right edges = RAM row |
-| inbox | usage:Week:style | D17 rules | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14, bar 70.2,877 84.8×4 | ok | text styles = RAM row; bar 4 px, radius 2px, track rgb(38, 39, 44), fill rgb(232, 231, 227); 7 px below the row above; x / width and right edges = RAM row |
-| inbox | usage:footer | D17 rules | 0,784 255×116 | 0,763 255×137 | ok | bottom edge kept; 21 px taller = the 1 added row(s) + 7 px gaps |
+| inbox | settings | relative | 10,747 235×31 | 10,730 235×31 | ok | copy "Settings" |
+| inbox | footer | bottom | 0,784 255×116 | 0,767 255×133 | ok |  |
+| inbox | footer:service | relative | 16,795 223×28 | 16,778 223×28 | ok |  |
+| inbox | footer:label | relative | 27.4,795 45.8×28 | 27.4,778 45.8×28 | ok | copy "claude code" |
+| inbox | footer:processes | relative | 80.2,795 59.4×28 | 80.2,778 59.4×28 | ok | copy "9 bg processes" |
+| inbox | footer:CPU | relative | 16,830 34×14 | 16,813 34×14 | ok | copy "CPU" |
+| inbox | footer:CPU:track | relative | 58,835 97×4 | 58,818 97×4 | ok |  |
+| inbox | footer:CPU:value | relative | 163,830 76×14 | 163,813 76×14 | ok | copy "38%" |
+| inbox | footer:RAM | relative | 16,851 34×14 | 16,834 34×14 | ok | copy "RAM" |
+| inbox | footer:RAM:track | relative | 58,856 97×4 | 58,839 97×4 | ok |  |
+| inbox | footer:RAM:value | relative | 163,851 76×14 | 163,834 76×14 | ok | copy "11.2/32 GB" |
+| inbox | usage:header | listed | Max row 16,872 223×14 "Max62% · 1h48" | 16,855 223×11 "5h Week" | listed | D66 addition: the grid header |
+| inbox | usage:Claude | listed | — (none) | 16,872 223×14 "Claude62%—" | listed | D66 addition: label 30,872 69×14, 5h bar 105,877 30×4, Week bar 175,877 30×4 |
+| inbox | usage:header | D66 rules | "Max" | 16,855 223×11 | ok | 5h, Week; 7 px below the RAM row, its x / width |
+| inbox | usage:Claude:style | D66 rules | Max bar 4 px rgb(232, 231, 227) | 16,872 223×14 | ok | 14 px line, 6 px below the row above; text styles = RAM row; bars 4 px, the Max bar's radius / track / fill (session pace on, marker at calc(64% - 1px)); Week % right edge = RAM value's |
+| inbox | usage:columns | D66 rules | — | 1 line(s) | ok | each window's bars line up across lines |
+| inbox | usage:footer | D66 rules | 0,784 255×116 | 0,767 255×133 | ok | bottom edge kept; 17 px taller = the grid (31 px) less the Max row (14 px) |
 
 ## Content and chrome
 | Surface | Part | Geometry | Prototype | App | Result | Notes |

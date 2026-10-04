@@ -19,8 +19,9 @@ import { stubToolProbes } from './probes.ts';
  * - in minute 120 (40 % allowed): yellow;
  * - in minute 186 (62 % allowed, exactly the usage): still yellow;
  * - one minute of page clock later, minute 187 (62.33 %): green, the marker moves;
- * - after the reset, and more than 5 h before it: no color, no marker, no tooltip.
- * The Week row keeps its own (continuous) D23 pace throughout.
+ * - after the reset, and more than 5 h before it: no color, no marker, no pace in the tooltip.
+ * The Week bar keeps its own (continuous) D23 pace throughout. D66: the bars are the
+ * usage grid's (one line, Claude); the pace and the reset times are in the line's tooltip.
  */
 
 const MIN = 60_000;
@@ -54,6 +55,23 @@ async function tokenColor(page: Page, token: string): Promise<string> {
   }, token);
 }
 
+/**
+ * D66: the pace line under a window in the usage grid line's tooltip (`5h: …` / `Week: …`,
+ * then `  On pace: …`), `null` when that window has none.
+ */
+async function paceIn(page: Page, window: '5h' | 'Week'): Promise<string | null> {
+  const lines = ((await page.getByTestId('usage-line').first().getAttribute('title')) ?? '').split('\n');
+  const at = lines.findIndex((line) => line.startsWith(`${window}: `));
+  const next = at >= 0 ? lines[at + 1] : undefined;
+  return next?.startsWith('  ') ? next.trim() : null;
+}
+
+/** D66: the window's tooltip line (`5h: 62% · resets in 3h01`). */
+async function windowIn(page: Page, window: '5h' | 'Week'): Promise<string | null> {
+  const lines = ((await page.getByTestId('usage-line').first().getAttribute('title')) ?? '').split('\n');
+  return lines.find((line) => line.startsWith(`${window}: `)) ?? null;
+}
+
 async function fillColor(row: Locator): Promise<string> {
   return row.locator('.sb-meter-fill').evaluate((fill) => getComputedStyle(fill).backgroundColor);
 }
@@ -69,10 +87,10 @@ async function expectMarkerAt(row: Locator, pct: number): Promise<void> {
   expect(Math.abs(marker.x + marker.width / 2 - (track.x + (track.width * pct) / 100))).toBeLessThanOrEqual(1);
 }
 
-/** The Session row keeps the D17 look: no pace, no tooltip, no marker, the bright fill. */
+/** The Session bar without a pace: no color, no pace in the tooltip, no marker, the bright fill. */
 async function expectNoPace(page: Page, session: Locator): Promise<void> {
   await expect(session).not.toHaveAttribute('data-pace');
-  await expect(session).not.toHaveAttribute('title');
+  expect(await paceIn(page, '5h')).toBeNull();
   await expect(session.getByTestId('pace-marker')).toHaveCount(0);
   expect(await fillColor(session)).toBe(await tokenColor(page, '--text'));
 }
@@ -125,16 +143,17 @@ test('the Session bar is yellow at or above its allowance, green below it, stepp
   await page.clock.install({ time: start + 119 * MIN + 10_000 });
   await page.goto(`${server.baseUrl}/`);
   const usage = page.getByTestId('usage-meters');
-  const session = usage.locator('[data-meter="session"]');
-  const week = usage.locator('[data-meter="week"]');
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 3h01`);
+  const session = usage.locator('[data-window="session"]');
+  const week = usage.locator('[data-window="week"]');
+  await expect(session.locator('.sb-usage-pct')).toHaveText(`${SESSION_PCT}%`);
+  await expect.poll(() => windowIn(page, '5h')).toBe(`5h: ${SESSION_PCT}% · resets in 3h01`);
   const need = await tokenColor(page, '--status-need');
   const done = await tokenColor(page, '--status-done');
   const text = await tokenColor(page, '--text');
   const muted = await tokenColor(page, '--muted-3');
   expect(new Set([need, done, text]).size).toBe(3);
   await expect(session).toHaveAttribute('data-pace', 'ahead');
-  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 40% until ${utcTime(start + 120 * MIN)}`);
+  await expect.poll(() => paceIn(page, '5h')).toBe(`Ahead of pace: ${SESSION_PCT}% of 40% until ${utcTime(start + 120 * MIN)}`);
   expect(await fillColor(session)).toBe(need);
   await expect(session.locator('.sb-meter-fill')).toHaveAttribute('style', `width: ${SESSION_PCT}%;`);
   await expectMarkerAt(session, 40);
@@ -142,34 +161,34 @@ test('the Session bar is yellow at or above its allowance, green below it, stepp
   // The Week row keeps its own pace (18 %, by the minute over its week, ruling 2026-09-29): about 75 h before its reset
   // (74 h after the seed plus the page's 3 h lead) is its 5 580th or 5 581st minute, 55.36–55.37 % allowed: on pace.
   await expect(week).toHaveAttribute('data-pace', 'on');
-  await expect(week).toHaveAttribute('title', /^On pace: 18% of 55\.3[67]% until \d\d:\d\d$/);
+  await expect.poll(() => paceIn(page, 'Week')).toMatch(/^On pace: 18% of 55\.3[67]% until \d\d:\d\d$/);
 
   // Minute 186: the allowance is exactly the usage (62 %), which is not below it → still yellow.
   await page.clock.pauseAt(start + 185 * MIN + 10_000);
-  await expect(session).toHaveAttribute('title', `Ahead of pace: ${SESSION_PCT}% of 62% until ${utcTime(start + 186 * MIN)}`);
+  await expect.poll(() => paceIn(page, '5h')).toBe(`Ahead of pace: ${SESSION_PCT}% of 62% until ${utcTime(start + 186 * MIN)}`);
   await expect(session).toHaveAttribute('data-pace', 'ahead');
   expect(await fillColor(session)).toBe(need);
   await expectMarkerAt(session, 62);
 
   // One minute of page clock later the allowance steps to 62.33 %: on pace, green; the marker moves.
   await page.clock.runFor(MIN);
-  await expect(session).toHaveAttribute('title', `On pace: ${SESSION_PCT}% of 62.33% until ${utcTime(start + 187 * MIN)}`);
+  await expect.poll(() => paceIn(page, '5h')).toBe(`On pace: ${SESSION_PCT}% of 62.33% until ${utcTime(start + 187 * MIN)}`);
   await expect(session).toHaveAttribute('data-pace', 'on');
   expect(await fillColor(session)).toBe(done);
   await expectMarkerAt(session, 62.33);
   await expect(session.getByTestId('pace-marker')).toHaveCount(1);
   // 113 min 50 s to the reset, rounded like every reset time.
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 1h54`);
+  await expect.poll(() => windowIn(page, '5h')).toBe(`5h: ${SESSION_PCT}% · resets in 1h54`);
 
   // After the reset the page still has the window (the server's clock has not reached it), but no pace.
   await page.clock.pauseAt(reset + MIN);
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 0m`);
+  await expect.poll(() => windowIn(page, '5h')).toBe(`5h: ${SESSION_PCT}% · resets in 0m`);
   await expectNoPace(page, session);
 
   // More than 5 h before the reset: before the window, no pace either.
   await page.clock.setSystemTime(start - 30 * MIN);
   await page.clock.runFor(30_000);
-  await expect(session.locator('.sb-meter-value')).toHaveText(`${SESSION_PCT}% · 5h30`);
+  await expect.poll(() => windowIn(page, '5h')).toBe(`5h: ${SESSION_PCT}% · resets in 5h30`);
   await expectNoPace(page, session);
   await expect(week).toHaveAttribute('data-pace', 'on');
 });

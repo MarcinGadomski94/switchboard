@@ -13,9 +13,10 @@ import { stubToolProbes } from './probes.ts';
  * reads its newest `get_usage` reading from the database, as the poller / a live
  * session would have stored it (the reading below uses the CLI's recorded shape,
  * with resets ahead of now; the poller's own path runs against fake-claude in
- * tests/server/usage/wire.test.ts). The footer shows **Session** and **Week** rows
- * instead of the prototype's one "Max" row, and a **Fable** row because that
- * model's weekly limit is in use; a model at 0 % that is not active has no row.
+ * tests/server/usage/wire.test.ts). D66: the footer's usage grid has one line (a
+ * single Claude Code account) with the **5h** and **Week** bars in place of the
+ * prototype's one "Max" row; the **Fable** weekly limit is in use, so the line's
+ * tooltip lists it; a model at 0 % that is not active is not listed.
  * Fable at 93 % warns once (toast). RAM is the machine's memory in use (vm_stat on
  * macOS, /proc/meminfo on Linux).
  */
@@ -81,7 +82,7 @@ test.beforeEach(async ({ page }) => {
   await stubToolProbes(page);
 });
 
-test('the footer shows Session, Week and the model in use, each with its bar, % and time to reset; RAM in use', async ({ page }) => {
+test('the footer grid shows the account\'s 5h and Week bars with their %, the resets, paces and the model in use in its tooltip; RAM in use', async ({ page }) => {
   const systemAnswer = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/system');
   await page.goto(`${server.baseUrl}/`);
   const info = (await (await systemAnswer).json()) as SystemInfo;
@@ -96,45 +97,44 @@ test('the footer shows Session, Week and the model in use, each with its bar, % 
   expect(info.ramUsed).toBeGreaterThan(0);
   expect(info.ramUsed).toBeLessThanOrEqual(info.ramTotal);
 
+  // D66: under CPU / RAM, the usage grid: its header, then one line (a single Claude Code account) with both windows.
   const footer = page.getByTestId('machine-footer');
-  await expect(footer.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM', 'Session', 'Week', 'Fable']);
+  await expect(footer.locator('.sb-meter > span:first-child')).toHaveText(['CPU', 'RAM']);
   await expect(footer.locator('.sb-meter').nth(1).locator('.sb-meter-value')).toHaveText(/^\d+\.\d\/\d+ GB$/);
   const usage = page.getByTestId('usage-meters');
-  // The % and the time until the reset in the reset-text format (1h48 / 74h12; a minute less if the page is slow).
-  await expect(usage.locator('[data-meter="session"] .sb-meter-value')).toHaveText(/^62% · 1h4[78]$/);
-  await expect(usage.locator('[data-meter="week"] .sb-meter-value')).toHaveText(/^18% · 74h1[12]$/);
-  await expect(usage.locator('[data-meter="model"][data-model="Fable"] .sb-meter-value')).toHaveText(/^93% · 74h1[12]$/);
-  await expect(usage.locator('[data-model="Opus"]')).toHaveCount(0);
+  await expect(usage.getByTestId('usage-grid-header')).toHaveText('5hWeek');
+  const lines = usage.getByTestId('usage-line');
+  await expect(lines).toHaveCount(1);
+  const line = lines.first();
+  await expect(line.locator('.sb-usage-label')).toHaveText('Claude');
+  await expect(line).toHaveAttribute('data-active', 'false');
+  await expect(line.locator('.sb-usage-pct')).toHaveText(['62%', '18%']);
+  // The tooltip: each window's % and the time until its reset (1h48 / 74h12; a minute less if the page is slow), its pace
+  // under it, then the model's weekly limit (Fable; Opus is 0 % and not active, so it is not listed).
+  const title = (await line.getAttribute('title')) ?? '';
+  expect(title).toMatch(/^Claude\n5h: 62% · resets in 1h4[78]\n {2}On pace: 62% of (64|64\.33|64\.67)% until \d\d:\d\d\nWeek: 18% · resets in 74h1[12]\n {2}On pace: 18% of 55\.8[3-6]% until \d\d:\d\d\nFable week: 93% · resets in 74h1[12]\nSettings → Accounts$/);
   // Each bar is 4 px, filled to the %.
-  for (const [meter, pct] of [
+  for (const [window, pct] of [
     ['session', 62],
     ['week', 18],
-    ['model', 93],
   ] as const) {
-    const fill = usage.locator(`[data-meter="${meter}"] .sb-meter-fill`);
+    const fill = line.locator(`[data-window="${window}"] .sb-meter-fill`);
     await expect(fill).toHaveAttribute('style', `width: ${pct}%;`);
-    const track = usage.locator(`[data-meter="${meter}"] .sb-meter-track`);
+    const track = line.locator(`[data-window="${window}"] .sb-meter-track`);
     expect((await track.boundingBox())?.height).toBe(4);
   }
-  // D23 on the page's own clock: the Week reset is 74h12 ahead, so about 55.8 % is allowed and 18 % is on pace
-  // (tests/e2e/week-pace.spec.ts drives the colors and the step on a fixed clock).
-  const week = usage.locator('[data-meter="week"]');
-  await expect(week).toHaveAttribute('data-pace', 'on');
-  // Continuous (ruling 2026-09-29): 74h12m20s before the reset is the window's 5 628th minute: 55.83 %; each later minute of
-  // the page's clock (the reading was taken a little earlier) adds 0.01 %.
-  await expect(week).toHaveAttribute('title', /^On pace: 18% of 55\.8[3-6]% until \d\d:\d\d$/);
-  await expect(week.getByTestId('pace-marker')).toHaveCount(1);
-  // D46: the Session reset is 1h48 ahead, so it is in about its 192nd of 300 minutes (64–64.33 % allowed, each minute counted from its start) and 62 % is
-  // on pace (tests/e2e/session-pace.spec.ts drives the colors and the minute step). The model row has no pace.
-  const session = usage.locator('[data-meter="session"]');
-  await expect(session).toHaveAttribute('data-pace', 'on');
-  await expect(session).toHaveAttribute('title', /^On pace: 62% of (64|64\.33|64\.67)% until \d\d:\d\d$/);
-  await expect(session.getByTestId('pace-marker')).toHaveCount(1);
-  await expect(usage.locator('[data-pace]')).toHaveCount(2);
-  await expect(usage.locator('[data-meter="model"]')).not.toHaveAttribute('data-pace');
-  // The three usage bars line up, and end where the RAM bar ends.
-  const ends = await footer.locator('.sb-meter-track').evaluateAll((tracks) => tracks.map((t) => Math.round(t.getBoundingClientRect().right)));
-  expect(new Set(ends).size).toBe(1);
+  // D23 / D46 on the page's own clock (tests/e2e/week-pace.spec.ts and session-pace.spec.ts drive the colors and the steps):
+  // both windows are on pace, each with its marker.
+  for (const window of ['session', 'week'] as const) {
+    await expect(line.locator(`[data-window="${window}"]`)).toHaveAttribute('data-pace', 'on');
+    await expect(line.locator(`[data-window="${window}"]`).getByTestId('pace-marker')).toHaveCount(1);
+  }
+  // The Week % ends where the RAM value ends; the two bars are as wide as each other.
+  const ramRight = await footer.locator('.sb-meter').nth(1).locator('.sb-meter-value').evaluate((v) => Math.round(v.getBoundingClientRect().right));
+  const pcts = await line.locator('.sb-usage-pct').evaluateAll((values) => values.map((v) => Math.round(v.getBoundingClientRect().right)));
+  expect(pcts[1]).toBe(ramRight);
+  const widths = await line.locator('.sb-meter-track').evaluateAll((tracks) => tracks.map((t) => Math.round(t.getBoundingClientRect().width)));
+  expect(new Set(widths).size).toBe(1);
 
   // Fable at 93 % crossed the 90 % threshold: one warning toast, named after the model.
   const toast = page.getByTestId('toast');
@@ -146,7 +146,11 @@ test('the footer shows Session, Week and the model in use, each with its bar, % 
 
   // The `system` hub event keeps the rows (a reload does not show the warning again in this browser).
   await page.reload();
-  await expect(page.getByTestId('usage-meters').locator('.sb-meter > span:first-child')).toHaveText(['Session', 'Week', 'Fable']);
+  await expect(page.getByTestId('usage-line').locator('.sb-usage-pct')).toHaveText(['62%', '18%']);
   await page.waitForTimeout(500);
   await expect(page.getByTestId('toast')).toHaveCount(0);
+
+  // D66: a click on a line opens Settings → Accounts.
+  await page.getByTestId('usage-line').first().click();
+  await expect(page).toHaveURL(/\/settings\/accounts$/);
 });

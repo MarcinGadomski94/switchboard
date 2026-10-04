@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountProfile } from '../../src/core/accounts.ts';
 import type { SessionEvent, SystemInfo } from '../../src/core/api.ts';
-import { accountUsageItems } from '../../src/web/shell/format.ts';
+import { usageGridLines } from '../../src/web/shell/format.ts';
 import { droppedOrder, exhaustedText, movedOrder, signInStatusText, signInText, usageText } from '../../src/web/views/settings/accounts.ts';
 import { SETTINGS_SECTIONS } from '../../src/web/views/settings/model.ts';
 import { providerFields } from '../../src/web/modals/new-session.ts';
@@ -62,7 +62,7 @@ describe('D63 · Settings → Accounts (web)', () => {
 });
 
 describe('D63 · the footer line and the chat divider (web)', () => {
-  it('each account of a CLI with more than one: percent, the active one marked, a spent one with its time', () => {
+  it('D66: each account of a CLI with more than one is a grid line: the active one marked, a spent one with its time', () => {
     const system = {
       accountUsage: [
         { profileId: 'default-claude', cli: 'claude', name: 'Default', active: false, pct: 98.2, exhaustedUntil: soon(3_600_000) },
@@ -70,14 +70,15 @@ describe('D63 · the footer line and the chat divider (web)', () => {
         { profileId: 'c', cli: 'codex', name: 'Work', active: true, pct: null, exhaustedUntil: null },
       ],
     } as unknown as SystemInfo;
-    const items = accountUsageItems(system, NOW);
-    expect(items.map((i) => [i.text.replace(/\d\d:\d\d/, 'HH:MM'), i.active, i.spent])).toEqual([
-      ['Default out until HH:MM', false, true],
-      ['Private 10%', true, false],
-      ['Codex Work —', true, false],
+    const lines = usageGridLines(system, NOW);
+    // A Codex account without a known window (and not spent) has no line; the other CLI's lines come after Claude Code's.
+    expect(lines.map((l) => [l.label, l.outUntil?.replace(/\d\d:\d\d/, 'HH:MM') ?? null, l.active, l.spent])).toEqual([
+      ['Default', 'out until HH:MM', false, true],
+      ['Private', null, true, false],
     ]);
-    expect(accountUsageItems({} as SystemInfo, NOW)).toEqual([]);
-    expect(accountUsageItems(null, NOW)).toEqual([]);
+    // Without accountUsage: the single Claude line.
+    expect(usageGridLines({} as SystemInfo, NOW).map((l) => l.key)).toEqual(['cli:claude']);
+    expect(usageGridLines(null, NOW).map((l) => l.key)).toEqual(['cli:claude']);
   });
 
   it('a switch of account is a divider with both account names; a failed one is not', () => {
