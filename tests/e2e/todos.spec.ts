@@ -72,8 +72,13 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await expect(form.getByTestId('todo-form-plan')).toBeFocused();
   await form.getByTestId('todo-form-plan').fill('## Context\nThe flake is in `tests/login.spec.ts`.\n\n## Steps\n1. Remove the retry\n2. Await the refresh\n\n## Done when\n- 50 runs pass');
   await form.getByTestId('todo-form-save').click();
-  await expect(form).toHaveCount(0);
   await expect(items).toHaveCount(1);
+  // D69 ruling: the add form stays open for the next item, cleared, the plan behind its button again, the title focused.
+  await expect(form).toHaveAttribute('data-mode', 'add');
+  await expect(form.getByTestId('todo-form-title')).toHaveValue('');
+  await expect(form.getByTestId('todo-form-description')).toHaveValue('');
+  await expect(form.getByTestId('todo-form-plan')).toHaveCount(0);
+  await expect(form.getByTestId('todo-form-title')).toBeFocused();
   const first = items.nth(0);
   await expect(first.getByTestId('todo-title')).toHaveText('Fix the login test flake');
   await expect(first.getByTestId('todo-meta')).toHaveText(/^you · (now|\d+m)$/);
@@ -83,33 +88,47 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await expect(page.getByTestId('todo-count')).toHaveText('1 open · 0 done');
   await expect(page.getByTestId('chat-todo-add')).toHaveCount(0);
 
-  // + Add in the header: a title only (⌘/Ctrl+Enter saves); Esc cancels another.
-  await strip.getByTestId('todo-add').click();
+  // The next one in the still-open form: a title only (⌘/Ctrl+Enter saves); then Esc closes it without saving.
   await form.getByTestId('todo-form-title').fill('Rename PROJ-12 settings keys');
   await form.getByTestId('todo-form-title').press('ControlOrMeta+Enter');
   await expect(items).toHaveCount(2);
-  await strip.getByTestId('todo-add').click();
+  await expect(form.getByTestId('todo-form-title')).toHaveValue('');
   await form.getByTestId('todo-form-title').fill('Never saved');
   await form.getByTestId('todo-form-title').press('Escape');
   await expect(form).toHaveCount(0);
   await expect(items.getByTestId('todo-title')).toHaveText(['Fix the login test flake', 'Rename PROJ-12 settings keys']);
   const second = items.nth(1);
-  // No plan, no description: no disclosure, but ▶ Start.
+  // No plan, no description: no disclosure, no body row; ▶ Start sits on the title row (D69 review).
   await expect(second.getByTestId('todo-plan-toggle')).toHaveCount(0);
   await expect(second.getByTestId('todo-description')).toHaveCount(0);
-  await expect(second.getByTestId('todo-start')).toBeVisible();
+  await expect(second.locator('.sb-todo-card-row').getByTestId('todo-start')).toBeVisible();
+  await expect(second.locator('.sb-todo-card-body')).toHaveCount(0);
+  // With a plan, ▶ Start stays with the Handover plan toggle, under the description.
+  await expect(first.locator('.sb-todo-card-row').getByTestId('todo-start')).toHaveCount(0);
+  await expect(first.locator('.sb-todo-card-foot').getByTestId('todo-start')).toBeVisible();
+  // + Add in the header opens the form again; Cancel closes it.
+  await strip.getByTestId('todo-add').click();
+  await expect(form.getByTestId('todo-form-title')).toBeFocused();
+  await form.getByTestId('todo-form-cancel').click();
+  await expect(form).toHaveCount(0);
 
   // The plan's disclosure (rendered Markdown), then the card opened by a click: full description + plan.
   const planToggle = first.getByTestId('todo-plan-toggle');
   await expect(planToggle).toHaveAttribute('aria-expanded', 'false');
   await planToggle.click();
   await expect(planToggle).toHaveAttribute('aria-expanded', 'true');
+  // D69 review: the toggle sits above the plan, and the card's title row stays in view.
+  const toggleBox = await planToggle.boundingBox();
+  const planBox = await first.getByTestId('todo-plan').boundingBox();
+  expect(toggleBox!.y).toBeLessThan(planBox!.y);
+  await expect(first.getByTestId('todo-title')).toBeInViewport();
   await expect(first.getByTestId('todo-plan').locator('h2')).toHaveText(['Context', 'Steps', 'Done when']);
   await expect(first.getByTestId('todo-plan').locator('ol > li')).toHaveText(['Remove the retry', 'Await the refresh']);
   await planToggle.click();
   await expect(first.getByTestId('todo-plan')).toHaveCount(0);
   await first.getByTestId('todo-title').click();
   await expect(first).toHaveAttribute('data-expanded', 'true');
+  await expect(first.getByTestId('todo-title')).toBeInViewport();
   await expect(first.getByTestId('todo-description')).toHaveAttribute('data-clamped', 'false');
   await expect(first.getByTestId('todo-plan')).toBeVisible();
   await first.getByTestId('todo-title').press('Enter');
@@ -130,6 +149,9 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await edit(first);
   await expect(first.getByTestId('todo-form-title')).toHaveValue('Fix the login test flake');
   await expect(first.getByTestId('todo-form-plan')).toHaveValue(/## Context/);
+  // Save / Cancel stay in view however tall the form is (D69 review).
+  await expect(first.getByTestId('todo-form-save')).toBeInViewport();
+  await expect(first.getByTestId('todo-form-cancel')).toBeInViewport();
   await first.getByTestId('todo-form-description').press('Escape');
   await expect(first.getByTestId('todo-form')).toHaveCount(0);
   await edit(first);
@@ -218,10 +240,11 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   await form.getByTestId('todo-form-plan-toggle').click();
   await form.getByTestId('todo-form-plan').fill('1. Remove the retry\n2. Await the refresh');
   await form.getByTestId('todo-form-save').click();
-  await strip.getByTestId('todo-add').click();
+  await expect(strip.getByTestId('todo-item')).toHaveCount(1);
   await form.getByTestId('todo-form-title').fill('Update the README');
   await form.getByTestId('todo-form-description').fill('The install section is stale.');
   await form.getByTestId('todo-form-save').click();
+  await form.getByTestId('todo-form-cancel').click();
   const items = strip.getByTestId('todo-item');
   await expect(items).toHaveCount(2);
   const todoId = (await items.nth(0).getAttribute('data-todo-id')) as string;

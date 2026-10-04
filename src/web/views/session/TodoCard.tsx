@@ -64,9 +64,20 @@ export function TodoForm({
   const save = async (): Promise<void> => {
     if (!canSave) return;
     const sent = { title: title.trim(), description: description.trim() === '' ? null : description.trim(), plan: plan.trim() === '' ? null : plan.trim() };
+    const typed = { title, description, plan };
     setSaving(true);
     try {
-      await onSave(sent);
+      const ok = await onSave(sent);
+      // D69 ruling: + Add stays open for the next item, cleared and on the title (unless the fields were edited meanwhile).
+      if (ok && mode === 'add') {
+        const unchanged = (current: string, before: string): boolean => current === before;
+        setTitle((current) => (unchanged(current, typed.title) ? '' : current));
+        setDescription((current) => (unchanged(current, typed.description) ? '' : current));
+        setPlan((current) => (unchanged(current, typed.plan) ? '' : current));
+        setPlanShown(false);
+        setFocusPlan(false);
+        titleInput.current?.focus();
+      }
     } finally {
       setSaving(false);
     }
@@ -285,6 +296,16 @@ export function TodoCard({
   const isDone = todo.state === 'done';
   const title = todo.title ?? todo.text;
   const showPlan = todo.plan !== null && !isDone && (planOpen || expanded);
+  // D69 review: opening the card or its plan keeps its title row in view (the list scrolls, the row stays).
+  const row = useRef<HTMLDivElement | null>(null);
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    if (!opened.current) {
+      opened.current = true;
+      return;
+    }
+    if (expanded || showPlan) row.current?.scrollIntoView({ block: 'nearest' });
+  }, [expanded, showPlan]);
 
   if (editing) {
     return (
@@ -313,6 +334,12 @@ export function TodoCard({
     setExpanded((value) => !value);
   };
 
+  const startButton = actions.onStart ? (
+    <button type="button" className="sb-todo-start" data-testid="todo-start" disabled={disabled} title="Put this item into the message box (not sent)" onClick={actions.onStart}>
+      ▶ Start
+    </button>
+  ) : null;
+
   const entries: MenuEntry[] = [
     ...(isDone ? [] : [{ id: 'edit', label: 'Edit', disabled, run: () => setEditing(true) }]),
     { id: 'up', label: 'Move up', disabled: disabled || index <= 0, run: () => actions.onMove(-1) },
@@ -330,7 +357,7 @@ export function TodoCard({
       data-expanded={expanded ? 'true' : 'false'}
       onClick={onCardClick}
     >
-      <div className="sb-todo-card-row">
+      <div className="sb-todo-card-row" ref={row}>
         <input
           type="checkbox"
           className="sb-todo-check"
@@ -364,6 +391,8 @@ export function TodoCard({
             </>
           )}
         </span>
+        {/* D69 review: without a plan, ▶ Start sits on the title row (no row of its own). */}
+        {todo.plan === null ? startButton : null}
         <span className="sb-todo-menu-anchor">
           <button
             ref={menuButton}
@@ -380,20 +409,15 @@ export function TodoCard({
           {menuOpen ? <CardMenu entries={entries} label={`Actions for ${title}`} anchor={menuButton.current} onClose={() => setMenuOpen(false)} /> : null}
         </span>
       </div>
-      {!isDone && (todo.description || todo.plan !== null || actions.onStart) ? (
+      {!isDone && (todo.description || todo.plan !== null) ? (
         <div className="sb-todo-card-body" id={`${ids}-body`}>
           {todo.description ? (
             <div className="sb-todo-description" data-testid="todo-description" data-clamped={expanded ? 'false' : 'true'}>
               <ChatMarkdown text={todo.description} testId="todo-description-markdown" />
             </div>
           ) : null}
-          {showPlan ? (
-            <div className="sb-todo-plan" id={`${ids}-plan`} data-testid="todo-plan" role="region" aria-label={`Handover plan for ${title}`}>
-              <ChatMarkdown text={todo.plan ?? ''} testId="todo-plan-markdown" />
-            </div>
-          ) : null}
-          <div className="sb-todo-card-foot">
-            {todo.plan !== null ? (
+          {todo.plan !== null ? (
+            <div className="sb-todo-card-foot">
               <button
                 type="button"
                 className="sb-todo-plan-toggle"
@@ -409,20 +433,14 @@ export function TodoCard({
               >
                 <span aria-hidden="true">{showPlan ? '▾' : '▸'}</span> Handover plan
               </button>
-            ) : null}
-            {actions.onStart ? (
-              <button
-                type="button"
-                className="sb-todo-start"
-                data-testid="todo-start"
-                disabled={disabled}
-                title="Put this item into the message box (not sent)"
-                onClick={actions.onStart}
-              >
-                ▶ Start
-              </button>
-            ) : null}
-          </div>
+              {startButton}
+            </div>
+          ) : null}
+          {showPlan ? (
+            <div className="sb-todo-plan" id={`${ids}-plan`} data-testid="todo-plan" role="region" aria-label={`Handover plan for ${title}`}>
+              <ChatMarkdown text={todo.plan ?? ''} testId="todo-plan-markdown" />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>

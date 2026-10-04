@@ -179,9 +179,8 @@ export function TodoStrip({
 
   const add = async (fields: TodoFieldsInput): Promise<boolean> => {
     if (disabled) return false;
-    const ok = await run(() => api.addTodo(sessionId, fields));
-    if (ok) onAddingChange(false);
-    return ok;
+    // D69 ruling: the form stays open (cleared) for the next item; Esc / Cancel closes it.
+    return run(() => api.addTodo(sessionId, fields));
   };
 
   const total = open.length + done.length;

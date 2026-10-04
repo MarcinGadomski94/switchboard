@@ -113,7 +113,7 @@
 }
 
 .sb-todos-body {
-  max-height: 42vh;
+  max-height: 32vh;
   overflow-y: auto;
   padding: 6px 0 4px;
   display: flex;
@@ -163,6 +163,12 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  scroll-margin-top: 10px;
+}
+
+.sb-todo-card-row > .sb-todo-start {
+  margin-left: 0;
+  flex: none;
 }
 
 /* The round box: a native checkbox (keyboard and screen readers as usual), drawn round. */
@@ -445,14 +451,14 @@
   resize: none;
   line-height: 1.45;
   min-height: 38px;
-  max-height: 240px;
+  max-height: 120px;
   overflow-y: auto;
 }
 
 .sb-todo-form-plan {
   font-family: var(--font-mono);
   font-size: 12px;
-  max-height: 320px;
+  max-height: 160px;
 }
 
 .sb-todo-form-title:focus,
@@ -474,11 +480,18 @@
   color: var(--text);
 }
 
+/* Save / Cancel stay in view: stuck to the bottom of the scrolling list while the form is taller than it. */
 .sb-todo-form-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
+  position: sticky;
+  /* Past the list's own bottom padding, so no text shows under the buttons. */
+  bottom: -4px;
+  padding: 6px 0 10px;
+  background: var(--bg-card);
+  z-index: 1;
 }
 
 .sb-todo-form-keys {
