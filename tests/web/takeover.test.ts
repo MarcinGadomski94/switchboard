@@ -82,9 +82,10 @@ describe('D65: the repo rows and the Start rule', () => {
     expect(canStart(clone, false, {})).toBe(true);
   });
 
-  it('sends only the clone paths the developer changed', () => {
+  it('sends the clone path of every row that clones (the suggestion too, so it goes where the dialog said)', () => {
     const clone = preview({}, [resolution({ action: 'clone', matchedPath: null, cloneTo: '/code/app', cloneUrl: 'u' })]);
-    expect(clonePathsOf(clone, { app: '/code/app' })).toEqual({});
+    expect(clonePathsOf(clone, { app: '/code/app' })).toEqual({ app: '/code/app' });
+    expect(clonePathsOf(clone, { app: '  ' })).toEqual({});
     expect(clonePathsOf(clone, { app: ' /elsewhere/app ' })).toEqual({ app: '/elsewhere/app' });
     expect(clonePathsOf(preview(), { app: '/x' })).toEqual({});
   });

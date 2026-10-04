@@ -76,13 +76,13 @@ export function missingClonePath(preview: TakeoverPreview, paths: Readonly<Recor
   return preview.target.repos.some((repo) => repo.action === 'clone' && (paths[repo.key] ?? repo.cloneTo ?? '').trim() === '');
 }
 
-/** The clone paths the request carries: only what the developer typed that differs from the suggestion. */
+/** The clone paths the request carries: what is in each clone row's field (the suggestion included, so the repo goes where the dialog said). */
 export function clonePathsOf(preview: TakeoverPreview, typed: Readonly<Record<string, string>>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const repo of preview.target.repos) {
     if (repo.action !== 'clone' && repo.action !== 'blocked') continue;
     const value = typed[repo.key]?.trim();
-    if (value && value !== repo.cloneTo) out[repo.key] = value;
+    if (value) out[repo.key] = value;
   }
   return out;
 }

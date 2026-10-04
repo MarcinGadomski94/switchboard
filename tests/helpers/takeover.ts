@@ -198,6 +198,9 @@ async function startWorld(root: string, options: { readonly aRepos?: NodeRepos; 
     throw error;
   }
   try {
+    // Distinct names: the pc and the mac (every test host would otherwise name both after itself).
+    await a.call('PUT', '/api/machines/self', { name: 'pc-office' });
+    await b.call('PUT', '/api/machines/self', { name: 'mac-laptop' });
     const aAddress = await enableListener(a);
     await enableListener(b);
     await pair(a, b, aAddress);
