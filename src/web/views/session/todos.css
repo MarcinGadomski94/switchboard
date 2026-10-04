@@ -205,7 +205,7 @@
 }
 
 .sb-todo-card[data-state='open'][data-priority]:hover {
-  background: color-mix(in oklch, var(--todo-tint), var(--bg-selected-card) 60%);
+  background: color-mix(in srgb, var(--todo-tint), var(--bg-selected-card) 60%);
   border-left-color: var(--todo-edge);
 }
 

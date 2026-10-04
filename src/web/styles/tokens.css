@@ -76,10 +76,10 @@
   --todo-high-fg: oklch(0.84 0.11 75);
   --todo-medium-fg: var(--muted-2);
   --todo-low-fg: oklch(0.78 0.04 250);
-  --todo-urgent-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.66 0.17 25) 6%);
-  --todo-high-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.78 0.14 70) 4%);
+  --todo-urgent-tint: color-mix(in srgb, var(--bg-card-2), oklch(0.66 0.17 25) 4%);
+  --todo-high-tint: color-mix(in srgb, var(--bg-card-2), oklch(0.78 0.14 70) 3%);
   --todo-medium-tint: var(--bg-card-2);
-  --todo-low-tint: color-mix(in oklch, var(--bg-card-2), oklch(0.64 0.045 250) 5%);
+  --todo-low-tint: color-mix(in srgb, var(--bg-card-2), oklch(0.64 0.045 250) 4%);
 
   /* Type: Geist (UI) and Geist Mono (paths, branches, labels, terminal), self-hosted (gap #19) */
   --font-ui: Geist, system-ui, sans-serif;
