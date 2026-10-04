@@ -159,7 +159,8 @@ describe('D65: Codex and OpenCode sessions', () => {
 
     const finished = await run(w.b, { sessionId: remoteId(w.aId, started.id) });
     expect(finished.error, JSON.stringify(finished)).toBeNull();
-    expect(await rolloutsOf(path.join(w.root, 'b', 'codex-home'))).toEqual([]);
+    // The old thread's rollout was gone, so nothing was copied (a new thread's own rollout may exist by now).
+    expect(await rolloutsOf(path.join(w.root, 'b', 'codex-home'))).not.toContain(rolloutA);
     const handovers = path.join(w.b.dataDir, 'handovers');
     const exports = await listFiles(handovers);
     expect(exports).toHaveLength(1);
