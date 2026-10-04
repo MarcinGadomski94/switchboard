@@ -89,12 +89,12 @@ Open a **new** terminal afterwards so the updated `PATH` is picked up. Use the n
 
 ## Install and run
 
-The recommended way is a **release**: the UI comes pre-built, and Switchboard [updates itself](#updating). Pick a folder for it. The examples use `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Replace `1.6.1` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest).
+The recommended way is a **release**: the UI comes pre-built, and Switchboard [updates itself](#updating). Pick a folder for it. The examples use `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Replace `1.7.0` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest).
 
 ### macOS and Linux
 
 ```sh
-V=1.6.1
+V=1.7.0
 DIR=~/Applications/Switchboard            # Linux: ~/.local/opt/switchboard
 mkdir -p "$DIR" && cd "$DIR"
 curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
@@ -112,7 +112,7 @@ Prefer not to install a service? Run `npm start` in that folder instead, and kee
 In **PowerShell**:
 
 ```powershell
-$V = "1.6.1"
+$V = "1.7.0"
 $Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
 New-Item -ItemType Directory -Force $Dir | Out-Null; Set-Location $Dir
 curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz"
@@ -248,7 +248,7 @@ Every session runs on **Claude Code**, **Codex CLI** or **OpenCode**:
 **Settings → Sessions & worktrees → Standing instruction for agents:** one short instruction given to the agent of every session, on every CLI. It is on by default and asks agents to write out any proposal, table, list, plan or comparison before asking about it, and never to refer to content "above" that they did not write. Edit the text, switch it off, or **Reset to default**; a change applies to sessions started or resumed afterwards. Sessions you run yourself in a terminal are not affected. [`docs/settings.md`](docs/settings.md)
 
 ### Accounts
-Each CLI can have more than one subscription login. **Settings → Accounts** lists them per CLI in priority order (**Default** is your own login), signs them in and out (the CLI's own login: the page opens in a new tab, with a copyable terminal command as the fallback and a paste-back for a paired machine's), and holds the rules: switch automatically when a session hits its session or weekly limit (or earlier at a percentage), switch back after a reset or stay, which account new sessions start on, and what to do when every account is spent (notify, or hand over to another CLI). A session moves to the next account that has allowance, in the same chat and folder (its conversation is copied to that account), with a divider in the chat; the New-session forms and the session header show the account, **Switch account** and a **pin** stop or steer it, and the footer shows each account's usage. Switchboard never reads or stores a token. [`docs/accounts.md`](docs/accounts.md)
+Each CLI can have more than one subscription login. **Settings → Accounts** lists them per CLI in priority order (**Default** is your own login; every account, Default included, can be renamed), signs them in and out (the CLI's own login: the page opens in a new tab, with a copyable terminal command as the fallback and a paste-back for a paired machine's), and holds the rules: switch automatically when a session hits its session or weekly limit (or earlier at a percentage), switch back after a reset or stay, which account new sessions start on, and what to do when every account is spent (notify, or hand over to another CLI). A session moves to the next account that has allowance, in the same chat and folder (its conversation is copied to that account), with a divider in the chat; the New-session forms and the session header show the account, **Switch account** and a **pin** stop or steer it, and the footer shows each account's usage. Switchboard never reads or stores a token. [`docs/accounts.md`](docs/accounts.md)
 
 Neither Codex nor OpenCode was run while this was built: their protocols come from their source, pinned in [`docs/providers.md`](docs/providers.md); [`docs/spike-providers.md`](docs/spike-providers.md) lists the checks to run once they are installed.
 
@@ -312,6 +312,9 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 **More room:** slide the sidebar (**⌘B** / **Ctrl+B**) or the right panel (**⌥⌘B** / **Ctrl+Alt+B**) out with its small hide button; a slim handle at the window's edge brings it back. The choice is remembered across reloads and restarts.
 
 [`docs/chat.md`](docs/chat.md) · [`docs/session-panel.md`](docs/session-panel.md) · [`docs/model-effort.md`](docs/model-effort.md) · [`docs/panes.md`](docs/panes.md)
+
+### Todo lists
+Each session has a todo list for things that still need doing. Say "add that to the todo list" and the agent adds it through Switchboard's built-in `switchboard` MCP tools, which every session Switchboard runs gets by itself (nothing to configure); it ticks items off when they're done and checks the list when you ask what's left. The **Todo** strip above the message box lets you add, edit, reorder, tick and delete items yourself; done items are removed an hour after they're ticked (or at once with **Clear done**). The sidebar shows each session's open count, and the **Todos** page lists every session's open items. Hand-started terminal sessions keep a list too, edited from the UI only. [`docs/todos.md`](docs/todos.md)
 
 ### Inbox and notifications
 - Every question batch and permission request from every session lands in the **Inbox**. Answer it there or in the session's chat.
@@ -382,10 +385,9 @@ Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them i
 [`docs/tools.md`](docs/tools.md) · [`docs/frame-helper.md`](docs/frame-helper.md)
 
 ### Usage and footer
-The sidebar footer shows CPU, RAM in use and two usage bars (Claude Code's **Max usage**):
-- **Session.** It is colored by pace, read at most once a minute (every 5 minutes while no session is live): green while you're under the elapsed share of the 5-hour window, yellow once you're ahead of it.
-- **Week.** It is colored by pace, read on the same schedule: green while you're under the elapsed share of the 7-day window, yellow once you're ahead of it.
-- **More accounts or CLIs:** with several accounts (see *Accounts*) the bars are the active account's, with a short line listing every account's usage under them; Codex's own limits show as extra rows.
+The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line per account** (every Claude Code account and every Codex account), each with a **5h** and a **Week** mini-bar.
+- **Pace.** Claude Code bars are colored by pace, read at most once a minute (every 5 minutes while no session is live): green while you're under the elapsed share of the window, yellow once you're ahead of it.
+- **Accounts.** Lines are named after the account; ● marks the one new sessions start on, and a spent account shows when it's usable again. Hover a line for reset times, pace and model-specific weekly limits; click it to open **Settings → Accounts**.
 
 [`docs/usage.md`](docs/usage.md)
 

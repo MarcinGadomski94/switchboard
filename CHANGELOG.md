@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.7.0 (2026-10-04)
+
+### Todo lists per session
+- Each session has a todo list for things that still need doing. Ask the agent to "add that to the todo list" and it does, through Switchboard's built-in `switchboard` MCP tools (`todo_list`, `todo_add`, `todo_update`, `todo_done`, `todo_remove`). Every session Switchboard starts or resumes gets them automatically; nothing to configure, and nothing is written to your CLI config. Each session can only see and change its own list.
+- The standing instruction's default now tells agents to use the list (an edited instruction is left as you wrote it; **Reset to default** adds it).
+- A **Todo** strip above the message box: add, edit, reorder, tick and delete items yourself. Done items stay struck through and are removed an hour after they're ticked, or at once with **Clear done**.
+- The sidebar shows each session's open count; a new **Todos** page lists every session's open items, grouped by session.
+- Lists of a paired machine's sessions can be seen and edited, and a list travels with a session when it's taken over.
+- Hand-started terminal sessions (hooks) keep a list too, edited from the UI only.
+- The Codex and OpenCode tool setup has not been tried against the real CLIs yet.
+
+### Changed
+- Every account can be renamed in **Settings → Accounts**, including the built-in **Default**; texts that mention it use its current name.
+
+### Database
+- Migration 0026 (session todos) runs by itself on first start.
+
 ## 1.6.1 (2026-10-04)
 
 ### Changed
