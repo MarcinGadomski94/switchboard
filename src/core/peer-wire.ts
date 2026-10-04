@@ -10,6 +10,7 @@
  */
 import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
+import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority } from './todos.ts';
 
 /** The machine whose answers are mapped. */
 export type PeerMachineRef = SessionMachine;
@@ -102,7 +103,20 @@ export function peerTerminalLoop(machine: PeerMachineRef, entry: TerminalLoop): 
 export function peerTodo(machine: PeerMachineRef, todo: SessionTodo): SessionTodo {
   // D69: a peer still on 1.7.0 sends `text` only: it is the title, with no description or plan.
   const title = typeof todo.title === 'string' ? todo.title : String(todo.text ?? '');
-  return { ...todo, sessionId: ns(machine, todo.sessionId), title, text: title, description: todo.description ?? null, plan: todo.plan ?? null };
+  // D70: a peer on 1.7.0 / 1.8.0 sends no priority or estimate, and maybe no plan: medium, none, No plan (like migration 0028).
+  const raw = todo as Partial<SessionTodo>;
+  const plan = typeof raw.plan === 'string' && raw.plan.trim() !== '' ? raw.plan : TODO_NO_PLAN;
+  const estimate = checkTodoEstimate(raw.estimateMinutes);
+  return {
+    ...todo,
+    sessionId: ns(machine, todo.sessionId),
+    title,
+    text: title,
+    description: todo.description ?? null,
+    plan,
+    priority: isTodoPriority(raw.priority) ? raw.priority : DEFAULT_TODO_PRIORITY,
+    estimateMinutes: estimate.ok ? estimate.value : null,
+  };
 }
 
 /** D68: a peer's session todo list (`GET /api/sessions/{id}/todos` and every write's answer). */

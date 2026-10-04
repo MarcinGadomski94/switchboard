@@ -32,8 +32,8 @@ const LIST = {
   openCount: 1,
   doneCount: 1,
   todos: [
-    { id: 'aaa111', sessionId: 's1', title: 'Fix the login test', text: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race\n2. Fix it', state: 'open', addedBy: 'developer', position: 0, createdAt: '', updatedAt: '', doneAt: null, removeAt: null },
-    { id: 'bbb222', sessionId: 's1', title: 'Write docs', text: 'Write docs', description: null, plan: null, state: 'done', addedBy: 'agent', position: 1, createdAt: '', updatedAt: '', doneAt: 'x', removeAt: 'y' },
+    { id: 'aaa111', sessionId: 's1', title: 'Fix the login test', text: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race\n2. Fix it', priority: 'high', estimateMinutes: 45, state: 'open', addedBy: 'developer', position: 0, createdAt: '', updatedAt: '', doneAt: null, removeAt: null },
+    { id: 'bbb222', sessionId: 's1', title: 'Write docs', text: 'Write docs', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null, state: 'done', addedBy: 'agent', position: 1, createdAt: '', updatedAt: '', doneAt: 'x', removeAt: 'y' },
   ],
 };
 
@@ -46,15 +46,15 @@ describe('MCP messages', () => {
     expect(await handleMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, api)).toBeNull();
     expect(await handleMessage({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, api)).toEqual({ jsonrpc: '2.0', id: 3, result: { tools: TODO_TOOLS } });
     expect(TODO_TOOLS.map((tool) => tool.name)).toEqual(['todo_list', 'todo_get', 'todo_add', 'todo_update', 'todo_done', 'todo_remove']);
-    // D69: the instructions explain the three fields and that the agent fills all three.
+    // D69: the instructions explain the fields and that the agent fills them; D70: the plan's "No plan: <reason>", the priority levels, the estimate, revising.
     const instructions = String((init?.['result'] as Record<string, unknown>)['instructions']);
     expect(instructions).toBe(AGENT_MCP_INSTRUCTIONS);
-    for (const words of ['title', 'description', 'plan', 'without this conversation', 'acceptance criteria', 'fill all three', 'todo_get']) expect(instructions).toContain(words);
+    for (const words of ['title', 'description', 'plan', 'without this conversation', 'acceptance criteria', 'fill all of them', 'todo_get', 'No plan: <reason>', 'urgent = blocking', 'low = nice-to-have', 'minutes an AI agent', 'revise the priority and estimate']) expect(instructions).toContain(words);
     expect(await handleMessage({ jsonrpc: '2.0', id: 4, method: 'ping' }, api)).toEqual({ jsonrpc: '2.0', id: 4, result: {} });
     expect(await handleMessage({ jsonrpc: '2.0', id: 5, method: 'nope' }, api)).toMatchObject({ error: { code: -32601 } });
   });
 
-  it('D69: every tool and every field has a description; add / update take title, description and plan; list stays compact', () => {
+  it('D69 / D70: every tool and every field has a description; add requires plan, priority and estimate; update revises them; list stays compact', () => {
     for (const tool of TODO_TOOLS) {
       expect(tool.description.length, tool.name).toBeGreaterThan(20);
       const properties = (tool.inputSchema['properties'] ?? {}) as Record<string, { description?: string }>;
@@ -62,10 +62,21 @@ describe('MCP messages', () => {
     }
     const byName = new Map(TODO_TOOLS.map((tool) => [tool.name, tool]));
     const add = byName.get('todo_add')!;
-    expect(add.inputSchema).toMatchObject({ required: ['title'], additionalProperties: false });
-    expect(Object.keys(add.inputSchema['properties'] as object)).toEqual(['title', 'description', 'plan']);
-    expect(add.description).toContain('all three');
-    expect(Object.keys(byName.get('todo_update')!.inputSchema['properties'] as object)).toEqual(['id', 'title', 'description', 'plan']);
+    // D70: the agent's tool requires the plan, a priority and an estimate (the server still accepts older callers without).
+    expect(add.inputSchema).toMatchObject({ required: ['title', 'plan', 'priority', 'estimate_minutes'], additionalProperties: false });
+    expect(Object.keys(add.inputSchema['properties'] as object)).toEqual(['title', 'description', 'plan', 'priority', 'estimate_minutes']);
+    expect(add.description).toContain('No plan: <reason>');
+    const update = byName.get('todo_update')!;
+    expect(update.inputSchema).toMatchObject({ required: ['id'] });
+    expect(Object.keys(update.inputSchema['properties'] as object)).toEqual(['id', 'title', 'description', 'plan', 'priority', 'estimate_minutes']);
+    expect(update.description).toContain('cannot be emptied');
+    const props = add.inputSchema['properties'] as Record<string, Record<string, unknown>>;
+    expect(props['priority']).toMatchObject({ type: 'string', enum: ['urgent', 'high', 'medium', 'low'] });
+    for (const words of ['urgent = blocking', 'production down', 'data loss', 'high = important', 'medium = a normal task', 'low = nice-to-have', 'todo_update']) expect(String(props['priority']!['description'])).toContain(words);
+    expect(props['estimate_minutes']).toMatchObject({ type: 'integer', minimum: 1, maximum: 10_080 });
+    for (const words of ['minutes', 'AI agent', 'development time', 'Rough is fine']) expect(String(props['estimate_minutes']!['description'])).toContain(words);
+    expect(String(props['plan']!['description'])).toContain('Required');
+    expect(String(props['plan']!['description'])).toContain('No plan: <one-line reason>');
     expect(byName.get('todo_get')!.inputSchema).toMatchObject({ required: ['id'] });
     const plan = (add.inputSchema['properties'] as Record<string, { description: string }>)['plan']!.description;
     for (const words of ['AI agent', 'WITHOUT this conversation', 'relevant files', 'steps', 'acceptance criteria']) expect(plan).toContain(words);
@@ -87,28 +98,35 @@ describe('MCP messages', () => {
     );
     const list = await callTool(api, 'todo_list', {});
     expect(list.isError).toBeUndefined();
-    // D69: compact: the title and which notes exist, never their text.
+    // D69: compact: the title and which notes exist, never their text; D70: the priority and estimate (`~?` = none); No plan is not a plan.
     expect(list.content[0]?.text).toBe(
-      'Open (1):\n[aaa111] ☐ Fix the login test (added by the developer) · has description, plan\nDone (1, removed an hour after done):\n[bbb222] ☑ Write docs\n(todo_get shows an item\'s description and plan.)',
+      'Open (1):\n[aaa111] ☐ HIGH ~45m Fix the login test (added by the developer) · has description, plan\nDone (1, removed an hour after done):\n[bbb222] ☑ MEDIUM ~? Write docs\n(todo_get shows an item\'s description and plan.)',
     );
     expect(list.content[0]?.text).not.toContain('Retries hide');
     expect((await callTool(api, 'todo_get', { id: 'aaa111' })).content[0]?.text).toBe(
-      '[aaa111] ☐ open · added by the developer\nTitle: Fix the login test\n\nDescription:\nRetries hide a race.\n\nPlan:\n1. Find the race\n2. Fix it',
+      '[aaa111] ☐ open · added by the developer\nTitle: Fix the login test\nPriority: High\nEstimate: ~45m (45 minutes for an AI agent)\n\nDescription:\nRetries hide a race.\n\nPlan:\n1. Find the race\n2. Fix it',
     );
-    expect((await callTool(api, 'todo_add', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race' })).content[0]?.text).toMatch(/^Added \[aaa111\]/);
-    await callTool(api, 'todo_add', { text: 'Old-style text' });
+    expect((await callTool(api, 'todo_add', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race', priority: 'high', estimate_minutes: 45 })).content[0]?.text).toMatch(/^Added \[aaa111\]/);
+    await callTool(api, 'todo_add', { text: 'Old-style text', plan: 'No plan: a one-line rename', priority: 'low', estimate_minutes: 5 });
+    // D70: the tool requires a plan, a priority and an estimate: the helper says what is missing and sends nothing.
+    const missing = await callTool(api, 'todo_add', { title: 'No sizing' });
+    expect(missing.isError).toBe(true);
+    for (const words of ['a plan', 'No plan: <one-line reason>', 'a priority', 'estimate_minutes']) expect(missing.content[0]?.text).toContain(words);
+    expect((await callTool(api, 'todo_add', { title: 'Bad', plan: 'p', priority: 'asap', estimate_minutes: 1.5 })).content[0]?.text).toMatch(/priority.*estimate_minutes/);
     expect((await callTool(api, 'todo_done', { id: '[aaa111]' })).content[0]?.text).toMatch(/^Done: \[aaa111\] ☑/);
     await callTool(api, 'todo_done', { id: 'aaa111', done: false });
     await callTool(api, 'todo_update', { id: 'aaa111', title: 'Fix both login tests', plan: '' });
+    await callTool(api, 'todo_update', { id: 'aaa111', priority: 'urgent', estimate_minutes: 90 });
     expect((await callTool(api, 'todo_remove', { id: 'aaa111' })).content[0]?.text).toMatch(/^Removed\./);
     expect(calls).toEqual([
       ['GET', '/agent/v1/todos', undefined],
       ['GET', '/agent/v1/todos/aaa111', undefined],
-      ['POST', '/agent/v1/todos', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race' }],
-      ['POST', '/agent/v1/todos', { title: 'Old-style text' }],
+      ['POST', '/agent/v1/todos', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race', priority: 'high', estimateMinutes: 45 }],
+      ['POST', '/agent/v1/todos', { title: 'Old-style text', plan: 'No plan: a one-line rename', priority: 'low', estimateMinutes: 5 }],
       ['PUT', '/agent/v1/todos/aaa111', { state: 'done' }],
       ['PUT', '/agent/v1/todos/aaa111', { state: 'open' }],
       ['PUT', '/agent/v1/todos/aaa111', { title: 'Fix both login tests', plan: '' }],
+      ['PUT', '/agent/v1/todos/aaa111', { priority: 'urgent', estimateMinutes: 90 }],
       ['DELETE', '/agent/v1/todos/aaa111', undefined],
     ]);
   });
@@ -199,20 +217,20 @@ describe('the real helper over stdio against a listening Switchboard', () => {
     const answers = await run(port, a, agentTokenFor(secret, a), [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
-      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'todo_add', arguments: { title: 'Check the migration', description: 'Make sure 0027 keeps the rows.', plan: 'Run the migration test.' } } },
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'todo_add', arguments: { title: 'Check the migration', description: 'Make sure 0027 keeps the rows.', plan: 'Run the migration test.', priority: 'high', estimate_minutes: 20 } } },
       { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'todo_list', arguments: {} } },
     ]);
     expect(answers.map((m) => m['id'])).toEqual([1, 2, 3]);
     const listText = ((answers[2]?.['result'] as { content: Array<{ text: string }> }).content[0] as { text: string }).text;
-    expect(listText).toMatch(/^Open \(1\):\n\[[0-9a-f]{12}\] ☐ Check the migration · has description, plan\n/);
-    expect((await store.todos.list(a)).map((t) => [t.title, t.description, t.plan, t.addedBy])).toEqual([['Check the migration', 'Make sure 0027 keeps the rows.', 'Run the migration test.', 'agent']]);
+    expect(listText).toMatch(/^Open \(1\):\n\[[0-9a-f]{12}\] ☐ HIGH ~20m Check the migration · has description, plan\n/);
+    expect((await store.todos.list(a)).map((t) => [t.title, t.description, t.plan, t.priority, t.estimateMinutes, t.addedBy])).toEqual([['Check the migration', 'Make sure 0027 keeps the rows.', 'Run the migration test.', 'high', 20, 'agent']]);
     // D69: todo_get through the real helper and route.
     const itemId = (await store.todos.list(a))[0]!.id;
     const got = await run(port, a, agentTokenFor(secret, a), [{ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'todo_get', arguments: { id: itemId } } }]);
     expect(((got[0]?.['result'] as { content: Array<{ text: string }> }).content[0] as { text: string }).text).toContain('Plan:\nRun the migration test.');
 
     // Session A's token, presented as session B: refused, nothing written.
-    const refused = await run(port, b, agentTokenFor(secret, a), [{ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'todo_add', arguments: { text: 'sneaky' } } }]);
+    const refused = await run(port, b, agentTokenFor(secret, a), [{ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'todo_add', arguments: { text: 'sneaky', plan: 'No plan: test', priority: 'low', estimate_minutes: 1 } } }]);
     expect(refused[0]?.['result']).toMatchObject({ isError: true });
     expect(await store.todos.list(b)).toEqual([]);
   });

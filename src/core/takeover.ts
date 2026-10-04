@@ -1,4 +1,4 @@
-import type { TodoAuthor, TodoState } from './api.ts';
+import type { TodoAuthor, TodoPriority, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 
@@ -132,8 +132,21 @@ export interface SourceInspect {
    * Additive (D68): the session's todo list, in order (re-created on the target before the
    * agent's first turn). Absent from an older Switchboard: the list stays behind. D69: each
    * item also carries `title`, `description` and `plan`; `text` (= title) stays for a 1.7.0 target.
+   * D70: and `priority` and `estimateMinutes` (an older target ignores them; from an older
+   * source they are medium and none, its missing plan `No plan`).
    */
-  readonly todos?: ReadonlyArray<{ readonly text: string; readonly title?: string; readonly description?: string | null; readonly plan?: string | null; readonly state: TodoState; readonly addedBy: TodoAuthor; readonly createdAt: string; readonly doneAt: string | null }>;
+  readonly todos?: ReadonlyArray<{
+    readonly text: string;
+    readonly title?: string;
+    readonly description?: string | null;
+    readonly plan?: string | null;
+    readonly priority?: TodoPriority;
+    readonly estimateMinutes?: number | null;
+    readonly state: TodoState;
+    readonly addedBy: TodoAuthor;
+    readonly createdAt: string;
+    readonly doneAt: string | null;
+  }>;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
 }

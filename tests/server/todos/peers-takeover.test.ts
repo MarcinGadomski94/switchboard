@@ -35,18 +35,18 @@ async function run(node: PeerNode, body: Record<string, unknown>): Promise<Run> 
   }, 90_000);
 }
 
-describe('D68 / D69 · todos of a paired machine', () => {
+describe('D68 / D69 / D70 · todos of a paired machine', () => {
   it('are edited through the proxy, listed on the Todos page and travel with a take-over', async () => {
     const w = (world = await takeoverWorld(tmp));
     const started = await startRepoSession(w.a, w.folders.a.alpha as string, 'todo-peer');
     const remote = remoteId(w.aId, started.id);
 
     // The mac edits the pc's session's list: the answers carry the remote ids; the pc stores it.
-    const added = await w.b.call('POST', `/api/sessions/${encodeURIComponent(remote)}/todos`, { title: 'Ship the migration', description: 'For 1.8.', plan: 'Run 0027 on a copy first.' });
+    const added = await w.b.call('POST', `/api/sessions/${encodeURIComponent(remote)}/todos`, { title: 'Ship the migration', description: 'For 1.8.', plan: 'Run 0027 on a copy first.', priority: 'high', estimateMinutes: 45 });
     expect(added.status, JSON.stringify(added.body)).toBe(201);
     const list = added.body as SessionTodoList;
     expect(list.sessionId).toBe(remote);
-    expect(list.todos[0]).toMatchObject({ sessionId: remote, title: 'Ship the migration', text: 'Ship the migration', description: 'For 1.8.', plan: 'Run 0027 on a copy first.', addedBy: 'developer' });
+    expect(list.todos[0]).toMatchObject({ sessionId: remote, title: 'Ship the migration', text: 'Ship the migration', description: 'For 1.8.', plan: 'Run 0027 on a copy first.', priority: 'high', estimateMinutes: 45, addedBy: 'developer' });
     const second = (await w.b.call('POST', `/api/sessions/${encodeURIComponent(remote)}/todos`, { text: 'Done already' })).body as SessionTodoList;
     const doneId = second.todos[1]?.id as string;
     expect((await w.b.call('PUT', `/api/sessions/${encodeURIComponent(remote)}/todos/${doneId}`, { state: 'done' })).status).toBe(200);
@@ -72,10 +72,10 @@ describe('D68 / D69 · todos of a paired machine', () => {
     const created = ((await w.b.call('GET', '/api/sessions')).body as Session[]).find((s) => s.movedFrom?.sessionId === started.id) as Session;
     expect(created).toBeTruthy();
     const moved = (await w.b.call('GET', `/api/sessions/${created.id}/todos`)).body as SessionTodoList;
-    // D69: with the description and plan.
-    expect(moved.todos.map((t) => [t.title, t.description, t.plan, t.state, t.addedBy])).toEqual([
-      ['Ship the migration', 'For 1.8.', 'Run 0027 on a copy first.', 'open', 'developer'],
-      ['Done already', null, null, 'done', 'developer'],
+    // D69: with the description and plan; D70: the priority and estimate (an item added without a plan has No plan).
+    expect(moved.todos.map((t) => [t.title, t.description, t.plan, t.priority, t.estimateMinutes, t.state, t.addedBy])).toEqual([
+      ['Ship the migration', 'For 1.8.', 'Run 0027 on a copy first.', 'high', 45, 'open', 'developer'],
+      ['Done already', null, 'No plan', 'medium', null, 'done', 'developer'],
     ]);
     expect(created.openTodoCount).toBe(1);
   }, 150_000);

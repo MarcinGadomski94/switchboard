@@ -2247,6 +2247,12 @@ export type TodoState = 'open' | 'done';
 /** D68: who added an item: the developer (the UI) or the session's agent (the `switchboard` MCP tools). */
 export type TodoAuthor = 'developer' | 'agent';
 
+/**
+ * D70 (`docs/todos.md` → *Priority and estimate*): an item's priority. Open items
+ * sort by it (urgent first), their manual order within a level.
+ */
+export type TodoPriority = 'urgent' | 'high' | 'medium' | 'low';
+
 /** D68: one item of a session's todo list. */
 export interface SessionTodo {
   readonly id: string;
@@ -2256,8 +2262,16 @@ export interface SessionTodo {
   readonly title: string;
   /** D69: for the developer: plain, brief Markdown; `null` when there is none. */
   readonly description: string | null;
-  /** D69: the handover plan for an AI agent (context, files, steps, acceptance criteria), Markdown; `null` when there is none. */
-  readonly plan: string | null;
+  /**
+   * D69: the handover plan for an AI agent (context, files, steps, acceptance criteria), Markdown.
+   * D70: never empty: `No plan` (or `No plan: <reason>`) when there is nothing to plan; an
+   * older peer's item without one reads as `No plan`.
+   */
+  readonly plan: string;
+  /** D70: urgent / high / medium / low (an older peer's item reads as `medium`). */
+  readonly priority: TodoPriority;
+  /** D70: how long an AI agent would take to do it (development time), whole minutes 1–10,080; `null` = not estimated. */
+  readonly estimateMinutes: number | null;
   /** D68 name of {@link title}, kept for a peer still on 1.7.0 (D48): always equal to `title`. */
   readonly text: string;
   readonly state: TodoState;
@@ -2294,8 +2308,10 @@ export interface TodoGroup {
 }
 
 /**
- * D68 / D69: body of `POST /api/sessions/{id}/todos` (and the agent's `POST /agent/v1/todos`):
- * `title` (or its D68 alias `text`), optional `description` and `plan`.
+ * D68 / D69 / D70: body of `POST /api/sessions/{id}/todos` (and the agent's `POST /agent/v1/todos`):
+ * `title` (or its D68 alias `text`), optional `description`, the `plan` (D70: an absent or
+ * blank one is stored as `No plan`, so an older client still adds), `priority` (absent =
+ * `medium`) and `estimateMinutes` (absent = not estimated).
  */
 export interface NewTodoInput {
   readonly title?: string;
@@ -2303,26 +2319,34 @@ export interface NewTodoInput {
   readonly text?: string;
   readonly description?: string | null;
   readonly plan?: string | null;
+  readonly priority?: TodoPriority;
+  readonly estimateMinutes?: number | null;
 }
 
 /**
- * D68 / D69: body of `PUT /api/sessions/{id}/todos/{todoId}`: a new title (or `text`),
- * description, plan (`''` or `null` removes it), and / or tick (`done`) / untick (`open`).
+ * D68 / D69 / D70: body of `PUT /api/sessions/{id}/todos/{todoId}`: a new title (or `text`),
+ * description (`''` or `null` removes it), plan, priority, estimate, and / or tick (`done`) / untick (`open`).
  */
 export interface TodoPatchInput {
   readonly title?: string;
   /** D68 alias of `title`. */
   readonly text?: string;
   readonly description?: string | null;
-  readonly plan?: string | null;
+  /** D70: a new plan; it cannot be emptied (422): write `No plan: <reason>` instead. */
+  readonly plan?: string;
+  readonly priority?: TodoPriority;
+  /** D70: `null` removes the estimate. */
+  readonly estimateMinutes?: number | null;
   readonly state?: TodoState;
 }
 
-/** D69: an item's three fields as the UI's form gives them (`null` = none). */
+/** D69 / D70: an item's fields as the UI's form gives them (`null` = none). */
 export interface TodoFieldsInput {
   readonly title: string;
   readonly description: string | null;
-  readonly plan: string | null;
+  readonly plan: string;
+  readonly priority: TodoPriority;
+  readonly estimateMinutes: number | null;
 }
 
 /** D68: body of `PUT /api/sessions/{id}/todos/order`: every item id of the session, in the new order. */

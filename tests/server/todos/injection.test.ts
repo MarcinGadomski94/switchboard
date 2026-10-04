@@ -148,13 +148,13 @@ describe('injection at spawn, against the fakes', () => {
   });
 });
 
-describe('the standing instruction (D64 + D68 + D69)', () => {
-  it('the default tells the agent to use the switchboard todo tools and fill all three fields, in one short sentence', () => {
-    // D69: the bound went from 400 to 450 characters for the title / description / handover plan words.
+describe('the standing instruction (D64 + D68 + D69 + D70)', () => {
+  it('the default tells the agent to use the switchboard todo tools and fill every field, in one short sentence', () => {
+    // D69: the bound went from 400 to 450 characters for the title / description / handover plan words; D70: to 510 for the plan / priority / estimate words (502).
     expect(DEFAULT_STANDING_INSTRUCTION).toContain(
-      "Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.",
+      "Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.",
     );
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(450);
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(510);
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[0] as string)).toBe(true);
   });
 
@@ -168,6 +168,12 @@ describe('the standing instruction (D64 + D68 + D69)', () => {
     expect(d68).toContain('use the switchboard todo tools; mark items done');
     expect(currentStandingInstruction(d68)).toBe(DEFAULT_STANDING_INSTRUCTION);
     expect(currentStandingInstruction(`${d68} And mine.`)).toBe(`${d68} And mine.`);
+    // D70: 1.8.0's default (D69's sentence) is a default too: it gets the priority and estimate.
+    const d69 = PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[2] as string;
+    expect(d69).toContain('and fill a title, a short description and a handover plan from the conversation; mark items done');
+    expect(currentStandingInstruction(d69)).toBe(DEFAULT_STANDING_INSTRUCTION);
+    expect(currentStandingInstruction(`${d69}\nAlso be brief.`)).toBe(`${d69}\nAlso be brief.`);
+    expect(readKnownSettings({ 'agents.standingInstruction': d69 })['agents.standingInstruction']).toBe(DEFAULT_STANDING_INSTRUCTION);
     expect(readKnownSettings({ 'agents.standingInstruction': old })['agents.standingInstruction']).toBe(DEFAULT_STANDING_INSTRUCTION);
     world = await makeSupervisorWorld({ standingInstruction: true });
     await world.store.settings.set('agents.standingInstruction', old);

@@ -7,7 +7,7 @@
  *
  * It speaks MCP over stdio (newline-delimited JSON-RPC 2.0: `initialize`,
  * `tools/list`, `tools/call`, `ping`) and serves six tools, `todo_list`,
- * `todo_get` (D69), `todo_add`, `todo_update`, `todo_done`, `todo_remove`, each one call to the
+ * `todo_get` (D69), `todo_add`, `todo_update` (D70: with priority and estimate), `todo_done`, `todo_remove`, each one call to the
  * local Switchboard's `/agent/v1/todos` (127.0.0.1 only). The token authorizes
  * that one session's list and nothing else; the helper never reads any other
  * file or variable. A failing call answers a tool error the agent can read
@@ -15,7 +15,20 @@
  */
 import http from 'node:http';
 import type { SessionTodo, SessionTodoList } from '../core/api.ts';
-import { AGENT_MCP_INSTRUCTIONS, AGENT_MCP_MARKER, AGENT_MCP_SERVER, AGENT_SESSION_HEADER, AGENT_TOKEN_ENV, TODO_TOOLS, todoDetailText, todoLine, todoListText } from '../core/todos.ts';
+import {
+  AGENT_MCP_INSTRUCTIONS,
+  AGENT_MCP_MARKER,
+  AGENT_MCP_SERVER,
+  AGENT_SESSION_HEADER,
+  AGENT_TOKEN_ENV,
+  TODO_ESTIMATE_MAX,
+  TODO_PRIORITIES,
+  TODO_TOOLS,
+  isTodoPriority,
+  todoDetailText,
+  todoLine,
+  todoListText,
+} from '../core/todos.ts';
 
 /** The MCP protocol versions this helper speaks; it answers the client's when it is one of them, else the newest. */
 export const MCP_PROTOCOL_VERSIONS: readonly string[] = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -105,6 +118,29 @@ function notes(input: Record<string, unknown>): { description?: string; plan?: s
   };
 }
 
+/** D70: the priority and estimate a call gives (`estimate_minutes`, the tool's name, becomes the API's `estimateMinutes`). */
+function sizing(input: Record<string, unknown>): { priority?: unknown; estimateMinutes?: unknown } {
+  const estimate = input['estimate_minutes'] ?? input['estimateMinutes'];
+  return {
+    ...(input['priority'] !== undefined ? { priority: input['priority'] } : {}),
+    ...(estimate !== undefined ? { estimateMinutes: estimate } : {}),
+  };
+}
+
+/**
+ * D70: why a `todo_add` call cannot be sent (its tool schema requires a plan, a
+ * priority and an estimate), `null` when it can. The server itself still accepts an
+ * older shape (ruling D70); the helper is what the agent's tool reaches.
+ */
+function missingForAdd(input: Record<string, unknown>): string | null {
+  const missing: string[] = [];
+  if (typeof input['plan'] !== 'string' || input['plan'].trim() === '') missing.push('a plan (a handover plan for an agent, or "No plan: <one-line reason>")');
+  if (!isTodoPriority(input['priority'])) missing.push(`a priority (${TODO_PRIORITIES.join(', ')})`);
+  const estimate = input['estimate_minutes'] ?? input['estimateMinutes'];
+  if (typeof estimate !== 'number' || !Number.isInteger(estimate) || estimate < 1 || estimate > TODO_ESTIMATE_MAX) missing.push(`estimate_minutes (whole minutes an AI agent would take, 1–${TODO_ESTIMATE_MAX})`);
+  return missing.length ? `Give ${missing.join(', ')}.` : null;
+}
+
 function isTodo(body: unknown): body is SessionTodo {
   const value = record(body);
   return typeof value['id'] === 'string' && typeof (value['title'] ?? value['text']) === 'string';
@@ -128,15 +164,17 @@ export async function callTool(api: AgentApi, name: string, args: unknown): Prom
       case 'todo_add': {
         // D69: `text` (the D68 field) still names the title.
         const title = input['title'] ?? input['text'];
-        if (typeof title !== 'string') return textResult('Give the item a title (one short line); add a description and a handover plan too.', true);
-        answer = await api('POST', '/agent/v1/todos', { title, ...notes(input) });
+        if (typeof title !== 'string') return textResult('Give the item a title (one short line); add a description, a handover plan, a priority and an estimate too.', true);
+        const missing = missingForAdd(input);
+        if (missing) return textResult(missing, true);
+        answer = await api('POST', '/agent/v1/todos', { title, ...notes(input), ...sizing(input) });
         break;
       }
       case 'todo_update': {
         if (needId()) return needId() as ToolResult;
         const title = input['title'] ?? input['text'];
-        const patch = { ...(typeof title === 'string' ? { title } : {}), ...notes(input) };
-        if (Object.keys(patch).length === 0) return textResult('Give a new title, description and / or plan.', true);
+        const patch = { ...(typeof title === 'string' ? { title } : {}), ...notes(input), ...sizing(input) };
+        if (Object.keys(patch).length === 0) return textResult('Give a new title, description, plan, priority and / or estimate_minutes.', true);
         answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, patch);
         break;
       }

@@ -63,10 +63,11 @@ export function isNewSessionMode(value: unknown): value is NewSessionMode {
  * every session. It stops an agent asking about content it never wrote ("the
  * table above" that only existed in its head). D68 added one sentence: the
  * session's todo list goes through the built-in `switchboard` MCP tools; D69: the
- * agent fills a title, a short description and a handover plan.
+ * agent fills a title, a short description and a handover plan; D70: also a priority
+ * and an estimate (minutes), a plan is always given (`No plan: reason` allowed).
  */
 export const DEFAULT_STANDING_INSTRUCTION =
-  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.";
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.";
 
 /**
  * D68: earlier defaults. A stored text equal to one of them (saved unchanged, or
@@ -78,6 +79,8 @@ export const PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS: readonly string[] = [
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.",
   // D68 (1.7.0): before D69's title, description and handover plan.
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.",
+  // D69 (1.8.0): before D70's priority, estimate and mandatory plan.
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.",
 ];
 
 /** D68: the stored instruction as it applies now (an earlier default is the current default). */

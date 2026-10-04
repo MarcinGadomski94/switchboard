@@ -132,12 +132,18 @@ describe('title, description and plan (D69)', () => {
     expect(item).toMatchObject({ title: 'Fix the login test flake', text: 'Fix the login test flake', description: 'Retries hide a race.', plan: '## Steps\n1. Find the race' });
     // A 1.7.0 client sends `text` only: it is the title; title wins when both come.
     const legacy = ((await ui('POST', `/api/sessions/${id}/todos`, { text: 'Rename PROJ-12 keys' })).json() as SessionTodoList).todos[1]!;
-    expect(legacy).toMatchObject({ title: 'Rename PROJ-12 keys', text: 'Rename PROJ-12 keys', description: null, plan: null });
+    // D70: without a plan it is "No plan", medium, not estimated (not a 422: older clients keep adding).
+    expect(legacy).toMatchObject({ title: 'Rename PROJ-12 keys', text: 'Rename PROJ-12 keys', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null });
     expect(((await ui('POST', `/api/sessions/${id}/todos`, { title: 'Title wins', text: 'ignored' })).json() as SessionTodoList).todos[2]).toMatchObject({ title: 'Title wins' });
-    // Edit: only the given fields change; '' or null removes a description / plan.
+    // Edit: only the given fields change; '' or null removes a description; D70: a plan cannot be emptied (422, nothing changes).
     const edited = (await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { description: '' })).json() as SessionTodoList;
     expect(edited.todos[0]).toMatchObject({ title: 'Fix the login test flake', description: null, plan: '## Steps\n1. Find the race' });
-    expect(((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { plan: null, title: 'Fix it' })).json() as SessionTodoList).todos[0]).toMatchObject({ title: 'Fix it', text: 'Fix it', plan: null });
+    for (const plan of [null, '', '  ']) {
+      const refused = await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { plan, title: 'Fix it' });
+      expect(refused.statusCode).toBe(422);
+      expect(refused.json()).toMatchObject({ error: 'invalid', message: expect.stringContaining('No plan: <one-line reason>') });
+    }
+    expect(((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { plan: 'No plan', title: 'Fix it' })).json() as SessionTodoList).todos[0]).toMatchObject({ title: 'Fix it', text: 'Fix it', plan: 'No plan' });
     expect(((await ui('PUT', `/api/sessions/${id}/todos/${legacy.id}`, { text: 'Renamed by 1.7.0' })).json() as SessionTodoList).todos[1]).toMatchObject({ title: 'Renamed by 1.7.0' });
     // Limits: title 1–120, one line; description 4,000; plan 8,000.
     for (const body of [{ title: 'x'.repeat(121) }, { title: 'two\nlines' }, { title: 'ok', description: 'd'.repeat(4_001) }, { title: 'ok', plan: 'p'.repeat(8_001) }, { title: 'ok', plan: 5 }]) {
@@ -156,6 +162,42 @@ describe('title, description and plan (D69)', () => {
     expect((await agent(a, bearer, 'GET', '/agent/v1/todos/nope')).statusCode).toBe(404);
     const itemB = ((await ui('POST', `/api/sessions/${b}/todos`, { title: 'B only' })).json() as SessionTodoList).todos[0]!;
     expect((await agent(a, bearer, 'GET', `/agent/v1/todos/${itemB.id}`)).statusCode).toBe(404);
+  });
+});
+
+describe('priority, estimate and the mandatory plan (D70)', () => {
+  it('the UI and the agent set and revise priority and estimate; bad values are 422; a missing plan is No plan, an emptied one 422', async () => {
+    const id = await session('sizing');
+    const added = await ui('POST', `/api/sessions/${id}/todos`, { title: 'Fix prod login', plan: 'Roll back PROJ-7.', priority: 'urgent', estimateMinutes: 30 });
+    expect(added.statusCode).toBe(201);
+    const item = (added.json() as SessionTodoList).todos[0]!;
+    expect(item).toMatchObject({ plan: 'Roll back PROJ-7.', priority: 'urgent', estimateMinutes: 30 });
+    for (const body of [
+      { title: 'ok', priority: 'asap' },
+      { title: 'ok', priority: 'URGENT' },
+      { title: 'ok', estimateMinutes: 0 },
+      { title: 'ok', estimateMinutes: 10_081 },
+      { title: 'ok', estimateMinutes: 1.5 },
+      { title: 'ok', estimateMinutes: '45' },
+    ]) {
+      expect((await ui('POST', `/api/sessions/${id}/todos`, body)).statusCode, JSON.stringify(body)).toBe(422);
+    }
+    expect((await ui('POST', `/api/sessions/${id}/todos`, { title: 'A week', estimateMinutes: 10_080, priority: 'low' })).statusCode).toBe(201);
+    // Revise: the priority and the estimate; null removes the estimate.
+    const revised = (await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { priority: 'high', estimateMinutes: 90 })).json() as SessionTodoList;
+    expect(revised.todos[0]).toMatchObject({ priority: 'high', estimateMinutes: 90, plan: 'Roll back PROJ-7.' });
+    expect(((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { estimateMinutes: null })).json() as SessionTodoList).todos[0]).toMatchObject({ priority: 'high', estimateMinutes: null });
+    expect((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { priority: 'later' })).statusCode).toBe(422);
+    expect((await ui('PUT', `/api/sessions/${id}/todos/${item.id}`, { estimateMinutes: 0 })).statusCode).toBe(422);
+
+    // The agent route: full fields; an older tool shape (no plan / priority / estimate) still adds, with the defaults.
+    const bearer = agentTokenFor(token, id);
+    const full = (await agent(id, bearer, 'POST', '/agent/v1/todos', { title: 'Add the index', plan: 'No plan: one line in 0028', priority: 'low', estimateMinutes: 10 })).json() as { todo: SessionTodoList['todos'][number] };
+    expect(full.todo).toMatchObject({ plan: 'No plan: one line in 0028', priority: 'low', estimateMinutes: 10, addedBy: 'agent' });
+    const old = (await agent(id, bearer, 'POST', '/agent/v1/todos', { text: 'From an old tool' })).json() as { todo: SessionTodoList['todos'][number] };
+    expect(old.todo).toMatchObject({ title: 'From an old tool', plan: 'No plan', priority: 'medium', estimateMinutes: null });
+    expect((await agent(id, bearer, 'PUT', `/agent/v1/todos/${full.todo.id}`, { plan: '' })).statusCode).toBe(422);
+    expect((await agent(id, bearer, 'PUT', `/agent/v1/todos/${full.todo.id}`, { priority: 'urgent', estimateMinutes: 25 })).json()).toMatchObject({ todo: { priority: 'urgent', estimateMinutes: 25 } });
   });
 });
 
@@ -232,7 +274,17 @@ describe('peers (D48 / D68)', () => {
     expect(peerAnswerKind('GET', '/api/todos')).toBe('todo-groups');
     const mapped = mapPeerAnswer(MACHINE, 'todo-list', list) as SessionTodoList;
     expect(mapped.sessionId).toBe('r~abcdefghijkl~s1');
-    expect(mapped.todos[0]).toMatchObject({ id: 't1', sessionId: 'r~abcdefghijkl~s1', title: 'x', text: 'x', description: null, plan: null });
+    // D70: an older peer's item is medium, not estimated, No plan.
+    expect(mapped.todos[0]).toMatchObject({ id: 't1', sessionId: 'r~abcdefghijkl~s1', title: 'x', text: 'x', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null });
+    // A 1.8.0 peer's (a null plan) likewise; a 1.9 peer's fields pass through; junk falls back.
+    const v18 = { ...legacyItem, title: 'y', plan: null } as unknown as SessionTodoList['todos'][number];
+    const v19 = { ...legacyItem, title: 'z', plan: 'Steps', priority: 'urgent', estimateMinutes: 30 } as unknown as SessionTodoList['todos'][number];
+    const junk = { ...legacyItem, title: 'j', plan: '  ', priority: 'asap', estimateMinutes: -3 } as unknown as SessionTodoList['todos'][number];
+    expect((mapPeerAnswer(MACHINE, 'todo-list', { ...list, todos: [v18, v19, junk] }) as SessionTodoList).todos.map((t) => [t.title, t.plan, t.priority, t.estimateMinutes])).toEqual([
+      ['y', 'No plan', 'medium', null],
+      ['z', 'Steps', 'urgent', 30],
+      ['j', 'No plan', 'medium', null],
+    ]);
     const group: TodoGroup = { sessionId: 's1', title: 'T', solutions: [], folderPath: null, machine: null, lastActivityAt: null, todos: list.todos };
     expect((mapPeerAnswer(MACHINE, 'todo-groups', [group]) as TodoGroup[])[0]).toMatchObject({ sessionId: 'r~abcdefghijkl~s1', machine: { id: MACHINE.id, name: 'studio-pc' } });
     expect(peerHubEvent(MACHINE, 'todosChanged', { sessionId: 's1', openCount: 2, doneCount: 0 })).toEqual({ sessionId: 'r~abcdefghijkl~s1', openCount: 2, doneCount: 0 });

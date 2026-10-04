@@ -1,18 +1,23 @@
 import { randomBytes } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
-import type { TodoAuthor, TodoState } from '../../../core/api.ts';
+import type { TodoAuthor, TodoPriority, TodoState } from '../../../core/api.ts';
 import type { RepoContext } from '../context.ts';
 import { placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
 import { StoreError, Table, type TableSpec } from '../table.ts';
 
-/** D68: a stored todo item (`session_todos`, migration 0026; D69: 0027's title, description and plan). */
+/** D68: a stored todo item (`session_todos`, migration 0026; D69: 0027's title, description and plan; D70: 0028's priority and estimate). */
 export interface TodoRecord {
   readonly id: string;
   readonly sessionId: string;
   readonly title: string;
   readonly description: string | null;
+  /** D70: never empty once written by the service (0028 filled the old ones); `null` only in a row written outside it. */
   readonly plan: string | null;
+  /** D70: urgent / high / medium / low. */
+  readonly priority: TodoPriority;
+  /** D70: minutes an AI agent would take, 1–10,080; `null` = not estimated. */
+  readonly estimateMinutes: number | null;
   readonly state: TodoState;
   readonly addedBy: TodoAuthor;
   readonly position: number;
@@ -30,6 +35,8 @@ const SPEC: TableSpec<TodoRecord> = {
     title: ['title', 'text'],
     description: ['description', 'text'],
     plan: ['plan', 'text'],
+    priority: ['priority', 'text'],
+    estimateMinutes: ['estimate_minutes', 'int'],
     state: ['state', 'text'],
     addedBy: ['added_by', 'text'],
     position: ['position', 'int'],
@@ -39,8 +46,14 @@ const SPEC: TableSpec<TodoRecord> = {
   },
 };
 
-/** D69: an item's three fields (title 1–120 characters; description and plan `null` when none). */
-export type TodoFields = Pick<TodoRecord, 'title' | 'description' | 'plan'>;
+/** D69 / D70: an item's fields (title 1–120 characters; description `null` when none; the plan; priority; estimate). */
+export interface TodoFields {
+  readonly title: string;
+  readonly description: string | null;
+  readonly plan: string;
+  readonly priority: TodoPriority;
+  readonly estimateMinutes: number | null;
+}
 
 /** A new item's id: 12 hex characters (short enough for an agent to quote). */
 function newId(): string {
@@ -105,26 +118,54 @@ export class TodoRepository {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
-      return this.#table.insert({ id: newId(), sessionId, title: fields.title, description: fields.description, plan: fields.plan, state: 'open', addedBy, position: Number(row?.['next'] ?? 0), createdAt: now, updatedAt: now, doneAt: null });
+      return this.#table.insert({
+        id: newId(),
+        sessionId,
+        title: fields.title,
+        description: fields.description,
+        plan: fields.plan,
+        priority: fields.priority,
+        estimateMinutes: fields.estimateMinutes,
+        state: 'open',
+        addedBy,
+        position: Number(row?.['next'] ?? 0),
+        createdAt: now,
+        updatedAt: now,
+        doneAt: null,
+      });
     });
   }
 
   /** Copies items into `sessionId` (a take-over, D65): their fields, state, author and order; their done time is kept. */
-  async import(sessionId: string, items: ReadonlyArray<Pick<TodoRecord, 'title' | 'description' | 'plan' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>>): Promise<number> {
+  async import(sessionId: string, items: ReadonlyArray<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'>>): Promise<number> {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
       let position = Number(row?.['next'] ?? 0);
       for (const item of items) {
         const doneAt = item.state === 'done' ? (item.doneAt ?? now) : null;
-        this.#table.insert({ id: newId(), sessionId, title: item.title, description: item.description, plan: item.plan, state: item.state, addedBy: item.addedBy, position, createdAt: item.createdAt, updatedAt: now, doneAt });
+        this.#table.insert({
+          id: newId(),
+          sessionId,
+          title: item.title,
+          description: item.description,
+          plan: item.plan,
+          priority: item.priority,
+          estimateMinutes: item.estimateMinutes,
+          state: item.state,
+          addedBy: item.addedBy,
+          position,
+          createdAt: item.createdAt,
+          updatedAt: now,
+          doneAt,
+        });
         position += 1;
       }
       return items.length;
     });
   }
 
-  /** D69: new title, description and / or plan (each only when given); `null` when there is no such item. */
+  /** D69 / D70: new title, description, plan, priority and / or estimate (each only when given); `null` when there is no such item. */
   async setFields(id: string, fields: Partial<TodoFields>): Promise<TodoRecord | null> {
     return this.#table.update(id, { ...fields, updatedAt: this.#ctx.now() });
   }

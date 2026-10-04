@@ -327,7 +327,19 @@ export class TakeoverService {
         queued,
         // D68: the session's todo list travels with it (open and done items; a done one keeps its hour).
         // D69: with its title, description and plan; `text` (= title) for a 1.7.0 target.
-        todos: (await this.#store.todos.list(sessionId)).map((todo) => ({ text: todo.title, title: todo.title, description: todo.description, plan: todo.plan, state: todo.state, addedBy: todo.addedBy, createdAt: todo.createdAt, doneAt: todo.doneAt })),
+        todos: (await this.#store.todos.list(sessionId)).map((todo) => ({
+          text: todo.title,
+          title: todo.title,
+          description: todo.description,
+          plan: todo.plan,
+          // D70: an older target ignores them.
+          priority: todo.priority,
+          estimateMinutes: todo.estimateMinutes,
+          state: todo.state,
+          addedBy: todo.addedBy,
+          createdAt: todo.createdAt,
+          doneAt: todo.doneAt,
+        })),
         blockers,
       },
       log,

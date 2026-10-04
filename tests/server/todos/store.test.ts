@@ -52,9 +52,9 @@ afterEach(async () => {
   await removeTempDir(tmp);
 });
 
-/** An item's fields with only a title. */
-function f(title: string): TodoFields {
-  return { title, description: null, plan: null };
+/** An item's fields with only a title (D70: No plan, medium, no estimate). */
+function f(title: string, priority: TodoFields['priority'] = 'medium', estimateMinutes: number | null = null): TodoFields {
+  return { title, description: null, plan: 'No plan', priority, estimateMinutes };
 }
 
 async function session(name: string): Promise<string> {
@@ -102,10 +102,9 @@ describe('migration 0026 (D68)', () => {
 });
 
 describe('migration 0027 (D69)', () => {
-  it('is the newest shipped migration: text becomes title, description and plan are added; a long or multi-line text keeps all of it as the description', async () => {
-    const shipped = await loadMigrations();
+  it('text becomes title, description and plan are added; a long or multi-line text keeps all of it as the description', async () => {
+    const shipped = (await loadMigrations()).filter((m) => m.version <= 27);
     expect(shipped.at(-1)).toMatchObject({ version: 27, name: 'todo_fields' });
-    expect(store.migrations.version).toBe(27);
     const db = await databaseAt(26);
     const ts = '2026-10-04T10:00:00.000Z';
     db.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, root, root_kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('s', 'old', 'c', '/tmp/x', '/tmp/x', 'repo', ts, ts);
@@ -151,17 +150,21 @@ describe('the D69 field rules', () => {
     expect(checkTodoNote('p'.repeat(TODO_PLAN_MAX), 'plan')).toMatchObject({ ok: true });
     expect(checkTodoNote('p'.repeat(TODO_PLAN_MAX + 1), 'plan')).toMatchObject({ ok: false });
     expect([TODO_TITLE_MAX, TODO_DESCRIPTION_MAX, TODO_PLAN_MAX]).toEqual([120, 4_000, 8_000]);
-    expect(checkNewTodo({ text: 'Old' })).toEqual({ ok: true, value: { title: 'Old', description: null, plan: null } });
-    expect(checkNewTodo({ title: 'New', text: 'Old', plan: 'Steps' })).toEqual({ ok: true, value: { title: 'New', description: null, plan: 'Steps' } });
+    // D70: an absent plan is "No plan", the priority medium, no estimate (an older caller).
+    expect(checkNewTodo({ text: 'Old' })).toEqual({ ok: true, value: { title: 'Old', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null } });
+    expect(checkNewTodo({ title: 'New', text: 'Old', plan: 'Steps' })).toEqual({ ok: true, value: { title: 'New', description: null, plan: 'Steps', priority: 'medium', estimateMinutes: null } });
     expect(checkTodoPatch({ state: 'done' })).toEqual({ ok: true, value: {} });
     expect(checkTodoPatch({ description: '', text: 'Renamed' })).toEqual({ ok: true, value: { title: 'Renamed', description: null } });
   });
 
   it('▶ Start: the message is the id and title, then the plan (else the description); a draft is kept, the message added after it', () => {
-    const item = { id: 'a1b2c3d4e5f6', title: 'Fix the login test flake', description: 'Retries hide a race.', plan: '1. Find the race' };
+    const item: { id: string; title: string; description: string | null; plan: string | null } = { id: 'a1b2c3d4e5f6', title: 'Fix the login test flake', description: 'Retries hide a race.', plan: '1. Find the race' };
     expect(todoStartMessage(item)).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\n1. Find the race');
     expect(todoStartMessage({ ...item, plan: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.');
     expect(todoStartMessage({ ...item, plan: null, description: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake');
+    // D70: "No plan" (with or without a reason) is not a plan: the description goes instead.
+    expect(todoStartMessage({ ...item, plan: 'No plan' })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.');
+    expect(todoStartMessage({ ...item, plan: 'No plan: a one-line fix', description: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake');
     expect(composerWithStart('', 'M')).toBe('M');
     expect(composerWithStart('  \n', 'M')).toBe('M');
     expect(composerWithStart('My draft\n', 'M')).toBe('My draft\n\nM');
@@ -219,7 +222,7 @@ describe('TodoService (D68)', () => {
     await expect(todos.add(a, { title: 'x'.repeat(121) }, 'developer')).rejects.toMatchObject({ status: 422 });
     await expect(todos.add('no-such', { title: 'x' }, 'developer')).rejects.toMatchObject({ status: 404 });
     const { todo, list } = await todos.add(a, { title: '  Fix the login test  ' }, 'agent');
-    expect(todo).toMatchObject({ title: 'Fix the login test', text: 'Fix the login test', description: null, plan: null, addedBy: 'agent', state: 'open', doneAt: null, removeAt: null });
+    expect(todo).toMatchObject({ title: 'Fix the login test', text: 'Fix the login test', description: null, plan: 'No plan', priority: 'medium', estimateMinutes: null, addedBy: 'agent', state: 'open', doneAt: null, removeAt: null });
     expect(list).toMatchObject({ sessionId: a, openCount: 1, doneCount: 0 });
     // Another session's item is not found through this session.
     await expect(todos.update(b, todo.id, { state: 'done' })).rejects.toBeInstanceOf(TodoError);
@@ -312,10 +315,11 @@ describe('TodoService (D68)', () => {
         { text: `Line one\n${'z'.repeat(200)}`, state: 'open', addedBy: 'developer' },
       ]),
     ).toBe(3);
-    expect((await todos.list(b)).todos.map((t) => [t.title, t.description, t.plan, t.state, t.addedBy, t.doneAt])).toEqual([
-      ['carried', 'Why', 'How', 'open', 'agent', null],
-      ['finished', null, null, 'done', 'developer', '2026-10-04T09:30:00.000Z'],
-      ['Line one', `Line one\n${'z'.repeat(200)}`, null, 'open', 'developer', null],
+    // D70: an older source's items are medium, not estimated, and No plan.
+    expect((await todos.list(b)).todos.map((t) => [t.title, t.description, t.plan, t.state, t.addedBy, t.doneAt, t.priority, t.estimateMinutes])).toEqual([
+      ['carried', 'Why', 'How', 'open', 'agent', null, 'medium', null],
+      ['finished', null, 'No plan', 'done', 'developer', '2026-10-04T09:30:00.000Z', 'medium', null],
+      ['Line one', `Line one\n${'z'.repeat(200)}`, 'No plan', 'open', 'developer', null, 'medium', null],
     ]);
   });
 
@@ -339,7 +343,7 @@ describe('TodoService (D68)', () => {
 
 describe('moveTodo', () => {
   it('swaps with the neighbour of the same state only', () => {
-    const t = (id: string, position: number, state: 'open' | 'done' = 'open') => ({ id, sessionId: 's', title: id, text: id, description: null, plan: null, state, addedBy: 'developer' as const, position, createdAt: '', updatedAt: '', doneAt: null, removeAt: null });
+    const t = (id: string, position: number, state: 'open' | 'done' = 'open') => ({ id, sessionId: 's', title: id, text: id, description: null, plan: 'No plan', priority: 'medium' as const, estimateMinutes: null, state, addedBy: 'developer' as const, position, createdAt: '', updatedAt: '', doneAt: null, removeAt: null });
     const all = [t('a', 0), t('x', 1, 'done'), t('b', 2), t('c', 3)];
     expect(moveTodo(all, 'b', -1)).toEqual(['b', 'x', 'a', 'c']);
     expect(moveTodo(all, 'a', -1)).toBeNull();

@@ -1,6 +1,21 @@
 import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoState } from '../../core/api.ts';
-import { TODO_DESCRIPTION_MAX, TODO_DONE_TTL_MS, TODO_MAX_PER_SESSION, TODO_PLAN_MAX, checkNewTodo, checkTodoNote, checkTodoPatch, checkTodoTitle, legacyTodoFields, todoRemoveAt } from '../../core/todos.ts';
-import type { TodoRecord } from '../db/repos/todos.ts';
+import {
+  DEFAULT_TODO_PRIORITY,
+  TODO_DESCRIPTION_MAX,
+  TODO_DONE_TTL_MS,
+  TODO_MAX_PER_SESSION,
+  TODO_NO_PLAN,
+  TODO_PLAN_MAX,
+  checkNewTodo,
+  checkTodoEstimate,
+  checkTodoNote,
+  checkTodoPatch,
+  checkTodoTitle,
+  isTodoPriority,
+  legacyTodoFields,
+  todoRemoveAt,
+} from '../../core/todos.ts';
+import type { TodoFields, TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
 import { StoreError } from '../db/table.ts';
 import type { HubBus } from '../hub/bus.ts';
@@ -37,7 +52,10 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     sessionId: record.sessionId,
     title: record.title,
     description: record.description,
-    plan: record.plan,
+    // D70: never empty (0028 filled the old ones; a row written outside the service reads as No plan).
+    plan: record.plan && record.plan.trim() !== '' ? record.plan : TODO_NO_PLAN,
+    priority: isTodoPriority(record.priority) ? record.priority : DEFAULT_TODO_PRIORITY,
+    estimateMinutes: record.estimateMinutes ?? null,
     // D69: the D68 name, for a peer still on 1.7.0.
     text: record.title,
     state: record.state,
@@ -54,8 +72,17 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
  * D69: a taken-over item's fields: its title, description and plan when the source
  * sent them (1.8 and later), else its D68 text split like migration 0027
  * ({@link legacyTodoFields}). A field that does not fit is cut rather than the item lost.
+ * D70: its priority and estimate when the source sent valid ones (1.9 and later), else
+ * medium and none; a missing plan is `No plan` (like migration 0028).
  */
-function importedFields(item: Readonly<Record<string, unknown>>): Pick<TodoRecord, 'title' | 'description' | 'plan'> | null {
+function importedFields(item: Readonly<Record<string, unknown>>): TodoFields | null {
+  const extra = {
+    priority: isTodoPriority(item['priority']) ? item['priority'] : DEFAULT_TODO_PRIORITY,
+    estimateMinutes: (() => {
+      const checked = checkTodoEstimate(item['estimateMinutes']);
+      return checked.ok ? checked.value : null;
+    })(),
+  };
   const title = checkTodoTitle(item['title']);
   if (title.ok) {
     const note = (field: 'description' | 'plan'): string | null => {
@@ -63,10 +90,10 @@ function importedFields(item: Readonly<Record<string, unknown>>): Pick<TodoRecor
       const checked = checkTodoNote(typeof value === 'string' ? value.trim().slice(0, field === 'plan' ? TODO_PLAN_MAX : TODO_DESCRIPTION_MAX) : null, field);
       return checked.ok ? checked.value : null;
     };
-    return { title: title.value, description: note('description'), plan: note('plan') };
+    return { title: title.value, description: note('description'), plan: note('plan') ?? TODO_NO_PLAN, ...extra };
   }
   const legacy = legacyTodoFields(item['title'] ?? item['text']);
-  return legacy ? { ...legacy, plan: null } : null;
+  return legacy ? { ...legacy, plan: TODO_NO_PLAN, ...extra } : null;
 }
 
 /** Timers longer than this are capped (`setTimeout` fires at once past 2^31-1 ms); the sweep then re-arms. */
@@ -143,7 +170,10 @@ export class TodoService {
 
   /**
    * Adds an item at the end. D69: `input` carries `title` (or its D68 alias `text`)
-   * and optionally `description` and `plan`.
+   * and optionally `description` and `plan`. D70: `priority` (absent: medium) and
+   * `estimateMinutes` (absent: none); an absent or blank plan is stored as `No plan`
+   * on every route (an older UI or peer, or an agent tool that skipped it: ruling D70),
+   * only the agent's tool schema requires one.
    */
   async add(sessionId: string, input: Readonly<Record<string, unknown>>, addedBy: TodoAuthor): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
     await this.#session(sessionId);
@@ -157,14 +187,15 @@ export class TodoService {
   }
 
   /**
-   * New title (or its D68 alias `text`), description, plan (`''` / `null` removes
-   * it) and / or state (`done` ticks, `open` unticks: the hour's removal is cancelled).
+   * New title (or its D68 alias `text`), description (`''` / `null` removes it),
+   * plan (D70: cannot be emptied: 422), priority, estimate (`null` removes it) and / or
+   * state (`done` ticks, `open` unticks: the hour's removal is cancelled).
    */
   async update(sessionId: string, todoId: string, patch: Readonly<Record<string, unknown>>): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
     await this.#session(sessionId);
     await this.#item(sessionId, todoId);
-    const given = ['title', 'text', 'description', 'plan', 'state'].some((key) => patch[key] !== undefined);
-    if (!given) throw new TodoError(422, 'invalid', 'give title, description, plan and / or state');
+    const given = ['title', 'text', 'description', 'plan', 'priority', 'estimateMinutes', 'state'].some((key) => patch[key] !== undefined);
+    if (!given) throw new TodoError(422, 'invalid', 'give title, description, plan, priority, estimateMinutes and / or state');
     const fields = checkTodoPatch(patch);
     if (!fields.ok) throw new TodoError(422, 'invalid', fields.message);
     let state: TodoState | null = null;
@@ -232,7 +263,7 @@ export class TodoService {
 
   /** Copies a taken-over session's items into the new session (D65); publishes nothing (the session is not announced yet). */
   async import(sessionId: string, todos: readonly unknown[]): Promise<number> {
-    const items: Array<Pick<TodoRecord, 'title' | 'description' | 'plan' | 'state' | 'addedBy' | 'createdAt' | 'doneAt'>> = [];
+    const items: Array<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'>> = [];
     for (const raw of todos.slice(0, TODO_MAX_PER_SESSION)) {
       if (typeof raw !== 'object' || raw === null) continue;
       const item = raw as Record<string, unknown>;
