@@ -167,7 +167,6 @@ export class AccountService {
     if (patch.name !== undefined) {
       const name = cleanProfileName(patch.name);
       if (name === null) throw new AccountError(422, 'invalid', 'the name must be 1-40 characters', 'name');
-      if (record.builtin) throw new AccountError(422, 'invalid', 'the built-in Default profile keeps its name', 'name');
       if ((await this.#store.profiles.list(record.cli)).some((p) => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) throw new AccountError(409, 'conflict', `${name} already exists for this CLI`, 'name');
       next.name = name;
     }

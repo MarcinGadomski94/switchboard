@@ -63,10 +63,12 @@ describe('D63 · profiles: CRUD and folders', () => {
     await expect(w.accounts.create({ cli: 'claude', name: 'alpha' })).rejects.toMatchObject({ status: 409 });
     await w.accounts.create({ cli: 'codex', name: 'Alpha' });
     expect(await w.accounts.update(a.id, { name: 'Gamma', enabled: false })).toMatchObject({ name: 'Gamma', enabled: false });
-    await expect(w.accounts.update('default-claude', { name: 'Mine' })).rejects.toMatchObject({ status: 422 });
+    // D67: the built-in account can be renamed too (still unique per CLI); it stays the built-in one.
+    await expect(w.accounts.update('default-claude', { name: 'beta' })).rejects.toMatchObject({ status: 409 });
+    expect(await w.accounts.update('default-claude', { name: 'Mine' })).toMatchObject({ name: 'Mine', builtin: true });
     await expect(w.accounts.update(b.id, { enabled: 'yes' })).rejects.toMatchObject({ status: 422 });
     await w.accounts.reorder('claude', [b.id, 'default-claude', a.id]);
-    expect((await w.store.profiles.list('claude')).map((p) => p.name)).toEqual(['Beta', 'Default', 'Gamma']);
+    expect((await w.store.profiles.list('claude')).map((p) => p.name)).toEqual(['Beta', 'Mine', 'Gamma']);
     await expect(w.accounts.reorder('claude', [b.id, 'nope'])).rejects.toBeInstanceOf(AccountError);
     expect((await w.accounts.list({ check: false })).filter((p) => p.cli === 'claude').map((p) => p.position)).toEqual([0, 1, 2]);
   });

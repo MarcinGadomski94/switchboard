@@ -810,7 +810,7 @@ Each CLI can have several account profiles; a session moves to another one when 
 | GET | /api/accounts[?refresh=1] | | AccountsOverview (each profile's status from its CLI's status command, cached 60 s; `refresh` runs them again) |
 | PUT | /api/accounts/settings | partial AccountSettings | AccountSettings; 422 (`exhausted.cli` is needed with `switch-cli`) |
 | POST | /api/accounts/profiles | { cli, name, shareSettings? } | 201 AccountProfile; 422 `name` / `cli`; 409 duplicate name |
-| PUT | /api/accounts/profiles/{id} | { name?, enabled?, shareSettings? } | AccountProfile; 404; 409 name; 422 (the Default keeps its name and is what others share) |
+| PUT | /api/accounts/profiles/{id} | { name?, enabled?, shareSettings? } | AccountProfile; 404; 409 name; 422 (the Default is what others share: no `shareSettings` on it; D67: it can be renamed) |
 | DELETE | /api/accounts/profiles/{id}[?removeFiles=1] | | 204; 404; 409 `builtin` / `in-use` (a process runs on it); its sessions go back to the Default; a folder is removed only with `removeFiles` and only inside `<dataDir>/profiles/` |
 | PUT | /api/accounts/order | { cli, order: string[] } | AccountsOverview; 422 (ids must be that CLI's, each once) |
 | POST | /api/accounts/profiles/{id}/check | | AccountProfile (status read again) |

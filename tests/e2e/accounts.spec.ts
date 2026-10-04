@@ -72,6 +72,14 @@ test('Settings → Accounts: add a profile, sign in through a new tab; a session
   // The Default is the developer's own login: no Sign in / Sign out / Delete here.
   await expect(defaultCard.getByTestId('account-signin')).toHaveCount(0);
   await expect(defaultCard.getByTestId('account-delete')).toHaveCount(0);
+  // D67: its name can be changed; the hints that name it follow.
+  await defaultCard.getByTestId('account-name').fill('Personal');
+  await defaultCard.getByTestId('account-name').press('Enter');
+  await expect(defaultCard).toHaveAttribute('data-name', 'Personal');
+  await expect(claude.getByTestId('account-add')).toContainText('Same settings as Personal');
+  await defaultCard.getByTestId('account-name').fill('Default');
+  await defaultCard.getByTestId('account-name').press('Enter');
+  await expect(defaultCard).toHaveAttribute('data-name', 'Default');
 
   // Add a profile.
   await claude.getByTestId('account-add-name').fill('Private');

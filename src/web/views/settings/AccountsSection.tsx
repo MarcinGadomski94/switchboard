@@ -224,8 +224,11 @@ function ProfileCard({
   onChanged,
   onMove,
   onDropOn,
+  builtinName,
 }: {
   readonly profile: AccountProfile;
+  /** The CLI's built-in account's current name (D67: it can be renamed). */
+  readonly builtinName: string;
   readonly position: number;
   readonly count: number;
   readonly client: Client;
@@ -285,22 +288,16 @@ function ProfileCard({
         <span className="sb-acc-rank" data-testid="account-rank">
           {position + 1}
         </span>
-        {profile.builtin ? (
-          <span className="sb-acc-name" data-testid="account-name">
-            {profile.name}
-          </span>
-        ) : (
-          <input
-            className="sb-set-input sb-acc-name-input"
-            data-testid="account-name"
-            aria-label={`${CLI_LABELS[profile.cli]} account name`}
-            value={name}
-            spellCheck={false}
-            onChange={(event) => setName(event.target.value)}
-            onBlur={() => name.trim() !== profile.name && void run(() => client.updateProfile(profile.id, { name }))}
-            onKeyDown={(event) => event.key === 'Enter' && (event.target as HTMLInputElement).blur()}
-          />
-        )}
+        <input
+          className="sb-set-input sb-acc-name-input"
+          data-testid="account-name"
+          aria-label={`${CLI_LABELS[profile.cli]} account name`}
+          value={name}
+          spellCheck={false}
+          onChange={(event) => setName(event.target.value)}
+          onBlur={() => name.trim() !== profile.name && void run(() => client.updateProfile(profile.id, { name }))}
+          onKeyDown={(event) => event.key === 'Enter' && (event.target as HTMLInputElement).blur()}
+        />
         <span className="sb-acc-status" data-testid="account-status" data-state={profile.signIn}>
           {signInText(profile)}
         </span>
@@ -329,11 +326,11 @@ function ProfileCard({
           </span>
         ) : (
           <>
-            <label className="sb-acc-toggle" title="Use the Default's settings, instructions and MCP config">
-              <span>Same settings as Default</span>
+            <label className="sb-acc-toggle" title={`Use ${builtinName}'s settings, instructions and MCP config`}>
+              <span>Same settings as {builtinName}</span>
               <ToggleValue
                 value={profile.shareSettings}
-                label={`${profile.name} shares the Default's settings`}
+                label={`${profile.name} shares ${builtinName}'s settings`}
                 disabled={busy}
                 onToggle={() => void run(() => client.updateProfile(profile.id, { shareSettings: !profile.shareSettings }))}
               />
@@ -384,7 +381,7 @@ function ProfileCard({
       {pending === 'delete' ? (
         <div className="sb-acc-confirm" role="alertdialog" aria-label="Delete account" data-testid="account-confirm">
           <div>
-            Delete {profile.name}? Its sessions go back to the Default. Its folder{profile.dir ? ` (${profile.dir})` : ''} stays unless you remove it too; its login is not signed out.
+            Delete {profile.name}? Its sessions go back to {builtinName}. Its folder{profile.dir ? ` (${profile.dir})` : ''} stays unless you remove it too; its login is not signed out.
           </div>
           <div className="sb-acc-actions">
             <button type="button" className="sb-set-button" data-testid="account-confirm-yes" disabled={busy} onClick={() => void run(() => client.deleteProfile(profile.id, false))}>
@@ -415,7 +412,7 @@ function ProfileCard({
 
 // ── add ──────────────────────────────────────────────────────────────────────
 
-function AddProfile({ cli, client, onAdded }: { readonly cli: CliProviderId; readonly client: Client; readonly onAdded: () => void }) {
+function AddProfile({ cli, client, onAdded, builtinName }: { readonly cli: CliProviderId; readonly client: Client; readonly onAdded: () => void; readonly builtinName: string }) {
   const [name, setName] = useState('');
   const [share, setShare] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -443,8 +440,8 @@ function AddProfile({ cli, client, onAdded }: { readonly cli: CliProviderId; rea
         onChange={(event) => setName(event.target.value)}
         onKeyDown={(event) => event.key === 'Enter' && name.trim() !== '' && add()}
       />
-      <label className="sb-acc-check" title="Use the Default's settings, instructions and MCP config in this account">
-        <input type="checkbox" data-testid="account-add-share" checked={share} onChange={(event) => setShare(event.target.checked)} /> Same settings as Default
+      <label className="sb-acc-check" title={`Use ${builtinName}'s settings, instructions and MCP config in this account`}>
+        <input type="checkbox" data-testid="account-add-share" checked={share} onChange={(event) => setShare(event.target.checked)} /> Same settings as {builtinName}
       </label>
       <button type="button" className="sb-set-button" data-testid="account-add-button" disabled={busy || name.trim() === ''} onClick={add}>
         Add account
@@ -654,6 +651,7 @@ export function AccountsSection() {
           {CLI_PROVIDERS.map((cli) => {
             const mine = overview.profiles.filter((p) => p.cli === cli);
             const ids = mine.map((p) => p.id);
+            const builtinName = mine.find((p) => p.builtin)?.name ?? 'Default';
             return (
               <div className="sb-set-cli sb-acc-cli" key={cli} data-testid="accounts-cli" data-cli={cli}>
                 <div className="sb-set-cli-head">
@@ -673,9 +671,10 @@ export function AccountsSection() {
                     onChanged={() => load(false)}
                     onMove={(delta) => reorder(cli, movedOrder(ids, profile.id, delta))}
                     onDropOn={(dragged) => reorder(cli, droppedOrder(ids, dragged, profile.id))}
+                    builtinName={builtinName}
                   />
                 ))}
-                <AddProfile cli={cli} client={client} onAdded={() => load(false)} />
+                <AddProfile cli={cli} client={client} onAdded={() => load(false)} builtinName={builtinName} />
               </div>
             );
           })}
