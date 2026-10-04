@@ -29,9 +29,11 @@ describe('D62 P7 · parity pieces', () => {
       ],
     };
     expect(cliUsageWindows(usage, now)).toEqual([
-      { provider: 'codex', label: 'Codex 5h', pct: 12, resetsAt: '2026-10-01T14:00:00.000Z' },
-      { provider: 'codex', label: 'Codex week', pct: 40, resetsAt: '2026-10-04T00:00:00.000Z' },
+      { provider: 'codex', label: 'Codex 5h', pct: 12, resetsAt: '2026-10-01T14:00:00.000Z', key: 'session' },
+      { provider: 'codex', label: 'Codex week', pct: 40, resetsAt: '2026-10-04T00:00:00.000Z', key: 'week' },
     ]);
+    // D66: a window the CLI did not size is neither bar (the grid's tooltip lists it).
+    expect(cliUsageWindows({ ...usage, windows: [{ pct: 5, minutes: null, resetsAt: null }] }, now)).toEqual([{ provider: 'codex', label: 'Codex limit', pct: 5, resetsAt: null, key: 'model' }]);
     expect(cliUsageWindows(null, now)).toEqual([]);
   });
 

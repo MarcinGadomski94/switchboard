@@ -1784,14 +1784,14 @@ export interface SystemInfo {
   /**
    * Additive (D62 P7, `docs/providers.md` → *Usage*): another CLI's own usage
    * windows, as its sessions reported them (Codex's rate limits: the primary
-   * 5-hour and the secondary weekly window); the footer adds a row each while
-   * they are known. Omitted when none is.
+   * 5-hour and the secondary weekly window); D66: the footer grid's Codex line
+   * while that CLI has a single account. Omitted when none is.
    */
   readonly cliUsage?: readonly CliUsageWindow[];
   /**
-   * Additive (D63, `docs/accounts.md` → *Usage per profile*): each account profile's
-   * usage while a CLI has more than one enabled profile (the footer's "A 62% · B 10%"
-   * line; the main bars are the active profile's).
+   * Additive (D63, `docs/accounts.md` → *Usage per account*): each account profile's
+   * usage while a CLI has more than one enabled profile (D66: a line each in the
+   * footer's usage grid).
    */
   readonly accountUsage?: readonly AccountUsageRow[];
 }
@@ -1807,6 +1807,29 @@ export interface AccountUsageRow {
   readonly pct: number | null;
   /** Set while the profile is spent: when it is usable again (ISO). */
   readonly exhaustedUntil: string | null;
+  /**
+   * Additive (D66, `docs/accounts.md` → *Usage per account*): the profile's own
+   * windows known now (the footer grid's two bars and its line's tooltip): `session`
+   * (5 hours), `week`, and for a Claude Code profile each model's weekly limit in use.
+   * A window that is unknown is left out (never guessed).
+   */
+  readonly windows?: readonly AccountUsageWindow[];
+}
+
+/** Additive (D66): one usage window of a profile in {@link AccountUsageRow.windows}. */
+export interface AccountUsageWindow {
+  /** `session` (the 5-hour window), `week` (all models), or `model` (one model's weekly limit). */
+  readonly key: UsageWindowKey;
+  /** `Session`, `Week`, or the model's name (`Fable`). */
+  readonly label: string;
+  /** Utilization 0–100. */
+  readonly pct: number;
+  /** When it resets (ISO), `null` when the CLI did not say. */
+  readonly resetsAt: string | null;
+  /** `key: 'model'` only: the model's display name. */
+  readonly model?: string;
+  /** `key: 'model'` only: the time of an older `get_usage` reading the value comes from (as `UsageWindow.asOf`). */
+  readonly asOf?: string;
 }
 
 /** Additive (D62 P7): one usage window of another CLI (`SystemInfo.cliUsage`). */
@@ -1818,6 +1841,11 @@ export interface CliUsageWindow {
   readonly pct: number;
   /** When it resets (ISO), `null` when the CLI did not say. */
   readonly resetsAt: string | null;
+  /**
+   * Additive (D66): which window it is: `session` (5 hours or less), `week` (longer),
+   * `model` when the CLI did not say how long it is. The footer grid's bars.
+   */
+  readonly key?: UsageWindowKey;
 }
 
 /** A Max usage window (M9.2): `get_usage` `rate_limits.five_hour` / `seven_day`. */

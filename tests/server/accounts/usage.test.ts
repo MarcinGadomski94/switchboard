@@ -2,7 +2,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { SystemInfo } from '../../../src/core/api.ts';
 import type { Providers } from '../../../src/server/providers.ts';
-import { createUsageMeter, withAccountUsage } from '../../../src/server/usage/wire.ts';
+import { createUsageMeter, profileUsageWindows, withAccountUsage } from '../../../src/server/usage/wire.ts';
 import { writeFile } from 'node:fs/promises';
 import { fakeClaudeCommand } from '../../../tools/fake-claude/command.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, waitForStatus } from '../../helpers/supervisor.ts';
@@ -85,8 +85,8 @@ describe('D63 · usage per account profile', () => {
     const base: Providers = { system: { system: async () => ({ cli: 'claude' }) as unknown as SystemInfo } };
     const rows = async (): Promise<SystemInfo['accountUsage']> => ((await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo).accountUsage;
     expect(await rows()).toEqual([
-      { profileId: 'default-claude', cli: 'claude', name: 'Default', active: true, pct: 62, exhaustedUntil: null },
-      { profileId: b.id, cli: 'claude', name: 'Private', active: false, pct: 10, exhaustedUntil: null },
+      { profileId: 'default-claude', cli: 'claude', name: 'Default', active: true, pct: 62, exhaustedUntil: null, windows: [expect.objectContaining({ key: 'session', pct: 62 }), expect.objectContaining({ key: 'week', pct: 5 })] },
+      { profileId: b.id, cli: 'claude', name: 'Private', active: false, pct: 10, exhaustedUntil: null, windows: [expect.objectContaining({ key: 'session', pct: 10 }), expect.objectContaining({ key: 'week', pct: 5 })] },
     ]);
     const until1 = soon(3_600_000);
     await w.accounts.markExhausted({ profileId: 'default-claude', until: until1, window: 'session', text: 'x' });
@@ -94,5 +94,48 @@ describe('D63 · usage per account profile', () => {
     // A single enabled profile: no line.
     await w.accounts.update(b.id, { enabled: false });
     expect(((await withAccountUsage(base, w.accounts).system?.system()) as SystemInfo).accountUsage).toBeUndefined();
+  });
+
+  it('D66: each row lists its own windows; with the meter a Claude Code profile\'s include its model limits in use', async () => {
+    world = await makeSupervisorWorld();
+    const w = world;
+    const b = await w.accounts.create({ cli: 'claude', name: 'Private' });
+    const week = soon(3 * 86_400_000);
+    // A `get_usage` answer of B's with an Opus weekly limit in use; the Default only has a 5-hour reading (its week unknown).
+    const raw = {
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 10, resets_at: soon(3_600_000) },
+        seven_day: { utilization: 40, resets_at: week },
+        model_scoped: [{ display_name: 'Opus', utilization: 55, resets_at: week }],
+      },
+    };
+    await w.store.usage.add({ source: 'get_usage', sessionId: null, profileId: b.id, fiveHourPct: 10, fiveHourResetsAt: soon(3_600_000), sevenDayPct: 40, sevenDayResetsAt: week, raw });
+    await w.store.usage.add({ source: 'rate_limit_event', sessionId: null, profileId: 'default-claude', fiveHourPct: 62, fiveHourResetsAt: soon(3_600_000), sevenDayPct: null, sevenDayResetsAt: null, raw: {} });
+    const meter = createUsageMeter({ config: { claudeCommand: fakeClaudeCommand(), claudeExtraArgs: [], dataDir: w.root }, store: w.store, sessions: w.supervisor, accounts: w.accounts });
+    const base: Providers = { system: { system: async () => ({ cli: 'claude' }) as unknown as SystemInfo } };
+    const info = (await withAccountUsage(base, w.accounts, Date.now, (id) => meter.profileWindows(id)).system?.system()) as SystemInfo;
+    expect(info.accountUsage?.map((row) => [row.name, row.windows?.map((window) => [window.key, window.label, window.pct])])).toEqual([
+      ['Default', [['session', 'Session', 62]]],
+      [
+        'Private',
+        [
+          ['session', 'Session', 10],
+          ['week', 'Week', 40],
+          ['model', 'Opus', 55],
+        ],
+      ],
+    ]);
+    await meter.stop();
+  });
+
+  it('D66: a profile\'s Session and Week from its latest usage (Codex\'s windows): unknown and reset windows are left out', () => {
+    const now = Date.parse('2026-10-01T12:00:00.000Z');
+    expect(profileUsageWindows({ fiveHourPct: 35, fiveHourResetsAt: null, sevenDayPct: 12, sevenDayResetsAt: '2026-10-04T00:00:00.000Z', receivedAt: null }, now)).toEqual([
+      { key: 'session', label: 'Session', pct: 35, resetsAt: null },
+      { key: 'week', label: 'Week', pct: 12, resetsAt: '2026-10-04T00:00:00.000Z' },
+    ]);
+    expect(profileUsageWindows({ fiveHourPct: 35, fiveHourResetsAt: '2026-10-01T11:00:00.000Z', sevenDayPct: null, sevenDayResetsAt: null, receivedAt: null }, now)).toEqual([]);
+    expect(profileUsageWindows(null, now)).toEqual([]);
   });
 });

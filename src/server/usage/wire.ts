@@ -1,10 +1,11 @@
-import type { AccountUsageRow, CliUsageWindow, SystemInfo, UsageWarning } from '../../core/api.ts';
+import type { AccountUsageRow, AccountUsageWindow, CliUsageWindow, SystemInfo, UsageWarning, UsageWindow } from '../../core/api.ts';
 import type { ProviderUsage } from '../cli/bridge-common.ts';
 import type { ServerConfig } from '../config.ts';
 import type { Store } from '../db/store.ts';
 import type { Providers, SystemProvider } from '../providers.ts';
 import type { AccountService } from '../accounts/service.ts';
-import { defaultProfileId } from '../../core/accounts.ts';
+import { type ProfileUsage, defaultProfileId } from '../../core/accounts.ts';
+import { USAGE_ROW_LABELS } from '../../core/usage.ts';
 import { UsageMeter, type UsageProfiles, type UsageSessions } from './meter.ts';
 import { UsagePoller } from './poller.ts';
 
@@ -96,7 +97,10 @@ export function withCliUsage(providers: Providers, source: { providerUsage(provi
   return { ...providers, system };
 }
 
-/** Codex's windows as footer rows: `Codex 5h` (300 minutes), `Codex week` (10 080), else `Codex <n>h`. */
+/**
+ * Codex's windows as footer rows: `Codex 5h` (300 minutes), `Codex week` (10 080), else `Codex <n>h`.
+ * D66: each with its `key` (`session` up to 10 hours, `week` longer, as `AccountService.usageOf` splits them).
+ */
 export function cliUsageWindows(usage: ProviderUsage | null, now: number): CliUsageWindow[] {
   if (!usage) return [];
   return usage.windows
@@ -106,16 +110,40 @@ export function cliUsageWindows(usage: ProviderUsage | null, now: number): CliUs
       label: `Codex ${window.minutes === 10_080 ? 'week' : window.minutes === null ? 'limit' : `${Math.round(window.minutes / 60)}h`}`,
       pct: Math.max(0, Math.min(100, window.pct)),
       resetsAt: window.resetsAt,
+      key: window.minutes === null ? 'model' : window.minutes <= 600 ? 'session' : 'week',
     }));
 }
 
 
 /**
- * D63: `providers.system` with each account profile's usage (`SystemInfo.accountUsage`,
- * the footer's "A 62% · B 10%" line), only while a CLI has more than one enabled profile.
- * Claude Code profiles have their readings, Codex profiles the windows their sessions reported.
+ * D66: a profile's Session and Week windows from its latest usage (a Codex profile's,
+ * or a Claude Code one's without the meter); a window that has reset is left out.
  */
-export function withAccountUsage(providers: Providers, accounts: AccountService, now: () => number = Date.now): Providers {
+export function profileUsageWindows(usage: ProfileUsage | null, now: number): AccountUsageWindow[] {
+  if (!usage) return [];
+  const out: AccountUsageWindow[] = [];
+  const add = (key: 'session' | 'week', pct: number | null, resetsAt: string | null): void => {
+    if (pct === null || (resetsAt !== null && !(Date.parse(resetsAt) > now))) return;
+    out.push({ key, label: USAGE_ROW_LABELS[key], pct: Math.max(0, Math.min(100, pct)), resetsAt });
+  };
+  add('session', usage.fiveHourPct, usage.fiveHourResetsAt);
+  add('week', usage.sevenDayPct, usage.sevenDayResetsAt);
+  return out;
+}
+
+/**
+ * D63: `providers.system` with each account profile's usage (`SystemInfo.accountUsage`),
+ * only while a CLI has more than one enabled profile. Claude Code profiles have their
+ * readings, Codex profiles the windows their sessions reported. D66: each row also
+ * lists its `windows` (the footer grid's two bars per account); `windowsOf` (the
+ * meter's `profileWindows`) gives a Claude Code profile's, model limits included.
+ */
+export function withAccountUsage(
+  providers: Providers,
+  accounts: AccountService,
+  now: () => number = Date.now,
+  windowsOf?: (profileId: string) => Promise<readonly UsageWindow[]>,
+): Providers {
   const base = providers.system;
   if (!base) return providers;
   const system: SystemProvider = {
@@ -137,6 +165,7 @@ export function withAccountUsage(providers: Providers, accounts: AccountService,
             active: (active ?? list[0]?.id) === profile.id,
             pct: values.length > 0 ? Math.round(Math.max(...values)) : null,
             exhaustedUntil: profile.exhausted?.until ?? null,
+            windows: cli === 'claude' && windowsOf ? await windowsOf(profile.id) : profileUsageWindows(usage, now()),
           });
         }
       }

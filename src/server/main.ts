@@ -107,8 +107,8 @@ async function main(): Promise<void> {
     if (usage) providers = withUsage(providers, usage);
     // D62 P7: another CLI's own usage windows (Codex's rate limits) next to Claude Code's.
     if (!config.demo) providers = withCliUsage(providers, supervisor);
-    // D63: each account profile's usage (the footer's per-profile line) while a CLI has more than one.
-    if (!config.demo && supervisor.accounts) providers = withAccountUsage(providers, supervisor.accounts);
+    // D63: each account profile's usage while a CLI has more than one; D66: with its windows (the footer grid's lines).
+    if (!config.demo && supervisor.accounts) providers = withAccountUsage(providers, supervisor.accounts, Date.now, usage ? (id) => usage.profileWindows(id) : undefined);
     // D35 (docs/frame-helper.md → Guided setup): the setup's OS openers, in demo mode too (they run only on a click);
     // SWITCHBOARD_OPEN_COMMAND puts tests' fake opener in front of them.
     providers = { ...providers, frameHelperOpener: createFrameHelperOpener({ prefix: config.openCommand }) };

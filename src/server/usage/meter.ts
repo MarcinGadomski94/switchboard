@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { UsageWarning } from '../../core/api.ts';
+import type { UsageWarning, UsageWindow } from '../../core/api.ts';
 import type { ControlRequestLine } from '../../core/stdin.ts';
 import type { ControlResponseMessage } from '../../core/stream-json.ts';
 import {
@@ -205,14 +205,25 @@ export class UsageMeter {
   }
 
   /**
+   * D66: one Claude Code profile's windows known now (Session, Week and the model
+   * limits in use), read like the bars' {@link systemFields} but from that profile's
+   * own readings (the footer grid's line of an account that is not the active one).
+   */
+  async profileWindows(profileId: string): Promise<UsageWindow[]> {
+    const now = this.#now();
+    return usageWindows(await this.#store.usage.latest(undefined, profileId), await this.#modelWindows(now, profileId), now);
+  }
+
+  /**
    * D17: the model-scoped weekly limits of the newest `get_usage` reading (a
    * `rate_limit_event` has none, so a newer one does not hide them). A reading
    * older than {@link MODEL_WINDOW_MAX_AGE_MS} is kept and marked with its time
    * (`asOf`, shown as "as of <age>"; developer ruling 2026-09-28); a window whose
-   * reset has passed is dropped as before (`usageWindows`).
+   * reset has passed is dropped as before (`usageWindows`). D66: of `profileId`
+   * when given, else of the active profile.
    */
-  async #modelWindows(now: Date): Promise<ModelWindowReading[]> {
-    const reading = await this.#store.usage.latest('get_usage', await this.#active());
+  async #modelWindows(now: Date, profileId?: string): Promise<ModelWindowReading[]> {
+    const reading = await this.#store.usage.latest('get_usage', profileId ?? (await this.#active()));
     if (!reading) return [];
     const age = now.getTime() - Date.parse(reading.receivedAt);
     const windows = modelWindowsFromGetUsage(reading.raw);
