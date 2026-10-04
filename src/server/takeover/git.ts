@@ -255,7 +255,7 @@ export class TakeoverGit {
   /** `git clone <url> <dir>` (the folder must not exist, or be empty). */
   async clone(url: string, dir: string): Promise<void> {
     await mkdir(path.dirname(dir), { recursive: true });
-    await this.run(path.dirname(dir), ['clone', '--quiet', url, dir]);
+    await this.run(path.dirname(dir), ['clone', '--quiet', '--', url, dir]);
   }
 
   /** Fetches the temp branch into a private ref and returns its commit. */

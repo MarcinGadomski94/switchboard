@@ -99,6 +99,52 @@ describe('D65: no changes, and a move to the peer', () => {
   }, 120_000);
 });
 
+describe('D65: a running turn and a paused session', () => {
+  it('a turn that is running is interrupted (D7) and the new agent is told to finish it; the old session stays closed', async () => {
+    const w = (world = await takeoverWorld(tmp));
+    const created = await w.a.call('POST', '/api/sessions', { name: 'busy-one', task: '[fake:hold 60] think for a while', folder: w.folders.a.alpha, worktrees: false, ultracode: false });
+    expect(created.status).toBe(201);
+    const id = (created.body as Session).id;
+    await waitFor('the turn is running', async () => ((await w.a.call('GET', `/api/sessions/${id}`)).body as Session).status === 'run');
+    const preview = (await w.b.call('POST', '/api/takeover/preview', { sessionId: remoteId(w.aId, id) })).body as TakeoverPreview;
+    expect(preview.source).toMatchObject({ busy: true, live: true });
+
+    const finished = await run(w.b, { sessionId: remoteId(w.aId, id) });
+    expect(finished.error, JSON.stringify(finished)).toBeNull();
+    const stdin = await waitFor('the first message', async () => {
+      const text = (await fakeLog(w.logs.b)).filter((entry) => entry['kind'] === 'stdin').map((entry) => String(entry['line'])).join('\n');
+      return text.includes('This session moved from') ? text : null;
+    });
+    expect(stdin).toContain('The turn that was running when the session was taken over was interrupted: finish it.');
+    expect(((await w.a.call('GET', `/api/sessions/${id}`)).body as Session).live).toBe(false);
+  }, 120_000);
+
+  it('a paused session is taken over without starting anything on the source, and a failure leaves it paused', async () => {
+    const w = (world = await takeoverWorld(tmp));
+    const started = await startRepoSession(w.a, w.folders.a.alpha as string, 'paused-one');
+    expect((await w.a.call('POST', `/api/sessions/${started.id}/pause`)).status).toBe(200);
+    // A clash on the target makes the apply fail: the paused session must stay paused (nothing to resume).
+    await w.git(w.paths.a.alpha, 'checkout', '-q', '-b', 'feature/paused');
+    await writeFile(path.join(w.paths.a.alpha, 'a.txt'), 'a\n');
+    await w.git(w.paths.a.alpha, 'add', '-A');
+    await w.git(w.paths.a.alpha, 'commit', '-q', '-m', 'a');
+    await w.git(w.paths.b.alpha, 'checkout', '-q', '-b', 'feature/paused');
+    await writeFile(path.join(w.paths.b.alpha, 'b.txt'), 'b\n');
+    await w.git(w.paths.b.alpha, 'add', '-A');
+    await w.git(w.paths.b.alpha, 'commit', '-q', '-m', 'b');
+    await w.git(w.paths.b.alpha, 'checkout', '-q', 'main');
+    const failed = await run(w.b, { sessionId: remoteId(w.aId, started.id) });
+    expect(failed).toMatchObject({ state: 'failed', rolledBack: true, error: { step: 'apply' } });
+    expect(failed.rollbackNotes).not.toContain('the session runs here again');
+    expect(((await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session)).toMatchObject({ live: false, closedAt: null, status: 'paused' });
+    // Without the clash it moves, from the paused state.
+    await w.git(w.paths.b.alpha, 'branch', '-q', '-D', 'feature/paused');
+    const finished = await run(w.b, { sessionId: remoteId(w.aId, started.id) });
+    expect(finished.error, JSON.stringify(finished)).toBeNull();
+    expect((await sessionsOf(w.b)).some((session) => session.movedFrom?.sessionId === started.id)).toBe(true);
+  }, 120_000);
+});
+
 describe('D65: a session in a worktree', () => {
   it('recreates the worktree on the same branch next to the target repo and restores its work in it', async () => {
     const w = (world = await takeoverWorld(tmp));

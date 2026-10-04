@@ -19,6 +19,10 @@ import {
   type TargetPlan,
   TAKEOVER_CHUNK_BYTES,
   TAKEOVER_FILE_MAX_BYTES,
+  isCloneableUrl,
+  isCommitId,
+  isSafeBranchName,
+  isSafeRepoKey,
   isTempBranch,
   matchingCandidates,
   normalizeRemoteUrl,
@@ -57,6 +61,9 @@ export class TakeoverError extends Error {
   }
 }
 
+/** How long a take-over's source side is kept when nothing finishes it (the initiating machine went away). */
+export const SOURCE_OP_TTL_MS = 30 * 60_000;
+
 /** Settings key of the temporary remote branches that are still out there (one-click delete). */
 export const LEFTOVERS_SETTING = 'takeover.leftovers';
 
@@ -92,6 +99,7 @@ interface SourceOp {
   wasBusy: boolean;
   captured: Array<CapturedRepo & { readonly repoPath: string; leftoverId: string | null }>;
   terminalStopped: boolean;
+  readonly startedAt: number;
   /** name → absolute path (real files) or bytes (generated). */
   files: Map<string, { readonly abs: string } | { readonly bytes: Buffer }>;
   finished: boolean;
@@ -237,6 +245,7 @@ export class TakeoverService {
     if (record.movedTo) blockers.push(`${display} was already taken over to ${record.movedTo.machineName}`);
     if (!record.hooked && !record.attached) blockers.push(`${display} continues in a terminal: attach it here first`);
     if (this.#supervisor.currentSwitch(sessionId) || this.#supervisor.accountSwitching(sessionId)) blockers.push(`${display} is switching CLI or account: wait for it to finish`);
+    await this.#expireStale(sessionId);
     if (this.#activeSessions.has(sessionId)) blockers.push(`${display} is being taken over already`);
     const repos: SourceRepo[] = [];
     const folderRef = folderOfSession(record);
@@ -372,6 +381,7 @@ export class TakeoverService {
   async stop(opId: string, sessionId: string): Promise<OpAnswer<{ readonly wasLive: boolean; readonly wasBusy: boolean }>> {
     const record = await this.#store.sessions.get(sessionId);
     if (!record) throw new TakeoverError(404, 'not-found', `no session ${sessionId}`);
+    await this.#expireStale(sessionId);
     if (this.#activeSessions.has(sessionId)) throw new TakeoverError(409, 'in-progress', 'this session is being taken over already');
     const op: SourceOp = {
       sessionId,
@@ -381,6 +391,7 @@ export class TakeoverService {
       wasBusy: record.status === 'run' || record.status === 'need',
       captured: [],
       terminalStopped: false,
+      startedAt: Date.now(),
       files: new Map(),
       finished: false,
     };
@@ -402,6 +413,17 @@ export class TakeoverService {
     const op = this.#sources.get(opId);
     if (!op) throw new TakeoverError(404, 'unknown-operation', `no take-over ${opId} is running here`);
     return op;
+  }
+
+  /**
+   * A take-over whose initiating machine went away (it never finished or rolled
+   * back) would hold its session "being taken over" for ever: after 30 minutes the
+   * next call rolls it back (its temp branches are deleted, a paused session runs again).
+   */
+  async #expireStale(sessionId: string): Promise<void> {
+    for (const [opId, op] of [...this.#sources.entries()]) {
+      if (op.sessionId === sessionId && Date.now() - op.startedAt > SOURCE_OP_TTL_MS) await this.rollbackSource(opId).catch((error: unknown) => this.#onError(error));
+    }
   }
 
   #forgetSource(opId: string): void {
@@ -831,6 +853,12 @@ export class TakeoverService {
       const repo = body.source.repos.find((entry) => entry.key === resolution.key) as SourceRepo;
       const captured = body.captured.find((entry) => entry.key === resolution.key);
       if (!captured) throw new TakeoverError(422, 'invalid', `no captured state for ${resolution.name}`);
+      // Everything below goes to git as an argument: nothing the other machine sent is passed on unchecked.
+      if (!isSafeRepoKey(repo.key) || !isSafeBranchName(repo.branch) || !isTempBranch(captured.tempBranch) || !isSafeBranchName(captured.tempBranch)) {
+        throw new TakeoverError(422, 'invalid', `${resolution.name}: the branch or the temporary branch name is not valid`);
+      }
+      if (!isCommitId(captured.baseSha) || !isCommitId(captured.tipSha) || (captured.wipSha !== null && !isCommitId(captured.wipSha))) throw new TakeoverError(422, 'invalid', `${resolution.name}: a commit id is not valid`);
+      if (resolution.action === 'clone' && !isCloneableUrl(resolution.cloneUrl ?? '')) throw new TakeoverError(422, 'invalid', `${resolution.name}: the clone URL is not valid`);
       const applied: { -readonly [K in keyof AppliedRepo]: AppliedRepo[K] } = {
         key: resolution.key,
         path: resolution.matchedPath ?? (resolution.cloneTo as string),

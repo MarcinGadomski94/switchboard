@@ -862,6 +862,56 @@ Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*
 { "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.", "agents.standingInstruction.enabled": true }
 ```
 
+## Take-over (D65, 2026-10-04, additive)
+
+Taking a session over from a paired machine to this one, or moving this machine's session to a paired one (`docs/peers.md` → *Taking a session over (D65)*). Additive: migration 0025, two `Session` fields, two lifecycle actions, no `/hub` event (the dialog polls the run).
+
+- **`Session.movedTo`** (`{ machineId, machineName, sessionId, at }` | `null`): set on the **source** once it was taken over; the session is closed and read-only, `POST /api/sessions/{id}/reopen` answers 409 `closed`. `sessionId` is raw on `machineId`; a link to it is `r~<machineId>~<sessionId>` (a plain id when `machineId` is this machine). **`Session.movedFrom`**: the same shape on the **new** session (where it came from). Both optional / `null` for every other session.
+- **Lifecycle actions** `taken-over` (the chat's divider "Taken over from <machine>"; `machine`, `machineId`, `remoteSessionId`) and `moved-away` (the old session's note "Moved to <machine>").
+
+Local only (a peer's request gets 403 `peer-forbidden`):
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | /api/takeover/preview | { sessionId, targetMachine?, clonePaths? } | TakeoverPreview `{ source, target, stopsTerminal, ok, blockers }`; `sessionId` is a local id (needs `targetMachine`: a paired machine's id) or a peer's remote id (comes here); 404 unknown machine, 422 |
+| POST | /api/takeover | { sessionId, targetMachine?, clonePaths?, confirmStopTerminal? } | 202 TakeoverRun; 409 `in-progress` |
+| GET | /api/takeover/runs/{id} | | TakeoverRun `{ id, state: running \| done \| failed, steps[{ id, label, status, detail }], error?, rolledBack, rollbackNotes, result?, leftovers, log }`; the step ids are `checks, stop, capture, transfer, apply, resume, finish` |
+
+On the peer allow-list (each end's operations; the initiating machine's runner calls them, locally or through the peer API; every answer is `{ result, log }` unless noted; failures are `{ error, message }`):
+
+| Method | Path | Body | Result |
+|---|---|---|---|
+| POST | /api/takeover/source/inspect | { sessionId } | SourceInspect (repos, conversation files, queued messages, blockers) |
+| POST | /api/takeover/source/stop | { opId, sessionId } | { wasLive, wasBusy }; 409 `in-progress` |
+| POST | /api/takeover/source/capture | { opId } | { repos: CapturedRepo[] } (the WIP push; 409 `blocked`) |
+| POST | /api/takeover/source/stop-terminal | { opId } | { pid, how } (a hooked session; 502 `agents-unavailable` / `stop-failed`) |
+| POST | /api/takeover/source/files | { opId } | { kind, files: [{ name, size, sha256 }] } |
+| POST | /api/takeover/source/chunk | { opId, name, offset } | `{ name, size, offset, length, data (base64), eof }` (no log) |
+| POST | /api/takeover/source/finish | { opId, move, stillThere } | { leftovers, closeError } |
+| POST | /api/takeover/source/rollback | { opId } | { notes } |
+| POST | /api/takeover/target/plan | { source, clonePaths? } | TargetPlan (a resolution per repo: `use` / `clone` / `blocked`) |
+| POST | /api/takeover/target/chunk | { opId, name, size, sha256, offset, data } | `{ received, done }` (no log); 422 `checksum` / `invalid`, 409 `out-of-order`, 413 over 200 MB |
+| POST | /api/takeover/target/apply | { opId, source, captured, clonePaths? } | { place, changes, applied } (409 `diverged` and the like) |
+| POST | /api/takeover/target/abort | { opId } | { notes } |
+| POST | /api/takeover/target/resume | { opId, source, files, from } | { sessionId, name, note } |
+| POST | /api/takeover/target/close | { opId } | { ok: true } |
+| GET | /api/takeover/leftovers | | Leftover[] (temporary branches this machine pushed and could not delete) |
+| POST | /api/takeover/leftovers/{id}/delete | | { deleted: true }; 404; 502 `delete-failed` |
+
+```json
+{
+  "id": "6d2f…",
+  "state": "done",
+  "steps": [{ "id": "capture", "label": "Pushing the work in progress to a temporary branch", "status": "done", "detail": "1 repo, 3 uncommitted files pushed" }],
+  "error": null,
+  "rolledBack": null,
+  "rollbackNotes": [],
+  "result": { "sessionId": "r~abcdefghijkl~0b7c3e0a-…", "machineName": "office-pc", "machineId": "abcdefghijkl", "local": false },
+  "leftovers": [],
+  "log": ["[office-pc] git -C /work/app push origin +17868e7…:refs/heads/switchboard/takeover/0b7c3e0a/feature/login"]
+}
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

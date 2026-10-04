@@ -304,6 +304,41 @@ export function isTempBranch(branch: string): boolean {
   return branch.startsWith(TAKEOVER_BRANCH_PREFIX) && !branch.includes('..') && !branch.includes(' ') && !branch.endsWith('/');
 }
 
+// ── what the other machine may tell us (every value ends up as a git argument) ──
+
+/**
+ * `true` for a branch name this machine passes to git: no leading `-` (an option),
+ * no `..`, spaces, control characters or ref syntax (`~ ^ : ? * [ \\ @{`), not
+ * ending in `/`, `.` or `.lock`.
+ */
+export function isSafeBranchName(name: string): boolean {
+  if (name === '' || name.length > 250 || name.startsWith('-') || name.startsWith('/') || name.endsWith('/') || name.endsWith('.') || name.endsWith('.lock')) return false;
+  if (/[\x00-\x20\x7f~^:?*[\\]/.test(name) || name.includes('..') || name.includes('@{') || name.includes('//')) return false;
+  return name !== '@';
+}
+
+/** `true` for a repo key made of letters, digits and `._-` (it is part of a private ref name). */
+export function isSafeRepoKey(key: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(key) && !key.includes('..');
+}
+
+/** `true` for a full commit id. */
+export function isCommitId(value: string): boolean {
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(value);
+}
+
+/**
+ * `true` for a URL `git clone` may be given: http(s), ssh, git, file, scp-like
+ * `user@host:path` or a plain path; never a transport helper (`ext::`, `fd::`),
+ * never something that starts with `-`.
+ */
+export function isCloneableUrl(url: string): boolean {
+  const text = url.trim();
+  if (text === '' || text.startsWith('-') || text.includes('::') || /[\x00-\x1f]/.test(text)) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return /^(?:https?|ssh|git\+ssh|git|file):\/\//i.test(text);
+  return true;
+}
+
 // ── remote URLs ──────────────────────────────────────────────────────────
 
 /**
@@ -413,6 +448,8 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
       ...extra,
     });
     if (repo.remoteKey === '') return blocked(`${repo.name} has no remote: its work can only travel through a shared remote`);
+    if (!isSafeBranchName(repo.branch)) return blocked(`${repo.name}: the branch name ${JSON.stringify(repo.branch)} is not one this machine will pass to git`);
+    if (!isSafeRepoKey(repo.key)) return blocked(`${repo.name}: the repo key ${JSON.stringify(repo.key)} is not valid`);
     const match = matchingCandidates(repo, candidates)[0];
     if (match) {
       const wantsWorktree = repo.kind === 'worktree';
@@ -439,6 +476,7 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
     const typed = options.clonePaths?.[repo.key]?.trim();
     const cloneTo = typed && typed !== '' ? typed : options.defaultCloneParent ? joinPath(options.defaultCloneParent, repo.name) : null;
     if (cloneTo === null) return blocked(`${repo.name} is not on this machine and no folder is known to clone it into: type one`);
+    if (!isCloneableUrl(repo.remoteUrl)) return blocked(`${repo.name}: ${JSON.stringify(repo.remoteUrl)} is not a URL this machine will clone`);
     if (exists.has(cloneTo)) return blocked(`${cloneTo} exists already: choose another folder to clone ${repo.name} into`, { cloneTo, cloneUrl: repo.remoteUrl });
     return {
       ...base,

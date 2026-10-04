@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type SourceRepo,
   type TargetCandidate,
+  isCloneableUrl,
+  isCommitId,
+  isSafeBranchName,
+  isSafeRepoKey,
   isTempBranch,
   matchingCandidates,
   moveLinkId,
@@ -207,5 +211,28 @@ describe('D65 texts', () => {
   it('links the other machine\'s session as a remote id unless it is on this machine', () => {
     expect(moveLinkId({ machineId: 'abcdefghijkl', sessionId: 'sid' }, 'mnopqrstuvwx')).toBe('r~abcdefghijkl~sid');
     expect(moveLinkId({ machineId: 'abcdefghijkl', sessionId: 'sid' }, 'abcdefghijkl')).toBe('sid');
+  });
+});
+
+describe('D65: nothing the other machine sends reaches git unchecked', () => {
+  it('branch names: ordinary ones pass, option-like and ref-syntax ones do not', () => {
+    for (const ok of ['main', 'feature/login', 'TASK-0042-wt-session', 'release/1.5', 'session/fix-login']) expect(isSafeBranchName(ok), ok).toBe(true);
+    for (const bad of ['', '-D', '--upload-pack=x', 'a..b', 'a b', 'a~1', 'a^', 'a:b', 'a?b', 'a*b', 'a[b', 'a\\b', 'a@{u}', '@', '/x', 'x/', 'x.', 'x.lock', 'a//b', 'a\nb', 'x'.repeat(300)]) expect(isSafeBranchName(bad), JSON.stringify(bad)).toBe(false);
+  });
+
+  it('repo keys, commit ids and clone URLs', () => {
+    expect(['app', 'front-2', 'a.b_c'].map(isSafeRepoKey)).toEqual([true, true, true]);
+    expect(['', '-x', 'a/b', 'a..b', '.hidden', 'a b'].map(isSafeRepoKey)).toEqual([false, false, false, false, false, false]);
+    expect(isCommitId('a'.repeat(40))).toBe(true);
+    expect(isCommitId('a'.repeat(64))).toBe(true);
+    expect(['', 'abc', 'g'.repeat(40), `${'a'.repeat(40)} `, '--help'].map(isCommitId)).toEqual([false, false, false, false, false]);
+    for (const ok of ['https://github.com/acme/app.git', 'git@github.com:acme/app.git', 'ssh://git@host/a/b', '/tmp/remotes/app.git', 'file:///tmp/app.git', 'C:\\repos\\app.git']) expect(isCloneableUrl(ok), ok).toBe(true);
+    for (const bad of ['', '--upload-pack=touch /tmp/x', 'ext::sh -c touch% /tmp/x', 'fd::17', 'ftp://host/x', 'javascript://x', 'https://host/x\n--bad']) expect(isCloneableUrl(bad), JSON.stringify(bad)).toBe(false);
+  });
+
+  it('the planner blocks a repo whose branch, key or clone URL is not safe', () => {
+    expect(planRepos([repo({ branch: '--delete' })], [candidate()], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('not one this machine will pass to git') });
+    expect(planRepos([repo({ key: '../x' })], [candidate()], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('repo key') });
+    expect(planRepos([repo({ remoteUrl: 'ext::sh -c x' })], [], PLAN)[0]).toMatchObject({ action: 'blocked', reason: expect.stringContaining('not a URL this machine will clone') });
   });
 });
