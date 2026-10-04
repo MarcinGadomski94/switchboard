@@ -62,6 +62,8 @@ test('the strip: + Todo, add, edit, reorder, tick, Done (n), Clear done, delete;
   await expect(input).toBeFocused();
   await input.fill('Write the docs');
   await input.press('Enter');
+  await expect(items).toHaveCount(1);
+  await expect(input).toHaveValue('');
   await input.fill('Run the tests');
   await page.getByTestId('todo-add').click();
   await expect(items).toHaveText([/Write the docs\s*you/, /Run the tests\s*you/]);

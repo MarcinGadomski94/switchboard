@@ -119,10 +119,12 @@ export function TodoStrip({
   };
 
   const add = async (): Promise<void> => {
-    const text = draft.trim();
+    const sent = draft;
+    const text = sent.trim();
     if (text === '' || disabled) return;
     if (await run(() => api.addTodo(sessionId, text))) {
-      setDraft('');
+      // Cleared unless the field was edited meanwhile (the next item typed while this one was saved).
+      setDraft((current) => (current === sent ? '' : current));
       addInput.current?.focus();
     }
   };

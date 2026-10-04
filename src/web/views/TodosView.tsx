@@ -49,7 +49,7 @@ export function TodosView() {
   };
 
   return (
-    <div className="sb-todos-page" data-testid="todos-view">
+    <section className="sb-view sb-todos-page" data-view="todos" data-testid="view-todos">
       <div className="sb-todos-page-head">
         <div className="sb-todos-page-title">Todos</div>
         <div className="sb-todos-page-summary" data-testid="todos-summary">
@@ -107,6 +107,6 @@ export function TodosView() {
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
