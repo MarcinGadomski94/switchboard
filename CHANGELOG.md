@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.0 (2026-10-04)
+
+### Take over a session from another machine
+- With paired Switchboards (Tailscale), a session can move between machines: **Take over to this machine** on a paired machine's session, or **Move to <machine> ▸** on a local one (session header or the sidebar row's ⋯ menu).
+- The session stops on the source machine; its work travels through git (a temporary WIP branch pushed to the repo's remote, built without touching your branch, index or files) and is restored on the target exactly as uncommitted changes, on the same branch (worktrees are recreated). A repo the target doesn't have can be cloned from the dialog.
+- The conversation is copied and resumed with its full context (Claude Code `--resume`; Codex its session file where possible; OpenCode a handover summary). The chat shows "Taken over from <machine>"; the source session becomes read-only with **Moved to <machine>**.
+- Hooked terminal sessions can be taken over too, after confirming that the terminal's `claude` is stopped.
+- Anything failing before the resume is rolled back on both machines; a temporary branch that couldn't be deleted is listed with a one-click delete.
+- Both machines need 1.6.0.
+
+### Fixed
+- Accounts: the "resets 14:05" time in an account switch was formatted against the wall clock instead of the decision's time.
+
+### Database
+- Migration 0025 (where a session moved to / from) runs by itself on first start.
+
 ## 1.5.3 (2026-10-02)
 
 ### Added
