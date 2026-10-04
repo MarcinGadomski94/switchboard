@@ -1013,7 +1013,7 @@ export class TakeoverService {
         await chmod(to, 0o600).catch(() => undefined);
         op.installed.push(to);
       }
-      transcript = await readFile(path.join(project, `${source.claudeSessionId}.jsonl`), 'utf8');
+      transcript = path.join(project, `${source.claudeSessionId}.jsonl`);
     } else {
       let carried = false;
       const rollout = body.files.find((file) => file.name.startsWith('rollout/'));

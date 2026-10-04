@@ -1,4 +1,5 @@
-import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { Session } from '../../src/core/api.ts';
 import { failureText, runCommand, succeeded } from '../../src/server/exec.ts';
@@ -49,6 +50,53 @@ export interface TakeoverWorld {
   git(cwd: string, ...args: string[]): Promise<string>;
 }
 
+/**
+ * One world at a time across test files: a world holds four test ports (two UI
+ * listeners, two peer listeners) and the pool of test ports is small, so parallel
+ * files would starve each other. A lock folder in the temp dir (atomic `mkdir`),
+ * released by {@link removeWorld}; a lock left by a crashed run goes stale after 5 minutes.
+ */
+const LOCK = path.join(os.tmpdir(), 'switchboard-takeover-world.lock');
+const HELD = new Set<string>();
+
+async function acquireWorld(root: string): Promise<void> {
+  for (let attempt = 0; attempt < 1200; attempt++) {
+    try {
+      await mkdir(LOCK);
+      await writeFile(path.join(LOCK, 'owner'), `${process.pid} ${root}`);
+      HELD.add(root);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const age = Date.now() - (await stat(LOCK).then((info) => info.mtimeMs).catch(() => Date.now()));
+      if (age > 5 * 60_000) await rm(LOCK, { recursive: true, force: true });
+      else await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw new Error('timed out waiting for another take-over world to finish');
+}
+
+/** Removes a temp folder (retrying while a stopping process still writes into it) and releases the world lock. */
+export async function removeWorld(dir: string): Promise<void> {
+  try {
+    await removeFolder(dir);
+  } finally {
+    if (HELD.delete(dir)) await rm(LOCK, { recursive: true, force: true });
+  }
+}
+
+async function removeFolder(dir: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt >= 8) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
 /** Runs git with the test identity. */
 export async function gitIn(root: string, cwd: string, ...args: string[]): Promise<string> {
   const result = await runCommand(['git'], args, { cwd, env: { ...process.env, ...gitEnv(root) } });
@@ -85,6 +133,17 @@ async function clone(root: string, remote: string, dir: string): Promise<string>
  * both have `alpha`). Both listeners are on and the machines are paired and online.
  */
 export async function takeoverWorld(root: string, options: { readonly aRepos?: NodeRepos; readonly bRepos?: NodeRepos; readonly env?: Record<string, string> } = {}): Promise<TakeoverWorld> {
+  await acquireWorld(root);
+  try {
+    return await startWorld(root, options);
+  } catch (error) {
+    await rm(LOCK, { recursive: true, force: true });
+    HELD.delete(root);
+    throw error;
+  }
+}
+
+async function startWorld(root: string, options: { readonly aRepos?: NodeRepos; readonly bRepos?: NodeRepos; readonly env?: Record<string, string> }): Promise<TakeoverWorld> {
   const remotes: Remotes = {
     alpha: await makeRemote(root, 'alpha'),
     front: await makeRemote(root, 'front'),

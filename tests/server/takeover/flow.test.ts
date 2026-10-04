@@ -5,9 +5,9 @@ import type { Session, SessionEvent } from '../../../src/core/api.ts';
 import { remoteId } from '../../../src/core/peers.ts';
 import { slugForCwd } from '../../../src/core/transcript.ts';
 import type { TakeoverRun } from '../../../src/core/takeover.ts';
-import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
+import { makeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, waitFor } from '../../helpers/peers.ts';
-import { type TakeoverWorld, fakeLog, gitIn, startRepoSession, startWorkspaceSession, takeoverWorld } from '../../helpers/takeover.ts';
+import { type TakeoverWorld, fakeLog, gitIn, startRepoSession, startWorkspaceSession, takeoverWorld , removeWorld } from '../../helpers/takeover.ts';
 
 /**
  * D65 with two real Switchboard processes ("pc" = a, "mac" = b), fake CLIs, temp
@@ -25,7 +25,7 @@ beforeEach(async () => {
 afterEach(async () => {
   if (world) await Promise.all([world.a.server.stop(), world.b.server.stop()]);
   world = null;
-  await removeTempDir(tmp);
+  await removeWorld(tmp);
 });
 
 /** Runs a take-over from `node`'s UI and waits for its end. */
@@ -112,6 +112,8 @@ describe('D65: a session of the other machine is taken over to this one', () => 
     // The chat says where it came from; the first message is a service message that is not left queued (D44).
     const events = await eventsOf(w.b, created.id);
     expect(events.some((event) => event.label.startsWith('Taken over from'))).toBe(true);
+    // The conversation so far is the new session's chat (imported from the copied transcript).
+    expect(events.some((event) => (event.payload as { text?: string } | null)?.text?.includes('zeppelin'))).toBe(true);
     const note = events.find((event) => (event.payload as { text?: string } | null)?.text?.startsWith('This session moved from'));
     expect(note).toBeTruthy();
     await waitFor('the first message taken up', async () => {

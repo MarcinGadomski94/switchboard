@@ -237,7 +237,7 @@ export interface TakeOverInput {
   readonly effort: string | null;
   readonly ultracode: boolean;
   readonly profileId: string | null;
-  /** The copied Claude Code transcript's text (imported as the chat). */
+  /** The copied Claude Code transcript's path (imported as the chat, like a terminal conversation's). */
   readonly transcript: string | null;
   /** The chat of a Codex / OpenCode session (imported as events). */
   readonly messages: ReadonlyArray<{ readonly role: 'user' | 'assistant'; readonly text: string; readonly ts: string | null }>;

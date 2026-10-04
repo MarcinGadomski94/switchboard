@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FileDiff, Session, SessionEvent } from '../../../src/core/api.ts';
 import { remoteId } from '../../../src/core/peers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../../src/core/takeover.ts';
-import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
+import { makeTempDir } from '../../helpers/net.ts';
 import { type PeerNode, waitFor } from '../../helpers/peers.ts';
-import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld } from '../../helpers/takeover.ts';
+import { type TakeoverWorld, fakeLog, startRepoSession, startWorkspaceSession, takeoverWorld , removeWorld } from '../../helpers/takeover.ts';
 
 /**
  * D65 scenarios on top of `flow.test.ts` (two real Switchboards, fake CLIs, temp
@@ -25,7 +25,7 @@ beforeEach(async () => {
 afterEach(async () => {
   if (world) await Promise.all([world.a.server.stop(), world.b.server.stop()]);
   world = null;
-  await removeTempDir(tmp);
+  await removeWorld(tmp);
 });
 
 async function run(node: PeerNode, body: Record<string, unknown>): Promise<TakeoverRun> {
