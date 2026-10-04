@@ -987,6 +987,21 @@ Each item of a session's todo list has three fields instead of one text (`docs/t
 { "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "title": "Fix the login test flake", "text": "Fix the login test flake", "description": "Retries hide a race in the session cookie refresh; happens ~1 in 20 runs on CI.", "plan": "## Context\nThe flake is in `tests/login.spec.ts`…\n\n## Steps\n1. …\n\n## Done when\n- 50 runs pass", "state": "open", "addedBy": "agent", "position": 0, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null }
 ```
 
+## Todo priority, estimate and the mandatory plan (D70, 2026-10-04, additive)
+
+Each todo item also has a priority and an estimate, and its handover plan is mandatory (`docs/todos.md` → *Priority, estimate and the mandatory plan (D70)*, `docs/decisions.md` → D70). Migration 0028 adds `priority` and `estimate_minutes` and fills empty plans with `No plan`.
+
+- **`SessionTodo`** gains **`priority`** (`urgent` | `high` | `medium` | `low`, type `TodoPriority`) and **`estimateMinutes`** (how long an AI agent would take, whole minutes 1–10,080; `null` = not estimated). **`plan`** is now always a non-empty string: `No plan` (or `No plan: <reason>`) when there is nothing to plan.
+- **Order:** answers keep the stored order (`position`); clients show the open items by priority (urgent first) and by `position` within a level (`splitTodos`), and Move up / down (`PUT …/todos/order`) swaps only within a level. `todo_list` prints the same order.
+- **Input:** `POST …/todos` and `POST /agent/v1/todos` also take `priority?` (absent: `medium`) and `estimateMinutes?` (absent: none). An absent, `null` or blank `plan` is stored as `No plan` (never 422: a 1.7.0 / 1.8.0 UI or peer, or an older agent tool, keeps adding). `PUT …/todos/{todoId}` and `PUT /agent/v1/todos/{todoId}` also take `priority?` and `estimateMinutes?` (`null` removes the estimate); a `plan` of `""`, `null` or only spaces is **422** `invalid` (a plan can change but not be emptied). A priority outside the four, or an estimate that is not a whole number from 1 to 10,080, is 422 `invalid`.
+- **Agent tools:** `todo_add` requires `title`, `plan`, `priority` and `estimate_minutes` in its JSON schema (the stdio helper refuses a call without them and says what is missing; the server itself still defaults them); `todo_update` takes `priority` and `estimate_minutes` too. The helper sends `estimate_minutes` as `estimateMinutes`. Compact lines: `[3f9a1c2b7d4e] ☐ HIGH ~45m Fix the login test · has description, plan` (`~?` = no estimate; `has plan` only for a real plan, not `No plan`); `todo_get` adds `Priority:` and `Estimate:` lines.
+- **Take-over (D65):** `SourceInspect.todos[]` items also carry `priority` and `estimateMinutes`; from an older source they are `medium` / none and a missing plan is `No plan`.
+- **Peers (D48):** an item from a 1.7.0 / 1.8.0 peer (no `priority`, `estimateMinutes`, maybe a `null` plan) reads as `medium`, `null`, `No plan`. The UI sends `priority` and `estimateMinutes` on add and edit; an older peer ignores them (its item stays medium, not estimated).
+
+```json
+{ "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "title": "Restore checkout for PROJ-7 customers", "text": "Restore checkout for PROJ-7 customers", "description": "Checkout fails for every customer since the last deploy.", "plan": "1. Roll back PROJ-7\n2. Check the logs", "priority": "urgent", "estimateMinutes": 45, "state": "open", "addedBy": "agent", "position": 2, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
