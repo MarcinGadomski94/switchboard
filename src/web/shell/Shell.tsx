@@ -11,6 +11,7 @@ import { McpView } from '../views/McpView.tsx';
 import { SchedulesView } from '../views/SchedulesView.tsx';
 import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
+import { TodosView } from '../views/TodosView.tsx';
 import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
 import { PaneHandle, usePanes } from './Panes.tsx';
@@ -33,6 +34,8 @@ function View({ route }: { readonly route: Route }) {
       return <ArtifactsView />;
     case 'history':
       return <HistoryView />;
+    case 'todos':
+      return <TodosView />;
     case 'tool':
       return <ToolView key={route.id} toolId={route.id} />;
     case 'settings':

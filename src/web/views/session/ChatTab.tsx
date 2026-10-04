@@ -21,6 +21,7 @@ import { MachineStatusNote } from '../../components/MachineStatusNote.tsx';
 import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPING_LABEL, withdrawnDraft } from '../../../core/stop-turn.ts';
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
+import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -116,6 +117,10 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     // Another session's uploads never go with this one's message.
     clearAttachments();
   }, [sessionId, clearAttachments]);
+  // D68: the session's todo list (the strip above the composer; the composer's + Todo while it is empty).
+  const todos = useSessionTodos(sessionId);
+  const [addingTodo, setAddingTodo] = useState(false);
+  useEffect(() => setAddingTodo(false), [sessionId]);
   const scroller = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const restored = useRef(false);
@@ -199,6 +204,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       </div>
       {/* D53: an offline machine's session has no live line (the offline note says why). */}
       <ChatActivityLine activity={blocked ? null : activity} />
+      <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} />
       <Composer
         sessionId={sessionId}
         blocked={blocked}
@@ -213,6 +219,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
         placeholder={composerPlaceholder(session ? displayTitle(session) : '')}
+        // D68: the compact "+ Todo" while the list is empty (the strip takes over once it has items).
+        onAddTodo={todos.list && todos.list.todos.length === 0 && !addingTodo && blocked === null ? () => setAddingTodo(true) : null}
         onSent={() => {
           stick.current = true;
         }}
@@ -273,6 +281,7 @@ function Composer({
   background,
   context,
   placeholder,
+  onAddTodo,
   onSent,
   onStopped,
 }: {
@@ -287,6 +296,8 @@ function Composer({
   readonly background: readonly BackgroundTask[];
   readonly context: SessionContext | null;
   readonly placeholder: string;
+  /** D68: opens the todo strip with its add field (shown as "+ Todo" while the list is empty); `null` = not shown. */
+  readonly onAddTodo: (() => void) | null;
   readonly onSent: () => void;
   readonly onStopped: () => void;
 }) {
@@ -523,6 +534,12 @@ function Composer({
         <div className="sb-chat-error" data-testid="chat-error" role="alert">
           {error}
         </div>
+      ) : null}
+      {/* D68: + Todo while the session's todo list is empty: a small tab on the composer's top edge, last so no part moves. */}
+      {onAddTodo ? (
+        <button type="button" className="sb-button sb-chat-todo-add" data-testid="chat-todo-add" title="Add an item to this session's todo list" onClick={onAddTodo}>
+          + Todo
+        </button>
       ) : null}
     </div>
   );

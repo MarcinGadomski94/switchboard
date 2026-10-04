@@ -311,6 +311,22 @@
   color: var(--muted-2);
 }
 
+/* D68: a session's open todos, right of its name, before its age. */
+.sb-session-todos {
+  margin-left: auto;
+  flex: none;
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-1);
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  padding: 0 5px;
+  line-height: 15px;
+}
+
+.sb-session-todos + .sb-session-age {
+  margin-left: 6px;
+}
+
 .sb-session-mode {
   font: 400 11px var(--font-mono);
   color: var(--muted-3);

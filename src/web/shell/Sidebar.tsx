@@ -37,7 +37,7 @@ const SOLUTIONS_RELOAD_MS = 1_000;
 type BadgeKind = 'need' | 'warn' | 'fail' | null;
 
 interface NavEntry {
-  readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history';
+  readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos';
   readonly label: string;
   readonly badge: string;
   readonly kind: BadgeKind;
@@ -190,6 +190,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   const conflicts = conflictCount(solutions.data);
   const failed = (schedules.data ?? []).filter((s) => s.runs[s.runs.length - 1]?.result === 'fail').length;
 
+  // D68: every open session's open todos (this machine's and the paired machines'), from the session list.
+  const openTodos = openSessions(sessions.data ?? []).reduce((sum, session) => sum + (session.openTodoCount ?? 0), 0);
   const nav: readonly NavEntry[] = [
     { view: 'inbox', label: 'Inbox', badge: inboxCount ? String(inboxCount) : '', kind: inboxCount ? 'need' : null },
     { view: 'solutions', label: 'Solutions', badge: conflicts ? `${conflicts} conflict${conflicts === 1 ? '' : 's'}` : '', kind: conflicts ? 'warn' : null },
@@ -198,6 +200,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
     { view: 'mcp', label: 'MCP', badge: '', kind: null },
     { view: 'artifacts', label: 'Artifacts', badge: artifacts.data?.length ? String(artifacts.data.length) : '', kind: null },
     { view: 'history', label: 'History', badge: '', kind: null },
+    // D68: the Todos page (after the prototype's items, like D61's MCP: the others keep their places).
+    { view: 'todos', label: 'Todos', badge: openTodos ? String(openTodos) : '', kind: null },
   ];
 
   const sidebarTools = (tools.data ?? []).filter((tool) => tool.showInSidebar);

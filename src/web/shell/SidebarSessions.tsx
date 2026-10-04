@@ -557,6 +557,12 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
                 <PhoneGlyph title="Remote Control on" />
               </span>
             ) : null}
+            {/* D68: the session's open todos. */}
+            {session.openTodoCount ? (
+              <span className="sb-session-todos" data-testid="session-todo-count" title={`${session.openTodoCount} open todo${session.openTodoCount === 1 ? '' : 's'}`}>
+                ☐ {session.openTodoCount}
+              </span>
+            ) : null}
             <span className="sb-session-age">{formatAge(session.lastActivityAt ?? session.createdAt, now)}</span>
           </div>
           <div className="sb-session-mode">

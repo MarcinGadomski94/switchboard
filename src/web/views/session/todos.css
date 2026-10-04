@@ -1,0 +1,225 @@
+/*
+ * D68 · the session's todo strip above the composer (docs/todos.md → In the session),
+ * the composer's compact "+ Todo", the sidebar row's count and the Todos page.
+ * Colors and sizes are the app's tokens (styles/tokens.css).
+ */
+.sb-todos {
+  border-top: 1px solid var(--border-divider);
+  padding: 6px 22px;
+  font-size: 13px;
+}
+
+.sb-todos-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.sb-todos-caret {
+  color: var(--muted-3);
+  width: 10px;
+}
+
+.sb-todos-title {
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-1);
+  flex: none;
+}
+
+.sb-todos-next {
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb-todos-body {
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: 4px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-todos-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-todo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  border-radius: 6px;
+  padding: 0 4px;
+}
+
+.sb-todo:hover {
+  background: var(--bg-card);
+}
+
+.sb-todo-check {
+  margin: 0;
+  accent-color: var(--status-done);
+  flex: none;
+}
+
+.sb-todo-text {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.sb-todo-text:disabled {
+  cursor: default;
+}
+
+.sb-todo[data-state='done'] .sb-todo-text {
+  color: var(--muted-2);
+  text-decoration: line-through;
+}
+
+.sb-todo-edit,
+.sb-todos-add-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  color: var(--text);
+  font: inherit;
+  padding: 3px 8px;
+}
+
+.sb-todo-by {
+  font: 400 10.5px var(--font-mono);
+  color: var(--muted-4);
+  flex: none;
+}
+
+.sb-todo-icon {
+  background: none;
+  border: 0;
+  color: var(--muted-3);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 12px;
+  flex: none;
+  visibility: hidden;
+}
+
+.sb-todo:hover .sb-todo-icon,
+.sb-todo:focus-within .sb-todo-icon {
+  visibility: visible;
+}
+
+.sb-todo-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sb-todo-icon:not(:disabled):hover {
+  color: var(--text);
+}
+
+.sb-todos-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-left: 4px;
+}
+
+.sb-todos-add-button {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+.sb-todos-done-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+.sb-todos-done-toggle,
+.sb-todos-clear {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: 500 11px var(--font-mono);
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.sb-todos-done-note {
+  font-size: 11px;
+  color: var(--muted-4);
+}
+
+.sb-todos-clear {
+  margin-left: auto;
+}
+
+.sb-todos-clear:hover,
+.sb-todos-done-toggle:hover {
+  color: var(--text);
+}
+
+.sb-todos-error {
+  color: oklch(0.72 0.16 25);
+  font-size: 12px;
+  padding-left: 4px;
+}
+
+/*
+ * The composer's compact "+ Todo" (only while the list is empty): a small pill just
+ * above the composer's top edge at the right (in the chat's bottom padding), out of
+ * the flow, so no part of the chat or the composer moves.
+ */
+.sb-chat-composer {
+  position: relative;
+}
+
+.sb-chat-composer > .sb-chat-todo-add {
+  position: absolute;
+  top: -26px;
+  right: 22px;
+  height: 20px;
+  font-size: 11.5px;
+  color: var(--muted-2);
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 0 9px;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.sb-chat-composer > .sb-chat-todo-add:hover {
+  color: var(--text);
+}

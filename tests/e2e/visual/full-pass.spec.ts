@@ -49,7 +49,8 @@ import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
  * - D61: the app's nav has a sixth item, MCP, which the prototype does not. The
  *   sidebar is measured with that item hidden (so every other part keeps the
  *   prototype's place), and the item itself is gated against its neighbour
- *   Schedules & loops (same height, x, width and label styles).
+ *   Schedules & loops (same height, x, width and label styles). D68: the seventh,
+ *   Todos (after History), likewise, gated against History.
  *
  * The per-view detail (every row, card and state) is gated by the view's own spec
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
@@ -634,36 +635,55 @@ function appNavPaths(paths: Record<string, readonly number[]>): Record<string, r
   return Object.fromEntries(Object.entries(paths).map(([name, p]) => [name, shift(p)]));
 }
 
-/** D61: hides (or shows again) the app's MCP nav item, which the prototype does not have. */
+/** D61 / D68: hides (or shows again) the app's MCP and Todos nav items, which the prototype does not have. */
 async function setMcpNavHidden(page: Page, hidden: boolean): Promise<void> {
   await page.evaluate((hide) => {
-    const item = document.querySelector<HTMLElement>('[data-testid="nav-mcp"]');
-    if (item) item.style.display = hide ? 'none' : '';
+    for (const id of ['nav-mcp', 'nav-todos']) {
+      const item = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      if (item) item.style.display = hide ? 'none' : '';
+    }
   }, hidden);
 }
 
-/** D61: the MCP nav item against Schedules & loops: same x, width, height; directly below it; label styles as an unselected neighbour's. */
-async function mcpNavIssues(page: Page): Promise<string[]> {
-  return page.evaluate((props) => {
-    const mcp = document.querySelector<HTMLElement>('[data-testid="nav-mcp"]');
-    const schedules = document.querySelector<HTMLElement>('[data-testid="nav-schedules"]');
-    if (!mcp || !schedules) return ['nav:MCP: missing'];
-    const issues: string[] = [];
-    const a = mcp.getBoundingClientRect();
-    const b = schedules.getBoundingClientRect();
-    for (const edge of ['x', 'width', 'height'] as const) if (Math.abs(a[edge] - b[edge]) > 0.5) issues.push(`nav:MCP.${edge}: ${a[edge]} vs Schedules ${b[edge]}`);
-    if (Math.abs(a.y - (b.y + b.height)) > 3) issues.push(`nav:MCP.y: ${a.y}, not under Schedules (${b.y + b.height})`);
-    // Label styles against a neighbour that is not the selected item (the selected one is brighter).
-    const reference = ['nav-schedules', 'nav-artifacts', 'nav-history'].map((id) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)).find((el) => el && el.getAttribute('aria-current') !== 'page');
-    const la = mcp.children[0];
-    const lb = reference?.children[0];
-    if (!la || !lb) return [...issues, 'nav:MCP: label missing'];
-    if (la.textContent !== 'MCP') issues.push(`nav:MCP.text: ${JSON.stringify(la.textContent)}`);
-    const sa = getComputedStyle(la);
-    const sb = getComputedStyle(lb);
-    for (const prop of props) if (sa.getPropertyValue(prop) !== sb.getPropertyValue(prop)) issues.push(`nav:MCP:label.${prop}: ${sa.getPropertyValue(prop)} vs ${sb.getPropertyValue(prop)}`);
-    return issues;
-  }, ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing']);
+/**
+ * D61: the MCP nav item against Schedules & loops; D68: the Todos item against History. Same x, width,
+ * height; directly below it; label styles as an unselected neighbour's.
+ */
+async function extraNavIssues(page: Page, item: { readonly id: string; readonly label: string; readonly above: string; readonly aboveName: string }): Promise<string[]> {
+  return page.evaluate(
+    ({ props, item }) => {
+      const mine = document.querySelector<HTMLElement>(`[data-testid="${item.id}"]`);
+      const above = document.querySelector<HTMLElement>(`[data-testid="${item.above}"]`);
+      const tag = `nav:${item.label}`;
+      if (!mine || !above) return [`${tag}: missing`];
+      const issues: string[] = [];
+      const a = mine.getBoundingClientRect();
+      const b = above.getBoundingClientRect();
+      for (const edge of ['x', 'width', 'height'] as const) if (Math.abs(a[edge] - b[edge]) > 0.5) issues.push(`${tag}.${edge}: ${a[edge]} vs ${item.aboveName} ${b[edge]}`);
+      if (Math.abs(a.y - (b.y + b.height)) > 3) issues.push(`${tag}.y: ${a.y}, not under ${item.aboveName} (${b.y + b.height})`);
+      // Label styles against a neighbour that is not the selected item (the selected one is brighter).
+      const reference = ['nav-schedules', 'nav-artifacts', 'nav-history'].map((id) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)).find((el) => el && el.getAttribute('aria-current') !== 'page');
+      const la = mine.children[0];
+      const lb = reference?.children[0];
+      if (!la || !lb) return [...issues, `${tag}: label missing`];
+      if (la.textContent !== item.label) issues.push(`${tag}.text: ${JSON.stringify(la.textContent)}`);
+      const sa = getComputedStyle(la);
+      const sb = getComputedStyle(lb);
+      for (const prop of props) if (sa.getPropertyValue(prop) !== sb.getPropertyValue(prop)) issues.push(`${tag}:label.${prop}: ${sa.getPropertyValue(prop)} vs ${sb.getPropertyValue(prop)}`);
+      return issues;
+    },
+    { props: ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing'], item },
+  );
+}
+
+/** D61: the MCP nav item against Schedules & loops. */
+function mcpNavIssues(page: Page): Promise<string[]> {
+  return extraNavIssues(page, { id: 'nav-mcp', label: 'MCP', above: 'nav-schedules', aboveName: 'Schedules' });
+}
+
+/** D68: the Todos nav item against History (the item above it). */
+function todosNavIssues(page: Page): Promise<string[]> {
+  return extraNavIssues(page, { id: 'nav-todos', label: 'Todos', above: 'nav-history', aboveName: 'History' });
 }
 
 /** Paths to measure for `checks`, anchors included (`@<path>`). */
@@ -760,6 +780,12 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
       sidebarTally.checks += 1;
       sidebarTally.failures += mcpIssues.length;
       rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:MCP (D61)', geometry: 'relative', proto: '—', app: 'vs nav:Schedules & loops', result: mcpIssues.length ? 'FAIL' : 'ok', note: mcpIssues.join('; ') });
+      // D68: likewise the Todos nav item, against History.
+      const todosIssues = await todosNavIssues(appPage);
+      failures.push(...todosIssues.map((issue) => `${surface.id} · ${issue}`));
+      sidebarTally.checks += 1;
+      sidebarTally.failures += todosIssues.length;
+      rows.push({ surface: surface.id, group: 'sidebar', part: 'nav:Todos (D68)', geometry: 'relative', proto: '—', app: 'vs nav:History', result: todosIssues.length ? 'FAIL' : 'ok', note: todosIssues.join('; ') });
       await setMcpNavHidden(appPage, true);
       track(compare(surface.id, sidebar, await measure(protoPage, paths), await measure(appPage, appNavPaths(paths))), sidebarTally, 'sidebar');
       // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.

@@ -38,6 +38,10 @@ import { FOOTER_PATH, usageRowChecks } from './usage-rows.ts';
  * and the parts under the nav are compared with y relative to the item above them
  * on each page (`anchor` / `appAnchor`), so the extra row is not a finding.
  *
+ * D68: a seventh item, Todos, after History (the last one): the parts under the nav
+ * are compared with y relative to it on the app (`appAnchor`), and the item is
+ * gated against History (same x, width, height, label styles; directly below it).
+ *
  * Fix: sidebar scrolling (`docs/sidebar.md` → *Layout and scrolling*): only the
  * SESSIONS list scrolls. The extra MCP row no longer makes the whole sidebar
  * scroll (by 24 px with the demo seed, as it did from D61 on): the sidebar itself
@@ -82,8 +86,9 @@ const PARTS: Readonly<
   navArtifactsLabel: { path: [0, 2, 3, 0], geometry: 'box', copy: true, appPath: [0, 2, 4, 0], anchor: [0, 2, 2], appAnchor: [0, 2, 3] },
   navHistory: { path: [0, 2, 4], geometry: 'box', copy: false, appPath: [0, 2, 5], anchor: [0, 2, 3], appAnchor: [0, 2, 4] },
   navHistoryLabel: { path: [0, 2, 4, 0], geometry: 'box', copy: true, appPath: [0, 2, 5, 0], anchor: [0, 2, 3], appAnchor: [0, 2, 4] },
-  toolsLabel: { path: [0, 3], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 5] },
-  toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 5] },
+  // D68: the app's last nav item is Todos (after History): the TOOLS label is compared with y relative to it.
+  toolsLabel: { path: [0, 3], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 6] },
+  toolsAdd: { path: [0, 3, 0], geometry: 'box', copy: true, anchor: [0, 2, 4], appAnchor: [0, 2, 6] },
   sessionsLabel: { path: [0, 5], geometry: 'size', copy: false },
   settings: { path: [0, 7], geometry: 'size', copy: true },
   footer: { path: [0, 8], geometry: 'bottom', copy: false },
@@ -196,6 +201,25 @@ test('empty shell: sidebar chrome matches the prototype (tokens, boxes ±2 px, c
       `| ${name} | ${spec.geometry}${anchorName ? (spec.footerRelative ? ' (y rel. footer)' : ' (y rel. item above)') : ''} | ${fmtBox(p)} | ${fmtBox(a)} | ${boxIssues.length || styleIssues.length ? 'FAIL' : 'ok'} | ${copyNote} |`,
     );
   }
+
+  // D68: the Todos nav item (not in the prototype) against History, the item above it.
+  const todosIssues = await appPage.evaluate(() => {
+    const todos = document.querySelector<HTMLElement>('[data-testid="nav-todos"]');
+    const history = document.querySelector<HTMLElement>('[data-testid="nav-history"]');
+    if (!todos || !history) return ['nav:Todos: missing'];
+    const issues: string[] = [];
+    const a = todos.getBoundingClientRect();
+    const b = history.getBoundingClientRect();
+    for (const edge of ['x', 'width', 'height'] as const) if (Math.abs(a[edge] - b[edge]) > 0.5) issues.push(`nav:Todos.${edge}: ${a[edge]} vs History ${b[edge]}`);
+    if (Math.abs(a.y - (b.y + b.height)) > 3) issues.push(`nav:Todos.y: ${a.y}, not under History (${b.y + b.height})`);
+    const la = todos.children[0];
+    const lb = history.children[0];
+    if (la?.textContent !== 'Todos') issues.push(`nav:Todos.text: ${JSON.stringify(la?.textContent)}`);
+    if (la && lb) for (const prop of ['color', 'font-family', 'font-size', 'font-weight', 'letter-spacing']) if (getComputedStyle(la).getPropertyValue(prop) !== getComputedStyle(lb).getPropertyValue(prop)) issues.push(`nav:Todos:label.${prop}`);
+    return issues;
+  });
+  failures.push(...todosIssues);
+  rows.push(`| navTodos (D68) | vs navHistory | — | — | ${todosIssues.length ? 'FAIL' : 'ok'} | "Todos" |`);
 
   // D66: the usage grid, listed next to the prototype's Max row and gated on the footer's own rules.
   const usage = await usageRowChecks(protoPage, appPage, 'D66');

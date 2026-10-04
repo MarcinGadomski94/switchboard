@@ -60,6 +60,11 @@ import type {
   Worktree,
   WorkflowAgentChat,
   FullEventAnswer,
+  NewTodoInput,
+  SessionTodoList,
+  TodoGroup,
+  TodoOrderInput,
+  TodoPatchInput,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
@@ -164,6 +169,15 @@ export const api = {
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
+  /** D68, additive: the session's todo list (`docs/todos.md`); every write answers the whole list. A peer's session id is forwarded. */
+  sessionTodos: (id: string) => request<SessionTodoList>('GET', `/api/sessions/${enc(id)}/todos`),
+  addTodo: (id: string, text: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos`, { text } satisfies NewTodoInput),
+  updateTodo: (id: string, todoId: string, patch: TodoPatchInput) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch),
+  deleteTodo: (id: string, todoId: string) => request<SessionTodoList>('DELETE', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`),
+  clearDoneTodos: (id: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/clear-done`),
+  reorderTodos: (id: string, ids: readonly string[]) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/order`, { ids } satisfies TodoOrderInput),
+  /** D68: every open session's items, grouped (this machine's, then the paired machines' as last known). */
+  todos: () => request<TodoGroup[]>('GET', '/api/todos'),
   /** D54, additive: the sidebar's pins and folders (this machine's; `docs/sidebar.md`). Every write answers the new layout. */
   sidebarLayout: () => request<SidebarLayout>('GET', '/api/sidebar'),
   /** D54: a new folder, at the end of the folders (201); D58: `parentId` = at the end of that folder's subfolders. */

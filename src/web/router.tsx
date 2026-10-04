@@ -15,6 +15,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/mcp` | MCP servers (D61) |
  * | `/artifacts` | Artifacts |
  * | `/history` | History |
+ * | `/todos` | Todos: every session's todo list (D68) |
  * | `/tools/:id` | Embedded tool |
  * | `/settings[/:section]` | Settings |
  *
@@ -22,7 +23,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  */
 
 /** The views of the sidebar nav (SPEC → Shell) plus the session, tool and settings views. */
-export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'tool' | 'settings';
+export type ViewName = 'inbox' | 'session' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' | 'tool' | 'settings';
 
 /** Session view tabs (SPEC → Session). */
 export const SESSION_TABS = ['chat', 'timeline', 'diff', 'artifacts'] as const;
@@ -31,7 +32,7 @@ export type SessionTab = (typeof SESSION_TABS)[number];
 
 /** The parsed current location. */
 export type Route =
-  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' }
+  | { readonly view: 'inbox' | 'solutions' | 'schedules' | 'mcp' | 'artifacts' | 'history' | 'todos' }
   | {
       readonly view: 'session';
       readonly id: string;
@@ -42,7 +43,7 @@ export type Route =
   | { readonly view: 'tool'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
 
-const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history'] as const;
+const SIMPLE_VIEWS = ['inbox', 'solutions', 'schedules', 'mcp', 'artifacts', 'history', 'todos'] as const;
 
 function decode(segment: string): string {
   try {

@@ -1,0 +1,105 @@
+/* D68 · the Todos page (docs/todos.md → Todos page). The rows reuse the strip's classes (session/todos.css). */
+.sb-todos-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.sb-todos-page-head {
+  padding: 18px 22px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-todos-page-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sb-todos-page-summary {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-todos-page-done {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted-1);
+  cursor: pointer;
+}
+
+.sb-todos-page-error {
+  padding: 8px 22px 0;
+}
+
+.sb-todos-page-list {
+  overflow-y: auto;
+  padding: 12px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.sb-todos-page-empty {
+  color: var(--muted-2);
+  padding: 24px 0;
+}
+
+.sb-todos-group {
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-todos-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-todos-group-title {
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.sb-todos-group-title:hover {
+  text-decoration: underline;
+}
+
+.sb-todos-group-place {
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb-todos-group-count {
+  margin-left: auto;
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  flex: none;
+}
+
+.sb-todos-item-text {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sb-todos-item-text:hover {
+  text-decoration: underline;
+}
