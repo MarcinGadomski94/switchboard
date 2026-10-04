@@ -353,7 +353,7 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
 
   if (trigger.kind === 'limit') {
     const target = firstWithAllowance(view, settings, now, input.currentId);
-    const label = limitLabel(trigger.hit);
+    const label = limitLabel(trigger.hit, now);
     if (target) return { action: 'switch', to: target.id, reason: label, ...(mark ? { mark } : {}) };
     if (settings.exhausted.action === 'switch-cli' && settings.exhausted.cli && settings.exhausted.cli !== cli) {
       return { action: 'switch-cli', toCli: settings.exhausted.cli, reason: `every ${cli} account is out of usage (${label})`, ...(mark ? { mark } : {}) };
@@ -378,9 +378,9 @@ export function decideAccountSwitch(input: DecideInput): SwitchDecision {
   return { action: 'switch', to: first.id, reason: 'the first account has allowance again' };
 }
 
-function limitLabel(hit: LimitHit): string {
+function limitLabel(hit: LimitHit, now: number): string {
   const what = hit.window === 'session' ? 'session limit' : hit.window === 'weekly' ? 'weekly limit' : 'usage limit';
-  return hit.resetsAt ? `${what}, resets ${clock(hit.resetsAt)}` : what;
+  return hit.resetsAt ? `${what}, resets ${clock(hit.resetsAt, new Date(now))}` : what;
 }
 
 function thresholdLabel(current: ProfileSnapshot, settings: AccountSettings): string {
