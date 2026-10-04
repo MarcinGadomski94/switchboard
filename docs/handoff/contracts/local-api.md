@@ -875,7 +875,7 @@ Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*
 - The service reads them at every spawn (new, resumed, restarted, account switch, CLI switch), so a change applies to sessions started or resumed afterwards; running processes keep what they were started with.
 
 ```json
-{ "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.", "agents.standingInstruction.enabled": true }
+{ "agents.standingInstruction": "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.", "agents.standingInstruction.enabled": true }
 ```
 
 ## Take-over (D65, 2026-10-04, additive)
@@ -928,6 +928,51 @@ On the peer allow-list (each end's operations; the initiating machine's runner c
 }
 ```
 
+## Session todos (D68, 2026-10-04, additive)
+
+A todo list per session: things that still need doing, kept by the developer and by the session's agent (`docs/todos.md`, `docs/decisions.md` → D68). Additive: migration 0026 (`session_todos`), one `Session` field, one `/hub` event, new routes; nothing existing changes.
+
+- **`Session.openTodoCount`** (number): the session's open items (the sidebar row's count, the Todos nav total). Absent from an older peer = 0.
+- **`SessionTodo`** `{ id, sessionId, text, state: open | done, addedBy: developer | agent, position, createdAt, updatedAt, doneAt, removeAt }`: `position` orders the session's items (0 first; open and done share it); `doneAt` is when it was ticked (`null` while open); `removeAt` = `doneAt` + 1 hour, when a done item is removed by itself (`null` while open). `text` is trimmed, 1–1,000 characters; a session keeps at most 200 items.
+- **`SessionTodoList`** `{ sessionId, todos: SessionTodo[] (in order), openCount, doneCount }`: what every route under a session answers.
+- **Done items** are removed automatically one hour after they were ticked (a sweep at start and a timer, from the stored `doneAt`, so a restart keeps the hour), earlier by Delete or Clear done; unticking before the hour cancels it.
+
+The UI's routes (the `sb_token` cookie; a peer's session id `r~<machine>~<id>` is forwarded to its machine, every one of them is on the peer allow-list):
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /api/sessions/{id}/todos | | SessionTodoList; 404 `not-found` |
+| POST | /api/sessions/{id}/todos | { text } | 201 SessionTodoList (the item at the end, `addedBy: developer`); 422 `invalid`, 409 `too-many` |
+| PUT | /api/sessions/{id}/todos/{todoId} | { text?, state?: open \| done } | SessionTodoList; 404 (no such item **in this session**), 422 |
+| DELETE | /api/sessions/{id}/todos/{todoId} | | SessionTodoList; 404 |
+| POST | /api/sessions/{id}/todos/clear-done | | SessionTodoList (the done items removed now) |
+| PUT | /api/sessions/{id}/todos/order | { ids } (every item id of the session, once) | SessionTodoList; 422 when `ids` is not exactly the session's items |
+| GET | /api/todos | | TodoGroup[] `{ sessionId, title, solutions, folderPath, machine, lastActivityAt, todos }`: every open session that has items (open and done), most recently active first; this machine's, then the paired machines' as last known (a peer's request gets this machine's own only) |
+
+The agent's routes, called by the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`) every session Switchboard starts or resumes gets. Not under `/api` and never from a browser: no `Origin` (403), no cookie; only `Authorization: Bearer <agent token>` with the session named in `x-switchboard-session` (401 otherwise). The agent token is HMAC-SHA256 of the session id under the install's secret: it authorizes that one session's list and nothing else (`docs/security.md` → *Agent todo tools (D68)*). Not on the peer allow-list.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | /agent/v1/todos | | SessionTodoList |
+| POST | /agent/v1/todos | { text } | 201 `{ todo, list }` (`addedBy: agent`) |
+| PUT | /agent/v1/todos/{todoId} | { text?, state? } | `{ todo, list }`; 404 for an item of another session |
+| DELETE | /agent/v1/todos/{todoId} | | SessionTodoList |
+
+- **`/hub` `todosChanged`** `{ sessionId, openCount, doneCount }` after every change (the developer's, the agent's, the hour's removal), with the session's `sessionUpdated`. Forwarded between peers (a peer's with its remote session id).
+- **Take-over (D65):** `SourceInspect.todos` (optional) carries the list `{ text, state, addedBy, createdAt, doneAt }[]`; the target re-creates it on the new session before the agent's first turn.
+
+```json
+{
+  "sessionId": "0b7c3e0a-…",
+  "todos": [
+    { "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "text": "Add a test for PROJ-12's parser", "state": "open", "addedBy": "agent", "position": 0, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null },
+    { "id": "8b2e6f0a1c3d", "sessionId": "0b7c3e0a-…", "text": "Update the docs", "state": "done", "addedBy": "developer", "position": 1, "createdAt": "2026-10-04T10:01:00.000Z", "updatedAt": "2026-10-04T10:20:00.000Z", "doneAt": "2026-10-04T10:20:00.000Z", "removeAt": "2026-10-04T11:20:00.000Z" }
+  ],
+  "openCount": 1,
+  "doneCount": 1
+}
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -952,3 +997,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
+| todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers) |

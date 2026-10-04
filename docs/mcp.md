@@ -82,6 +82,9 @@ A claude.ai connector's `mcp_authenticate` answers `callbackExpected: false` (th
 
 The MCP routes are on `PEER_API_ALLOW`, so the page manages a paired machine's servers through `/api/machines/{id}/api/mcp…` (its folders, its CLI, its files). A sign-in on a peer: its CLI listens on **that** machine's localhost, so after signing in in the browser paste the address the browser ends on (the page shows the field).
 
+## Switchboard's own server (D68)
+Every session Switchboard starts gets a built-in `switchboard` server (its todo tools, `docs/todos.md`), passed to the CLI at spawn (`--mcp-config`). It is in none of the config files this page reads, and the page's helper process starts without it, so it is not listed here and cannot be edited or removed from this page.
+
 ## Tests
 
 - `tests/core/mcp.test.ts`: masking, `mcp get` / `mcp list` text (fixtures built from the CLI's code), `mcp_status` rows, validation, the add-json definition with kept secrets.

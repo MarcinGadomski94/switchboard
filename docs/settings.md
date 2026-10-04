@@ -13,7 +13,7 @@ The contract's `Settings` is a key → JSON value object. `GET /api/settings` re
 | `ui.sidebarHidden` | editable | boolean | `false` | D41: the sidebar is slid out (`docs/panes.md`); read before the app's first paint, written by its hide button, reveal handle and ⌘B |
 | `ui.rightPanelHidden` | editable | boolean | `false` | D41: the session view's right panel is slid out, in every session; written by its hide button, reveal handle and ⌥⌘B |
 | `newSession.mode` | editable | `"simple"` \| `"full"` | `"simple"` | D56: the New-session dialog's last used form; written by its Simple / Full switch, read when the dialog opens (`docs/new-session.md` → *Simple mode (D56)*); a stored value other than the two words reads as `"simple"` |
-| `agents.standingInstruction` | editable | string (at most 4,000 characters) | the default text (`DEFAULT_STANDING_INSTRUCTION`) | D64: the standing instruction given to every session's agent; read at every spawn |
+| `agents.standingInstruction` | editable | string (at most 4,000 characters) | the default text (`DEFAULT_STANDING_INSTRUCTION`) | D64: the standing instruction given to every session's agent; read at every spawn. D68: the default ends with the todo-list sentence; a stored earlier default reads as the current one (`currentStandingInstruction`) |
 | `agents.standingInstruction.enabled` | editable | boolean | `true` | D64: whether it is given; the text is kept while off |
 | `service.startAtLogin` | read-only | boolean | stored value, `false` until set | M9.1 owns the toggle and writes it when it installs the service |
 | `service.address` | read-only | string | `127.0.0.1:<port>` from the configuration | Claude Code → Background service |

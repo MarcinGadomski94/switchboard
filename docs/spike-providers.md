@@ -29,6 +29,11 @@ D62 was built without either CLI installed (developer instruction). The protocol
 11. **Resume.** Stop the server, start it again, `GET /session/:id` and a new prompt in that session.
 12. **History and MCP.** `opencode session list --format json` and `opencode export <id>` (shapes as in `docs/providers.md`); `opencode mcp list` with nothing configured ("No MCP servers configured").
 
+## Todo tools (D68): probes
+D68 injects the built-in `switchboard` MCP server into every session (`docs/todos.md`). Claude Code's injection was probed once (VERIFIED: `--mcp-config <file>` loads it as `connected`, source `dynamic`, with the five tools; the developer's own servers are unaffected because `--strict-mcp-config` is not passed). Codex CLI and OpenCode are not installed here, so their injection is UNVERIFIED:
+1. **Codex CLI.** `SWITCHBOARD_TODO_TOKEN=x codex -c 'mcp_servers.switchboard.command="node"' -c 'mcp_servers.switchboard.args=["<repo>/src/hook/sb-mcp.ts","--switchboard-mcp","<port>","<session id>"]' -c 'mcp_servers.switchboard.env_vars=["SWITCHBOARD_TODO_TOKEN"]' app-server`: confirm root `-c` overrides reach `app-server` (else they go after it), that `env_vars` forwards the variable to the server, that the tools are listed as `switchboard` / `todo_add` (`mcpToolCall` items), and whether a call asks for approval (an `item/…/requestApproval` the Inbox would show).
+2. **OpenCode.** `OPENCODE_CONFIG_CONTENT='{"mcp":{"switchboard":{"type":"local","command":["node","<repo>/src/hook/sb-mcp.ts","--switchboard-mcp","<port>","<session id>"],"environment":{"SWITCHBOARD_TODO_TOKEN":"x"},"enabled":true}}}' opencode serve …`: confirm the entry merges with the user's own `mcp` servers, `opencode mcp list` shows it connected, the tool names (`switchboard_todo_add`) and that no permission prompt is raised.
+
 ## After the probes
 - Every ASSUMED line under *D62* that a probe settles becomes VERIFIED (or a fix).
 - Re-run the D62 tests (`tests/server/cli/*`, `tests/tools/fake-codex*.test.ts`, `tests/tools/fake-opencode*.test.ts`) after changing a fake.

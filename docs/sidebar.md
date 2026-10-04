@@ -9,7 +9,7 @@ Code: rules `src/core/sidebar-layout.ts` (pure, shared by the server and the UI)
 ## Layout and scrolling
 Fix: sidebar scrolling (`docs/decisions.md` → *Fix: sidebar scrolling*): "When there are a lot of sessions, only the sessions part of the left sidebar should scroll, not the whole sidebar." Choices where the request is silent: `.loop/questions.md` → *Fix · sidebar scrolling*.
 
-- The sidebar is a full-height flex column (`shell.css`). The top (brand + ⌘K, + New session, the nav with MCP, the TOOLS label and list, the SESSIONS label) and the bottom (Settings, the machine footer) keep their heights and stay in view.
+- The sidebar is a full-height flex column (`shell.css`). The top (brand + ⌘K, + New session, the nav with MCP and D68's Todos, the TOOLS label and list, the SESSIONS label) and the bottom (Settings, the machine footer) keep their heights and stay in view.
 - The **SESSIONS list** (`.sb-sessions`: Pinned, the folders, the drop zones, the loose sessions) takes the height that is left (`flex: 1 1 0`, at least **160 px**, the prototype's own minimum) and scrolls on its own: down only (`overflow-y: auto`, `overflow-x: hidden`). The SESSIONS label (count, the new-folder **+**) sits directly above it, outside the scrolling part, so it is always in view; the DOM is unchanged, so the prototype's child paths (visual oracle) hold.
 - The **TOOLS list** scrolls on its own after a quarter of the window (`max-height: 25vh`) and gives way, down to about two rows (64 px), before SESSIONS would go under its 160 px.
 - Only a window too short for all of that (below about 760 px of window height with the demo seed: its two tools and four footer rows) falls back to the old behavior: the whole sidebar scrolls too.
