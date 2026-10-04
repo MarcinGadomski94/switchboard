@@ -38,6 +38,8 @@ const REHYPE_PLUGINS = [rehypeChatText, rehypeHighlight];
 export interface ChatMarkdownProps {
   /** The message's text, rendered as GitHub-flavored Markdown. */
   readonly text: string;
+  /** D69: the test id of the wrapper (`chat-markdown` in the chat; the todo cards name theirs). */
+  readonly testId?: string;
 }
 
 /**
@@ -49,9 +51,9 @@ export interface ChatMarkdownProps {
  * loaded (they show as links). Text without Markdown looks exactly as it did as
  * plain text. Memoized on `text`: the chat re-renders on every event.
  */
-export const ChatMarkdown = memo(function ChatMarkdown({ text }: ChatMarkdownProps) {
+export const ChatMarkdown = memo(function ChatMarkdown({ text, testId = 'chat-markdown' }: ChatMarkdownProps) {
   return (
-    <div className="sb-md" data-testid="chat-markdown">
+    <div className="sb-md" data-testid={testId}>
       <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={COMPONENTS} urlTransform={chatUrlTransform}>
         {text}
       </Markdown>

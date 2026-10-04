@@ -112,6 +112,15 @@ export function todoRemoveAt(doneAt: string | null, ttlMs: number = TODO_DONE_TT
   return Number.isFinite(at) ? new Date(at + ttlMs).toISOString() : null;
 }
 
+/** D69: a done item's countdown on its card: `removed in 42m` (minutes rounded up), `removed soon` once due. */
+export function todoRemovalLabel(removeAt: string | null, now: number): string {
+  if (!removeAt) return '';
+  const ms = Date.parse(removeAt) - now;
+  if (!Number.isFinite(ms) || ms <= 0) return 'removed soon';
+  const minutes = Math.ceil(ms / 60_000);
+  return minutes <= 60 ? `removed in ${minutes}m` : `removed in ${Math.ceil(minutes / 60)}h`;
+}
+
 /** The open and done items of a list, each in list order. */
 export function splitTodos(todos: readonly SessionTodo[]): { readonly open: SessionTodo[]; readonly done: SessionTodo[] } {
   const sorted = [...todos].sort((a, b) => a.position - b.position);

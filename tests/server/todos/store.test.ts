@@ -23,6 +23,7 @@ import {
   legacyTodoFields,
   moveTodo,
   todoListText,
+  todoRemovalLabel,
   todoStartMessage,
 } from '../../../src/core/todos.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
@@ -164,6 +165,14 @@ describe('the D69 field rules', () => {
     expect(composerWithStart('', 'M')).toBe('M');
     expect(composerWithStart('  \n', 'M')).toBe('M');
     expect(composerWithStart('My draft\n', 'M')).toBe('My draft\n\nM');
+  });
+
+  it("a done card's countdown: minutes rounded up, 'removed soon' once due", () => {
+    const at = Date.parse('2026-10-04T11:00:00.000Z');
+    expect(todoRemovalLabel('2026-10-04T11:00:00.000Z', at - 42 * 60_000 + 10_000)).toBe('removed in 42m');
+    expect(todoRemovalLabel('2026-10-04T11:00:00.000Z', at - 60 * 60_000)).toBe('removed in 60m');
+    expect(todoRemovalLabel('2026-10-04T11:00:00.000Z', at)).toBe('removed soon');
+    expect(todoRemovalLabel(null, at)).toBe('');
   });
 });
 

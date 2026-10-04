@@ -64,6 +64,7 @@ import type {
   SessionTodoList,
   TodoGroup,
   TodoOrderInput,
+  TodoFieldsInput,
   TodoPatchInput,
 } from '../../core/api.ts';
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
@@ -171,8 +172,11 @@ export const api = {
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
   /** D68, additive: the session's todo list (`docs/todos.md`); every write answers the whole list. A peer's session id is forwarded. */
   sessionTodos: (id: string) => request<SessionTodoList>('GET', `/api/sessions/${enc(id)}/todos`),
-  addTodo: (id: string, text: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos`, { text } satisfies NewTodoInput),
-  updateTodo: (id: string, todoId: string, patch: TodoPatchInput) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch),
+  // D69: title, description, plan; `text` (= title) too, so a paired machine still on 1.7.0 adds the item (without the notes).
+  addTodo: (id: string, fields: TodoFieldsInput) =>
+    request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos`, { title: fields.title, text: fields.title, description: fields.description, plan: fields.plan } satisfies NewTodoInput),
+  updateTodo: (id: string, todoId: string, patch: TodoPatchInput) =>
+    request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch.title === undefined ? patch : { ...patch, text: patch.title }),
   deleteTodo: (id: string, todoId: string) => request<SessionTodoList>('DELETE', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`),
   clearDoneTodos: (id: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/clear-done`),
   reorderTodos: (id: string, ids: readonly string[]) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/order`, { ids } satisfies TodoOrderInput),

@@ -1,9 +1,13 @@
-import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { SessionTodo, SessionTodoList } from '../../../core/api.ts';
-import { moveTodo, splitTodos } from '../../../core/todos.ts';
+import { useCallback, useEffect, useState } from 'react';
+import type { SessionTodo, SessionTodoList, TodoFieldsInput } from '../../../core/api.ts';
+import { moveTodo, splitTodos, todoStartMessage } from '../../../core/todos.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
+import { TodoCard, TodoForm } from './TodoCard.tsx';
+import { requestComposerFill } from './composer-fill.ts';
 import './todos.css';
+
+export { authorLabel } from './TodoCard.tsx';
 
 /** The refusal's message (`{ message }` of the API), else a generic line. */
 export function todoRefusal(error: unknown): string {
@@ -13,11 +17,6 @@ export function todoRefusal(error: unknown): string {
     if (error.unreachable) return 'Switchboard could not be reached.';
   }
   return 'That did not work. Try again.';
-}
-
-/** Who added an item, as the list shows it (subtle). */
-export function authorLabel(todo: Pick<SessionTodo, 'addedBy'>): string {
-  return todo.addedBy === 'agent' ? 'agent' : 'you';
 }
 
 /** The strip's open / closed state, kept in this browser. */
@@ -65,13 +64,76 @@ export function useSessionTodos(sessionId: string) {
   return { list, error, setError, run };
 }
 
+/** A clock for the cards' ages and countdowns, ticking once a minute. */
+export function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** The PUT that saves a form: every field (an emptied description or plan is removed). */
+export function savePatch(fields: TodoFieldsInput): { readonly title: string; readonly description: string; readonly plan: string } {
+  return { title: fields.title, description: fields.description ?? '', plan: fields.plan ?? '' };
+}
+
+/** D69: the list's cards with their actions, for the strip and the Todos page. */
+export function TodoCards({
+  sessionId,
+  all,
+  items,
+  disabled,
+  run,
+  now,
+  onStart,
+}: {
+  readonly sessionId: string;
+  /** Every item of the session (the order Move up / down rewrites). */
+  readonly all: readonly SessionTodo[];
+  /** The ones to show, in order (one state). */
+  readonly items: readonly SessionTodo[];
+  readonly disabled: boolean;
+  readonly run: (write: () => Promise<SessionTodoList>) => Promise<boolean>;
+  readonly now: number;
+  /** ▶ Start for an open item; `null` = not offered. */
+  readonly onStart: ((todo: SessionTodo) => void) | null;
+}) {
+  return (
+    <ul className="sb-todos-list">
+      {items.map((todo, index) => (
+        <TodoCard
+          key={todo.id}
+          todo={todo}
+          index={index}
+          count={items.length}
+          disabled={disabled}
+          now={now}
+          actions={{
+            onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
+            onSave: (fields) => run(() => api.updateTodo(sessionId, todo.id, savePatch(fields))),
+            onMove: (step) => {
+              const ids = moveTodo(all, todo.id, step);
+              if (ids) void run(() => api.reorderTodos(sessionId, ids));
+            },
+            onDelete: () => void run(() => api.deleteTodo(sessionId, todo.id)),
+            onStart: onStart && todo.state === 'open' ? () => onStart(todo) : null,
+          }}
+        />
+      ))}
+    </ul>
+  );
+}
+
 /**
- * D68 · the session's todo strip, just above the composer (`docs/todos.md` →
- * *In the session*): **Todo (n)** with the open count, collapsed or expanded (kept
- * in this browser); expanded, the open items (tick, edit inline, ↑ ↓, ✕, who
- * added it), an add field, and the done items under a collapsed **Done (n)** with
- * **Clear done**. With no items it is not shown: the composer's **+ Todo** opens it
- * with the add field (`adding`).
+ * D68 / D69 · the session's todo strip, just above the composer (`docs/todos.md` →
+ * *In the session*): a header with **TODO**, `3 open · 1 done`, a thin progress
+ * bar and **+ Add**, collapsed (the next open item's title) or expanded (kept in
+ * this browser); expanded, the open items as cards ({@link TodoCard}), the add
+ * form at the top, and the done items under a collapsed **Done (n)** with **Clear
+ * done**. With no items it is not shown: the composer's **+ Todo** opens it with
+ * the add form (`adding`). **▶ Start** fills this session's composer (never sends).
  */
 export function TodoStrip({
   sessionId,
@@ -90,9 +152,7 @@ export function TodoStrip({
   const { list, error, run } = todos;
   const [expanded, setExpanded] = useState(readExpanded);
   const [showDone, setShowDone] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [editing, setEditing] = useState<{ readonly id: string; readonly text: string } | null>(null);
-  const addInput = useRef<HTMLInputElement | null>(null);
+  const now = useMinuteClock();
   const all = list?.todos ?? [];
   const { open, done } = splitTodos(all);
   const disabled = blocked !== null;
@@ -100,177 +160,89 @@ export function TodoStrip({
   useEffect(() => {
     if (adding) setExpanded(true);
   }, [adding]);
-  // Once the add field is there (the strip expanded), it takes the focus.
-  useEffect(() => {
-    if (adding && expanded) addInput.current?.focus();
-  }, [adding, expanded]);
 
   if (!list || (all.length === 0 && !adding)) return null;
 
-  const toggle = (): void => {
-    const next = !expanded;
+  const remember = (next: boolean): void => {
     setExpanded(next);
     try {
       window.localStorage.setItem(EXPANDED_KEY, next ? '1' : '0');
     } catch {
       // Private mode: the strip just does not remember.
     }
+  };
+  const toggle = (): void => {
+    const next = !expanded;
+    remember(next);
     if (!next) onAddingChange(false);
   };
 
-  const add = async (): Promise<void> => {
-    const sent = draft;
-    const text = sent.trim();
-    if (text === '' || disabled) return;
-    if (await run(() => api.addTodo(sessionId, text))) {
-      // Cleared unless the field was edited meanwhile (the next item typed while this one was saved).
-      setDraft((current) => (current === sent ? '' : current));
-      addInput.current?.focus();
-    }
+  const add = async (fields: TodoFieldsInput): Promise<boolean> => {
+    if (disabled) return false;
+    const ok = await run(() => api.addTodo(sessionId, fields));
+    if (ok) onAddingChange(false);
+    return ok;
   };
 
-  const saveEdit = async (): Promise<void> => {
-    if (!editing) return;
-    const item = all.find((t) => t.id === editing.id);
-    const text = editing.text.trim();
-    setEditing(null);
-    if (!item || text === '' || text === item.text) return;
-    await run(() => api.updateTodo(sessionId, item.id, { text }));
-  };
-
-  const onAddKey = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      void add();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      setDraft('');
-      onAddingChange(false);
-    }
-  };
-
-  const onEditKey = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      void saveEdit();
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      setEditing(null);
-    }
-  };
-
-  const row = (todo: SessionTodo) => {
-    const isDone = todo.state === 'done';
-    const scope = isDone ? done : open;
-    const index = scope.findIndex((t) => t.id === todo.id);
-    return (
-      <li key={todo.id} className="sb-todo" data-testid="todo-item" data-todo-id={todo.id} data-state={todo.state} data-added-by={todo.addedBy}>
-        <input
-          type="checkbox"
-          className="sb-todo-check"
-          data-testid="todo-check"
-          aria-label={isDone ? `Reopen ${todo.text}` : `Mark ${todo.text} done`}
-          checked={isDone}
-          disabled={disabled}
-          onChange={() => void run(() => api.updateTodo(sessionId, todo.id, { state: isDone ? 'open' : 'done' }))}
-        />
-        {editing?.id === todo.id ? (
-          <input
-            className="sb-todo-edit"
-            data-testid="todo-edit"
-            aria-label="Edit todo"
-            value={editing.text}
-            autoFocus
-            onChange={(event) => setEditing({ id: todo.id, text: event.target.value })}
-            onKeyDown={onEditKey}
-            onBlur={() => void saveEdit()}
-          />
-        ) : (
-          <button
-            type="button"
-            className="sb-todo-text"
-            data-testid="todo-text"
-            title={disabled ? todo.text : 'Click to edit'}
-            disabled={disabled || isDone}
-            onClick={() => setEditing({ id: todo.id, text: todo.text })}
-          >
-            {todo.text}
-          </button>
-        )}
-        <span className="sb-todo-by" data-testid="todo-by" title={todo.addedBy === 'agent' ? 'Added by the agent' : 'Added by you'}>
-          {authorLabel(todo)}
-        </span>
-        {isDone ? null : (
-          <>
-            <button
-              type="button"
-              className="sb-todo-icon"
-              data-testid="todo-up"
-              aria-label={`Move ${todo.text} up`}
-              disabled={disabled || index <= 0}
-              onClick={() => {
-                const ids = moveTodo(all, todo.id, -1);
-                if (ids) void run(() => api.reorderTodos(sessionId, ids));
-              }}
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className="sb-todo-icon"
-              data-testid="todo-down"
-              aria-label={`Move ${todo.text} down`}
-              disabled={disabled || index === scope.length - 1}
-              onClick={() => {
-                const ids = moveTodo(all, todo.id, 1);
-                if (ids) void run(() => api.reorderTodos(sessionId, ids));
-              }}
-            >
-              ↓
-            </button>
-          </>
-        )}
-        <button type="button" className="sb-todo-icon" data-testid="todo-delete" aria-label={`Delete ${todo.text}`} disabled={disabled} onClick={() => void run(() => api.deleteTodo(sessionId, todo.id))}>
-          ✕
-        </button>
-      </li>
-    );
-  };
+  const total = open.length + done.length;
+  const progress = total === 0 ? 0 : done.length / total;
 
   return (
     <section className="sb-todos" data-testid="todo-strip" data-expanded={expanded ? 'true' : 'false'} aria-label="Todo list">
-      <button type="button" className="sb-todos-head" data-testid="todo-toggle" aria-expanded={expanded} onClick={toggle}>
-        <span className="sb-todos-caret" aria-hidden="true">
-          {expanded ? '▾' : '▸'}
+      <div className="sb-todos-head">
+        <button type="button" className="sb-todos-toggle" data-testid="todo-toggle" aria-expanded={expanded} onClick={toggle}>
+          <span className="sb-todos-caret" aria-hidden="true">
+            {expanded ? '▾' : '▸'}
+          </span>
+          <span className="sb-todos-title">Todo</span>
+          <span className="sb-todos-counts" data-testid="todo-count">
+            {open.length} open · {done.length} done
+          </span>
+          {!expanded && open[0] ? (
+            <span className="sb-todos-next" data-testid="todo-next">
+              {open[0].title ?? open[0].text}
+            </span>
+          ) : null}
+        </button>
+        <span
+          className="sb-todos-progress"
+          data-testid="todo-progress"
+          role="progressbar"
+          aria-label="Done"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={done.length}
+        >
+          <span className="sb-todos-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
         </span>
-        <span className="sb-todos-title" data-testid="todo-count">
-          Todo ({open.length})
-        </span>
-        {!expanded && open[0] ? <span className="sb-todos-next">{open[0].text}</span> : null}
-      </button>
+        <button
+          type="button"
+          className="sb-todos-add-button"
+          data-testid="todo-add"
+          disabled={disabled}
+          title={blocked ?? 'Add an item'}
+          onClick={() => {
+            remember(true);
+            onAddingChange(true);
+          }}
+        >
+          + Add
+        </button>
+      </div>
       {expanded ? (
         <div className="sb-todos-body">
-          {open.length > 0 ? <ul className="sb-todos-list">{open.map(row)}</ul> : null}
-          <div className="sb-todos-add">
-            <input
-              ref={addInput}
-              className="sb-todos-add-input"
-              data-testid="todo-add-input"
-              aria-label="Add a todo"
-              placeholder={disabled ? (blocked ?? '') : 'Add a todo…'}
-              value={draft}
+          {adding ? <TodoForm key="add" mode="add" initial={null} disabled={disabled} onSave={add} onCancel={() => onAddingChange(false)} /> : null}
+          {open.length > 0 ? (
+            <TodoCards
+              sessionId={sessionId}
+              all={all}
+              items={open}
               disabled={disabled}
-              maxLength={1000}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={onAddKey}
-              onBlur={() => {
-                if (draft.trim() === '' && all.length === 0) onAddingChange(false);
-              }}
+              run={run}
+              now={now}
+              onStart={(todo) => requestComposerFill(sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }))}
             />
-            <button type="button" className="sb-button sb-todos-add-button" data-testid="todo-add" disabled={disabled || draft.trim() === ''} onClick={() => void add()}>
-              Add
-            </button>
-          </div>
+          ) : null}
           {done.length > 0 ? (
             <div className="sb-todos-done">
               <div className="sb-todos-done-head">
@@ -282,7 +254,7 @@ export function TodoStrip({
                   Clear done
                 </button>
               </div>
-              {showDone ? <ul className="sb-todos-list">{done.map(row)}</ul> : null}
+              {showDone ? <TodoCards sessionId={sessionId} all={all} items={done} disabled={disabled} run={run} now={now} onStart={null} /> : null}
             </div>
           ) : null}
           {error ? (

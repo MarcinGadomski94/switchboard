@@ -1,39 +1,69 @@
 /*
- * D68 · the session's todo strip above the composer (docs/todos.md → In the session),
- * the composer's compact "+ Todo", the sidebar row's count and the Todos page.
- * Colors and sizes are the app's tokens (styles/tokens.css).
+ * D68 / D69 · the session's todo strip above the composer (docs/todos.md → In the session,
+ * Cards), the cards and their form (shared with the Todos page), the composer's compact
+ * "+ Todo". Colors and sizes are the app's tokens (styles/tokens.css); the cards follow
+ * the Inbox cards and Settings → Accounts (a quiet border, the selected-card fill on hover).
  */
 .sb-todos {
   border-top: 1px solid var(--border-divider);
   padding: 6px 22px;
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 
+/* ── header: ▾ TODO  3 open · 1 done  ▓▓▓░░░  + Add ── */
 .sb-todos-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 10px;
   min-width: 0;
-  background: none;
-  border: 0;
-  padding: 2px 0;
+}
+
+.sb-todos-toggle {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
   color: var(--text-2);
   cursor: pointer;
-  text-align: left;
-  font: inherit;
+}
+
+.sb-todos-toggle:focus-visible,
+.sb-todos-add-button:focus-visible,
+.sb-todo-title:focus-visible,
+.sb-todo-more:focus-visible,
+.sb-todo-plan-toggle:focus-visible,
+.sb-todo-start:focus-visible,
+.sb-todo-form-add-plan:focus-visible,
+.sb-todo-form-save:focus-visible,
+.sb-todo-form-cancel:focus-visible,
+.sb-todos-done-toggle:focus-visible,
+.sb-todos-clear:focus-visible,
+.sb-todos-group-open:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 
 .sb-todos-caret {
   color: var(--muted-3);
   width: 10px;
+  flex: none;
 }
 
 .sb-todos-title {
-  font: 500 11px var(--font-mono);
-  letter-spacing: 0.06em;
+  font: 500 var(--fs-mono-meta) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
   text-transform: uppercase;
   color: var(--muted-1);
+  flex: none;
+}
+
+.sb-todos-counts {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
   flex: none;
 }
 
@@ -45,13 +75,50 @@
   min-width: 0;
 }
 
+.sb-todos-progress {
+  width: 96px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-control);
+  overflow: hidden;
+  flex: none;
+}
+
+.sb-todos-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--status-done);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.sb-todos-add-button {
+  all: unset;
+  font-size: 12px;
+  color: var(--muted-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  flex: none;
+}
+
+.sb-todos-add-button:not(:disabled):hover {
+  color: var(--text);
+  background: var(--bg-card);
+}
+
+.sb-todos-add-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .sb-todos-body {
-  max-height: 38vh;
+  max-height: 42vh;
   overflow-y: auto;
-  padding: 4px 0 2px;
+  padding: 6px 0 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .sb-todos-list {
@@ -60,118 +127,410 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
 }
 
-.sb-todo {
+/* ── a card ── */
+.sb-todo-card {
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card-2);
+  padding: 9px 10px 9px 12px;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 26px;
-  border-radius: 6px;
-  padding: 0 4px;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.sb-todo:hover {
-  background: var(--bg-card);
+.sb-todo-card:hover {
+  background: var(--bg-selected-card);
+  border-color: var(--border-control);
 }
 
-.sb-todo-check {
-  margin: 0;
-  accent-color: var(--status-done);
-  flex: none;
-}
-
-.sb-todo-text {
-  flex: 1;
-  min-width: 0;
-  background: none;
-  border: 0;
-  padding: 2px 0;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: text;
-  overflow-wrap: anywhere;
-}
-
-.sb-todo-text:disabled {
+.sb-todo-card[data-state='done'],
+.sb-todo-card[data-editing='true'] {
   cursor: default;
 }
 
-.sb-todo[data-state='done'] .sb-todo-text {
-  color: var(--muted-2);
-  text-decoration: line-through;
+.sb-todo-card[data-state='done'] {
+  background: transparent;
+  border-color: var(--border-row);
 }
 
-.sb-todo-edit,
-.sb-todos-add-input {
+.sb-todo-card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The round box: a native checkbox (keyboard and screen readers as usual), drawn round. */
+.sb-todo-check {
+  appearance: none;
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted-3);
+  background: transparent;
+  flex: none;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+}
+
+.sb-todo-check:not(:disabled):hover {
+  border-color: var(--status-done);
+}
+
+.sb-todo-check:checked {
+  background: var(--status-done);
+  border-color: var(--status-done);
+}
+
+.sb-todo-check:checked::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  border: solid var(--bg-main);
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.sb-todo-check:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 2px;
+}
+
+.sb-todo-check:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sb-todo-title {
+  all: unset;
   flex: 1;
   min-width: 0;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sb-todo-card[data-state='done'] .sb-todo-title {
+  font-weight: 500;
+  color: var(--muted-2);
+  text-decoration: line-through;
+  cursor: default;
+}
+
+.sb-todo-meta {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+  flex: none;
+  white-space: nowrap;
+}
+
+.sb-todo-by {
+  color: var(--muted-2);
+}
+
+.sb-todo-menu-anchor {
+  position: relative;
+  flex: none;
+}
+
+.sb-todo-more {
+  all: unset;
+  width: 22px;
+  height: 20px;
+  border-radius: 5px;
+  text-align: center;
+  line-height: 20px;
+  color: var(--muted-3);
+  cursor: pointer;
+}
+
+.sb-todo-more:hover,
+.sb-todo-more[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--bg-selected-nav);
+}
+
+.sb-todo-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-card);
   background: var(--bg-card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  cursor: default;
+}
+
+.sb-todo-menu[data-placement='top'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.sb-todo-menu-item {
+  all: unset;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sb-todo-menu-item:hover,
+.sb-todo-menu-item:focus-visible {
+  background: var(--bg-selected-nav);
+}
+
+.sb-todo-menu-item[data-danger='true'] {
+  color: var(--status-fail);
+}
+
+.sb-todo-menu-item:disabled {
+  color: var(--muted-4);
+  background: none;
+  cursor: default;
+}
+
+.sb-todo-card-body {
+  padding-left: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The description: rendered Markdown (D20), muted, two lines until the card is opened. */
+.sb-todo-description {
+  color: var(--muted-1);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sb-todo-description[data-clamped='true'] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-height: calc(2 * 1.45em);
+  overflow: hidden;
+}
+
+.sb-todo-description .sb-md :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) + :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.5em;
+}
+
+/* The handover plan: rendered Markdown in a quiet code-like panel; long plans scroll. */
+.sb-todo-plan {
+  background: var(--bg-code);
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius-card);
+  padding: 8px 10px;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: auto;
+}
+
+.sb-todo-plan .sb-md :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) + :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.6em;
+}
+
+.sb-todo-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 20px;
+}
+
+.sb-todo-plan-toggle,
+.sb-todo-start {
+  all: unset;
+  font: 500 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  cursor: pointer;
+  padding: 1px 0;
+}
+
+.sb-todo-plan-toggle:hover,
+.sb-todo-start:not(:disabled):hover {
+  color: var(--text);
+}
+
+.sb-todo-start {
+  margin-left: auto;
+  color: var(--muted-1);
+  padding: 2px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+}
+
+.sb-todo-start:not(:disabled):hover {
+  border-color: var(--muted-3);
+}
+
+.sb-todo-start:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── the form (+ Add, Edit) ── */
+.sb-todo-form {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: default;
+}
+
+.sb-todo-card[data-editing='true'] {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.sb-todo-form-label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+  margin-top: 3px;
+}
+
+.sb-todo-form-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted-4);
+  font-weight: 400;
+}
+
+.sb-todo-form-title,
+.sb-todo-form-area {
+  background: var(--bg-main);
   border: 1px solid var(--border-control);
   border-radius: var(--radius-button);
   color: var(--text);
   font: inherit;
-  padding: 3px 8px;
+  font-size: var(--fs-body);
+  padding: 5px 8px;
+  min-width: 0;
 }
 
-.sb-todo-by {
-  font: 400 10.5px var(--font-mono);
-  color: var(--muted-4);
-  flex: none;
+.sb-todo-form-title {
+  font-weight: 600;
 }
 
-.sb-todo-icon {
-  background: none;
-  border: 0;
-  color: var(--muted-3);
-  cursor: pointer;
-  padding: 0 3px;
+.sb-todo-form-area {
+  resize: none;
+  line-height: 1.45;
+  min-height: 38px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.sb-todo-form-plan {
+  font-family: var(--font-mono);
   font-size: 12px;
-  flex: none;
-  visibility: hidden;
+  max-height: 320px;
 }
 
-.sb-todo:hover .sb-todo-icon,
-.sb-todo:focus-within .sb-todo-icon {
-  visibility: visible;
+.sb-todo-form-title:focus,
+.sb-todo-form-area:focus {
+  outline: none;
+  border-color: var(--muted-3);
 }
 
-.sb-todo-icon:disabled {
-  opacity: 0.35;
-  cursor: default;
+.sb-todo-form-add-plan {
+  all: unset;
+  align-self: flex-start;
+  margin-top: 3px;
+  font: 500 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  cursor: pointer;
 }
 
-.sb-todo-icon:not(:disabled):hover {
+.sb-todo-form-add-plan:hover {
   color: var(--text);
 }
 
-.sb-todos-add {
+.sb-todo-form-actions {
   display: flex;
-  gap: 6px;
   align-items: center;
-  padding-left: 4px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
-.sb-todos-add-button {
-  font-size: 12px;
-  padding: 3px 10px;
+.sb-todo-form-keys {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-4);
+  margin-right: auto;
+}
+
+.sb-todo-form-cancel {
+  all: unset;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-todo-form-save {
+  all: unset;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-button);
+  padding: 4px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-todo-form-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── done ── */
+.sb-todos-done {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .sb-todos-done-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 4px;
+  padding-left: 2px;
 }
 
 .sb-todos-done-toggle,
 .sb-todos-clear {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: 500 11px var(--font-mono);
+  all: unset;
+  font: 500 var(--fs-mono-meta) var(--font-mono);
   color: var(--muted-2);
   cursor: pointer;
 }
@@ -188,6 +547,11 @@
 .sb-todos-clear:hover,
 .sb-todos-done-toggle:hover {
   color: var(--text);
+}
+
+.sb-todos-clear:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .sb-todos-error {

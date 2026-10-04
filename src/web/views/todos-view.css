@@ -1,4 +1,4 @@
-/* D68 · the Todos page (docs/todos.md → Todos page). The rows reuse the strip's classes (session/todos.css). */
+/* D68 / D69 · the Todos page (docs/todos.md → Todos page). The cards reuse the strip's (session/todos.css). */
 .sb-todos-page {
   display: flex;
   flex-direction: column;
@@ -56,10 +56,10 @@
   border: 1px solid var(--border-card);
   background: var(--bg-card-2);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .sb-todos-group-head {
@@ -95,11 +95,24 @@
   flex: none;
 }
 
-.sb-todos-item-text {
+.sb-todos-group-open {
+  font-size: 12px;
+  color: var(--muted-1);
   text-decoration: none;
-  cursor: pointer;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 2px 9px;
+  flex: none;
 }
 
-.sb-todos-item-text:hover {
-  text-decoration: underline;
+.sb-todos-group-open:hover {
+  color: var(--text);
+  border-color: var(--muted-3);
+}
+
+.sb-todos-group-done {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
 }

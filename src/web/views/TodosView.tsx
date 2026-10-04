@@ -1,13 +1,14 @@
-import { useState } from 'react';
-import type { TodoGroup } from '../../core/api.ts';
-import { splitTodos } from '../../core/todos.ts';
+import { useCallback, useState } from 'react';
+import type { SessionTodoList, TodoGroup } from '../../core/api.ts';
+import { splitTodos, todoStartMessage } from '../../core/todos.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { MachineTag } from '../components/MachineTag.tsx';
-import { Link } from '../router.tsx';
-import { authorLabel, todoRefusal } from './session/TodoStrip.tsx';
+import { Link, useRouter } from '../router.tsx';
+import { TodoCards, todoRefusal, useMinuteClock } from './session/TodoStrip.tsx';
+import { requestComposerFill } from './session/composer-fill.ts';
 import './session/todos.css';
 import './todos-view.css';
 
@@ -20,33 +21,42 @@ function placeOf(group: TodoGroup): string {
 }
 
 /**
- * D68 · the Todos page (`docs/todos.md` → *Todos page*): every open session's
- * open items, grouped by session (title and where it works; a paired machine's
- * with its tag), the done ones behind **Show done**. A session's title opens it;
- * an item's box ticks it (or unticks a done one), as in the session's strip.
+ * D68 / D69 · the Todos page (`docs/todos.md` → *Todos page*): every open
+ * session's items as the same cards as the session's strip, grouped under a
+ * session header (its title, machine tag, where it works, its open count and
+ * **Open session**); the done ones behind **Show done**. **▶ Start** opens the
+ * session and fills its composer (never sends).
  */
 export function TodosView() {
   const groups = useApi(api.todos);
+  const { navigate } = useRouter();
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const now = useMinuteClock();
   const reload = useThrottled(groups.reload, 300);
   useHubEvent('todosChanged', () => reload());
+  const reloadNow = groups.reload;
+
+  const run = useCallback(
+    async (write: () => Promise<SessionTodoList>): Promise<boolean> => {
+      try {
+        await write();
+        setError(null);
+        reloadNow();
+        return true;
+      } catch (caught) {
+        setError(todoRefusal(caught));
+        return false;
+      }
+    },
+    [reloadNow],
+  );
 
   const all = groups.data ?? [];
   const open = all.reduce((sum, group) => sum + splitTodos(group.todos).open.length, 0);
   const done = all.reduce((sum, group) => sum + splitTodos(group.todos).done.length, 0);
   const visible = all.filter((group) => showDone || splitTodos(group.todos).open.length > 0);
   const withOpen = all.filter((group) => splitTodos(group.todos).open.length > 0).length;
-
-  const tick = async (sessionId: string, todoId: string, next: 'open' | 'done'): Promise<void> => {
-    try {
-      await api.updateTodo(sessionId, todoId, { state: next });
-      setError(null);
-      groups.reload();
-    } catch (caught) {
-      setError(todoRefusal(caught));
-    }
-  };
 
   return (
     <section className="sb-view sb-todos-page" data-view="todos" data-testid="view-todos">
@@ -73,36 +83,46 @@ export function TodosView() {
         ) : null}
         {visible.map((group) => {
           const { open: openItems, done: doneItems } = splitTodos(group.todos);
-          const items = showDone ? [...openItems, ...doneItems] : openItems;
+          const disabled = group.machine !== null && group.machine.state !== 'online';
+          const session = { view: 'session', id: group.sessionId, tab: 'chat' } as const;
           return (
-            <section key={group.sessionId} className="sb-todos-group" data-testid="todos-group" data-session-id={group.sessionId}>
+            <section key={group.sessionId} className="sb-todos-group" data-testid="todos-group" data-session-id={group.sessionId} aria-label={group.title}>
               <div className="sb-todos-group-head">
-                <Link to={{ view: 'session', id: group.sessionId, tab: 'chat' }} className="sb-todos-group-title" data-testid="todos-group-title">
+                <Link to={session} className="sb-todos-group-title" data-testid="todos-group-title">
                   {group.title}
                 </Link>
                 <MachineTag machine={group.machine} />
                 <span className="sb-todos-group-place">{placeOf(group)}</span>
-                <span className="sb-todos-group-count">{openItems.length} open</span>
+                <span className="sb-todos-group-count" data-testid="todos-group-count">
+                  {openItems.length} open
+                </span>
+                <Link to={session} className="sb-todos-group-open" data-testid="todos-open-session">
+                  Open session
+                </Link>
               </div>
-              <ul className="sb-todos-list">
-                {items.map((todo) => (
-                  <li key={todo.id} className="sb-todo" data-testid="todos-item" data-state={todo.state} data-todo-id={todo.id}>
-                    <input
-                      type="checkbox"
-                      className="sb-todo-check"
-                      data-testid="todos-check"
-                      aria-label={todo.state === 'done' ? `Reopen ${todo.text}` : `Mark ${todo.text} done`}
-                      checked={todo.state === 'done'}
-                      disabled={group.machine !== null && group.machine.state !== 'online'}
-                      onChange={() => void tick(group.sessionId, todo.id, todo.state === 'done' ? 'open' : 'done')}
-                    />
-                    <Link to={{ view: 'session', id: group.sessionId, tab: 'chat' }} className="sb-todo-text sb-todos-item-text" data-testid="todos-item-text">
-                      {todo.text}
-                    </Link>
-                    <span className="sb-todo-by">{authorLabel(todo)}</span>
-                  </li>
-                ))}
-              </ul>
+              {openItems.length > 0 ? (
+                <TodoCards
+                  sessionId={group.sessionId}
+                  all={group.todos}
+                  items={openItems}
+                  disabled={disabled}
+                  run={run}
+                  now={now}
+                  onStart={(todo) => {
+                    requestComposerFill(group.sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }));
+                    navigate(session);
+                  }}
+                />
+              ) : null}
+              {showDone && doneItems.length > 0 ? (
+                <div className="sb-todos-group-done" data-testid="todos-group-done">
+                  <div className="sb-todos-done-head">
+                    <span className="sb-todos-done-toggle">Done ({doneItems.length})</span>
+                    <span className="sb-todos-done-note">removed an hour after done</span>
+                  </div>
+                  <TodoCards sessionId={group.sessionId} all={group.todos} items={doneItems} disabled={disabled} run={run} now={now} onStart={null} />
+                </div>
+              ) : null}
             </section>
           );
         })}

@@ -22,6 +22,8 @@ import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPI
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
+import { onComposerFill, takeComposerFill } from './composer-fill.ts';
+import { composerWithStart } from '../../../core/todos.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -360,6 +362,30 @@ function Composer({
       setError(refusal(caught));
     }
   };
+
+  // D69 · ▶ Start: a todo's message goes into the field (never sent by itself); a draft already there is kept,
+  // the message added after it. Taken when the composer mounts (the Todos page opened the session) or later.
+  const [filled, setFilled] = useState(0);
+  useEffect(() => {
+    const take = (): void => {
+      const text = takeComposerFill(sessionId);
+      if (text === null) return;
+      setDraft((current) => composerWithStart(current, text));
+      setError(null);
+      setFilled((count) => count + 1);
+    };
+    take();
+    return onComposerFill((id) => {
+      if (id === sessionId) take();
+    });
+  }, [sessionId]);
+  useEffect(() => {
+    if (filled === 0) return;
+    const field = input.current;
+    if (!field) return;
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }, [filled]);
 
   // D50: Esc stops the running turn, read in the window's capture phase (before a popover's own handler closes it).
   useEffect(() => {

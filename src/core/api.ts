@@ -2318,6 +2318,13 @@ export interface TodoPatchInput {
   readonly state?: TodoState;
 }
 
+/** D69: an item's three fields as the UI's form gives them (`null` = none). */
+export interface TodoFieldsInput {
+  readonly title: string;
+  readonly description: string | null;
+  readonly plan: string | null;
+}
+
 /** D68: body of `PUT /api/sessions/{id}/todos/order`: every item id of the session, in the new order. */
 export interface TodoOrderInput {
   readonly ids: readonly string[];
