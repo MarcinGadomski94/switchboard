@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 
@@ -274,6 +273,20 @@ export interface TakeoverRun {
   readonly log: readonly string[];
 }
 
+// ── paths (no `node:path`: this module is shared with the UI) ────────────
+
+/** The last segment of a path (either separator). */
+function baseName(value: string): string {
+  const parts = value.split(/[\\/]+/).filter((part) => part !== '');
+  return parts[parts.length - 1] ?? '';
+}
+
+/** `parent` + `name` with the separator `parent` uses. */
+function joinPath(parent: string, name: string): string {
+  const separator = parent.includes('\\') && !parent.includes('/') ? '\\' : '/';
+  return `${parent.replace(/[\\/]+$/, '')}${separator}${name}`;
+}
+
 // ── names ────────────────────────────────────────────────────────────────
 
 /** The first 8 characters of a session id: the temp branches' namespace. */
@@ -372,7 +385,7 @@ export interface PlanOptions {
 export function matchingCandidates(repo: Pick<SourceRepo, 'name' | 'remoteKey'>, candidates: readonly TargetCandidate[]): TargetCandidate[] {
   return candidates
     .filter((candidate) => candidate.remoteKey !== null && candidate.remoteKey !== '' && candidate.remoteKey === repo.remoteKey)
-    .sort((a, b) => Number(path.basename(b.path) === repo.name) - Number(path.basename(a.path) === repo.name) || a.path.localeCompare(b.path));
+    .sort((a, b) => Number(baseName(b.path) === repo.name) - Number(baseName(a.path) === repo.name) || a.path.localeCompare(b.path));
 }
 
 /**
@@ -424,7 +437,7 @@ export function planRepos(repos: readonly SourceRepo[], candidates: readonly Tar
       };
     }
     const typed = options.clonePaths?.[repo.key]?.trim();
-    const cloneTo = typed && typed !== '' ? typed : options.defaultCloneParent ? path.join(options.defaultCloneParent, repo.name) : null;
+    const cloneTo = typed && typed !== '' ? typed : options.defaultCloneParent ? joinPath(options.defaultCloneParent, repo.name) : null;
     if (cloneTo === null) return blocked(`${repo.name} is not on this machine and no folder is known to clone it into: type one`);
     if (exists.has(cloneTo)) return blocked(`${cloneTo} exists already: choose another folder to clone ${repo.name} into`, { cloneTo, cloneUrl: repo.remoteUrl });
     return {

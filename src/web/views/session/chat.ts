@@ -341,6 +341,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       if ((lifecycle.action === 'switched' || lifecycle.action === 'account-switched') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.fromProfile ?? lifecycle.from ?? null, to: lifecycle.toProfile ?? lifecycle.to ?? null });
       }
+      // D65: a session taken over from another machine starts with "Taken over from <machine>"; the one it left ends with "Moved to <machine>".
+      if ((lifecycle.action === 'taken-over' || lifecycle.action === 'moved-away') && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.action === 'taken-over' ? (lifecycle.machine ?? null) : null, to: lifecycle.action === 'moved-away' ? (lifecycle.machine ?? null) : null });
+      }
     } else {
       const mark = stepMark(event);
       if (mark) pushStep(event, mark);

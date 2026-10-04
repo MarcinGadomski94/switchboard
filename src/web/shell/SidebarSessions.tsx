@@ -30,6 +30,9 @@ import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
 import { MENU_GAP, MENU_MARGIN, menuTop } from './sidebar-menu.ts';
+import { openTakeover } from '../takeover/store.ts';
+import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
+import { usePairedMachines } from '../takeover/usePairedMachines.ts';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
 import './sidebar-layout.css';
 
@@ -331,6 +334,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
+  // D65: the paired machines a session can be moved to from its ⋯ menu.
+  const { machines: pairedMachines } = usePairedMachines(true);
   /** The folder a new folder's name field is in (`null` = the top level, D54's "+"); `undefined` = no field. */
   const [creating, setCreating] = useState<string | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -422,6 +427,18 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
     }
     items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
+    // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.
+    if (offersTakeover(session)) {
+      const title = session.displayTitle ?? session.title ?? session.name;
+      if (session.machine) {
+        const peer = session.machine;
+        items.push({ label: TAKE_OVER_LABEL, testId: 'sidebar-menu-takeover', run: () => openTakeover({ sessionId: session.id, targetMachine: null, machineName: peer.name, title }) });
+      } else {
+        for (const machine of pairedMachines.filter((entry) => entry.state === 'online')) {
+          items.push({ label: moveLabel(machine.name), testId: `sidebar-menu-move-to-${machine.id}`, run: () => openTakeover({ sessionId: session.id, targetMachine: machine.id, machineName: machine.name, title }) });
+        }
+      }
+    }
     return items;
   };
 

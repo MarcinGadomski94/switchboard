@@ -108,6 +108,8 @@ const SESSION_KEYS = keys<Session>()([
   'profileName',
   'profilePinned',
   'accountSwitching',
+  'movedTo',
+  'movedFrom',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',

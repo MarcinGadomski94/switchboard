@@ -949,7 +949,8 @@ describe('0024 CLI accounts (D63)', () => {
     const source = await db(file);
     const sessionsBefore = source.prepare('SELECT COUNT(*) AS n FROM sessions').get()?.['n'];
     source.close();
-    const store = await openStore(file);
+    // D65: later migrations (0025) are their own test's concern: up to 0024.
+    const store = await openStore(file, { migrations: shipped.filter((m) => m.version <= 24) });
     try {
       expect(store.migrations.applied).toEqual([24]);
       expect((await store.profiles.list()).map((p) => [p.id, p.cli, p.name, p.dir, p.builtin, p.enabled, p.position])).toEqual([
@@ -973,6 +974,48 @@ describe('0024 CLI accounts (D63)', () => {
       expect(added).toMatchObject({ position: 1, enabled: true, shareSettings: true, builtin: false });
       await store.profiles.reorder('codex', [added.id]);
       expect((await store.profiles.list('codex')).map((p) => p.name)).toEqual(['Second', 'Default']);
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0025 session take-over (D65)', () => {
+  function dump(database: DatabaseSync): Record<string, unknown[]> {
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    return Object.fromEntries(tables.map((row) => [String(row['name']), database.prepare(`SELECT rowid AS _rowid, * FROM ${String(row['name'])} ORDER BY rowid`).all()]));
+  }
+
+  it('adds moved_to / moved_from (NULL for every session that is there); the repository keeps them as JSON', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd65', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 25) });
+    try {
+      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-10-04T12:00:00.000Z') });
+      await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older-65' });
+    } finally {
+      await earlier.close();
+    }
+    const source = await db(file);
+    const before = dump(source);
+    source.close();
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual([25]);
+      const sessions = await store.sessions.list();
+      expect(sessions.length).toBe(before['sessions']?.length);
+      for (const session of sessions) expect([session.movedTo, session.movedFrom]).toEqual([null, null]);
+      // Every column the sessions had keeps its value.
+      const after = dump(store.db);
+      const strip = (rows: readonly unknown[] | undefined) => (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined }));
+      expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
+      // The two moves round-trip.
+      const one = sessions[0]!;
+      const move = { machineId: 'abcdefghijkl', machineName: 'office-pc', sessionId: 'sid-1', at: '2026-10-04T12:00:00.000Z' };
+      await store.sessions.update(one.id, { movedTo: move });
+      expect((await store.sessions.get(one.id))?.movedTo).toEqual(move);
+      await store.sessions.update(one.id, { movedTo: null, movedFrom: move });
+      expect(await store.sessions.get(one.id)).toMatchObject({ movedTo: null, movedFrom: move });
     } finally {
       await store.close();
     }

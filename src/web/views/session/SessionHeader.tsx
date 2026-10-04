@@ -11,6 +11,9 @@ import { offlineReason } from '../../../core/peers.ts';
 import { useLiveMachine } from '../../api/useMachines.ts';
 import { MachineStatusNote } from '../../components/MachineStatusNote.tsx';
 import { Link, type SessionTab, useRouter } from '../../router.tsx';
+import { TakeoverAction } from '../../takeover/TakeoverAction.tsx';
+import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
+import { moveLinkId, movedToLabel, takenOverLabel } from '../../../core/takeover.ts';
 import { statusColor } from '../../shell/format.ts';
 import {
   ATTACH_ANYWAY,
@@ -102,6 +105,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const switcher = useProviderSwitcher(session, onChanged);
   // D63: the account the session runs on, Switch account and the pin (shown when its CLI has more than one account).
   const accounts = useAccountSwitcher(session, onChanged);
+  // D65: this machine's id, to link a moved session's new home (`r~<machine>~<id>`, or a local id when it came here).
+  const selfId = usePairedMachines(session?.movedTo != null).self?.id ?? null;
 
   const run = async (action: NonNullable<typeof busy>, call: () => Promise<unknown>): Promise<void> => {
     if (busy) return;
@@ -182,8 +187,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             className="sb-button sb-sv-action"
             data-testid="session-close"
             data-action={closed ? 'reopen' : 'close'}
-            disabled={!session || blocked !== null || busy !== null || closer.busyId !== null}
-            title={blocked ?? undefined}
+            disabled={!session || blocked !== null || busy !== null || closer.busyId !== null || (closed && session?.movedTo != null)}
+            title={blocked ?? (closed && session?.movedTo ? `Taken over to ${session.movedTo.machineName}: continue it there` : undefined)}
             aria-busy={busy === 'reopen' || closer.busyId === sessionId || undefined}
             onClick={() => {
               if (!session) return;
@@ -226,6 +231,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               {popover && remote.url ? <RemotePopover url={remote.url} onClose={() => setPopover(false)} /> : null}
             </div>
           ) : null}
+          {/* D65: take a session over to / from a paired machine. */}
+          {!blocked ? <TakeoverAction session={session} sessionId={sessionId} /> : null}
           {hooked ? null : (
           <button
             type="button"
@@ -280,6 +287,19 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               </strong>
             </>
           ) : null}
+        </div>
+      ) : null}
+      {session?.movedTo ? (
+        <div className="sb-sv-remote-copy sb-sv-moved" data-testid="session-moved-note">
+          <span>{movedToLabel(session.movedTo.machineName)}</span>
+          <Link to={{ view: 'session', id: moveLinkId(session.movedTo, selfId), tab: 'chat' }} className="sb-sv-remote-copy-link" data-testid="session-moved-link">
+            Open the new session
+          </Link>
+        </div>
+      ) : null}
+      {session?.movedFrom && !session.movedTo ? (
+        <div className="sb-sv-remote-copy sb-sv-moved" data-testid="session-taken-over-note">
+          <span>{takenOverLabel(session.movedFrom.machineName)}</span>
         </div>
       ) : null}
       {session?.remoteSource ? (

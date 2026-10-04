@@ -1,4 +1,5 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
+import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   AccountsOverview,
@@ -297,6 +298,16 @@ export const api = {
 
   // D48, additive (docs/peers.md): Settings → Machines.
   machines: () => request<MachinesView>('GET', '/api/machines'),
+  /** D65: what a take-over would do (both machines' view), before anything changes. */
+  takeoverPreview: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>> }) =>
+    request<TakeoverPreview>('POST', '/api/takeover/preview', body),
+  /** D65: starts the take-over (202; poll {@link takeoverRun}). */
+  takeoverStart: (body: { readonly sessionId: string; readonly targetMachine: string | null; readonly clonePaths?: Readonly<Record<string, string>>; readonly confirmStopTerminal?: boolean }) =>
+    request<TakeoverRun>('POST', '/api/takeover', body),
+  takeoverRun: (id: string) => request<TakeoverRun>('GET', `/api/takeover/runs/${enc(id)}`),
+  /** D65: the one-click delete of a temporary branch left on a remote; `machineId` = the machine that pushed it (`null` = this one). */
+  takeoverDeleteLeftover: (machineId: string | null, leftoverId: string) =>
+    request<{ readonly deleted: boolean }>('POST', machineId ? `/api/machines/${enc(machineId)}/api/takeover/leftovers/${enc(leftoverId)}/delete` : `/api/takeover/leftovers/${enc(leftoverId)}/delete`),
   renameSelf: (name: string) => request<{ id: string; name: string }>('PUT', '/api/machines/self', { name }),
   setListener: (body: PeerListenerInput) => request<PeerListenerState>('PUT', '/api/machines/listener', body),
   /** "Allow a new peer": a one-time code for the other machine. */
