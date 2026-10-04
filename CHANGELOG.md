@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.0 (2026-10-04)
+
+### Todo priority, estimates and a required plan
+- **Priority:** every todo item is Urgent, High, Medium or Low. Open cards get a colored left edge, a very faint tint and a small label (red, amber, neutral, blue-grey), and are sorted by priority, with your ↑↓ order applying within a level. Change it with one click from **⋯ → Priority** (keyboard too) or in the edit form.
+- **Estimate:** how long an AI agent would take to do the item, in minutes, shown as "~45m" / "~1h 30m". The strip header shows the open total ("4 open · ~3h · 1 done"; a "+" when some items have none), and the Todos page shows each session's total. The edit field accepts 45, 45m, 2h, 1h 30m or 1.5h.
+- **The handover plan is required:** when there's nothing to plan, it says "No plan" (an agent adds a short reason). A "No plan" item shows no plan section, and ▶ Start sends its description. The add form starts with "No plan", Medium and no estimate.
+- Agents are told to give a plan, a priority and an estimate with every new item (the tools refuse one without them) and to revise priority and estimate as they learn more.
+- Existing items become Medium, with no estimate; an empty plan becomes "No plan". A paired machine on an older version keeps working, with the same defaults.
+
+### Database
+- Migration 0028 (todo priority and estimate) runs by itself on first start.
+
 ## 1.8.0 (2026-10-04)
 
 ### Todo items get a title, a description and a handover plan

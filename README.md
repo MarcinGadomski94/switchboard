@@ -89,12 +89,12 @@ Open a **new** terminal afterwards so the updated `PATH` is picked up. Use the n
 
 ## Install and run
 
-The recommended way is a **release**: the UI comes pre-built, and Switchboard [updates itself](#updating). Pick a folder for it. The examples use `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Replace `1.8.0` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest).
+The recommended way is a **release**: the UI comes pre-built, and Switchboard [updates itself](#updating). Pick a folder for it. The examples use `~/Applications/Switchboard` (macOS), `~/.local/opt/switchboard` (Linux) and `%LOCALAPPDATA%\Programs\Switchboard` (Windows). Replace `1.9.0` with the [latest release](https://github.com/MarcinGadomski94/switchboard/releases/latest).
 
 ### macOS and Linux
 
 ```sh
-V=1.8.0
+V=1.9.0
 DIR=~/Applications/Switchboard            # Linux: ~/.local/opt/switchboard
 mkdir -p "$DIR" && cd "$DIR"
 curl -LO https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz
@@ -112,7 +112,7 @@ Prefer not to install a service? Run `npm start` in that folder instead, and kee
 In **PowerShell**:
 
 ```powershell
-$V = "1.8.0"
+$V = "1.9.0"
 $Dir = "$env:LOCALAPPDATA\Programs\Switchboard"
 New-Item -ItemType Directory -Force $Dir | Out-Null; Set-Location $Dir
 curl.exe -LO "https://github.com/MarcinGadomski94/switchboard/releases/download/v$V/switchboard-$V.tar.gz"
