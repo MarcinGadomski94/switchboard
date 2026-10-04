@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.8.0 (2026-10-04)
+
+### Todo items get a title, a description and a handover plan
+- Every todo item now has a **title**, an optional **description** (for you, Markdown) and an optional **handover plan** (for an AI agent picking it up later: context, files, steps, acceptance criteria). Existing items keep their text as the title; a long or multi-line text also becomes the description, so nothing is lost.
+- Agents are told what each field is for (tool descriptions, the `switchboard` server's instruction and the standing instruction) and fill all three from the conversation when you ask them to add something. `todo_list` is now compact; the new `todo_get` returns an item's full description and plan.
+- **Cards** in the strip above the message box and on the Todos page: bold title, a two-line description, who added it and when, a ⋯ menu (Edit, Move up / down, Delete), a progress bar in the header. Click a card to read everything; **Edit** opens a form with the three fields (Esc cancels, ⌘/Ctrl+Enter saves). **+ Add** stays open after saving, for adding several in a row.
+- **▶ Start** puts "Work on todo: <title>" and the handover plan into the message box (nothing is sent; a draft you typed is kept, the text goes after it). On the Todos page it opens the session first.
+- A paired machine still on 1.7.0 keeps working but doesn't see descriptions or plans until it's updated.
+
+### Database
+- Migration 0027 (todo title, description, plan) runs by itself on first start.
+
 ## 1.7.0 (2026-10-04)
 
 ### Todo lists per session
