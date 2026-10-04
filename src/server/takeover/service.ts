@@ -843,6 +843,9 @@ export class TakeoverService {
         previousHead: null,
         tempDeleted: false,
         tempDeleteError: null,
+        privateRef: null,
+        remoteName: null,
+        tempBranch: captured.tempBranch,
       };
       op.applied.push(applied);
       let main = applied.path;
@@ -859,6 +862,8 @@ export class TakeoverService {
       const remote = (await git.remoteByKey(main, repo.remoteKey)) ?? null;
       if (remote === null) throw new TakeoverError(409, 'no-remote', `${main} has no remote for ${repo.remoteUrl}`);
       const privateRef = `refs/switchboard/takeover/${sessionShortId(body.source.sessionId)}/${repo.key}`;
+      applied.privateRef = privateRef;
+      applied.remoteName = remote.name;
       const tip = await git.fetchTemp(main, remote.name, captured.tempBranch, privateRef);
       if (tip !== captured.tipSha) throw new TakeoverError(409, 'tip-mismatch', `${repo.name}: the temporary branch arrived at ${tip}, expected ${captured.tipSha}`);
       // The branch itself, for its upstream (it may not exist on the remote).
@@ -947,6 +952,9 @@ export class TakeoverService {
     for (const file of op.installed.reverse()) await attempt(`could not remove ${file}`, () => rm(file, { force: true, recursive: true }));
     for (const record of op.worktreeRecords) await this.#store.worktrees.markRemoved(record.id).catch(() => undefined);
     for (const applied of [...op.applied].reverse()) {
+      // The fetch's private ref and the remote-tracking ref it may have made.
+      if (applied.privateRef) await git.try(applied.path, ['update-ref', '-d', applied.privateRef]);
+      if (applied.remoteName && applied.tempBranch) await git.forgetTrackingRef(applied.path, applied.remoteName, applied.tempBranch);
       if (applied.worktreePath) {
         await attempt(`could not remove the worktree ${applied.worktreePath}`, () => git.run(applied.path, ['worktree', 'remove', '--force', applied.worktreePath as string]));
       } else if (applied.previousHead !== null) {

@@ -348,12 +348,16 @@ export class TakeoverRunner {
       const message = error instanceof Error ? error.message : String(error);
       run.error = { step: failedAt, message };
       set(failedAt, 'failed', message);
-      run.state = 'failed';
+      // The run stays `running` (with its error set: the dialog says "Undoing…") until the undo is over.
       // Nothing is registered yet when the checks fail.
-      if (done.length > 0 || failedAt !== 'checks') {
-        await this.#rollback(run, ends, { done, stoppedLive, hooked: sourceInfo?.hooked ?? false, terminalStopped }, plan?.machine.name ?? 'the target', sourceName());
-      } else {
-        run.rolledBack = null;
+      try {
+        if (done.length > 0 || failedAt !== 'checks') {
+          await this.#rollback(run, ends, { done, stoppedLive, hooked: sourceInfo?.hooked ?? false, terminalStopped }, plan?.machine.name ?? 'the target', sourceName());
+        } else {
+          run.rolledBack = null;
+        }
+      } finally {
+        run.state = 'failed';
       }
     }
   }

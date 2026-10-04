@@ -230,6 +230,10 @@ export interface AppliedRepo {
   readonly previousHead: string | null;
   readonly tempDeleted: boolean;
   readonly tempDeleteError: string | null;
+  /** The private ref the temp branch was fetched into, and the remote / temp branch whose remote-tracking ref the fetch may have made (all removed by the undo). */
+  readonly privateRef: string | null;
+  readonly remoteName: string | null;
+  readonly tempBranch: string | null;
 }
 
 /** A temporary remote branch that is still on the remote (the one-click delete). */

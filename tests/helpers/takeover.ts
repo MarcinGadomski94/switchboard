@@ -123,10 +123,17 @@ export async function takeoverWorld(root: string, options: { readonly aRepos?: N
   };
   const env = options.env ?? {};
   const logs = { a: path.join(root, 'a-fake-claude.log'), b: path.join(root, 'b-fake-claude.log') };
-  const a = await startPeerNode(root, 'a', { env: { ...env, FAKE_CLAUDE_LOG: logs.a }, prepare: prepare('a') });
+  const perNode = (label: 'a' | 'b'): Record<string, string> => ({
+    ...env,
+    FAKE_CLAUDE_LOG: logs[label],
+    CODEX_HOME: path.join(root, label, 'codex-home'),
+    FAKE_CODEX_LOG: path.join(root, `${label}-fake-codex.log`),
+    XDG_DATA_HOME: path.join(root, label, 'xdg-data'),
+  });
+  const a = await startPeerNode(root, 'a', { env: perNode('a'), prepare: prepare('a') });
   let b: PeerNode;
   try {
-    b = await startPeerNode(root, 'b', { env: { ...env, FAKE_CLAUDE_LOG: logs.b }, prepare: prepare('b') });
+    b = await startPeerNode(root, 'b', { env: perNode('b'), prepare: prepare('b') });
   } catch (error) {
     await a.server.stop();
     throw error;
@@ -146,8 +153,15 @@ export async function takeoverWorld(root: string, options: { readonly aRepos?: N
 }
 
 /** Starts a Claude Code session on `node` in a saved repo folder and waits until it is idle. */
-export async function startRepoSession(node: PeerNode, folderId: string, name: string, options: { readonly worktrees?: boolean; readonly task?: string } = {}): Promise<Session> {
-  const created = await node.call('POST', '/api/sessions', { name, task: options.task ?? 'Remember the code word: zeppelin. Reply with just OK.', folder: folderId, worktrees: options.worktrees ?? false, ultracode: false });
+export async function startRepoSession(node: PeerNode, folderId: string, name: string, options: { readonly worktrees?: boolean; readonly task?: string; readonly branch?: string } = {}): Promise<Session> {
+  const created = await node.call('POST', '/api/sessions', {
+    name,
+    task: options.task ?? 'Remember the code word: zeppelin. Reply with just OK.',
+    folder: folderId,
+    worktrees: options.worktrees ?? false,
+    ultracode: false,
+    ...(options.branch ? { branch: options.branch } : {}),
+  });
   if (created.status !== 201) throw new Error(`start ${name}: HTTP ${created.status} ${JSON.stringify(created.body)}`);
   return settle(node, (created.body as Session).id);
 }
