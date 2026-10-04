@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 (2026-10-04)
+
+### Changed
+- **Compact usage grid in the sidebar.** The footer's usage bars are now one line per account, each with a 5h and a Week mini-bar: every Claude Code account and every Codex account at a glance, instead of a growing stack of full-width rows. Lines are named after the account (e.g. "Default"), ● marks the account new sessions start on, and a spent account shows "out until 14:05". Hover a line for reset times, pace and model-specific weekly limits (e.g. Opus); click it to open Settings → Accounts.
+- Accounts you aren't using now show both their 5-hour and weekly usage, not only the higher of the two.
+
 ## 1.6.0 (2026-10-04)
 
 ### Take over a session from another machine
