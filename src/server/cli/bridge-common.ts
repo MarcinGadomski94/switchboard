@@ -1,4 +1,5 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
+import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 
 /** A parsed JSON object. */
 export type JsonRecord = Record<string, unknown>;
@@ -42,6 +43,8 @@ export interface BridgeCommon {
   readonly title: string;
   /** D64: the standing instruction (`null` = none). */
   readonly standingInstruction?: string | null;
+  /** D68: the built-in `switchboard` MCP server (the session's todo tools); absent = none. */
+  readonly agentMcp?: AgentMcpLaunch | null;
   readonly onLine: (line: string) => void;
   readonly onNativeId?: (nativeId: string) => void;
   /** Something the developer should know that is no chat line (a conversation that could not be reopened). */

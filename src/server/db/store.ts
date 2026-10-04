@@ -22,6 +22,7 @@ import { SessionRepository } from './repos/sessions.ts';
 import { SettingRepository } from './repos/settings.ts';
 import { SidebarLayoutRepository } from './repos/sidebar.ts';
 import { SystemItemRepository } from './repos/system-items.ts';
+import { TodoRepository } from './repos/todos.ts';
 import { ToolRepository } from './repos/tools.ts';
 import { UsageRepository } from './repos/usage.ts';
 import { WorktreeRepository } from './repos/worktrees.ts';
@@ -65,6 +66,8 @@ export interface Store {
   readonly providers: ProviderRepository;
   /** D63 (0024): account profiles per CLI. */
   readonly profiles: ProfileRepository;
+  /** D68 (0026): each session's todo list. */
+  readonly todos: TodoRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -127,6 +130,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     attachments: new AttachmentRepository(ctx),
     providers: new ProviderRepository(ctx),
     profiles: new ProfileRepository(ctx),
+    todos: new TodoRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

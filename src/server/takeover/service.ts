@@ -47,6 +47,7 @@ import type { HookService } from '../hooks/service.ts';
 import type { QuestionPipeline } from '../inbox/pipeline.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import { TakeoverGit, TakeoverGitError, pathExists } from './git.ts';
+import type { TodoService } from '../todos/service.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
 
 /** A refusal of a take-over route, sent as `{ error, message }`. */
@@ -84,6 +85,8 @@ export interface TakeoverServiceOptions {
   readonly accounts: AccountService;
   readonly clis: CliStatusService;
   readonly questions: QuestionPipeline;
+  /** D68: the todo lists (the session's travel with it); none = its todos stay behind. */
+  readonly todos?: TodoService;
   /** This machine's id and name. */
   readonly self: () => Promise<{ readonly id: string; readonly name: string }>;
   readonly env?: NodeJS.ProcessEnv;
@@ -211,6 +214,8 @@ export class TakeoverService {
   readonly #activeSessions = new Set<string>();
   readonly #targets = new Map<string, TargetOp>();
 
+  readonly #todos: TodoService | null;
+
   constructor(options: TakeoverServiceOptions) {
     this.#store = options.store;
     this.#config = options.config;
@@ -221,6 +226,7 @@ export class TakeoverService {
     this.#accounts = options.accounts;
     this.#clis = options.clis;
     this.#questions = options.questions;
+    this.#todos = options.todos ?? null;
     this.#self = options.self;
     this.#env = options.env ?? process.env;
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
@@ -319,6 +325,8 @@ export class TakeoverService {
         repos,
         conversation,
         queued,
+        // D68: the session's todo list travels with it (open and done items; a done one keeps its hour).
+        todos: (await this.#store.todos.list(sessionId)).map((todo) => ({ text: todo.text, state: todo.state, addedBy: todo.addedBy, createdAt: todo.createdAt, doneAt: todo.doneAt })),
         blockers,
       },
       log,
@@ -1125,6 +1133,8 @@ export class TakeoverService {
       {
         beforeSpawn: async (session) => {
           await this.#worktrees.assign(op.worktreeRecords, session.id);
+          // D68: the todo list, before the agent's first turn (an older source sends none).
+          if (this.#todos && Array.isArray(source.todos) && source.todos.length > 0) await this.#todos.import(session.id, source.todos);
         },
       },
     );

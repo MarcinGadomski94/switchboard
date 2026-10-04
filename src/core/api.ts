@@ -715,6 +715,12 @@ export interface Session {
   readonly movedTo?: SessionMoveInfo | null;
   /** Additive (D65): set on a session taken over from another machine ("Taken over from <machine>"). */
   readonly movedFrom?: SessionMoveInfo | null;
+  /**
+   * Additive (D68, migration 0026, `docs/todos.md`): how many of the session's
+   * todos are open (the sidebar row's badge, the Todos nav count). Absent (an
+   * older peer) = 0.
+   */
+  readonly openTodoCount?: number;
 }
 
 /** Additive (D65): the other end of a take-over. `sessionId` is raw (on `machineId`); a link to it is `r~<machineId>~<sessionId>` unless `machineId` is this machine. */
@@ -2069,6 +2075,20 @@ export interface HubEvents {
    * never forwarded between peers.
    */
   readonly machineState: MachineStateEvent;
+  /**
+   * Additive (D68): a session's todo list changed (added, edited, ticked,
+   * reordered, removed, done items cleared or removed an hour after done), by
+   * the developer or the agent. The UI reloads the list. Forwarded between peers
+   * (a peer's with its remote session id).
+   */
+  readonly todosChanged: TodosChanged;
+}
+
+/** D68: the `todosChanged` payload. */
+export interface TodosChanged {
+  readonly sessionId: string;
+  readonly openCount: number;
+  readonly doneCount: number;
 }
 
 /** D52: what happened to a schedule (`schedulesChanged`). */
@@ -2091,6 +2111,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'sidebarLayoutChanged',
   'updateChanged',
   'machineState',
+  'todosChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */
@@ -2218,4 +2239,65 @@ export interface AccountSwitchInput {
 /** Additive (D63): body of `PUT /api/sessions/{id}/profile-pin`. */
 export interface ProfilePinInput {
   readonly pinned: boolean;
+}
+
+/** D68 (`docs/todos.md`): an item's state. */
+export type TodoState = 'open' | 'done';
+
+/** D68: who added an item: the developer (the UI) or the session's agent (the `switchboard` MCP tools). */
+export type TodoAuthor = 'developer' | 'agent';
+
+/** D68: one item of a session's todo list. */
+export interface SessionTodo {
+  readonly id: string;
+  /** The session it belongs to (a peer's carries its remote id). */
+  readonly sessionId: string;
+  readonly text: string;
+  readonly state: TodoState;
+  readonly addedBy: TodoAuthor;
+  /** Order within the session, 0 first (open and done items share one order). */
+  readonly position: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** When it was marked done; `null` while open. */
+  readonly doneAt: string | null;
+  /** When a done item is removed by itself (`doneAt` + 1 hour); `null` while open. */
+  readonly removeAt: string | null;
+}
+
+/** D68: `GET /api/sessions/{id}/todos` and the answer of every write under it: the whole list in order. */
+export interface SessionTodoList {
+  readonly sessionId: string;
+  readonly todos: readonly SessionTodo[];
+  readonly openCount: number;
+  readonly doneCount: number;
+}
+
+/** D68: one session's group on the Todos page (`GET /api/todos`): its open items, and its done ones (still shown until removed). */
+export interface TodoGroup {
+  readonly sessionId: string;
+  /** The session's display title (its title, else its name). */
+  readonly title: string;
+  readonly solutions: readonly string[];
+  readonly folderPath: string | null;
+  /** `null` = this machine's session; a peer's carries its machine (D48). */
+  readonly machine: SessionMachine | null;
+  readonly lastActivityAt: string | null;
+  readonly todos: readonly SessionTodo[];
+}
+
+/** D68: body of `POST /api/sessions/{id}/todos`. */
+export interface NewTodoInput {
+  readonly text: string;
+}
+
+/** D68: body of `PUT /api/sessions/{id}/todos/{todoId}`: new text, and / or tick (`done`) / untick (`open`). */
+export interface TodoPatchInput {
+  readonly text?: string;
+  readonly state?: TodoState;
+}
+
+/** D68: body of `PUT /api/sessions/{id}/todos/order`: every item id of the session, in the new order. */
+export interface TodoOrderInput {
+  readonly ids: readonly string[];
 }

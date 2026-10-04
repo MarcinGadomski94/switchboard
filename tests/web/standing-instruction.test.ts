@@ -18,6 +18,7 @@ describe('copy and defaults', () => {
     expect(STANDING_INSTRUCTION_DESCRIPTION).toContain('started or resumed afterwards');
     expect(readKnownSettings({})).toMatchObject({ 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION, 'agents.standingInstruction.enabled': true });
     expect(SETTING_DEFAULTS['agents.standingInstruction.enabled']).toBe(true);
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(300);
+    // D68: the todo-list sentence made it longer (still short: it costs tokens in every session).
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(400);
   });
 });

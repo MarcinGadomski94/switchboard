@@ -1,6 +1,7 @@
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  currentStandingInstruction,
   EDITABLE_SETTINGS,
   type EditableSettings,
   type KnownSettings,
@@ -137,6 +138,8 @@ export async function readSettings(
       const fallback = SETTING_DEFAULTS[key];
       // D56: the mode is one of two words; anything else stored reads as the default.
       if (key === 'newSession.mode') return [key, isNewSessionMode(value) ? value : fallback];
+      // D68: an earlier default text reads as the current default (it gains the todo sentence).
+      if (key === 'agents.standingInstruction') return [key, typeof value === 'string' ? currentStandingInstruction(value) : fallback];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
@@ -161,7 +164,7 @@ export async function standingInstructionFor(repo: SettingRepository): Promise<s
   const text = stored['agents.standingInstruction'];
   const enabled = stored['agents.standingInstruction.enabled'];
   return effectiveStandingInstruction({
-    'agents.standingInstruction': typeof text === 'string' ? text : SETTING_DEFAULTS['agents.standingInstruction'],
+    'agents.standingInstruction': typeof text === 'string' ? currentStandingInstruction(text) : SETTING_DEFAULTS['agents.standingInstruction'],
     'agents.standingInstruction.enabled': typeof enabled === 'boolean' ? enabled : SETTING_DEFAULTS['agents.standingInstruction.enabled'],
   });
 }

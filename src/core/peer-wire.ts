@@ -8,7 +8,7 @@
  * matter inside one answer (question ids, agent ids, event ids) stay as they are.
  * Pure: no I/O.
  */
-import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, TerminalLoop } from './api.ts';
+import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 
 /** The machine whose answers are mapped. */
@@ -98,12 +98,32 @@ export function peerTerminalLoop(machine: PeerMachineRef, entry: TerminalLoop): 
   return { ...entry, loop: { ...entry.loop, id: ns(machine, entry.loop.id) }, machine: { id: machine.id, name: machine.name, state: machine.state } };
 }
 
+/** D68: a peer's todo item: its session id namespaced (the item id stays: the routes name it under its session). */
+export function peerTodo(machine: PeerMachineRef, todo: SessionTodo): SessionTodo {
+  return { ...todo, sessionId: ns(machine, todo.sessionId) };
+}
+
+/** D68: a peer's session todo list (`GET /api/sessions/{id}/todos` and every write's answer). */
+export function peerTodoList(machine: PeerMachineRef, list: SessionTodoList): SessionTodoList {
+  return { ...list, sessionId: ns(machine, list.sessionId), todos: (list.todos ?? []).map((todo) => peerTodo(machine, todo)) };
+}
+
+/** D68: a peer's {@link TodoGroup} (the Todos page): its session id namespaced, `machine` added. */
+export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGroup {
+  return {
+    ...group,
+    sessionId: ns(machine, group.sessionId),
+    todos: (group.todos ?? []).map((todo) => peerTodo(machine, todo)),
+    machine: { id: machine.id, name: machine.name, state: machine.state },
+  };
+}
+
 /**
  * The `/hub` events a peer's stream forwards (the rest are the peer's own
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -135,6 +155,10 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     }
     case 'inboxChanged':
       return payload;
+    case 'todosChanged': {
+      const changed = value as unknown as HubEvents['todosChanged'];
+      return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
+    }
     case 'scheduleRun':
     case 'schedulesChanged': {
       const run = value as { scheduleId?: unknown };
@@ -149,7 +173,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D50: `wrapped` = an answer that carries a Session under `session` (the Stop's `InterruptResult`, `StopBackgroundResult`). D51: `workflow-chat`. */
 /** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
 /** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'none';
+/** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-groups' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -164,6 +189,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (pathname === '/api/schedules') return upper === 'GET' ? 'schedules' : upper === 'POST' ? 'schedule' : 'none';
   if (upper === 'POST' && /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/.test(pathname)) return 'schedule';
   if (pathname === '/api/terminal-loops') return upper === 'GET' ? 'terminal-loops' : 'none';
+  // D68: a session's todo list (every route under it answers the whole list) and the Todos page's groups.
+  if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done)?)?$/.test(pathname)) return 'todo-list';
+  if (pathname === '/api/todos') return upper === 'GET' ? 'todo-groups' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
@@ -211,6 +239,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return Array.isArray(body)
         ? body.filter((entry) => isRecord(entry) && isRecord(entry['loop'])).map((entry) => peerTerminalLoop(machine, entry as unknown as TerminalLoop))
         : body;
+    case 'todo-list':
+      return isRecord(body) && typeof body['sessionId'] === 'string' ? peerTodoList(machine, body as unknown as SessionTodoList) : body;
+    case 'todo-groups':
+      return Array.isArray(body) ? body.filter(isRecord).map((group) => peerTodoGroup(machine, group as unknown as TodoGroup)) : body;
     case 'none':
       return body;
   }

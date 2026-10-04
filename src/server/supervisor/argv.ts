@@ -40,6 +40,8 @@ export interface ClaudeArgsInput {
   readonly effort?: string | null;
   /** D64: `--append-system-prompt <text>`, the standing instruction; `null` / empty / absent = no flag. */
   readonly standingInstruction?: string | null;
+  /** D68: the built-in `switchboard` MCP server's flags (`--mcp-config …`, `--allowedTools mcp__switchboard`); absent = none. */
+  readonly mcpArgs?: readonly string[];
   /** Dev-only flags appended at the end (`SWITCHBOARD_CLAUDE_EXTRA_ARGS`, the D13 real-CLI smoke). */
   readonly extraArgs?: readonly string[];
 }
@@ -82,6 +84,7 @@ export function buildClaudeArgs(input: ClaudeArgsInput): string[] {
     ...(input.model ? ['--model', input.model] : []),
     ...(input.effort ? ['--effort', input.effort] : []),
     ...(input.standingInstruction ? ['--append-system-prompt', input.standingInstruction] : []),
+    ...(input.mcpArgs ?? []),
     '--name',
     input.name,
     '--forward-subagent-text',

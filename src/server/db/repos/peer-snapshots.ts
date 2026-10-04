@@ -1,7 +1,7 @@
 import type { RepoContext } from '../context.ts';
 
-/** What a snapshot holds (D48 ruling D48-cache-persist; D52: `schedules` and `terminal-loops`, key ''). */
-export type PeerSnapshotKind = 'sessions' | 'detail' | 'events' | 'schedules' | 'terminal-loops';
+/** What a snapshot holds (D48 ruling D48-cache-persist; D52: `schedules` and `terminal-loops`, key ''; D68: `todos`, key ''). */
+export type PeerSnapshotKind = 'sessions' | 'detail' | 'events' | 'schedules' | 'terminal-loops' | 'todos';
 
 /**
  * The last known answers of each paired machine (migration 0018): its open

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
+import { type AgentMcpLaunch, opencodeMcpEntry } from '../../todos/agent-mcp.ts';
 import { LineSplitter } from '../../../core/stream-json.ts';
 import type { AgentProcess, ProcessExit } from '../agent-process.ts';
 import { registerServer, serverSpawnOptions, signalServer, unregisterServer } from '../reaper.ts';
@@ -63,8 +64,11 @@ export function freePort(): Promise<number> {
   });
 }
 
-/** `OPENCODE_CONFIG_CONTENT` with Switchboard's permission rules over any the environment already has. */
-export function configContent(existing: string | undefined): string {
+/**
+ * `OPENCODE_CONFIG_CONTENT` with Switchboard's permission rules over any the environment already has.
+ * D68: with `agentMcp`, its `mcp.switchboard` entry is added next to the environment's own servers.
+ */
+export function configContent(existing: string | undefined, agentMcp: AgentMcpLaunch | null = null): string {
   let base: JsonRecord = {};
   try {
     const parsed: unknown = existing ? JSON.parse(existing) : {};
@@ -73,7 +77,8 @@ export function configContent(existing: string | undefined): string {
     base = {};
   }
   const permission = isRecord(base['permission']) ? base['permission'] : {};
-  return JSON.stringify({ ...base, permission: { ...permission, ...OPENCODE_PERMISSIONS } });
+  const mcp = isRecord(base['mcp']) ? base['mcp'] : {};
+  return JSON.stringify({ ...base, permission: { ...permission, ...OPENCODE_PERMISSIONS }, ...(agentMcp ? { mcp: { ...mcp, [agentMcp.name]: opencodeMcpEntry(agentMcp) } } : {}) });
 }
 
 /**
@@ -228,7 +233,8 @@ export class OpenCodeBridge implements AgentProcess {
       ...this.#options.env,
       OPENCODE_SERVER_PASSWORD: this.#password,
       OPENCODE_SERVER_USERNAME: 'opencode',
-      OPENCODE_CONFIG_CONTENT: configContent(this.#options.env['OPENCODE_CONFIG_CONTENT']),
+      // D68: plus the session's todo tools (UNVERIFIED with a real OpenCode, docs/todos.md).
+      OPENCODE_CONFIG_CONTENT: configContent(this.#options.env['OPENCODE_CONFIG_CONTENT'], this.#options.agentMcp ?? null),
     };
     const child = spawn(cmd, [...prefix, 'serve', '--hostname', '127.0.0.1', '--port', String(port)], { cwd: this.#options.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...serverSpawnOptions });
     this.#child = child;

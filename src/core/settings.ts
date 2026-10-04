@@ -61,10 +61,25 @@ export function isNewSessionMode(value: unknown): value is NewSessionMode {
 /**
  * D64: the default standing instruction. Short on purpose: it costs tokens in
  * every session. It stops an agent asking about content it never wrote ("the
- * table above" that only existed in its head).
+ * table above" that only existed in its head). D68 added one sentence: the
+ * session's todo list goes through the built-in `switchboard` MCP tools.
  */
 export const DEFAULT_STANDING_INSTRUCTION =
-  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.";
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.";
+
+/**
+ * D68: earlier defaults. A stored text equal to one of them (saved unchanged, or
+ * stored by Reset to default) reads as the current {@link DEFAULT_STANDING_INSTRUCTION},
+ * so it gets the new sentence; a text the developer edited is theirs and stays as it is.
+ */
+export const PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS: readonly string[] = [
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation.",
+];
+
+/** D68: the stored instruction as it applies now (an earlier default is the current default). */
+export function currentStandingInstruction(stored: string): string {
+  return PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS.includes(stored.trim()) ? DEFAULT_STANDING_INSTRUCTION : stored;
+}
 
 /** D64: the longest standing instruction `PUT /api/settings` accepts (characters). */
 export const STANDING_INSTRUCTION_MAX = 4_000;
@@ -125,7 +140,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'ui.sidebarHidden': bool('ui.sidebarHidden', SETTING_DEFAULTS['ui.sidebarHidden']),
     'ui.rightPanelHidden': bool('ui.rightPanelHidden', SETTING_DEFAULTS['ui.rightPanelHidden']),
     'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
-    'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? (value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
+    'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',

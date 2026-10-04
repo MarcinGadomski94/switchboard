@@ -44,6 +44,8 @@ import type { SessionSupervisor } from './supervisor/supervisor.ts';
 import type { TakeoverRunner } from './takeover/runner.ts';
 import type { TakeoverService } from './takeover/service.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
+import type { TodoService } from './todos/service.ts';
+import { registerTodoRoutes } from './api/todos.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -88,6 +90,8 @@ export interface ApiContext {
   readonly takeover: TakeoverService;
   /** D65: the initiating machine's runner (preview, start, progress). */
   readonly takeoverRunner: TakeoverRunner;
+  /** D68: the sessions' todo lists (the UI's routes and the agent's, docs/todos.md). */
+  readonly todos: TodoService;
 }
 
 /**
@@ -120,6 +124,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerTakeoverRoutes(app, context);
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
+  await registerTodoRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
   await registerHubRoutes(app, context);

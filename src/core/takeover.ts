@@ -1,3 +1,4 @@
+import type { TodoAuthor, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 
@@ -127,6 +128,11 @@ export interface SourceInspect {
   readonly conversation: { readonly kind: ConversationKind; readonly files: readonly ConversationFileInfo[]; readonly note: string | null };
   /** Messages typed while the session was paused (D44's queue), delivered on the target with the first message. */
   readonly queued: readonly string[];
+  /**
+   * Additive (D68): the session's todo list, in order (re-created on the target before the
+   * agent's first turn). Absent from an older Switchboard: the list stays behind.
+   */
+  readonly todos?: ReadonlyArray<{ readonly text: string; readonly state: TodoState; readonly addedBy: TodoAuthor; readonly createdAt: string; readonly doneAt: string | null }>;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];
 }

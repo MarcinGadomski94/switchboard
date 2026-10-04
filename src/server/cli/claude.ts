@@ -1,4 +1,5 @@
 import { buildClaudeArgs } from '../supervisor/argv.ts';
+import { claudeMcpArgs } from '../todos/agent-mcp.ts';
 import { ClaudeProcess } from '../supervisor/process.ts';
 import type { CliAdapter, SpawnRequest } from './adapter.ts';
 import type { AgentProcess } from './agent-process.ts';
@@ -21,6 +22,8 @@ export const claudeAdapter: CliAdapter = {
       model: session.model,
       effort: session.effort,
       standingInstruction: request.standingInstruction,
+      // D68: the session's todo tools (`--mcp-config`, merged with the developer's own servers).
+      ...(request.agentMcp ? { mcpArgs: claudeMcpArgs(request.agentMcp) } : {}),
       extraArgs: request.extraArgs,
     });
     return new ClaudeProcess({ command: request.command, args, cwd: request.cwd, env: request.env, onLine: request.onLine });

@@ -17,6 +17,7 @@ export const codexAdapter: CliAdapter = {
       permissionMode: request.permissionMode,
       title: session.title ?? session.name,
       standingInstruction: request.standingInstruction,
+      ...(request.agentMcp ? { agentMcp: request.agentMcp } : {}),
       onLine: request.onLine,
       ...(request.onNativeId ? { onNativeId: request.onNativeId } : {}),
       ...(request.onNotice ? { onNotice: request.onNotice } : {}),

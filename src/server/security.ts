@@ -122,6 +122,26 @@ export interface SecurityOptions {
    * is refused.
    */
   readonly hookToken?: string | null;
+  /**
+   * D68: checks a session's agent token: `/agent/*` takes only that, as `Authorization:
+   * Bearer <token>` with the session named in `x-switchboard-session` (never the
+   * cookie). Without it `/agent/*` is refused.
+   */
+  readonly agentTokenValid?: (sessionId: string, token: string) => boolean;
+}
+
+/** D68: `true` for `/agent` and `/agent/…` (the agent todo tools' endpoints, called by the `switchboard` MCP helper). */
+export function isAgentPath(url: string): boolean {
+  const q = url.indexOf('?');
+  const pathname = q < 0 ? url : url.slice(0, q);
+  return pathname === '/agent' || pathname.startsWith('/agent/');
+}
+
+/** D68: the bearer token of an `Authorization` header, `null` when there is none. */
+export function bearerOf(header: string | undefined): string | null {
+  if (typeof header !== 'string') return null;
+  const match = /^Bearer (\S+)$/.exec(header.trim());
+  return match ? (match[1] as string) : null;
 }
 
 /** D48 P4: `true` for `/hook` and `/hook/…` (the hook script's endpoints). */
@@ -146,7 +166,8 @@ function deny(reply: FastifyReply, status: 401 | 403, error: string): FastifyRep
  * Installs the guard as the first `onRequest` hook, for every route and every 404:
  * 1. `Host` must be a loopback name with the service port → else 403 `forbidden-host`.
  *    D48 P4: `/hook/*` then needs no `Origin` (403) and the hook token as a bearer
- *    (401), never the cookie.
+ *    (401), never the cookie. D68: `/agent/*` likewise, with the agent token of the
+ *    session named in `x-switchboard-session`.
  * 2. `Origin`, when present, must be the service's own origin → else 403 `forbidden-origin`.
  * 3. Unless the route is marked `config.public` (UI page, static files) and the path
  *    is not under `/api` or `/hub`, the `sb_token` cookie must match → else 401 `unauthorized`.
@@ -160,6 +181,14 @@ export function registerSecurity(app: FastifyInstance, options: SecurityOptions)
     if (isHookPath(request.url)) {
       if (origin !== undefined) return deny(reply, 403, 'forbidden-origin');
       if (!hasHookToken(request.headers.authorization, options.hookToken)) return deny(reply, 401, 'unauthorized');
+      return undefined;
+    }
+    // D68: the agent todo tools' endpoints: no browser, only the session's own agent token.
+    if (isAgentPath(request.url)) {
+      if (origin !== undefined) return deny(reply, 403, 'forbidden-origin');
+      const sessionId = request.headers['x-switchboard-session'];
+      const bearer = bearerOf(request.headers.authorization);
+      if (typeof sessionId !== 'string' || bearer === null || !options.agentTokenValid?.(sessionId, bearer)) return deny(reply, 401, 'unauthorized');
       return undefined;
     }
     if (origin !== undefined && !isAllowedOrigin(origin, port)) return deny(reply, 403, 'forbidden-origin');

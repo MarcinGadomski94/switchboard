@@ -3,6 +3,7 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { ClaudeStart } from '../supervisor/argv.ts';
 import type { AgentProcess } from './agent-process.ts';
 import type { ProviderUsage } from './bridge-common.ts';
+import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 
 /**
  * D62: what the supervisor asks of a provider when it starts a process for a
@@ -35,6 +36,11 @@ export interface SpawnRequest {
    * `developerInstructions`; OpenCode: the prompt's `system`.
    */
   readonly standingInstruction: string | null;
+  /**
+   * D68: the built-in `switchboard` MCP server (the session's todo tools); `null` = none
+   * (no agent tools on this Switchboard, tests). Each adapter passes it its CLI's way.
+   */
+  readonly agentMcp?: AgentMcpLaunch | null;
   /** Every stream-json stdout line, in order. */
   readonly onLine: (line: string) => void;
   /** A bridge learned (or created) the provider's own conversation id: stored so later spawns reopen it. */

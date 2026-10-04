@@ -1,8 +1,8 @@
 import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
-import type { HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop } from '../../core/api.ts';
-import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerTerminalLoop } from '../../core/peer-wire.ts';
+import type { HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
+import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -78,8 +78,8 @@ export const PEER_HOLD_MS = 10_000;
 /** D52: a peer's schedules / terminal loops are fetched again when a list read finds them older than this. */
 export const PEER_LIST_STALE_MS = 10_000;
 
-/** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops' } as const;
+/** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -156,6 +156,12 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/takeover\/source\/(?:inspect|stop|capture|stop-terminal|files|chunk|finish|rollback)$/],
   ['POST', /^\/api\/takeover\/target\/(?:plan|chunk|apply|abort|resume|close)$/],
   ['GET', /^\/api\/takeover\/leftovers$/],
+  // D68: a session's todo list (read, add, edit / tick, reorder, delete, clear done) and every session's (the Todos page).
+  ['GET', /^\/api\/sessions\/[^/]+\/todos$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/todos(?:\/clear-done)?$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
+  ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/takeover\/leftovers\/[^/]+\/delete$/],
 ];
 
@@ -728,6 +734,15 @@ export class PeerService implements PeerHandlers {
       void this.#publishInboxCount();
       return;
     }
+    if (name === 'todosChanged') {
+      // D68: the peer's todo groups are fetched again first, so the Todos page that reloads on the event sees the change.
+      void this.refreshList(id, 'todos').then(() => {
+        const current = this.#ref(id);
+        const mapped = current ? peerHubEvent(current, name, payload) : null;
+        if (mapped !== null) this.#publishFromPeer(name, mapped);
+      });
+      return;
+    }
     if (name === 'scheduleRun' || name === 'schedulesChanged') {
       // D52: the peer's schedules are fetched again first, so a page that reloads on the event sees the run.
       void this.refreshList(id, 'schedules').then(() => {
@@ -789,6 +804,11 @@ export class PeerService implements PeerHandlers {
    */
   remoteSchedules(): Schedule[] {
     return this.#remoteList('schedules', (ref, item) => peerSchedule(ref, item as Schedule));
+  }
+
+  /** D68: the paired machines' todo groups (`GET /api/todos` there) as last known; see {@link remoteSchedules}. */
+  remoteTodos(): TodoGroup[] {
+    return this.#remoteList('todos', (ref, item) => peerTodoGroup(ref, item as TodoGroup));
   }
 
   /** D52: the paired machines' terminal loops (`GET /api/terminal-loops` there) as last known; see {@link remoteSchedules}. */
@@ -901,6 +921,8 @@ export class PeerService implements PeerHandlers {
     if (answer.status >= 200 && answer.status < 300) {
       // D52: a schedule changed there (saved, run, paused, resumed, deleted): its list is fetched again before the answer goes back.
       if (method.toUpperCase() !== 'GET' && path.split('?')[0]?.startsWith('/api/schedules')) await this.refreshList(machineId, 'schedules');
+      // D68: a todo list changed there: the Todos page's groups are fetched again too.
+      if (method.toUpperCase() !== 'GET' && /\/todos(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'todos');
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }
     return answer;

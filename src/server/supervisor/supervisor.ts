@@ -36,6 +36,7 @@ import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { standingInstructionFor } from '../settings/settings.ts';
+import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
 import type { ProcessExit } from './process.ts';
@@ -561,6 +562,8 @@ export class SessionSupervisor {
   readonly #lastAccountSwitch = new Map<string, number>();
   /** D63: the profile each live process was started on (a switch changes the stored one only once its new process starts). */
   readonly #profileOfLive = new Map<string, string>();
+  /** D68: the built-in `switchboard` MCP server of a spawn (the session's todo tools); `null` = none. */
+  #agentMcp: ((session: SessionRecord) => Promise<AgentMcpLaunch | null>) | null = null;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -592,6 +595,21 @@ export class SessionSupervisor {
     registerWorkflowSource(this.#store, this.#workflows);
     // D62 P5: `Session.providerSwitch`.
     registerSwitchSource(this.#store, { current: (sessionId) => this.currentSwitch(sessionId), accountSwitching: (sessionId) => this.#accountSwitches.has(sessionId) });
+  }
+
+  /**
+   * D68: every process started from now on gets the built-in `switchboard` MCP
+   * server `launch` answers for its session (`buildApp` sets it: it knows the
+   * port and the install secret). A launch that fails is reported and the
+   * process starts without it.
+   */
+  useAgentMcp(launch: ((session: SessionRecord) => Promise<AgentMcpLaunch | null>) | null): void {
+    this.#agentMcp = launch;
+  }
+
+  /** D68: publishes the session's `sessionUpdated` now (its todo count changed). */
+  async announce(sessionId: string): Promise<void> {
+    await this.#emitSession(sessionId);
   }
 
   /** Subscribes to a notification; returns the unsubscribe function. */
@@ -2333,6 +2351,13 @@ export class SessionSupervisor {
       throw new SupervisorError('cli-unavailable', `${CLI_LABELS[provider]} is not supported by this Switchboard, so ${prepared.title ?? prepared.name} cannot run here`);
     }
     const nativeId = provider === 'claude' ? null : await this.#store.providers.nativeId(session.id, provider);
+    // D68: the session's todo tools (the built-in `switchboard` MCP server); a launch that cannot be prepared is reported, never a reason not to start.
+    let agentMcp: AgentMcpLaunch | null = null;
+    try {
+      agentMcp = (await this.#agentMcp?.(prepared)) ?? null;
+    } catch (error) {
+      this.#onError(error);
+    }
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,
@@ -2344,6 +2369,7 @@ export class SessionSupervisor {
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.
       standingInstruction: await standingInstructionFor(this.#store.settings),
+      agentMcp,
       onLine: (line) => {
         const live = holder.live;
         if (live) void this.#enqueue(live, () => this.#onLine(live, line));

@@ -791,7 +791,10 @@ async function login(device: boolean): Promise<number> {
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   await log({ kind: 'argv', argv, cwd: process.cwd(), env: Object.fromEntries(Object.entries(env).filter(([key]) => key === 'CODEX_HOME' || key.startsWith('FAKE_CODEX_'))) });
-  const [first, ...rest] = argv;
+  // D68: root `-c key=value` config overrides (Switchboard's `switchboard` MCP server) come before the subcommand; the fake only accepts them (the argv log has them).
+  const args = [...argv];
+  while ((args[0] === '-c' || args[0] === '--config') && args.length >= 2) args.splice(0, 2);
+  const [first, ...rest] = args;
   if (first === '--version' || first === '-V') {
     await out(`codex-cli ${FAKE_CODEX_VERSION}\n`);
     return 0;

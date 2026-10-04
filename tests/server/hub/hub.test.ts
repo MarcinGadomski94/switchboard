@@ -110,6 +110,8 @@ const SESSION_KEYS = keys<Session>()([
   'accountSwitching',
   'movedTo',
   'movedFrom',
+  // additive, D68 (the session's open todos)
+  'openTodoCount',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',

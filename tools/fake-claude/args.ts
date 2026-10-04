@@ -30,6 +30,8 @@ export interface RunArgs {
   name: string | null;
   /** D64: `--append-system-prompt <text>` as given (the standing instruction); `null` without it. The fake only accepts it (the argv log is what tests read). */
   appendSystemPrompt: string | null;
+  /** D68: every `--mcp-config <file | json>` as given (Switchboard's built-in `switchboard` server). The fake only accepts it (the argv log is what tests read). */
+  mcpConfig: string[];
   /** `--teleport <id>` (D25): a local copy of a remote session (`teleport.ts`); `null` otherwise. */
   teleport: string | null;
 }
@@ -73,6 +75,7 @@ function defaults(): RunArgs {
     forkSession: false,
     name: null,
     appendSystemPrompt: null,
+    mcpConfig: [],
     teleport: null,
   };
 }
@@ -214,6 +217,9 @@ export function parseArgv(argv: readonly string[]): FakeCommand {
         break;
       case '--append-system-prompt':
         args.appendSystemPrompt = value();
+        break;
+      case '--mcp-config':
+        args.mcpConfig.push(value());
         break;
       case '--teleport':
         args.teleport = value();

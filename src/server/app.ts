@@ -21,6 +21,9 @@ import { HookService } from './hooks/service.ts';
 import { TakeoverRunner } from './takeover/runner.ts';
 import { TakeoverService } from './takeover/service.ts';
 import { McpService } from './mcp/service.ts';
+import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
+import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
+import { TodoService } from './todos/service.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -122,6 +125,13 @@ export interface AppOptions {
   readonly mcp?: McpService;
   /** D62: the CLIs' status (default: one over the supervisor's registry). */
   readonly clis?: CliStatusService;
+  /** D68: the sessions' todo lists (default: one over the store and the bus, started when the app is ready, closed with it). */
+  readonly todos?: TodoService;
+  /**
+   * D68: give every session the app's supervisor starts the built-in `switchboard`
+   * MCP server (its todo tools). Default `true`; tests of the CLIs' argv turn it off.
+   */
+  readonly agentTools?: boolean;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -135,7 +145,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
   // D48 P4: the hook script presents this token to `/hook/*` (a file only the user can read).
   const hookToken = options.hookToken ?? (await loadOrCreateToken(options.config.dataDir, HOOK_TOKEN_FILE));
-  registerSecurity(app, { port: options.config.port, token: options.token, hookToken });
+  // D68: `/agent/*` takes a session's agent token (derived from the install token, `todos/agent-token.ts`).
+  registerSecurity(app, { port: options.config.port, token: options.token, hookToken, agentTokenValid: (sessionId, candidate) => agentTokenMatches(options.token, sessionId, candidate) });
   const bus = options.bus ?? new HubBus();
   let supervisor = options.supervisor;
   let questions = options.questions;
@@ -244,10 +255,31 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     mcp = own;
   }
+  // D68: the sessions' todo lists: the sweep of done items starts with the app; the supervisor's spawns get the agent's tools.
+  let todos = options.todos;
+  if (!todos) {
+    const own = new TodoService({ store: options.store, bus, announce: (sessionId) => supervisor.announce(sessionId) });
+    app.addHook('onReady', async () => {
+      await own.start();
+    });
+    app.addHook('onClose', async () => {
+      own.close();
+    });
+    todos = own;
+  }
+  if (options.agentTools !== false) {
+    supervisor.useAgentMcp(async (session) =>
+      withClaudeConfigFile(
+        config.dataDir,
+        session.id,
+        agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }),
+      ),
+    );
+  }
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
-  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, self: () => peers.self() });
+  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

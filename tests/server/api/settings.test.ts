@@ -277,7 +277,8 @@ describe('settings helpers (M8.2)', () => {
 
   it('D64 · the standing instruction: on by default with the default text; edit, toggle and reset are stored; bad values 422', async () => {
     await setup();
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(300);
+    // D68: the todo-list sentence made it longer (still short: it costs tokens in every session).
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(400);
     expect(await standingInstructionFor(store!.settings)).toBe(DEFAULT_STANDING_INSTRUCTION);
     const edited = await call('PUT', '/api/settings', { 'agents.standingInstruction': 'Be brief.' });
     expect(edited.json()).toMatchObject({ 'agents.standingInstruction': 'Be brief.', 'agents.standingInstruction.enabled': true });
