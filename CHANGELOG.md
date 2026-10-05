@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.1 (2026-10-05)
+
+### Changed
+- The built-in `switchboard` MCP server (the todo tools) is now built on the official MCP TypeScript SDK (`McpServer.registerTool` with typed input schemas). Agents see the same six tools, fields, required fields, annotations and messages; a value of the wrong type (e.g. priority `asap`) now gets the SDK's "Input validation error". New runtime dependencies: `@modelcontextprotocol/sdk` and `zod` (downloaded once by the update).
+
+### Fixed
+- A todo card's ⋯ menu no longer loses keyboard focus in the Priority submenu when the session refreshes in the background.
+
 ## 1.10.0 (2026-10-05)
 
 ### Shared sidebar between paired machines
