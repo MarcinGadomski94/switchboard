@@ -2,18 +2,28 @@
  * D68 (`docs/todos.md` → *The agent's tools*): the built-in `switchboard` MCP
  * server, a stdio helper the session's CLI starts:
  * `node sb-mcp.ts --switchboard-mcp <port> <sessionId>`, with the session's agent
- * token in `SWITCHBOARD_TODO_TOKEN` (never on the argv). No npm dependencies; Node
- * ≥ 24 runs it directly.
+ * token in `SWITCHBOARD_TODO_TOKEN` (never on the argv). Node ≥ 24 runs it
+ * directly (type stripping); it imports the official MCP TypeScript SDK and zod
+ * from the app's own `node_modules` (runtime dependencies, so a release install's
+ * `npm ci --omit=dev` brings them).
  *
- * It speaks MCP over stdio (newline-delimited JSON-RPC 2.0: `initialize`,
- * `tools/list`, `tools/call`, `ping`) and serves six tools, `todo_list`,
- * `todo_get` (D69), `todo_add`, `todo_update` (D70: with priority and estimate), `todo_done`, `todo_remove`, each one call to the
- * local Switchboard's `/agent/v1/todos` (127.0.0.1 only). The token authorizes
- * that one session's list and nothing else; the helper never reads any other
- * file or variable. A failing call answers a tool error the agent can read
- * (Switchboard not running, an unknown id), never a crash.
+ * It is built on the SDK's high-level API: one `McpServer` over a
+ * `StdioServerTransport`, each of the six tools registered with `registerTool`
+ * next to its own handler: `todo_list`, `todo_get` (D69), `todo_add`,
+ * `todo_update` (D70: with priority and estimate), `todo_done`, `todo_remove`,
+ * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only).
+ * Names, descriptions, annotations and the instructions come from
+ * `src/core/todos.ts` ({@link TODO_TOOLS}); the zod input schemas here carry the
+ * same types and take their descriptions from there. The token authorizes that one
+ * session's list and nothing else; the helper never reads any other file or
+ * variable. A failing call answers a tool error the agent can read (Switchboard
+ * not running, an unknown id, a missing field), never a crash.
  */
 import http from 'node:http';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
 import type { SessionTodo, SessionTodoList } from '../core/api.ts';
 import {
   AGENT_MCP_INSTRUCTIONS,
@@ -24,14 +34,12 @@ import {
   TODO_ESTIMATE_MAX,
   TODO_PRIORITIES,
   TODO_TOOLS,
+  type TodoToolDefinition,
   isTodoPriority,
   todoDetailText,
   todoLine,
   todoListText,
 } from '../core/todos.ts';
-
-/** The MCP protocol versions this helper speaks; it answers the client's when it is one of them, else the newest. */
-export const MCP_PROTOCOL_VERSIONS: readonly string[] = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 /** An answer of the local API: status and parsed body. */
 export interface ApiAnswer {
@@ -83,12 +91,10 @@ export function loopbackApi(port: number, sessionId: string, token: string, time
     });
 }
 
-interface ToolResult {
-  readonly content: ReadonlyArray<{ readonly type: 'text'; readonly text: string }>;
-  readonly isError?: boolean;
-}
+/** The arguments of a tool call as its handler gets them (the schema's fields, plus any extra key such as D68's `text`). */
+export type ToolInput = Readonly<Record<string, unknown>>;
 
-function textResult(text: string, isError = false): ToolResult {
+function textResult(text: string, isError = false): CallToolResult {
   return isError ? { content: [{ type: 'text', text }], isError: true } : { content: [{ type: 'text', text }] };
 }
 
@@ -97,7 +103,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** The refusal's message (`{ message }` of the API), else the status. */
-function failure(answer: ApiAnswer): ToolResult {
+function failure(answer: ApiAnswer): CallToolResult {
   const message = record(answer.body)['message'];
   if (answer.status === 401) return textResult('Switchboard refused the todo tools for this session (the session token does not match).', true);
   return textResult(typeof message === 'string' ? message : `Switchboard answered HTTP ${answer.status}.`, true);
@@ -110,8 +116,19 @@ function listOf(body: unknown): SessionTodoList | null {
   return Array.isArray(list['todos']) ? (list as unknown as SessionTodoList) : null;
 }
 
+/** The list an answer carries, as `todo_list` prints it (`''` when none). */
+function summaryOf(body: unknown): string {
+  const list = listOf(body);
+  return list ? todoListText(list) : '';
+}
+
+/** The item a mutating answer carries (`{ todo }`). */
+function todoOf(body: unknown): SessionTodo | undefined {
+  return record(body)['todo'] as SessionTodo | undefined;
+}
+
 /** D69: the description and plan a call gives (strings only; `''` removes one on update). */
-function notes(input: Record<string, unknown>): { description?: string; plan?: string } {
+function notes(input: ToolInput): { description?: string; plan?: string } {
   return {
     ...(typeof input['description'] === 'string' ? { description: input['description'] } : {}),
     ...(typeof input['plan'] === 'string' ? { plan: input['plan'] } : {}),
@@ -119,7 +136,7 @@ function notes(input: Record<string, unknown>): { description?: string; plan?: s
 }
 
 /** D70: the priority and estimate a call gives (`estimate_minutes`, the tool's name, becomes the API's `estimateMinutes`). */
-function sizing(input: Record<string, unknown>): { priority?: unknown; estimateMinutes?: unknown } {
+function sizing(input: ToolInput): { priority?: unknown; estimateMinutes?: unknown } {
   const estimate = input['estimate_minutes'] ?? input['estimateMinutes'];
   return {
     ...(input['priority'] !== undefined ? { priority: input['priority'] } : {}),
@@ -132,7 +149,7 @@ function sizing(input: Record<string, unknown>): { priority?: unknown; estimateM
  * priority and an estimate), `null` when it can. The server itself still accepts an
  * older shape (ruling D70); the helper is what the agent's tool reaches.
  */
-function missingForAdd(input: Record<string, unknown>): string | null {
+function missingForAdd(input: ToolInput): string | null {
   const missing: string[] = [];
   if (typeof input['plan'] !== 'string' || input['plan'].trim() === '') missing.push('a plan (a handover plan for an agent, or "No plan: <one-line reason>")');
   if (!isTodoPriority(input['priority'])) missing.push(`a priority (${TODO_PRIORITIES.join(', ')})`);
@@ -146,149 +163,213 @@ function isTodo(body: unknown): body is SessionTodo {
   return typeof value['id'] === 'string' && typeof (value['title'] ?? value['text']) === 'string';
 }
 
-/** Runs one tool call against the API. */
-export async function callTool(api: AgentApi, name: string, args: unknown): Promise<ToolResult> {
-  const input = record(args);
-  const id = typeof input['id'] === 'string' ? input['id'].trim().replace(/^\[|\]$/g, '') : '';
-  const needId = (): ToolResult | null => (id === '' ? textResult('Give the item id (todo_list shows it in brackets).', true) : null);
+/** The item id a call gives (`[abc]`, as `todo_list` prints it, is fine), `''` when none. */
+function idOf(input: ToolInput): string {
+  return typeof input['id'] === 'string' ? input['id'].trim().replace(/^\[|\]$/g, '') : '';
+}
+
+const NEED_ID = 'Give the item id (todo_list shows it in brackets).';
+
+function itemRoute(id: string): string {
+  return `/agent/v1/todos/${encodeURIComponent(id)}`;
+}
+
+/** One request to the API: a thrown error (Switchboard down) and a non-2xx answer become tool errors; a 2xx answer's body goes to `done`. */
+async function request(api: AgentApi, method: 'GET' | 'POST' | 'PUT' | 'DELETE', route: string, body: unknown, done: (body: unknown) => CallToolResult): Promise<CallToolResult> {
   let answer: ApiAnswer;
   try {
-    switch (name) {
-      case 'todo_list':
-        answer = await api('GET', '/agent/v1/todos');
-        break;
-      case 'todo_get':
-        if (needId()) return needId() as ToolResult;
-        answer = await api('GET', `/agent/v1/todos/${encodeURIComponent(id)}`);
-        break;
-      case 'todo_add': {
-        // D69: `text` (the D68 field) still names the title.
-        const title = input['title'] ?? input['text'];
-        if (typeof title !== 'string') return textResult('Give the item a title (one short line); add a description, a handover plan, a priority and an estimate too.', true);
-        const missing = missingForAdd(input);
-        if (missing) return textResult(missing, true);
-        answer = await api('POST', '/agent/v1/todos', { title, ...notes(input), ...sizing(input) });
-        break;
-      }
-      case 'todo_update': {
-        if (needId()) return needId() as ToolResult;
-        const title = input['title'] ?? input['text'];
-        const patch = { ...(typeof title === 'string' ? { title } : {}), ...notes(input), ...sizing(input) };
-        if (Object.keys(patch).length === 0) return textResult('Give a new title, description, plan, priority and / or estimate_minutes.', true);
-        answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, patch);
-        break;
-      }
-      case 'todo_done':
-        if (needId()) return needId() as ToolResult;
-        answer = await api('PUT', `/agent/v1/todos/${encodeURIComponent(id)}`, { state: input['done'] === false ? 'open' : 'done' });
-        break;
-      case 'todo_remove':
-        if (needId()) return needId() as ToolResult;
-        answer = await api('DELETE', `/agent/v1/todos/${encodeURIComponent(id)}`);
-        break;
-      default:
-        return textResult(`Unknown tool ${name}.`, true);
-    }
+    answer = await api(method, route, body);
   } catch (error) {
     return textResult(`Switchboard could not be reached: ${error instanceof Error ? error.message : String(error)}`, true);
   }
   if (answer.status < 200 || answer.status >= 300) return failure(answer);
-  const list = listOf(answer.body);
-  const todo = record(answer.body)['todo'] as SessionTodo | undefined;
-  const summary = list ? todoListText(list) : '';
-  switch (name) {
-    case 'todo_get':
-      return textResult(isTodo(answer.body) ? todoDetailText(answer.body) : 'Switchboard did not answer with the item.', !isTodo(answer.body));
-    case 'todo_add':
-      return textResult(todo ? `Added ${todoLine(todo)}\n\n${summary}` : summary);
-    case 'todo_update':
-      return textResult(todo ? `Updated ${todoLine(todo)}\n\n${summary}` : summary);
-    case 'todo_done':
-      return textResult(todo ? `${todo.state === 'done' ? 'Done' : 'Reopened'}: ${todoLine(todo)}\n\n${summary}` : summary);
-    case 'todo_remove':
-      return textResult(`Removed.\n\n${summary}`);
-    default:
-      return textResult(summary || 'The todo list is empty.');
-  }
+  return done(answer.body);
 }
 
-/** A JSON-RPC message from the client. */
-interface RpcMessage {
-  readonly jsonrpc?: unknown;
-  readonly id?: unknown;
-  readonly method?: unknown;
-  readonly params?: unknown;
+/** `todo_list`: the compact list (D69). */
+export function todoList(api: AgentApi): Promise<CallToolResult> {
+  return request(api, 'GET', '/agent/v1/todos', undefined, (body) => textResult(summaryOf(body) || 'The todo list is empty.'));
 }
 
-/** The answer to one client message (`null` for a notification or a response). */
-export async function handleMessage(message: unknown, api: AgentApi, version = '0.0.0'): Promise<Record<string, unknown> | null> {
-  const msg = record(message) as RpcMessage;
-  const id = msg.id;
-  const isRequest = typeof msg.method === 'string' && (typeof id === 'string' || typeof id === 'number');
-  if (!isRequest) return null;
-  const reply = (result: unknown): Record<string, unknown> => ({ jsonrpc: '2.0', id, result });
-  const error = (code: number, text: string): Record<string, unknown> => ({ jsonrpc: '2.0', id, error: { code, message: text } });
-  const params = record(msg.params);
-  switch (msg.method) {
-    case 'initialize': {
-      const asked = typeof params['protocolVersion'] === 'string' ? params['protocolVersion'] : '';
-      return reply({
-        protocolVersion: MCP_PROTOCOL_VERSIONS.includes(asked) ? asked : MCP_PROTOCOL_VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: AGENT_MCP_SERVER, version },
-        instructions: AGENT_MCP_INSTRUCTIONS,
-      });
-    }
-    case 'ping':
-      return reply({});
-    case 'tools/list':
-      return reply({ tools: TODO_TOOLS });
-    case 'tools/call':
-      if (typeof params['name'] !== 'string') return error(-32602, 'tools/call needs a tool name');
-      return reply(await callTool(api, params['name'], params['arguments']));
-    case 'resources/list':
-      return reply({ resources: [] });
-    case 'prompts/list':
-      return reply({ prompts: [] });
-    default:
-      return error(-32601, `method not found: ${String(msg.method)}`);
-  }
+/** `todo_get`: one item in full (D69). */
+export async function todoGet(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = idOf(input);
+  if (id === '') return textResult(NEED_ID, true);
+  return request(api, 'GET', itemRoute(id), undefined, (body) => (isTodo(body) ? textResult(todoDetailText(body)) : textResult('Switchboard did not answer with the item.', true)));
 }
 
-/** Serves MCP on stdin / stdout until stdin ends. */
-export async function serve(api: AgentApi, input: NodeJS.ReadableStream, output: NodeJS.WritableStream, version = '0.0.0'): Promise<void> {
-  let buffer = '';
-  let pending = Promise.resolve();
-  const write = (value: unknown): void => {
-    output.write(`${JSON.stringify(value)}\n`);
+/** `todo_add`: a new item. D70: refuses, sending nothing, without a plan, a priority and an estimate. D69: `text` (the D68 field) still names the title. */
+export async function todoAdd(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const title = input['title'] ?? input['text'];
+  if (typeof title !== 'string') return textResult('Give the item a title (one short line); add a description, a handover plan, a priority and an estimate too.', true);
+  const missing = missingForAdd(input);
+  if (missing) return textResult(missing, true);
+  return request(api, 'POST', '/agent/v1/todos', { title, ...notes(input), ...sizing(input) }, (body) => {
+    const todo = todoOf(body);
+    const summary = summaryOf(body);
+    return textResult(todo ? `Added ${todoLine(todo)}\n\n${summary}` : summary);
+  });
+}
+
+/** `todo_update`: changes only the fields given (D69 / D70). */
+export async function todoUpdate(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = idOf(input);
+  if (id === '') return textResult(NEED_ID, true);
+  const title = input['title'] ?? input['text'];
+  const patch = { ...(typeof title === 'string' ? { title } : {}), ...notes(input), ...sizing(input) };
+  if (Object.keys(patch).length === 0) return textResult('Give a new title, description, plan, priority and / or estimate_minutes.', true);
+  return request(api, 'PUT', itemRoute(id), patch, (body) => {
+    const todo = todoOf(body);
+    const summary = summaryOf(body);
+    return textResult(todo ? `Updated ${todoLine(todo)}\n\n${summary}` : summary);
+  });
+}
+
+/** `todo_done`: marks an item done (`done: false` reopens it). */
+export async function todoDone(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = idOf(input);
+  if (id === '') return textResult(NEED_ID, true);
+  return request(api, 'PUT', itemRoute(id), { state: input['done'] === false ? 'open' : 'done' }, (body) => {
+    const todo = todoOf(body);
+    const summary = summaryOf(body);
+    return textResult(todo ? `${todo.state === 'done' ? 'Done' : 'Reopened'}: ${todoLine(todo)}\n\n${summary}` : summary);
+  });
+}
+
+/** `todo_remove`: removes an item. */
+export async function todoRemove(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = idOf(input);
+  if (id === '') return textResult(NEED_ID, true);
+  return request(api, 'DELETE', itemRoute(id), undefined, (body) => textResult(`Removed.\n\n${summaryOf(body)}`));
+}
+
+/** Tool `name`'s definition in {@link TODO_TOOLS}. */
+function tool(name: string): TodoToolDefinition {
+  const found = TODO_TOOLS.find((candidate) => candidate.name === name);
+  if (!found) throw new Error(`no tool ${name} in TODO_TOOLS`);
+  return found;
+}
+
+/** The description of field `field` of tool `name` in {@link TODO_TOOLS} (the one place the text lives). */
+function about(name: string, field: string): string {
+  const description = record(record(tool(name).inputSchema['properties'])[field])['description'];
+  if (typeof description !== 'string') throw new Error(`no description for ${name}.${field} in TODO_TOOLS`);
+  return description;
+}
+
+/**
+ * Tool `name`'s input schema: the fields' zod types, each optional so a missing
+ * one reaches the handler, which says what is missing in its own words (D70);
+ * extra keys kept (D68's `text`, an `estimateMinutes`); the JSON Schema's
+ * `required` and `additionalProperties: false` declared as {@link TODO_TOOLS} has
+ * them, so `tools/list` advertises the same contract.
+ */
+function inputSchema<Shape extends z.ZodRawShape>(name: string, shape: Shape) {
+  const required = tool(name).inputSchema['required'];
+  return z.looseObject(shape).meta({ ...(Array.isArray(required) ? { required: [...(required as string[])] } : {}), additionalProperties: false });
+}
+
+/** The fields' zod types, described from {@link TODO_TOOLS}. */
+const field = {
+  id: (name: string) => z.string().describe(about(name, 'id')).optional(),
+  title: (name: string) => z.string().describe(about(name, 'title')).optional(),
+  description: (name: string) => z.string().describe(about(name, 'description')).optional(),
+  plan: (name: string) => z.string().describe(about(name, 'plan')).optional(),
+  priority: (name: string) => z.enum(TODO_PRIORITIES as [string, ...string[]]).describe(about(name, 'priority')).optional(),
+  estimate: (name: string) => z.int().min(1).max(TODO_ESTIMATE_MAX).describe(about(name, 'estimate_minutes')).optional(),
+  done: (name: string) => z.boolean().describe(about(name, 'done')).optional(),
+};
+
+/** Runs the calls one at a time, in the order they came (a list after an add sees the add, as before the SDK). */
+function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(work: () => Promise<T>): Promise<T> => {
+    const next = tail.then(work, work);
+    tail = next.catch(() => undefined);
+    return next;
   };
-  const onLine = (line: string): void => {
-    if (line.trim() === '') return;
-    let message: unknown;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      write({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
-      return;
-    }
-    // Answers go out in the order the requests came.
-    pending = pending.then(async () => {
-      const answer = await handleMessage(message, api, version).catch((error: unknown) => ({ jsonrpc: '2.0', id: record(message)['id'] ?? null, error: { code: -32603, message: String(error) } }));
-      if (answer) write(answer);
-    });
-  };
-  input.setEncoding?.('utf8');
-  for await (const chunk of input) {
-    buffer += String(chunk);
-    let at = buffer.indexOf('\n');
-    while (at >= 0) {
-      onLine(buffer.slice(0, at).replace(/\r$/, ''));
-      buffer = buffer.slice(at + 1);
-      at = buffer.indexOf('\n');
-    }
-  }
-  if (buffer.trim() !== '') onLine(buffer);
-  await pending;
+}
+
+/**
+ * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its six tools, calling `api`. Connect it to a
+ * transport (a `StdioServerTransport` in the helper process).
+ */
+export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
+  const server = new McpServer({ name: AGENT_MCP_SERVER, version }, { instructions: AGENT_MCP_INSTRUCTIONS });
+  const serial = inOrder();
+
+  const list = tool('todo_list');
+  server.registerTool(
+    'todo_list',
+    { title: list.annotations.title, description: list.description, inputSchema: inputSchema('todo_list', {}), annotations: list.annotations },
+    () => serial(() => todoList(api)),
+  );
+
+  const get = tool('todo_get');
+  server.registerTool(
+    'todo_get',
+    { title: get.annotations.title, description: get.description, inputSchema: inputSchema('todo_get', { id: field.id('todo_get') }), annotations: get.annotations },
+    (input) => serial(() => todoGet(api, input)),
+  );
+
+  const add = tool('todo_add');
+  server.registerTool(
+    'todo_add',
+    {
+      title: add.annotations.title,
+      description: add.description,
+      inputSchema: inputSchema('todo_add', {
+        title: field.title('todo_add'),
+        description: field.description('todo_add'),
+        plan: field.plan('todo_add'),
+        priority: field.priority('todo_add'),
+        estimate_minutes: field.estimate('todo_add'),
+      }),
+      annotations: add.annotations,
+    },
+    (input) => serial(() => todoAdd(api, input)),
+  );
+
+  const update = tool('todo_update');
+  server.registerTool(
+    'todo_update',
+    {
+      title: update.annotations.title,
+      description: update.description,
+      inputSchema: inputSchema('todo_update', {
+        id: field.id('todo_update'),
+        title: field.title('todo_update'),
+        description: field.description('todo_update'),
+        plan: field.plan('todo_update'),
+        priority: field.priority('todo_update'),
+        estimate_minutes: field.estimate('todo_update'),
+      }),
+      annotations: update.annotations,
+    },
+    (input) => serial(() => todoUpdate(api, input)),
+  );
+
+  const done = tool('todo_done');
+  server.registerTool(
+    'todo_done',
+    {
+      title: done.annotations.title,
+      description: done.description,
+      inputSchema: inputSchema('todo_done', { id: field.id('todo_done'), done: field.done('todo_done') }),
+      annotations: done.annotations,
+    },
+    (input) => serial(() => todoDone(api, input)),
+  );
+
+  const remove = tool('todo_remove');
+  server.registerTool(
+    'todo_remove',
+    { title: remove.annotations.title, description: remove.description, inputSchema: inputSchema('todo_remove', { id: field.id('todo_remove') }), annotations: remove.annotations },
+    (input) => serial(() => todoRemove(api, input)),
+  );
+
+  return server;
 }
 
 async function main(argv: readonly string[]): Promise<number> {
@@ -300,7 +381,8 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stderr.write(`usage: node sb-mcp.ts ${AGENT_MCP_MARKER} <port> <sessionId> (with ${AGENT_TOKEN_ENV} set)\n`);
     return 2;
   }
-  await serve(loopbackApi(port, sessionId, token), process.stdin, process.stdout);
+  // Serves until stdin ends; the process exits once the last answer is written.
+  await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());
   return 0;
 }
 

@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { PassThrough } from 'node:stream';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AGENT_MCP_INSTRUCTIONS, AGENT_TOKEN_ENV, TODO_TOOLS } from '../../../src/core/todos.ts';
-import { type AgentApi, type ApiAnswer, callTool, handleMessage, serve } from '../../../src/hook/sb-mcp.ts';
+import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import type { Store } from '../../../src/server/db/store.ts';
@@ -15,10 +16,49 @@ import { REPO_ROOT, freeTestPorts, makeTempDir, removeTempDir } from '../../help
 import { openTempStore } from '../../helpers/store.ts';
 
 /**
- * D68 oracle: the `switchboard` MCP helper (`src/hook/sb-mcp.ts`): its MCP
- * handshake and tools against a stand-in API, and the real script over stdio
- * against a listening Switchboard (a test port), scoped by the agent token.
+ * D68 oracle: the `switchboard` MCP helper (`src/hook/sb-mcp.ts`, the official
+ * MCP SDK's `McpServer`): its MCP handshake and tools over an in-memory transport
+ * against a stand-in API, and the real script over stdio against a listening
+ * Switchboard (a test port), scoped by the agent token.
  */
+
+/** A tool call's result (the helper answers text only). */
+interface TextResult {
+  readonly content: ReadonlyArray<{ readonly type: 'text'; readonly text: string }>;
+  readonly isError?: boolean;
+}
+
+/** A raw JSON-RPC client of the server over the SDK's in-memory transport. */
+async function connect(api: AgentApi, version?: string) {
+  const [client, server] = InMemoryTransport.createLinkedPair();
+  await createTodoServer(api, version).connect(server);
+  const waiting = new Map<number, (message: Record<string, unknown>) => void>();
+  client.onmessage = (message: JSONRPCMessage) => {
+    const answer = message as Record<string, unknown>;
+    if (typeof answer['id'] === 'number') waiting.get(answer['id'])?.(answer);
+  };
+  await client.start();
+  let next = 0;
+  const rpc = (method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    next += 1;
+    const id = next;
+    const answered = new Promise<Record<string, unknown>>((resolve) => waiting.set(id, resolve));
+    void client.send({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) } as JSONRPCMessage);
+    return answered;
+  };
+  const call = async (name: string, args: Record<string, unknown>): Promise<TextResult> => (await rpc('tools/call', { name, arguments: args }))['result'] as TextResult;
+  return { rpc, call, notify: (method: string) => client.send({ jsonrpc: '2.0', method } as JSONRPCMessage) };
+}
+
+/** `tools/list` as the SDK renders TODO_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
+const LISTED_TOOLS = TODO_TOOLS.map((tool) => ({
+  name: tool.name,
+  title: tool.annotations.title,
+  description: tool.description,
+  inputSchema: { $schema: 'http://json-schema.org/draft-07/schema#', ...tool.inputSchema },
+  annotations: tool.annotations,
+  execution: { taskSupport: 'forbidden' },
+}));
 
 function stubApi(answers: Record<string, ApiAnswer>, calls: Array<[string, string, unknown]> = []): AgentApi {
   return async (method, route, body) => {
@@ -38,13 +78,15 @@ const LIST = {
 };
 
 describe('MCP messages', () => {
-  it('initialize answers the asked version (else the newest), tools, and serverInfo switchboard; notifications get no answer', async () => {
-    const api = stubApi({});
-    const init = await handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'x', version: '1' } } }, api, '1.6.1');
+  it('initialize answers the asked version (else the newest), tools, and serverInfo switchboard; tools/list matches TODO_TOOLS', async () => {
+    const mcp = await connect(stubApi({}), '1.6.1');
+    const init = await mcp.rpc('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
     expect(init).toMatchObject({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'switchboard', version: '1.6.1' } } });
-    expect((await handleMessage({ jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '1999-01-01' } }, api))?.['result']).toMatchObject({ protocolVersion: '2025-06-18' });
-    expect(await handleMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, api)).toBeNull();
-    expect(await handleMessage({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, api)).toEqual({ jsonrpc: '2.0', id: 3, result: { tools: TODO_TOOLS } });
+    await mcp.notify('notifications/initialized');
+    // Claude Code's 2025-06-18 and the older ones are kept; an unknown one gets the SDK's newest.
+    for (const version of ['2025-06-18', '2024-11-05']) expect((await (await connect(stubApi({}))).rpc('initialize', { protocolVersion: version, capabilities: {}, clientInfo: { name: 'x', version: '1' } }))['result']).toMatchObject({ protocolVersion: version, serverInfo: { name: 'switchboard', version: '0.0.0' } });
+    expect((await (await connect(stubApi({}))).rpc('initialize', { protocolVersion: '1999-01-01', capabilities: {}, clientInfo: { name: 'x', version: '1' } }))['result']).toMatchObject({ protocolVersion: '2025-11-25' });
+    expect(await mcp.rpc('tools/list')).toEqual({ jsonrpc: '2.0', id: 2, result: { tools: LISTED_TOOLS } });
     expect(TODO_TOOLS.map((tool) => tool.name)).toEqual(['todo_list', 'todo_get', 'todo_add', 'todo_update', 'todo_done', 'todo_remove']);
     // All four MCP behavior hints are declared (as booleans) on every tool, and a title.
     for (const tool of TODO_TOOLS) {
@@ -55,11 +97,11 @@ describe('MCP messages', () => {
     expect(TODO_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['todo_list', 'todo_get']);
     expect(TODO_TOOLS.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name)).toEqual(['todo_update', 'todo_remove']);
     // D69: the instructions explain the fields and that the agent fills them; D70: the plan's "No plan: <reason>", the priority levels, the estimate, revising.
-    const instructions = String((init?.['result'] as Record<string, unknown>)['instructions']);
+    const instructions = String((init['result'] as Record<string, unknown>)['instructions']);
     expect(instructions).toBe(AGENT_MCP_INSTRUCTIONS);
     for (const words of ['title', 'description', 'plan', 'without this conversation', 'acceptance criteria', 'fill all of them', 'todo_get', 'No plan: <reason>', 'urgent = blocking', 'low = nice-to-have', 'minutes an AI agent', 'revise the priority and estimate']) expect(instructions).toContain(words);
-    expect(await handleMessage({ jsonrpc: '2.0', id: 4, method: 'ping' }, api)).toEqual({ jsonrpc: '2.0', id: 4, result: {} });
-    expect(await handleMessage({ jsonrpc: '2.0', id: 5, method: 'nope' }, api)).toMatchObject({ error: { code: -32601 } });
+    expect(await mcp.rpc('ping')).toEqual({ jsonrpc: '2.0', id: 3, result: {} });
+    expect(await mcp.rpc('nope')).toMatchObject({ error: { code: -32601 } });
   });
 
   it('D69 / D70: every tool and every field has a description; add requires plan, priority and estimate; update revises them; list stays compact', () => {
@@ -104,28 +146,32 @@ describe('MCP messages', () => {
       },
       calls,
     );
-    const list = await callTool(api, 'todo_list', {});
+    const { call } = await connect(api);
+    const list = await call('todo_list', {});
     expect(list.isError).toBeUndefined();
     // D69: compact: the title and which notes exist, never their text; D70: the priority and estimate (`~?` = none); No plan is not a plan.
     expect(list.content[0]?.text).toBe(
       'Open (1):\n[aaa111] ☐ HIGH ~45m Fix the login test (added by the developer) · has description, plan\nDone (1, removed an hour after done):\n[bbb222] ☑ MEDIUM ~? Write docs\n(todo_get shows an item\'s description and plan.)',
     );
     expect(list.content[0]?.text).not.toContain('Retries hide');
-    expect((await callTool(api, 'todo_get', { id: 'aaa111' })).content[0]?.text).toBe(
+    expect((await call('todo_get', { id: 'aaa111' })).content[0]?.text).toBe(
       '[aaa111] ☐ open · added by the developer\nTitle: Fix the login test\nPriority: High\nEstimate: ~45m (45 minutes for an AI agent)\n\nDescription:\nRetries hide a race.\n\nPlan:\n1. Find the race\n2. Fix it',
     );
-    expect((await callTool(api, 'todo_add', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race', priority: 'high', estimate_minutes: 45 })).content[0]?.text).toMatch(/^Added \[aaa111\]/);
-    await callTool(api, 'todo_add', { text: 'Old-style text', plan: 'No plan: a one-line rename', priority: 'low', estimate_minutes: 5 });
+    expect((await call('todo_add', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race', priority: 'high', estimate_minutes: 45 })).content[0]?.text).toMatch(/^Added \[aaa111\]/);
+    await call('todo_add', { text: 'Old-style text', plan: 'No plan: a one-line rename', priority: 'low', estimate_minutes: 5 });
     // D70: the tool requires a plan, a priority and an estimate: the helper says what is missing and sends nothing.
-    const missing = await callTool(api, 'todo_add', { title: 'No sizing' });
+    const missing = await call('todo_add', { title: 'No sizing' });
     expect(missing.isError).toBe(true);
     for (const words of ['a plan', 'No plan: <one-line reason>', 'a priority', 'estimate_minutes']) expect(missing.content[0]?.text).toContain(words);
-    expect((await callTool(api, 'todo_add', { title: 'Bad', plan: 'p', priority: 'asap', estimate_minutes: 1.5 })).content[0]?.text).toMatch(/priority.*estimate_minutes/);
-    expect((await callTool(api, 'todo_done', { id: '[aaa111]' })).content[0]?.text).toMatch(/^Done: \[aaa111\] ☑/);
-    await callTool(api, 'todo_done', { id: 'aaa111', done: false });
-    await callTool(api, 'todo_update', { id: 'aaa111', title: 'Fix both login tests', plan: '' });
-    await callTool(api, 'todo_update', { id: 'aaa111', priority: 'urgent', estimate_minutes: 90 });
-    expect((await callTool(api, 'todo_remove', { id: 'aaa111' })).content[0]?.text).toMatch(/^Removed\./);
+    // A value of the wrong type or outside the schema: the SDK's input validation answers (also a tool error), nothing is sent.
+    const invalid = await call('todo_add', { title: 'Bad', plan: 'p', priority: 'asap', estimate_minutes: 1.5 });
+    expect(invalid.isError).toBe(true);
+    expect(invalid.content[0]?.text).toMatch(/Invalid arguments for tool todo_add: .*at priority\n.*at estimate_minutes/);
+    expect((await call('todo_done', { id: '[aaa111]' })).content[0]?.text).toMatch(/^Done: \[aaa111\] ☑/);
+    await call('todo_done', { id: 'aaa111', done: false });
+    await call('todo_update', { id: 'aaa111', title: 'Fix both login tests', plan: '' });
+    await call('todo_update', { id: 'aaa111', priority: 'urgent', estimate_minutes: 90 });
+    expect((await call('todo_remove', { id: 'aaa111' })).content[0]?.text).toMatch(/^Removed\./);
     expect(calls).toEqual([
       ['GET', '/agent/v1/todos', undefined],
       ['GET', '/agent/v1/todos/aaa111', undefined],
@@ -140,32 +186,42 @@ describe('MCP messages', () => {
   });
 
   it('a refusal, a missing id or an unreachable Switchboard is a tool error, not a crash', async () => {
-    const api = stubApi({});
-    expect(await callTool(api, 'todo_done', { id: 'zzz' })).toEqual({ content: [{ type: 'text', text: 'no todo in this session' }], isError: true });
-    expect((await callTool(api, 'todo_remove', {})).isError).toBe(true);
-    expect((await callTool(api, 'todo_add', {})).isError).toBe(true);
-    expect((await callTool(api, 'todo_update', { id: 'aaa111' })).isError).toBe(true);
-    expect((await callTool(api, 'todo_get', {})).isError).toBe(true);
-    expect((await callTool(api, 'todo_fly', {})).isError).toBe(true);
+    const { call } = await connect(stubApi({}));
+    expect(await call('todo_done', { id: 'zzz' })).toEqual({ content: [{ type: 'text', text: 'no todo in this session' }], isError: true });
+    expect((await call('todo_remove', {})).isError).toBe(true);
+    expect((await call('todo_add', {})).isError).toBe(true);
+    expect((await call('todo_update', { id: 'aaa111' })).isError).toBe(true);
+    expect((await call('todo_get', {})).isError).toBe(true);
+    expect((await call('todo_fly', {})).isError).toBe(true);
     const down: AgentApi = async () => {
       throw new Error('connect ECONNREFUSED 127.0.0.1:1');
     };
-    expect((await callTool(down, 'todo_list', {})).content[0]?.text).toContain('could not be reached');
-    expect((await callTool(stubApi({ 'GET /agent/v1/todos': { status: 401, body: { error: 'unauthorized' } } }), 'todo_list', {})).content[0]?.text).toContain('token does not match');
+    expect((await call('todo_remove', {})).content[0]?.text).toBe('Give the item id (todo_list shows it in brackets).');
+    expect((await call('todo_fly', {})).content[0]?.text).toContain('todo_fly not found');
+    expect((await (await connect(down)).call('todo_list', {})).content[0]?.text).toContain('could not be reached');
+    expect((await (await connect(stubApi({ 'GET /agent/v1/todos': { status: 401, body: { error: 'unauthorized' } } }))).call('todo_list', {})).content[0]?.text).toContain('token does not match');
   });
 
-  it('serve answers line by line in order and a bad line with a parse error', async () => {
-    const input = new PassThrough();
-    const output = new PassThrough();
-    const lines: string[] = [];
-    output.on('data', (chunk: Buffer) => lines.push(...chunk.toString('utf8').split('\n').filter(Boolean)));
-    const done = serve(stubApi({ 'GET /agent/v1/todos': { status: 200, body: LIST } }), input, output);
-    input.write('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_list","arguments":{}}}\n{oops}\n');
-    input.end('{"jsonrpc":"2.0","id":2,"method":"ping"}');
-    await done;
-    const parsed = lines.map((line) => JSON.parse(line) as { id: unknown; error?: { code: number } });
-    expect(parsed.map((m) => m.id)).toEqual([null, 1, 2]);
-    expect(parsed[0]?.error?.code).toBe(-32700);
+  it('tool calls run one at a time, in the order they came', async () => {
+    const order: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api: AgentApi = async (method, route) => {
+      order.push(`start ${method}`);
+      if (method === 'POST') await gate;
+      order.push(`end ${method}`);
+      return method === 'POST' ? { status: 201, body: { todo: LIST.todos[0], list: LIST } } : { status: 200, body: LIST };
+    };
+    const { call } = await connect(api);
+    const added = call('todo_add', { title: 'x', plan: 'No plan: test', priority: 'low', estimate_minutes: 1 });
+    const listed = call('todo_list', {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(order).toEqual(['start POST']);
+    release();
+    await Promise.all([added, listed]);
+    expect(order).toEqual(['start POST', 'end POST', 'start GET', 'end GET']);
   });
 });
 
@@ -183,7 +239,8 @@ describe('the real helper over stdio against a listening Switchboard', () => {
     tmp = undefined;
   });
 
-  async function run(port: number, sessionId: string, token: string, requests: readonly object[]): Promise<Array<Record<string, unknown>>> {
+  /** Runs the helper with `requests` (a string is sent as the raw line) and answers its output lines. */
+  async function run(port: number, sessionId: string, token: string, requests: ReadonlyArray<object | string>): Promise<Array<Record<string, unknown>>> {
     const child = spawn(process.execPath, [path.join(REPO_ROOT, 'src', 'hook', 'sb-mcp.ts'), '--switchboard-mcp', String(port), sessionId], {
       env: { PATH: process.env['PATH'] ?? '', [AGENT_TOKEN_ENV]: token },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -193,7 +250,7 @@ describe('the real helper over stdio against a listening Switchboard', () => {
     child.stdout.on('data', (chunk: Buffer) => {
       out += chunk.toString('utf8');
     });
-    for (const request of requests) child.stdin.write(`${JSON.stringify(request)}\n`);
+    for (const request of requests) child.stdin.write(`${typeof request === 'string' ? request : JSON.stringify(request)}\n`);
     child.stdin.end();
     const code = await new Promise<number | null>((resolve) => child.once('close', resolve));
     expect(code).toBe(0);
@@ -225,11 +282,16 @@ describe('the real helper over stdio against a listening Switchboard', () => {
     const answers = await run(port, a, agentTokenFor(secret, a), [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
+      // A line that is not JSON is skipped (the SDK reports it to its error hook); the session goes on.
+      '{oops}',
+      { jsonrpc: '2.0', id: 4, method: 'tools/list' },
       { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'todo_add', arguments: { title: 'Check the migration', description: 'Make sure 0027 keeps the rows.', plan: 'Run the migration test.', priority: 'high', estimate_minutes: 20 } } },
       { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'todo_list', arguments: {} } },
     ]);
-    expect(answers.map((m) => m['id'])).toEqual([1, 2, 3]);
-    const listText = ((answers[2]?.['result'] as { content: Array<{ text: string }> }).content[0] as { text: string }).text;
+    expect(answers.map((m) => m['id'])).toEqual([1, 4, 2, 3]);
+    expect(answers[0]?.['result']).toMatchObject({ protocolVersion: '2025-06-18', serverInfo: { name: 'switchboard' }, instructions: AGENT_MCP_INSTRUCTIONS });
+    expect(answers[1]?.['result']).toEqual({ tools: LISTED_TOOLS });
+    const listText = ((answers[3]?.['result'] as { content: Array<{ text: string }> }).content[0] as { text: string }).text;
     expect(listText).toMatch(/^Open \(1\):\n\[[0-9a-f]{12}\] ☐ HIGH ~20m Check the migration · has description, plan\n/);
     expect((await store.todos.list(a)).map((t) => [t.title, t.description, t.plan, t.priority, t.estimateMinutes, t.addedBy])).toEqual([['Check the migration', 'Make sure 0027 keeps the rows.', 'Run the migration test.', 'high', 20, 'agent']]);
     // D69: todo_get through the real helper and route.
