@@ -73,6 +73,8 @@ async function dragOnto(page: Page, source: Locator, target: () => Locator, y = 
   const to = await target().boundingBox();
   if (!to) throw new Error('no target box');
   await page.mouse.move(to.x + 40, to.y + to.height * y, { steps: 6 });
+  // Hover a moment (a few dragover events on the target, as a hand would; WebKit only fires them on a move).
+  for (let k = 0; k < 3; k++) await page.mouse.move(to.x + 41 + (k % 2), to.y + to.height * y);
   await page.mouse.up();
 }
 
