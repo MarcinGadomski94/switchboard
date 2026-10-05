@@ -10,7 +10,8 @@ import { type PeerNode, pairedNodes } from '../helpers/peers.ts';
  * world, fake CLIs). On B, A's sessions (remote ids `r~<A>~<id>`) are dragged into
  * a folder, a subfolder, Pinned and re-ordered inside a folder, and moved with the
  * ⋯ menu; a drag held at the edge of the scrolling list scrolls it to a folder out
- * of view (the sidebar does that itself now, in every engine).
+ * of view (the sidebar does that itself now, in every engine). D71: the shared
+ * layout's switch in Settings → Machines and a synced move in the other sidebar.
  */
 
 let tmp: string;
@@ -156,4 +157,37 @@ test('a drag held at the list\'s top edge scrolls it, so a paired machine\'s ses
   await expect(folderHead(page, folder)).toHaveAttribute('data-drop', 'into');
   await page.mouse.up();
   await expect.poll(async () => (await layoutOf(b)).folders[0]?.sessionIds).toEqual([remote]);
+});
+
+test('D71: Settings → Machines switches the shared sidebar layout on (waiting until both are on); a move on A shows up in B\'s sidebar', async ({ browser }) => {
+  const world = await pairedNodes(tmp);
+  nodes.push(world.a, world.b);
+  const { a, b, aId } = world;
+  const own = await startOn(a, 'on-a');
+  const folderOnA = ((await a.call('POST', '/api/sidebar/folders', { name: 'Acme' })).body as SidebarLayout).folders[0]?.id as string;
+
+  const settingsA = await pageOf(browser, a, '/settings/machines');
+  const rowA = settingsA.getByTestId('machine');
+  await expect(rowA.getByTestId('machine-sidebar-sync-switch')).toHaveText('off');
+  await expect(rowA.getByTestId('machine-sidebar-sync-text')).toContainText('Off:');
+  await rowA.getByTestId('machine-sidebar-sync-switch').click();
+  await expect(rowA.getByTestId('machine-sidebar-sync-switch')).toHaveText('on');
+  await expect(rowA.getByTestId('machine-sidebar-sync')).toHaveAttribute('data-state', 'waiting', { timeout: 10_000 });
+  await expect(rowA.getByTestId('machine-sidebar-sync-text')).toContainText('waiting for');
+
+  const settingsB = await pageOf(browser, b, '/settings/machines');
+  const rowB = settingsB.getByTestId('machine');
+  await rowB.getByTestId('machine-sidebar-sync-switch').click();
+  await expect(rowB.getByTestId('machine-sidebar-sync')).toHaveAttribute('data-state', 'synced', { timeout: 10_000 });
+  await expect(rowA.getByTestId('machine-sidebar-sync')).toHaveAttribute('data-state', 'synced', { timeout: 10_000 });
+
+  // B's sidebar shows A's folder (merged); A drags its own session into it; B's sidebar follows live.
+  const sidebarB = await pageOf(browser, b, '/inbox');
+  await expect(folderHead(sidebarB, folderOnA)).toBeVisible({ timeout: 10_000 });
+  const sidebarA = await pageOf(browser, a, '/inbox');
+  await expect(row(sidebarA, own)).toBeVisible({ timeout: 15_000 });
+  await dragOnto(sidebarA, row(sidebarA, own), () => folderHead(sidebarA, folderOnA));
+  await expect.poll(async () => (await layoutOf(a)).folders[0]?.sessionIds).toEqual([own]);
+  await expect(row(sidebarB, remoteId(aId, own))).toHaveAttribute('data-group', 'folder', { timeout: 10_000 });
+  expect((await layoutOf(b)).folders[0]?.sessionIds).toEqual([remoteId(aId, own)]);
 });

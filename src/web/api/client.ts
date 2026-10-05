@@ -342,6 +342,8 @@ export const api = {
   addMachine: (body: AddMachineInput) => request<Machine>('POST', '/api/machines', body),
   renameMachine: (id: string, name: string) => request<Machine>('PUT', `/api/machines/${enc(id)}`, { name }),
   removeMachine: (id: string) => request<null>('DELETE', `/api/machines/${enc(id)}`),
+  /** D71: the sidebar layout shared with machine `id`, on / off (turning it on merges both layouts). */
+  setMachineSidebarSync: (id: string, enabled: boolean) => request<Machine>('PUT', `/api/machines/${enc(id)}/sidebar-sync`, { enabled }),
   /** Fix · peer reconnects: Reconnect now (cuts the wait, tries at once; answers when the attempt is over). */
   reconnectMachine: (id: string) => request<ReconnectResult>('POST', `/api/machines/${enc(id)}/reconnect`),
 } as const;

@@ -41,6 +41,34 @@ export interface Machine {
   readonly pairedAt: string;
   /** Additive (fix · peer reconnects): what the connection is doing now; absent from older services. */
   readonly connection?: MachineConnection;
+  /** Additive (D71): the shared sidebar layout with this machine; absent from older services. */
+  readonly sidebarSync?: MachineSidebarSync;
+}
+
+/**
+ * D71 (`docs/peers.md` → *Shared sidebar layout (D71)*): what sharing the
+ * sidebar layout with a paired machine is doing.
+ *
+ * - `off`: this machine's switch for it is off (the default for every pairing).
+ * - `connecting`: on; not exchanged since the switch or the last connect yet.
+ * - `waiting`: on here, off on the other machine (it shares nothing until it is on there too).
+ * - `unsupported`: the other machine runs a Switchboard without D71 (update it to share).
+ * - `synced`: on on both; the last exchange went through (changes go both ways live).
+ * - `unreachable`: on; the machine cannot be reached now (it catches up when it is back).
+ * - `error`: on; the last exchange failed (`error` says why); retried at the next change or connect.
+ */
+export type SidebarSyncState = 'off' | 'connecting' | 'waiting' | 'unsupported' | 'synced' | 'unreachable' | 'error';
+
+/** D71: the shared sidebar layout with one paired machine. */
+export interface MachineSidebarSync {
+  /** This machine's switch for it (off until the developer switches it on). */
+  readonly enabled: boolean;
+  readonly state: SidebarSyncState;
+  /** When the two layouts were first merged (ISO), `null` before. */
+  readonly mergedAt: string | null;
+  /** The last exchange (ISO), `null` before. */
+  readonly lastSyncAt: string | null;
+  readonly error: string | null;
 }
 
 /**

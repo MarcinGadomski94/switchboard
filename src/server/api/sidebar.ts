@@ -42,9 +42,12 @@ function treeRefusal(reply: FastifyReply, problem: SidebarTreeProblem): FastifyR
  * in the sidebar (D58)*): pins, folders (D58: in folders, with no loops and at
  * most five levels), their order and collapsed state, stored in this service's database and the
  * same in every tab. Each write answers the whole new layout and publishes it as
- * `sidebarLayoutChanged`. The layout is this machine's: none of these routes is
- * on the peer API's allow-list, and session ids travel in the body (a paired
- * machine's remote id is placed here, never forwarded to the peer).
+ * `sidebarLayoutChanged`. None of these routes is on the peer API's allow-list,
+ * and session ids travel in the body (a paired machine's remote id is placed
+ * here, never forwarded to the peer). D71: the records a write changed go to
+ * the paired machines the layout is shared with (`PeerService.sidebarChanged`,
+ * `docs/peers.md` → *Shared sidebar layout (D71)*); D71 M2: a loose `index`
+ * counts in the whole loose list (the unplaced sessions first).
  */
 export async function registerSidebarRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { store, bus, supervisor, peers } = context;

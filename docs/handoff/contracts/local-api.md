@@ -1003,14 +1003,19 @@ Each todo item also has a priority and an estimate, and its handover plan is man
 ```
 
 ## Loose order and shared sidebar layout (D71, 2026-10-05, additive)
-Developer request D71 (`docs/decisions.md` → *Shared sidebar layout*): loose sessions get a manual order; the sidebar layout can be shared with paired machines. Additive on *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*; every D54 / D58 body means what it meant. Migration 0029. Details: `docs/sidebar.md` → *Loose order (D71)* and *Shared layout (D71)*.
+Developer request D71 (`docs/decisions.md` → *Shared sidebar layout*): loose sessions get a manual order; the sidebar layout can be shared with paired machines (off until switched on per machine). Additive on *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*; every D54 / D58 body means what it meant. Migration 0029. Details: `docs/sidebar.md` → *Loose order (D71)* and *Shared layout (D71)*.
 
 - **SidebarLayout** gains `loose: string[]` (always sent): the loose sessions in their manual order, shown after the **unplaced** ones (the listed sessions the layout does not hold, in the service's order). Closed and unknown ids stay in it (hidden), as in `pinned` and `sessionIds`.
 - `POST /api/sidebar/place` `{ sessionId, place: "loose", index }`: `index` is the final position in the whole loose list as `GET /api/sessions` lists it (the unplaced sessions first, then `loose`); the unplaced sessions before that position get their places in the same order. Without `index`, `loose` makes the session unplaced (D54's meaning).
 
+- **Shared layout with a paired machine:** `PUT /api/machines/{id}/sidebar-sync` `{ enabled: boolean }` → Machine (404 `not-found`, 422 `invalid`); turning it on runs the first full exchange before answering. **Machine** gains `sidebarSync?: MachineSidebarSync` `{ enabled, state: off | connecting | waiting | unsupported | synced | unreachable | error, mergedAt, lastSyncAt, error }` (`src/core/peers.ts`). Off for every pairing until switched on. A merge from a paired machine publishes `sidebarLayoutChanged` like a local write; `machineState` carries the sync state's changes. Not on the peer API.
+- **Peer listener (not the UI contract):** `POST /peer/v1/sidebar` `{ v: 1, full, folders, places }` → `{ v: 1, enabled, folders?, places? }` (`docs/peers.md` → *Shared sidebar layout (D71)*).
+
 ```json
 SidebarLayout { "pinned": [], "folders": [], "loose": ["a41b…", "r~abcdefghijkl~9f0a…"] }
 POST /api/sidebar/place { "sessionId": "a41b…", "place": "loose", "index": 2 }
+PUT /api/machines/k3v7q2m9x4ab/sidebar-sync { "enabled": true }
+Machine { "id": "k3v7q2m9x4ab", "name": "pc-office", …, "sidebarSync": { "enabled": true, "state": "waiting", "mergedAt": null, "lastSyncAt": null, "error": null } }
 ```
 
 ## Event hub `/hub` (Server-Sent Events)
@@ -1034,7 +1039,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | system | same shape as GET /api/system, every 5 s |
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
-| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder; D71: carries `loose`) |
+| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder; D71: carries `loose`; also published when a merge from a paired machine changed the layout — the layout itself travels by `POST /peer/v1/sidebar`, not by this event) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers) |

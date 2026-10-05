@@ -11,9 +11,10 @@
  * developer put in an order (`loose`, the dragged order). Folders are
  * in a manual order, each with a name and a remembered collapsed state; since
  * D58 a folder can hold folders too (subfolders, up to
- * {@link SIDEBAR_FOLDER_DEPTH_MAX} levels), each level in its own manual order. The layout is this machine's: a paired machine's session
- * (remote id `r~<machine>~<id>`) can be pinned or put into a folder here, and
- * nothing of it goes to the peer.
+ * {@link SIDEBAR_FOLDER_DEPTH_MAX} levels), each level in its own manual order. A paired machine's session
+ * (remote id `r~<machine>~<id>`) can be pinned or put into a folder here. D71:
+ * the layout is stored as records (`sidebar-records.ts`) and can be shared
+ * with paired machines (off until switched on per machine).
  *
  * Every function returns a new layout and never mutates its input.
  */
