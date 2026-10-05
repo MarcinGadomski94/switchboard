@@ -219,7 +219,7 @@ function siteOverlay(url: string, status: FrameHelperStatus): Overlay | null {
   return null;
 }
 
-/** A site's host (with its port when it has one), e.g. `acme.atlassian.net`. */
+/** A site's host (with its port when it has one), e.g. `jira.example.com`. */
 function siteHost(url: string): string {
   try {
     return new URL(url).host;

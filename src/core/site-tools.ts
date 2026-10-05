@@ -1,6 +1,6 @@
 /**
  * D28 (`docs/frame-helper.md`): which embedded tools are signed-in **sites**. A
- * site (e.g. Jira at `https://acme.atlassian.net/…`) needs the developer's
+ * site (e.g. Jira at `https://jira.example.com/…`) needs the developer's
  * own login cookies, which the D15 framing proxy (a loopback origin) can never
  * carry, so it is framed directly and only with the Switchboard frame helper
  * installed. Every other tool (a local web app) keeps the D15 proxy. Pure; shared
