@@ -100,3 +100,16 @@
   margin-right: 5px;
   vertical-align: -1px;
 }
+
+/* D71: the "Share sidebar layout" line of a paired machine. */
+.sb-mach-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.sb-mach-sync-label {
+  color: #d7d6d1;
+}

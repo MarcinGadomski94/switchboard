@@ -439,7 +439,9 @@ describe('0021 sidebar subfolders (D58)', () => {
     const place = database.prepare('INSERT INTO sidebar_places (session_id, folder_id, position) VALUES (?, ?, ?)');
     place.run('s1', 'fb', 0);
     place.run('r~abcdefghijkl~x', null, 0);
-    expect(migrate(database, shipped).applied).toEqual(shipped.filter((m) => m.version > 19).map((m) => m.version));
+    // Up to 0028 (D71's 0029 rebuilds both tables: its own test below).
+    const upTo28 = shipped.filter((m) => m.version <= 28);
+    expect(migrate(database, upTo28).applied).toEqual(upTo28.filter((m) => m.version > 19).map((m) => m.version));
     expect(database.prepare('SELECT id, name, position, collapsed, created_at, parent_id FROM sidebar_folders ORDER BY position').all()).toEqual([
       { id: 'fa', name: 'Work', position: 0, collapsed: 0, created_at: ts, parent_id: null },
       { id: 'fb', name: 'Later', position: 1, collapsed: 1, created_at: ts, parent_id: null },
@@ -465,6 +467,7 @@ describe('0021 sidebar subfolders (D58)', () => {
           { id: 'fa', name: 'Work', collapsed: false, sessionIds: [], parentId: null },
           { id: 'fb', name: 'Later', collapsed: true, sessionIds: ['s1'], parentId: 'fa' },
         ],
+        loose: [],
       });
     } finally {
       await store.close();
@@ -741,7 +744,8 @@ describe('0022 plain folders (D59)', () => {
     const plain = shipped.find((m) => m.name === 'plain_folders');
     expect(plain?.version).toBe(22);
     expect(needsForeignKeysOff(plain as Migration)).toBe(true);
-    expect(shipped.filter((m) => needsForeignKeysOff(m)).map((m) => m.version)).toEqual([22]);
+    // D71's 0029 rebuilds the sidebar tables the same way.
+    expect(shipped.filter((m) => needsForeignKeysOff(m)).map((m) => m.version)).toEqual([22, 29]);
   });
 
   it('a fresh database: folders.kind takes plain (and nothing else new); the indexes and the references to folders are kept', async () => {
@@ -1017,6 +1021,61 @@ describe('0025 session take-over (D65)', () => {
       expect((await store.sessions.get(one.id))?.movedTo).toEqual(move);
       await store.sessions.update(one.id, { movedTo: null, movedFrom: move });
       expect(await store.sessions.get(one.id)).toMatchObject({ movedTo: null, movedFrom: move });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0029 sidebar shared layout (D71)', () => {
+  it('rebuilds the sidebar tables as records: every folder and place keeps its place and order, clocks empty; no foreign keys; the D54 triggers again', async () => {
+    const file = path.join(tmp, 'switchboard.db');
+    const database = await db(file);
+    const shipped = await loadMigrations();
+    migrate(database, shipped.filter((m) => m.version <= 28));
+    const ts = '2026-10-05T10:00:00.000Z';
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s1', 'one', 'c1', ts, ts);
+    database.prepare('INSERT INTO sessions (id, name, claude_session_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('s2', 'two', 'c2', ts, ts);
+    const folder = database.prepare('INSERT INTO sidebar_folders (id, name, position, collapsed, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?)');
+    folder.run('fa', 'Acme', 1, 0, ts, null);
+    folder.run('fb', 'Later', 0, 1, ts, null);
+    folder.run('fc', 'PROJ-1', 0, 0, ts, 'fa');
+    const place = database.prepare('INSERT INTO sidebar_places (session_id, folder_id, position) VALUES (?, ?, ?)');
+    place.run('s1', 'fc', 1);
+    place.run('s2', 'fc', 0);
+    place.run('r~abcdefghijkl~x', null, 0);
+    database.prepare('INSERT INTO machines (id, name, address, outbound_token, inbound_token_hash, paired_at) VALUES (?, ?, ?, ?, ?, ?)').run('abcdefghijkl', 'pc', null, 't'.repeat(43), 'h', ts);
+    expect(migrate(database, shipped).applied).toEqual([29]);
+    expect(database.prepare('SELECT id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed, created_at FROM sidebar_folders ORDER BY id').all()).toEqual([
+      { id: 'fa', name: 'Acme', name_clock: '', parent_id: null, sort_key: '000001i', place_clock: '', deleted_clock: null, collapsed: 0, created_at: ts },
+      { id: 'fb', name: 'Later', name_clock: '', parent_id: null, sort_key: '000000i', place_clock: '', deleted_clock: null, collapsed: 1, created_at: ts },
+      { id: 'fc', name: 'PROJ-1', name_clock: '', parent_id: 'fa', sort_key: '000000i', place_clock: '', deleted_clock: null, collapsed: 0, created_at: ts },
+    ]);
+    expect(database.prepare('SELECT session_id, grp, folder_id, sort_key, clock FROM sidebar_places ORDER BY session_id').all()).toEqual([
+      { session_id: 'r~abcdefghijkl~x', grp: 'pinned', folder_id: null, sort_key: '000000i', clock: '' },
+      { session_id: 's1', grp: 'folder', folder_id: 'fc', sort_key: '000001i', clock: '' },
+      { session_id: 's2', grp: 'folder', folder_id: 'fc', sort_key: '000000i', clock: '' },
+    ]);
+    expect(database.prepare('PRAGMA foreign_key_list(sidebar_folders)').all()).toEqual([]);
+    expect(database.prepare('PRAGMA foreign_key_list(sidebar_places)').all()).toEqual([]);
+    expect(() => database.prepare("INSERT INTO sidebar_places (session_id, grp, folder_id) VALUES ('s9', 'folder', NULL)").run()).toThrow(/CHECK/);
+    expect(() => database.prepare("INSERT INTO sidebar_places (session_id, grp, folder_id) VALUES ('s9', 'elsewhere', NULL)").run()).toThrow(/CHECK/);
+    // The D54 triggers: a deleted session record and a forgotten machine take their places with them.
+    database.prepare("DELETE FROM sessions WHERE id = 's1'").run();
+    database.prepare("DELETE FROM machines WHERE id = 'abcdefghijkl'").run();
+    expect(database.prepare('SELECT session_id FROM sidebar_places').all()).toEqual([{ session_id: 's2' }]);
+    database.close();
+    const store = await openStore(file);
+    try {
+      expect(await store.sidebar.read()).toEqual({
+        pinned: [],
+        folders: [
+          { id: 'fb', name: 'Later', collapsed: true, sessionIds: [], parentId: null },
+          { id: 'fa', name: 'Acme', collapsed: false, sessionIds: [], parentId: null },
+          { id: 'fc', name: 'PROJ-1', collapsed: false, sessionIds: ['s2'], parentId: 'fa' },
+        ],
+        loose: [],
+      });
     } finally {
       await store.close();
     }

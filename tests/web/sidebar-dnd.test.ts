@@ -31,10 +31,23 @@ describe('resolveDrop', () => {
     expect(resolveDrop(layout, session('x'), { zone: 'row', group: { kind: 'folder', folderId: 'fa' }, sessionId: 'a1', side: 'after' })).toEqual({ kind: 'place', input: { sessionId: 'x', place: 'folder', folderId: 'fa', index: 1 } });
   });
 
-  it('a placed session dropped on the loose list leaves its place; a loose one there does nothing (that list keeps the service order)', () => {
+  it('a placed session dropped on the "take out" zone leaves its place (unplaced); a loose one there does nothing', () => {
     expect(resolveDrop(layout, session('a2'), { zone: 'loose' })).toEqual({ kind: 'place', input: { sessionId: 'a2', place: 'loose' } });
-    expect(resolveDrop(layout, session('p1'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n1', side: 'before' })).toEqual({ kind: 'place', input: { sessionId: 'p1', place: 'loose' } });
     expect(resolveDrop(layout, session('n2'), { zone: 'loose' })).toBeNull();
+  });
+
+  it('D71: a session dropped before / after a loose row goes to that position of the whole loose list (unplaced first, then the loose order)', () => {
+    const listed = ['n1', 'n2', 'n3', 'o1', 'o2'];
+    const withLoose: SidebarLayout = { ...layout, loose: ['o1', 'gone', 'o2'] };
+    // The whole loose list: n1, n2, n3 (unplaced, service order), then o1, gone (hidden), o2.
+    expect(resolveDrop(withLoose, session('p1'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n1', side: 'before' }, listed)).toEqual({ kind: 'place', input: { sessionId: 'p1', place: 'loose', index: 0 } });
+    expect(resolveDrop(withLoose, session('n1'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'o2', side: 'after' }, listed)).toEqual({ kind: 'place', input: { sessionId: 'n1', place: 'loose', index: 5 } });
+    expect(resolveDrop(withLoose, session('o2'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n2', side: 'before' }, listed)).toEqual({ kind: 'place', input: { sessionId: 'o2', place: 'loose', index: 1 } });
+    // On itself: nothing.
+    expect(resolveDrop(withLoose, session('n2'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n2', side: 'before' }, listed)).toBeNull();
+    // A line before / after the loose row (a subfolder dropped there still goes to the top level, highlighted).
+    expect(indicatorOf(withLoose, session('o2'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n2', side: 'before' }, listed)).toBe('before');
+    expect(indicatorOf(withLoose, session('o2'), { zone: 'row', group: { kind: 'loose' }, sessionId: 'n2', side: 'after' }, listed)).toBe('after');
   });
 
   it('a folder moves among the folders (D58: and into them) only', () => {

@@ -27,12 +27,14 @@ import type { ServerConfig } from '../config.ts';
 import type { MachineRecord } from '../db/repos/machines.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
+import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { KEEPALIVE_FRAME, SSE_CONTENT_TYPE, formatEvent } from '../hub/hub.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { TOKEN_COOKIE } from '../security.ts';
 import { PEER_RAW_HEADERS, PeerConnection, type PeerConnectionStatus, PeerUnreachableError } from './client.ts';
 import { type PeerApiAnswer, type PeerHandlers, buildPeerApp, listenPeer } from './listener.ts';
 import { PairingCodes } from './pairing.ts';
+import { SidebarSync } from './sidebar-sync.ts';
 import { tailscaleIPv4 } from './tailscale.ts';
 import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens.ts';
 
@@ -275,6 +277,8 @@ export class PeerService implements PeerHandlers {
   /** D52: when each `<machine> <kind>` list was last fetched (ms), and the fetch in flight. */
   readonly #listFetched = new Map<string, number>();
   readonly #listRefresh = new Map<string, Promise<boolean>>();
+  /** D71: the sidebar layout shared with the machines it is switched on for. */
+  readonly #sidebar: SidebarSync;
 
   constructor(options: PeerServiceOptions) {
     this.#config = options.config;
@@ -290,6 +294,16 @@ export class PeerService implements PeerHandlers {
         if (level === 'warn') console.warn(`switchboard peers: ${message}`);
         else console.info(`switchboard peers: ${message}`);
       });
+    this.#sidebar = new SidebarSync({
+      store: this.#store,
+      bus: this.#bus,
+      selfId: async () => (await this.self()).id,
+      connection: (id) => this.#connections.get(id),
+      machines: () => [...this.#records.keys()],
+      onStatus: (id) => this.#publishMachine(id),
+      onError: (error) => this.#onError(error),
+      log: (level, message) => this.#log(level, message),
+    });
   }
 
   /** The local app the peer API injects into (set once it is built). */
@@ -303,7 +317,9 @@ export class PeerService implements PeerHandlers {
   async start(): Promise<void> {
     if (this.#started || this.#closed) return;
     this.#started = true;
-    await this.self();
+    // D71: this machine's id stamps the shared sidebar layout's clocks.
+    this.#store.sidebar.useNode((await this.self()).id);
+    await this.#sidebar.start();
     for (const record of await this.#store.machines.list()) {
       this.#records.set(record.id, record);
       this.#connect(record.id);
@@ -474,6 +490,7 @@ export class PeerService implements PeerHandlers {
         lastFailure: status?.lastFailure ? { kind: status.lastFailure.kind, message: status.lastFailure.message, at: new Date(status.lastFailure.at).toISOString() } : null,
         hint: status && status.state !== 'online' ? connectionHint(record.name, status.recentFailures) : null,
       },
+      sidebarSync: this.#sidebar.view(record.id),
     };
   }
 
@@ -646,6 +663,8 @@ export class PeerService implements PeerHandlers {
     this.#connections.delete(id);
     this.#logged.delete(id);
     await this.#store.peerSnapshots.deleteMachine(id);
+    // D71: forgetting it stops sharing the sidebar layout with it (the layout here stays as it is).
+    await this.#sidebar.forget(id);
     await this.#store.machines.delete(id);
     this.#records.delete(id);
     this.#savedLists.delete(id);
@@ -719,6 +738,9 @@ export class PeerService implements PeerHandlers {
     void this.#publishInboxCount();
     // D52: (re)connected: its schedules and terminal loops are fetched again.
     if (state === 'online') for (const kind of Object.keys(PEER_LISTS) as PeerListKind[]) void this.refreshList(id, kind);
+    // D71: (re)connected: the shared sidebar layout catches up both ways; away: it says so.
+    if (state === 'online') this.#sidebar.connected(id);
+    else if (state === 'offline' || state === 'auth-failed') this.#sidebar.disconnected(id);
   }
 
   /** Every cached session of the machine again (its tag's state changed, or its name). */
@@ -959,6 +981,27 @@ export class PeerService implements PeerHandlers {
       if (error instanceof PeerUnreachableError) return offline(error.message);
       throw error;
     }
+  }
+
+  /** D71: records the sidebar layout wrote here (a local change): sent on to the machines the shared layout is on with. */
+  sidebarChanged(changes: RecordChanges): void {
+    this.#sidebar.changed(changes);
+  }
+
+  /** D71: the switch of the shared sidebar layout with machine `id` (`PUT /api/machines/{id}/sidebar-sync` `{ enabled }`). */
+  async setSidebarSync(id: string, input: unknown): Promise<Machine> {
+    const record = this.#records.get(id);
+    if (!record) throw new PeerError(404, 'not-found', `no machine ${id}`);
+    const enabled = (typeof input === 'object' && input !== null ? (input as { enabled?: unknown }).enabled : undefined) as unknown;
+    if (typeof enabled !== 'boolean') throw new PeerError(422, 'invalid', 'the body must be { enabled: true | false }');
+    await this.#sidebar.setEnabled(id, enabled);
+    return this.#machine(this.#records.get(id) ?? record);
+  }
+
+  /** D71 · `POST /peer/v1/sidebar`: a paired machine's sidebar records (merged only while this machine's switch for it is on). */
+  async sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }> {
+    if (this.#closed) return { status: 503, body: { error: 'closing' } };
+    return this.#sidebar.receive(machine.id, body);
   }
 
   /** `true` when `id` is a paired machine. */

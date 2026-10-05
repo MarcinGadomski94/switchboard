@@ -13,6 +13,7 @@ import type { ApiContext } from '../routes.ts';
  * - `POST /api/machines` `{ address, code }` → 201 Machine ("Add machine").
  * - `PUT /api/machines/{id}` `{ name }`, `DELETE /api/machines/{id}` (revoke).
  * - `POST /api/machines/{id}/reconnect` → ReconnectResult (Reconnect now; fix · peer reconnects).
+ * - `PUT /api/machines/{id}/sidebar-sync` `{ enabled }` → Machine (D71: the shared sidebar layout with it).
  * - `/api/machines/{id}/api/*`: that machine's peer API (its folders, models,
  *   branching preflight, new sessions, terminal sessions and hooks), answers namespaced.
  *
@@ -53,6 +54,15 @@ export async function registerMachineRoutes(app: FastifyInstance, context: ApiCo
   app.put<{ Params: { id: string } }>('/api/machines/:id', async (request, reply) => {
     try {
       return await peers.renameMachine(request.params.id, (request.body as { name?: unknown } | null)?.name);
+    } catch (error) {
+      return sendPeerError(reply, error);
+    }
+  });
+
+  // D71: the shared sidebar layout with that machine, on / off (off until switched on; turning it on merges both layouts).
+  app.put<{ Params: { id: string } }>('/api/machines/:id/sidebar-sync', async (request, reply) => {
+    try {
+      return await peers.setSidebarSync(request.params.id, request.body);
     } catch (error) {
       return sendPeerError(reply, error);
     }

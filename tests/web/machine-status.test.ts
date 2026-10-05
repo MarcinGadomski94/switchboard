@@ -1,3 +1,5 @@
+import type { MachineSidebarSync } from '../../src/core/peers.ts';
+import { sidebarSyncText } from '../../src/web/views/settings/machines.ts';
 import { describe, expect, it } from 'vitest';
 import type { MachineConnection, MachineState } from '../../src/core/peers.ts';
 import { clockTime, machineStatusView, secondsUntil } from '../../src/web/components/machine-status.ts';
@@ -76,5 +78,18 @@ describe('Settings → Machines words', () => {
     const base = { id: 'abcdefghijkl', name: 'studio-pc', address: '100.64.0.7:13002', state: 'offline' as const, lastError: 'connection refused', lastSeenAt: null, pairedAt: at(0) };
     expect(machineDetail({ ...base, connection: connection() })).toBe('100.64.0.7:13002');
     expect(machineDetail(base)).toBe('100.64.0.7:13002 · connection refused');
+  });
+});
+
+describe('D71 · the "Share sidebar layout" line (sidebarSyncText)', () => {
+  const sync = (state: MachineSidebarSync['state'], extra: Partial<MachineSidebarSync> = {}): MachineSidebarSync => ({ enabled: state !== 'off', state, mergedAt: '2026-10-05T10:00:00.000Z', lastSyncAt: null, error: null, ...extra });
+  it('says what the switch does and what it is doing', () => {
+    expect(sidebarSyncText('pc-office', undefined)).toMatch(/^Off: /);
+    expect(sidebarSyncText('pc-office', sync('off'))).toMatch(/pc-office must switch it on too/);
+    expect(sidebarSyncText('pc-office', sync('waiting'))).toBe('On here; waiting for pc-office to switch it on too (Settings → Machines there).');
+    expect(sidebarSyncText('pc-office', sync('unsupported'))).toBe('Update pc-office to sync folders: its Switchboard does not share the sidebar layout yet.');
+    expect(sidebarSyncText('pc-office', sync('synced'))).toMatch(/^On: the same pins, folders and order on both machines\. /);
+    expect(sidebarSyncText('pc-office', sync('unreachable'))).toMatch(/catches up when it is back/);
+    expect(sidebarSyncText('pc-office', sync('error', { error: 'HTTP 500' }))).toMatch(/\(HTTP 500\)/);
   });
 });

@@ -35,7 +35,7 @@ async function resetLayout(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const layout = (await (await fetch('/api/sidebar')).json()) as SidebarLayout;
     const json = { 'content-type': 'application/json' };
-    for (const id of layout.pinned) await fetch('/api/sidebar/place', { method: 'POST', headers: json, body: JSON.stringify({ sessionId: id, place: 'loose' }) });
+    for (const id of [...layout.pinned, ...(layout.loose ?? [])]) await fetch('/api/sidebar/place', { method: 'POST', headers: json, body: JSON.stringify({ sessionId: id, place: 'loose' }) });
     for (const folder of layout.folders) await fetch(`/api/sidebar/folders/${encodeURIComponent(folder.id)}`, { method: 'DELETE' });
   });
 }
@@ -73,6 +73,8 @@ async function dragOnto(page: Page, source: Locator, target: () => Locator, y = 
   const to = await target().boundingBox();
   if (!to) throw new Error('no target box');
   await page.mouse.move(to.x + 40, to.y + to.height * y, { steps: 6 });
+  // Hover a moment (a few dragover events on the target, as a hand would; WebKit only fires them on a move).
+  for (let k = 0; k < 3; k++) await page.mouse.move(to.x + 41 + (k % 2), to.y + to.height * y);
   await page.mouse.up();
 }
 
@@ -249,4 +251,36 @@ test('keyboard path: Move to folder ▸, Move up / down, folder Rename / re-orde
   await page.getByTestId('sidebar-menu-delete').click();
   await expect(page.getByTestId('sidebar-folder')).toHaveCount(1);
   await expect.poll(async () => (await shown(page)).filter(([, g]) => g === 'loose').map(([id]) => id)).toEqual(all.map((s) => s.id));
+});
+
+test('D71: loose sessions take a manual order by drag and by ⋯ Move up / down; it survives a reload; Unpin puts a session back among the unplaced ones', async ({ page }) => {
+  const all = (await sessions(page)).map((s) => s.id);
+  const [a, b, c, d] = all as [string, string, string, string];
+  const loose = async () => (await shown(page)).filter(([, g]) => g === 'loose').map(([id]) => id);
+  expect(await loose()).toEqual(all);
+
+  // Drag d before b (upper half of b's row): a line shows on b while hovering; the rows above d get their places.
+  await dragOnto(page, row(page, d), () => row(page, b), 0.2);
+  await expect.poll(loose).toEqual([a, d, b, c, ...all.slice(4)]);
+  expect((await layoutOf(page)).loose).toEqual([a, d, b, c, ...all.slice(4)]);
+
+  // ⋯ Move up on c; Move up is off for the first one.
+  let menu = await openRowMenu(page, c);
+  await menu.getByTestId('sidebar-menu-up').click();
+  await expect.poll(loose).toEqual([a, d, c, b, ...all.slice(4)]);
+  menu = await openRowMenu(page, a);
+  await expect(menu.getByTestId('sidebar-menu-up')).toBeDisabled();
+  await menu.getByTestId('sidebar-menu-down').click();
+  await expect.poll(loose).toEqual([d, a, c, b, ...all.slice(4)]);
+
+  // Reload: the order is stored.
+  await page.reload();
+  await page.getByTestId('shell').waitFor();
+  await expect.poll(loose).toEqual([d, a, c, b, ...all.slice(4)]);
+
+  // Pin c, then Unpin it: it is unplaced again, so it shows first (unplaced sessions keep the service's order, above the ordered ones).
+  await (await openRowMenu(page, c)).getByTestId('sidebar-menu-pin').click();
+  await expect.poll(loose).toEqual([d, a, b, ...all.slice(4)]);
+  await (await openRowMenu(page, c)).getByTestId('sidebar-menu-unpin').click();
+  await expect.poll(loose).toEqual([c, d, a, b, ...all.slice(4)]);
 });

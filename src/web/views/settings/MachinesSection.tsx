@@ -6,7 +6,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { rememberMachine, rememberMachines } from '../../api/useMachines.ts';
 import { ReconnectButton } from '../../components/MachineStatusNote.tsx';
 import { machineStatusView } from '../../components/machine-status.ts';
-import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText } from './machines.ts';
+import { codeTimeLeft, listenerDescription, machineDetail, machineStateColor, machineStateLabel, refusalText, sidebarSyncText } from './machines.ts';
 import { Row, SectionTitle } from './rows.tsx';
 import { MachineHooks } from './MachineHooks.tsx';
 import './machines.css';
@@ -27,7 +27,8 @@ function errorText(caught: unknown, fallback: string): string {
  * (a one-time code), "Add machine" (the other machine's Tailscale address and its
  * code), and the paired machines with their state (online / offline / auth failed
  * / no address), Rename and Remove; D48 P4: for this machine and each online
- * one, its terminal hooks and "Hook into…" (`MachineHooks`).
+ * one, its terminal hooks and "Hook into…" (`MachineHooks`); D71: per machine,
+ * the "Share sidebar layout" switch (off by default) and what it is doing.
  */
 export function MachinesSection() {
   const view = useApi(api.machines);
@@ -233,6 +234,23 @@ function MachineRow({
             {status.hint ? <span data-testid="machine-status-hint">{status.hint}</span> : null}
           </div>
         ) : null}
+        {/* D71: the sidebar layout shared with this machine (off until switched on). */}
+        <div className="sb-set-row-desc sb-mach-sync" data-testid="machine-sidebar-sync" data-state={machine.sidebarSync?.state ?? 'off'}>
+          <span className="sb-mach-sync-label">Share sidebar layout</span>
+          <button
+            type="button"
+            className="sb-set-value-button"
+            data-testid="machine-sidebar-sync-switch"
+            role="switch"
+            aria-checked={machine.sidebarSync?.enabled === true}
+            aria-label={`Share the sidebar layout with ${machine.name}`}
+            disabled={busy}
+            onClick={() => void run('sidebar-sync', () => api.setMachineSidebarSync(machine.id, !(machine.sidebarSync?.enabled === true)), 'The sidebar sharing could not be changed.')}
+          >
+            {machine.sidebarSync?.enabled ? 'on' : 'off'}
+          </button>
+          <span data-testid="machine-sidebar-sync-text">{sidebarSyncText(machine.name, machine.sidebarSync)}</span>
+        </div>
         {/* D48 P4: that machine's terminal sessions and hooks, through its peer API. */}
         {machine.state === 'online' ? <MachineHooks machine={machine.id} name={machine.name} /> : null}
       </div>

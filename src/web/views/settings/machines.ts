@@ -1,5 +1,5 @@
 import type { HooksStatus, TerminalSession } from '../../../core/api.ts';
-import type { Machine, MachineState, PeerListenerState } from '../../../core/peers.ts';
+import type { Machine, MachineSidebarSync, MachineState, PeerListenerState } from '../../../core/peers.ts';
 
 /**
  * Pure helpers of Settings → Machines (D48, `docs/peers.md`): the copy of a
@@ -89,4 +89,30 @@ export function terminalLine(terminal: TerminalSession): string {
   if (status) parts.push(status);
   if (!terminal.hookSeen) parts.push('hooks not seen yet: messages wake it after its next turn');
   return parts.join(' · ');
+}
+
+/**
+ * D71: the text after a machine's "Share sidebar layout" switch (`docs/peers.md`
+ * → *Shared sidebar layout (D71)*); `null` when the machine's service does not
+ * report it (an older Switchboard here never happens: the row comes from this
+ * service).
+ */
+export function sidebarSyncText(name: string, sync: MachineSidebarSync | undefined): string {
+  if (!sync || !sync.enabled) return `Off: this machine's pins, folders and order stay its own. On: the same sidebar layout on both machines (merged the first time; ${name} must switch it on too).`;
+  switch (sync.state) {
+    case 'connecting':
+      return 'On: connecting…';
+    case 'waiting':
+      return `On here; waiting for ${name} to switch it on too (Settings → Machines there).`;
+    case 'unsupported':
+      return `Update ${name} to sync folders: its Switchboard does not share the sidebar layout yet.`;
+    case 'synced':
+      return `On: the same pins, folders and order on both machines${sync.mergedAt ? '' : ' (merging…)'}. Folders collapse on each machine on its own.`;
+    case 'unreachable':
+      return `On: ${name} cannot be reached now; it catches up when it is back.`;
+    case 'error':
+      return `On: the last exchange failed${sync.error ? ` (${sync.error})` : ''}; it is tried again at the next change.`;
+    default:
+      return 'On.';
+  }
 }

@@ -47,7 +47,12 @@ export interface PeerHandlers {
   events(machine: MachineRecord, res: ServerResponse): void;
   /** `/peer/v1/api/*`: the allow-listed local API, answered as the local UI would get it. */
   api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer>;
+  /** D71 · `POST /peer/v1/sidebar`: the caller's sidebar layout records (the shared layout, when switched on here for it). */
+  sidebar(machine: MachineRecord, body: unknown): Promise<{ readonly status: number; readonly body: unknown }>;
 }
+
+/** D71: body limit of the sidebar exchange (a whole layout's records). */
+export const PEER_SIDEBAR_BODY_LIMIT = 8 * 1024 * 1024;
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -114,6 +119,11 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   app.delete('/peer/v1/pair', async (request, reply) => {
     await handlers.unpair(request.peerMachine as MachineRecord);
     return reply.code(204).send();
+  });
+  // D71: the shared sidebar layout's exchange (pairing auth like every route here; merged only when switched on for the caller).
+  app.post('/peer/v1/sidebar', { bodyLimit: PEER_SIDEBAR_BODY_LIMIT }, async (request, reply) => {
+    const answer = await handlers.sidebar(request.peerMachine as MachineRecord, request.body);
+    return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
   app.get('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();
