@@ -4,8 +4,11 @@
  *
  * A session sits in exactly one place: **pinned** (the Pinned group at the top of
  * SESSIONS, in the order the developer dragged them into), in one **folder** (in
- * that folder's dragged order), or **loose** (no layout row: the list below the
- * folders, in the service's own order, newest first, as before D54). Folders are
+ * that folder's dragged order), or **loose** (the list below the folders). D71:
+ * the loose list is the **unplaced** sessions first (never placed, or unpinned /
+ * taken out of a folder: in the service's own order, newest first, as before
+ * D54, so a new session shows at the top), then the loose sessions the
+ * developer put in an order (`loose`, the dragged order). Folders are
  * in a manual order, each with a name and a remembered collapsed state; since
  * D58 a folder can hold folders too (subfolders, up to
  * {@link SIDEBAR_FOLDER_DEPTH_MAX} levels), each level in its own manual order. The layout is this machine's: a paired machine's session
@@ -40,6 +43,12 @@ export interface SidebarFolder {
 export interface SidebarLayout {
   readonly pinned: readonly string[];
   readonly folders: readonly SidebarFolder[];
+  /**
+   * D71: the loose sessions in the dragged order, listed after the unplaced
+   * ones (closed and unknown ids included: kept, not shown). The service always
+   * sends it; absent (a D54-shaped layout) = none.
+   */
+  readonly loose?: readonly string[];
 }
 
 /** Where a session goes (`POST /api/sidebar/place`). */
@@ -48,7 +57,13 @@ export type SidebarPlace = 'pinned' | 'folder' | 'loose';
 /** The values of {@link SidebarPlace}. */
 export const SIDEBAR_PLACES: readonly SidebarPlace[] = ['pinned', 'folder', 'loose'];
 
-/** Body of `POST /api/sidebar/place`. `index` = the final position in the target group (absent = at its end); ignored for `loose`. */
+/**
+ * Body of `POST /api/sidebar/place`. `index` = the final position in the target
+ * group (absent = at its end). D71: for `loose`, `index` is the position in the
+ * whole loose list as shown (the unplaced sessions, then {@link SidebarLayout.loose};
+ * the unplaced ones get their places in that order too), and absent = unplaced
+ * (the top of the loose list, in the service's order).
+ */
 export interface SidebarPlaceInput {
   readonly sessionId: string;
   readonly place: SidebarPlace;
@@ -91,7 +106,7 @@ export const SIDEBAR_SESSION_ID_MAX = 300;
 export const NEW_FOLDER_NAME = 'New folder';
 
 /** A layout with nothing pinned and no folder. */
-export const EMPTY_SIDEBAR_LAYOUT: SidebarLayout = { pinned: [], folders: [] };
+export const EMPTY_SIDEBAR_LAYOUT: SidebarLayout = { pinned: [], folders: [], loose: [] };
 
 /** One validation problem (`422 { error: "invalid", errors }`). */
 export interface SidebarFieldError {
@@ -113,30 +128,56 @@ function insertAt<T>(list: readonly T[], item: T, index: number | undefined): T[
   return out;
 }
 
-/** Where a session sits now: `pinned`, the id of its folder, or `null` (loose). */
+/** Where a session sits now: `pinned`, the id of its folder, or `null` (loose: unplaced or in the loose order). */
 export function placeOf(layout: SidebarLayout, sessionId: string): 'pinned' | { readonly folderId: string } | null {
   if (layout.pinned.includes(sessionId)) return 'pinned';
   const folder = layout.folders.find((f) => f.sessionIds.includes(sessionId));
   return folder ? { folderId: folder.id } : null;
 }
 
-/** The layout without `sessionId` anywhere (it becomes loose). */
+/** D71: the stored loose order (none for a D54-shaped layout). */
+export function looseOf(layout: SidebarLayout): readonly string[] {
+  return layout.loose ?? [];
+}
+
+/** D71: `true` when the layout holds `sessionId` somewhere (pinned, in a folder, or in the loose order). */
+export function isPlaced(layout: SidebarLayout, sessionId: string): boolean {
+  return placeOf(layout, sessionId) !== null || looseOf(layout).includes(sessionId);
+}
+
+/**
+ * D71: the whole loose list as shown, hidden ids included: the ids of `listed`
+ * (the service's order) that the layout does not hold, then the stored loose
+ * order. A loose drop's `index` counts in it.
+ */
+export function looseList(layout: SidebarLayout, listed: readonly string[]): string[] {
+  return [...listed.filter((id) => !isPlaced(layout, id)), ...looseOf(layout)];
+}
+
+/** The layout without `sessionId` anywhere (it becomes loose, unplaced). */
 export function withoutSession(layout: SidebarLayout, sessionId: string): SidebarLayout {
   return {
     pinned: layout.pinned.filter((id) => id !== sessionId),
     folders: layout.folders.map((f) => (f.sessionIds.includes(sessionId) ? { ...f, sessionIds: f.sessionIds.filter((id) => id !== sessionId) } : f)),
+    loose: looseOf(layout).filter((id) => id !== sessionId),
   };
 }
 
 /**
  * Moves a session: out of wherever it is, into `place` at `index` (the final
- * position there, clamped; absent = the end). `loose` just takes it out.
- * `null` when `place` is `folder` and there is no folder `folderId`.
+ * position there, clamped; absent = the end). `loose` without `index` takes it
+ * out (unplaced); D71: `loose` with `index` puts it at that position of the
+ * whole loose list ({@link looseList} of `listed`, the service's order of the
+ * listed sessions), and the unplaced sessions before it keep their places in
+ * that order. `null` when `place` is `folder` and there is no folder `folderId`.
  */
-export function placeSession(layout: SidebarLayout, input: SidebarPlaceInput): SidebarLayout | null {
+export function placeSession(layout: SidebarLayout, input: SidebarPlaceInput, listed: readonly string[] = []): SidebarLayout | null {
   if (input.place === 'folder' && !layout.folders.some((f) => f.id === input.folderId)) return null;
   const rest = withoutSession(layout, input.sessionId);
-  if (input.place === 'loose') return rest;
+  if (input.place === 'loose') {
+    if (input.index === undefined) return rest;
+    return { ...rest, loose: insertAt(looseList(rest, listed.filter((id) => id !== input.sessionId)), input.sessionId, input.index) };
+  }
   if (input.place === 'pinned') return { ...rest, pinned: insertAt(rest.pinned, input.sessionId, input.index) };
   return {
     ...rest,
@@ -368,7 +409,7 @@ export interface ArrangedSidebar<T> {
   readonly pinned: readonly T[];
   /** In tree order (D58): each folder followed by its subfolders. */
   readonly folders: ReadonlyArray<ArrangedFolder<T>>;
-  /** In the order of the given list (the service's: newest first). */
+  /** D71: the unplaced sessions in the order of the given list (the service's: newest first), then the loose order. */
   readonly loose: readonly T[];
 }
 
@@ -418,7 +459,10 @@ export function arrangeSidebar<T extends { readonly id: string }>(sessions: read
     hidden: hidden.get(folder.id) ?? false,
     total: total.get(folder.id) ?? [],
   }));
-  const loose = sessions.filter((s) => !placed.has(s.id));
+  // D71: the stored loose order after the unplaced sessions (taken last, so a stale duplicate keeps its first place).
+  const ordered = new Set(looseOf(layout));
+  const unplaced = sessions.filter((s) => !placed.has(s.id) && !ordered.has(s.id));
+  const loose = [...unplaced, ...take(looseOf(layout))];
   return { pinned, folders, loose };
 }
 
@@ -514,7 +558,7 @@ export function parsePlaceInput(body: unknown): SidebarParse<SidebarPlaceInput> 
       sessionId: sessionId as string,
       place: place as SidebarPlace,
       ...(place === 'folder' ? { folderId: folderId as string } : {}),
-      ...(index !== undefined && place !== 'loose' ? { index: index as number } : {}),
+      ...(index !== undefined ? { index: index as number } : {}),
     },
   };
 }

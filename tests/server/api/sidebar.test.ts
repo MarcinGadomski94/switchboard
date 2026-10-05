@@ -66,14 +66,14 @@ describe('/api/sidebar (D54)', () => {
   it('starts empty; a cookie-less call is refused like every API call', async () => {
     const response = await call('GET', '/api/sidebar');
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ pinned: [], folders: [] });
+    expect(response.json()).toEqual({ pinned: [], folders: [], loose: [] });
     const anonymous = await app.inject({ method: 'GET', url: '/api/sidebar', headers: { host: HOST } });
     expect(anonymous.statusCode).toBe(401);
   });
 
   it('pins, re-orders, folders, collapses, renames, moves and deletes; every write answers the layout and publishes it', async () => {
     const [s1, s2, s3] = [await session('one'), await session('two'), await session('three')];
-    expect((await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'pinned' })).json()).toEqual({ pinned: [s1], folders: [] });
+    expect((await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'pinned' })).json()).toEqual({ pinned: [s1], folders: [], loose: [] });
     expect((await call('POST', '/api/sidebar/place', { sessionId: s2, place: 'pinned', index: 0 })).json().pinned).toEqual([s2, s1]);
 
     const created = await call('POST', '/api/sidebar/folders', { name: '  Work  ' });
@@ -121,7 +121,7 @@ describe('/api/sidebar (D54)', () => {
     // A remote id of a machine that is not paired.
     expect((await call('POST', '/api/sidebar/place', { sessionId: `r~${MACHINE}~s1`, place: 'pinned' })).statusCode).toBe(404);
     expect((await call('POST', '/api/sidebar/place', { sessionId: s1, place: 'top' })).statusCode).toBe(422);
-    expect(await store.sidebar.read()).toEqual({ pinned: [], folders: [] });
+    expect(await store.sidebar.read()).toEqual({ pinned: [], folders: [], loose: [] });
     expect(layoutEvents()).toEqual([]);
   });
 
@@ -195,13 +195,12 @@ describe('/api/sidebar subfolders (D58)', () => {
 
     expect(await store.sidebar.read()).toEqual(layout);
     expect(layoutEvents().at(-1)).toEqual(layout);
-    const positions = store.db.prepare('SELECT name, parent_id, position FROM sidebar_folders ORDER BY name').all();
-    expect(positions).toEqual([
-      { name: 'Deep', parent_id: reviews, position: 0 },
-      { name: 'Later', parent_id: work, position: 0 },
-      { name: 'Reviews', parent_id: null, position: 1 },
-      { name: 'Work', parent_id: null, position: 0 },
-    ]);
+    // D71: stored with order keys per parent (no integer positions since 0029).
+    const level = (parent: string | null) =>
+      store.db.prepare('SELECT name FROM sidebar_folders WHERE deleted_clock IS NULL AND parent_id IS ? ORDER BY sort_key, id').all(parent).map((row) => row['name']);
+    expect(level(null)).toEqual(['Work', 'Reviews']);
+    expect(level(work)).toEqual(['Later']);
+    expect(level(reviews)).toEqual(['Deep']);
   });
 
   it('refusals: unknown parent 404, a loop or too deep 422 on parentId; nothing changes and nothing is published', async () => {

@@ -15,6 +15,7 @@ import {
   removeFolder,
   updateFolder,
 } from '../../core/sidebar-layout.ts';
+import type { SidebarWrite } from '../db/repos/sidebar.ts';
 import type { ApiContext } from '../routes.ts';
 
 interface FolderParams {
@@ -46,11 +47,19 @@ function treeRefusal(reply: FastifyReply, problem: SidebarTreeProblem): FastifyR
  * machine's remote id is placed here, never forwarded to the peer).
  */
 export async function registerSidebarRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { store, bus } = context;
+  const { store, bus, supervisor, peers } = context;
 
-  const changed = (layout: SidebarLayout): SidebarLayout => {
-    bus.publish('sidebarLayoutChanged', layout);
-    return layout;
+  /** Publishes the new layout (every tab) and hands the records written to the D71 sync (the paired machines it is on with). */
+  const changed = (write: SidebarWrite): SidebarLayout => {
+    bus.publish('sidebarLayoutChanged', write.layout);
+    peers.sidebarChanged(write.changes);
+    return write.layout;
+  };
+
+  /** D71: the listed (open) sessions' ids in the service's order (`GET /api/sessions`): a loose drop's index counts in them. */
+  const listed = async (): Promise<string[]> => {
+    const records = (await store.sessions.list({ closed: false })).filter((record) => !supervisor.isStarting(record.id));
+    return [...records.map((record) => record.id), ...peers.remoteSessions().map((session) => session.id)];
   };
 
   /** A session id this machine knows: one of its sessions, or one of a paired machine's. */
@@ -68,7 +77,7 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     const id = randomUUID();
     const parentId = input.value.parentId ?? null;
     let problem: SidebarTreeProblem | null = null;
-    const layout = await store.sidebar.update((current) => {
+    const layout = await store.sidebar.change((current) => {
       problem = checkFolderParent(current, null, parentId);
       return problem ? null : addFolder(current, id, input.value.name, parentId);
     });
@@ -79,7 +88,7 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
   app.put<{ Params: FolderParams }>('/api/sidebar/folders/:folderId', async (request, reply): Promise<SidebarLayout | FastifyReply> => {
     const patch = parseFolderPatch(request.body);
     if (!patch.ok) return invalid(reply, patch.errors);
-    const layout = await store.sidebar.update((current) => updateFolder(current, request.params.folderId, patch.value));
+    const layout = await store.sidebar.change((current) => updateFolder(current, request.params.folderId, patch.value));
     return layout ? changed(layout) : noFolder(reply, request.params.folderId);
   });
 
@@ -88,7 +97,7 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     if (!move.ok) return invalid(reply, move.errors);
     const { folderId } = request.params;
     let problem: SidebarTreeProblem | null = null;
-    const layout = await store.sidebar.update((current) => {
+    const layout = await store.sidebar.change((current) => {
       const folder = current.folders.find((f) => f.id === folderId);
       if (!folder) {
         problem = { kind: 'not-found', id: folderId };
@@ -102,7 +111,7 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
   });
 
   app.delete<{ Params: FolderParams }>('/api/sidebar/folders/:folderId', async (request, reply): Promise<SidebarLayout | FastifyReply> => {
-    const layout = await store.sidebar.update((current) => removeFolder(current, request.params.folderId));
+    const layout = await store.sidebar.change((current) => removeFolder(current, request.params.folderId));
     return layout ? changed(layout) : noFolder(reply, request.params.folderId);
   });
 
@@ -111,7 +120,9 @@ export async function registerSidebarRoutes(app: FastifyInstance, context: ApiCo
     if (!input.ok) return invalid(reply, input.errors);
     const { value } = input;
     if (!(await known(value.sessionId))) return reply.code(404).send({ error: 'not-found', message: `no session ${value.sessionId}` });
-    const layout = await store.sidebar.update((current) => placeSession(current, value));
+    // D71: a loose drop at a position counts in the whole loose list as shown (the unplaced sessions first).
+    const order = value.place === 'loose' && value.index !== undefined ? await listed() : [];
+    const layout = await store.sidebar.change((current) => placeSession(current, value, order));
     return layout ? changed(layout) : noFolder(reply, value.folderId ?? '');
   });
 }

@@ -1002,6 +1002,17 @@ Each todo item also has a priority and an estimate, and its handover plan is man
 { "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "title": "Restore checkout for PROJ-7 customers", "text": "Restore checkout for PROJ-7 customers", "description": "Checkout fails for every customer since the last deploy.", "plan": "1. Roll back PROJ-7\n2. Check the logs", "priority": "urgent", "estimateMinutes": 45, "state": "open", "addedBy": "agent", "position": 2, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null }
 ```
 
+## Loose order and shared sidebar layout (D71, 2026-10-05, additive)
+Developer request D71 (`docs/decisions.md` → *Shared sidebar layout*): loose sessions get a manual order; the sidebar layout can be shared with paired machines. Additive on *Sidebar pins and folders (D54)* and *Subfolders in the sidebar (D58)*; every D54 / D58 body means what it meant. Migration 0029. Details: `docs/sidebar.md` → *Loose order (D71)* and *Shared layout (D71)*.
+
+- **SidebarLayout** gains `loose: string[]` (always sent): the loose sessions in their manual order, shown after the **unplaced** ones (the listed sessions the layout does not hold, in the service's order). Closed and unknown ids stay in it (hidden), as in `pinned` and `sessionIds`.
+- `POST /api/sidebar/place` `{ sessionId, place: "loose", index }`: `index` is the final position in the whole loose list as `GET /api/sessions` lists it (the unplaced sessions first, then `loose`); the unplaced sessions before that position get their places in the same order. Without `index`, `loose` makes the session unplaced (D54's meaning).
+
+```json
+SidebarLayout { "pinned": [], "folders": [], "loose": ["a41b…", "r~abcdefghijkl~9f0a…"] }
+POST /api/sidebar/place { "sessionId": "a41b…", "place": "loose", "index": 2 }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1023,7 +1034,7 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | system | same shape as GET /api/system, every 5 s |
 | activity | { sessionId, activity: SessionActivity \| null } (additive, D19: at most one per second per session; D30: `background` while background work is pending after the turn) |
 | schedulesChanged | { scheduleId, change: saved \| paused \| resumed \| deleted \| run } (additive, D52: a schedule changed; forwarded between peers) |
-| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder) |
+| sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder; D71: carries `loose`) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers) |

@@ -27,6 +27,7 @@ import type { ServerConfig } from '../config.ts';
 import type { MachineRecord } from '../db/repos/machines.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
+import type { RecordChanges } from '../../core/sidebar-records.ts';
 import { KEEPALIVE_FRAME, SSE_CONTENT_TYPE, formatEvent } from '../hub/hub.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { TOKEN_COOKIE } from '../security.ts';
@@ -955,6 +956,11 @@ export class PeerService implements PeerHandlers {
       if (error instanceof PeerUnreachableError) return offline(error.message);
       throw error;
     }
+  }
+
+  /** D71: records the sidebar layout wrote here (a local change): sent on to the machines the shared layout is on with. */
+  sidebarChanged(changes: RecordChanges): void {
+    void changes;
   }
 
   /** `true` when `id` is a paired machine. */

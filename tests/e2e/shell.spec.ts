@@ -84,9 +84,9 @@ test('the shell renders from the real API and shows only what the API returns', 
       expect(call.status, call.url).toBe(200);
       expect(call.body, call.url).toMatchObject({ 'ui.sidebarHidden': false, 'ui.rightPanelHidden': false });
     } else if (call.url === '/api/sidebar') {
-      // D54: the sidebar's pins and folders; a fresh install has none.
+      // D54: the sidebar's pins and folders (D71: and the loose order); a fresh install has none.
       expect(call.status, call.url).toBe(200);
-      expect(call.body, call.url).toEqual({ pinned: [], folders: [] });
+      expect(call.body, call.url).toEqual({ pinned: [], folders: [], loose: [] });
     } else if (call.url === '/api/clis') {
       // D62: the footer's default-CLI switcher; a fresh install starts new sessions on Claude Code, the three CLIs listed.
       expect(call.status, call.url).toBe(200);

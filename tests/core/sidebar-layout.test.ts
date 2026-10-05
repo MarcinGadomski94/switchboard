@@ -24,6 +24,7 @@ import {
   removeFolder,
   stepPosition,
   updateFolder,
+  looseList,
 } from '../../src/core/sidebar-layout.ts';
 
 /** D54 oracle: the sidebar's pins and folders (src/core/sidebar-layout.ts, docs/sidebar.md). */
@@ -182,10 +183,11 @@ describe('validation', () => {
     expect(parseFolderMove({ index: 1.5 }).ok).toBe(false);
   });
 
-  it('place: session id, place, folderId for a folder, optional index (dropped for loose)', () => {
+  it('place: session id, place, folderId for a folder, optional index (D71: kept for loose too)', () => {
     expect(parsePlaceInput({ sessionId: 's', place: 'pinned', index: 1 })).toEqual({ ok: true, value: { sessionId: 's', place: 'pinned', index: 1 } });
     expect(parsePlaceInput({ sessionId: 's', place: 'folder', folderId: 'f' })).toEqual({ ok: true, value: { sessionId: 's', place: 'folder', folderId: 'f' } });
-    expect(parsePlaceInput({ sessionId: 's', place: 'loose', index: 3 })).toEqual({ ok: true, value: { sessionId: 's', place: 'loose' } });
+    expect(parsePlaceInput({ sessionId: 's', place: 'loose', index: 3 })).toEqual({ ok: true, value: { sessionId: 's', place: 'loose', index: 3 } });
+    expect(parsePlaceInput({ sessionId: 's', place: 'loose' })).toEqual({ ok: true, value: { sessionId: 's', place: 'loose' } });
     expect(parsePlaceInput({ sessionId: 's', place: 'folder' }).ok).toBe(false);
     expect(parsePlaceInput({ sessionId: '', place: 'pinned' }).ok).toBe(false);
     expect(parsePlaceInput({ sessionId: 's', place: 'top' }).ok).toBe(false);
@@ -310,5 +312,31 @@ describe('subfolders (D58)', () => {
     expect(parseFolderMove({ index: 0, parentId: 'f' })).toEqual({ ok: true, value: { index: 0, parentId: 'f' } });
     expect(parseFolderMove({ index: 0, parentId: null })).toEqual({ ok: true, value: { index: 0, parentId: null } });
     expect(parseFolderMove({ index: 0, parentId: '' }).ok).toBe(false);
+  });
+});
+
+/** D71 oracle (M2): loose sessions get a manual order; the unplaced ones stay first, in the service's order. */
+describe('loose order (D71)', () => {
+  const listed = ['new', 'n1', 'n2', 'n3'].map((id) => ({ id }));
+  it('the loose list is the unplaced sessions (service order), then the stored loose order (closed ones skipped, kept)', () => {
+    const layout: SidebarLayout = { pinned: [], folders: [], loose: ['n3', 'closed', 'n1'] };
+    expect(arrangeSidebar(listed, layout).loose.map((s) => s.id)).toEqual(['new', 'n2', 'n3', 'n1']);
+    expect(looseList(layout, listed.map((s) => s.id))).toEqual(['new', 'n2', 'n3', 'closed', 'n1']);
+  });
+
+  it('placing at a loose position counts in the whole list and gives the unplaced ones before it their places; without index = unplaced', () => {
+    const layout: SidebarLayout = { pinned: ['n2'], folders: [], loose: [] };
+    const ids = listed.map((s) => s.id);
+    const placed = placeSession(layout, { sessionId: 'n2', place: 'loose', index: 1 }, ids) as SidebarLayout;
+    expect(placed.pinned).toEqual([]);
+    expect(placed.loose).toEqual(['new', 'n2', 'n1', 'n3']);
+    expect(arrangeSidebar(listed, placed).loose.map((s) => s.id)).toEqual(['new', 'n2', 'n1', 'n3']);
+    // A newer session shows above them.
+    expect(arrangeSidebar([{ id: 'newer' }, ...listed], placed).loose.map((s) => s.id)).toEqual(['newer', 'new', 'n2', 'n1', 'n3']);
+    const out = placeSession(placed, { sessionId: 'n1', place: 'loose' }, ids) as SidebarLayout;
+    expect(out.loose).toEqual(['new', 'n2', 'n3']);
+    expect(arrangeSidebar(listed, out).loose.map((s) => s.id)).toEqual(['n1', 'new', 'n2', 'n3']);
+    // Pinning takes it out of the loose order.
+    expect(placeSession(placed, { sessionId: 'n1', place: 'pinned' }, ids)?.loose).toEqual(['new', 'n2', 'n3']);
   });
 });

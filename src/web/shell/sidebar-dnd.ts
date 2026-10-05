@@ -3,7 +3,7 @@
  * *Drag and drop*); D58: folders also drop into folders (subfolders). Pure: the component (`SidebarSessions.tsx`) reports what is
  * dragged and what it is over; this decides the write and the drop indicator.
  */
-import { type SidebarLayout, type SidebarPlaceInput, checkFolderParent, childFolders, dropPosition, parentOf } from '../../core/sidebar-layout.ts';
+import { type SidebarLayout, type SidebarPlaceInput, checkFolderParent, childFolders, dropPosition, looseList, parentOf, placeOf } from '../../core/sidebar-layout.ts';
 
 /** What is being dragged. */
 export type DragItem = { readonly kind: 'session'; readonly id: string } | { readonly kind: 'folder'; readonly id: string };
@@ -55,15 +55,26 @@ function folderMove(layout: SidebarLayout, id: string, parentId: string | null, 
 }
 
 function isLoose(layout: SidebarLayout, id: string): boolean {
-  return !layout.pinned.includes(id) && !layout.folders.some((f) => f.sessionIds.includes(id));
+  return placeOf(layout, id) === null;
+}
+
+/**
+ * D71: a session dropped before / after a loose row: its position in the whole
+ * loose list ({@link looseList}: the unplaced sessions, then the loose order);
+ * `null` when dropped on itself.
+ */
+function looseDrop(layout: SidebarLayout, sessionId: string, anchorId: string, side: DropSide, listed: readonly string[]): DropAction | null {
+  if (anchorId === sessionId) return null;
+  return { kind: 'place', input: { sessionId, place: 'loose', index: dropPosition(looseList(layout, listed), sessionId, anchorId, side) } };
 }
 
 /**
  * The write dropping `drag` on `over` makes, or `null` when the drop does nothing
- * (a folder dropped on a session, a loose session dropped among the loose ones: that
- * list keeps the service's order).
+ * (a folder dropped on a session, a session dropped where it already is). D71:
+ * `listed` is the listed sessions' ids in the service's order (a loose drop's
+ * position counts in the whole loose list, the unplaced sessions first).
  */
-export function resolveDrop(layout: SidebarLayout, drag: DragItem, over: DropOver): DropAction | null {
+export function resolveDrop(layout: SidebarLayout, drag: DragItem, over: DropOver, listed: readonly string[] = []): DropAction | null {
   if (drag.kind === 'folder') {
     const dragged = layout.folders.find((f) => f.id === drag.id);
     if (!dragged) return null;
@@ -92,7 +103,7 @@ export function resolveDrop(layout: SidebarLayout, drag: DragItem, over: DropOve
       return isLoose(layout, sessionId) ? null : { kind: 'place', input: { sessionId, place: 'loose' } };
     case 'row': {
       const { group } = over;
-      if (group.kind === 'loose') return isLoose(layout, sessionId) ? null : { kind: 'place', input: { sessionId, place: 'loose' } };
+      if (group.kind === 'loose') return looseDrop(layout, sessionId, over.sessionId, over.side, listed);
       if (group.kind === 'pinned') return { kind: 'place', input: { sessionId, place: 'pinned', index: dropPosition(layout.pinned, sessionId, over.sessionId, over.side) } };
       const folder = layout.folders.find((f) => f.id === group.folderId);
       if (!folder) return null;
@@ -102,11 +113,12 @@ export function resolveDrop(layout: SidebarLayout, drag: DragItem, over: DropOve
 }
 
 /** How the element under the pointer shows the drop (`null` = no indicator: the drop does nothing). */
-export function indicatorOf(layout: SidebarLayout, drag: DragItem, over: DropOver): DropIndicator | null {
-  if (resolveDrop(layout, drag, over) === null) return null;
+export function indicatorOf(layout: SidebarLayout, drag: DragItem, over: DropOver, listed: readonly string[] = []): DropIndicator | null {
+  if (resolveDrop(layout, drag, over, listed) === null) return null;
   switch (over.zone) {
     case 'row':
-      return over.group.kind === 'loose' ? 'into' : over.side;
+      // D71: a session goes before / after a loose row; a subfolder dropped on one goes to the top level ('into' the list).
+      return over.group.kind === 'loose' && drag.kind === 'folder' ? 'into' : over.side;
     case 'folder-head':
       return drag.kind === 'folder' ? over.side : 'into';
     case 'loose':

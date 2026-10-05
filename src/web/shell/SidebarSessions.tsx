@@ -14,6 +14,7 @@ import {
   checkFolderParent,
   childFolders,
   descendantIds,
+  looseList,
   needsYou,
   parentOf,
   placeOf,
@@ -321,10 +322,11 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  * The SESSIONS label and list (SPEC → Shell; D54 `docs/sidebar.md`): the
  * **Pinned** group (dragged order), then the sidebar folders (dragged order,
  * each collapsible; D58: folders hold subfolders too, shown first and indented
- * one step per level), then the loose sessions in the service's order (newest
- * first, as before D54). With nothing pinned and no folder the list is exactly
+ * one step per level), then the loose sessions: D71: the unplaced ones in the
+ * service's order (newest first, as before D54), then the loose order the
+ * developer dragged. With nothing pinned and no folder the list is exactly
  * the prototype's rows. Sessions and folders move by drag and drop and by each
- * row's / folder's ⋯ menu (Pin / Unpin, Move up / down, Move to folder…), the
+ * row's / folder's ⋯ menu (Pin / Unpin, Move up / down — D71: loose rows too —, Move to folder…), the
  * keyboard path. The label's drawn "+" creates a folder, a folder's menu a
  * subfolder. The layout is stored by the service and live in every tab
  * (`sidebarLayoutChanged`).
@@ -340,6 +342,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const [creating, setCreating] = useState<string | null | undefined>(undefined);
   const [renaming, setRenaming] = useState<string | null>(null);
   const arranged = arrangeSidebar(sessions, layout);
+  /** D71: the listed sessions in the service's order (a loose drop's position counts in the whole loose list). */
+  const listedIds = sessions.map((s) => s.id);
   const closeMenu = useCallback(() => setMenu(null), []);
   const listRef = useRef<HTMLDivElement>(null);
   /** The session whose row was last revealed (the effect below). */
@@ -411,7 +415,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!drag) return;
       const next = typeof at === 'function' ? at(event) : at;
-      if (resolveDrop(layout, drag, next) === null) {
+      if (resolveDrop(layout, drag, next, listedIds) === null) {
         if (over !== null) setOver(null);
         return;
       }
@@ -423,7 +427,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     onDrop: (event: DragEvent<HTMLElement>) => {
       if (!drag) return;
       const next = typeof at === 'function' ? at(event) : at;
-      const action = resolveDrop(layout, drag, next);
+      const action = resolveDrop(layout, drag, next, listedIds);
       event.preventDefault();
       event.stopPropagation();
       endDrag();
@@ -435,7 +439,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
 
   const indicator = (at: DropOver): DropIndicator | undefined => {
     if (!drag || !over || !sameOver(over, at)) return undefined;
-    return indicatorOf(layout, drag, at) ?? undefined;
+    return indicatorOf(layout, drag, at, listedIds) ?? undefined;
   };
 
   const sideAt = (event: DragEvent<HTMLElement>) => sideOf(event.clientY, event.currentTarget.getBoundingClientRect());
@@ -448,16 +452,17 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     const items: MenuItem[] = [];
     if (where === 'pinned') items.push({ label: 'Unpin', testId: 'sidebar-menu-unpin', run: () => place({ sessionId: session.id, place: 'loose' }) });
     else items.push({ label: 'Pin', testId: 'sidebar-menu-pin', run: () => place({ sessionId: session.id, place: 'pinned' }) });
-    if (group.kind !== 'loose') {
-      const stored = group.kind === 'pinned' ? layout.pinned : (layout.folders.find((f) => f.id === group.folderId)?.sessionIds ?? []);
-      const step = (delta: -1 | 1): void => {
-        const index = stepPosition(stored, visible, session.id, delta);
-        if (index === null) return;
-        place(group.kind === 'pinned' ? { sessionId: session.id, place: 'pinned', index } : { sessionId: session.id, place: 'folder', folderId: group.folderId, index });
-      };
-      items.push({ label: 'Move up', testId: 'sidebar-menu-up', run: () => step(-1), disabled: stepPosition(stored, visible, session.id, -1) === null });
-      items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
-    }
+    // D71: loose sessions move up / down too (in the whole loose list: the unplaced ones, then the loose order).
+    const stored = group.kind === 'pinned' ? layout.pinned : group.kind === 'loose' ? looseList(layout, listedIds) : (layout.folders.find((f) => f.id === group.folderId)?.sessionIds ?? []);
+    const step = (delta: -1 | 1): void => {
+      const index = stepPosition(stored, visible, session.id, delta);
+      if (index === null) return;
+      if (group.kind === 'pinned') place({ sessionId: session.id, place: 'pinned', index });
+      else if (group.kind === 'loose') place({ sessionId: session.id, place: 'loose', index });
+      else place({ sessionId: session.id, place: 'folder', folderId: group.folderId, index });
+    };
+    items.push({ label: 'Move up', testId: 'sidebar-menu-up', run: () => step(-1), disabled: stepPosition(stored, visible, session.id, -1) === null });
+    items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
     items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
     // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.
     if (offersTakeover(session)) {
@@ -552,8 +557,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
 
   const row = (session: Session, group: RowGroup, visible: readonly string[], level = 0): ReactNode => {
     const activity = activityOf(session.id);
-    const at: (event: DragEvent<HTMLElement>) => DropOver =
-      group.kind === 'loose' ? () => ({ zone: 'loose' }) : (event) => ({ zone: 'row', group, sessionId: session.id, side: sideAt(event) });
+    // D71: a loose row is a drop target of its own too (before / after it: the loose sessions' manual order).
+    const at = (event: DragEvent<HTMLElement>): DropOver => ({ zone: 'row', group, sessionId: session.id, side: sideAt(event) });
     const shown: DropOver | null = over && over.zone === 'row' && over.sessionId === session.id ? over : null;
     return (
       <Link
@@ -649,6 +654,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const openMenu = menu && menuItems ? <Menu key={`${menu.kind}:${menu.id}:${menuView}`} anchor={menu.anchor} label={menuItems.label} items={menuItems.items} onClose={closeMenu} /> : null;
 
   const pinnedIds = arranged.pinned.map((s) => s.id);
+  const looseIds = arranged.loose.map((s) => s.id);
   const draggedFolder = drag?.kind === 'folder' ? layout.folders.find((f) => f.id === drag.id) : undefined;
   const draggingPlaced = drag?.kind === 'session' && placeOf(layout, drag.id) !== null;
   // D58: a subfolder dragged out goes to the top level from the same zone.
@@ -802,7 +808,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
             <span className="sb-group-hint">{draggingNested ? 'drop here to move to the top level' : 'drop here to unpin / take out of the folder'}</span>
           </div>
         ) : null}
-        {arranged.loose.map((session) => row(session, { kind: 'loose' }, []))}
+        {arranged.loose.map((session) => row(session, { kind: 'loose' }, looseIds))}
       </div>
       {openMenu}
       {error ? (
