@@ -345,6 +345,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       if ((lifecycle.action === 'taken-over' || lifecycle.action === 'moved-away') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.action === 'taken-over' ? (lifecycle.machine ?? null) : null, to: lifecycle.action === 'moved-away' ? (lifecycle.machine ?? null) : null });
       }
+      // D72: a hooked terminal session continued in Switchboard: "Continued in Switchboard (was a terminal session)".
+      if (lifecycle.action === 'continued' && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
+      }
     } else {
       const mark = stepMark(event);
       if (mark) pushStep(event, mark);

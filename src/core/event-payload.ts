@@ -229,7 +229,9 @@ export type LifecycleAction =
   /** D65: the session was taken over from another machine (the chat's divider "Taken over from <machine>"; `fromMachine`). */
   | 'taken-over'
   /** D65: the session was taken over to another machine (a note on the closed source session: "Moved to <machine>"). */
-  | 'moved-away';
+  | 'moved-away'
+  /** D72: a hooked terminal session now runs under Switchboard (`--resume` of its id; the chat's divider "Continued in Switchboard (was a terminal session)"). */
+  | 'continued';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

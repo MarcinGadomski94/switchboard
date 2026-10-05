@@ -149,6 +149,7 @@ export class TranscriptHistory implements HistoryProvider {
       origin: record.origin,
       remoteSource: record.remoteSource,
       closedAt: record.closedAt,
+      hooked: record.hooked,
     }));
   }
 

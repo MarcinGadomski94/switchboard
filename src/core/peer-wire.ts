@@ -220,7 +220,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   const tail = match[1];
   if (tail === undefined) return upper === 'GET' ? 'detail' : 'none';
   if (tail === 'events') return 'events';
-  if (['pause', 'resume', 'close', 'reopen', 'title', 'remote', 'model'].includes(tail)) return 'session';
+  // D72: Continue in Switchboard answers the continued session.
+  if (['pause', 'resume', 'close', 'reopen', 'title', 'remote', 'model', 'continue-in-switchboard'].includes(tail)) return 'session';
   return 'none';
 }
 

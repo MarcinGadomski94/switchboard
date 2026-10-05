@@ -1002,6 +1002,24 @@ Each todo item also has a priority and an estimate, and its handover plan is man
 { "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "title": "Restore checkout for PROJ-7 customers", "text": "Restore checkout for PROJ-7 customers", "description": "Checkout fails for every customer since the last deploy.", "plan": "1. Roll back PROJ-7\n2. Check the logs", "priority": "urgent", "estimateMinutes": 45, "state": "open", "addedBy": "agent", "position": 2, "createdAt": "2026-10-04T10:00:00.000Z", "updatedAt": "2026-10-04T10:00:00.000Z", "doneAt": null, "removeAt": null }
 ```
 
+## Continue a hooked session in Switchboard (D72, 2026-10-05, additive)
+
+A hooked terminal session (D48 P4) becomes a Switchboard-run session **in place** (`docs/peers.md` → *Continuing a hooked session in Switchboard (D72)*, `docs/decisions.md` → D72). No migration: `sessions.hooked` goes to 0 and the process fields are set.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/continue-in-switchboard | ContinueHookedInput `{ confirmStopTerminal?: boolean }` (empty / `{}` = not confirmed) | 200 Session (the same id, `hooked: false`, `attached: true`) · 404 `not-found` · 409 `not-hooked` · 409 `closed` (reopen it first) · 409 `folder-missing` · 409 `terminal-unknown` (whether the terminal's `claude` runs cannot be told; never taken as gone) · 409 **`terminal-running`** `{ error, message, pid }` until `confirmStopTerminal: true` · 502 `stop-failed` / `agents-unavailable` (the stop failed: nothing else changed) · 422 `invalid` |
+
+- **Terminal running + confirmed:** the D65 terminal stop (`claude agents --json` names the pid; SIGTERM, SIGKILL after 10 s; Windows `taskkill /T`, `/F` after 10 s), then a bounded wait (15 s) until the registry no longer lists it.
+- **Then:** the transcript's last turns are imported; the session is resumed with `--resume <claudeSessionId>` in its cwd with the usual injections (standing instruction, the `switchboard` todo tools, the account's env), no message (idle), and the chat event `lifecycle` `action: "continued"`, label `Continued in Switchboard (was a terminal session)` (a divider). Its waiter ends (204), held PermissionRequest calls get no decision (their Inbox items go stale).
+- **Messages the model never saw** (the mailbox's `hook-message`s, and bubbles handed to a waiter that never reached the transcript) go to the new process as one user message; their old events get `withdrawn: true`.
+- **HistoryItem** gains `hooked?: true` on an open hooked session's row (it offers the action).
+- **Peers (D48):** on `PEER_API_ALLOW`; called with a remote id it runs on the terminal's machine and answers the Session mapped to the remote id (the long peer timeout).
+
+```json
+{ "error": "terminal-running", "message": "pc-terminal's claude is still running in its terminal (pid 4242): continuing it here stops it there first. Confirm to stop it and continue.", "pid": 4242 }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

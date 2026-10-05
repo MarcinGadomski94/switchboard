@@ -6,6 +6,7 @@ import { checkTitle } from '../../core/session-title.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
 import { HookError } from '../hooks/service.ts';
+import { HookedContinuer } from '../hooks/continue.ts';
 import { AttachmentError, NO_ATTACHMENTS, parseAttachmentIds } from '../attachments/service.ts';
 import { toEvent, toSession, toSessionDetail } from '../sessions/wire.ts';
 import { restoreFullEvent } from '../sessions/full-event.ts';
@@ -341,6 +342,16 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  // D72 (additive): Continue in Switchboard: a hooked terminal session becomes a Switchboard-run session in place
+  // (`{ confirmStopTerminal? }` → the Session; 409 `not-hooked` / `closed` / `folder-missing` / `terminal-unknown`,
+  // 409 `terminal-running` with its pid until the stop is confirmed; 502 `stop-failed` / `agents-unavailable`).
+  const continuer = new HookedContinuer({ store, bus: context.bus, hooks: context.hooks, supervisor });
+  app.post<{ Params: IdParams }>('/api/sessions/:id/continue-in-switchboard', async (request, reply): Promise<Session | FastifyReply> => {
+    const outcome = await continuer.continue(request.params.id, request.body);
+    if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+    return outcome.session;
   });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/detach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
