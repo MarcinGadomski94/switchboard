@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.0 (2026-10-05)
+
+### Shared sidebar between paired machines
+- **Share sidebar layout** (Settings → Machines, per machine, off by default): paired machines show the same pins, folders, subfolders and order. A session is the same item on both sides. Changes travel live, the later change wins when two collide, and a machine that was offline catches up when it reconnects. Sharing starts once both machines have it on; the first time, the two layouts are merged (same-named folders at the same level are combined). Collapsed folders stay per machine. A paired machine on an older version shows "Update <machine> to sync folders".
+- **Sessions outside folders can be re-ordered** by drag or ⋯ Move up / down. Sessions you haven't placed yet stay at the top, newest first.
+
+### Continue a terminal session in Switchboard
+- A hooked terminal session (one you started in a terminal and hooked into) can now become a normal Switchboard session: **Continue in Switchboard** in its header, its sidebar ⋯ menu and its History row, also for a closed one and for a paired machine's (it runs on that machine). It keeps its id, title, sidebar place, todo list, chat and account, and resumes the same conversation with Switchboard's tools.
+- If its `claude` is still running in the terminal, you confirm first and Switchboard stops it (also on Windows); if that fails, nothing changes. A message the terminal took but never acted on shows as **Not sent** with a one-click **Resend**.
+
+### Fixed
+- Dragging a paired machine's session to a folder out of view: the session list now scrolls itself while you drag near its edge, in every browser (Safari didn't).
+- A paired machine's sessions no longer jump around in the sidebar on every update.
+
+### Other
+- The `switchboard` MCP todo tools declare their behavior hints (read-only, destructive, idempotent, open-world).
+- A privacy policy (`PRIVACY.md`): Switchboard has no telemetry; the only network calls it makes itself are GitHub update checks.
+
+### Database
+- Migration 0029 (the sidebar layout as synced records) runs by itself on first start; existing pins, folders and order are kept.
+
 ## 1.9.0 (2026-10-04)
 
 ### Todo priority, estimates and a required plan
