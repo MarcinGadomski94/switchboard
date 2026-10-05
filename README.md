@@ -416,6 +416,7 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 - Child processes are spawned with argument arrays, never through a shell.
 - Switchboard never reads or passes on your claude.ai credentials, or any other CLI's (Codex, OpenCode) or account's: sign-in and sign-out are each CLI's own commands, and it only runs the CLIs you signed in to. Account profile folders and handover exports stay in the data folder (mode 0700 / 0600).
 - **Attachments** are stored only in the data folder (never in a repo or the database), typed by their bytes, and never rendered inline unless they are PNG, JPEG, GIF, WebP or PDF.
+- **No telemetry.** Switchboard sends nothing to its author; the only network calls it makes itself are GitHub update checks. See the [privacy policy](PRIVACY.md).
 - **MCP servers:** secrets never reach the browser; env and header values are masked, and servers are changed only through the CLI's own commands.
 - **Updates** come only from the configured GitHub repository's releases, over HTTPS, and are installed only after their SHA-256 checksum matches; the archive is unpacked by Node itself (no links, no paths outside its folder), and nothing from it runs except `npm ci --omit=dev` and the new server.
 

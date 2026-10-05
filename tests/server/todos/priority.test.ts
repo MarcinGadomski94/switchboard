@@ -54,9 +54,10 @@ function t(id: string, position: number, priority: TodoPriority = 'medium', extr
 }
 
 describe('migration 0028 (D70)', () => {
-  it('is the newest shipped migration: priority (medium) and estimate (none) are added; empty plans become No plan; titles and descriptions stay', async () => {
+  it('0028 adds priority (medium) and estimate (none) are added; empty plans become No plan; titles and descriptions stay', async () => {
     const shipped = await loadMigrations();
-    expect(shipped.at(-1)).toMatchObject({ version: 28, name: 'todo_priority' });
+    // Later migrations (0029, D71) are their own tests' concern: up to 0028.
+    expect(shipped.find((m) => m.version === 28)).toMatchObject({ name: 'todo_priority' });
     const db = await openDatabase(':memory:');
     migrate(db, shipped.filter((m) => m.version <= 27));
     const ts = '2026-10-04T10:00:00.000Z';
@@ -68,7 +69,7 @@ describe('migration 0028 (D70)', () => {
     insert.run('planned', 's', 'Has a plan', null, '1. Do it', 'open', 'agent', 1, ts, ts, null);
     insert.run('blank', 's', 'Blank plan', 'Why', ' \n\t', 'done', 'agent', 2, ts, ts, ts);
     insert.run('empty', 's', 'Empty plan', null, '', 'open', 'agent', 3, ts, ts, null);
-    expect(migrate(db, shipped).applied).toEqual([28]);
+    expect(migrate(db, shipped.filter((m) => m.version <= 28)).applied).toEqual([28]);
     const columns = db.prepare('PRAGMA table_info(session_todos)').all().map((row) => String(row['name']));
     expect(columns).toEqual(['id', 'session_id', 'title', 'state', 'added_by', 'position', 'created_at', 'updated_at', 'done_at', 'description', 'plan', 'priority', 'estimate_minutes']);
     expect(db.prepare('SELECT id, title, description, plan, priority, estimate_minutes, state, done_at FROM session_todos ORDER BY position').all().map((row) => ({ ...row }))).toEqual([

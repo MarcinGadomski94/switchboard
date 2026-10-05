@@ -392,7 +392,22 @@ export interface TodoToolDefinition {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
+  /** MCP tool annotations: a display title and the four behavior hints, all declared on every tool (directories require them). */
+  readonly annotations: TodoToolAnnotations;
 }
+
+/** The MCP `ToolAnnotations` Switchboard declares: every hint explicit, never left to the spec's defaults. */
+export interface TodoToolAnnotations {
+  readonly title: string;
+  readonly readOnlyHint: boolean;
+  readonly destructiveHint: boolean;
+  readonly idempotentHint: boolean;
+  /** Always false: the tools only touch this session's list in the local Switchboard. */
+  readonly openWorldHint: boolean;
+}
+
+/** Hints of a tool that only reads. */
+const READS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
 const ID = { type: 'string', description: 'The item id, as todo_list shows it in brackets.' } as const;
 
@@ -436,11 +451,13 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
     description:
       "List this session's todo list (things that still need doing), open items by priority: each item's id, state, priority, estimate and title, and whether it has a description or plan (not their text; use todo_get for that). Use it when the user asks what is left.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { title: 'List todo items', ...READS },
   },
   {
     name: 'todo_get',
     description: 'Read one item in full: its title, priority, estimate, description and handover plan. Use it before you start working on an item.',
     inputSchema: { type: 'object', properties: { id: ID }, required: ['id'], additionalProperties: false },
+    annotations: { title: 'Read a todo item', ...READS },
   },
   {
     name: 'todo_add',
@@ -452,6 +469,7 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
       required: ['title', 'plan', 'priority', 'estimate_minutes'],
       additionalProperties: false,
     },
+    annotations: { title: 'Add a todo item', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'todo_update',
@@ -463,16 +481,19 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
       required: ['id'],
       additionalProperties: false,
     },
+    annotations: { title: 'Change a todo item', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'todo_done',
     description: 'Mark an item on the todo list done once it is finished (done: false reopens it).',
     inputSchema: { type: 'object', properties: { id: ID, done: { type: 'boolean', description: 'false reopens the item; default true.' } }, required: ['id'], additionalProperties: false },
+    annotations: { title: 'Mark a todo item done', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
     name: 'todo_remove',
     description: 'Remove an item from the todo list (when it is no longer needed at all).',
     inputSchema: { type: 'object', properties: { id: ID }, required: ['id'], additionalProperties: false },
+    annotations: { title: 'Remove a todo item', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
 ];
 

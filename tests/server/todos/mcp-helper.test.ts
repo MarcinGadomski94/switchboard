@@ -46,6 +46,14 @@ describe('MCP messages', () => {
     expect(await handleMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }, api)).toBeNull();
     expect(await handleMessage({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, api)).toEqual({ jsonrpc: '2.0', id: 3, result: { tools: TODO_TOOLS } });
     expect(TODO_TOOLS.map((tool) => tool.name)).toEqual(['todo_list', 'todo_get', 'todo_add', 'todo_update', 'todo_done', 'todo_remove']);
+    // All four MCP behavior hints are declared (as booleans) on every tool, and a title.
+    for (const tool of TODO_TOOLS) {
+      for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const) expect(typeof tool.annotations[hint]).toBe('boolean');
+      expect(tool.annotations.title).not.toBe('');
+      expect(tool.annotations.openWorldHint).toBe(false);
+    }
+    expect(TODO_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['todo_list', 'todo_get']);
+    expect(TODO_TOOLS.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name)).toEqual(['todo_update', 'todo_remove']);
     // D69: the instructions explain the fields and that the agent fills them; D70: the plan's "No plan: <reason>", the priority levels, the estimate, revising.
     const instructions = String((init?.['result'] as Record<string, unknown>)['instructions']);
     expect(instructions).toBe(AGENT_MCP_INSTRUCTIONS);
