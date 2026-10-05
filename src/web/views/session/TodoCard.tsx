@@ -276,14 +276,21 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
     const top = scroller ? scroller.getBoundingClientRect().top : 0;
     if (rect.bottom > bottom && (anchor?.getBoundingClientRect().top ?? 0) - top > rect.height) setUp(true);
   }, [anchor]);
+  // The first entry takes the focus once, when the menu opens. Not on later renders: the card re-renders
+  // with a new `onClose` whenever the session or the list refreshes (a hub event), and re-focusing then
+  // pulled the focus out of an open submenu back to the first entry.
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>('button[data-level="1"]:not(:disabled)')?.focus({ preventScroll: true });
+  }, []);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
     const outside = (event: globalThis.MouseEvent): void => {
-      if (!ref.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose();
+      if (!ref.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) close.current();
     };
     document.addEventListener('mousedown', outside);
     return () => document.removeEventListener('mousedown', outside);
-  }, [anchor, onClose]);
+  }, [anchor]);
   // The submenu takes the focus on its checked item when it opens.
   useEffect(() => {
     if (openSub === null) return;
