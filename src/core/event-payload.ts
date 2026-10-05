@@ -76,6 +76,13 @@ export interface UserPayload {
    */
   readonly withdrawn?: true;
   /**
+   * Additive (D72): the message was handed to a hooked session's terminal, which
+   * ended before taking it up (the transcript never had it); after **Continue in
+   * Switchboard** it shows as not sent with **Resend**
+   * (`POST /api/sessions/{id}/events/{eventId}/resend`). Absent otherwise.
+   */
+  readonly notSent?: true;
+  /**
    * Additive (D57): the images and files the message carried (no bytes, no path;
    * served by `GET /api/sessions/{id}/attachments/{attachmentId}`), each with how
    * it reached the agent. A transcript's image without its bytes has `id: null`
@@ -229,7 +236,9 @@ export type LifecycleAction =
   /** D65: the session was taken over from another machine (the chat's divider "Taken over from <machine>"; `fromMachine`). */
   | 'taken-over'
   /** D65: the session was taken over to another machine (a note on the closed source session: "Moved to <machine>"). */
-  | 'moved-away';
+  | 'moved-away'
+  /** D72: a hooked terminal session now runs under Switchboard (`--resume` of its id; the chat's divider "Continued in Switchboard (was a terminal session)"). */
+  | 'continued';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

@@ -32,6 +32,8 @@ import { Link } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
+import { openContinueHooked } from '../hooked-continue/store.ts';
+import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../core/hooked-continue.ts';
 import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
 import { usePairedMachines } from '../takeover/usePairedMachines.ts';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
@@ -464,6 +466,11 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     items.push({ label: 'Move up', testId: 'sidebar-menu-up', run: () => step(-1), disabled: stepPosition(stored, visible, session.id, -1) === null });
     items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
     items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
+    // D72: a hooked terminal session continues as a Switchboard-run one (on the machine whose terminal it is).
+    if (offersHookedContinue(session)) {
+      const title = session.displayTitle ?? session.title ?? session.name;
+      items.push({ label: CONTINUE_HOOKED_LABEL, testId: 'sidebar-menu-continue-hooked', run: () => openContinueHooked({ sessionId: session.id, title, machineName: session.machine?.name ?? null }) });
+    }
     // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.
     if (offersTakeover(session)) {
       const title = session.displayTitle ?? session.title ?? session.name;

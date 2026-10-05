@@ -213,6 +213,11 @@ export const api = {
   dismissUpdate: (version: string) => request<UpdateStatus>('POST', '/api/updates/dismiss', { version } satisfies UpdateVersionInput),
   /** D33: reopen a closed session (no process starts). */
   reopenSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/reopen`),
+  /** D72: Continue in Switchboard of a hooked terminal session; 409 `terminal-running` until called with the stop confirmed. */
+  continueHookedSession: (id: string, confirmStopTerminal = false) =>
+    request<Session>('POST', `/api/sessions/${enc(id)}/continue-in-switchboard`, confirmStopTerminal ? { confirmStopTerminal: true } : {}),
+  /** D72: Resend of a message marked not sent (its terminal ended before taking it up). */
+  resendMessage: (id: string, eventId: number) => request<void>('POST', `/api/sessions/${enc(id)}/events/${eventId}/resend`, {}),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),
   /** M4.1: a warning answers 409 `attach-warning` (`AttachWarning` body) until called again with `confirm`. */

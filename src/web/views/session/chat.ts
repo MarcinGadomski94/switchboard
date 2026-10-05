@@ -113,6 +113,8 @@ export type ChatItem =
       readonly attachments: readonly Attachment[];
       /** Fix · long messages: a subagent's prompt stored cut (the bubble offers its whole text); `null` otherwise. */
       readonly cut: CutRef | null;
+      /** D72: the message never reached the terminal it was handed to (Resend). */
+      readonly notSent?: boolean;
     }
   /**
    * Agent text (left) with the step lines that followed it; `text` is empty when
@@ -306,6 +308,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         queued: user.queued ?? null,
         attachments: user.attachments ?? [],
         cut: null,
+        // D72: handed to a hooked session's terminal that ended first: "Not sent" with Resend.
+        ...(user.notSent ? { notSent: true } : {}),
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {
@@ -344,6 +348,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // D65: a session taken over from another machine starts with "Taken over from <machine>"; the one it left ends with "Moved to <machine>".
       if ((lifecycle.action === 'taken-over' || lifecycle.action === 'moved-away') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.action === 'taken-over' ? (lifecycle.machine ?? null) : null, to: lifecycle.action === 'moved-away' ? (lifecycle.machine ?? null) : null });
+      }
+      // D72: a hooked terminal session continued in Switchboard: "Continued in Switchboard (was a terminal session)".
+      if (lifecycle.action === 'continued' && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
       }
     } else {
       const mark = stepMark(event);

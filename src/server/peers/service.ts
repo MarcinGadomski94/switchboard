@@ -103,6 +103,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   // D50: Stop (interrupt) and the background-task stop work on a peer's session too.
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
+  // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.
+  ['POST', /^\/api\/sessions\/[^/]+\/continue-in-switchboard$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model)$/],
   ['GET', /^\/api\/inbox$/],
@@ -909,7 +912,9 @@ export class PeerService implements PeerHandlers {
     // D57: an upload (up to 20 MiB over the tailnet) takes the long limit too.
     const long =
       (method === 'POST' && (path === '/api/sessions' || path.startsWith('/api/takeover/') || path.startsWith('/api/branching/') || path.startsWith('/api/hooks/') || path.startsWith('/api/schedules') || path.split('?')[0]?.endsWith('/attachments'))) ||
-      path.endsWith('/hook');
+      path.endsWith('/hook') ||
+      // D72: stopping a running terminal's claude takes up to its grace time plus the wait for it to leave the registry.
+      path.split('?')[0]?.endsWith('/continue-in-switchboard') === true;
     const kind = peerAnswerKind(method, path);
     // D48 ruling D48-cache-persist: a session's detail and its (whole) events are kept as last known and read while the machine is away.
     const snapshot = snapshotOf(method, path, kind);

@@ -12,6 +12,8 @@ import { statusColor } from '../shell/format.ts';
 import { actionErrorText } from './session/session-header.ts';
 import { CONTINUE_IN_SWITCHBOARD, moveSelectedLabel, pruneSelection, showsDialog } from './history-move.ts';
 import { MoveDialog } from './MoveDialog.tsx';
+import { openContinueHooked } from '../hooked-continue/store.ts';
+import { CONTINUE_HOOKED_LABEL } from '../../core/hooked-continue.ts';
 import { useConversationMoves } from './useConversationMoves.ts';
 import './history.css';
 
@@ -246,6 +248,18 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
   const movable = item.terminal === true && item.sessionId === null;
   // D33: a closed Switchboard session can be reopened.
   const closed = typeof item.closedAt === 'string' && item.sessionId !== null;
+  // D72: a hooked terminal session (open or closed: continuing reopens it) can continue as a Switchboard-run session.
+  const hooked = item.hooked === true && item.sessionId !== null;
+  const continueHooked = hooked ? (
+    <button
+      type="button"
+      className="sb-button sb-hist-continue"
+      data-testid="history-continue-hooked"
+      onClick={() => item.sessionId && openContinueHooked({ sessionId: item.sessionId, title: item.displayTitle ?? item.name, machineName: null })}
+    >
+      {CONTINUE_HOOKED_LABEL}
+    </button>
+  ) : null;
   const outcome = (
     <span className="sb-hist-outcome" style={{ color: statusColor(item.status) }}>
       {item.outcome}
@@ -260,6 +274,7 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
       data-status={item.status}
       data-terminal={movable ? 'true' : undefined}
       data-closed={closed ? 'true' : undefined}
+      data-hooked={hooked ? 'true' : undefined}
     >
       <span className="sb-hist-date">
         {movable ? (
@@ -309,12 +324,18 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
             {CONTINUE_IN_SWITCHBOARD}
           </button>
         </div>
+      ) : hooked && !closed ? (
+        <div className="sb-hist-outcol">
+          {outcome}
+          {continueHooked}
+        </div>
       ) : closed ? (
         <div className="sb-hist-outcol">
           {outcome}
           <button type="button" className="sb-button sb-hist-continue" data-testid="history-reopen" disabled={reopening} aria-busy={reopening || undefined} onClick={onReopen}>
             {REOPEN_LABEL}
           </button>
+          {continueHooked}
           {reopenError ? (
             <span className="sb-hist-reopen-error" role="alert" data-testid="history-reopen-error">
               {reopenError}

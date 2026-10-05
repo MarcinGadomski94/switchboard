@@ -2,6 +2,7 @@ import { FirstRunGate } from '../modals/FirstRunGate.tsx';
 import { ModalHost } from '../modals/ModalHost.tsx';
 import { type Route, useRouter } from '../router.tsx';
 import { TakeoverHost } from '../takeover/TakeoverDialog.tsx';
+import { ContinueHookedHost } from '../hooked-continue/ContinueHookedDialog.tsx';
 import { ToastHost } from '../toast/ToastHost.tsx';
 import { UpdateBanner } from '../updates/UpdateBanner.tsx';
 import { ArtifactsView } from '../views/ArtifactsView.tsx';
@@ -65,6 +66,8 @@ export function Shell() {
       <ModalHost />
       {/* D65: the take-over dialog (a session taken over to / from a paired machine). */}
       <TakeoverHost />
+      {/* D72: Continue in Switchboard of a hooked terminal session. */}
+      <ContinueHookedHost />
       <FirstRunGate />
     </div>
   );

@@ -213,6 +213,16 @@
   color: var(--text-strong);
 }
 
+/* D72: "Continue in Switchboard" in a hooked session's note: a link-styled button (the note's own size). */
+.sb-sv-hooked-continue {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
 /*
  * D24 · Remote Control (not in the prototype): the header's Remote toggle, styled
  * as the header actions next to it (the SPEC tokens), green (status done) while on;
@@ -1185,6 +1195,17 @@ a.sb-agent--link:focus-visible {
   line-height: 16px;
   color: var(--muted-3);
   text-align: right;
+}
+
+/* D72: "Not sent" under a message its terminal never took up, with a link-styled Resend. */
+.sb-chat-resend {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-strong);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .sb-chat-message[data-queued-note='true'] .sb-chat-queued {

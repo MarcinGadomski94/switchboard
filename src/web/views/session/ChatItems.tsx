@@ -1,4 +1,7 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
+import { NOT_SENT_NOTE, RESEND_LABEL } from '../../../core/hooked-continue.ts';
+import { ApiError, api } from '../../api/client.ts';
+import { actionErrorText } from './session-header.ts';
 import type { AnswerBatch } from '../../../core/api.ts';
 import { closedBatchText } from '../../../core/session-close.ts';
 import { MessageAttachments } from '../../components/Attachments.tsx';
@@ -71,6 +74,42 @@ function QueuedClock({ reason, note = null }: { readonly reason: QueuedReason; r
   );
 }
 
+/**
+ * D72: under a message handed to a hooked session's terminal that ended before
+ * taking it up (after Continue in Switchboard): "Not sent" and **Resend**, which
+ * queues it to the now Switchboard-run session (the bubble then gives way to the new one).
+ */
+function NotSentNote({ sessionId, eventId }: { readonly sessionId: string; readonly eventId: number }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resend = (): void => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    api.resendMessage(sessionId, eventId).then(
+      () => setBusy(false),
+      (caught: unknown) => {
+        setBusy(false);
+        setError(caught instanceof ApiError ? actionErrorText(caught.status, caught.body) : actionErrorText(0, null));
+      },
+    );
+  };
+  return (
+    <div className="sb-chat-queued-note sb-chat-not-sent" data-testid="chat-not-sent">
+      {NOT_SENT_NOTE}{' '}
+      <button type="button" className="sb-chat-resend" data-testid="chat-resend" disabled={busy} aria-busy={busy || undefined} onClick={resend}>
+        {RESEND_LABEL}
+      </button>
+      {error ? (
+        <span role="alert" data-testid="chat-resend-error">
+          {' '}
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** Props of {@link ChatItemView}. */
 export interface ChatItemViewProps {
   readonly sessionId: string;
@@ -97,6 +136,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         data-delivered={item.delivered ? 'true' : 'false'}
         data-queued={item.queued ?? undefined}
         data-queued-note={item.queued && queuedNote ? 'true' : undefined}
+        data-not-sent={item.notSent ? 'true' : undefined}
       >
         {item.text !== '' || item.attachments.length === 0 ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
@@ -112,6 +152,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             {queuedNote}
           </div>
         ) : null}
+        {item.notSent ? <NotSentNote sessionId={sessionId} eventId={item.id} /> : null}
       </div>
     );
   }

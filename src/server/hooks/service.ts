@@ -29,7 +29,8 @@ import { LatestThrottle } from '../supervisor/activity-throttle.ts';
 import type { LoopEventInput } from '../../core/derive/loops.ts';
 import { TranscriptLoopEvents } from '../loops/terminal.ts';
 import { HookInstallError, hooksState, installHooks, readHookSettings, removeHooks } from './installer.ts';
-import { type StopHow, type StopProcessOptions, stopProcess } from './terminal-stop.ts';
+import { type StopHow, type StopProcessOptions, processAlive, stopProcess } from './terminal-stop.ts';
+import { type TerminalLiveness, judgeTerminal } from '../../core/hooked-continue.ts';
 
 /**
  * D48 P4 "hook into hand-started terminal sessions" (`docs/peers.md` → *Hooked
@@ -487,6 +488,60 @@ export class HookService {
     } catch (error) {
       throw new HookError(502, 'stop-failed', `could not stop the terminal's claude (pid ${row.pid}): ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * D72: whether a hooked session's terminal `claude` still runs ({@link judgeTerminal}):
+   * the live registry asked fresh, the hooks' SessionEnd, the pid the hook reported
+   * (is it alive?) and the last hook call. `null` when the session is not hooked.
+   */
+  async terminalLiveness(sessionId: string): Promise<TerminalLiveness | null> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record || !record.hooked) return null;
+    const terminal = this.#terminals.get(record.claudeSessionId);
+    const pid = terminal?.pid ?? null;
+    const alive = this.#stopOptions.alive ?? processAlive;
+    return judgeTerminal({
+      registry: await this.#listAgents(true),
+      claudeSessionId: record.claudeSessionId,
+      ended: terminal?.ended === true,
+      hookPid: pid,
+      hookPidAlive: pid === null || !Number.isInteger(pid) || pid <= 1 ? null : alive(pid),
+      lastHookAt: terminal?.lastHookAt ?? null,
+      now: this.#now(),
+    });
+  }
+
+  /** D72: imports what the hooked session's transcript (and its subagents' files) still has (the last sync before it is continued). */
+  async syncNow(sessionId: string): Promise<void> {
+    await this.#syncNow(sessionId, false);
+  }
+
+  /**
+   * D72: the hooked session `sessionId` was continued in Switchboard (it is no longer
+   * hooked): its waiter ends (the explicit stop, 204), its held permission calls get
+   * no decision (their Inbox items go stale), and what this service kept about its
+   * terminal is dropped; its live line ends. Later hook calls for its conversation
+   * (Switchboard's own process now) are answered at once.
+   */
+  async released(sessionId: string, claudeSessionId: string): Promise<void> {
+    this.#supervised.add(claudeSessionId);
+    const waiter = this.#waiters.get(claudeSessionId);
+    if (waiter) this.#finishWaiter(waiter, { status: 204, body: null });
+    for (const request of [...this.#requests.values()]) {
+      if (request.sessionId === sessionId && !request.done) this.#withdraw(request, false);
+    }
+    this.#terminals.delete(claudeSessionId);
+    this.#awaitingTurn.delete(claudeSessionId);
+    this.#limiters.delete(claudeSessionId);
+    this.#waiterSeen.delete(claudeSessionId);
+    const timer = this.#pumpTimers.get(claudeSessionId);
+    if (timer) clearTimeout(timer);
+    this.#pumpTimers.delete(claudeSessionId);
+    this.#statusJson.delete(sessionId);
+    this.#sizes.delete(sessionId);
+    if (this.#activity.get(sessionId)?.value) this.#activityEvents.get(sessionId)?.push(null);
+    this.#activity.delete(sessionId);
   }
 
   /** `true` when `sessionId` is an open hooked session. */
@@ -1175,7 +1230,8 @@ export class HookService {
 
   async #setStatus(sessionId: string, status: SessionStatus): Promise<void> {
     const record = await this.#store.sessions.get(sessionId);
-    if (!record || record.status === status) return;
+    // D72: a session continued in Switchboard meanwhile is the supervisor's (a poll that started before must not mark it).
+    if (!record || !record.hooked || record.status === status) return;
     await this.#store.sessions.update(sessionId, { status });
     const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
     if (main) await this.#store.agents.update(main.id, { status });

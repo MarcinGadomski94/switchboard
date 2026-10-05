@@ -55,6 +55,7 @@ import { ACTIVITY_INTERVAL_MS, LatestThrottle } from './activity-throttle.ts';
 import { LiveRemote, RemoteControlError } from './remote.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { closeNeedsConfirm } from '../../core/session-close.ts';
+import { CONTINUED_DIVIDER } from '../../core/hooked-continue.ts';
 import { withSolutions } from '../../core/session-solutions.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
@@ -1717,6 +1718,44 @@ export class SessionSupervisor {
     return this.#get(sessionId);
   }
 
+  /**
+   * D72 (`docs/peers.md` → *Continuing a hooked session in Switchboard*): the hooked
+   * terminal session `sessionId` (whose terminal `claude` the caller confirmed gone)
+   * becomes a Switchboard-run session **in place**: the same record (id, title,
+   * sidebar place, todos, events, attachments, account / profile) stops being hooked,
+   * is attached, runs in `cwd` (canonical; the caller checked it) and is resumed with
+   * `--resume <its id>` and the usual injections (standing instruction, the todo MCP
+   * tools, the account's env), **no** message (idle), the chat's divider
+   * {@link CONTINUED_DIVIDER} recorded with the spawn. When the spawn fails the
+   * record is put back as it was and the error thrown.
+   * @throws {SupervisorError} `not-found`, `not-available` (not hooked, or not Claude Code), `closed`, `closing`, `folder-missing`, `cli-unavailable`.
+   */
+  async continueHooked(sessionId: string, cwd: string): Promise<SessionRecord> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    if (!session.hooked) throw new SupervisorError('not-available', `${session.title ?? session.name} is not a hooked terminal session`);
+    if (session.provider !== 'claude') throw new SupervisorError('not-available', 'only Claude Code sessions are hooked');
+    this.#assertNotClosed(session);
+    if (this.#live.has(sessionId)) throw new SupervisorError('already-running', `${session.title ?? session.name} already runs under Switchboard`);
+    const canonical = await canonicalFolder(cwd);
+    const before = { hooked: session.hooked, attached: session.attached, cwd: session.cwd, root: session.root, status: session.status, pid: session.pid };
+    await this.#store.sessions.update(sessionId, { hooked: false, attached: true, detachedAt: null, cwd: canonical, root: session.root ?? canonical, status: 'idle', pid: null });
+    await this.#setMainAgentStatus(sessionId, 'idle');
+    try {
+      this.#assertOpen();
+      const live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'continued');
+      await this.#enqueue(live, () => this.#refreshStatus(live));
+    } catch (error) {
+      await this.#stopLive(sessionId);
+      await this.#store.sessions.update(sessionId, before).catch((cause: unknown) => this.#onError(cause));
+      await this.#setMainAgentStatus(sessionId, before.status).catch((cause: unknown) => this.#onError(cause));
+      throw error;
+    }
+    await this.#emitSession(sessionId);
+    return this.#get(sessionId);
+  }
+
   // ── remote sessions continued locally (D25, docs/supervisor.md → Teleport) ─
 
   /**
@@ -2804,4 +2843,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'account-switched': 'Switched account',
   'taken-over': 'Taken over from another machine',
   'moved-away': 'Moved to another machine',
+  continued: CONTINUED_DIVIDER,
 };

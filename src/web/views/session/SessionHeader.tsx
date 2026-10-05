@@ -12,6 +12,8 @@ import { useLiveMachine } from '../../api/useMachines.ts';
 import { MachineStatusNote } from '../../components/MachineStatusNote.tsx';
 import { Link, type SessionTab, useRouter } from '../../router.tsx';
 import { TakeoverAction } from '../../takeover/TakeoverAction.tsx';
+import { openContinueHooked } from '../../hooked-continue/store.ts';
+import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../../core/hooked-continue.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { moveLinkId, movedToLabel, takenOverLabel } from '../../../core/takeover.ts';
 import { statusColor } from '../../shell/format.ts';
@@ -270,6 +272,20 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       {hooked ? (
         <div className="sb-sv-remote-copy" data-testid="session-hooked-note">
           {HOOKED_NOTE}
+          {/* D72: make it a Switchboard-run session (its terminal's claude is stopped first, with a confirmation). */}
+          {session && offersHookedContinue(session) && !blocked ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="sb-sv-remote-copy-link sb-sv-hooked-continue"
+                data-testid="session-continue-hooked"
+                onClick={() => openContinueHooked({ sessionId, title: session.displayTitle ?? session.title ?? session.name, machineName: session.machine?.name ?? null })}
+              >
+                {CONTINUE_HOOKED_LABEL}
+              </button>
+            </>
+          ) : null}
           {/* D53: no hook listening yet (or the session ended): messages wait, and why. */}
           {hookedDeliveryNote(session) ? (
             <>
