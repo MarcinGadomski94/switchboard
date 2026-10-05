@@ -40,12 +40,13 @@ export interface TerminalRunningRefusal {
 }
 
 /**
- * Whether a session offers **Continue in Switchboard**: an open hooked session
- * (this machine's, or a reachable paired machine's) that was not moved away.
+ * Whether a session offers **Continue in Switchboard**: a hooked session, open or
+ * closed (this machine's, or a reachable paired machine's), that was not moved away.
  */
 export function offersHookedContinue(session: Pick<Session, 'hooked' | 'closedAt' | 'movedTo' | 'machine'>): boolean {
   if (session.hooked !== true) return false;
-  if ((session.closedAt ?? null) !== null || session.movedTo) return false;
+  // D72 ruling (2026-10-05): a closed (unhooked) one too: continuing reopens it first. A session taken over elsewhere never.
+  if (session.movedTo) return false;
   if (session.machine && offlineReason(session.machine) !== null) return false;
   return true;
 }
@@ -102,24 +103,42 @@ export interface UnseenBubble {
   readonly text: string;
 }
 
+/** What happens to the messages the model never saw ({@link splitUnseen}). */
+export interface UnseenSplit {
+  /** Bubbles of mailbox messages: withdrawn, their texts go to the new process (with the mailbox's own order). */
+  readonly resent: readonly number[];
+  /** Bubbles handed to a waiter that never reached the transcript: shown as not sent, with Resend. */
+  readonly notSent: readonly number[];
+  /** The texts sent to the new process as one message: the mailbox, in its order. */
+  readonly texts: readonly string[];
+}
+
 /**
- * The messages the new process gets (ASSUMED D72-pending: nothing is lost, nothing
- * is sent twice): every message still in the mailbox (`pending_messages` kind
- * `hook-message`, never handed to a waiter), and every bubble that was handed to a
- * waiter but never reached the transcript (the terminal ended first: the model
- * never saw it). Bubbles are matched to mailbox entries by their text (each entry
- * once); the unmatched (handed) ones come first (they are older), then the
- * mailbox in its order.
+ * D72 (developer ruling 2026-10-05, D72-pending): the mailbox (`pending_messages`
+ * kind `hook-message`, never handed to a waiter) goes to the new process; a bubble
+ * handed to a waiter that never reached the transcript (the terminal ended first)
+ * is **not** sent again by itself: it is marked not sent, with **Resend**. Bubbles
+ * are matched to mailbox entries by their text (each entry once); a mailbox entry
+ * without a bubble (a stale question's answers) is sent too.
  */
-export function messagesToResend(bubbles: readonly UnseenBubble[], mailbox: readonly string[]): string[] {
+export function splitUnseen(bubbles: readonly UnseenBubble[], mailbox: readonly string[]): UnseenSplit {
   const left = new Map<string, number>();
   for (const text of mailbox) left.set(text.trim(), (left.get(text.trim()) ?? 0) + 1);
-  const handed: string[] = [];
+  const resent: number[] = [];
+  const notSent: number[] = [];
   for (const bubble of bubbles) {
     const key = bubble.text.trim();
     const count = left.get(key) ?? 0;
-    if (count > 0) left.set(key, count - 1);
-    else handed.push(bubble.text);
+    if (count > 0) {
+      left.set(key, count - 1);
+      resent.push(bubble.eventId);
+    } else notSent.push(bubble.eventId);
   }
-  return [...handed, ...mailbox].filter((text) => text.trim() !== '');
+  return { resent, notSent, texts: mailbox.filter((text) => text.trim() !== '') };
 }
+
+/** The bubble's note after Continue in Switchboard when its message never reached the model. */
+export const NOT_SENT_NOTE = 'Not sent: the terminal ended before it took this message up.';
+
+/** The note's button. */
+export const RESEND_LABEL = 'Resend';

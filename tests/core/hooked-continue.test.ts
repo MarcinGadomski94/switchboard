@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildHistoryRows } from '../../src/core/history.ts';
-import { HOOK_GRACE_MS, type TerminalFacts, judgeTerminal, messagesToResend, offersHookedContinue } from '../../src/core/hooked-continue.ts';
+import { HOOK_GRACE_MS, type TerminalFacts, judgeTerminal, offersHookedContinue, splitUnseen } from '../../src/core/hooked-continue.ts';
 import { peerAnswerKind } from '../../src/core/peer-wire.ts';
 import { peerApiAllowed } from '../../src/server/peers/service.ts';
 
@@ -36,30 +36,31 @@ describe('D72: judging the terminal', () => {
   });
 });
 
-describe('D72: the messages the new process gets', () => {
-  it('the mailbox, plus handed bubbles the transcript never showed (first), each text once', () => {
-    expect(messagesToResend([], [])).toEqual([]);
-    expect(messagesToResend([{ eventId: 1, text: 'a' }, { eventId: 2, text: 'b' }], ['a', 'b'])).toEqual(['a', 'b']);
+describe('D72: the messages the model never saw (developer ruling: handed ones show as not sent)', () => {
+  it('the mailbox goes to the new process (its bubbles give way); a bubble handed to the terminal is marked not sent', () => {
+    expect(splitUnseen([], [])).toEqual({ resent: [], notSent: [], texts: [] });
+    expect(splitUnseen([{ eventId: 1, text: 'a' }, { eventId: 2, text: 'b' }], ['a', 'b'])).toEqual({ resent: [1, 2], notSent: [], texts: ['a', 'b'] });
     // `old` was handed to a waiter (no longer in the mailbox) and never reached the transcript.
-    expect(messagesToResend([{ eventId: 1, text: 'old' }, { eventId: 2, text: 'new' }], ['new'])).toEqual(['old', 'new']);
+    expect(splitUnseen([{ eventId: 1, text: 'old' }, { eventId: 2, text: 'new' }], ['new'])).toEqual({ resent: [2], notSent: [1], texts: ['new'] });
     // Same text twice: each mailbox entry matches one bubble.
-    expect(messagesToResend([{ eventId: 1, text: 'ok' }, { eventId: 2, text: 'ok' }], ['ok'])).toEqual(['ok', 'ok']);
+    expect(splitUnseen([{ eventId: 1, text: 'ok' }, { eventId: 2, text: 'ok' }], ['ok'])).toEqual({ resent: [1], notSent: [2], texts: ['ok'] });
     // A mailbox entry without a bubble (a stale question's answers) still goes.
-    expect(messagesToResend([], ['answers'])).toEqual(['answers']);
+    expect(splitUnseen([], ['answers'])).toEqual({ resent: [], notSent: [], texts: ['answers'] });
   });
 });
 
 describe('D72: who offers it', () => {
   const base = { hooked: true, closedAt: null, movedTo: null, machine: null };
-  it('an open hooked session (this machine\'s, or a reachable peer\'s)', () => {
+  it('a hooked session, open or closed (this machine\'s, or a reachable peer\'s), not one taken over elsewhere', () => {
     expect(offersHookedContinue(base)).toBe(true);
     expect(offersHookedContinue({ ...base, hooked: false })).toBe(false);
-    expect(offersHookedContinue({ ...base, closedAt: '2026-10-05T00:00:00.000Z' })).toBe(false);
+    expect(offersHookedContinue({ ...base, closedAt: '2026-10-05T00:00:00.000Z' })).toBe(true);
+    expect(offersHookedContinue({ ...base, closedAt: '2026-10-05T00:00:00.000Z', movedTo: { machineId: 'abcdefghijkl', machineName: 'pc', sessionId: 's', at: '2026-10-05T00:00:00.000Z' } })).toBe(false);
     expect(offersHookedContinue({ ...base, machine: { id: 'abcdefghijkl', name: 'pc', state: 'online' } })).toBe(true);
     expect(offersHookedContinue({ ...base, machine: { id: 'abcdefghijkl', name: 'pc', state: 'offline' } })).toBe(false);
   });
 
-  it('History marks an open hooked session\'s row (not a closed one\'s)', () => {
+  it('History marks a hooked session\'s row, open or closed', () => {
     const session = (id: string, extra: Record<string, unknown>) => ({
       id,
       name: id,
@@ -78,7 +79,7 @@ describe('D72: who offers it', () => {
       ...extra,
     });
     const rows = buildHistoryRows({ sessions: [session('open', { hooked: true }), session('shut', { hooked: true, closedAt: '2026-10-05T11:00:00.000Z' }), session('plain', {})], transcripts: [], roots: [], caseInsensitive: false, now: NOW });
-    expect(Object.fromEntries(rows.map((row) => [row.item.name, row.item.hooked ?? false]))).toEqual({ open: true, shut: false, plain: false });
+    expect(Object.fromEntries(rows.map((row) => [row.item.name, row.item.hooked ?? false]))).toEqual({ open: true, shut: true, plain: false });
   });
 });
 

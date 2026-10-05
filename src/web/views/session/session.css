@@ -1197,6 +1197,17 @@ a.sb-agent--link:focus-visible {
   text-align: right;
 }
 
+/* D72: "Not sent" under a message its terminal never took up, with a link-styled Resend. */
+.sb-chat-resend {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-strong);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .sb-chat-message[data-queued-note='true'] .sb-chat-queued {
   bottom: 34px;
 }

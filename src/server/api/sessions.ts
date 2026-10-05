@@ -353,6 +353,13 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
     return outcome.session;
   });
+  // D72 (additive): Resend of a message marked not sent (handed to a terminal that ended first) → 202;
+  // 404 `not-found`, 409 `not-resendable` / `hooked-unavailable` / the supervisor's refusals.
+  app.post<{ Params: IdParams & { eventId: string } }>('/api/sessions/:id/events/:eventId/resend', async (request, reply) => {
+    const outcome = await continuer.resend(request.params.id, request.params.eventId);
+    if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+    return reply.code(202).send();
+  });
 
   app.post<{ Params: IdParams }>('/api/sessions/:id/detach', async (request, reply): Promise<ResumeCommand | FastifyReply> => {
     if (await isHooked(context, request.params.id)) return hookedRefusal(reply, 'detach');

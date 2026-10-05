@@ -105,6 +105,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
   // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.
   ['POST', /^\/api\/sessions\/[^/]+\/continue-in-switchboard$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model)$/],
   ['GET', /^\/api\/inbox$/],

@@ -1609,8 +1609,9 @@ export interface HistoryItem {
   readonly provider?: CliProviderId;
   readonly nativeId?: string;
   /**
-   * Additive (D72): `true` on an open hooked terminal session's row: it offers
-   * **Continue in Switchboard** (`POST /api/sessions/{id}/continue-in-switchboard`).
+   * Additive (D72): `true` on a hooked terminal session's row (open or closed): it
+   * offers **Continue in Switchboard** (`POST /api/sessions/{id}/continue-in-switchboard`;
+   * a closed one is reopened first).
    * Absent otherwise.
    */
   readonly hooked?: boolean;

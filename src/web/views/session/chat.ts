@@ -113,6 +113,8 @@ export type ChatItem =
       readonly attachments: readonly Attachment[];
       /** Fix · long messages: a subagent's prompt stored cut (the bubble offers its whole text); `null` otherwise. */
       readonly cut: CutRef | null;
+      /** D72: the message never reached the terminal it was handed to (Resend). */
+      readonly notSent?: boolean;
     }
   /**
    * Agent text (left) with the step lines that followed it; `text` is empty when
@@ -306,6 +308,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         queued: user.queued ?? null,
         attachments: user.attachments ?? [],
         cut: null,
+        // D72: handed to a hooked session's terminal that ended first: "Not sent" with Resend.
+        ...(user.notSent ? { notSent: true } : {}),
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {

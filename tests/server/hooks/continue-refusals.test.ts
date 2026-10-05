@@ -18,7 +18,8 @@ import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '
 /**
  * D72 refusals over the real routes (`inject`, no process is ever started): a stop
  * that fails leaves everything as it was (still hooked, nothing sent, the reason
- * shown); a registry that cannot be read is "unknown", never "gone".
+ * shown); a registry that cannot be read is "unknown", never "gone". (A closed
+ * hooked session is reopened and converted: `continue.test.ts`.)
  */
 
 const PORT = 4962;
@@ -121,14 +122,5 @@ describe('D72: refusals that change nothing', () => {
     expect(answer.json()).toMatchObject({ error: 'terminal-unknown' });
     expect(r.signals).toEqual([]);
     expect(((await api(r, 'GET', `/api/sessions/${hooked.id}`)).json() as Session).hooked).toBe(true);
-  });
-
-  it('a closed (unhooked) session: 409 closed', async () => {
-    const r = await setup();
-    const hooked = (await api(r, 'POST', `/api/terminal-sessions/${CS}/hook`)).json() as Session;
-    expect((await api(r, 'POST', `/api/sessions/${hooked.id}/close`, { confirm: true })).statusCode).toBe(200);
-    const answer = await api(r, 'POST', `/api/sessions/${hooked.id}/continue-in-switchboard`, {});
-    expect(answer.statusCode).toBe(409);
-    expect(answer.json()).toMatchObject({ error: 'closed' });
   });
 });

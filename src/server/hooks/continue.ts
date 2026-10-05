@@ -2,7 +2,7 @@ import { realpath } from 'node:fs/promises';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { Session } from '../../core/api.ts';
 import type { UserPayload } from '../../core/event-payload.ts';
-import { type TerminalLiveness, type UnseenBubble, messagesToResend } from '../../core/hooked-continue.ts';
+import { type TerminalLiveness, type UnseenBubble, splitUnseen } from '../../core/hooked-continue.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus } from '../hub/bus.ts';
@@ -49,8 +49,9 @@ function supervisorStatus(error: SupervisorError): number {
  * (`POST /api/sessions/{id}/continue-in-switchboard`, `docs/peers.md` →
  * *Continuing a hooked session in Switchboard (D72)*):
  *
- * 1. refused unless the session is an open hooked one (409 `not-hooked` / `closed`),
- *    and its folder exists (409 `folder-missing`);
+ * 1. refused unless the session is a hooked one (409 `not-hooked`; 409 `closed` only
+ *    when it was taken over elsewhere) and its folder exists (409 `folder-missing`);
+ *    a closed (unhooked) one is reopened (D33) right before it is converted;
  * 2. **the terminal**: judged from the live registry, SessionEnd, the hook's pid
  *    (`HookService.terminalLiveness`). Unknown → 409 `terminal-unknown` (never taken
  *    as gone). Running without `confirmStopTerminal` → 409 `terminal-running` (with
@@ -62,10 +63,11 @@ function supervisorStatus(error: SupervisorError): number {
  *    Switchboard-run session (`SessionSupervisor.continueHooked`: `--resume`, no
  *    message, the divider), its hook state is released (waiter, held permission
  *    calls, live line);
- * 4. **messages the model never saw** (ASSUMED D72-pending): the mailbox's
- *    `hook-message`s and bubbles handed to a waiter but missing from the transcript
- *    go to the new process as one message ({@link messagesToResend}); their old
- *    bubbles are withdrawn (the chat shows the new one after the divider instead).
+ * 4. **messages the model never saw** (developer ruling D72-pending, {@link splitUnseen}):
+ *    the mailbox's `hook-message`s go to the new process as one message (their old
+ *    bubbles are withdrawn, the new one follows the divider); a bubble handed to a
+ *    waiter that never reached the transcript is marked `notSent` (the chat's
+ *    **Resend**, {@link HookedContinuer.resend}).
  *
  * One continue runs at a time (a second call waits for the first, then finds the
  * session no longer hooked: 409 `not-hooked`).
@@ -109,7 +111,8 @@ export class HookedContinuer {
     if (!record) return refused(404, 'not-found', `no session ${sessionId}`);
     const name = record.title ?? record.name;
     if (!record.hooked) return refused(409, 'not-hooked', `${name} is not a hooked terminal session: it already runs under Switchboard (or never ran in a terminal)`);
-    if (record.closedAt !== null) return refused(409, 'closed', `${name} is closed (unhooked): reopen it first`);
+    // D72 ruling (2026-10-05): a closed (unhooked) session is offered too and reopened first (below); one taken over elsewhere never.
+    if (record.movedTo) return refused(409, 'closed', `${name} was taken over to ${record.movedTo.machineName}: continue it there`);
     const folder = record.cwd ?? record.root;
     if (!folder) return refused(409, 'folder-missing', `${name} has no known folder (its terminal never reported one), so it cannot run here`);
     let cwd: string;
@@ -146,6 +149,8 @@ export class HookedContinuer {
     const mailbox = (await this.#store.pendingMessages.pending(sessionId)).filter((message) => message.kind === HOOK_MESSAGE_KIND);
     let continued: SessionRecord;
     try {
+      // D33 reopen semantics: `closedAt` cleared, the `reopened` lifecycle line; no process starts here.
+      if (record.closedAt !== null) await this.#supervisor.reopen(sessionId);
       continued = await this.#supervisor.continueHooked(sessionId, cwd);
     } catch (error) {
       if (error instanceof SupervisorError) return refused(supervisorStatus(error), error.code, `Not continued: ${error.message}`);
@@ -153,11 +158,13 @@ export class HookedContinuer {
     }
     await this.#hooks.released(sessionId, record.claudeSessionId);
 
-    // D72-pending: what the model never saw goes to the new process once; the old bubbles give way to the new one.
-    const resend = messagesToResend(bubbles, mailbox.map((message) => message.text));
+    // D72-pending (developer ruling 2026-10-05): the mailbox goes to the new process once (its bubbles give way to the
+    // new one); a message handed to the terminal that never reached it is shown as not sent, with Resend.
+    const split = splitUnseen(bubbles, mailbox.map((message) => message.text));
     for (const message of mailbox) await this.#store.pendingMessages.markDelivered(message.id);
-    for (const bubble of bubbles) await this.#withdraw(bubble.eventId);
-    if (resend.length > 0) continued = await this.#supervisor.sendMessage(sessionId, resend.join('\n\n'), 'user');
+    for (const eventId of split.resent) await this.#patch(eventId, (payload) => ({ ...payload, withdrawn: true }));
+    for (const eventId of split.notSent) await this.#patch(eventId, (payload) => ({ ...payload, notSent: true }));
+    if (split.texts.length > 0) continued = await this.#supervisor.sendMessage(sessionId, split.texts.join('\n\n'), 'user');
     return { ok: true, session: await toSession(this.#store, continued, this.#supervisor.activity(sessionId)) };
   }
 
@@ -182,12 +189,42 @@ export class HookedContinuer {
     return out;
   }
 
-  /** A waiting bubble gives way (D50's `withdrawn`: the chat no longer shows it; its text went out again). */
-  async #withdraw(eventId: number): Promise<void> {
+  /** Changes a waiting bubble (it loses the D44 clock) and publishes it. */
+  async #patch(eventId: number, change: (payload: Omit<UserPayload, 'queued'>) => UserPayload): Promise<void> {
     const event = await this.#store.events.get(eventId);
     if (!event) return;
     const { queued: _queued, ...rest } = event.payload as UserPayload;
-    const updated = await this.#store.events.update(eventId, { payload: { ...rest, withdrawn: true } });
+    const updated = await this.#store.events.update(eventId, { payload: change(rest) });
     if (updated) this.#bus.publish('event', { sessionId: updated.sessionId, event: toEvent(updated) });
   }
+
+  /**
+   * D72 **Resend** (`POST /api/sessions/{id}/events/{eventId}/resend`): a bubble marked
+   * not sent goes to the (now Switchboard-run) session as a new message; the old bubble
+   * gives way (D50's `withdrawn`) once it was sent.
+   */
+  async resend(sessionId: string, eventIdText: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly status: number; readonly body: { readonly error: string; readonly message: string } }> {
+    const record = await this.#store.sessions.get(sessionId);
+    if (!record) return { ok: false, status: 404, body: { error: 'not-found', message: `no session ${sessionId}` } };
+    const eventId = /^[1-9][0-9]{0,15}$/.test(eventIdText) ? Number(eventIdText) : Number.NaN;
+    const event = Number.isNaN(eventId) ? null : await this.#store.events.get(eventId);
+    const payload = event && event.sessionId === sessionId ? (event.payload as Partial<UserPayload> | null) : null;
+    if (!event || !payload) return { ok: false, status: 404, body: { error: 'not-found', message: `no message ${eventIdText} in session ${sessionId}` } };
+    if (payload.type !== 'user' || payload.notSent !== true || payload.withdrawn === true) {
+      return { ok: false, status: 409, body: { error: 'not-resendable', message: 'only a message marked not sent can be sent again' } };
+    }
+    if (record.hooked) return { ok: false, status: 409, body: { error: 'hooked-unavailable', message: 'continue the session in Switchboard first' } };
+    try {
+      await this.#supervisor.sendMessage(sessionId, payload.sentText ?? payload.text ?? '', 'user');
+    } catch (error) {
+      if (error instanceof SupervisorError) return { ok: false, status: supervisorStatus(error), body: { error: error.code, message: error.message } };
+      throw error;
+    }
+    await this.#patch(eventId, (rest) => {
+      const { notSent: _notSent, ...kept } = rest;
+      return { ...kept, withdrawn: true };
+    });
+    return { ok: true };
+  }
+
 }

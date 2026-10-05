@@ -37,3 +37,22 @@ describe('D72: the chat\'s divider', () => {
     expect(items[1]).toMatchObject({ text: CONTINUED_DIVIDER, from: null, to: null });
   });
 });
+
+describe('D72: a message its terminal never took up', () => {
+  it('its bubble stays, marked not sent (the Resend note); one that was resent is gone', () => {
+    const event = (id: number, payload: unknown): SessionEvent => ({ id, sessionId: 's', agentId: null, ts: `2026-10-05T00:00:0${id}.000Z`, endTs: null, kind: 'text', label: 'x', payload });
+    const items = chatItems(
+      [
+        event(1, { type: 'user', text: 'handed', origin: 'user', delivered: false, notSent: true }),
+        event(2, { type: 'user', text: 'resent', origin: 'user', delivered: false, withdrawn: true }),
+        event(3, { type: 'user', text: 'plain', origin: 'user', delivered: true }),
+      ],
+      [],
+      null,
+    );
+    expect(items.map((item) => (item.kind === 'user' ? [item.text, item.notSent ?? false] : item.kind))).toEqual([
+      ['handed', true],
+      ['plain', false],
+    ]);
+  });
+});

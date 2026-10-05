@@ -1024,13 +1024,15 @@ A hooked terminal session (D48 P4) becomes a Switchboard-run session **in place*
 
 | Method | Path | Body | Answers |
 |---|---|---|---|
-| POST | /api/sessions/{id}/continue-in-switchboard | ContinueHookedInput `{ confirmStopTerminal?: boolean }` (empty / `{}` = not confirmed) | 200 Session (the same id, `hooked: false`, `attached: true`) · 404 `not-found` · 409 `not-hooked` · 409 `closed` (reopen it first) · 409 `folder-missing` · 409 `terminal-unknown` (whether the terminal's `claude` runs cannot be told; never taken as gone) · 409 **`terminal-running`** `{ error, message, pid }` until `confirmStopTerminal: true` · 502 `stop-failed` / `agents-unavailable` (the stop failed: nothing else changed) · 422 `invalid` |
+| POST | /api/sessions/{id}/continue-in-switchboard | ContinueHookedInput `{ confirmStopTerminal?: boolean }` (empty / `{}` = not confirmed) | 200 Session (the same id, `hooked: false`, `attached: true`; a closed one is reopened first, D33) · 404 `not-found` · 409 `not-hooked` · 409 `closed` (only when it was taken over to another machine) · 409 `folder-missing` · 409 `terminal-unknown` (whether the terminal's `claude` runs cannot be told; never taken as gone) · 409 **`terminal-running`** `{ error, message, pid }` until `confirmStopTerminal: true` · 502 `stop-failed` / `agents-unavailable` (the stop failed: nothing else changed) · 422 `invalid` |
 
 - **Terminal running + confirmed:** the D65 terminal stop (`claude agents --json` names the pid; SIGTERM, SIGKILL after 10 s; Windows `taskkill /T`, `/F` after 10 s), then a bounded wait (15 s) until the registry no longer lists it.
 - **Then:** the transcript's last turns are imported; the session is resumed with `--resume <claudeSessionId>` in its cwd with the usual injections (standing instruction, the `switchboard` todo tools, the account's env), no message (idle), and the chat event `lifecycle` `action: "continued"`, label `Continued in Switchboard (was a terminal session)` (a divider). Its waiter ends (204), held PermissionRequest calls get no decision (their Inbox items go stale).
-- **Messages the model never saw** (the mailbox's `hook-message`s, and bubbles handed to a waiter that never reached the transcript) go to the new process as one user message; their old events get `withdrawn: true`.
-- **HistoryItem** gains `hooked?: true` on an open hooked session's row (it offers the action).
-- **Peers (D48):** on `PEER_API_ALLOW`; called with a remote id it runs on the terminal's machine and answers the Session mapped to the remote id (the long peer timeout).
+| POST | /api/sessions/{id}/events/{eventId}/resend | — | 202 (the message is queued to the session; the old event gets `withdrawn: true`) · 404 `not-found` · 409 `not-resendable` (not a message marked not sent) · 409 `hooked-unavailable` · the supervisor's refusals |
+
+- **Messages the model never saw** (developer ruling 2026-10-05): the mailbox's `hook-message`s (never handed to a waiter) go to the new process as one user message and their old events get `withdrawn: true`; an event handed to a waiter that never reached the transcript is **not** sent again by itself: its **UserPayload** gains `notSent: true` (the bubble's "Not sent" note with **Resend** = the route above).
+- **HistoryItem** gains `hooked?: true` on a hooked session's row, open or closed (it offers the action).
+- **Peers (D48):** both routes are on `PEER_API_ALLOW`; called with a remote id they run on the terminal's machine and answers the Session mapped to the remote id (the long peer timeout).
 
 ```json
 { "error": "terminal-running", "message": "pc-terminal's claude is still running in its terminal (pid 4242): continuing it here stops it there first. Confirm to stop it and continue.", "pid": 4242 }

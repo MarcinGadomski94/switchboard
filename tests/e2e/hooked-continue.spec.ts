@@ -1,9 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type BrowserContext, expect, test } from '@playwright/test';
 import type { Session } from '../../src/core/api.ts';
-import { CONTINUED_DIVIDER } from '../../src/core/hooked-continue.ts';
+import { CONTINUED_DIVIDER, NOT_SENT_NOTE } from '../../src/core/hooked-continue.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type PeerNode, startPeerNode } from '../helpers/peers.ts';
 import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '../helpers/transcripts.ts';
@@ -20,6 +20,8 @@ import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '
  *   with ■ Stop in the composer.
  * - History (the terminal already gone): the row's **Continue in Switchboard**
  *   converts at once and opens the session; the sidebar row's ⋯ menu offered it too.
+ * - A message handed to the terminal that never took it up: after the continue its
+ *   bubble says "Not sent" with **Resend**, which queues it to the session.
  */
 
 const CS = '9a8b7c6d-aaaa-4bbb-8ccc-0123456789ab';
@@ -126,4 +128,40 @@ test('History: the terminal is gone, the row\'s Continue in Switchboard converts
   await expect(page.getByTestId('session-chat').getByTestId('chat-divider')).toHaveText([CONTINUED_DIVIDER]);
   await expect(page.getByTestId('session-pause')).toBeVisible();
   await expect(page.getByTestId('session-hooked-note')).toHaveCount(0);
+});
+
+test('a message the terminal never took up: "Not sent" with Resend after the continue; Resend sends it to the session', async ({ browser }) => {
+  const n = node as PeerNode;
+  const { session, exited } = await hookedTerminal(n);
+  const cwd = n.repo as string;
+  const pid = terminal?.pid as number;
+  const token = (await readFile(path.join(n.dataDir, 'hook-token'), 'utf8')).trim();
+  const hook = (kind: string, event: Record<string, unknown>) =>
+    fetch(`${n.baseUrl}/hook/v1/${kind}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ event: { session_id: CS, cwd, ...event }, claudePid: pid, entrypoint: 'cli' }),
+    });
+  expect((await hook('event', { hook_event_name: 'Stop' })).status).toBe(204);
+  const waiter = hook('waiter', { hook_event_name: 'Stop' });
+  expect((await n.call('POST', `/api/sessions/${session.id}/messages`, { text: 'Handed over, never seen.' })).status).toBe(202);
+  expect((await waiter).status).toBe(200);
+  terminal?.kill('SIGKILL');
+  await exited;
+  await expect.poll(async () => ((await n.call('GET', '/api/terminal-sessions')).body as unknown[]).length).toBe(0);
+
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  contexts.push(context);
+  const page = await context.newPage();
+  await page.goto(`${n.baseUrl}/sessions/${session.id}`);
+  await page.getByTestId('session-continue-hooked').click();
+  const chat = page.getByTestId('session-chat');
+  await expect(chat.getByTestId('chat-divider')).toHaveText([CONTINUED_DIVIDER], { timeout: 30_000 });
+  const handed = chat.locator('[data-testid="chat-message"][data-not-sent="true"]');
+  await expect(handed).toHaveCount(1);
+  await expect(handed.getByTestId('chat-not-sent')).toContainText(NOT_SENT_NOTE);
+  await handed.getByTestId('chat-resend').click();
+  await expect(chat.locator('[data-testid="chat-message"][data-not-sent="true"]')).toHaveCount(0);
+  await expect(chat.locator('[data-testid="chat-message"][data-role="user"]').filter({ hasText: 'Handed over, never seen.' })).toHaveCount(1);
+  await expect(chat.getByTestId('chat-text').last()).toHaveText('OK', { timeout: 15_000 });
 });

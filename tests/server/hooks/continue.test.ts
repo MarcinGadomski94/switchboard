@@ -17,9 +17,10 @@ import { assistantTextLine, lastUuid, terminalUserLine, writeTranscript } from '
  * registry entry `<config>/sessions/<pid>.json` names the conversation, as the
  * fake's `agents --json` reads it), a transcript, hook calls with the hook token.
  * Gone terminal → converted in place; running → 409 until confirmed, then stopped
- * and continued (waiter and held permission released); messages the model never
- * saw → sent to the new process; not hooked → 409; a paired machine's hooked
- * session continued through the peer API.
+ * and continued (waiter and held permission released); the mailbox → sent to the
+ * new process; a message handed to the terminal that never reached it → not sent,
+ * with Resend; a closed hooked session → reopened, then converted; not hooked →
+ * 409; a paired machine's hooked session continued through the peer API.
  */
 
 const CS = '7c1d2e3f-aaaa-4bbb-8ccc-0123456789ab';
@@ -177,6 +178,62 @@ describe('D72: Continue in Switchboard of a hooked session (this machine)', () =
     await waitFor('the resumed process', async () => (await resumedRuns(log)).argv.length === 1);
     expect(lifecycle(await events(node, hooked.id), 'continued')).toHaveLength(1);
   }, 90_000);
+
+  it('a message handed to the terminal that never reached it shows as not sent (not re-sent by itself); Resend queues it to the now Switchboard-run session', async () => {
+    const log = path.join(tmp, 'fake-claude.log');
+    const node = await startPeerNode(tmp, 'a', { repo: true, env: { FAKE_CLAUDE_LOG: log } });
+    nodes.push(node);
+    const { terminal, exited, cwd, transcript } = await terminalOn(node);
+    const pid = terminal.pid as number;
+    const hooked = await hookIn(node);
+    // A turn ended, a waiter is armed: the message is handed to it at once (the CLI would wake on it).
+    expect((await hookCall(node, 'event', { hook_event_name: 'Stop', cwd, transcript_path: transcript }, pid)).status).toBe(204);
+    const waiter = hookCall(node, 'waiter', { hook_event_name: 'Stop', cwd, transcript_path: transcript }, pid);
+    expect((await node.call('POST', `/api/sessions/${hooked.id}/messages`, { text: 'Handed over, never seen.' })).status).toBe(202);
+    expect(await waiter).toMatchObject({ status: 200 });
+    // …but the terminal ends before it takes it up (no transcript copy).
+    terminal.kill('SIGKILL');
+    await exited;
+    await waitFor('the registry to drop it', async () => ((await node.call('GET', '/api/terminal-sessions')).body as unknown[]).length === 0);
+
+    const continued = await node.call('POST', `/api/sessions/${hooked.id}/continue-in-switchboard`, {});
+    expect(continued.status, JSON.stringify(continued.body)).toBe(200);
+    await waitFor('the resumed process', async () => (await resumedRuns(log)).argv.length === 1);
+    const handed = (await events(node, hooked.id)).find((event) => (event.payload as { text?: string } | null)?.text === 'Handed over, never seen.') as SessionEvent;
+    expect(handed.payload).toMatchObject({ notSent: true, delivered: false });
+    expect(handed.payload).not.toHaveProperty('queued');
+    expect(handed.payload).not.toHaveProperty('withdrawn');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect((await resumedRuns(log)).stdin.some((line) => line.includes('Handed over, never seen.'))).toBe(false);
+
+    // Resend: queued to the session; the old bubble gives way to the new one; a second Resend is refused.
+    expect((await node.call('POST', `/api/sessions/${hooked.id}/events/${handed.id}/resend`, {})).status).toBe(202);
+    await waitFor('the resent message at the process', async () => (await resumedRuns(log)).stdin.some((line) => line.includes('Handed over, never seen.')));
+    const after = (await events(node, hooked.id)).filter((event) => (event.payload as { text?: string } | null)?.text === 'Handed over, never seen.');
+    expect(after.map((event) => [(event.payload as { withdrawn?: boolean }).withdrawn ?? false, (event.payload as { notSent?: boolean }).notSent ?? false])).toEqual([[true, false], [false, false]]);
+    expect(await node.call('POST', `/api/sessions/${hooked.id}/events/${handed.id}/resend`, {})).toMatchObject({ status: 409, body: { error: 'not-resendable' } });
+  }, 90_000);
+
+  it('a closed (unhooked) hooked session: continuing reopens it (D33), then converts it', async () => {
+    const node = await startPeerNode(tmp, 'a', { repo: true });
+    nodes.push(node);
+    const { terminal, exited } = await terminalOn(node);
+    const hooked = await hookIn(node);
+    const closed = await node.call('POST', `/api/sessions/${hooked.id}/close`, { confirm: true });
+    expect(closed.status, JSON.stringify(closed.body)).toBe(200);
+    expect((closed.body as Session).closedAt).not.toBeNull();
+    terminal.kill('SIGKILL');
+    await exited;
+    await waitFor('the registry to drop it', async () => ((await node.call('GET', '/api/terminal-sessions')).body as unknown[]).length === 0);
+
+    const continued = await node.call('POST', `/api/sessions/${hooked.id}/continue-in-switchboard`, {});
+    expect(continued.status, JSON.stringify(continued.body)).toBe(200);
+    expect(continued.body).toMatchObject({ id: hooked.id, hooked: false, attached: true, closedAt: null });
+    const list = await events(node, hooked.id);
+    expect(lifecycle(list, 'reopened')).toHaveLength(1);
+    expect(lifecycle(list, 'continued')).toHaveLength(1);
+    expect((lifecycle(list, 'reopened')[0]?.id ?? 0) < (lifecycle(list, 'continued')[0]?.id ?? 0)).toBe(true);
+  }, 60_000);
 
   it('a session that is not hooked: 409 not-hooked; an invalid body: 422', async () => {
     const node = await startPeerNode(tmp, 'a', { repo: true });

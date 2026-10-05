@@ -75,7 +75,7 @@ export interface HistorySession {
   readonly remoteSource?: string | null;
   /** D33: when the session was closed (optional: open when absent); the row carries it, and the search matches "Closed". */
   readonly closedAt?: string | null;
-  /** D72: a hooked terminal session (optional: not hooked when absent); an open one's row offers Continue in Switchboard. */
+  /** D72: a hooked terminal session (optional: not hooked when absent); its row offers Continue in Switchboard (open or closed). */
   readonly hooked?: boolean;
 }
 
@@ -262,8 +262,8 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     folderPath: session.folderPath,
     // D33: a closed session's row carries its tag and Reopen.
     closedAt: session.closedAt ?? null,
-    // D72: an open hooked terminal session's row offers Continue in Switchboard.
-    ...(session.hooked === true && (session.closedAt ?? null) === null ? { hooked: true } : {}),
+    // D72: a hooked terminal session's row offers Continue in Switchboard (a closed one's too: it is reopened first).
+    ...(session.hooked === true ? { hooked: true } : {}),
   };
   return {
     item,

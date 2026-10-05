@@ -145,7 +145,20 @@ describe('POST /api/history/{id}/continue (D16)', () => {
       const logged = await sessionSpawns(w);
       return logged.length === 1 ? logged : undefined;
     }, 'the resume spawn');
-    expect(spawns[0]?.argv).toEqual([...BASELINE, '--resume', 'term-mid', '--name', session.name, '--forward-subagent-text', '--replay-user-messages']);
+    // D68: every spawn carries the session's todo tools (the built-in `switchboard` MCP server, its config file per session).
+    expect(spawns[0]?.argv).toEqual([
+      ...BASELINE,
+      '--resume',
+      'term-mid',
+      '--mcp-config',
+      expect.stringMatching(new RegExp(`agent-mcp[\\\\/]${session.id}\\.json$`)),
+      '--allowedTools',
+      'mcp__switchboard',
+      '--name',
+      session.name,
+      '--forward-subagent-text',
+      '--replay-user-messages',
+    ]);
     expect(spawns[0]?.cwd).toBe(cwd);
     expect(spawns[0]?.pid).toBe(idle.pid);
     // No first message: the process stays idle until the developer writes.
