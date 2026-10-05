@@ -145,6 +145,11 @@ function waiter(): AttemptWaiter {
   return { promise, resolve };
 }
 
+/** The service's session order (`created_at DESC, id`). */
+function newestFirst(a: Session, b: Session): number {
+  return b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id);
+}
+
 /** One paired machine's connection and caches. */
 export class PeerConnection {
   readonly #options: PeerConnectionOptions;
@@ -556,7 +561,9 @@ export class PeerConnection {
     if (name === 'sessionUpdated') {
       const session = payload as HubEvents['sessionUpdated'];
       const rest = this.#sessions.filter((known) => known.id !== session.id);
-      this.#sessions = session.closedAt ? rest : [...rest, session].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      // The peer's own list order (newest first, `GET /api/sessions`): its rows keep their places in the sidebar (D71 fix:
+      // this was oldest first, so the rows flipped between a refresh and the next update).
+      this.#sessions = session.closedAt ? rest : [...rest, session].sort(newestFirst);
       this.#options.onCache();
     }
     if (name === 'activity') {

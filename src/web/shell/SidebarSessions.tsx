@@ -29,7 +29,7 @@ import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { Link } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
-import { MENU_GAP, MENU_MARGIN, menuTop } from './sidebar-menu.ts';
+import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
 import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
 import { usePairedMachines } from '../takeover/usePairedMachines.ts';
@@ -364,6 +364,38 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     revealed.current = currentId;
     revealInList(list, target);
   });
+
+  /**
+   * D71 fix: while a drag is held at the list's top / bottom edge, the list scrolls
+   * every frame (half the {@link dragScrollStep} per frame), until the pointer
+   * leaves the edge (the next `dragover`), the list, or the drag ends. Not left to
+   * the browser: WebKit has no drag auto-scroll for a scrolling box.
+   */
+  const scrolling = useRef<{ step: number; frame: number | null }>({ step: 0, frame: null });
+  const edgeScroll = useCallback((step: number): void => {
+    const state = scrolling.current;
+    state.step = step;
+    if (step === 0) {
+      if (state.frame !== null) cancelAnimationFrame(state.frame);
+      state.frame = null;
+      return;
+    }
+    if (state.frame !== null) return;
+    const tick = (): void => {
+      const list = listRef.current;
+      if (!list || state.step === 0) {
+        state.frame = null;
+        return;
+      }
+      list.scrollTop += state.step / 2;
+      state.frame = requestAnimationFrame(tick);
+    };
+    state.frame = requestAnimationFrame(tick);
+  }, []);
+  useEffect(() => {
+    if (!drag) edgeScroll(0);
+  }, [drag, edgeScroll]);
+  useEffect(() => () => edgeScroll(0), [edgeScroll]);
 
   const endDrag = (): void => {
     setDrag(null);
@@ -745,8 +777,15 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         className="sb-sessions"
         data-testid="sidebar-sessions"
         data-dragging={drag ? drag.kind : undefined}
+        // D71 fix: a drag held near the list's top / bottom edge scrolls it (every engine; WebKit has no drag auto-scroll here).
+        onDragOverCapture={(event) => {
+          if (drag) edgeScroll(dragScrollStep(event.clientY, event.currentTarget.getBoundingClientRect()));
+        }}
         onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(null);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setOver(null);
+            edgeScroll(0);
+          }
         }}
       >
         {showPinnedHead ? (
