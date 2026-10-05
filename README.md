@@ -1,5 +1,7 @@
 # Switchboard
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/marcingadomski94/switchboard)](https://m8ven.ai/mcp/marcingadomski94/switchboard?s=readme)
+
 <a href="https://www.paypal.com/donate/?hosted_button_id=S9P6C8KLXWRZN" target="_blank" rel="noopener noreferrer"><img src="docs/assets/buy-me-a-coffee.svg" alt="Buy me a coffee" height="48"></a>
 
 Switchboard is a local web app for running many coding-agent sessions at once: **Claude Code**, **Codex CLI** and **OpenCode**. From one window you can:
