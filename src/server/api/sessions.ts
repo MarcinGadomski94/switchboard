@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import type { AttachRequest, AttachWarning, FileDiff, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, FreshContinueResult, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
+import { FRESH_HOOKED_REASON } from '../../core/fresh-session.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
 import { HookError } from '../hooks/service.ts';
@@ -46,6 +47,8 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'not-available': 409,
   switching: 409,
   'switch-failed': 502,
+  // D83: a fresh session is offered once the running turn ends.
+  'turn-running': 409,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,
@@ -85,6 +88,8 @@ export const HOOKED_UNAVAILABLE: Readonly<Record<string, string>> = {
   remote: 'Remote Control is the terminal\'s own (/remote-control there): hooks cannot switch it.',
   detach: 'The session already runs in its terminal.',
   attach: 'Attaching would start a second process on the same conversation while the terminal holds it.',
+  // D83: no handover can be asked of a terminal's own claude, and its next session is the terminal's.
+  fresh: FRESH_HOOKED_REASON,
 };
 
 /** D48 P4: 409 `hooked-unavailable` for an action a hooked session does not take. */
@@ -314,6 +319,31 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     try {
       const record = await supervisor.resume(request.params.id);
       return await toSession(store, record, supervisor.activity(record.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D83 (additive): continue the session in a fresh one (its context filled). → 202 `{ session }` once the handover turn
+  // started; the rest runs on (`Session.freshContinue` on `sessionUpdated`; the new session's id arrives as `continuedTo`).
+  // 409 `hooked-unavailable` (a hooked terminal session), `turn-running` (a turn runs), `switching`, `closed`, `detached`.
+  app.post<{ Params: IdParams }>('/api/sessions/:id/fresh', async (request, reply): Promise<FreshContinueResult | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    if (record.hooked) return hookedRefusal(reply, 'fresh');
+    try {
+      const started = await supervisor.continueFresh(record.id, {
+        onStarted: async (from, to) => {
+          // The old session's todo list (ids and states kept) and its worktrees become the fresh session's.
+          await context.todos.moveAll(from.id, to.id);
+          await context.worktrees.assign(await store.worktrees.list({ sessionId: from.id }), to.id);
+        },
+        beforeClosePublish: (id) => context.questions.closeSession(id),
+      });
+      void started.done.then((outcome) => {
+        if (!outcome.ok) request.log.warn({ sessionId: record.id, reason: outcome.reason }, 'fresh session failed');
+      });
+      return reply.code(202).send({ session: await toSession(store, started.record, supervisor.activity(started.record.id)) });
     } catch (error) {
       return sendError(reply, error);
     }

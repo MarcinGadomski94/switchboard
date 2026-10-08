@@ -239,6 +239,10 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Save a checkpoint before each turn',
     'Let the agent fill in captured todos',
     'Standing instruction for agents',
+    // D82: the Model by task rules (off: none).
+    'Model by task',
+    // D83: the fresh-session offer (on, at 80 %).
+    'Fresh session when the context fills',
   ]);
   await expect(page.locator('.sb-set-row').getByTestId('setting-value')).toHaveText([
     "the session's folder",
@@ -247,6 +251,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'keep until merged',
     'off',
     'from AGENTS.md',
+    'on',
     'on',
     'on',
     'on',

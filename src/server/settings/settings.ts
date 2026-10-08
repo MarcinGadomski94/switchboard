@@ -14,6 +14,8 @@ import {
   isEditableSetting,
   isNewSessionMode,
 } from '../../core/settings.ts';
+import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
+import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import type { ServerConfig } from '../config.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
 import type { SettingRepository } from '../db/repos/settings.ts';
@@ -46,9 +48,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
- * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D79 `sessions.reviewCards` / D80 `sessions.checkpoints` / D81 `sessions.todoEnrich` and
+ * keys (`EDITABLE_SETTINGS`). D82's `sessions.modelRules` is a rule list (`parseModelRules`; the
+ * route then checks each model and profile, {@link checkModelRules}). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D79 `sessions.reviewCards` / D80 `sessions.checkpoints` / D81 `sessions.todoEnrich` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
- * `usage.warnAtPct` a whole number 1–100, D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
+ * `usage.warnAtPct` a whole number 1–100, D83's `sessions.freshOfferPct` a whole number 50–95 (`sessions.freshOffer` a boolean), D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
@@ -66,6 +69,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
         errors.push({ field: key, message: `${key} must be a whole number ${WARN_AT_PCT_MIN}–${WARN_AT_PCT_MAX}` });
         continue;
       }
+    } else if (key === 'sessions.freshOfferPct') {
+      // D83: the fresh-session offer's threshold.
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < FRESH_OFFER_MIN_PCT || raw > FRESH_OFFER_MAX_PCT) {
+        errors.push({ field: key, message: `${key} must be a whole number ${FRESH_OFFER_MIN_PCT}–${FRESH_OFFER_MAX_PCT}` });
+        continue;
+      }
     } else if (key === 'newSession.mode') {
       // D56: the New-session dialog's last used mode.
       if (!isNewSessionMode(raw)) {
@@ -78,6 +87,15 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
         errors.push({ field: key, message: `${key} must be text of at most ${STANDING_INSTRUCTION_MAX} characters` });
         continue;
       }
+    } else if (key === 'sessions.modelRules') {
+      // D82: the rules' shape here; whether each model / profile exists is the route's async check (`checkModelRules`).
+      const parsed = parseModelRules(raw);
+      if (!parsed.ok) {
+        errors.push(...parsed.errors);
+        continue;
+      }
+      value[key] = parsed.rules;
+      continue;
     } else if (typeof raw !== 'boolean') {
       errors.push({ field: key, message: `${key} must be true or false` });
       continue;
@@ -140,6 +158,8 @@ export async function readSettings(
       if (key === 'newSession.mode') return [key, isNewSessionMode(value) ? value : fallback];
       // D68: an earlier default text reads as the current default (it gains the todo sentence).
       if (key === 'agents.standingInstruction') return [key, typeof value === 'string' ? currentStandingInstruction(value) : fallback];
+      // D82: rules stored by an older or broken write read as none (routing off) rather than half a list.
+      if (key === 'sessions.modelRules') return [key, readModelRules(value)];
       return [key, typeof value === typeof fallback ? value : fallback];
     }),
   ) as unknown as EditableSettings;
@@ -191,4 +211,9 @@ export async function checkpointsEnabled(repo: SettingRepository): Promise<boole
 export async function todoEnrichEnabled(repo: SettingRepository): Promise<boolean> {
   const stored = (await repo.getAll())['sessions.todoEnrich'];
   return typeof stored === 'boolean' ? stored : SETTING_DEFAULTS['sessions.todoEnrich'];
+}
+
+/** D82: the stored *Model by task* rules (Settings → Sessions), in order; `[]` = off. */
+export async function modelRulesOf(repo: SettingRepository): Promise<ModelRule[]> {
+  return readModelRules((await repo.getAll())['sessions.modelRules']);
 }

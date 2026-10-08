@@ -30,10 +30,14 @@ import { InlineTitle } from '../components/InlineTitle.tsx';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { PhoneGlyph } from '../components/PhoneGlyph.tsx';
 import { FolderTag } from '../folders/FolderTag.tsx';
-import { Link } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { formatAge, modeLine, statusColor } from './format.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
+import { FRESH_ACTION_LABEL } from '../../core/fresh-session.ts';
+import { freshActionState, markFreshAsked, takeFreshAsked } from '../views/session/fresh-offer.ts';
+import { refusalText } from '../views/inbox.ts';
+import { useToasts } from '../toast/ToastHost.tsx';
 import { openContinueHooked } from '../hooked-continue/store.ts';
 import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../core/hooked-continue.ts';
 import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
@@ -168,7 +172,7 @@ interface MenuItem {
   readonly testId: string;
   readonly run: () => void;
   readonly disabled?: boolean;
-  /** D80: its tooltip (a disabled item's reason). */
+  /** D80 / D83: its tooltip (a disabled item's reason). */
   readonly title?: string;
   /** D58: a folder in a folder list is indented by its level (0 = top level). */
   readonly level?: number;
@@ -342,6 +346,8 @@ function FolderNameField({ initial, label, testId, saveOnBlur, onSave, onCancel 
  */
 export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurrent, tagOf, cliBadge, now }: SidebarSessionsProps) {
   const { layout, run, error } = useSidebarLayout();
+  const { navigate } = useRouter();
+  const { show: showToast } = useToasts();
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -584,6 +590,24 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   /** D58: every folder in tree order with its level (the "Move to folder ▸" lists). */
   const tree = arranged.folders.map(({ folder, level }) => ({ folder, level }));
 
+  /** D83: the ⋯ menu's Continue in a fresh session: the session's chat opens (its bar shows the progress), then the fresh session. */
+  const continueFresh = (session: Session): void => {
+    setMenu(null);
+    markFreshAsked(session.id);
+    navigate({ view: 'session', id: session.id, tab: 'chat' });
+    api.freshSession(session.id).catch((error: unknown) => {
+      takeFreshAsked(session.id);
+      showToast({
+        id: `fresh-refused-${session.id}`,
+        title: 'Could not continue in a fresh session',
+        sub: session.displayTitle ?? session.title ?? session.name,
+        branch: '',
+        text: error instanceof ApiError ? refusalText(error.status, error.body) : refusalText(0, null),
+        sessionId: null,
+      });
+    });
+  };
+
   const sessionMenu = (session: Session, visible: readonly string[], group: RowGroup): MenuItem[] => {
     const where = placeOf(layout, session.id);
     const items: MenuItem[] = [];
@@ -620,6 +644,17 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     if (offersHookedContinue(session)) {
       const title = session.displayTitle ?? session.title ?? session.name;
       items.push({ label: CONTINUE_HOOKED_LABEL, testId: 'sidebar-menu-continue-hooked', run: () => openContinueHooked({ sessionId: session.id, title, machineName: session.machine?.name ?? null }) });
+    }
+    // D83: continue in a fresh session (a hooked terminal session: shown disabled, its tooltip says why).
+    const fresh = freshActionState(session);
+    if (fresh.shown) {
+      items.push({
+        label: FRESH_ACTION_LABEL,
+        testId: 'sidebar-menu-fresh',
+        disabled: fresh.disabledReason !== null,
+        ...(fresh.disabledReason ? { title: fresh.disabledReason } : {}),
+        run: () => continueFresh(session),
+      });
     }
     // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.
     if (offersTakeover(session)) {

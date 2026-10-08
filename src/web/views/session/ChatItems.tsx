@@ -188,11 +188,18 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
     // D62 P5: the session switched to another CLI here.
     return (
       <div className="sb-chat-divider" data-testid="chat-divider" data-from={item.from ?? undefined} data-to={item.to ?? undefined} data-revert={item.revert} role={redo && item.revert === 'reverted' ? undefined : 'separator'}>
-        <span className="sb-chat-divider-text">
-          {item.text}
-          {/* D80: the newest revert can be undone. */}
-          {redo && item.revert === 'reverted' ? <RedoButton sessionId={sessionId} /> : null}
-        </span>
+        {/* D83: "Continued from / in <title>" opens the other session. */}
+        {item.linkedSessionId ? (
+          <Link to={{ view: 'session', id: item.linkedSessionId, tab: 'chat' }} className="sb-chat-divider-text sb-chat-divider-link" data-testid="chat-divider-link">
+            {item.text}
+          </Link>
+        ) : (
+          <span className="sb-chat-divider-text">
+            {item.text}
+            {/* D80: the newest revert can be undone. */}
+            {redo && item.revert === 'reverted' ? <RedoButton sessionId={sessionId} /> : null}
+          </span>
+        )}
       </div>
     );
   }

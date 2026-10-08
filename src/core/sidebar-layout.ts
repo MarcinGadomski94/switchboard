@@ -186,6 +186,24 @@ export function placeSession(layout: SidebarLayout, input: SidebarPlaceInput, li
   };
 }
 
+/**
+ * D83: the fresh session `newId` takes the place of the session it continues
+ * (`oldId`): pinned at its position, in its folder at its position, or at its
+ * place in the loose order; the old id leaves the layout. `null` (nothing to
+ * change) when the old session was never placed (both are then unplaced: the new
+ * one shows at the top, newest first) or the new one is placed already (it was
+ * moved since, or this ran before).
+ */
+export function inheritPlace(layout: SidebarLayout, oldId: string, newId: string): SidebarLayout | null {
+  if (isPlaced(layout, newId) || !isPlaced(layout, oldId)) return null;
+  const swap = (ids: readonly string[]): string[] => ids.map((id) => (id === oldId ? newId : id));
+  return {
+    pinned: swap(layout.pinned),
+    folders: layout.folders.map((f) => (f.sessionIds.includes(oldId) ? { ...f, sessionIds: swap(f.sessionIds) } : f)),
+    loose: swap(looseOf(layout)),
+  };
+}
+
 /** D58: the folder a folder sits in (`null` = top level). */
 export function parentOf(folder: SidebarFolder): string | null {
   return folder.parentId ?? null;

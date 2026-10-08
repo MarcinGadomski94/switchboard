@@ -20,6 +20,32 @@ export function handoverRequest(to: CliProviderId): string {
   ].join(' ');
 }
 
+/**
+ * D83 (`docs/fresh-session.md`): what Switchboard asks the agent for before it continues
+ * the session in a fresh one (the D62 handover request's shape and mechanism, same CLI).
+ */
+export function freshHandoverRequest(percent: number | null): string {
+  const full = percent === null ? 'is filling up' : `is ${Math.round(percent)}% full`;
+  return [
+    `Switchboard is continuing this session in a fresh session now: its context ${full}.`,
+    'Write a handover for the fresh session as your whole reply: the goal, the current state, the decisions made so far, the files you touched, the open questions, and the next steps; mention anything uncommitted (run `git status` to check).',
+    "Don't start new work: the fresh session continues from your handover.",
+  ].join(' ');
+}
+
+/** D83: the fresh session's first message: the handover the old session's agent wrote. */
+export function incomingFresh(input: { readonly fromTitle: string; readonly cwd: string; readonly branch: string | null; readonly handover: string }): string {
+  return [
+    `You are continuing the session "${input.fromTitle}" in a fresh session, in this folder: ${input.cwd}${input.branch ? ` (branch ${input.branch})` : ''}. Its context was filling up, so its agent wrote this handover:`,
+    '',
+    '---',
+    input.handover.trim(),
+    '---',
+    '',
+    'Read it, check `git status` for anything uncommitted, then continue with the next steps.',
+  ].join('\n');
+}
+
 /** The incoming agent's first message when the outgoing one wrote the handover. */
 export function incomingWithHandover(from: CliProviderId, to: CliProviderId, cwd: string, handover: string): string {
   return [

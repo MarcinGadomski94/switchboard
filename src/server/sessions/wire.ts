@@ -1,5 +1,5 @@
 import { sessionProfileId } from '../../core/accounts.ts';
-import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
+import type { Agent, Artifact, FileDiff, HookStatus, Question, Session, SessionActivity, SessionContext, SessionDetail, SessionEvent, SessionFreshContinue, SessionLink, SessionModel, SessionProviderSwitch, SessionRemote } from '../../core/api.ts';
 import { terminalResumeCommand } from '../../core/cli-providers.ts';
 import { sessionChips } from '../../core/derive/chips.ts';
 import { learnWindows, readContextState, resolveContext } from '../../core/context-meter.ts';
@@ -58,6 +58,8 @@ export interface SwitchSource {
   current(sessionId: string): SessionProviderSwitch | null;
   /** D63: an account switch of the session runs. */
   accountSwitching?(sessionId: string): boolean;
+  /** D83: a continuation in a fresh session runs (its step), `null` when none. */
+  fresh?(sessionId: string): SessionFreshContinue | null;
 }
 
 const switchSources = new WeakMap<Store, SwitchSource>();
@@ -218,7 +220,18 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     todoLink: record.todoLink,
     // D68: the open items of its todo list (the sidebar badge, the Todos nav count).
     openTodoCount: await store.todos.openCount(record.id),
+    // D83: continued in / from a fresh session (linked both ways), a continuation in progress.
+    continuedTo: await sessionLink(store, record.continuedTo),
+    continuedFrom: await sessionLink(store, record.continuedFrom),
+    freshContinue: switchSources.get(store)?.fresh?.(record.id) ?? null,
   };
+}
+
+/** D83: the other session of a continuation, with its display title now (`null` when it is gone); `null` without a link. */
+async function sessionLink(store: Store, id: string | null): Promise<SessionLink | null> {
+  if (id === null) return null;
+  const other = await store.sessions.get(id);
+  return { sessionId: id, title: other ? (other.title ?? other.name) : null };
 }
 
 /**

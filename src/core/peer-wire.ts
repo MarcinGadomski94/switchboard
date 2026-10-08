@@ -42,13 +42,20 @@ export function peerSession(machine: PeerMachineRef, session: Session): Session 
     machine: { id: machine.id, name: machine.name, state: machine.state },
     // D76: a run session's source session is on the same machine.
     ...(session.todoLink ? { todoLink: { ...session.todoLink, sourceSessionId: ns(machine, session.todoLink.sourceSessionId) } } : {}),
+    // D83: the other session of a continuation is on the same machine.
+    ...(session.continuedTo ? { continuedTo: { ...session.continuedTo, sessionId: ns(machine, session.continuedTo.sessionId) } } : {}),
+    ...(session.continuedFrom ? { continuedFrom: { ...session.continuedFrom, sessionId: ns(machine, session.continuedFrom.sessionId) } } : {}),
   };
 }
 
-/** A peer's {@link SessionEvent}; an AskUserQuestion call's `payload.requestId` (its batch id) is namespaced too. */
+/**
+ * A peer's {@link SessionEvent}; an AskUserQuestion call's `payload.requestId` (its batch id) is namespaced too,
+ * and D83's `payload.linkedSessionId` (the other session of a continuation, on the same machine).
+ */
 export function peerEvent(machine: PeerMachineRef, event: SessionEvent): SessionEvent {
   const payload = event.payload;
-  const mapped = isRecord(payload) && typeof payload['requestId'] === 'string' ? { ...payload, requestId: ns(machine, payload['requestId']) } : payload;
+  let mapped = isRecord(payload) && typeof payload['requestId'] === 'string' ? { ...payload, requestId: ns(machine, payload['requestId']) } : payload;
+  if (isRecord(mapped) && typeof mapped['linkedSessionId'] === 'string') mapped = { ...mapped, linkedSessionId: ns(machine, mapped['linkedSessionId']) };
   return { ...event, sessionId: ns(machine, event.sessionId), payload: mapped };
 }
 
@@ -244,6 +251,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/.test(pathname)) return 'full-event';
   // D50: the Stop's and the background stop's answers carry the session under `session`.
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/(?:interrupt|background\/stop)$/.test(pathname)) return 'wrapped';
+  // D83: Continue in a fresh session answers `{ session }` too.
+  if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/fresh$/.test(pathname)) return 'wrapped';
   const match = /^\/api\/sessions\/[^/]+(?:\/([a-z-]+))?$/.exec(pathname);
   if (!match) return 'none';
   const tail = match[1];

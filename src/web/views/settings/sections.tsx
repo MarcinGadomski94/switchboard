@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Settings } from '../../../core/api.ts';
 import type { KnownSettings } from '../../../core/settings.ts';
 import { cronLabel } from '../../../core/cron-label.ts';
 import { api } from '../../api/client.ts';
@@ -19,6 +20,13 @@ import { notificationPermission, notifyOS, playChime, requestNotifications } fro
 import { InstallAppRow } from './InstallApp.tsx';
 import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
 import { StandingInstructionRow } from './StandingInstruction.tsx';
+import { ModelRulesRow } from './ModelRulesRow.tsx';
+import { FRESH_OFFER_PCT_CHOICES } from '../../../core/fresh-session.ts';
+
+/** D83: the Settings row of the fresh-session offer. */
+export const FRESH_SETTING_LABEL = 'Fresh session when the context fills';
+export const FRESH_SETTING_DESCRIPTION =
+  'Above the message box, offer to continue in a fresh session once the context reaches this share of the window: the agent writes a handover, the new session takes over the place, todos and pin, and this one is closed';
 import { StartAtLoginToggle } from './StartAtLogin.tsx';
 
 /**
@@ -72,10 +80,13 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
   );
 }
 
-/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder, D80's checkpoints and D64's standing instruction for agents. */
-export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
+/**
+ * Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder,
+ * D79's review cards, D80's checkpoints, D81's captured-todo fill-in, D83's fresh-session offer, D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
+ */
+export function SessionsSection({ settings, save, onSaved }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.reviewCards' | 'sessions.checkpoints' | 'sessions.todoEnrich'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.reviewCards' | 'sessions.checkpoints' | 'sessions.todoEnrich' | 'sessions.freshOffer'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -141,6 +152,31 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         <ToggleValue label="Let the agent fill in captured todos" value={settings['sessions.todoEnrich']} disabled={busy} onToggle={() => flip('sessions.todoEnrich')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
+      {/* D82: the ordered rules that pick the CLI, model, effort and account a todo runs with. */}
+      <ModelRulesRow settings={settings} onSaved={(body) => onSaved?.(body)} />
+      {/* D83: offer "Continue in a fresh session" above the composer once a session's context reaches the threshold. */}
+      <Row id="fresh-offer" label={FRESH_SETTING_LABEL} description={FRESH_SETTING_DESCRIPTION}>
+        <span className="sb-set-fresh">
+          <select
+            className="sb-set-select"
+            data-testid="fresh-offer-threshold"
+            aria-label="Offer it at (% of the context window)"
+            value={settings['sessions.freshOfferPct']}
+            disabled={busy || !settings['sessions.freshOffer']}
+            onChange={(event) => {
+              setBusy(true);
+              void save({ 'sessions.freshOfferPct': Number(event.target.value) }).finally(() => setBusy(false));
+            }}
+          >
+            {FRESH_OFFER_PCT_CHOICES.map((pct) => (
+              <option key={pct} value={pct}>
+                at {pct}%
+              </option>
+            ))}
+          </select>
+          <ToggleValue label={FRESH_SETTING_LABEL} value={settings['sessions.freshOffer']} disabled={busy} onToggle={() => flip('sessions.freshOffer')} />
+        </span>
+      </Row>
     </>
   );
 }

@@ -145,6 +145,13 @@ export interface SessionRecord {
   readonly movedFrom: SessionMove | null;
   /** D76 (0032): set on a todo's run session: the source session and the item it works on. */
   readonly todoLink: TodoLink | null;
+  /**
+   * D83 (0036): set on the **old** session once it was continued in a fresh one (the
+   * id of the new session; the old one is closed): "Continued in <new session>".
+   */
+  readonly continuedTo: string | null;
+  /** D83 (0036): set on the **new** session: the session it continues ("Continued from <old session>"). */
+  readonly continuedFrom: string | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -229,6 +236,8 @@ const SPEC: TableSpec<SessionRecord> = {
     movedTo: ['moved_to', 'json'],
     movedFrom: ['moved_from', 'json'],
     todoLink: ['todo_link', 'json'],
+    continuedTo: ['continued_to', 'text'],
+    continuedFrom: ['continued_from', 'text'],
   },
 };
 

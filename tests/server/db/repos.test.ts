@@ -99,6 +99,8 @@ describe('sessions', () => {
       movedFrom: null,
       // D76 (0032): not a todo's run session.
       todoLink: null,
+      continuedTo: null,
+      continuedFrom: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

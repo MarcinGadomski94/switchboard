@@ -1185,6 +1185,44 @@ POST /api/sessions/0b7c3e0a-…/todos/capture { "title": "Look at the checkout f
 { "sessionId": "0b7c3e0a-…", "openCount": 1, "doneCount": 0, "inProgressCount": 0, "todos": [{ "id": "7d2e9a01b4c3", "title": "Look at the checkout flicker", "description": "> The checkout page flickers when the cart updates.", "plan": "No plan", "priority": "medium", "estimateMinutes": null, "needsEnrichment": true, "capturedFrom": "selection", "…": "…" }] }
 ```
 
+## Model by task (D82, 2026-10-08, additive)
+
+Settings → Sessions → *Model by task* (`docs/model-routing.md`, `docs/decisions.md` → D82): ordered rules that pick the CLI, model, effort and account a todo runs with by its priority and estimate. No new route: the rules are the editable setting **`sessions.modelRules`** of `GET` / `PUT /api/settings` (default `[]` = off). No migration.
+
+- **`ModelRule`**: `id` (1–64 characters, unique), `priority` (`any` / `urgent` / `high` / `medium` / `low`), `estimate` (`{ kind: "any" }`, `{ kind: "at-most", minutes }`, `{ kind: "more-than", minutes }` or `{ kind: "unknown" }`; minutes 1–10080), and any of `provider` (`claude` / `codex` / `opencode`), `model`, `effort`, `profileId`; at least one of them; a `model` / `effort` / `profileId` needs the `provider`. At most 50 rules; the first that matches wins.
+- **`PUT /api/settings`** with `sessions.modelRules` answers 422 `invalid` with `errors[].field` = `sessions.modelRules[<i>]` / `…[<i>].<part>` for a bad shape, a model the CLI does not offer (its reported list, `GET /api/models?provider=`, else Claude Code's aliases / another CLI's `default`), an effort the model lacks, or an account that is not one of that CLI's enabled profiles. Nothing is stored on a refusal. Devices may save it (`PUT /api/settings` is on their allow-list); it is not on the peer API.
+
+```json
+PUT /api/settings
+{ "sessions.modelRules": [
+  { "id": "r1", "priority": "low", "estimate": { "kind": "at-most", "minutes": 30 }, "provider": "claude", "model": "sonnet" },
+  { "id": "r2", "priority": "any", "estimate": { "kind": "more-than", "minutes": 120 }, "provider": "codex", "profileId": "a1b2…" }
+] }
+```
+
+## Continue in a fresh session (D83, 2026-10-08, additive)
+
+When a supervised session's context fills, it can continue in a fresh session (`docs/fresh-session.md`, `docs/decisions.md` → D83): the agent writes a handover in one turn, a new session starts in the same folder / worktree / branch on the same CLI, model, effort and account with the handover as its first message, takes the old one's sidebar place, todo list and pin, and the old one is closed. Migration 0036 adds `sessions.continued_to` / `continued_from`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/fresh | `{}` (none needed) | 202 `FreshContinueResult` `{ session }` (the old session, `freshContinue: { step: "handover" }`) once the handover was asked for; the rest runs on, its progress on `sessionUpdated` · 404 `not-found` · 409 `hooked-unavailable` (a hooked terminal session; the message says why) · 409 `turn-running` (a turn runs or waits: offered once it ends) · 409 `switching` (a CLI / account switch or a continuation runs) · 409 `closed` / `detached` · 503 `closing` |
+
+- **`Session.continuedTo`** / **`continuedFrom`** (additive): `SessionLink` `{ sessionId, title }` — on the old (closed) session the fresh one ("Continued in <title>"), on the fresh one the old one ("Continued from <title>"); `title` is `null` once that session was deleted; `null` / absent otherwise. A paired machine's are namespaced (`r~<machine>~<id>`).
+- **`Session.freshContinue`** (additive): `{ step: "handover" | "starting" }` while a continuation runs, `null` / absent otherwise. Messages to the session are refused meanwhile (409 `switching`).
+- **Lifecycle events** (`LifecyclePayload.action`, additive): `continued-from` (the fresh session's first divider, label `Continued from <old title>`) and `continued-in` (the old session's, `Continued in <new title>`; kind `error` with `message` when a continuation failed: `Could not continue in a fresh session: <why>`), both with `linkedSessionId` (namespaced for a peer's) and `linkedTitle`.
+- **Settings** (additive, editable): `sessions.freshOffer` (boolean, default `true`) and `sessions.freshOfferPct` (whole number 50–95, default 80; 422 otherwise).
+- **`HistoryItem.continuedTo`** / **`continuedFrom`** (additive): the same links on a stored session's History row.
+- **The fresh session:** name `<old name>-<n>` and title `<old title> (<n>)` (a continued session counts on), the old one's folder, cwd, branch, branching, CLI, model, effort, account and pin; a new conversation of its CLI; its todos are the old session's (moved: ids and states kept) and so are its worktrees.
+- **Peers (D48):** the route is on `PEER_API_ALLOW`; its answer is mapped `wrapped`. **Devices (D73):** on `DEVICE_ALLOWED`.
+
+```json
+POST /api/sessions/0b7c3e0a-…/fresh
+{}
+→ 202 { "session": { "id": "0b7c3e0a-…", "status": "run", "freshContinue": { "step": "handover" }, "continuedTo": null, "…": "…" } }
+sessionUpdated (later, the old session) { "id": "0b7c3e0a-…", "closedAt": "2026-10-08T10:02:00.000Z", "continuedTo": { "sessionId": "5e1f…", "title": "Fix login (2)" }, "freshContinue": null, "…": "…" }
+```
+
 ## Clean-up (D84, 2026-10-08, additive)
 Developer ruling D84 (`docs/decisions.md`, `docs/cleanup.md`): Settings → Clean-up lists what Switchboard created and no longer needs and removes only what the developer ticks and confirms. Types: `src/core/cleanup.ts`. No migration (the closed-session limit and the created-branches record are settings values). **This machine only:** every route answers a peer request 403 `peer-forbidden` (not on `PEER_API_ALLOW`) and a paired device 403 `local-only` (`DEVICE_REFUSED`).
 

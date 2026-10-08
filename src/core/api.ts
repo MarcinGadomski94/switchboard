@@ -11,6 +11,7 @@
  * refine them, additively where it can, and must keep the server and the UI in
  * step because both import this file.
  */
+import type { FreshStep } from './fresh-session.ts';
 import type { CliProviderId, HandoverSource } from './cli-providers.ts';
 import type { Attachment } from './attachments.ts';
 import type { AccountProfile, AccountSettings } from './accounts.ts';
@@ -724,6 +725,37 @@ export interface Session {
   readonly openTodoCount?: number;
   /** Additive (D76, migration 0032): set on a todo's run session: the item it works on (its agent may mark that one item). */
   readonly todoLink?: TodoLink | null;
+  /**
+   * Additive (D83, migration 0036, `docs/fresh-session.md`): the session this one was
+   * continued in (set on the old, closed session: "Continued in <title>") and the one it
+   * continues (on the new session: "Continued from <title>"). A paired machine's ids are
+   * namespaced like the session's. `title` is `null` when that session is gone. Absent /
+   * `null` otherwise.
+   */
+  readonly continuedTo?: SessionLink | null;
+  readonly continuedFrom?: SessionLink | null;
+  /** Additive (D83): a continuation in a fresh session in progress (the offer bar's progress); `null` / absent when none runs. */
+  readonly freshContinue?: SessionFreshContinue | null;
+}
+
+/** Additive (D83): the other session of a continuation. */
+export interface SessionLink {
+  readonly sessionId: string;
+  /** Its display title, `null` when it no longer exists. */
+  readonly title: string | null;
+}
+
+/** Additive (D83): a continuation in progress: the agent writes the handover, then the fresh session starts. */
+export interface SessionFreshContinue {
+  readonly step: FreshStep;
+}
+
+/**
+ * Additive (D83): `POST /api/sessions/{id}/fresh` → 202 once the continuation started
+ * (the handover turn runs on; the new session's id arrives as `continuedTo` on `sessionUpdated`).
+ */
+export interface FreshContinueResult {
+  readonly session: Session;
 }
 
 /** Additive (D65): the other end of a take-over. `sessionId` is raw (on `machineId`); a link to it is `r~<machineId>~<sessionId>` unless `machineId` is this machine. */
@@ -1620,6 +1652,13 @@ export interface HistoryItem {
    * Absent otherwise.
    */
   readonly hooked?: boolean;
+  /**
+   * Additive (D83): on a stored session's row, the session it was continued in (the
+   * closed old session's "Continued in …" link) and the one it continues ("Continued
+   * from …"). Absent otherwise.
+   */
+  readonly continuedTo?: SessionLink | null;
+  readonly continuedFrom?: SessionLink | null;
 }
 
 /**

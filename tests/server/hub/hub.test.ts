@@ -114,6 +114,10 @@ const SESSION_KEYS = keys<Session>()([
   'openTodoCount',
   // additive, D76 (a todo's run session)
   'todoLink',
+  // additive, D83 (continued in / from a fresh session, a continuation running)
+  'continuedTo',
+  'continuedFrom',
+  'freshContinue',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',
@@ -252,7 +256,11 @@ beforeAll(async () => {
       hub: { keepaliveMs: 150, systemIntervalMs: 200 },
     }),
   ));
+  // Before any client: the app's own bus listeners.
+  ownListeners = bus.listenerCount;
 });
+
+let ownListeners = 0;
 
 afterEach(() => {
   for (const stream of streams.splice(0)) stream.close();
@@ -560,16 +568,10 @@ describe('/hub · events (contract, field by field)', () => {
 
 describe('/hub · disconnects', () => {
   it('a client that goes away is dropped: the hub leaves the bus and stops asking for system info', async () => {
-    // The app's own services listen too (D75's todo reminder, D79's review cards): the hub adds one while a client is connected.
-    // Earlier tests' streams may still be leaving: wait until the count settles first.
-    let services = bus.listenerCount;
-    for (const settleBy = Date.now() + 5_000; Date.now() < settleBy; ) {
-      await new Promise((r) => setTimeout(r, 200));
-      if (bus.listenerCount === services) break;
-      services = bus.listenerCount;
-    }
+    // The app's own listeners (D75's todo reminder, D76's review link, D79's review cards, D80's checkpoints, D81's enricher, D83's fresh-session places) stay; the hub's comes and goes.
+    const own = ownListeners;
     const stream = await connect();
-    expect(bus.listenerCount).toBe(services + 1);
+    expect(bus.listenerCount).toBe(own + 1);
     stream.close();
     streams.length = 0;
     await openHub({ port, cookie }).then((probe) => {
@@ -578,8 +580,8 @@ describe('/hub · disconnects', () => {
       probe.close();
     });
     const deadline = Date.now() + 5_000;
-    while (bus.listenerCount !== services && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
-    expect(bus.listenerCount).toBe(services);
+    while (bus.listenerCount !== own && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    expect(bus.listenerCount).toBe(own);
     const calls = systemCalls;
     await new Promise((r) => setTimeout(r, 600));
     expect(systemCalls).toBe(calls);

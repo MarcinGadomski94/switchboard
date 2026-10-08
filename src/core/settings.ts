@@ -8,6 +8,8 @@
  * itself (configuration, files, constants). `PUT` takes any subset of the
  * editable keys.
  */
+import { FRESH_OFFER_DEFAULT_PCT } from './fresh-session.ts';
+import { type ModelRule, readModelRules } from './model-routing.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
 export interface KnownSettings {
@@ -54,6 +56,19 @@ export interface KnownSettings {
    * Editable, default `true`.
    */
   readonly 'sessions.todoEnrich': boolean;
+  /**
+   * D82: Settings → Sessions → *Model by task*: the ordered rules that pick the CLI,
+   * model, effort and account a todo is run with (`docs/model-routing.md`). Editable,
+   * default `[]` (off until the developer adds a rule).
+   */
+  readonly 'sessions.modelRules': readonly ModelRule[];
+  /**
+   * D83: offer **Continue in a fresh session** when a supervised session's context reaches
+   * {@link KnownSettings['sessions.freshOfferPct']} (`docs/fresh-session.md`). Editable, default `true`.
+   */
+  readonly 'sessions.freshOffer': boolean;
+  /** D83: the offer's threshold, % of the context window (whole, 50–95). Editable, default 80. */
+  readonly 'sessions.freshOfferPct': number;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -131,7 +146,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -153,6 +168,9 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.reviewCards': true,
   'sessions.checkpoints': true,
   'sessions.todoEnrich': true,
+  'sessions.modelRules': [],
+  'sessions.freshOffer': true,
+  'sessions.freshOfferPct': FRESH_OFFER_DEFAULT_PCT,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -183,6 +201,9 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.reviewCards': bool('sessions.reviewCards', SETTING_DEFAULTS['sessions.reviewCards']),
     'sessions.checkpoints': bool('sessions.checkpoints', SETTING_DEFAULTS['sessions.checkpoints']),
     'sessions.todoEnrich': bool('sessions.todoEnrich', SETTING_DEFAULTS['sessions.todoEnrich']),
+    'sessions.modelRules': readModelRules(value['sessions.modelRules']),
+    'sessions.freshOffer': bool('sessions.freshOffer', SETTING_DEFAULTS['sessions.freshOffer']),
+    'sessions.freshOfferPct': num('sessions.freshOfferPct', SETTING_DEFAULTS['sessions.freshOfferPct']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

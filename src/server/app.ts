@@ -33,6 +33,7 @@ import { sessionMessageSender } from './api/todos.ts';
 import { CheckpointService } from './checkpoints/service.ts';
 import { folderOfSession } from './folders/ref.ts';
 import { TodoEnricher } from './todos/enricher.ts';
+import { FreshPlaces } from './sessions/fresh-place.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -438,6 +439,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       ),
     );
   }
+  // D83: a fresh session takes the sidebar place of the session it continues (this machine's and a paired machine's).
+  const freshPlaces = new FreshPlaces({ bus, sidebar: options.store.sidebar, synced: (changes) => peers.sidebarChanged(changes) });
+  app.addHook('onReady', async () => {
+    freshPlaces.start();
+  });
+  app.addHook('onClose', async () => {
+    await freshPlaces.stop();
+  });
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
   const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });

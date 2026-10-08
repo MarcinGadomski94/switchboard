@@ -445,6 +445,20 @@ export class TodoRepository {
     });
   }
 
+  /**
+   * D83: moves every item of `fromSessionId` to `toSessionId` (a session continued in a
+   * fresh one): ids, states, times and order are kept, after any items the target has.
+   * Answers how many moved.
+   */
+  async moveAll(fromSessionId: string, toSessionId: string): Promise<number> {
+    return transaction(this.#ctx.db, () => {
+      const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(toSessionId);
+      const offset = Number(row?.['next'] ?? 0);
+      const moved = this.#ctx.db.prepare('UPDATE session_todos SET session_id = ?, position = position + ? WHERE session_id = ?').run(toSessionId, offset, fromSessionId);
+      return Number(moved.changes);
+    });
+  }
+
   /** The earliest `done_at` of any done item, `null` when there is none. */
   async earliestDone(): Promise<string | null> {
     const row = this.#ctx.db.prepare(`SELECT MIN(done_at) AS at FROM session_todos WHERE state = 'done'`).get();

@@ -519,6 +519,19 @@ export class TodoService {
     return count;
   }
 
+  /**
+   * D83: the old session's whole list moves to the fresh session that continues it
+   * (ids and states kept); both lists are published. Answers how many moved.
+   */
+  async moveAll(fromSessionId: string, toSessionId: string): Promise<number> {
+    const moved = await this.#store.todos.moveAll(fromSessionId, toSessionId);
+    if (moved > 0) {
+      await this.#publish(fromSessionId);
+      await this.#changed(toSessionId);
+    }
+    return moved;
+  }
+
   /** Removes the done items whose hour has passed, publishes for their sessions, and re-arms the timer. */
   async sweep(): Promise<void> {
     if (this.#closed) return;

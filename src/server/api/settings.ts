@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { KnownSettings } from '../../core/settings.ts';
+import { checkRuleTargets } from '../../core/model-routing.ts';
 import type { ApiContext } from '../routes.ts';
+import { readModelOptionsSetting } from '../settings/models.ts';
 import { readSettings, validateSettingsPatch } from '../settings/settings.ts';
 import type { PendingRoute } from './not-implemented.ts';
 
@@ -15,20 +17,31 @@ export const SETTINGS_ROUTES_PENDING: readonly PendingRoute[] = [];
  *   PR poll interval, start at login);
  * - `PUT /api/settings` → stores any subset of the editable keys in one
  *   transaction and answers like `GET`; `422 {error:"invalid", errors}` for a
- *   read-only or unknown key or a wrong value, and nothing changes;
+ *   read-only or unknown key or a wrong value, and nothing changes; D82's
+ *   `sessions.modelRules` is also checked against each CLI's model list and
+ *   its enabled account profiles (`checkRuleTargets`);
  * - `GET /api/models` (additive, D42) → `{ options, last }`: the latest model
  *   list any claude process reported and the developer's last model choice, the
  *   service's own settings (`settings/models.ts`), which the New-session form's
  *   Model row offers and starts on. Read-only: the service writes them.
  */
 export async function registerSettingsRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const { store, config, folders } = context;
+  const { store, config, folders, accounts } = context;
 
   app.get('/api/settings', async (): Promise<KnownSettings> => readSettings(store.settings, config, await folders.defaultRecord()));
 
   app.put('/api/settings', async (request, reply): Promise<KnownSettings | FastifyReply> => {
     const result = validateSettingsPatch(request.body);
     if (!result.ok) return reply.code(422).send({ error: 'invalid', errors: result.errors });
+    // D82: each rule's model must exist for its CLI and its account be one of that CLI's enabled profiles.
+    const rules = result.value['sessions.modelRules'];
+    if (rules) {
+      const problems = await checkRuleTargets(rules, {
+        models: (provider) => readModelOptionsSetting(store.settings, provider),
+        profile: async (id) => (await accounts.find(id)) ?? null,
+      });
+      if (problems.length > 0) return reply.code(422).send({ error: 'invalid', errors: problems });
+    }
     await store.settings.setMany(result.value);
     return readSettings(store.settings, config, await folders.defaultRecord());
   });

@@ -1,0 +1,50 @@
+/* D83: the fresh-session offer, a bar right above the composer (docs/fresh-session.md). */
+.sb-fresh-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 22px;
+  border-top: 1px solid var(--border-divider);
+  background: var(--question-bg);
+  font-size: 12.5px;
+  color: var(--text);
+  min-width: 0;
+}
+
+/* The composer's "+ Todo" (an empty todo list) sits over the bar's right end: keep the buttons clear of it. */
+.sb-fresh-offer[data-reserve-todo] {
+  padding-right: 96px;
+}
+
+.sb-fresh-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sb-fresh-offer[data-state='running'] /* The composer's "+ Todo" (an empty todo list) sits over the bar's right end: keep the buttons clear of it. */
+.sb-fresh-offer[data-reserve-todo] {
+  padding-right: 96px;
+}
+
+.sb-fresh-text {
+  color: var(--text-2);
+}
+
+.sb-fresh-buttons {
+  display: inline-flex;
+  gap: 8px;
+  flex: none;
+}
+
+.sb-fresh-buttons .sb-button {
+  font-size: 12px;
+}
+
+.sb-fresh-error {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--status-fail);
+  overflow-wrap: anywhere;
+}

@@ -244,7 +244,11 @@ export type LifecycleAction =
   /** D80: the developer reverted the session's files to before turn `turn` (the chat's divider "Reverted to before turn N"). */
   | 'reverted'
   /** D80: the newest revert was undone (Redo; the chat's divider "Undid the revert to before turn N"). */
-  | 'revert-undone';
+  | 'revert-undone'
+  /** D83: the new session of a continuation started (the chat's divider "Continued from <old session>"; `linkedSessionId`, `linkedTitle`). */
+  | 'continued-from'
+  /** D83: the session was continued in a fresh one and closed (the divider "Continued in <new session>"; `linkedSessionId`, `linkedTitle`). */
+  | 'continued-in';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -277,6 +281,9 @@ export interface LifecyclePayload {
   readonly turn?: number;
   readonly latestTurn?: number;
   readonly filesOnly?: boolean;
+  /** D83 (`continued-from` / `continued-in`): the other session of the continuation (its id on the same machine; a peer's is namespaced in the UI) and its title then. */
+  readonly linkedSessionId?: string;
+  readonly linkedTitle?: string;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */

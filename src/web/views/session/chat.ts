@@ -134,6 +134,8 @@ export type ChatItem =
       readonly to: string | null;
       /** D80: a revert's divider (`reverted`) or its Redo's (`undone`). */
       readonly revert?: 'reverted' | 'undone';
+      /** D83: the other session of a continuation ("Continued from / in <title>" opens it); absent otherwise. */
+      readonly linkedSessionId?: string;
     };
 
 /**
@@ -365,6 +367,18 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // D80: "Reverted to before turn N" (the newest one carries Redo) and "Undid the revert to before turn N".
       if ((lifecycle.action === 'reverted' || lifecycle.action === 'revert-undone') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null, revert: lifecycle.action === 'reverted' ? 'reverted' : 'undone' });
+      }
+      // D83: a fresh session starts with "Continued from <old>", the session it continues ends with "Continued in <new>" (each a link).
+      if ((lifecycle.action === 'continued-from' || lifecycle.action === 'continued-in') && event.kind === 'text') {
+        out.push({
+          kind: 'divider',
+          key: `d:${event.id}`,
+          id: event.id,
+          text: event.label,
+          from: null,
+          to: null,
+          ...(typeof lifecycle.linkedSessionId === 'string' ? { linkedSessionId: lifecycle.linkedSessionId } : {}),
+        });
       }
     } else {
       const mark = stepMark(event);
