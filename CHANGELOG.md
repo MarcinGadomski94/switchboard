@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.0 (2026-10-08)
+
+### Phones and tablets
+- **Responsive layout:** every page and dialog adapts to phones and tablets (360 to 1279 px wide); the desktop layout (1280 px and up) is unchanged. A top bar with ☰, the page title and the Inbox count; the sidebar as a drawer; on phones the session's header actions in a ⋯ menu, tabs and quick replies scrolling on one line, the right panel as a bottom sheet, the message box pinned above the keyboard, dialogs as full-screen sheets, tables as cards, and Inbox / Solutions / Settings as a list, then the item.
+- **Touch:** tap targets of at least 44 px, ⋯ menus always visible, a long press shows a control's tooltip, and **long-press drag** (hold 0.4 s) moves sessions into folders and re-orders them; a swipe still scrolls.
+- **Devices (Settings → Devices, off by default):** reach Switchboard from your phone or tablet over Tailscale, with HTTPS through `tailscale serve` (port 8443 on your machine's `*.ts.net` name; needs MagicDNS and HTTPS certificates on in your tailnet). Pair each device with a QR code and a one-time code; each gets its own credential, revocable at once. Unpaired devices only see the pairing page. Machine-level actions (pairing, hooks, MCP servers, accounts, updates, folders, take-over…) stay on the computer: devices can only use what is explicitly allowed for them. `127.0.0.1` works exactly as before.
+- **Notifications on paired devices:** permission requests, questions, finished turns and errors, per device and per kind, also for a paired machine's sessions. Encrypted end to end (Web Push); on iPhone and iPad add Switchboard to the Home Screen first. Install it as an app on iOS and Android from the same address.
+- Not yet tried on a real phone or with real push services: `docs/devices.md` has a checklist.
+
+### Fixed
+- Tests: spawn expectations updated for the switchboard MCP flags added in 1.7.0.
+
+### Database
+- Migration 0030 (devices, pairing codes, push subscriptions) runs by itself on first start.
+
 ## 1.10.1 (2026-10-05)
 
 ### Changed
