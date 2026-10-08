@@ -747,7 +747,13 @@ a.sb-agent--link:focus-visible {
  * the shared QuestionCard (`variant="chat"`, components/question-card.css).
  */
 .sb-chat {
-  flex: 1;
+  /*
+   * A 0px basis, not flex: 1's 0%: where the column's height is not definite while it
+   * is laid out (the phone layout), a 0% basis is sized from the content, so every
+   * keystroke in the composer laid the whole conversation out again (typing lag fix,
+   * 2026-10-08; docs/chat.md → Composer).
+   */
+  flex: 1 1 0px;
   min-height: 0;
   overflow: auto;
   padding: 20px 26px;

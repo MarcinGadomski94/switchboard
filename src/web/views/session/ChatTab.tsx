@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
@@ -256,7 +256,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
  * will auto-compact (ruling D49-autocompact-mark); the tooltip names the window,
  * the auto-compact point and the last compaction. `Context —` with an empty bar before a reading.
  */
-export function ContextBar({ context }: { readonly context: SessionContext }) {
+export const ContextBar = memo(function ContextBar({ context }: { readonly context: SessionContext }) {
   const view = contextBarView(context);
   return (
     <div className="sb-chat-context" data-testid="chat-context" data-tour="context-bar" data-band={view.band} title={view.tooltip}>
@@ -282,7 +282,7 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
       ) : null}
     </div>
   );
-}
+});
 
 /**
  * The composer (prototype): D49 the context bar, then the message field, 📎 and
@@ -382,6 +382,8 @@ function Composer({
   // D50: Esc stops the running turn, read in the window's capture phase (before a popover's own handler closes it).
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent): void => {
+      // Typing lag fix: every other key returns before the overlay lookup (a whole-document query on each keystroke).
+      if (event.key !== 'Escape') return;
       const active = document.activeElement;
       const context = {
         stoppable: stoppableRef.current,
@@ -418,24 +420,39 @@ function Composer({
   }, []);
 
   // D26: the field grows with its text (up to COMPOSER_MAX_LINES, then scrolls) and shrinks after a send.
+  // Typing lag fix (2026-10-08): the field's height is only touched when it changes. Resetting it on every
+  // keystroke (to measure the natural height) resized the composer and so the chat above it twice per key,
+  // and a long chat's layout is what made typing slow (a phone at 6× CPU: ~37 ms of layout per key). The
+  // natural height is measured (by collapsing the field) only when it may have shrunk: the field is taller
+  // than one line and the text got shorter (or lost a line break), the field was emptied, or a web font finished loading.
+  const measured = useRef<{ readonly length: number; readonly breaks: number; readonly fontLoads: number } | null>(null);
   useLayoutEffect(() => {
     const field = input.current;
     if (!field) return;
-    field.style.height = '';
     const style = getComputedStyle(field);
     const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
     const border = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+    const last = measured.current;
+    const breaks = field.value.split('\n').length - 1;
+    measured.current = { length: field.value.length, breaks, fontLoads };
+    const fontChanged = last === null || last.fontLoads !== fontLoads;
+    const taller = oneLine.current !== null && field.offsetHeight > oneLine.current.height + 0.5;
+    if (fontChanged || field.value === '' || (taller && (field.value.length < (last?.length ?? 0) || breaks < (last?.breaks ?? 0)))) field.style.height = '';
     // Measured whenever the field is empty (its natural one-row height), so a font that loads after the first render counts.
     if (field.value === '') {
       oneLine.current = { height: field.offsetHeight, line: field.clientHeight - padding };
     }
     const base = oneLine.current;
     if (!base) return;
+    // With the field at its current height, scrollHeight is the text's height when it overflows, else the field's own.
     const needed = field.scrollHeight + border;
     const max = base.height + (COMPOSER_MAX_LINES - 1) * base.line;
     const height = Math.max(base.height, Math.min(needed, max));
-    field.style.height = `${style.boxSizing === 'border-box' ? height : height - padding - border}px`;
-    field.style.overflowY = needed > max ? 'auto' : 'hidden';
+    if (Math.abs(field.offsetHeight - height) > 0.5 || field.style.height === '') {
+      field.style.height = `${style.boxSizing === 'border-box' ? height : height - padding - border}px`;
+    }
+    const overflow = needed > max ? 'auto' : 'hidden';
+    if (field.style.overflowY !== overflow) field.style.overflowY = overflow;
     setMultiline(height > base.height + 1);
   }, [draft, fontLoads]);
 
