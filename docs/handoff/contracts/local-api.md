@@ -1091,6 +1091,27 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Quick capture (D81, 2026-10-08, additive)
+
+A todo can be captured quickly: the ⌘K palette's `todo <text>` / **Add todo…**, a chat selection's **Add to todo**, and the phone's share sheet (the device origin's app is a Web Share Target). The item is saved bare and, by default, its session's agent is asked once, when it is next idle, to fill it in (`docs/todos.md` → *Quick capture (D81)*, `docs/devices.md` → *Share to Switchboard (D81)*, `docs/decisions.md` → D81). Migration 0035 adds `needs_enrichment`, `captured_from`, `enrich_asked_at` to `session_todos` (ADD COLUMN only).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/todos/capture | CaptureTodoInput `{ title, note?, from: "palette" \| "selection" \| "share" }` | 201 SessionTodoList (the item: `title`, `description` = `note`, plan `No plan`, priority `medium`, no estimate, `addedBy: "developer"`, `capturedFrom` = `from`, `needsEnrichment` = the setting) · 404 `not-found` · 422 `invalid` (title as D69; `from` unknown) · 409 `too-many` |
+| POST | /share-target | form `title`, `text`, `url` (`application/x-www-form-urlencoded`) | device listener only: 303 to `/share?title=…&text=…&url=…` (each field cut to 4,000 characters, empty ones left out; normally the service worker answers this itself); 404 on the UI listener |
+| GET | /manifest.webmanifest | — | on the device listener the manifest gains `share_target: { action: "/share-target", method: "POST", enctype: "application/x-www-form-urlencoded", params: { title: "title", text: "text", url: "url" } }`; the UI listener's has none |
+
+- **`SessionTodo`** gains **`needsEnrichment`** (`true` while a captured, open item waits for its agent; `false` otherwise; absent from an older peer) and **`capturedFrom`** (`TodoCaptureSource` or `null`).
+- **The mark is cleared** by the agent's `PUT /agent/v1/todos/{todoId}` with any field (its `todo_update`), and by the developer's `PUT …/todos/{todoId}` that changes the description, plan, priority or estimate (not a title-only edit). Marking it in progress or done hides it (`needsEnrichment` is `false` for a non-open item).
+- **The one message (setting `sessions.todoEnrich`, default `true`):** when one of this machine's sessions is idle (status `idle` / `done`: not running, not waiting on the developer; not closed, paused or detached) and has captured open items not asked yet, Switchboard sends it one message (origin `service`): `The developer added todo [<id>] '<title>' (<note if any>). Fill in its description, handover plan, priority and estimate with todo_update — don't start it.`; several items in one message (`The developer added todos [<a>] '<A>', [<b>] '<B>' (…). Fill in their description, handover plan, priority and estimate with todo_update — don't start them.`); the note is one line, cut to 200 characters. Checked on every `todosChanged` (a capture) and `sessionUpdated` of the session. Recorded as `enrich_asked_at`: at most once per item. A hooked terminal session only while its waiter is held (else nothing is recorded and a later check tries again). With the setting off, captures are stored without the mark.
+- **Peers (D48):** the route is on `PEER_API_ALLOW` (its answer is a `todo-list`); the session's own machine asks its agent. A peer before D81 (403, or 404 without `not-found`): the UI adds the item through `POST …/todos` (`title`, `description` = the note), bare and unmarked.
+- **Devices (D73):** the route is on the devices' allow-list (normal use). `/share` is a page (the app's index.html; a paired device's page load).
+
+```json
+POST /api/sessions/0b7c3e0a-…/todos/capture { "title": "Look at the checkout flicker", "note": "> The checkout page flickers when the cart updates.", "from": "selection" }
+{ "sessionId": "0b7c3e0a-…", "openCount": 1, "doneCount": 0, "inProgressCount": 0, "todos": [{ "id": "7d2e9a01b4c3", "title": "Look at the checkout flicker", "description": "> The checkout page flickers when the cart updates.", "plan": "No plan", "priority": "medium", "estimateMinutes": null, "needsEnrichment": true, "capturedFrom": "selection", "…": "…" }] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
