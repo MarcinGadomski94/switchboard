@@ -8,6 +8,7 @@
  * itself (configuration, files, constants). `PUT` takes any subset of the
  * editable keys.
  */
+import { type ModelRule, readModelRules } from './model-routing.ts';
 
 /** Every key `GET /api/settings` returns, with its value type. */
 export interface KnownSettings {
@@ -37,6 +38,12 @@ export interface KnownSettings {
    * agent one reminder to finish it (`docs/todos.md` → *In progress (D75)*). Editable, default `true`.
    */
   readonly 'sessions.todoReminder': boolean;
+  /**
+   * D82: Settings → Sessions → *Model by task*: the ordered rules that pick the CLI,
+   * model, effort and account a todo is run with (`docs/model-routing.md`). Editable,
+   * default `[]` (off until the developer adds a rule).
+   */
+  readonly 'sessions.modelRules': readonly ModelRule[];
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -114,7 +121,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.modelRules'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -133,6 +140,7 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
   'sessions.todoReminder': true,
+  'sessions.modelRules': [],
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -160,6 +168,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
+    'sessions.modelRules': readModelRules(value['sessions.modelRules']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

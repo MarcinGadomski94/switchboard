@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Settings } from '../../../core/api.ts';
 import type { KnownSettings } from '../../../core/settings.ts';
 import { cronLabel } from '../../../core/cron-label.ts';
 import { api } from '../../api/client.ts';
@@ -19,6 +20,7 @@ import { notificationPermission, notifyOS, playChime, requestNotifications } fro
 import { InstallAppRow } from './InstallApp.tsx';
 import { Action, Row, SectionTitle, ToggleValue, Value } from './rows.tsx';
 import { StandingInstructionRow } from './StandingInstruction.tsx';
+import { ModelRulesRow } from './ModelRulesRow.tsx';
 import { StartAtLoginToggle } from './StartAtLogin.tsx';
 
 /**
@@ -72,8 +74,11 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
   );
 }
 
-/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder and D64's standing instruction for agents. */
-export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
+/**
+ * Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder,
+ * D64's standing instruction for agents and D82's *Model by task* rules (saved by their own editor: `onSaved` takes the answer).
+ */
+export function SessionsSection({ settings, save, onSaved }: { readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved?: (body: Settings) => void }) {
   const [busy, setBusy] = useState(false);
   const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder'): void => {
     setBusy(true);
@@ -117,6 +122,8 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         <ToggleValue label="Remind the agent to finish started todos" value={settings['sessions.todoReminder']} disabled={busy} onToggle={() => flip('sessions.todoReminder')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
+      {/* D82: the ordered rules that pick the CLI, model, effort and account a todo runs with. */}
+      <ModelRulesRow settings={settings} onSaved={(body) => onSaved?.(body)} />
     </>
   );
 }

@@ -1,0 +1,110 @@
+/* D82 "Model by task" (Settings → Sessions): the row wraps; the rules take the full width under its text. */
+[data-row='model-rules'] {
+  flex-wrap: wrap;
+}
+
+.sb-rules {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sb-rules-empty {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-rules-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-rule {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sb-rule[data-invalid] {
+  border-color: var(--status-fail);
+}
+
+/* One line on a wide screen; wraps (never sideways) on a phone. */
+.sb-rule-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.sb-rule-index,
+.sb-rule-arrow {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-rule-select {
+  max-width: 100%;
+}
+
+.sb-rule-select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-rule-minutes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-rule-minutes-input {
+  width: 5ch;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 2px 4px;
+}
+
+.sb-rule-buttons {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.sb-rule-button {
+  padding: 2px 8px;
+}
+
+.sb-rule-preview {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-rule-error {
+  font-size: 12px;
+  color: var(--status-fail);
+  overflow-wrap: anywhere;
+}
+
+.sb-rules-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

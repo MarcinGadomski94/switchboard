@@ -17,14 +17,14 @@ import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import './settings.css';
 
-function Section({ section, settings, save }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings }) {
+function Section({ section, settings, save, onSaved }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved: (body: Settings) => void }) {
   switch (section) {
     case 'claude':
       return <ClaudeSection settings={settings} />;
     case 'workspace':
       return <WorkspaceSection />;
     case 'sessions':
-      return <SessionsSection settings={settings} save={save} />;
+      return <SessionsSection settings={settings} save={save} onSaved={onSaved} />;
     case 'notify':
       return <NotifySection settings={settings} save={save} />;
     case 'schedules':
@@ -91,7 +91,7 @@ export function SettingsView({ section }: { readonly section: string | null }) {
       </nav>
       <div className="sb-set-content" data-testid="settings-content">
         {phone && section !== null ? <BackButton label="Settings" testId="settings-back" onBack={() => navigate({ view: 'settings', section: null })} /> : null}
-        {settings ? <Section section={current} settings={settings} save={save} /> : null}
+        {settings ? <Section section={current} settings={settings} save={save} onSaved={setSaved} /> : null}
         {!settings && loaded.error ? (
           <div className="sb-set-note sb-set-error" data-testid="settings-note">
             Settings could not be loaded.

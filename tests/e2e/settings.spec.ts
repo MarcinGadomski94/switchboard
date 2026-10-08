@@ -234,6 +234,8 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Session-start questions',
     'Remind the agent to finish started todos',
     'Standing instruction for agents',
+    // D82: the Model by task rules (off: none).
+    'Model by task',
   ]);
   await expect(page.locator('.sb-set-row').getByTestId('setting-value')).toHaveText([
     "the session's folder",

@@ -738,6 +738,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Fix on the way:** Esc in a todo card's ⋯ menu stopped the running turn (D50's window-level Esc did not see the menu); it now only closes the menu, which matters now that ▶ Start begins turns.
   - **ASSUMED / OPEN:** `.loop/questions.md` → *D75 · Todo progress*.
   - Details: `docs/todos.md` → *In progress (D75)*; `docs/handoff/contracts/local-api.md` → *Todo in progress and ▶ Start that sends (D75)*; `docs/database.md` (0031); `docs/settings.md` (`sessions.todoReminder`).
+- **D82 Model by task: rules pick the CLI, model, effort and account of a todo by its priority and estimate.** Developer ruling, 2026-10-08. Builds on D31 / D42 (model and effort), D62 (CLIs), D63 (accounts) and D70 (todo priority and estimate).
+  - **Rules** in **Settings → Sessions → Model by task**, **off until the developer adds a rule**: an ordered list; each rule matches on priority (any / urgent / high / medium / low) and estimate (≤ / > N minutes, or unknown) and sets any of CLI, model, effort, account profile. **First match wins; no match = the normal choice.** Validation: the model must exist for that CLI (its reported model list, else the New-session form's fallback), the profile must be enabled for that CLI; a model, effort or account needs the rule's CLI.
+  - **`applyModelRouting(defaults, { priority, estimateMinutes }, rules) → { settings, rule }`** (`src/core/model-routing.ts`, pure, generic over the launch settings `{ provider, model, effort, profileId }`) for lane A's `todoRunOptions`; **`routingExplanation(rule)`** makes the line the UI shows ("Routed by rule: low ≤30 min → Sonnet"). Another CLI starts from its own defaults; a new model without an effort drops the effort.
+  - **Storage:** the editable setting `sessions.modelRules` (`GET` / `PUT /api/settings`, default `[]`), no migration.
+  - **ASSUMED:** `.loop/questions.md` → *D82 · Model by task*.
+  - Details: `docs/model-routing.md`; `docs/handoff/contracts/local-api.md` → *Model by task (D82)*; `docs/settings.md` (`sessions.modelRules`).
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.

@@ -1091,6 +1091,21 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Model by task (D82, 2026-10-08, additive)
+
+Settings → Sessions → *Model by task* (`docs/model-routing.md`, `docs/decisions.md` → D82): ordered rules that pick the CLI, model, effort and account a todo runs with by its priority and estimate. No new route: the rules are the editable setting **`sessions.modelRules`** of `GET` / `PUT /api/settings` (default `[]` = off). No migration.
+
+- **`ModelRule`**: `id` (1–64 characters, unique), `priority` (`any` / `urgent` / `high` / `medium` / `low`), `estimate` (`{ kind: "any" }`, `{ kind: "at-most", minutes }`, `{ kind: "more-than", minutes }` or `{ kind: "unknown" }`; minutes 1–10080), and any of `provider` (`claude` / `codex` / `opencode`), `model`, `effort`, `profileId`; at least one of them; a `model` / `effort` / `profileId` needs the `provider`. At most 50 rules; the first that matches wins.
+- **`PUT /api/settings`** with `sessions.modelRules` answers 422 `invalid` with `errors[].field` = `sessions.modelRules[<i>]` / `…[<i>].<part>` for a bad shape, a model the CLI does not offer (its reported list, `GET /api/models?provider=`, else Claude Code's aliases / another CLI's `default`), an effort the model lacks, or an account that is not one of that CLI's enabled profiles. Nothing is stored on a refusal. Devices may save it (`PUT /api/settings` is on their allow-list); it is not on the peer API.
+
+```json
+PUT /api/settings
+{ "sessions.modelRules": [
+  { "id": "r1", "priority": "low", "estimate": { "kind": "at-most", "minutes": 30 }, "provider": "claude", "model": "sonnet" },
+  { "id": "r2", "priority": "any", "estimate": { "kind": "more-than", "minutes": 120 }, "provider": "codex", "profileId": "a1b2…" }
+] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

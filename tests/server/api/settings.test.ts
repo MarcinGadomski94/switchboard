@@ -83,6 +83,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'newSession.mode': 'simple',
       'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
       'agents.standingInstruction.enabled': true,
+      'sessions.modelRules': [],
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,
@@ -233,6 +234,49 @@ describe('GET/PUT /api/settings (M8.2)', () => {
     expect(await store!.settings.getAll()).toEqual({ 'newSession.mode': 'full' });
     await store!.settings.setMany({ 'newSession.mode': 'wizard' });
     expect((await call('GET', '/api/settings')).json()).toMatchObject({ 'newSession.mode': 'simple' });
+  });
+
+  it('D82 · Model by task: rules are stored in order; the model must exist for the CLI, the account must be its enabled profile; bad shapes 422', async () => {
+    await setup();
+    // A model list Claude Code reported (with effort levels), so the check is the CLI's own.
+    await store!.settings.set('models.options', [
+      { value: 'default', label: 'Default', efforts: ['low', 'medium', 'high'] },
+      { value: 'sonnet', label: 'Sonnet', efforts: ['low', 'medium', 'high'] },
+      { value: 'haiku', label: 'Haiku' },
+    ]);
+    const rules = [
+      { id: 'r1', priority: 'low', estimate: { kind: 'at-most', minutes: 30 }, provider: 'claude', model: 'sonnet', effort: 'low', profileId: 'default-claude' },
+      { id: 'r2', priority: 'any', estimate: { kind: 'unknown' }, provider: 'codex' },
+    ];
+    const put = await call('PUT', '/api/settings', { 'sessions.modelRules': rules });
+    expect(put.statusCode).toBe(200);
+    expect(put.json()['sessions.modelRules']).toEqual(rules);
+    expect((await call('GET', '/api/settings')).json()['sessions.modelRules']).toEqual(rules);
+
+    // A model the CLI does not offer, an effort the model lacks, a profile of another CLI, a disabled one: 422 with the field.
+    const refused = async (rule: Record<string, unknown>, field: string, text: RegExp): Promise<void> => {
+      const response = await call('PUT', '/api/settings', { 'sessions.modelRules': [rule] });
+      expect(response.statusCode).toBe(422);
+      expect(response.json().errors).toEqual([{ field: `sessions.modelRules[0].${field}`, message: expect.stringMatching(text) }]);
+    };
+    const base = { id: 'x', priority: 'high', estimate: { kind: 'any' }, provider: 'claude' };
+    await refused({ ...base, model: 'gpt-5' }, 'model', /does not offer the model "gpt-5"/);
+    await refused({ ...base, model: 'haiku', effort: 'high' }, 'effort', /Haiku has no effort levels/);
+    await refused({ ...base, profileId: 'default-codex' }, 'profileId', /belongs to Codex CLI, not Claude Code/);
+    await refused({ ...base, profileId: 'nope' }, 'profileId', /no such account profile/);
+    await store!.profiles.update('default-claude', { enabled: false });
+    await refused({ ...base, profileId: 'default-claude' }, 'profileId', /is disabled for Claude Code/);
+    // A CLI that never reported models offers its default only.
+    await refused({ ...base, provider: 'opencode', model: 'sonnet' }, 'model', /OpenCode does not offer the model "sonnet": pick one of default/);
+    // Shape: a model without its CLI, a rule that sets nothing, a bad estimate.
+    await refused({ id: 'x', priority: 'low', estimate: { kind: 'any' }, model: 'sonnet' }, 'model', /also sets the CLI/);
+    const nothing = await call('PUT', '/api/settings', { 'sessions.modelRules': [{ id: 'x', priority: 'low', estimate: { kind: 'any' } }] });
+    expect(nothing.json().errors).toEqual([{ field: 'sessions.modelRules[0]', message: 'a rule sets at least one of CLI, model, effort or account' }]);
+    await refused({ ...base, estimate: { kind: 'at-most', minutes: 0 } }, 'estimate', /minutes must be a whole number/);
+    // Nothing of a refused body was stored.
+    expect((await call('GET', '/api/settings')).json()['sessions.modelRules']).toEqual(rules);
+    // Clearing the list turns routing off.
+    expect((await call('PUT', '/api/settings', { 'sessions.modelRules': [] })).json()['sessions.modelRules']).toEqual([]);
   });
 
   it('stays behind the cookie guard', async () => {
