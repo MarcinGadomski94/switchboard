@@ -48,6 +48,8 @@ import type { TodoService } from './todos/service.ts';
 import { registerTodoRoutes } from './api/todos.ts';
 import { registerDeviceRoutes } from './api/devices.ts';
 import type { DeviceService } from './devices/service.ts';
+import type { ReviewService } from './reviews/service.ts';
+import { registerReviewRoutes } from './api/reviews.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -96,6 +98,8 @@ export interface ApiContext {
   readonly todos: TodoService;
   /** D73: paired devices, the device listener and web push (docs/devices.md). */
   readonly devices: DeviceService;
+  /** D79: the review cards (docs/reviews.md). */
+  readonly reviews: ReviewService;
 }
 
 /**
@@ -130,6 +134,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerHookRoutes(app, context);
   await registerSidebarRoutes(app, context);
   await registerTodoRoutes(app, context);
+  await registerReviewRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
   await registerDeviceRoutes(app, context);

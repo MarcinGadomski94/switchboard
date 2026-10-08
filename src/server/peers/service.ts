@@ -2,7 +2,8 @@ import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import type { HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
-import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+import type { Review } from '../../core/reviews.ts';
 import {
   type AddMachineInput,
   DEFAULT_PEER_PORT,
@@ -81,7 +82,8 @@ export const PEER_HOLD_MS = 10_000;
 export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos' } as const;
+/** D79: its review cards (`GET /api/reviews`). */
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -170,6 +172,9 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/takeover\/leftovers\/[^/]+\/delete$/],
+  // D79: the review cards (list) and their actions, run on the machine whose session it is.
+  ['GET', /^\/api\/reviews$/],
+  ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|discard|cleanup|dismiss)$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON). */
@@ -761,6 +766,15 @@ export class PeerService implements PeerHandlers {
       void this.#publishInboxCount();
       return;
     }
+    if (name === 'reviewsChanged') {
+      // D79: the peer's review cards are fetched again first, so a header that reloads on the event sees the change.
+      void this.refreshList(id, 'reviews').then(() => {
+        const current = this.#ref(id);
+        const mapped = current ? peerHubEvent(current, name, payload) : null;
+        if (mapped !== null) this.#publishFromPeer(name, mapped);
+      });
+      return;
+    }
     if (name === 'todosChanged') {
       // D68: the peer's todo groups are fetched again first, so the Todos page that reloads on the event sees the change.
       void this.refreshList(id, 'todos').then(() => {
@@ -836,6 +850,11 @@ export class PeerService implements PeerHandlers {
   /** D68: the paired machines' todo groups (`GET /api/todos` there) as last known; see {@link remoteSchedules}. */
   remoteTodos(): TodoGroup[] {
     return this.#remoteList('todos', (ref, item) => peerTodoGroup(ref, item as TodoGroup));
+  }
+
+  /** D79: the paired machines' review cards (`GET /api/reviews` there) as last known; see {@link remoteSchedules}. */
+  remoteReviews(): Review[] {
+    return this.#remoteList('reviews', (ref, item) => peerReview(ref, item as Review));
   }
 
   /** D52: the paired machines' terminal loops (`GET /api/terminal-loops` there) as last known; see {@link remoteSchedules}. */
@@ -952,6 +971,8 @@ export class PeerService implements PeerHandlers {
       if (method.toUpperCase() !== 'GET' && path.split('?')[0]?.startsWith('/api/schedules')) await this.refreshList(machineId, 'schedules');
       // D68: a todo list changed there: the Todos page's groups are fetched again too.
       if (method.toUpperCase() !== 'GET' && /\/todos(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'todos');
+      // D79: a review card was acted on there: the review list is fetched again too.
+      if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/reviews/')) await this.refreshList(machineId, 'reviews');
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }
     return answer;

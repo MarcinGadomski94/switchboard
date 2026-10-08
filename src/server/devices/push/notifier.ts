@@ -81,6 +81,14 @@ export function inboxNotice(item: InboxItem): PushNotice {
       payload: { kind: 'questions', title: shortText(`${who} needs you`, 80), body: shortText(first || item.label), url, tag: `inbox-${item.id}` },
     };
   }
+  if (item.kind === 'review') {
+    // D79: a new Review card (its own toggle, "Ready for review").
+    return {
+      kind: 'review',
+      urgency: 'normal',
+      payload: { kind: 'review', title: shortText(`${who} is ready for review`, 80), body: shortText(item.title || 'Changes to review.'), url: '/inbox', tag: `inbox-${item.id}` },
+    };
+  }
   return {
     kind: 'inbox',
     urgency: 'normal',

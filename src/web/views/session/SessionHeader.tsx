@@ -39,6 +39,7 @@ import { useProviderSwitcher } from './ProviderSwitcher.tsx';
 import { useAccountSwitcher } from './AccountSwitcher.tsx';
 import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
+import { useSessionReview } from './SessionReview.tsx';
 import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
 import { usePanes } from '../../shell/Panes.tsx';
 import { DrawerButton, useInboxCount } from '../../shell/AppBar.tsx';
@@ -173,6 +174,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const shownError = error ?? closer.error?.text ?? loadError;
   // D62 P5: the CLI switcher (its picker among the actions, its confirmation under the top row).
   const switcher = useProviderSwitcher(session, onChanged);
+  // D79: the session's open Review card (badge + its card under the top row).
+  const review = useSessionReview(sessionId);
   // D63: the account the session runs on, Switch account and the pin (shown when its CLI has more than one account).
   const accounts = useAccountSwitcher(session, onChanged);
   // D65: this machine's id, to link a moved session's new home (`r~<machine>~<id>`, or a local id when it came here).
@@ -425,6 +428,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           </a>
         </div>
       ) : null}
+      {review.panel}
       {session && offersSwitcher(session) ? switcher.panel : null}
       {session && offersSwitcher(session) ? accounts.panel : null}
       {warning ? (
@@ -457,6 +461,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       <div className="sb-sv-chips" data-testid="session-chips">
         {/* D45 (developer ruling): chip-shaped blocks hold the row while the session loads, so the tabs do not jump. */}
         {placeholder ? <ChipSkeletons /> : null}
+        {/* D79: the open Review card's badge leads the chips (the top row keeps its room for the title and actions). */}
+        {review.badge}
         {(session?.chips ?? []).map((chip) => (
           <span key={`${chip.k} ${chip.v}`} className="sb-sv-chip" data-testid="session-chip" data-loop={chip.loop ? 'true' : 'false'}>
             <span className="sb-sv-chip-k">{chip.k} </span>

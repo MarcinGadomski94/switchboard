@@ -36,11 +36,13 @@ export function visibleItems(items: readonly InboxItem[], done: ReadonlySet<stri
 }
 
 /** What the detail renders under the text: the question card, a permission request, or system actions. */
-export type DetailBody = 'questions' | 'permission' | 'system';
+export type DetailBody = 'questions' | 'permission' | 'system' | 'review';
 
 /** The detail body of an item. */
 export function detailBody(item: InboxItem): DetailBody {
   if (item.kind === 'questions') return 'questions';
+  // D79: a review item shows its card (with its own actions).
+  if (item.kind === 'review' && item.review) return 'review';
   return item.kind === 'permission' ? 'permission' : 'system';
 }
 

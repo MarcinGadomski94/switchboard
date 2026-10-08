@@ -34,7 +34,7 @@ export const DEVICE_PAIR_WINDOW_MS = 10 * 60_000;
 export const DEVICE_NAME_MAX = 40;
 
 /** What a device can be notified about (per-device toggles). */
-export const PUSH_EVENT_KINDS = ['permission', 'questions', 'turnFinished', 'errors', 'inbox'] as const;
+export const PUSH_EVENT_KINDS = ['permission', 'questions', 'turnFinished', 'errors', 'inbox', 'review'] as const;
 
 /** One push event kind. */
 export type PushEventKind = (typeof PUSH_EVENT_KINDS)[number];
@@ -43,7 +43,7 @@ export type PushEventKind = (typeof PUSH_EVENT_KINDS)[number];
 export type PushEvents = { readonly [K in PushEventKind]: boolean };
 
 /** Every toggle on (the default when a device enables notifications). */
-export const DEFAULT_PUSH_EVENTS: PushEvents = { permission: true, questions: true, turnFinished: true, errors: true, inbox: true };
+export const DEFAULT_PUSH_EVENTS: PushEvents = { permission: true, questions: true, turnFinished: true, errors: true, inbox: true, review: true };
 
 /** Labels of the toggles (UI). */
 export const PUSH_EVENT_LABELS: { readonly [K in PushEventKind]: string } = {
@@ -52,6 +52,8 @@ export const PUSH_EVENT_LABELS: { readonly [K in PushEventKind]: string } = {
   turnFinished: 'Turn finished',
   errors: 'Session errors',
   inbox: 'Other Inbox items',
+  // D79: a new Review card.
+  review: 'Ready for review',
 };
 
 /** A paired device as the UI sees it (`GET /api/devices`). Never a credential. */

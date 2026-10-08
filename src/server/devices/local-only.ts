@@ -13,8 +13,9 @@
  * loops (save, run, pause / resume, delete, hook a terminal session), the reads
  * the UI needs (system / usage, settings, CLIs, accounts, machines, tools and
  * their probes, MCP and hooks status, updates), the UI preferences
- * (`PUT /api/settings`), Reconnect of a paired machine, and the device's own name
- * and notifications.
+ * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
+ * and notifications, and (D79) the review cards with Merge, Open PR, Commit, Send
+ * back and Dismiss (Discard and Clean up stay on the desktop).
  *
  * Everything else is refused; {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -48,6 +49,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   // D75: ▶ Start (normal use: in progress + the start message).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/start$/],
+  // D79: review cards: the list, Merge (local only), Open PR, Commit, Send back, Dismiss (normal use from the phone).
+  ['GET', /^\/api\/reviews$/],
+  ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|dismiss)$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],
@@ -127,6 +131,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/codebase-memory\/reindex$/],
   // Test hooks.
   ['*', /^\/api\/test(?:\/.*)?$/],
+  // D79: a review's Discard (drops the changes) and Clean up (removes the worktree and its branch): desktop only.
+  ['POST', /^\/api\/reviews\/[^/]+\/(?:discard|cleanup)$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

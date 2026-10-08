@@ -7,6 +7,7 @@ import { isPeerRequest } from './machines.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
 import { type PendingRoute, registerPending } from './not-implemented.ts';
 import { sendWorktreeError } from './worktree-errors.ts';
+import { sendReviewError } from './reviews.ts';
 
 /** Inbox and question routes (contract → REST) not implemented yet (none since M3.2). */
 export const INBOX_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -89,6 +90,15 @@ export async function registerInboxRoutes(app: FastifyInstance, context: ApiCont
       }
       if (await systemItems.isSystemItem(id)) {
         await systemItems.act(id, action);
+        return reply.code(204).send();
+      }
+      // D79: a review card's action (as `POST /api/reviews/{id}/<action>`).
+      if (await context.reviews.isReview(id)) {
+        try {
+          await context.reviews.act(id, action, request.body);
+        } catch (error) {
+          return sendReviewError(reply, error);
+        }
         return reply.code(204).send();
       }
       return reply.code(404).send({ error: 'not-found', message: `no Inbox item ${id}` });

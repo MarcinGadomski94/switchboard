@@ -1,5 +1,6 @@
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
+import type { Review, ReviewActionId } from '../../core/reviews.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   AccountsOverview,
@@ -254,6 +255,10 @@ export const api = {
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),
   /** D48 P4: a hooked session's Deny takes `{ message }`. */
   inboxAction: (id: string, action: string, body?: { readonly message: string }) => request<null>('POST', `/api/inbox/${enc(id)}/actions/${enc(action)}`, body),
+  /** D79: the review cards (open ones read from git again, then the recent resolved ones; a peer's with remote ids). */
+  reviews: () => request<Review[]>('GET', '/api/reviews'),
+  /** D79: a review card's action; answers the card. Bodies: commit `{ message }`, send-back `{ comment }`, discard / cleanup `{ confirm: true }`. */
+  reviewAction: (id: string, action: ReviewActionId, body?: Readonly<Record<string, unknown>>) => request<Review>('POST', `/api/reviews/${enc(id)}/${action}`, body),
 
   /** D14: one folder's solutions (`folder` = a saved folder's id or a session's folder path; the default folder when omitted). */
   solutions: (folder?: string) => request<SolutionGroup[]>('GET', `/api/solutions${query({ folder })}`),

@@ -22,11 +22,17 @@
  *   <name> --dir <dir> [--clobber]` copies `<FAKE_GH_RELEASE_DIR>/<name>` into
  *   `<dir>`; a missing file → `no assets match the file pattern`, exit 1.
  *   `FAKE_GH_RELEASE_FAIL=<text>` makes every `release` command fail with that text.
+ * - D79: `gh pr create --base <b> --head <h> --title <t> --body <x>` → adds
+ *   `{number, state: "OPEN", url, headRefName, baseRefName, title}` under `<h>` (under
+ *   `<repo>:<h>` when the file already has repo keys) to the `FAKE_GH_PRS` file (number =
+ *   the highest + 1) and prints its URL `https://github.com/fake/<repo>/pull/<n>`, exit 0;
+ *   an open entry for `<h>` → gh's `a pull request for branch "<h>" into branch "<b>" already
+ *   exists:` + its URL, exit 1. `FAKE_GH_FAIL` fails it like every `pr` command.
  * - anything else → `unknown command`, exit 1.
  * - `FAKE_GH_LOG=<file>` appends `{"argv":[…],"cwd":"…"}` per call.
  */
 import { spawn } from 'node:child_process';
-import { appendFile, copyFile, readFile } from 'node:fs/promises';
+import { appendFile, copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 process.stdout.on('error', () => undefined);
@@ -120,6 +126,29 @@ async function prView(args: string[]): Promise<never> {
   return finish(0, `${JSON.stringify(picked)}\n`);
 }
 
+/** D79: `gh pr create --base <b> --head <h> --title <t> --body <x>` into the `FAKE_GH_PRS` file. */
+async function prCreate(args: string[]): Promise<never> {
+  const failure = process.env['FAKE_GH_FAIL'];
+  if (failure) return finish(1, '', `${failure}\n`);
+  const base = option(args, '--base');
+  const head = option(args, '--head') ?? (await currentBranch(process.cwd()));
+  const title = option(args, '--title');
+  if (!base || !head || title === null || option(args, '--body') === null) return finish(1, '', 'fake-gh only supports `pr create --base <b> --head <h> --title <t> --body <x>`\n');
+  const file = process.env['FAKE_GH_PRS'];
+  const prs = await loadPullRequests();
+  const repo = (await repoName(process.cwd())) ?? 'repo';
+  const key = Object.keys(prs).some((name) => name.includes(':')) ? `${repo}:${head}` : head;
+  const existing = prs[key];
+  if (existing && existing['state'] === 'OPEN') {
+    return finish(1, '', `a pull request for branch "${head}" into branch "${base}" already exists:\n${String(existing['url'])}\n`);
+  }
+  const number = Math.max(0, ...Object.values(prs).map((pr) => (typeof pr['number'] === 'number' ? pr['number'] : 0))) + 1;
+  const url = `https://github.com/fake/${repo}/pull/${number}`;
+  prs[key] = { number, state: 'OPEN', url, headRefName: head, baseRefName: base, title };
+  if (file) await writeFile(file, JSON.stringify(prs));
+  return finish(0, `${url}\n`);
+}
+
 function option(args: readonly string[], name: string): string | null {
   const index = args.indexOf(name);
   if (index !== -1) return args[index + 1] ?? null;
@@ -172,6 +201,7 @@ async function main(): Promise<never> {
     return finish(0, 'github.com\n  ✓ Logged in to github.com account fake-gh (keyring)\n');
   }
   if (first === 'pr' && second === 'view') return prView(rest);
+  if (first === 'pr' && second === 'create') return prCreate(rest);
   if (first === 'release') return release(second, rest);
   return finish(1, '', `unknown command "${[first, second].filter(Boolean).join(' ')}" for "gh"\n`);
 }

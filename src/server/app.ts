@@ -25,7 +25,10 @@ import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
-import { todoReminderEnabled } from './settings/settings.ts';
+import { reviewCardsEnabled, todoReminderEnabled } from './settings/settings.ts';
+import { ReviewGit } from './reviews/git.ts';
+import { ReviewService } from './reviews/service.ts';
+import { sessionMessageSender } from './api/todos.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -142,6 +145,11 @@ export interface AppOptions {
    * device listener, no push: the routes still answer) and closes with the app.
    */
   readonly devices?: DeviceService;
+  /**
+   * D79: the review cards (`docs/reviews.md`). Without one the app makes its own (git
+   * from PATH, the configured gh), started when the app is ready and stopped with it.
+   */
+  readonly reviews?: ReviewService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -337,6 +345,25 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     await reminder.stop();
   });
+  // D79: a Review card when a session with changes goes idle (Settings → Sessions), and its actions.
+  let reviews = options.reviews;
+  if (!reviews) {
+    const own = new ReviewService({
+      store: options.store,
+      bus,
+      git: new ReviewGit({ gh: config.ghCommand }),
+      resolveRepo: (solution, folder) => worktrees.resolveRepo(solution, folder),
+      enabled: () => reviewCardsEnabled(options.store.settings),
+      send: sessionMessageSender({ store: options.store, supervisor, hooks }),
+    });
+    app.addHook('onReady', async () => {
+      own.start();
+    });
+    app.addHook('onClose', async () => {
+      await own.stop();
+    });
+    reviews = own;
+  }
   if (options.agentTools !== false) {
     supervisor.useAgentMcp(async (session) =>
       withClaudeConfigFile(
@@ -349,7 +376,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
   const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

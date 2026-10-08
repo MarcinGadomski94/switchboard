@@ -155,7 +155,7 @@ describe('D73 push delivery', () => {
     const saved = await w.device('PUT', '/api/device/push', { cookie, body: { subscription: { endpoint: subscription.endpoint, keys: subscription.keys } } });
     expect(saved.status).toBe(200);
     expect(saved.body.device.push).toBe(true);
-    expect(saved.body.events).toEqual({ permission: true, questions: true, turnFinished: true, errors: true, inbox: true });
+    expect(saved.body.events).toEqual({ permission: true, questions: true, turnFinished: true, errors: true, inbox: true, review: true });
 
     // Test notification.
     expect((await w.device('POST', '/api/device/push/test', { cookie })).body).toEqual({ ok: true });
