@@ -134,14 +134,14 @@ export function TodosView() {
   const withOpen = all.filter((group) => splitTodos(group.todos).open.length > 0).length;
 
   return (
-    <section className="sb-view sb-todos-page" data-view="todos" data-mode={mode} data-testid="view-todos">
+    <section className="sb-view sb-todos-page" data-view="todos" data-mode={mode} data-testid="view-todos" data-tour="todos-page">
       <div className="sb-todos-page-head">
         <div className="sb-todos-page-title">Todos</div>
         <div className="sb-todos-page-summary" data-testid="todos-summary">
           {open} open in {withOpen} session{withOpen === 1 ? '' : 's'}
           {inReview > 0 ? ` · ${inReview} in review` : ''}
         </div>
-        <div className="sb-todos-mode" role="group" aria-label="View" data-testid="todos-mode">
+        <div className="sb-todos-mode" role="group" aria-label="View" data-testid="todos-mode" data-tour="todos-mode">
           <button type="button" className="sb-todos-mode-button" data-testid="todos-mode-list" aria-pressed={mode === 'list'} onClick={() => pickMode('list')}>
             List
           </button>
@@ -155,6 +155,7 @@ export function TodosView() {
               type="button"
               className="sb-todos-page-select"
               data-testid="todos-select-toggle"
+              data-tour="todos-select"
               aria-pressed={selection.selecting}
               disabled={open === 0}
               onClick={() => (selection.selecting ? selection.stop() : selection.setSelecting(true))}
@@ -207,7 +208,7 @@ export function TodosView() {
                   ) : null}
                   {/* D78: the completed items' actual vs. estimate (also the ones removed after their done hour). */}
                   {actuals ? (
-                    <span className="sb-todos-group-actuals" data-testid="todos-group-actuals" title="Completed items: their estimates against the time they took and their tokens (approximate)">
+                    <span className="sb-todos-group-actuals" data-testid="todos-group-actuals" data-tour="todos-actuals" title="Completed items: their estimates against the time they took and their tokens (approximate)">
                       {actuals}
                     </span>
                   ) : null}

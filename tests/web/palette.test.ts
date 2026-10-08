@@ -114,8 +114,13 @@ describe('palette model (M8.3)', () => {
       'solution | auth-front | microfrontends/',
       'solution | mobile | mobile/',
       'solution | old-chat-front | read-only',
+      // D85: the tutorial's replay comes last.
+      'action | Tutorial | replay the tour',
     ]);
     expect(new Set(entries.map((e) => e.key)).size).toBe(entries.length);
+    expect(entries.at(-1)?.target).toEqual({ type: 'tutorial' });
+    expect(filterPalette(entries, 'tutorial').map((e) => e.label)).toEqual(['Tutorial']);
+    expect(filterPalette(entries, "what's new").map((e) => e.label)).toEqual(['Tutorial']);
     expect(PALETTE_PLACEHOLDER).toBe('Jump to a session, solution, view or tool…');
   });
 
@@ -150,6 +155,7 @@ describe('palette model (M8.3)', () => {
       'view | Settings | ',
       'action | New session | ',
       'action | Add todo… | todo <title>',
+      'action | Tutorial | replay the tour',
     ]);
   });
 

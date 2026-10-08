@@ -91,7 +91,7 @@ export function ModelRulesRow({ settings, onSaved }: { readonly settings: KnownS
   };
 
   return (
-    <Row id="model-rules" label={MODEL_RULES_LABEL} description={MODEL_RULES_DESCRIPTION}>
+    <Row id="model-rules" tour="setting-model-rules" label={MODEL_RULES_LABEL} description={MODEL_RULES_DESCRIPTION}>
       <div className="sb-rules" data-testid="model-rules">
         {rules.length === 0 ? (
           <div className="sb-rules-empty" data-testid="model-rules-empty">

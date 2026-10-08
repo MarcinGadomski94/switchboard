@@ -1,0 +1,226 @@
+/*
+ * D85 · the interactive tutorial (docs/tutorial.md): the dimmed page, the rounded
+ * cutout over the highlighted element and the card next to it (a bottom sheet on
+ * phones). Rendered in a portal on <body>, above every modal and drawer.
+ */
+
+.sb-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  font-family: var(--font-ui);
+  color: var(--text);
+  pointer-events: none;
+}
+
+/* Takes every click on the page (explain-only); dims it when there is no cutout. */
+.sb-tour-blocker {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+  transition: background-color 0.2s ease;
+}
+
+.sb-tour-blocker[data-dim='true'] {
+  background: rgba(5, 6, 8, 0.62);
+}
+
+/* The cutout: everything outside it is dimmed by its spread shadow. */
+.sb-tour-spot {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 2px oklch(0.72 0.12 250 / 0.9),
+    0 0 0 200vmax rgba(5, 6, 8, 0.62);
+  transition:
+    top 0.28s ease,
+    left 0.28s ease,
+    width 0.28s ease,
+    height 0.28s ease;
+}
+
+.sb-tour-card {
+  position: absolute;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-question);
+  box-shadow: var(--shadow-modal);
+  pointer-events: auto;
+}
+
+.sb-tour-card[data-looking='true'] {
+  visibility: hidden;
+}
+
+.sb-tour-card[data-mode='centre'][data-placement='centre'] {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Phones (D74): a sheet along the bottom (or the top, when the element sits low on the screen). */
+.sb-tour-card[data-placement^='sheet-'] {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: 60dvh;
+  border-radius: 0;
+  padding: 16px 18px calc(14px + env(safe-area-inset-bottom));
+}
+
+.sb-tour-card[data-placement='sheet-bottom'] {
+  bottom: 0;
+  border-top-left-radius: var(--radius-question);
+  border-top-right-radius: var(--radius-question);
+  border-bottom: none;
+}
+
+.sb-tour-card[data-placement='sheet-top'] {
+  top: 0;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  border-bottom-left-radius: var(--radius-question);
+  border-bottom-right-radius: var(--radius-question);
+  border-top: none;
+}
+
+.sb-tour-kicker {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-meta);
+  color: var(--muted-2);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+}
+
+.sb-tour-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-tour-what,
+.sb-tour-missing {
+  margin: 0 0 6px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sb-tour-missing {
+  padding: 8px 10px;
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-card);
+  color: var(--text-2b);
+}
+
+.sb-tour-label {
+  font-size: var(--fs-section-label);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-3);
+}
+
+.sb-tour-todo {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.sb-tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.sb-tour-progress {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-meta);
+  color: var(--muted-2);
+}
+
+.sb-tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-tour-link {
+  color: var(--muted-1);
+  padding: 5px 6px;
+  border-radius: var(--radius-button);
+}
+
+.sb-tour-link:hover {
+  color: var(--text);
+}
+
+.sb-tour-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: var(--radius-button);
+  padding: 5px 10px;
+}
+
+.sb-tour-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: var(--radius-button);
+  padding: 5px 12px;
+  font-weight: 500;
+}
+
+.sb-tour-outlined:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sb-tour .sb-button:focus-visible {
+  outline: 2px solid oklch(0.72 0.12 250);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .sb-tour-link,
+  .sb-tour-outlined,
+  .sb-tour-primary {
+    min-height: 40px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+.sb-tour .sb-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-tour-blocker,
+  .sb-tour-spot,
+  .sb-tour-card {
+    transition: none;
+  }
+}

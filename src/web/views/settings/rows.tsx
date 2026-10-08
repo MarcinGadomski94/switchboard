@@ -22,6 +22,7 @@ export function Row({
   mono = false,
   children,
   id,
+  tour,
 }: {
   readonly label: string;
   readonly description: ReactNode;
@@ -29,9 +30,11 @@ export function Row({
   readonly children?: ReactNode;
   /** `data-row` (tests address rows by it). */
   readonly id: string;
+  /** D85: `data-tour`, the tutorial's anchor (`src/core/tutorial.ts`). */
+  readonly tour?: string;
 }) {
   return (
-    <div className="sb-set-row" data-row={id}>
+    <div className="sb-set-row" data-row={id} data-tour={tour}>
       <div className="sb-set-row-text">
         <div className="sb-set-row-label">{label}</div>
         <div className="sb-set-row-desc" {...(mono ? { 'data-mono': '' } : {})}>

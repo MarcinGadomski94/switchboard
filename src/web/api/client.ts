@@ -76,6 +76,7 @@ import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-s
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
 import type { CleanupRun, CleanupRunRequest, CleanupScan, CleanupSettings } from '../../core/cleanup.ts';
+import type { TourOutcome, TutorialState } from '../../core/tutorial.ts';
 import type { Device, DeviceAccessInput, DeviceAccessState, DevicePairingCode, DevicePushInput, DeviceSelfView, DevicesView } from '../../core/devices.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
@@ -417,6 +418,10 @@ export const api = {
   /** D84: removes the ticked items (202; poll {@link cleanupRun}); 422 `confirmation-required`, 409 `busy`. */
   startCleanup: (body: CleanupRunRequest) => request<CleanupRun>('POST', '/api/cleanup/runs', body),
   cleanupRun: (id: string) => request<CleanupRun>('GET', `/api/cleanup/runs/${enc(id)}`),
+  /** D85: the tutorial's state on this machine (docs/tutorial.md). */
+  tutorial: () => request<TutorialState>('GET', '/api/tutorial'),
+  /** D85: a tour (`main` or a What's-new feature id) was finished or skipped. */
+  recordTour: (id: string, body: TourOutcome) => request<TutorialState>('PUT', `/api/tutorial/tours/${enc(id)}`, body),
 } as const;
 
 /**

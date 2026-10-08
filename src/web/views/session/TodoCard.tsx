@@ -730,6 +730,7 @@ export function TodoCard({
             type="button"
             className="sb-todo-more"
             data-testid="todo-menu-button"
+            data-tour="todo-actions"
             aria-label={`Actions for ${title}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}

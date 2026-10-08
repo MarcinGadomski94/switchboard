@@ -44,7 +44,7 @@ export function CleanupSection() {
     return (
       <>
         <SectionTitle>Clean-up</SectionTitle>
-        <div className="sb-set-note" data-testid="cleanup-device-note">
+        <div className="sb-set-note" data-testid="cleanup-device-note" data-tour="cleanup">
           Clean-up runs only on the computer itself: open Switchboard there.
         </div>
       </>
@@ -87,7 +87,7 @@ function LocalCleanup() {
   return (
     <>
       <SectionTitle withLede>Clean-up</SectionTitle>
-      <div className="sb-set-lede">
+      <div className="sb-set-lede" data-tour="cleanup">
         Finds what Switchboard created and no longer needs: worktrees, branches, old closed sessions and data files. Nothing is removed until you tick it and confirm. This machine only.
       </div>
       <Row id="cleanup-days" label="Closed sessions" description="List closed sessions once they have been closed this long">

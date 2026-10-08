@@ -109,7 +109,7 @@ export function AppBar() {
       <h1 className="sb-appbar-title" data-testid="app-bar-title">
         {pageTitle(route, toolName)}
       </h1>
-      <Link to={{ view: 'inbox' }} className="sb-appbar-inbox" data-testid="app-bar-inbox" aria-current={route.view === 'inbox' ? 'page' : undefined}>
+      <Link to={{ view: 'inbox' }} className="sb-appbar-inbox" data-testid="app-bar-inbox" data-tour="inbox" aria-current={route.view === 'inbox' ? 'page' : undefined}>
         Inbox
         {inbox > 0 ? (
           <span className="sb-badge" data-kind="need" data-testid="app-bar-inbox-count">

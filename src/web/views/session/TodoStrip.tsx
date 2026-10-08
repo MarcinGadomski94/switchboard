@@ -337,7 +337,7 @@ export function TodoStrip({
   const progress = total === 0 ? 0 : done.length / total;
 
   return (
-    <section className="sb-todos" data-testid="todo-strip" data-expanded={expanded ? 'true' : 'false'} aria-label="Todo list">
+    <section className="sb-todos" data-testid="todo-strip" data-tour="todo-strip" data-expanded={expanded ? 'true' : 'false'} aria-label="Todo list">
       <div className="sb-todos-head">
         <button type="button" className="sb-todos-toggle" data-testid="todo-toggle" aria-expanded={expanded} onClick={toggle}>
           <span className="sb-todos-caret" aria-hidden="true">

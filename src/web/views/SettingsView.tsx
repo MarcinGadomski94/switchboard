@@ -16,6 +16,7 @@ import { AccountsSection } from './settings/AccountsSection.tsx';
 import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import { CleanupSection } from './settings/CleanupSection.tsx';
+import { TutorialSection } from './settings/TutorialSection.tsx';
 import './settings.css';
 
 function Section({ section, settings, save, onSaved }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved: (body: Settings) => void }) {
@@ -46,6 +47,8 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
       return <UpdatesSection />;
     case 'cleanup':
       return <CleanupSection />;
+    case 'tutorial':
+      return <TutorialSection />;
   }
 }
 
@@ -86,13 +89,14 @@ export function SettingsView({ section }: { readonly section: string | null }) {
             to={{ view: 'settings', section: item.key }}
             className="sb-set-nav-item"
             data-testid={`settings-nav-${item.key}`}
+            data-tour={`settings-${item.key}`}
             aria-current={item.key === current && !(phone && section === null) ? 'page' : undefined}
           >
             {item.label}
           </Link>
         ))}
       </nav>
-      <div className="sb-set-content" data-testid="settings-content">
+      <div className="sb-set-content" data-testid="settings-content" data-tour="settings-content">
         {phone && section !== null ? <BackButton label="Settings" testId="settings-back" onBack={() => navigate({ view: 'settings', section: null })} /> : null}
         {settings ? <Section section={current} settings={settings} save={save} onSaved={setSaved} /> : null}
         {!settings && loaded.error ? (

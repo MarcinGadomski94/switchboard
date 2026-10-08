@@ -10,6 +10,8 @@ import { useToasts } from '../toast/ToastHost.tsx';
 import { todoRefusal } from '../views/session/TodoStrip.tsx';
 import { requestSolutionFocus } from '../views/solution-focus.ts';
 import { useModals } from './ModalHost.tsx';
+import { startTours } from '../tutorial/tour.ts';
+import { MAIN_TOUR_ID } from '../../core/tutorial.ts';
 import { ADD_TODO_QUERY, PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries, paletteTodoEntries } from './palette.ts';
 import './palette.css';
 
@@ -85,6 +87,11 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
       return;
     }
     if (target.type === 'none') return;
+    if (target.type === 'tutorial') {
+      onClose();
+      startTours([MAIN_TOUR_ID], { replay: true });
+      return;
+    }
     if (target.type === 'add-todo') {
       setQuery(ADD_TODO_QUERY);
       setIndex(0);

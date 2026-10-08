@@ -82,7 +82,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
   const files = review.repos.flatMap((repo) => repo.files.map((file) => ({ ...file, multi: review.repos.length > 1 })));
   const commits = review.repos.flatMap((repo) => repo.commits.map((commit) => ({ ...commit, repo: repo.repo })));
   return (
-    <div className="sb-review" data-testid="review-card" data-variant={variant} data-review-id={review.id} data-state={review.state} data-mode={review.mode}>
+    <div className="sb-review" data-testid="review-card" data-tour="review-card" data-variant={variant} data-review-id={review.id} data-state={review.state} data-mode={review.mode}>
       <div className="sb-review__repos">
         {review.repos.map((repo) => (
           <div key={`${repo.repo}\u0000${repo.dir}`} className="sb-review__repo" data-testid="review-repo">

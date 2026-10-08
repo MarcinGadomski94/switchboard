@@ -40,7 +40,9 @@ export type PaletteTarget =
   /** D81: capture `title` (and `note`, the whole text when the title had to be cut) into the session. */
   | { readonly type: 'capture'; readonly sessionId: string; readonly title: string; readonly note: string | null }
   /** D81: `todo ` without a title yet: nothing to pick. */
-  | { readonly type: 'none' };
+  | { readonly type: 'none' }
+  /** D85: replay the tutorial's main tour. */
+  | { readonly type: 'tutorial' };
 
 /** One palette result: a kind label, the label and a mono hint (may be empty). */
 export interface PaletteEntry {
@@ -116,6 +118,8 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
       entries.push({ key: `solution:${solution.path}`, kind: 'solution', label: solution.name, hint: group.folder, target: { type: 'solution', path: solution.path } });
     }
   }
+  // D85: the tutorial's replay, last (the prototype's first ten results stay as they were).
+  entries.push({ key: 'action:tutorial', kind: 'action', label: TUTORIAL_LABEL, hint: 'replay the tour', target: { type: 'tutorial' }, also: "tour what's new help guide" });
   return entries;
 }
 
@@ -144,6 +148,9 @@ export function moveIndex(index: number, count: number, step: 1 | -1): number {
 
 /** D81: the palette's capture action (picking it types `todo ` for the title). */
 export const ADD_TODO_LABEL = 'Add todo…';
+
+/** D85: the palette's replay of the tutorial. */
+export const TUTORIAL_LABEL = 'Tutorial';
 
 /** D81: the query "Add todo…" fills in. */
 export const ADD_TODO_QUERY = 'todo ';

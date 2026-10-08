@@ -374,7 +374,7 @@ export function TodoBoard({
         ))}
       </div>
       {totals.length > 0 ? (
-        <div className="sb-board-actuals" data-testid="board-actuals" aria-label="Actual vs. estimate per session">
+        <div className="sb-board-actuals" data-testid="board-actuals" data-tour="todos-actuals" aria-label="Actual vs. estimate per session">
           <div className="sb-board-actuals-title">Actual vs. estimate (completed)</div>
           {totals.map((group) => (
             <div key={group.sessionId} className="sb-board-actuals-row" data-testid="board-actuals-row">

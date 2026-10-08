@@ -974,7 +974,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
 
   return (
     <>
-      <div className="sb-section-label">
+      <div className="sb-section-label" data-tour="sessions-label">
         Sessions
         <span className="sb-section-count">{loaded ? String(sessions.length) : ''}</span>
         {/* D54: drawn, not text, so the label's copy stays the prototype's. */}
@@ -988,6 +988,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         ref={listRef}
         className="sb-sessions"
         data-testid="sidebar-sessions"
+        data-tour="sessions"
         data-dragging={drag ? drag.kind : undefined}
         data-touch-drag={ghost ? 'true' : undefined}
         // D71 fix: a drag held near the list's top / bottom edge scrolls it (every engine; WebKit has no drag auto-scroll here).

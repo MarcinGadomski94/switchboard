@@ -141,6 +141,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Devices',
     // D55: after Machines (D73: after Devices).
     'Updates',
+    // D85: after Updates.
+    'Tutorial',
     // D84: last.
     'Clean-up',
   ]);

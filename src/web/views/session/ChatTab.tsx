@@ -259,7 +259,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
 export function ContextBar({ context }: { readonly context: SessionContext }) {
   const view = contextBarView(context);
   return (
-    <div className="sb-chat-context" data-testid="chat-context" data-band={view.band} title={view.tooltip}>
+    <div className="sb-chat-context" data-testid="chat-context" data-tour="context-bar" data-band={view.band} title={view.tooltip}>
       <div
         className="sb-chat-context-track"
         role="meter"
@@ -470,7 +470,7 @@ function Composer({
   };
 
   return (
-    <div className="sb-chat-composer" data-testid="chat-composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
+    <div className="sb-chat-composer" data-testid="chat-composer" data-tour="composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
       {context ? <ContextBar context={context} /> : null}
       <div className="sb-chat-quick">
         <span className="sb-chat-quick-label">{QUICK_REPLIES_LABEL}</span>
@@ -556,7 +556,7 @@ function Composer({
       ) : null}
       {/* D68: + Todo while the session's todo list is empty: a small tab on the composer's top edge, last so no part moves. */}
       {onAddTodo ? (
-        <button type="button" className="sb-button sb-chat-todo-add" data-testid="chat-todo-add" title="Add an item to this session's todo list" onClick={onAddTodo}>
+        <button type="button" className="sb-button sb-chat-todo-add" data-testid="chat-todo-add" data-tour="todo-add" title="Add an item to this session's todo list" onClick={onAddTodo}>
           + Todo
         </button>
       ) : null}

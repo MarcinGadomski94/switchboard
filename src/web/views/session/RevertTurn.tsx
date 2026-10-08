@@ -217,6 +217,7 @@ export function TurnRevertButton({ sessionId, revert }: { readonly sessionId: st
       type="button"
       className="sb-chat-revert"
       data-testid="chat-revert"
+      data-tour="undo-turn"
       data-turn={revert.turn ?? undefined}
       data-disabled={revert.reason ? 'true' : undefined}
       aria-label={revert.reason ? `${REVERT_TURN_LABEL}: ${revert.reason}` : `${REVERT_TURN_LABEL} (turn ${revert.turn})`}

@@ -21,6 +21,7 @@ import { PaneHandle, usePanes } from './Panes.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { AppBar } from './AppBar.tsx';
 import { TouchTooltip } from './TouchTooltip.tsx';
+import { TourHost } from '../tutorial/TourHost.tsx';
 import './shell.css';
 
 function View({ route }: { readonly route: Route }) {
@@ -80,6 +81,7 @@ export function Shell() {
         <RevertHost />
         <FirstRunGate />
         <TouchTooltip />
+        <TourHost />
       </div>
     );
   }
@@ -102,6 +104,8 @@ export function Shell() {
       <FirstRunGate />
       {/* D74: a touch screen's long-press tooltip (after everything, so the prototype's child paths hold). */}
       <TouchTooltip />
+      {/* D85: the tutorial (its gate renders nothing; a running tour is a portal on <body>). */}
+      <TourHost />
     </div>
   );
 }

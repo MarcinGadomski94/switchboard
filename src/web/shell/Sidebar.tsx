@@ -222,7 +222,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
       <div className="sb-brand">
         <div className="sb-brand-mark">S</div>
         <div className="sb-brand-name">Switchboard</div>
-        <button type="button" className="sb-button sb-brand-kbd" data-testid="open-palette" onClick={() => open('palette')}>
+        <button type="button" className="sb-button sb-brand-kbd" data-testid="open-palette" data-tour="palette" onClick={() => open('palette')}>
           {isApplePlatform() ? '⌘K' : 'Ctrl K'}
         </button>
         {/* D41: after the row's own parts (their child paths are the prototype's); drawn before the ⌘K key (shell.css). */}
@@ -230,7 +230,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
       </div>
 
       <div className="sb-new-wrap">
-        <button type="button" className="sb-button sb-new" data-testid="new-session" onClick={() => open('new-session')}>
+        <button type="button" className="sb-button sb-new" data-testid="new-session" data-tour="new-session" onClick={() => open('new-session')}>
           + New session
         </button>
       </div>
@@ -242,6 +242,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
             to={{ view: item.view }}
             className="sb-nav-item"
             data-testid={`nav-${item.view}`}
+            data-tour={item.view}
             aria-current={isActive(route, item.view) ? 'page' : undefined}
           >
             <span>{item.label}</span>
@@ -304,7 +305,7 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
         <MeterRow label="CPU" name="cpu" meter={cpuMeter(info)} />
         <MeterRow label="RAM" name="ram" meter={ramMeter(info)} />
         {/* D66: the usage grid (one line per account, the 5-hour and the weekly window) replaces D17's rows and D63's line. */}
-        <div className="sb-usage" data-testid="usage-meters">
+        <div className="sb-usage" data-testid="usage-meters" data-tour="usage">
           <div className="sb-usage-head" data-testid="usage-grid-header" aria-hidden="true">
             <span className="sb-usage-col" data-col="session">
               {USAGE_GRID_COLUMNS.session}

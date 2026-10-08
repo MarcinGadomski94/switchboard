@@ -130,6 +130,7 @@ export function SessionsSection({ settings, save, onSaved }: { readonly settings
       {/* D79: a Review card when a session with changes goes idle. */}
       <Row
         id="review-cards"
+        tour="setting-review-cards"
         label="Raise review cards when a session with changes goes idle"
         description="Once per change set, in the Inbox and on the session's header; advisory, never blocks the agent"
       >
@@ -138,6 +139,7 @@ export function SessionsSection({ settings, save, onSaved }: { readonly settings
       {/* D80: a checkpoint of the session's git working trees before each turn (Undo a turn). */}
       <Row
         id="checkpoints"
+        tour="setting-checkpoints"
         label="Save a checkpoint before each turn"
         description="Snapshots the session's git working trees (hidden refs, never your index or branch) so a turn can be reverted; kept 7 days or 100 turns"
       >
@@ -155,7 +157,7 @@ export function SessionsSection({ settings, save, onSaved }: { readonly settings
       {/* D82: the ordered rules that pick the CLI, model, effort and account a todo runs with. */}
       <ModelRulesRow settings={settings} onSaved={(body) => onSaved?.(body)} />
       {/* D83: offer "Continue in a fresh session" above the composer once a session's context reaches the threshold. */}
-      <Row id="fresh-offer" label={FRESH_SETTING_LABEL} description={FRESH_SETTING_DESCRIPTION}>
+      <Row id="fresh-offer" tour="setting-fresh-offer" label={FRESH_SETTING_LABEL} description={FRESH_SETTING_DESCRIPTION}>
         <span className="sb-set-fresh">
           <select
             className="sb-set-select"
