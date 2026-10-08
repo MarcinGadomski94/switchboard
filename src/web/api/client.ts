@@ -70,6 +70,7 @@ import type {
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
+import type { Device, DeviceAccessInput, DeviceAccessState, DevicePairingCode, DevicePushInput, DeviceSelfView, DevicesView } from '../../core/devices.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
 /**
@@ -104,6 +105,21 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+/**
+ * D73: `true` when the page runs on the devices' origin (a paired phone or tablet,
+ * through `tailscale serve`), not on this machine's own UI, which is always
+ * `http://127.0.0.1:<port>` (a `localhost` page load is redirected there).
+ */
+export function onDeviceOrigin(): boolean {
+  const where = pageLocation();
+  return where !== null && where.hostname !== '127.0.0.1';
+}
+
+/** The page's location (`null` outside a browser: tests of this module run in Node). */
+function pageLocation(): { readonly hostname: string; replace(url: string): void } | null {
+  return (globalThis as { location?: { readonly hostname: string; replace(url: string): void } }).location ?? null;
+}
+
 async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
@@ -116,6 +132,8 @@ async function request<T>(method: Method, path: string, body?: unknown): Promise
   } catch (error) {
     throw new ApiError(0, `${method} ${path}: ${error instanceof Error ? error.message : 'network error'}`);
   }
+  // D73: a paired device whose credential was revoked (or expired) goes back to the pairing page.
+  if (response.status === 401 && onDeviceOrigin()) pageLocation()?.replace('/pair');
   const text = await response.text();
   let parsed: unknown = null;
   if (text) {
@@ -351,6 +369,22 @@ export const api = {
   setMachineSidebarSync: (id: string, enabled: boolean) => request<Machine>('PUT', `/api/machines/${enc(id)}/sidebar-sync`, { enabled }),
   /** Fix · peer reconnects: Reconnect now (cuts the wait, tries at once; answers when the attempt is over). */
   reconnectMachine: (id: string) => request<ReconnectResult>('POST', `/api/machines/${enc(id)}/reconnect`),
+
+  // D73, additive (docs/devices.md): Settings → Devices (this machine's UI only) and the device's own settings.
+  devices: () => request<DevicesView>('GET', '/api/devices'),
+  setDeviceAccess: (body: DeviceAccessInput) => request<DeviceAccessState>('PUT', '/api/devices/access', body),
+  /** "Pair a device": a one-time code and the URL its QR code carries; 409 `access-off`. */
+  devicePairingCode: () => request<DevicePairingCode>('POST', '/api/devices/pairing'),
+  cancelDevicePairing: () => request<null>('DELETE', '/api/devices/pairing'),
+  renameDevice: (id: string, name: string) => request<Device>('PUT', `/api/devices/${enc(id)}`, { name }),
+  /** Revoke: the device loses access at once. */
+  revokeDevice: (id: string) => request<null>('DELETE', `/api/devices/${enc(id)}`),
+  /** Who is asking: the paired device (or `null` on this machine), the VAPID key, the push toggles. */
+  deviceSelf: () => request<DeviceSelfView>('GET', '/api/device'),
+  renameThisDevice: (name: string) => request<Device>('PUT', '/api/device', { name }),
+  saveDevicePush: (body: DevicePushInput) => request<DeviceSelfView>('PUT', '/api/device/push', body),
+  deleteDevicePush: () => request<DeviceSelfView>('DELETE', '/api/device/push'),
+  testDevicePush: () => request<{ readonly ok: boolean; readonly error?: string }>('POST', '/api/device/push/test'),
 } as const;
 
 /**

@@ -16,6 +16,9 @@
  *
  * Plain JavaScript, served as-is from Vite's public folder; type-checked through
  * JSDoc (`tsconfig.sw.json`). Bump CACHE_VERSION whenever offline.html changes.
+ *
+ * D73: it also shows web push notifications on paired devices (`push`,
+ * `notificationclick`, `pushsubscriptionchange` at the end of this file).
  */
 
 /** Bump when offline.html changes: a new version re-caches it and drops the old cache. */
@@ -96,3 +99,80 @@ async function navigate(event) {
     return offline ?? Response.error();
   }
 }
+
+// ── D73 web push (docs/devices.md → Notifications) ──────────────────────────
+// A paired phone or tablet that enabled notifications gets pushes from its
+// Switchboard: a small JSON payload `{ title, body, url, tag, kind }`
+// (decrypted by the browser). A click opens the deep link in Switchboard's
+// window (focused, or a new one).
+
+/**
+ * A same-origin path to open: the payload's `url` when it is a plain path, else `/`.
+ * @param {unknown} url
+ * @returns {string}
+ */
+function safePath(url) {
+  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') && !url.includes('\\') ? url : '/';
+}
+
+worker.addEventListener('push', (event) => {
+  /** @type {{ title?: unknown, body?: unknown, url?: unknown, tag?: unknown }} */
+  let data = {};
+  try {
+    data = event.data ? /** @type {typeof data} */ (event.data.json()) : {};
+  } catch {
+    data = {};
+  }
+  const title = typeof data.title === 'string' && data.title ? data.title : 'Switchboard';
+  /** @type {NotificationOptions} */
+  const options = {
+    body: typeof data.body === 'string' ? data.body : '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: safePath(data.url) },
+  };
+  if (typeof data.tag === 'string' && data.tag) options.tag = data.tag;
+  event.waitUntil(worker.registration.showNotification(title, options));
+});
+
+worker.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = /** @type {{ url?: unknown } | null} */ (event.notification.data);
+  const target = new URL(safePath(data?.url), worker.location.origin).href;
+  event.waitUntil(
+    (async () => {
+      const windows = await worker.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const own = windows.find((client) => new URL(client.url).origin === worker.location.origin);
+      if (own) {
+        const focused = await own.focus();
+        await focused.navigate(target).catch(() => null);
+        return;
+      }
+      await worker.clients.openWindow(target);
+    })(),
+  );
+});
+
+/**
+ * The browser replaced the subscription (keys rotated or expired): subscribe again
+ * with the same key and tell Switchboard (the device's cookie goes along).
+ * `pushsubscriptionchange` is not in TypeScript's lib yet.
+ * @typedef {ExtendableEvent & { oldSubscription?: PushSubscription | null, newSubscription?: PushSubscription | null }} SubscriptionChangeEvent
+ */
+worker.addEventListener('pushsubscriptionchange', (raw) => {
+  const event = /** @type {SubscriptionChangeEvent} */ (/** @type {unknown} */ (raw));
+  event.waitUntil(
+    (async () => {
+      const key = event.oldSubscription?.options.applicationServerKey ?? null;
+      const next = event.newSubscription ?? (key ? await worker.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }) : null);
+      if (!next) return;
+      const json = next.toJSON();
+      await fetch('/api/device/push', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ subscription: { endpoint: json.endpoint, keys: json.keys } }),
+      }).catch(() => null);
+    })(),
+  );
+});

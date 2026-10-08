@@ -26,6 +26,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'accounts', label: 'Accounts' },
   // D48 (docs/peers.md): paired machines; after the prototype's seven.
   { key: 'machines', label: 'Machines' },
+  // D73 (docs/devices.md): phones and tablets paired over Tailscale, and their notifications.
+  { key: 'devices', label: 'Devices' },
   // D55 (docs/updates.md): GitHub releases, the update and its state.
   { key: 'updates', label: 'Updates' },
 ] as const;

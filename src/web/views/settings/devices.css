@@ -1,0 +1,35 @@
+/* D73 Settings → Devices (docs/devices.md). Only the new pieces; rows reuse the Settings row styles. */
+.sb-dev-pairing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-subtle, #1f2024);
+}
+
+.sb-dev-url {
+  font-family: var(--font-mono, 'Geist Mono', monospace);
+  word-break: break-all;
+}
+
+.sb-dev-problem {
+  color: var(--status-need, #e0a44a);
+}
+
+.sb-dev-list,
+.sb-dev-events {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-dev-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sb-dev-test {
+  padding: 12px 0;
+}
