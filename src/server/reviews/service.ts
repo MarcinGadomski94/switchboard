@@ -301,7 +301,9 @@ export class ReviewService {
     if (record.state !== 'pending') return this.#toReview(record, session);
     const read = await this.#read(session, dataOf(record));
     if (read === null) {
-      const data = { ...dataOf(record), note: 'No changes left: nothing to review.' };
+      // D79 ruling: changes gone without a click (the agent pushed, reverted or merged them) count as done:
+      // shown as "Handled by the agent", and `reviewResolved` says `dismissed` (the event contract is unchanged).
+      const data = { ...dataOf(record), handledByAgent: true, note: 'Handled by the agent: its changes are no longer pending (pushed, reverted or merged).' };
       const resolved = await this.#store.reviews.resolve(record.id, 'dismissed', { data });
       if (resolved) {
         this.#resolved(session.id, 'dismissed');

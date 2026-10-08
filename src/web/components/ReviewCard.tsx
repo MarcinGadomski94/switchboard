@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { REVIEW_ACTION_LABELS, REVIEW_OUTCOME_LABELS, type Review, type ReviewActionId, testsLine } from '../../core/reviews.ts';
+import { REVIEW_ACTION_LABELS, type Review, type ReviewActionId, resolutionLabel, testsLine } from '../../core/reviews.ts';
 import { ApiError, api, onDeviceOrigin } from '../api/client.ts';
 import { Link } from '../router.tsx';
 import {
@@ -98,7 +98,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
       </div>
       <div className="sb-review__stats" data-testid="review-stats">
         {statsLine(review)}
-        {review.state !== 'pending' && review.outcome ? <span className="sb-review__outcome"> · {REVIEW_OUTCOME_LABELS[review.outcome]}</span> : null}
+        {review.state !== 'pending' && resolutionLabel(review) ? <span className="sb-review__outcome" data-testid="review-resolution"> · {resolutionLabel(review)}</span> : null}
       </div>
       {files.length > 0 ? (
         <ul className="sb-review__files" data-testid="review-files">

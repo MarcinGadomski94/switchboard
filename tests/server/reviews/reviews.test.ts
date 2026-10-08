@@ -224,14 +224,24 @@ describe('raising review cards (D79)', () => {
     expect((await s.service.list()).find((review) => review.id === card?.id)).toMatchObject({ state: 'resolved', outcome: 'dismissed' });
   });
 
-  it('a pending card whose changes are gone is closed as dismissed when listed', async () => {
+  it('a pending card whose changes are gone without a click is done: "Handled by the agent", reviewResolved dismissed (ruling)', async () => {
     const s = await setup();
     const { session, dir } = await branchSession(s);
     await writeFile(path.join(dir, 'x.txt'), 'x\n');
     await s.turn(session.id);
+    const [card] = await open(s);
+    expect(card?.handledByAgent).toBe(false);
     await s.w.git(dir, 'clean', '-q', '-f');
     expect(await open(s)).toEqual([]);
     expect(s.resolved).toEqual([{ sessionId: session.id, outcome: 'dismissed' }]);
+    const closed = (await s.service.list()).find((review) => review.id === card?.id);
+    expect(closed).toMatchObject({ state: 'resolved', outcome: 'dismissed', handledByAgent: true, actions: [] });
+    expect(closed?.note).toContain('Handled by the agent');
+    // A Dismiss click is not "handled by the agent".
+    await writeFile(path.join(dir, 'y.txt'), 'y\n');
+    await s.turn(session.id);
+    const [next] = await open(s);
+    expect((await s.service.act(next?.id as string, 'dismiss', undefined)).handledByAgent).toBe(false);
   });
 });
 

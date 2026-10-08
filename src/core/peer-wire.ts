@@ -85,7 +85,8 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
 
 /** D79: a peer's review card: its id and session id namespaced, `machine` added. */
 export function peerReview(machine: PeerMachineRef, review: Review): Review {
-  return { ...review, id: ns(machine, review.id), sessionId: ns(machine, review.sessionId), machine: { id: machine.id, name: machine.name, state: machine.state } };
+  // A peer before the D79 ruling sends no `handledByAgent`: false.
+  return { ...review, id: ns(machine, review.id), sessionId: ns(machine, review.sessionId), handledByAgent: review.handledByAgent === true, machine: { id: machine.id, name: machine.name, state: machine.state } };
 }
 
 /**

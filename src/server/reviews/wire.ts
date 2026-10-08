@@ -26,6 +26,8 @@ export interface ReviewData {
   readonly tests: ReviewTests;
   readonly note: string | null;
   readonly conflicts: readonly string[];
+  /** D79 ruling: the card closed itself (its changes disappeared without a click). */
+  readonly handledByAgent?: boolean;
 }
 
 /** The review's stored data with defaults for anything missing. */
@@ -38,6 +40,7 @@ export function dataOf(record: Pick<ReviewRecord, 'data'>): ReviewData {
     tests: isRecord(raw['tests']) ? (raw['tests'] as unknown as ReviewTests) : { status: 'not-reported', command: null, exitCode: null },
     note: typeof raw['note'] === 'string' ? raw['note'] : null,
     conflicts: Array.isArray(raw['conflicts']) ? (raw['conflicts'] as string[]) : [],
+    handledByAgent: raw['handledByAgent'] === true,
   };
 }
 
@@ -69,6 +72,7 @@ export function toReview(record: ReviewRecord, session: Pick<SessionRecord, 'tit
     commitMessage: draftCommitMessage(data.summary, title),
     note: data.note,
     conflicts: data.conflicts,
+    handledByAgent: data.handledByAgent === true,
   };
 }
 

@@ -139,6 +139,12 @@ export interface Review {
   readonly commitMessage: string;
   /** The last action's note (a refusal's reason, a merge's result). */
   readonly note: string | null;
+  /**
+   * D79 ruling: `true` when the card closed itself because its changes disappeared
+   * without a click (the agent pushed, reverted or merged them itself): it counts as
+   * done, is shown as "Handled by the agent", and its `reviewResolved` outcome is `dismissed`.
+   */
+  readonly handledByAgent: boolean;
   /** Files that conflict (a refused Merge). */
   readonly conflicts: readonly string[];
   /** Additive (D48): the paired machine the review is on (its ids are remote ids); absent for this machine's own. */
@@ -309,6 +315,15 @@ export function reviewTitle(review: Pick<Review, 'state' | 'outcome' | 'fileCoun
 export function reviewBadgeText(review: Pick<Review, 'state'>): string {
   return review.state === 'cleanup' ? 'Clean up' : 'Review';
 }
+
+/** The words of a resolved card: "Handled by the agent" for one that closed itself, else its outcome's label. */
+export function resolutionLabel(review: Pick<Review, 'outcome' | 'handledByAgent'>): string | null {
+  if (review.handledByAgent) return HANDLED_BY_AGENT;
+  return review.outcome ? REVIEW_OUTCOME_LABELS[review.outcome] : null;
+}
+
+/** D79 ruling: the label of a card whose changes disappeared without a click. */
+export const HANDLED_BY_AGENT = 'Handled by the agent';
 
 /** The words of an outcome (recent reviews, the resolved card). */
 export const REVIEW_OUTCOME_LABELS: { readonly [K in ReviewOutcome]: string } = {

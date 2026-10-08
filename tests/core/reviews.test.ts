@@ -3,7 +3,9 @@ import { mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem } from '../.
 import {
   type Review,
   type ReviewResolvedEvent,
+  HANDLED_BY_AGENT,
   bashExitCode,
+  resolutionLabel,
   draftCommitMessage,
   isTestCommand,
   reviewActions,
@@ -75,6 +77,14 @@ describe('reviewActions', () => {
     expect(reviewActions('resolved', 'branch', [repo])).toEqual([]);
   });
 
+  it('a card that closed itself reads "Handled by the agent"; a clicked one its outcome (ruling)', () => {
+    expect(resolutionLabel({ outcome: 'dismissed', handledByAgent: true })).toBe(HANDLED_BY_AGENT);
+    expect(HANDLED_BY_AGENT).toBe('Handled by the agent');
+    expect(resolutionLabel({ outcome: 'dismissed', handledByAgent: false })).toBe('Dismissed');
+    expect(resolutionLabel({ outcome: 'merged', handledByAgent: false })).toBe('Merged');
+    expect(resolutionLabel({ outcome: null, handledByAgent: false })).toBeNull();
+  });
+
   it('titles and the Send back message', () => {
     expect(reviewTitle({ state: 'pending', outcome: null, fileCount: 1, added: 3, removed: 1, commitCount: 0 })).toBe('1 file changed (+3 −1)');
     expect(reviewTitle({ state: 'pending', outcome: null, fileCount: 0, added: 0, removed: 0, commitCount: 2 })).toBe('2 commits to review');
@@ -116,7 +126,7 @@ describe('devices and peers (D79)', () => {
     const review = { id: 'r1', sessionId: 's1', repos: [] } as unknown as Review;
     expect(peerAnswerKind('GET', '/api/reviews')).toBe('reviews');
     expect(peerAnswerKind('POST', '/api/reviews/r1/merge')).toBe('review');
-    expect(mapPeerAnswer(machine, 'review', review)).toMatchObject({ id: 'r~abcdefghijkl~r1', sessionId: 'r~abcdefghijkl~s1', machine: { name: 'studio' } });
+    expect(mapPeerAnswer(machine, 'review', review)).toMatchObject({ id: 'r~abcdefghijkl~r1', sessionId: 'r~abcdefghijkl~s1', handledByAgent: false, machine: { name: 'studio' } });
     expect(mapPeerAnswer(machine, 'reviews', [review])).toMatchObject([{ id: 'r~abcdefghijkl~r1' }]);
     const item = peerInboxItem(machine, { id: 'r1', kind: 'review', sessionId: 's1', source: 's', status: 'need', title: 't', label: 'Review', detail: '', createdAt: '', branches: [], review });
     expect(item.review).toMatchObject({ id: 'r~abcdefghijkl~r1', sessionId: 'r~abcdefghijkl~s1' });
