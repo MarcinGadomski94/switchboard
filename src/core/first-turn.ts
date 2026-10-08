@@ -219,6 +219,22 @@ export interface RepoWorktree {
   readonly branching?: HandoffBranching | null;
 }
 
+/** D76: first line of a workspace todo run's worktree note (a simple start: no router answers). */
+export const WORKSPACE_WORKTREES_NOTE_HEADER = 'Worktree note from Switchboard: this session works in git worktrees, one per solution, not in the main checkouts.';
+
+/**
+ * D76: what a **simple** start in a workspace folder that got worktrees (a todo run from a
+ * session without router answers) appends to its first message: each solution's worktree,
+ * its branch and what it was cut from.
+ */
+export function workspaceWorktreesNote(worktrees: ReadonlyArray<{ readonly solution: string; readonly path: string; readonly branch: string; readonly base: string }>): string {
+  return [
+    WORKSPACE_WORKTREES_NOTE_HEADER,
+    '- Worktrees (make every change there; leave the main checkouts as they are):',
+    ...worktrees.map((worktree) => `  - ${worktree.solution}: ${worktree.path} (branch ${worktree.branch}, from ${worktree.base})`),
+  ].join('\n');
+}
+
 /**
  * The only thing a repo folder's session gets appended to its first message
  * (D14: no router answers): which worktree it runs in and that the main

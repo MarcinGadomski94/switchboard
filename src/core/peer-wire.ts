@@ -39,6 +39,8 @@ export function peerSession(machine: PeerMachineRef, session: Session): Session 
     activity: machine.state === 'online' ? (session.activity ?? null) : null,
     loops: (session.loops ?? []).map((loop: Loop) => ({ ...loop, sessionId: ns(machine, loop.sessionId) })),
     machine: { id: machine.id, name: machine.name, state: machine.state },
+    // D76: a run session's source session is on the same machine.
+    ...(session.todoLink ? { todoLink: { ...session.todoLink, sourceSessionId: ns(machine, session.todoLink.sourceSessionId) } } : {}),
   };
 }
 
@@ -119,7 +121,9 @@ export function peerTodo(machine: PeerMachineRef, todo: SessionTodo): SessionTod
     // D75: a peer before 1.12 knows open / done only (and sends no start); anything unknown reads as open.
     state: todoStateOf(raw.state),
     startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : null,
-    startedBy: raw.startedBy === 'start' || raw.startedBy === 'agent' || raw.startedBy === 'developer' ? raw.startedBy : null,
+    startedBy: raw.startedBy === 'start' || raw.startedBy === 'agent' || raw.startedBy === 'developer' || raw.startedBy === 'run' ? raw.startedBy : null,
+    // D76: the run session is on the same machine.
+    runSessionId: typeof raw.runSessionId === 'string' ? ns(machine, raw.runSessionId) : null,
   };
 }
 
@@ -194,7 +198,7 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
 /** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
 /** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-groups' | 'none';
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -211,6 +215,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (pathname === '/api/terminal-loops') return upper === 'GET' ? 'terminal-loops' : 'none';
   // D68: a session's todo list (every route under it answers the whole list) and the Todos page's groups.
   // D75: also ▶ Start (`…/todos/{todoId}/start`).
+  // D76: ▸ Run in new session answers the run session and the list.
+  if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/run$/.test(pathname)) return 'todo-run';
   if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done|\/start)?)?$/.test(pathname)) return 'todo-list';
   if (pathname === '/api/todos') return upper === 'GET' ? 'todo-groups' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
@@ -263,6 +269,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
         : body;
     case 'todo-list':
       return isRecord(body) && typeof body['sessionId'] === 'string' ? peerTodoList(machine, body as unknown as SessionTodoList) : body;
+    case 'todo-run':
+      return isRecord(body) && isRecord(body['session']) && isRecord(body['list'])
+        ? { ...body, session: peerSession(machine, body['session'] as unknown as Session), list: peerTodoList(machine, body['list'] as unknown as SessionTodoList) }
+        : body;
     case 'todo-groups':
       return Array.isArray(body) ? body.filter(isRecord).map((group) => peerTodoGroup(machine, group as unknown as TodoGroup)) : body;
     case 'none':

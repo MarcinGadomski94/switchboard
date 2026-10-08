@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { HandoffBranching, SessionBranching } from '../../core/branching.ts';
 import type { HandoffStack, ParentStatus, RepoBase } from '../../core/stacking.ts';
-import { type FirstTurnSession, type SessionStartAnswers, firstTurnPayload, repoWorktreeNote, sessionStartBlock } from '../../core/first-turn.ts';
+import { type FirstTurnSession, type SessionStartAnswers, firstTurnPayload, repoWorktreeNote, sessionStartBlock, workspaceWorktreesNote } from '../../core/first-turn.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
 import type { FolderRef } from '../folders/ref.ts';
 import type { RepoLocation } from '../worktrees/manager.ts';
@@ -140,6 +140,9 @@ export async function buildFirstTurn(session: FirstTurnSession & { readonly task
   let block = '';
   if (sources.folder.kind === 'workspace') {
     if (!session.simple) block = sessionStartBlock(await sessionStartAnswers(session, sources));
+    // D76: a simple start that got worktrees (a todo run from a session without router answers) names them.
+    else if (sources.worktrees.length > 0)
+      block = workspaceWorktreesNote(sources.worktrees.map((record) => ({ solution: record.repo, path: record.path, branch: record.branch, base: sources.cutFrom?.get(record.id) ?? record.baseRef ?? 'HEAD' })));
   } else {
     const worktree = sources.worktrees[0];
     if (worktree) {

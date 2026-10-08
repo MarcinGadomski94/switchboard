@@ -186,7 +186,7 @@ describe('TodoService (D75)', () => {
     await todos.update(id, todo.id, { state: 'in_progress' }, 'agent');
     expect((await todos.get(id, todo.id)).startedBy).toBe('agent');
     expect((await todos.update(id, todo.id, { state: 'open' })).todo).toMatchObject({ state: 'open', startedAt: null });
-    await expect(todos.update(id, todo.id, { state: 'paused' })).rejects.toMatchObject({ status: 422, message: 'state must be open, in_progress or done' });
+    await expect(todos.update(id, todo.id, { state: 'paused' })).rejects.toMatchObject({ status: 422, message: 'state must be open, in_progress, review or done' });
   });
 
   it('▶ Start: in progress and the start message sent; again re-arms it; a done item is refused; a refused send puts it back', async () => {

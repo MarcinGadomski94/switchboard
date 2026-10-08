@@ -21,6 +21,7 @@ import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
+import type { ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type {
   AgentKind,
@@ -721,6 +722,8 @@ export interface Session {
    * older peer) = 0.
    */
   readonly openTodoCount?: number;
+  /** Additive (D76, migration 0032): set on a todo's run session: the item it works on (its agent may mark that one item). */
+  readonly todoLink?: TodoLink | null;
 }
 
 /** Additive (D65): the other end of a take-over. `sessionId` is raw (on `machineId`); a link to it is `r~<machineId>~<sessionId>` unless `machineId` is this machine. */
@@ -2089,6 +2092,12 @@ export interface HubEvents {
    * (a peer's with its remote session id).
    */
   readonly todosChanged: TodosChanged;
+  /**
+   * Additive (D76, shared with lane B's review queue): a review card of a session was
+   * resolved. A todo whose run session it is leaves `review` (`docs/todos.md` → *Review*).
+   * This machine's only: never forwarded between peers.
+   */
+  readonly reviewResolved: ReviewResolvedEvent;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2119,6 +2128,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'updateChanged',
   'machineState',
   'todosChanged',
+  'reviewResolved',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */
@@ -2251,15 +2261,19 @@ export interface ProfilePinInput {
 /**
  * D68 (`docs/todos.md`): an item's state. D75: `in_progress` between open and done
  * (several items may be in progress at once; they keep their place in the priority order).
+ * D76: `review` between in progress and done for an item run in its own session (▸ Run in
+ * new session): its run marked it done and it waits for the developer's review (lane B's
+ * review queue resolves it: `reviewResolved`).
  */
-export type TodoState = 'open' | 'in_progress' | 'done';
+export type TodoState = 'open' | 'in_progress' | 'review' | 'done';
 
 /**
  * D75: how an item went in progress: `start` = the developer's ▶ Start (which sends the
  * start message), `agent` = the agent's `todo_start`, `developer` = ⋯ → Mark in progress.
- * Only `start` and `agent` arm the finish reminder.
+ * Only `start` and `agent` arm the finish reminder. D76: `run` = ▸ Run in new session (the run
+ * session's agent is the one reminded).
  */
-export type TodoStartSource = 'start' | 'agent' | 'developer';
+export type TodoStartSource = 'start' | 'agent' | 'developer' | 'run';
 
 /** D68: who added an item: the developer (the UI) or the session's agent (the `switchboard` MCP tools). */
 export type TodoAuthor = 'developer' | 'agent';
@@ -2305,6 +2319,55 @@ export interface SessionTodo {
   readonly startedAt?: string | null;
   /** D75: how it went in progress ({@link TodoStartSource}); `null` like {@link startedAt}. */
   readonly startedBy?: TodoStartSource | null;
+  /**
+   * D76 (additive): the session ▸ Run in new session started for it (on the same machine: a
+   * peer's carries its remote id); kept after the run, `null` = never run.
+   */
+  readonly runSessionId?: string | null;
+  /** D76: `active` (done → review) or `discarded` (its review was discarded; the link is history); `null` = never run. */
+  readonly runState?: TodoRunState | null;
+  /** D78 (additive): when it first went in progress; `null` = never. */
+  readonly startedFirstAt?: string | null;
+  /** D78: the time it spent in progress (ms; time back in open does not count); `null` = never started. */
+  readonly actualMs?: number | null;
+  /** D78: the tokens of the turns that worked on it (approximate, `docs/todos.md` → *Actual vs. estimate*); `null` = none known. */
+  readonly actualTokens?: number | null;
+}
+
+/** D76: an item's run ({@link SessionTodo.runState}). */
+export type TodoRunState = 'active' | 'discarded';
+
+/** D76: a run session's link to the item it works on (`Session.todoLink`). */
+export interface TodoLink {
+  /** The session whose list holds the item (a peer's carries its remote id). */
+  readonly sourceSessionId: string;
+  readonly todoId: string;
+}
+
+/** D76: the answer of `POST /api/sessions/{id}/todos/{todoId}/run` (201). */
+export interface TodoRunResult {
+  /** The new run session. */
+  readonly session: Session;
+  /** The source session's list (the item in progress, with its `runSessionId`). */
+  readonly list: SessionTodoList;
+  /** Why the run has no worktree (the source is not in a git repository), `null` when it has one. */
+  readonly note: string | null;
+}
+
+/** D78: one session's actual vs. estimate of its completed items (`TodoGroup.actuals`). */
+export interface TodoActualsTotal {
+  /** Completed items (done or in review) with recorded actuals. */
+  readonly count: number;
+  /** How many of them had an estimate (the comparison uses only those). */
+  readonly estimated: number;
+  /** Their estimates (minutes). */
+  readonly estimateMinutes: number;
+  /** The actual time of the estimated ones (ms). */
+  readonly estimatedActualMs: number;
+  /** The actual time of all of them (ms). */
+  readonly actualMs: number;
+  /** Their tokens (approximate). */
+  readonly tokens: number;
 }
 
 /** D68: `GET /api/sessions/{id}/todos` and the answer of every write under it: the whole list in order. */
@@ -2316,6 +2379,8 @@ export interface SessionTodoList {
   readonly doneCount: number;
   /** D75 (additive): the items in progress (part of {@link openCount}); absent from an older peer. */
   readonly inProgressCount?: number;
+  /** D76 (additive): the items in review (not part of {@link openCount} or {@link doneCount}). */
+  readonly reviewCount?: number;
 }
 
 /** D68: one session's group on the Todos page (`GET /api/todos`): its open items, and its done ones (still shown until removed). */
@@ -2329,6 +2394,8 @@ export interface TodoGroup {
   readonly machine: SessionMachine | null;
   readonly lastActivityAt: string | null;
   readonly todos: readonly SessionTodo[];
+  /** D78 (additive): the session's completed items' actual vs. estimate (also the ones removed after their done hour); absent from an older peer. */
+  readonly actuals?: TodoActualsTotal | null;
 }
 
 /**
@@ -2361,8 +2428,14 @@ export interface TodoPatchInput {
   readonly priority?: TodoPriority;
   /** D70: `null` removes the estimate. */
   readonly estimateMinutes?: number | null;
-  /** Tick (`done`), untick (`open`); D75: `in_progress` (⋯ → Mark in progress; the agent's `todo_start`). */
+  /**
+   * Tick (`done`), untick (`open`); D75: `in_progress` (⋯ → Mark in progress; the agent's `todo_start`).
+   * D76: `done` of an item with an active run is `review` instead (unless {@link skipReview});
+   * `review` only for an item with a run.
+   */
   readonly state?: TodoState;
+  /** D77: the board's drag to Done: done means done, also for an item with an active run. */
+  readonly skipReview?: boolean;
 }
 
 /** D69 / D70: an item's fields as the UI's form gives them (`null` = none). */

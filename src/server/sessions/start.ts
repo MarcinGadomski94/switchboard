@@ -73,6 +73,14 @@ export interface StartNewSessionOptions {
    * keep `session/{name}`.
    */
   readonly worktreeBranch?: WorktreeBranchRule;
+  /**
+   * D76 (a todo's run session, `docs/todos.md` → *Run in a new session*): the session gets one
+   * worktree per solution in `from` (its keys, in order), all on `branch`, each cut from its
+   * value (the source session's branch in that repo), whatever the body says about worktrees.
+   * A repo folder names its one solution; a workspace folder (ruling D76-workspace) its solution
+   * repos, like a Full start with worktrees per solution. Ignored in a plain folder.
+   */
+  readonly ownWorktree?: { readonly branch: string; readonly from: Readonly<Record<string, string>> };
 }
 
 /** Result of {@link startNewSession}: the started session, or a refusal to send as it is. */
@@ -182,12 +190,21 @@ export async function startNewSession(context: SessionStartContext, body: unknow
   let prepared: PreparedAttachments = NO_ATTACHMENTS;
   // D38: the branch the session's worktrees are on (stored with the session): the developer's ticket branch
   // (D32), `session/{name}` for scheduled runs; also the branch its agent's own worktrees get.
-  const branch = result.value.worktrees ? (result.value.branch ?? worktreeBranch(result.value.name)) : null;
+  // D76: a todo's run session's own worktrees (a repo folder's one repo, a workspace's solution repos).
+  const own = options.ownWorktree && folder.kind !== 'plain' && Object.keys(options.ownWorktree.from).length > 0 ? options.ownWorktree : null;
+  const branch = own ? own.branch : result.value.worktrees ? (result.value.branch ?? worktreeBranch(result.value.name)) : null;
   // D40: a ticket-branch session's worktrees follow the epic/task model (a body without `branching` is a task
   // without an epic); dropped repos get no worktree and leave the session's solutions.
   const branching = result.value.worktrees && result.value.branch ? (result.value.branching ?? null) : null;
   const solutions = branching ? result.value.solutions.filter((solution) => !branching.dropped.includes(solution)) : result.value.solutions;
-  const input: ValidNewSession = { ...result.value, solutions, ...(branch !== null ? { branch } : {}), provider, ...(account.profileId !== null ? { profileId: account.profileId } : {}) };
+  const input: ValidNewSession = {
+    ...result.value,
+    solutions: own ? Object.keys(own.from) : solutions,
+    ...(own ? { worktrees: true } : {}),
+    ...(branch !== null ? { branch } : {}),
+    provider,
+    ...(account.profileId !== null ? { profileId: account.profileId } : {}),
+  };
   // M2.2 / gap #1: the worktrees exist before the process starts and are linked to the session before its spawn.
   // D32: on the developer's ticket branch (the same in every repo); `session/{name}` for scheduled runs.
   // D38: a workspace session without solutions gets none up front: its agent creates them (and Switchboard adopts them).
@@ -200,7 +217,7 @@ export async function startNewSession(context: SessionStartContext, body: unknow
         taskWorktrees = await worktrees.createTaskWorktrees(input.name, input.solutions, folder, { task: input.branch, branching });
         created = taskWorktrees.map((worktree) => worktree.record);
       } else {
-        created = await worktrees.createForSession(input.name, input.solutions, folder, null, input.branch ? { branch: input.branch } : {});
+        created = await worktrees.createForSession(input.name, input.solutions, folder, null, { ...(input.branch ? { branch: input.branch } : {}), ...(own ? { fromBySolution: own.from } : {}) });
       }
     } catch (error) {
       if (!(error instanceof WorktreeError)) throw error;
@@ -216,7 +233,8 @@ export async function startNewSession(context: SessionStartContext, body: unknow
       resolveRepo: (solution) => worktrees.resolveRepo(solution, folder),
       agentBranch: branch,
       branching,
-      cutFrom: new Map(taskWorktrees.map((worktree) => [worktree.record.id, worktree.from])),
+      // D76: a todo run's worktrees name the source branch each was cut from.
+      cutFrom: own ? new Map(created.map((record) => [record.id, own.from[record.repo] ?? null])) : new Map(taskWorktrees.map((worktree) => [worktree.record.id, worktree.from])),
       // D47: each repo's resolved base / PR target and the parent's PR there.
       stack: new Map(taskWorktrees.map((worktree) => [worktree.record.id, { base: worktree.base, parentStatus: worktree.parentStatus }])),
     });

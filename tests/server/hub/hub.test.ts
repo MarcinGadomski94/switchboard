@@ -112,6 +112,8 @@ const SESSION_KEYS = keys<Session>()([
   'movedFrom',
   // additive, D68 (the session's open todos)
   'openTodoCount',
+  // additive, D76 (a todo's run session)
+  'todoLink',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',
@@ -558,8 +560,15 @@ describe('/hub · events (contract, field by field)', () => {
 
 describe('/hub · disconnects', () => {
   it('a client that goes away is dropped: the hub leaves the bus and stops asking for system info', async () => {
+    // The app's own listeners (D75's todo reminder, D76's review link) stay subscribed; the hub adds one while it has
+    // clients (the earlier tests' streams leave it as their sockets close).
+    const APP_LISTENERS = 2;
+    const settle = Date.now() + 5_000;
+    while (bus.listenerCount > APP_LISTENERS && Date.now() < settle) await new Promise((r) => setTimeout(r, 20));
+    const own = bus.listenerCount;
+    expect(own).toBe(APP_LISTENERS);
     const stream = await connect();
-    expect(bus.listenerCount).toBe(1);
+    expect(bus.listenerCount).toBe(own + 1);
     stream.close();
     streams.length = 0;
     await openHub({ port, cookie }).then((probe) => {
@@ -568,8 +577,8 @@ describe('/hub · disconnects', () => {
       probe.close();
     });
     const deadline = Date.now() + 5_000;
-    while (bus.listenerCount !== 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
-    expect(bus.listenerCount).toBe(0);
+    while (bus.listenerCount !== own && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    expect(bus.listenerCount).toBe(own);
     const calls = systemCalls;
     await new Promise((r) => setTimeout(r, 600));
     expect(systemCalls).toBe(calls);

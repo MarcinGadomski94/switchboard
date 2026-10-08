@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { resultTurnTokens } from '../../core/todo-actuals.ts';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
 import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
 import type { ArtifactType, EventKind, SessionStatus } from '../../core/model.ts';
@@ -874,6 +875,8 @@ export class StreamRecorder {
         numTurns: message.numTurns,
         durationMs: message.durationMs,
         costUsd: message.totalCostUsd,
+        // D78: the turn's tokens (a todo's actuals add them up).
+        tokens: resultTurnTokens(message.raw),
         stopped: true,
       }, { uuid: message.uuid });
       return;
@@ -894,6 +897,8 @@ export class StreamRecorder {
       numTurns: message.numTurns,
       durationMs: message.durationMs,
       costUsd: message.totalCostUsd,
+      // D78: the turn's tokens (a todo's actuals add them up).
+      tokens: resultTurnTokens(message.raw),
     }, { uuid: message.uuid });
   }
 

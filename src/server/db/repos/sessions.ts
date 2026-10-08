@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { SessionModelOption } from '../../../core/api.ts';
+import type { SessionModelOption, TodoLink } from '../../../core/api.ts';
 import type { SessionBranching } from '../../../core/branching.ts';
 import type { CliProviderId } from '../../../core/cli-providers.ts';
 import type { ContextState } from '../../../core/context-meter.ts';
@@ -143,6 +143,8 @@ export interface SessionRecord {
   readonly movedTo: SessionMove | null;
   /** D65 (0025): set on the **new** session: the machine and session it was taken over from. */
   readonly movedFrom: SessionMove | null;
+  /** D76 (0032): set on a todo's run session: the source session and the item it works on. */
+  readonly todoLink: TodoLink | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -226,6 +228,7 @@ const SPEC: TableSpec<SessionRecord> = {
     profilePinned: ['profile_pinned', 'bool'],
     movedTo: ['moved_to', 'json'],
     movedFrom: ['moved_from', 'json'],
+    todoLink: ['todo_link', 'json'],
   },
 };
 
