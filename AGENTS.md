@@ -13,7 +13,8 @@ Location: `~/RiderProjects/Personal/switchboard` (a standalone repo; it began in
 - Async end-to-end: no `execSync` / `spawnSync` / `readFileSync` / other sync I/O on request or event paths (startup config reads are fine).
 - Exact-pinned dependency versions in `package.json` + a committed `package-lock.json`. Add a dependency only when it earns its place.
 - Child processes use `spawn(cmd, argsArray, { shell: false })` only. Never a shell string.
-- The UI binds to loopback (127.0.0.1) only. Keep the Host/Origin checks and the token cookie. The optional **peer listener** (D48, off by default) binds only the machine's Tailscale address and serves only the peer API, authenticated by per-peer tokens (`docs/peers.md`, `docs/security.md`).
+- The UI binds to loopback (127.0.0.1) only. Keep the Host/Origin checks and the token cookie. The optional **peer listener** (D48, off by default) binds only the machine's Tailscale address and serves only the peer API, authenticated by per-peer tokens (`docs/peers.md`, `docs/security.md`). The optional **device listener** (D73, off by default) also binds 127.0.0.1 only and is published to the tailnet solely through `tailscale serve` (HTTPS); it never trusts loopback: its own guard checks the devices' origin (Host/Origin) and a per-device credential (hashed, revocable, from a one-time pairing code), serves an unpaired device only the pairing page, and refuses devices the local-only admin routes (`docs/devices.md`, `docs/security.md`). Nothing binds a LAN or public address.
+- Tests never call the real push services either: web push goes to the fake push service (`tests/helpers/fake-push.ts`).
 - Tests never call the real `claude`, `gh`, `tailscale` or network (beyond loopback). Use `tools/fake-claude`, `tools/fake-gh`, `tools/fake-tailscale` and temp git repos / temp data folders; peers are two test servers on loopback ports.
 - TSDoc on exported surface; `docs/*.md` for non-obvious behavior.
 

@@ -376,6 +376,15 @@ Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Mac
 
 [`docs/peers.md`](docs/peers.md)
 
+### Devices (phones and tablets)
+Use Switchboard from your phone or tablet over **Tailscale**, in **Settings → Devices**:
+- **Device access** (off by default): Switchboard publishes a second, device-only listener on `127.0.0.1` to your tailnet with `tailscale serve`, so devices open `https://<machine>.<tailnet>.ts.net:8443` with a real HTTPS certificate. Nothing is opened to your LAN or the internet. Your tailnet needs **MagicDNS** and **HTTPS certificates** turned on (Settings tells you what is missing).
+- **Pair a device** shows a **QR code** and a one-time code (10 minutes, single use). Scan it on the phone, confirm the name, **Pair**: the phone gets its own credential and sees everything you see here. Each device is listed with when it was last seen and can be renamed or **revoked** (it loses access at once).
+- **What stays on the computer:** pairing devices, machines, hooks, MCP server edits, updates, Start at login, CLI commands, accounts, tools, folders and take-overs. The work itself (sessions, answers, Inbox, schedules, todos) all works from the phone.
+- **Notifications:** on the phone, Settings → Devices → **Enable notifications**: permission requests, questions, finished turns, session errors and other Inbox items, each switchable; a tap opens the session. On iPhone and iPad add Switchboard to the Home Screen first (and pair it there).
+
+[`docs/devices.md`](docs/devices.md)
+
 ### Embedded tools
 Local web tools open inside Switchboard from the sidebar (**TOOLS**); add them in Settings → Embedded tools. Codebase Memory is built in, including its "reindex n now" strip.
 
@@ -405,6 +414,8 @@ If the service isn't running, the app window shows "Switchboard isn't running" w
 
 Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app and one login whichever you type. [`docs/install-app.md`](docs/install-app.md)
 
+**On a phone or tablet** (a paired device, *Devices* above): Android Chrome offers **Install app** from its menu; on iPhone / iPad use Safari's Share → **Add to Home Screen**, open Switchboard from the Home Screen and pair it there (it keeps its own sign-in). The Home Screen app is what gets notifications on iOS.
+
 
 ---
 
@@ -412,11 +423,12 @@ Opening `localhost:13001` takes you to `127.0.0.1:13001`, so there is one app an
 - The server listens on **127.0.0.1 only**. Every request must name `127.0.0.1:<port>` or `localhost:<port>` as its Host (this stops DNS rebinding). A browser Origin must be exactly Switchboard's own.
 - Every API call needs the **`sb_token` cookie**. It is `HttpOnly`, `SameSite=Strict`, and only set when you open the page yourself (typed URL, bookmark, reload), never from another site.
 - The optional **peer listener** (Machines) is a second socket bound only to the Tailscale address. It serves only the peer API, and every call needs that machine's own pairing token (stored hashed); no page, no settings, no folders, no tools.
+- The optional **device listener** (Devices, off by default) also binds **127.0.0.1** only; `tailscale serve` publishes it to your tailnet over HTTPS. It never trusts loopback: every request must name the devices' `*.ts.net` origin and carry a paired device's own credential (an `HttpOnly`, `Secure`, `SameSite=Strict` cookie, stored hashed, revocable); an unpaired device gets only the pairing page, and devices cannot administer the machine. Pairing codes are single use, expire in 10 minutes and are rate-limited. Push notifications are end-to-end encrypted and go only to the browser vendors' push services.
 - **Terminal hooks** (Machines → Install hooks) call Switchboard only on 127.0.0.1 with a separate hook token (a file only you can read); installing and removing them backs up your `~/.claude/settings.json` first and touches only Switchboard's own entries.
 - Child processes are spawned with argument arrays, never through a shell.
 - Switchboard never reads or passes on your claude.ai credentials, or any other CLI's (Codex, OpenCode) or account's: sign-in and sign-out are each CLI's own commands, and it only runs the CLIs you signed in to. Account profile folders and handover exports stay in the data folder (mode 0700 / 0600).
 - **Attachments** are stored only in the data folder (never in a repo or the database), typed by their bytes, and never rendered inline unless they are PNG, JPEG, GIF, WebP or PDF.
-- **No telemetry.** Switchboard sends nothing to its author; the only network calls it makes itself are GitHub update checks. See the [privacy policy](PRIVACY.md).
+- **No telemetry.** Switchboard sends nothing to its author; the only network calls it makes itself are GitHub update checks and, only once you enable them on a paired device, encrypted push notifications through that device's browser vendor. See the [privacy policy](PRIVACY.md).
 - **MCP servers:** secrets never reach the browser; env and header values are masked, and servers are changed only through the CLI's own commands.
 - **Updates** come only from the configured GitHub repository's releases, over HTTPS, and are installed only after their SHA-256 checksum matches; the archive is unpacked by Node itself (no links, no paths outside its folder), and nothing from it runs except `npm ci --omit=dev` and the new server.
 
@@ -460,6 +472,7 @@ docs/         one doc per area, the decisions log, the handoff spec
 
 ### Tests never call the real `claude`, `codex`, `opencode` or `gh`
 - **`tools/fake-claude`** replays recorded stream-json turns and scenarios. Tokens in a prompt drive it, e.g. `[fake:ask-2q]`, `[fake:say "…"]`, `[fake:background …]`. See [`docs/fake-claude.md`](docs/fake-claude.md).
+- **`tools/fake-tailscale`** stands in for the Tailscale CLI (peers' `ip -4`, devices' `status` and `serve`); web push goes to a local fake push service that checks the encryption and the VAPID signature.
 - **`tools/fake-gh`** stands in for the GitHub CLI; **`tools/fake-codex`** and **`tools/fake-opencode`** for Codex CLI and OpenCode (their real protocols are pinned in [`docs/providers.md`](docs/providers.md)).
 - Tests start their own server on a **test port** (`SWITCHBOARD_TEST_PORTS`, default 4871–4879; 13001 is refused) with a temporary data folder. The E2E UI is built into `.e2e-dist/web`, so a test run never changes the UI you're running from the same checkout.
 - The only real-CLI checks are manual and bounded: Haiku, `--max-turns` ≤ 3, in a gitignored sandbox ([`docs/smoke-real-cli.md`](docs/smoke-real-cli.md)).

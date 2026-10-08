@@ -1038,6 +1038,37 @@ A hooked terminal session (D48 P4) becomes a Switchboard-run session **in place*
 { "error": "terminal-running", "message": "pc-terminal's claude is still running in its terminal (pid 4242): continuing it here stops it there first. Confirm to stop it and continue.", "pid": 4242 }
 ```
 
+## Devices (D73, 2026-10-08, additive)
+Developer request D73 (`docs/decisions.md` → *Devices*, `docs/devices.md`): phones and tablets paired over Tailscale, reaching a second **device listener** (127.0.0.1, published by `tailscale serve`, HTTPS) that serves the **same** API and UI behind its own guard (`docs/security.md` → *Device listener (D73)*). Types: `src/core/devices.ts`. Migration 0030. On the device listener: no `sb_token`; a device's credential is the `__Host-sb_device` cookie; the local-only routes answer 403 `local-only` to a device; an unpaired device gets 401 (page loads: 302 to `/pair`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/devices | — | 200 DevicesView `{ access: DeviceAccessState, devices: Device[] }` (local only) |
+| PUT | /api/devices/access | DeviceAccessInput `{ enabled?, port?, httpsPort? }` | 200 DeviceAccessState · 422 `invalid` (port = the UI's, an HTTPS port other than 443 / 8443 / 10000) (local only) |
+| POST | /api/devices/pairing | — | 200 DevicePairingCode `{ code, expiresAt, url }` (the old code stops working) · 409 `access-off` (local only) |
+| DELETE | /api/devices/pairing | — | 204 (local only) |
+| PUT | /api/devices/{id} | `{ name }` (1–40) | 200 Device · 404 `not-found` · 422 `invalid` (local only) |
+| DELETE | /api/devices/{id} | — | 204 (revoked: its connections closed) · 404 `not-found` (local only) |
+| GET | /api/device | — | 200 DeviceSelfView `{ device: Device \| null, vapidPublicKey, events }` (`device: null` on this machine's own UI) |
+| PUT | /api/device | `{ name }` | 200 Device · 404 `not-a-device` · 422 `invalid` |
+| PUT | /api/device/push | DevicePushInput `{ subscription?: { endpoint, keys: { p256dh, auth } }, events?: Partial<PushEvents> }` | 200 DeviceSelfView · 404 `not-a-device` · 409 `no-subscription` (toggles before a subscription) · 422 `invalid` / `invalid-subscription` (endpoint not on a known push service) |
+| DELETE | /api/device/push | — | 200 DeviceSelfView · 404 `not-a-device` |
+| POST | /api/device/push/test | — | 200 `{ ok: true }` / `{ ok: false, error }` · 404 `not-a-device` · 409 `no-subscription` |
+| GET | /pair | — | device listener only: 200 the pairing page (unpaired), 302 `/` (paired); 404 on the UI listener |
+| POST | /device/v1/pair | `{ code, name? }` | device listener only: 201 `{ device: Device }` + `Set-Cookie: __Host-sb_device=…; Path=/; Max-Age=34560000; HttpOnly; Secure; SameSite=Strict` · 400 `no-code` / `expired` / `wrong-code` / `too-many-tries` · 429 `rate-limited`; 404 on the UI listener |
+
+- **DeviceAccessState** `{ enabled, port (default 13003), httpsPort (default 8443), listening: "127.0.0.1:<port>" | null, origin: "https://<machine>.<tailnet>.ts.net:8443" | null, https: "ok" | "off" | "no-tailscale" | "no-https" | "serve-failed" | "port-busy", message, actionUrl }` (`message` says what to enable; `actionUrl` a Tailscale page the CLI named, e.g. Serve's consent).
+- **Device** `{ id, name, userAgent, pairedAt, lastSeenAt, push }`: never a credential.
+- **PushEvents** `{ permission, questions, turnFinished, errors, inbox }` (booleans, all on by default).
+- **Push payload** (Web Push, encrypted per RFC 8291, VAPID RFC 8292; the service worker shows it): `{ title, body (≤ 140), url ("/sessions/<id>" | "/inbox" | "/settings/devices"), tag, kind }`.
+- No `/hub` event of its own: Settings → Devices re-reads `GET /api/devices` while a code waits.
+
+```json
+GET /api/devices → { "access": { "enabled": true, "port": 13003, "httpsPort": 8443, "listening": "127.0.0.1:13003", "origin": "https://devbox.example-tailnet.ts.net:8443", "https": "ok", "message": null, "actionUrl": null }, "devices": [{ "id": "k3v7q2m9x4ab", "name": "iPhone · Safari", "userAgent": "Mozilla/5.0 (iPhone; …)", "pairedAt": "2026-10-08T10:00:00.000Z", "lastSeenAt": "2026-10-08T10:05:00.000Z", "push": true }] }
+POST /api/devices/pairing → { "code": "7KQ2-M9XA", "expiresAt": "2026-10-08T10:10:00.000Z", "url": "https://devbox.example-tailnet.ts.net:8443/pair#code=7KQ2-M9XA" }
+PUT /api/device/push { "subscription": { "endpoint": "https://web.push.apple.com/QG…", "keys": { "p256dh": "BC…", "auth": "Tm…" } } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
