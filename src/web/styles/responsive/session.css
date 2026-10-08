@@ -457,6 +457,14 @@
     margin-left: 25px;
   }
 
+  /* D76 / D78: IN REVIEW and the actuals make the labels longer: they wrap within the card. */
+  .sb-todo-card-row > .sb-todo-tags {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    min-width: 0;
+  }
+
   .sb-todo-card-body {
     padding-left: 0;
   }
@@ -470,6 +478,13 @@
   .sb-todo-menu.sb-todo-submenu {
     right: 0;
     top: calc(100% + 2px);
+  }
+}
+
+/* A touch phone's box (22 px) and ⋯ (44 px) are larger: the title leaves them room, so ⋯ stays on the first line (D77: also on the board's narrower cards). */
+@media (max-width: 767px) and (pointer: coarse) {
+  .sb-todo-card-row > .sb-todo-title {
+    flex-basis: calc(100% - 22px - 44px - 20px);
   }
 }
 

@@ -536,3 +536,167 @@ test('D70 · priorities sort and tint the cards, estimates and totals show; the 
   await expect(doneCard.getByTestId('todo-menu-priority')).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
+
+/** The id of the run session an item's card links to. */
+async function runIdOf(card: import('@playwright/test').Locator): Promise<string> {
+  const href = (await card.getByTestId('todo-run-link').getAttribute('href')) ?? '';
+  return decodeURIComponent(href.split('/').pop() ?? '');
+}
+
+test('D76 · ⋯ Run in new session: a new session titled like the item gets its start message; the card links it live; its agent marks it done → In review; Select → Run 2', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto(world.baseUrl);
+  const { id } = await world.startSession(page, 'todo-run-source', 'Reply with just OK.');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const strip = page.getByTestId('todo-strip');
+  await page.getByTestId('chat-todo-add').click();
+  const form = strip.getByTestId('todo-form');
+  for (const title of ['Tidy the release notes', 'Rename the config keys', 'Bump the fake CLI']) {
+    await form.getByTestId('todo-form-title').fill(title);
+    await form.getByTestId('todo-form-estimate').fill('30m');
+    await form.getByTestId('todo-form-save').click();
+  }
+  await form.getByTestId('todo-form-cancel').click();
+  const items = strip.getByTestId('todo-item');
+  await expect(items).toHaveCount(3);
+  const notes = items.filter({ hasText: 'Tidy the release notes' });
+  const todoId = (await notes.getAttribute('data-todo-id')) as string;
+
+  // ⋯ → Run in new session: a toast (the workspace is no git repository: no worktree, it says so).
+  await notes.getByTestId('todo-menu-button').click();
+  await notes.getByTestId('todo-menu-run').click();
+  const toast = page.getByTestId('toast').filter({ hasText: 'Running in a new session' });
+  await expect(toast).toContainText('Tidy the release notes');
+  await expect(toast).toContainText('not a git repository');
+  await expect(notes).toHaveAttribute('data-state', 'in_progress');
+  await expect(notes.getByTestId('todo-run-link')).toHaveText(/Tidy the release notes/);
+  await expect(notes.getByTestId('todo-run-status')).toHaveText(/working|idle|done/);
+  const runId = await runIdOf(notes);
+  expect(runId).not.toBe(id);
+  // The run is in the sidebar like any session; ⋯ no longer offers Run while it runs.
+  await expect(page.locator(`.sb-session[data-session-id="${runId}"]`)).toContainText('Tidy the release notes');
+  await notes.getByTestId('todo-menu-button').click();
+  await expect(notes.getByTestId('todo-menu-run')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // The run session's agent marks the item done (its own token) once its first turn ended: it is in review, not done.
+  await expect(notes.getByTestId('todo-run-status')).toHaveText(/^(idle|done)$/, { timeout: 15_000 });
+  expect(await agentPuts(runId, todoId, { state: 'done' })).toBe(200);
+  await expect(notes).toHaveAttribute('data-state', 'review');
+  await expect(notes.getByTestId('todo-in-review')).toBeVisible();
+  await expect(notes.getByTestId('todo-actuals')).toHaveText(/^est ~30m · took (<1m|\d+m) · \d+k tokens$/);
+  await expect(page.getByTestId('todo-count')).toHaveText('2 open · ~1h · 1 in review · 0 done');
+
+  // The run session opens from the card; its first message is the item's start message.
+  await notes.getByTestId('todo-run-link').click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${runId}$`));
+  await expect(page.locator('[data-testid="chat-message"][data-role="user"]').first()).toContainText(`Work on todo [${todoId}]: Tidy the release notes`);
+
+  // Select → Run 2 in new sessions.
+  await page.goto(`${world.baseUrl}/sessions/${id}`);
+  if ((await strip.getAttribute('data-expanded')) === 'false') await page.getByTestId('todo-toggle').click();
+  await strip.getByTestId('todo-select-toggle').click();
+  await expect(strip.getByTestId('todo-run-selected')).toBeDisabled();
+  for (const title of ['Rename the config keys', 'Bump the fake CLI']) await items.filter({ hasText: title }).getByTestId('todo-select').check();
+  // An item already running cannot be picked.
+  await expect(notes.getByTestId('todo-select')).toBeDisabled();
+  await expect(strip.getByTestId('todo-run-selected')).toHaveText('Run 2 in new sessions');
+  await strip.getByTestId('todo-run-selected').click();
+  await expect(strip.getByTestId('todo-selection')).toHaveCount(0);
+  await expect(items.filter({ hasText: 'Rename the config keys' }).getByTestId('todo-run-link')).toBeVisible();
+  await expect(items.filter({ hasText: 'Bump the fake CLI' }).getByTestId('todo-run-link')).toBeVisible();
+  await expect(page.getByTestId('todo-count')).toHaveText('2 in progress · 0 open · ~1h · 1 in review · 0 done');
+});
+
+test('D77 · the board: List | Board (kept), four columns across sessions, filters and search, drag between columns, Review only with a run, ⋯ Move to; D78 actuals', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto(world.baseUrl);
+  const { id } = await world.startSession(page, 'todo-board', 'Reply with just OK.');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const strip = page.getByTestId('todo-strip');
+  await page.getByTestId('chat-todo-add').click();
+  const form = strip.getByTestId('todo-form');
+  for (const [title, priority] of [
+    ['Board one', 'high'],
+    ['Board two', 'low'],
+    ['Board three', 'medium'],
+  ] as const) {
+    await form.getByTestId('todo-form-title').fill(title);
+    await form.getByTestId('todo-form-priority').selectOption(priority);
+    await form.getByTestId('todo-form-estimate').fill('20m');
+    await form.getByTestId('todo-form-save').click();
+  }
+  await form.getByTestId('todo-form-cancel').click();
+
+  await page.getByTestId('nav-todos').click();
+  await page.getByTestId('todos-mode-board').click();
+  const board = page.getByTestId('todo-board');
+  await expect(board).toBeVisible();
+  const column = (state: string) => board.getByTestId(`board-column-${state}`);
+  const card = (title: string) => board.locator('[data-testid="todo-item"]').filter({ hasText: title });
+  await expect(column('open').getByTestId('todo-item').filter({ hasText: /Board/ }).getByTestId('todo-title')).toHaveText(['Board one', 'Board three', 'Board two']);
+  await expect(card('Board one').getByTestId('todo-session-label')).toContainText('todo-board');
+  // Kept: a reload shows the board again.
+  await page.reload();
+  await expect(page.getByTestId('todo-board')).toBeVisible();
+
+  // Search and the priority filter.
+  await board.getByTestId('board-search').fill('three');
+  await expect(column('open').getByTestId('todo-item')).toHaveCount(1);
+  await board.getByTestId('board-search').fill('');
+  await board.getByTestId('board-filter-priority').selectOption('low');
+  await expect(column('open').getByTestId('todo-item').getByTestId('todo-title')).toHaveText(['Board two']);
+  await board.getByTestId('board-filter-priority').selectOption('all');
+  await board.getByTestId('board-filter-session').selectOption({ label: 'todo-board' });
+  await expect(column('open').getByTestId('todo-item')).toHaveCount(3);
+
+  /** Drags `title`'s card (by its session label: free space) into column `state` with the mouse. */
+  const dragTo = async (title: string, state: string): Promise<void> => {
+    const from = await card(title).getByTestId('todo-session-label').boundingBox();
+    const to = await column(state).boundingBox();
+    if (!from || !to) throw new Error('no boxes');
+    await page.mouse.move(from.x + 10, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 30, from.y + 20, { steps: 4 });
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  // Open → In progress (nothing is sent: the session gets no new message).
+  await dragTo('Board one', 'in_progress');
+  await expect(column('in_progress').getByTestId('todo-item').filter({ hasText: 'Board one' })).toHaveCount(1);
+  await expect(card('Board one')).toHaveAttribute('data-state', 'in_progress');
+  // Review needs a run: the drop is refused (the card stays).
+  await dragTo('Board one', 'review');
+  await expect(card('Board one')).toHaveAttribute('data-state', 'in_progress');
+  // In progress → Done: done (the actuals show).
+  await dragTo('Board one', 'done');
+  await expect(column('done').getByTestId('todo-item').filter({ hasText: 'Board one' })).toHaveCount(1);
+  await expect(card('Board one').getByTestId('todo-actuals')).toHaveText(/^est ~20m · took (<1m|\d+m)/);
+  // D78: the session's totals under the board.
+  await expect(board.getByTestId('board-actuals-row').filter({ hasText: 'todo-board' })).toContainText(/est ~20m · took (<1m|\d+m) \(1 done\)/);
+
+  // ⋯ → Move to (the keyboard alternative): no Review entry without a run; Done → Open reopens.
+  await card('Board three').getByTestId('todo-menu-button').click();
+  await card('Board three').getByTestId('todo-menu-move').click();
+  await expect(card('Board three').getByTestId('todo-menu-move-review')).toHaveCount(0);
+  await card('Board three').getByTestId('todo-menu-move-in_progress').click();
+  await expect(card('Board three')).toHaveAttribute('data-state', 'in_progress');
+
+  // A run item can go to Review by drag, and Done from there means done.
+  await card('Board two').getByTestId('todo-menu-button').click();
+  await card('Board two').getByTestId('todo-menu-run').click();
+  await expect(card('Board two').getByTestId('todo-run-link')).toBeVisible();
+  await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
+  await dragTo('Board two', 'review');
+  await expect(card('Board two')).toHaveAttribute('data-state', 'review');
+  await dragTo('Board two', 'done');
+  await expect(card('Board two')).toHaveAttribute('data-state', 'done');
+
+  // Back to the list (kept too).
+  await page.getByTestId('todos-mode-list').click();
+  await page.reload();
+  await expect(page.getByTestId('todo-board')).toHaveCount(0);
+  const group = page.locator(`[data-testid="todos-group"][data-session-id="${id}"]`);
+  await expect(group.getByTestId('todos-group-actuals')).toContainText('(2 done)');
+});

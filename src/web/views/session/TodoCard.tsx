@@ -1,5 +1,7 @@
 import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { SessionTodo, TodoFieldsInput, TodoPriority } from '../../../core/api.ts';
+import type { SessionTodo, TodoFieldsInput, TodoPriority, TodoState } from '../../../core/api.ts';
+import type { SessionStatus } from '../../../core/model.ts';
+import { todoActualsLabel } from '../../../core/todo-actuals.ts';
 import {
   DEFAULT_TODO_PRIORITY,
   TODO_DESCRIPTION_MAX,
@@ -15,7 +17,8 @@ import {
   todoHasPlan,
   todoRemovalLabel,
 } from '../../../core/todos.ts';
-import { formatAge } from '../../shell/format.ts';
+import { formatAge, statusColor } from '../../shell/format.ts';
+import { Link } from '../../router.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 
 /** Who added an item, as the card shows it (subtle). */
@@ -240,6 +243,31 @@ export interface TodoCardActions {
   readonly onPriority: (priority: TodoPriority) => void;
   /** D75: ⋯ → Mark in progress (`in_progress`) / Mark not started (`open`). */
   readonly onProgress: (state: 'open' | 'in_progress') => void;
+  /** D76: ⋯ → Run in new session (open and in-progress items without a running run); `null` = not offered. */
+  readonly onRun?: (() => void) | null;
+  /** D77: the board's ⋯ → Move to (the drag's keyboard alternative); `null` = not offered. */
+  readonly onMoveTo?: ((state: TodoState) => void) | null;
+}
+
+/** D76: the run session as its card shows it (looked up live in the session list). */
+export interface TodoRunSession {
+  readonly title: string;
+  readonly status: SessionStatus | null;
+  readonly closed: boolean;
+}
+
+/** D76: a session status in words (the run link). */
+const STATUS_WORDS: Readonly<Record<SessionStatus, string>> = { run: 'working', need: 'needs you', done: 'done', fail: 'failed', idle: 'idle', paused: 'paused' };
+
+/** D77: the board's columns as ⋯ → Move to names them. */
+export const TODO_STATE_LABELS: Readonly<Record<TodoState, string>> = { open: 'Open', in_progress: 'In progress', review: 'Review', done: 'Done' };
+
+/** D78: a finished card's estimate and actuals: `est ~45m · took 32m · 41k tokens`; `''` when it has none. */
+export function todoActualsLine(todo: SessionTodo): string {
+  const actual = todoActualsLabel(todo);
+  if (!actual) return '';
+  const estimate = todoEstimateLabel(todo.estimateMinutes);
+  return estimate ? `est ${estimate} · ${actual}` : actual;
 }
 
 /** One entry of a submenu (D70: ⋯ → Priority): a radio item, the current one checked. */
@@ -273,9 +301,11 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
     const menu = ref.current;
     if (!menu) return;
     const rect = menu.getBoundingClientRect();
-    const scroller = menu.parentElement?.closest('.sb-todos-body, .sb-todos-page-list');
-    const bottom = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight;
-    const top = scroller ? scroller.getBoundingClientRect().top : 0;
+    // D77: a board card's menu stays within its column's list (or the board, where the board scrolls as a whole) and the window.
+    const found = menu.parentElement?.closest('.sb-todos-body, .sb-todos-page-list, .sb-board-cards');
+    const scroller = found && /auto|scroll/.test(getComputedStyle(found).overflowY) ? found : null;
+    const bottom = Math.min(scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight, window.innerHeight);
+    const top = Math.max(scroller ? scroller.getBoundingClientRect().top : 0, 0);
     if (rect.bottom > bottom && (anchor?.getBoundingClientRect().top ?? 0) - top > rect.height) setUp(true);
   }, [anchor]);
   // The first entry takes the focus once, when the menu opens. Not on later renders: the card re-renders
@@ -429,8 +459,22 @@ export function TodoCard({
   actions,
   now,
   working = false,
+  runSession = null,
+  selected = null,
+  onSelect = null,
+  sessionLabel = null,
+  dragProps = null,
 }: {
   readonly todo: SessionTodo;
+  /** D76: its run session (title, live status), `null` when it has none or it is not known here. */
+  readonly runSession?: TodoRunSession | null;
+  /** D76: multi-select (Run N in new sessions): whether it is selected; `null` = not selecting. */
+  readonly selected?: boolean | null;
+  readonly onSelect?: ((selected: boolean) => void) | null;
+  /** D77: the board's card names its session. */
+  readonly sessionLabel?: string | null;
+  /** D77: the board's drag handlers and state (pointer events on the card). */
+  readonly dragProps?: Readonly<Record<string, unknown>> | null;
   /** Its place among the items it moves among (D70: the open items of its priority, or the done ones; for Move up / down). */
   readonly index: number;
   readonly count: number;
@@ -450,6 +494,10 @@ export function TodoCard({
   const isDone = todo.state === 'done';
   // D75: started (◐, IN PROGRESS); a tick marks it done.
   const inProgress = todo.state === 'in_progress';
+  // D76: its run finished it; a tick approves it (done).
+  const inReview = todo.state === 'review';
+  const runActive = todo.runState === 'active' && Boolean(todo.runSessionId);
+  const actualsLine = todoActualsLine(todo);
   const title = todo.title ?? todo.text;
   // D70: "No plan" (or "No plan: <reason>") is not offered as a handover plan.
   const hasPlan = todoHasPlan(todo.plan);
@@ -522,7 +570,7 @@ export function TodoCard({
           },
         ]),
     // D75: by hand, without sending anything (▶ Start sends the message too).
-    ...(isDone
+    ...(isDone || inReview
       ? []
       : [
           inProgress
@@ -531,6 +579,22 @@ export function TodoCard({
         ]),
     { id: 'up', label: 'Move up', disabled: disabled || index <= 0, run: () => actions.onMove(-1) },
     { id: 'down', label: 'Move down', disabled: disabled || index >= count - 1, run: () => actions.onMove(1) },
+    // D76: a new session works on it (its own worktree in a git repo).
+    ...(actions.onRun && !isDone && !inReview && !runActive ? [{ id: 'run', label: 'Run in new session', disabled, run: actions.onRun }] : []),
+    // D77: the board's columns without dragging (Review only for an item with a run).
+    ...(actions.onMoveTo
+      ? [
+          {
+            id: 'move',
+            label: 'Move to',
+            disabled,
+            run: () => undefined,
+            submenu: (['open', 'in_progress', 'review', 'done'] as const)
+              .filter((state) => state !== 'review' || Boolean(todo.runSessionId))
+              .map((state) => ({ id: state, label: TODO_STATE_LABELS[state], checked: state === todo.state, run: () => actions.onMoveTo?.(state) })),
+          },
+        ]
+      : []),
     { id: 'delete', label: 'Delete', disabled, run: actions.onDelete },
   ];
 
@@ -544,15 +608,34 @@ export function TodoCard({
       data-priority={priority}
       data-expanded={expanded ? 'true' : 'false'}
       data-working={inProgress && working ? 'true' : undefined}
+      data-selected={selected ? 'true' : undefined}
       onClick={onCardClick}
+      {...(dragProps ?? {})}
     >
+      {sessionLabel ? (
+        <div className="sb-todo-session-label" data-testid="todo-session-label">
+          {sessionLabel}
+        </div>
+      ) : null}
       <div className="sb-todo-card-row" ref={row}>
+        {selected !== null && onSelect ? (
+          <input
+            type="checkbox"
+            className="sb-todo-select"
+            data-testid="todo-select"
+            aria-label={`Select ${title}`}
+            checked={selected}
+            disabled={disabled || isDone || inReview || runActive}
+            onChange={(event) => onSelect(event.target.checked)}
+          />
+        ) : null}
         <input
           type="checkbox"
           className="sb-todo-check"
           data-testid="todo-check"
-          aria-label={isDone ? `Reopen ${title}` : `Mark ${title} done${inProgress ? ' (in progress)' : ''}`}
+          aria-label={isDone ? `Reopen ${title}` : inReview ? `Approve ${title} (mark it done)` : `Mark ${title} done${inProgress ? ' (in progress)' : ''}`}
           data-progress={inProgress ? 'true' : undefined}
+          data-review={inReview ? 'true' : undefined}
           checked={isDone}
           disabled={disabled}
           onChange={actions.onToggleDone}
@@ -578,7 +661,17 @@ export function TodoCard({
                 In progress
               </span>
             ) : null}
-            {estimate ? (
+            {inReview ? (
+              <span className="sb-todo-in-review" data-testid="todo-in-review" title="Its run session finished it: review the work, then tick it (or drag it to Done)">
+                In review
+              </span>
+            ) : null}
+            {inReview && actualsLine ? (
+              <span className="sb-todo-actuals" data-testid="todo-actuals" title="Estimate, the time it spent in progress, and the tokens of the turns that worked on it (approximate)">
+                {actualsLine}
+              </span>
+            ) : null}
+            {estimate && !(inReview && actualsLine) ? (
               <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
                 {estimate}
               </span>
@@ -587,7 +680,15 @@ export function TodoCard({
         )}
         <span className="sb-todo-meta" data-testid="todo-meta">
           {isDone ? (
-            <span data-testid="todo-removal">{todoRemovalLabel(todo.removeAt, Math.max(now, Date.now()))}</span>
+            <>
+              {actualsLine ? (
+                <span className="sb-todo-actuals" data-testid="todo-actuals" title="Estimate, the time it spent in progress, and the tokens of the turns that worked on it (approximate)">
+                  {actualsLine}
+                  {' · '}
+                </span>
+              ) : null}
+              <span data-testid="todo-removal">{todoRemovalLabel(todo.removeAt, Math.max(now, Date.now()))}</span>
+            </>
           ) : (
             <>
               <span className="sb-todo-by" data-testid="todo-by" title={todo.addedBy === 'agent' ? 'Added by the agent' : 'Added by you'}>
@@ -616,6 +717,20 @@ export function TodoCard({
           {menuOpen ? <CardMenu entries={entries} label={`Actions for ${title}`} anchor={menuButton.current} onClose={() => setMenuOpen(false)} /> : null}
         </span>
       </div>
+      {todo.runSessionId ? (
+        <div className="sb-todo-run" data-testid="todo-run-session" data-run-state={todo.runState ?? undefined}>
+          <span className="sb-todo-run-label">{todo.runState === 'discarded' ? 'Run (discarded)' : 'Run'}</span>
+          <Link to={{ view: 'session', id: todo.runSessionId, tab: 'chat' }} className="sb-todo-run-link" data-testid="todo-run-link">
+            {runSession && runSession.status ? <span className="sb-todo-run-dot" aria-hidden="true" style={{ background: statusColor(runSession.status) }} /> : null}
+            {runSession?.title ?? 'its session'}
+          </Link>
+          {runSession ? (
+            <span className="sb-todo-run-status" data-testid="todo-run-status">
+              {runSession.closed ? 'closed' : runSession.status ? STATUS_WORDS[runSession.status] : ''}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {!isDone && (todo.description || hasPlan) ? (
         <div className="sb-todo-card-body" id={`${ids}-body`}>
           {todo.description ? (

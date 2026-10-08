@@ -138,6 +138,55 @@ for (const size of SIZES) {
       await context.close();
     });
 
+    test('D77 · the Todos board: four columns in the board (tablet), one column with a picker (phone); nothing past the window', async ({ browser }) => {
+      const context = await touchContext(browser, size);
+      const page = await newTouchPage(context);
+      await openPage(page, app.baseUrl, '/todos');
+      // Three items on the demo session (removed again at the end), and the board as the remembered view.
+      const ids = await page.evaluate(async (session) => {
+        const out: string[] = [];
+        for (const title of ['Board on a small screen', 'A second card with a much longer title that has to wrap on a phone', 'Third']) {
+          const answer = (await (await fetch(`/api/sessions/${session}/todos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title, estimateMinutes: 30 }) })).json()) as { todos: Array<{ id: string; title: string }> };
+          out.push(answer.todos.find((todo) => todo.title === title)?.id ?? '');
+        }
+        await fetch(`/api/sessions/${session}/todos/${out[2]}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: 'in_progress' }) });
+        window.localStorage.setItem('sb.todos.view', 'board');
+        return out;
+      }, SESSION);
+      await openPage(page, app.baseUrl, '/todos');
+      const board = page.getByTestId('todo-board');
+      await expect(board).toBeVisible();
+      await expect(board.getByTestId('todo-item').first()).toBeVisible();
+      if (size.width < 768) {
+        // One column at a time: the picker (with counts) chooses it.
+        await expect(board.getByTestId('board-column-picker')).toBeVisible();
+        await expect(board.locator('[data-board-column]')).toHaveCount(1);
+        await expect(board.getByTestId('board-column-open').getByTestId('todo-item')).toHaveCount(2);
+        await board.getByTestId('board-pick-in_progress').click();
+        await expect(board.getByTestId('board-column-in_progress').getByTestId('todo-item')).toHaveCount(1);
+        await expectInsideWindow(board.getByTestId('board-column-in_progress'), { ...size, height: 100_000 }, 'the column');
+      } else {
+        await expect(board.getByTestId('board-column-picker')).toHaveCount(0);
+        await expect(board.locator('[data-board-column]')).toHaveCount(4);
+      }
+      await expectNoOverflow(page, size.width, 'Todos board');
+      // The card's ⋯ menu (Move to) fits the window's width (and its height, where it is tall enough for the menu's eight entries).
+      const card = board.getByTestId('todo-item').first();
+      await card.getByTestId('todo-menu-button').click();
+      await expect(card.getByTestId('todo-menu-move')).toBeVisible();
+      await expectInsideWindow(card.getByTestId('todo-menu'), size.height >= 700 ? size : { ...size, height: 100_000 }, 'board card ⋯ menu');
+      await page.keyboard.press('Escape');
+      await page.evaluate(
+        async ({ session, todoIds }) => {
+          for (const id of todoIds) await fetch(`/api/sessions/${session}/todos/${id}`, { method: 'DELETE' });
+          window.localStorage.removeItem('sb.todos.view');
+          window.localStorage.removeItem('sb.todos.boardColumn');
+        },
+        { session: SESSION, todoIds: ids },
+      );
+      await context.close();
+    });
+
     test('menus fit the window', async ({ browser }) => {
       const context = await touchContext(browser, size);
       const page = await newTouchPage(context);

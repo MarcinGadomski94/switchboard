@@ -123,3 +123,65 @@
   gap: 6px;
   margin-top: 4px;
 }
+
+/* D78: the completed items' actual vs. estimate, next to the estimate. */
+.sb-todos-group-actuals {
+  font: 400 11px var(--font-mono);
+  color: var(--muted-2);
+  flex: none;
+  white-space: nowrap;
+}
+
+/* D77: List | Board; D76: Select (multi-select → Run N in new sessions). */
+.sb-todos-mode {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  overflow: hidden;
+  flex: none;
+}
+
+.sb-todos-mode + .sb-todos-page-select,
+.sb-todos-mode ~ .sb-todos-page-done {
+  margin-left: 0;
+}
+
+.sb-todos-mode-button,
+.sb-todos-page-select {
+  all: unset;
+  font: 500 12px var(--font-sans, inherit);
+  padding: 3px 11px;
+  color: var(--muted-1);
+  cursor: pointer;
+}
+
+.sb-todos-mode-button[aria-pressed='true'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-todos-mode-button + .sb-todos-mode-button {
+  border-left: 1px solid var(--border-control);
+}
+
+.sb-todos-page-select {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+}
+
+.sb-todos-page-select[aria-pressed='true'] {
+  border-color: var(--status-run);
+  color: var(--text);
+}
+
+.sb-todos-page-select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-todos-mode-button:focus-visible,
+.sb-todos-page-select:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+}

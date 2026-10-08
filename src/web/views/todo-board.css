@@ -1,0 +1,319 @@
+/* D77 · the Todos page's board (docs/todos.md → Board). The cards are the strip's (session/todos.css). */
+.sb-board {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding: 12px 22px 18px;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.sb-board[data-dragging='true'] {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.sb-board-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-board-search,
+.sb-board-filter {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 4px 8px;
+  min-width: 0;
+}
+
+.sb-board-search {
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+.sb-board-search:focus-visible,
+.sb-board-filter:focus-visible,
+.sb-board-pick:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+}
+
+.sb-board-columns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.sb-board-columns[data-columns='1'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sb-board-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card-2);
+  border-radius: 10px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.sb-board-column[data-over='true'] {
+  border-color: var(--status-run);
+  background: color-mix(in srgb, var(--bg-card-2), var(--status-run) 6%);
+}
+
+.sb-board-column[data-refused='true'] {
+  opacity: 0.55;
+}
+
+.sb-board-column-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px 6px;
+  border-bottom: 1px solid var(--border-divider);
+}
+
+.sb-board-column-title {
+  font: 500 var(--fs-mono-meta) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-1);
+}
+
+.sb-board-column-count {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-board-cards {
+  overflow-y: auto;
+  padding: 8px;
+  min-height: 60px;
+  flex: 1;
+}
+
+.sb-board-cards > .sb-todo-card {
+  cursor: grab;
+}
+
+/* A board card is narrow at every width: check · title · ⋯ on the first line, its labels, actuals and age under the title (the phone card's layout). */
+.sb-board-cards .sb-todo-card-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.sb-board-cards .sb-todo-card-row > .sb-todo-check {
+  order: 0;
+}
+
+.sb-board-cards .sb-todo-card-row > .sb-todo-title {
+  order: 1;
+  flex: 1 1 calc(100% - 15px - 32px - 20px);
+}
+
+.sb-board-cards .sb-todo-card-row > .sb-todo-menu-anchor {
+  order: 2;
+}
+
+.sb-board-cards .sb-todo-card-row > :is(.sb-todo-tags, .sb-todo-meta, .sb-todo-start) {
+  order: 3;
+}
+
+.sb-board-cards .sb-todo-card-row > .sb-todo-tags,
+.sb-board-cards .sb-todo-card[data-state='done'] .sb-todo-card-row > .sb-todo-meta {
+  margin-left: 25px;
+}
+
+.sb-board-cards .sb-todo-tags {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+.sb-board-cards .sb-todo-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: normal;
+}
+
+.sb-board-cards .sb-todo-run {
+  padding-left: 25px;
+}
+
+@media (pointer: coarse) {
+  .sb-board-cards .sb-todo-card-row > .sb-todo-title {
+    flex-basis: calc(100% - 22px - 44px - 20px);
+  }
+}
+
+.sb-board-cards > .sb-todo-card[data-dragged='true'] {
+  opacity: 0.4;
+}
+
+.sb-board-empty {
+  list-style: none;
+  color: var(--muted-3);
+  font-size: 12px;
+  padding: 10px 4px;
+}
+
+.sb-board-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--status-run);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  color: var(--text-strong);
+  font-weight: 600;
+  font-size: 12.5px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-board-actuals {
+  border-top: 1px solid var(--border-divider);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-board-actuals-title {
+  text-transform: uppercase;
+  letter-spacing: var(--ls-section-label);
+  color: var(--muted-3);
+}
+
+.sb-board-actuals-row {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sb-board-actuals-session {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sb-board-actuals-value {
+  margin-left: auto;
+  flex: none;
+}
+
+/* Phones: one column at a time, chosen with the picker (its counts). */
+.sb-board-picker {
+  display: flex;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  overflow: hidden;
+}
+
+.sb-board-pick {
+  all: unset;
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 12.5px;
+  color: var(--muted-1);
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.sb-board-pick + .sb-board-pick {
+  border-left: 1px solid var(--border-control);
+}
+
+.sb-board-pick[aria-selected='true'] {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-board-pick-count {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+}
+
+@media (max-width: 1279px) {
+  .sb-board {
+    padding: 10px 14px 14px;
+  }
+
+  .sb-board-columns {
+    grid-template-columns: repeat(4, minmax(240px, 1fr));
+  }
+
+  .sb-board-columns[data-columns='1'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Tablets, phones and short windows: the board scrolls as a whole (a column's own scroll leaves a touch menu no room). */
+@media (max-width: 1279px) {
+  .sb-board {
+    overflow-y: auto;
+  }
+
+  .sb-board > * {
+    flex-shrink: 0;
+  }
+
+  .sb-board-columns {
+    flex: none;
+  }
+
+  .sb-board-cards {
+    overflow: visible;
+    flex: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-board-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .sb-board-filter {
+    flex: 1 1 40%;
+  }
+
+  .sb-board-actuals-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb-board-pick {
+    min-height: 44px;
+  }
+
+  .sb-board-search,
+  .sb-board-filter {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}

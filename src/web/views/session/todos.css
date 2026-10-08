@@ -784,3 +784,157 @@
 .sb-chat-composer > .sb-chat-todo-add:hover {
   color: var(--text);
 }
+
+/* ── D76: review, the run session, multi-select; D78: actuals ── */
+.sb-todo-card[data-state='review'][data-priority] {
+  border-left: 3px solid var(--status-need);
+  padding-left: 10px;
+  background: var(--bg-card-2);
+}
+
+.sb-todo-in-review {
+  font: 500 10px var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--status-need);
+  border: 1px solid color-mix(in oklch, var(--status-need), transparent 45%);
+  border-radius: var(--radius-chip);
+  padding: 0 5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* The box of an item in review: three quarters filled (its run finished it; a tick approves it). */
+.sb-todo-check[data-review='true'] {
+  border-color: var(--status-need);
+  background: conic-gradient(var(--status-need) 0 75%, transparent 75% 100%);
+}
+
+.sb-todo-actuals {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-1);
+  white-space: nowrap;
+}
+
+.sb-todo-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+  padding-left: 25px;
+}
+
+.sb-todo-run-label {
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-section-label);
+  color: var(--muted-3);
+}
+
+.sb-todo-run-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-todo-run-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.sb-todo-run-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sb-todo-run-status {
+  flex: none;
+  color: var(--muted-3);
+}
+
+.sb-todo-run[data-run-state='discarded'] .sb-todo-run-link {
+  color: var(--muted-3);
+  text-decoration: line-through;
+}
+
+.sb-todo-select {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  accent-color: var(--status-run);
+  cursor: pointer;
+}
+
+.sb-todo-card[data-selected='true'] {
+  border-color: var(--status-run);
+}
+
+.sb-todo-session-label {
+  font: 400 var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-todo-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-card-lg);
+  background: var(--bg-card);
+  font-size: 12.5px;
+}
+
+.sb-todo-selection-count {
+  color: var(--muted-1);
+  margin-right: auto;
+}
+
+.sb-todo-selection-run,
+.sb-todo-selection-cancel {
+  all: unset;
+  font: 500 var(--fs-mono-meta) var(--font-mono);
+  padding: 3px 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  color: var(--muted-1);
+  cursor: pointer;
+}
+
+.sb-todo-selection-run {
+  color: var(--text);
+  border-color: color-mix(in oklch, var(--status-run), transparent 40%);
+}
+
+.sb-todo-selection-run:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-todo-selection-run:not(:disabled):hover,
+.sb-todo-selection-cancel:hover {
+  border-color: var(--muted-3);
+}
+
+.sb-todo-selection-run:focus-visible,
+.sb-todo-selection-cancel:focus-visible,
+.sb-todo-run-link:focus-visible {
+  outline: 1px solid var(--muted-2);
+  outline-offset: 1px;
+  border-radius: 4px;
+}

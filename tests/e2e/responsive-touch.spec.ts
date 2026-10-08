@@ -141,6 +141,48 @@ test('long-press drag: a row lifts after the hold, goes into a folder, and re-or
   await page.context().close();
 });
 
+test('D77 · the Todos board: a card held still lifts and goes into another column (its state changes); a quick swipe does not', async ({ browser }) => {
+  const size: Size = { name: 'tablet', width: 1024, height: 768 };
+  const context = await touchContext(browser, size);
+  const page = await newTouchPage(context);
+  await openPage(page, app.baseUrl, '/todos');
+  const todoId = await page.evaluate(async (session) => {
+    const answer = (await (await fetch(`/api/sessions/${session}/todos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Drag me by touch' }) })).json()) as { todos: Array<{ id: string; title: string }> };
+    window.localStorage.setItem('sb.todos.view', 'board');
+    return answer.todos.find((todo) => todo.title === 'Drag me by touch')?.id ?? '';
+  }, 'free-talk-feature');
+  await openPage(page, app.baseUrl, '/todos');
+  const board = page.getByTestId('todo-board');
+  const card = board.locator(`[data-testid="todo-item"][data-todo-id="${todoId}"]`);
+  await expect(card).toHaveAttribute('data-state', 'open');
+  const finger = await Finger.of(page);
+  const start = await center(card.getByTestId('todo-session-label'));
+  const target = await center(board.getByTestId('board-column-in_progress'));
+  // A quick swipe (within the hold) is no drag.
+  await finger.down(start);
+  await finger.move(start, target, 6, 10);
+  await finger.up();
+  await page.waitForTimeout(300);
+  await expect(card).toHaveAttribute('data-state', 'open');
+  // Held still past ~400 ms: it lifts (the ghost follows), the target column lights up, the drop moves it.
+  await finger.down(start);
+  await page.waitForTimeout(550);
+  await expect(board.getByTestId('board-ghost')).toBeVisible();
+  await finger.move(start, target);
+  await expect(board.getByTestId('board-column-in_progress')).toHaveAttribute('data-over', 'true');
+  await finger.up();
+  await expect(board.getByTestId('board-column-in_progress').locator(`[data-todo-id="${todoId}"]`)).toHaveAttribute('data-state', 'in_progress');
+  await expect(board.getByTestId('board-ghost')).toHaveCount(0);
+  await page.evaluate(
+    async ({ session, id }) => {
+      await fetch(`/api/sessions/${session}/todos/${id}`, { method: 'DELETE' });
+      window.localStorage.removeItem('sb.todos.view');
+    },
+    { session: 'free-talk-feature', id: todoId },
+  );
+  await context.close();
+});
+
 test('a finger that moves at once scrolls the drawer and never starts a drag', async ({ browser }) => {
   const page = await drawerAt(browser, { name: 'phone', width: 360, height: 760 });
   const sidebar = page.getByTestId('sidebar');

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { SessionTodo, SessionTodoList, TodoFieldsInput, TodoPatchInput } from '../../../core/api.ts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SessionTodo, SessionTodoList, TodoFieldsInput, TodoPatchInput, TodoRunResult } from '../../../core/api.ts';
+import { displayTitle } from '../../../core/session-title.ts';
 import { moveTodo, splitTodos, todoCountsLabel, todoMoveScope, todoStartMessage } from '../../../core/todos.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
-import { TodoCard, TodoForm } from './TodoCard.tsx';
+import { useSessionList } from '../../folders/useFolders.ts';
+import { type Toast, useToasts } from '../../toast/ToastHost.tsx';
+import { TodoCard, TodoForm, type TodoRunSession } from './TodoCard.tsx';
 import './todos.css';
 
 export { authorLabel } from './TodoCard.tsx';
@@ -34,6 +37,85 @@ export async function startTodo(sessionId: string, todo: SessionTodo): Promise<S
     await api.sendMessage(sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }));
     return api.sessionTodos(sessionId);
   }
+}
+
+/** D76: the run sessions as the cards show them (title, live status), from the session list (peers' included). */
+export function useRunSessions(): (id: string | null | undefined) => TodoRunSession | null {
+  const sessions = useSessionList();
+  const byId = useMemo(() => new Map((sessions.data ?? []).map((session) => [session.id, session])), [sessions.data]);
+  return useCallback(
+    (id) => {
+      const session = id ? byId.get(id) : undefined;
+      return session ? { title: displayTitle(session), status: session.status, closed: Boolean(session.closedAt) } : null;
+    },
+    [byId],
+  );
+}
+
+/** D76: the toast of a started run (its note when it has no worktree), with **Open** to the run session. */
+export function runToast(result: TodoRunResult, todo: Pick<SessionTodo, 'id' | 'title'>): Toast {
+  return {
+    id: `todo-run-${todo.id}`,
+    title: 'Running in a new session',
+    sub: 'now',
+    branch: '',
+    text: result.note ? `${todo.title} · ${result.note}` : todo.title,
+    sessionId: result.session.id,
+    jumpLabel: 'Open',
+  };
+}
+
+/**
+ * D76 · Run N in new sessions: one run per item, one after the other (each its own session and
+ * worktree); answers how many started and the refusals' messages.
+ */
+export async function runTodos(items: ReadonlyArray<{ readonly sessionId: string; readonly todo: SessionTodo }>, onRan: (result: TodoRunResult, todo: SessionTodo) => void): Promise<{ readonly started: number; readonly errors: readonly string[] }> {
+  let started = 0;
+  const errors: string[] = [];
+  for (const { sessionId, todo } of items) {
+    try {
+      onRan(await api.runTodo(sessionId, todo.id), todo);
+      started += 1;
+    } catch (error) {
+      errors.push(`${todo.title}: ${todoRefusal(error)}`);
+    }
+  }
+  return { started, errors };
+}
+
+/** D76: the multi-select of the strip and the Todos page (item id → its session). */
+export function useTodoSelection() {
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<ReadonlyMap<string, { readonly sessionId: string; readonly todo: SessionTodo }>>(new Map());
+  const toggle = useCallback((sessionId: string, todo: SessionTodo, on: boolean) => {
+    setPicked((current) => {
+      const next = new Map(current);
+      if (on) next.set(todo.id, { sessionId, todo });
+      else next.delete(todo.id);
+      return next;
+    });
+  }, []);
+  const stop = useCallback(() => {
+    setSelecting(false);
+    setPicked(new Map());
+  }, []);
+  return { selecting, setSelecting, picked, toggle, stop };
+}
+
+/** D76: the bar of a multi-select: how many are picked, **Run N in new sessions**, Cancel. */
+export function TodoSelectionBar({ selection, busy, onRun }: { readonly selection: ReturnType<typeof useTodoSelection>; readonly busy: boolean; readonly onRun: () => void }) {
+  const count = selection.picked.size;
+  return (
+    <div className="sb-todo-selection" data-testid="todo-selection" role="region" aria-label="Selected todos">
+      <span className="sb-todo-selection-count">{count === 0 ? 'Select items to run' : `${count} selected`}</span>
+      <button type="button" className="sb-todo-selection-run" data-testid="todo-run-selected" disabled={count === 0 || busy} aria-busy={busy} onClick={onRun}>
+        Run {count} in new session{count === 1 ? '' : 's'}
+      </button>
+      <button type="button" className="sb-todo-selection-cancel" data-testid="todo-select-cancel" onClick={selection.stop}>
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 /** The strip's open / closed state, kept in this browser. */
@@ -106,6 +188,9 @@ export function TodoCards({
   now,
   onStart,
   working = false,
+  onRun = null,
+  runSessionOf = null,
+  selection = null,
 }: {
   readonly sessionId: string;
   /** Every item of the session (the order Move up / down rewrites). */
@@ -119,7 +204,14 @@ export function TodoCards({
   readonly onStart: ((todo: SessionTodo) => void) | null;
   /** D75: the session is working (an in-progress card's edge pulses). */
   readonly working?: boolean;
+  /** D76: ⋯ → Run in new session; `null` = not offered. */
+  readonly onRun?: ((todo: SessionTodo) => void) | null;
+  /** D76: a run session's title and live status. */
+  readonly runSessionOf?: ((id: string | null | undefined) => TodoRunSession | null) | null;
+  /** D76: the multi-select, `null` = not selecting. */
+  readonly selection?: ReturnType<typeof useTodoSelection> | null;
 }) {
+  const selecting = selection?.selecting === true;
   return (
     <ul className="sb-todos-list">
       {items.map((todo) => {
@@ -134,6 +226,9 @@ export function TodoCards({
             disabled={disabled}
             now={now}
             working={working}
+            runSession={runSessionOf ? runSessionOf(todo.runSessionId) : null}
+            selected={selecting ? (selection?.picked.has(todo.id) ?? false) : null}
+            onSelect={selecting && selection ? (on) => selection.toggle(sessionId, todo, on) : null}
             actions={{
               onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
               onSave: (fields) => run(() => api.updateTodo(sessionId, todo.id, savePatch(fields))),
@@ -145,7 +240,8 @@ export function TodoCards({
               onPriority: (priority) => void run(() => api.updateTodo(sessionId, todo.id, { priority })),
               // D75: by hand from the ⋯ menu (nothing is sent).
               onProgress: (state) => void run(() => api.updateTodo(sessionId, todo.id, { state })),
-              onStart: onStart && todo.state !== 'done' ? () => onStart(todo) : null,
+              onStart: onStart && (todo.state === 'open' || todo.state === 'in_progress') ? () => onStart(todo) : null,
+              onRun: onRun ? () => onRun(todo) : null,
             }}
           />
         );
@@ -182,13 +278,33 @@ export function TodoStrip({
   readonly adding: boolean;
   readonly onAddingChange: (adding: boolean) => void;
 }) {
-  const { list, error, run } = todos;
+  const { list, error, setError, run } = todos;
   const [expanded, setExpanded] = useState(readExpanded);
   const [showDone, setShowDone] = useState(false);
   const now = useMinuteClock();
   const all = list?.todos ?? [];
-  const { open, done } = splitTodos(all);
+  const { open, review, done } = splitTodos(all);
   const disabled = blocked !== null;
+  const { show } = useToasts();
+  const runSessionOf = useRunSessions();
+  const selection = useTodoSelection();
+  const [running, setRunning] = useState(false);
+  // D76: a new session works on the item; a toast offers Open (and says when it has no worktree).
+  const runOne = (todo: SessionTodo): void => {
+    void run(async () => {
+      const result = await api.runTodo(sessionId, todo.id);
+      show(runToast(result, todo));
+      return result.list;
+    });
+  };
+  const runSelected = (): void => {
+    setRunning(true);
+    void runTodos([...selection.picked.values()], (result, todo) => show(runToast(result, todo))).then(({ errors }) => {
+      setRunning(false);
+      selection.stop();
+      setError(errors.length > 0 ? errors.join(' · ') : null);
+    });
+  };
 
   useEffect(() => {
     if (adding) setExpanded(true);
@@ -248,6 +364,25 @@ export function TodoStrip({
         >
           <span className="sb-todos-progress-fill" style={{ width: `${Math.round(progress * 100)}%` }} />
         </span>
+        {open.length > 0 ? (
+          <button
+            type="button"
+            className="sb-todos-add-button sb-todos-select-button"
+            data-testid="todo-select-toggle"
+            aria-pressed={selection.selecting}
+            disabled={disabled}
+            title="Select items to run each in a new session"
+            onClick={() => {
+              if (selection.selecting) selection.stop();
+              else {
+                remember(true);
+                selection.setSelecting(true);
+              }
+            }}
+          >
+            Select
+          </button>
+        ) : null}
         <button
           type="button"
           className="sb-todos-add-button"
@@ -265,17 +400,22 @@ export function TodoStrip({
       {expanded ? (
         <div className="sb-todos-body">
           {adding ? <TodoForm key="add" mode="add" initial={null} disabled={disabled} onSave={add} onCancel={() => onAddingChange(false)} /> : null}
-          {open.length > 0 ? (
+          {selection.selecting ? <TodoSelectionBar selection={selection} busy={running} onRun={runSelected} /> : null}
+          {open.length + review.length > 0 ? (
             <TodoCards
               sessionId={sessionId}
               all={all}
-              items={open}
+              // D76: the items in review after the open ones.
+              items={[...open, ...review]}
               disabled={disabled}
               run={run}
               now={now}
               working={working}
               // D75: sends the start message to this session (queued while it works) and marks the item in progress.
               onStart={(todo) => void run(() => startTodo(sessionId, todo))}
+              onRun={runOne}
+              runSessionOf={runSessionOf}
+              selection={selection}
             />
           ) : null}
           {done.length > 0 ? (
@@ -289,7 +429,7 @@ export function TodoStrip({
                   Clear done
                 </button>
               </div>
-              {showDone ? <TodoCards sessionId={sessionId} all={all} items={done} disabled={disabled} run={run} now={now} onStart={null} /> : null}
+              {showDone ? <TodoCards sessionId={sessionId} all={all} items={done} disabled={disabled} run={run} now={now} onStart={null} runSessionOf={runSessionOf} /> : null}
             </div>
           ) : null}
           {error ? (
