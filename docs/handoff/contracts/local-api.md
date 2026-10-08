@@ -1091,6 +1091,28 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Review queue (D79, 2026-10-08, additive)
+When one of this machine's sessions with changes goes idle (`run` → `idle` / `done`) it gets a Review card, once per change set (setting `sessions.reviewCards`, default `true`). Advisory: nothing waits on it. Details: `docs/reviews.md`.
+
+- **`GET /api/reviews`** → `Review[]`: the open cards (`state` `pending`, then `cleanup`), oldest first, each read from git again (a pending card whose changes are gone comes back `resolved` / `dismissed`), then the 20 newest resolved ones; then the paired machines' (remote ids `r~<machine>~<id>`, `machine` set). A peer asking gets this machine's only.
+- **`POST /api/reviews/{id}/merge | open-pr | commit | send-back | discard | cleanup | dismiss`** → `Review` (the card afterwards). Bodies: `commit` `{ message }` (1–4,000 characters), `send-back` `{ comment }` (1–4,000), `discard` / `cleanup` `{ confirm: true }`. Refusals `{ error, message }`: 404 `not-found`, 409 `not-offered` / `gone` / `busy` / `send-failed` / `conflicts` (+ `conflicts: string[]`) / `uncommitted` / `base-missing` / `base-dirty` / `no-branch` / `no-remote` / `not-merged` / `git-failed` / `gh-failed`, 422 `invalid`. An unknown action is no route (404). A remote id is forwarded to its machine (D48).
+- **`POST /api/inbox/{id}/actions/{action}`** also takes a review's id and action (204; the same refusals).
+- **`InboxItem.kind`** gains `review`; **`InboxItem.review`** (`Review`) carries the card. `inboxChanged.count` counts the open cards.
+- **`Review`** `{ id, sessionId, sessionTitle, folderPath, mode: "branch" | "folder", state: "pending" | "cleanup" | "resolved", outcome: null | "merged" | "committed" | "discarded" | "sent-back" | "dismissed", createdAt, updatedAt, resolvedAt, repos: ReviewRepo[], fileCount, added, removed, uncommitted, commitCount, summary, tests: { status: "passed" | "failed" | "not-reported", command, exitCode }, actions: ReviewActionId[], commitMessage, note, conflicts, machine? }`; **`ReviewRepo`** `{ repo, dir, worktreeId, branch, base, baseSource: "local" | "origin" | "default" | null, files: { repo, path, added, removed, binary, uncommitted }[], added, removed, uncommitted, commits: { sha, subject }[], prUrl }`.
+- **Hub:** `reviewResolved` `{ sessionId, outcome }` (exactly; the shared contract with the todo lane, `ReviewResolvedEvent` in `src/core/reviews.ts`; this machine's only) once per resolution; `reviewsChanged` `{ sessionId }` (raised, refreshed, acted on; forwarded between peers with the remote session id).
+- **Peers:** `GET /api/reviews` and every action are on `PEER_API_ALLOW`. **Devices (D73):** `GET /api/reviews` and `merge`, `open-pr`, `commit`, `send-back`, `dismiss` are allowed; `discard` and `cleanup` are desktop-only (403 `local-only`). **Push:** a new toggle `review` ("Ready for review", default on) in `PushEvents`.
+
+```json
+POST /api/reviews/3f9a1c2b7d4e/merge
+→ 409 { "error": "conflicts", "message": "web-front: PROJ-79-release-notes conflicts with main", "conflicts": ["src/app.txt"] }
+
+GET /api/reviews
+[{ "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "sessionTitle": "Add the release notes", "mode": "branch", "state": "pending", "outcome": null,
+   "repos": [{ "repo": "web-front", "branch": "PROJ-79-release-notes", "base": "main", "baseSource": "local", "files": [{ "path": "notes/release.md", "added": 1, "removed": 0, "binary": false, "uncommitted": false, "repo": "web-front" }], "commits": [{ "sha": "9c1…", "subject": "Release notes" }], "prUrl": null, "…": "…" }],
+   "fileCount": 1, "added": 1, "removed": 0, "uncommitted": 0, "commitCount": 1, "summary": "Added the release notes.", "tests": { "status": "not-reported", "command": null, "exitCode": null },
+   "actions": ["merge", "open-pr", "send-back", "discard", "dismiss"], "commitMessage": "Added the release notes.", "note": null, "conflicts": [], "…": "…" }]
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1116,3 +1138,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
+| reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape; this machine's only, never forwarded between peers) |
+| reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |

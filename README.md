@@ -325,8 +325,9 @@ Each session has a todo list for things that still need doing. Say "add that to 
 - A new question also raises a **toast**, a chime and an OS notification (when allowed).
 - A notification closes by itself once you open that session or the question is answered.
 - **System items** also appear there: a pull request was merged and its worktree can be removed; a scheduled run failed; a newer Switchboard release is available ([Updating](#updating)).
+- **Review cards:** when a session with changes goes idle, a card shows what it changed (branch → base, files and +/−, unmerged commits), the agent's last message and whether it reported running tests. For a session in its own worktree: **Merge** into its base locally (refused on conflicts, never pushed), **Open PR**, **Send back** with a comment, **Discard**, then **Clean up** the worktree; for a session working in a folder: **Commit** with a drafted message. Once per change set, in the Inbox and as a badge on the session's header; advisory, it never blocks the agent (Settings → Sessions). [`docs/reviews.md`](docs/reviews.md)
 
-[`docs/inbox.md`](docs/inbox.md) · [`docs/notifications.md`](docs/notifications.md)
+[`docs/inbox.md`](docs/inbox.md) · [`docs/notifications.md`](docs/notifications.md) · [`docs/reviews.md`](docs/reviews.md)
 
 ### Solutions
 - Every solution of a folder, grouped the way the router groups them.
