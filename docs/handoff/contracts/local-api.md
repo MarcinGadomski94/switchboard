@@ -1069,6 +1069,28 @@ POST /api/devices/pairing → { "code": "7KQ2-M9XA", "expiresAt": "2026-10-08T10
 PUT /api/device/push { "subscription": { "endpoint": "https://web.push.apple.com/QG…", "keys": { "p256dh": "BC…", "auth": "Tm…" } } }
 ```
 
+## Todo in progress and ▶ Start that sends (D75, 2026-10-08, additive)
+
+A todo item can be **in progress** between open and done, and ▶ Start sends the item's message to the session instead of filling the composer (`docs/todos.md` → *In progress (D75)*, `docs/decisions.md` → D75). Migration 0031 rebuilds `session_todos` (the state CHECK) and adds `started_at`, `started_by`, `reminded_at`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/todos/{todoId}/start | — | 200 SessionTodoList (the item `in_progress`, `startedBy: "start"`; its start message sent to the session as a normal user message: queued while the agent is busy, a session without a live process resumed with it, a hooked session's into its mailbox) · 404 `not-found` · 422 `invalid` (a done item: reopen it first) · the message route's refusals (409 `closed` / `detached` / …, a hooked session's `hooked-unavailable`); a refused send leaves the item as it was |
+
+- **`TodoState`** gains **`in_progress`**: `open` → `in_progress` → `done`, and back (`in_progress` → `open`; `done` → `open` reopens). Several items may be in progress at once; they keep their place in the priority order (`splitTodos`: in progress counts as open).
+- **`SessionTodo`** gains **`startedAt`** (when it went in progress; kept while done, `null` while open) and **`startedBy`** (`start` = ▶ Start, `agent` = `todo_start`, `developer` = ⋯ → Mark in progress; type `TodoStartSource`). **`SessionTodoList.openCount`** (and `todosChanged.openCount`, `Session.openTodoCount`) counts open **and** in progress (not done); **`inProgressCount`** (new) says how many of them are started.
+- **`PUT …/todos/{todoId}`** takes `state: "in_progress"` (⋯ → Mark in progress; `open` = Mark not started); anything but the three states is 422 `invalid`. **`PUT /agent/v1/todos/{todoId}`** with `state: "in_progress"` is the agent's `todo_start` (`startedBy: "agent"`; on an item the developer marked in progress it becomes the agent's start).
+- **Start message:** `Work on todo [<id>]: <title>`, a blank line, the plan (else the description), a blank line, `When it's finished, mark it done with todo_done [<id>]; if you stop before it's finished, say what's left.`
+- **Finish reminder (setting `sessions.todoReminder`, default `true`):** when one of this machine's sessions goes from `run` to `idle` / `done` while an item started there by ▶ Start or `todo_start` is still `in_progress`, was not reminded for this start, and the agent did not change it during that turn (marking it in progress does not count), Switchboard sends the session one message per such item: `Todo [<id>] '<title>' is still in progress. If it's finished, mark it done with todo_done; if not, say what's left.` (origin `service`; a hooked session only while its waiter is held). Recorded as `reminded_at`: once per item per start (▶ Start again re-arms it).
+- **Agent tools:** **`todo_start`** `{ id }` (new, seventh tool); `todo_done` `{ id, done? }` (`done: false` reopens to `open`, not started). Lines show `◐ IN PROGRESS` (`[3f9a1c2b7d4e] ◐ IN PROGRESS HIGH ~45m Fix the login test`), `todo_get` `◐ in progress`.
+- **Peers (D48):** the route is on `PEER_API_ALLOW` (its answer is a `todo-list`) and on the devices' allow-list (D73). An item from a peer before D75 has no start (`startedAt` / `startedBy` `null`) and a state other than `in_progress` / `done` reads as `open`. ▶ Start on a peer before D75 (no route: 403 / 404 without `not-found`) sends the start message through `POST …/messages` and leaves the item as it was. A peer before D75 shows another machine's in-progress items as it can (its UI knows open / done only).
+- **Take-over (D65):** `SourceInspect.todos[]` items may carry `state: "in_progress"`, `startedAt` and `startedBy`; an older target reads `in_progress` as open.
+
+```json
+POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
+{ "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1093,4 +1115,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | sidebarLayoutChanged | SidebarLayout (additive, D54: the sidebar's pins and folders changed; this machine's only, never forwarded between peers; D58: carries the folder tree, `parentId` per folder; D71: carries `loose`; also published when a merge from a paired machine changed the layout — the layout itself travels by `POST /peer/v1/sidebar`, not by this event) |
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
-| todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers) |
+| todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
