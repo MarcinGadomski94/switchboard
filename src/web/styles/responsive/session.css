@@ -32,8 +32,16 @@
     transform: translateX(100%);
   }
 
-  /* The panel's hide button closes the drawer: a full tap target. */
-  .sb-sv-panel .sb-overview-hide {
+  /* The panel's hide button closes the drawer: a full tap target, in the label's row (not over the table). */
+  .sb-sv-panel .sb-overview-label {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  .sb-sv-panel .sb-overview-label > .sb-overview-hide {
+    position: static;
+    margin: 0 0 0 auto;
     width: 32px;
     height: 32px;
   }
