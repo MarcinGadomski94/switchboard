@@ -25,6 +25,7 @@ import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
+import { TodoReviewLink } from './todos/review-link.ts';
 import { todoReminderEnabled } from './settings/settings.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
@@ -336,6 +337,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.addHook('onClose', async () => {
     await reminder.stop();
+  });
+  // D76: a resolved review card (lane B's `reviewResolved`) moves its run's item out of review.
+  const reviewLink = new TodoReviewLink({ bus, todos });
+  app.addHook('onReady', async () => {
+    reviewLink.start();
+  });
+  app.addHook('onClose', async () => {
+    await reviewLink.stop();
   });
   if (options.agentTools !== false) {
     supervisor.useAgentMcp(async (session) =>

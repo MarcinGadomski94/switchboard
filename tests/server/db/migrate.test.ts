@@ -1005,14 +1005,14 @@ describe('0025 session take-over (D65)', () => {
     source.close();
     const store = await openStore(file);
     try {
-      // D68: later migrations (0026) apply too; this test is about 0025.
+      // D68: later migrations (0026) apply too; this test is about 0025 (D76's 0032 adds todo_link, stripped too).
       expect(store.migrations.applied[0]).toBe(25);
       const sessions = await store.sessions.list();
       expect(sessions.length).toBe(before['sessions']?.length);
       for (const session of sessions) expect([session.movedTo, session.movedFrom]).toEqual([null, null]);
       // Every column the sessions had keeps its value.
       const after = dump(store.db);
-      const strip = (rows: readonly unknown[] | undefined) => (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined }));
+      const strip = (rows: readonly unknown[] | undefined) => (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, todo_link: undefined }));
       expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
       // The two moves round-trip.
       const one = sessions[0]!;

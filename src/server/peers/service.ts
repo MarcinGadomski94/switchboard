@@ -164,8 +164,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D68: a session's todo list (read, add, edit / tick, reorder, delete, clear done) and every session's (the Todos page).
   ['GET', /^\/api\/sessions\/[^/]+\/todos$/],
   ['POST', /^\/api\/sessions\/[^/]+\/todos(?:\/clear-done)?$/],
-  // D75: ▶ Start (in progress + the start message sent there).
-  ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/start$/],
+  // D75: ▶ Start (in progress + the start message sent there); D76: ▸ Run in new session (the run session starts on that machine).
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/(?:start|run)$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],

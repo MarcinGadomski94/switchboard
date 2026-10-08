@@ -4,6 +4,9 @@ import { AGENT_SESSION_HEADER } from '../../core/todos.ts';
 import { HookError } from '../hooks/service.ts';
 import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TodoError, type TodoMessageSender, type TodoService } from '../todos/service.ts';
+import { runTodo } from '../todos/run.ts';
+import { WorktreeError } from '../worktrees/manager.ts';
+import { worktreeRefusal } from './worktree-errors.ts';
 import { isPeerRequest } from './machines.ts';
 import type { ApiContext } from '../routes.ts';
 
@@ -11,6 +14,11 @@ function sendTodoError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof TodoError) return reply.code(error.status).send({ error: error.code, message: error.message });
   // D75 · ▶ Start: the start message could not be sent (as `POST …/messages` answers it).
   if (error instanceof HookError) return reply.code(error.status).send({ error: error.code, message: error.message });
+  // D76 · ▸ Run in new session: a worktree refusal of the run's start (as `POST /api/sessions` answers it).
+  if (error instanceof WorktreeError) {
+    const refusal = worktreeRefusal(error, 'solutions');
+    return reply.code(refusal.status).send(refusal.body);
+  }
   if (error instanceof SupervisorError) {
     const status = error.code === 'not-found' ? 404 : error.code === 'closing' ? 503 : 409;
     return reply.code(status).send({ error: error.code, message: error.message });
@@ -122,6 +130,17 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
     }
   });
 
+  // D76 · ▸ Run in new session: a new supervised session (its own worktree on `todo/<slug>` in a repo folder) works on the item.
+  app.post<{ Params: { id: string; todoId: string } }>('/api/sessions/:id/todos/:todoId/run', async (request, reply) => {
+    try {
+      const outcome = await runTodo(context, request.params.id, request.params.todoId);
+      if (!outcome.ok) return reply.code(outcome.status).send(outcome.body);
+      return reply.code(201).send(outcome.result);
+    } catch (error) {
+      return sendTodoError(reply, error);
+    }
+  });
+
   app.delete<{ Params: { id: string; todoId: string } }>('/api/sessions/:id/todos/:todoId', async (request, reply) => {
     try {
       return await todos.remove(request.params.id, request.params.todoId);
@@ -134,9 +153,12 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   // ── the agent's routes (the `switchboard` MCP helper) ──────────────────
 
+  // D76: a run session's list also names the item it runs (`linked`); D78: the estimate calibration line.
   app.get('/agent/v1/todos', async (request, reply) => {
     try {
-      return await todos.list(agentSession(request));
+      const session = agentSession(request);
+      const list = await todos.list(session);
+      return { ...list, linked: await todos.linkedTodo(session), calibration: await todos.calibration(session) };
     } catch (error) {
       return sendTodoError(reply, error);
     }
@@ -144,16 +166,19 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.post('/agent/v1/todos', async (request, reply) => {
     try {
-      return reply.code(201).send(await todos.add(agentSession(request), fields(request.body), 'agent'));
+      const session = agentSession(request);
+      const answer = await todos.add(session, fields(request.body), 'agent');
+      return reply.code(201).send({ ...answer, calibration: await todos.calibration(session) });
     } catch (error) {
       return sendTodoError(reply, error);
     }
   });
 
-  // D69: one item in full (the agent's `todo_get`).
+  // D69: one item in full (the agent's `todo_get`). D76: a run session's linked item too.
   app.get<{ Params: { todoId: string } }>('/agent/v1/todos/:todoId', async (request, reply) => {
     try {
-      return await todos.get(agentSession(request), request.params.todoId);
+      const scope = await todos.agentScope(agentSession(request), request.params.todoId);
+      return await todos.get(scope.sessionId, request.params.todoId);
     } catch (error) {
       return sendTodoError(reply, error);
     }
@@ -161,8 +186,14 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.put<{ Params: { todoId: string } }>('/agent/v1/todos/:todoId', async (request, reply) => {
     try {
+      const session = agentSession(request);
+      // D76: a run session's agent may change its one linked item (in the source session's list); the answer
+      // then carries the item and the agent's own list, never the source's other items.
+      const scope = await todos.agentScope(session, request.params.todoId);
       // D75: the agent's writes (todo_start: `state: in_progress`) are the agent's.
-      return await todos.update(agentSession(request), request.params.todoId, fields(request.body), 'agent');
+      const answer = await todos.update(scope.sessionId, request.params.todoId, fields(request.body), 'agent');
+      const list = scope.linked ? await todos.list(session) : answer.list;
+      return { todo: answer.todo, list, linked: scope.linked, calibration: await todos.calibration(session) };
     } catch (error) {
       return sendTodoError(reply, error);
     }

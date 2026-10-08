@@ -184,6 +184,8 @@ export interface ResultPayload {
   readonly numTurns: number | null;
   readonly durationMs: number | null;
   readonly costUsd: number | null;
+  /** Additive (D78): the turn's `input + cache creation + output` tokens (`resultTurnTokens`); absent / `null` = not reported. */
+  readonly tokens?: number | null;
   /**
    * Additive (D50): the developer stopped this turn (Stop / Esc): the CLI's
    * interrupted result (`error_during_execution`, `terminal_reason` `aborted_*`).

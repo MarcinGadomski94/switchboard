@@ -1,4 +1,6 @@
-import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoState } from '../../core/api.ts';
+import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoStartSource, TodoState } from '../../core/api.ts';
+import type { ReviewOutcome } from '../../core/reviews.ts';
+import { CALIBRATION_WINDOW, todoActualsTotal, todoCalibration } from '../../core/todo-actuals.ts';
 import {
   DEFAULT_TODO_PRIORITY,
   TODO_DESCRIPTION_MAX,
@@ -13,6 +15,7 @@ import {
   checkTodoTitle,
   isTodoPriority,
   isTodoState,
+  todoIsOpen,
   legacyTodoFields,
   todoRemoveAt,
   todoStartMessage,
@@ -27,8 +30,8 @@ import type { HubBus } from '../hub/bus.ts';
 export class TodoError extends Error {
   override name = 'TodoError';
   readonly status: 404 | 409 | 422;
-  readonly code: 'not-found' | 'too-many' | 'invalid';
-  constructor(status: 404 | 409 | 422, code: 'not-found' | 'too-many' | 'invalid', message: string) {
+  readonly code: 'not-found' | 'too-many' | 'invalid' | 'already-running' | 'no-folder';
+  constructor(status: 404 | 409 | 422, code: 'not-found' | 'too-many' | 'invalid' | 'already-running' | 'no-folder', message: string) {
     super(message);
     this.status = status;
     this.code = code;
@@ -71,6 +74,12 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     // D75: when and how it went in progress.
     startedAt: record.startedAt ?? null,
     startedBy: record.startedBy ?? null,
+    // D76: its run session (kept after the run), D78: its actuals.
+    runSessionId: record.runSessionId ?? null,
+    runState: record.runState ?? null,
+    startedFirstAt: record.startedFirstAt ?? null,
+    actualMs: record.actualMs ?? null,
+    actualTokens: record.actualTokens ?? null,
   };
 }
 
@@ -171,12 +180,14 @@ export class TodoService {
   async #listOf(sessionId: string): Promise<SessionTodoList> {
     const todos = (await this.#store.todos.list(sessionId)).map((record) => toTodo(record, this.#ttl));
     // D75: open = not done (open and in progress: the sidebar's count); inProgressCount says how many of them are started.
+    // D76: an item in review is neither open nor done (reviewCount).
     return {
       sessionId,
       todos,
-      openCount: todos.filter((t) => t.state !== 'done').length,
+      openCount: todos.filter(todoIsOpen).length,
       doneCount: todos.filter((t) => t.state === 'done').length,
       inProgressCount: todos.filter((t) => t.state === 'in_progress').length,
+      reviewCount: todos.filter((t) => t.state === 'review').length,
     };
   }
 
@@ -219,15 +230,21 @@ export class TodoService {
     if (!fields.ok) throw new TodoError(422, 'invalid', fields.message);
     let state: TodoState | null = null;
     if (patch['state'] !== undefined) {
-      if (!isTodoState(patch['state'])) throw new TodoError(422, 'invalid', 'state must be open, in_progress or done');
+      if (!isTodoState(patch['state'])) throw new TodoError(422, 'invalid', 'state must be open, in_progress, review or done');
       state = patch['state'];
     }
+    const before = await this.#item(sessionId, todoId);
+    if (state === 'review' && before.runSessionId === null) throw new TodoError(422, 'invalid', 'only an item run in its own session can be in review');
+    // D76: done of an item whose run is active is review (its run's work waits for the developer); D77: the board's drag to Done skips it.
+    if (state === 'done' && before.runState === 'active' && before.state !== 'review' && patch['skipReview'] !== true) state = 'review';
     if (Object.keys(fields.value).length > 0) await this.#store.todos.setFields(todoId, fields.value);
     if (state !== null) {
       const current = await this.#item(sessionId, todoId);
       // D75: the agent's todo_start on an item the developer marked in progress makes it the agent's start (the reminder applies).
-      if (state === 'in_progress' && by === 'agent' && current.state === 'in_progress' && current.startedBy === 'developer') await this.#store.todos.start(todoId, 'agent');
-      else await this.#store.todos.setState(todoId, state, by === 'agent' ? 'agent' : 'developer');
+      // D76: the run session's agent (`linked`) keeps the run's start (its reminder is the run session's).
+      const source: TodoStartSource = by === 'agent' ? (current.startedBy === 'run' && current.runState === 'active' ? 'run' : 'agent') : 'developer';
+      if (state === 'in_progress' && by === 'agent' && current.state === 'in_progress' && current.startedBy === 'developer') await this.#store.todos.start(todoId, source);
+      else await this.#store.todos.setState(todoId, state, source);
     }
     // D75: the agent touched the item (anything but marking it in progress), so a turn ending now needs no reminder for it.
     if (by === 'agent' && (Object.keys(fields.value).length > 0 || (state !== null && state !== 'in_progress'))) this.#agentTouches.set(todoId, this.#now());
@@ -274,14 +291,117 @@ export class TodoService {
    */
   async remindable(sessionId: string, turnStartedAt: number): Promise<SessionTodo[]> {
     const out: SessionTodo[] = [];
-    for (const record of await this.#store.todos.list(sessionId)) {
+    const candidates = [...(await this.#store.todos.list(sessionId))];
+    // D76: a run session is reminded of the item it runs (in its source session's list), not the source session.
+    const linked = await this.#linkedItem(sessionId);
+    if (linked) candidates.push(linked);
+    for (const record of candidates) {
       if (record.state !== 'in_progress' || record.remindedAt !== null) continue;
-      if (record.startedBy !== 'start' && record.startedBy !== 'agent') continue;
+      const own = record.sessionId === sessionId;
+      if (own ? record.startedBy !== 'start' && record.startedBy !== 'agent' : record.startedBy !== 'run' && record.startedBy !== 'agent') continue;
       const touched = this.#agentTouches.get(record.id);
       if (touched !== undefined && touched >= turnStartedAt) continue;
       out.push(toTodo(record, this.#ttl));
     }
     return out;
+  }
+
+  // ── D76: a todo's run session ────────────────────────────────────────
+
+  /** D76: the item session `sessionId` runs (its `todoLink`), while that run is active; `null` otherwise. */
+  async #linkedItem(sessionId: string): Promise<TodoRecord | null> {
+    const link = (await this.#store.sessions.get(sessionId))?.todoLink ?? null;
+    if (!link) return null;
+    const item = await this.#store.todos.get(link.todoId);
+    return item && item.sessionId === link.sourceSessionId && item.runSessionId === sessionId && item.runState === 'active' ? item : null;
+  }
+
+  /**
+   * D76: the session whose list holds item `todoId` for the agent of session `agentSessionId`:
+   * its own, or, for its run session, the source session of its one linked item (the agent token
+   * of a run session reaches that item and nothing else of the source's list). An unknown item
+   * answers the agent's own session (the call then says not found).
+   */
+  async agentScope(agentSessionId: string, todoId: string): Promise<{ readonly sessionId: string; readonly linked: boolean }> {
+    const own = await this.#store.todos.get(todoId);
+    if (own && own.sessionId === agentSessionId) return { sessionId: agentSessionId, linked: false };
+    const linked = await this.#linkedItem(agentSessionId);
+    return linked && linked.id === todoId ? { sessionId: linked.sessionId, linked: true } : { sessionId: agentSessionId, linked: false };
+  }
+
+  /** D76: the item session `sessionId` runs (`todo_list`'s extra line), `null` when none. */
+  async linkedTodo(sessionId: string): Promise<SessionTodo | null> {
+    const linked = await this.#linkedItem(sessionId);
+    return linked ? toTodo(linked, this.#ttl) : null;
+  }
+
+  /**
+   * D76: ▸ Run in new session began: the item goes in progress (started by `run`, a span opens)
+   * and is linked to `runSessionId` (`active`). Answers the item as it was, for {@link cancelRun}.
+   */
+  async beginRun(sessionId: string, todoId: string, runSessionId: string): Promise<TodoRecord> {
+    const before = await this.#item(sessionId, todoId);
+    await this.#store.todos.setRun(todoId, runSessionId, 'active');
+    await this.#store.todos.start(todoId, 'run');
+    return before;
+  }
+
+  /** D76: the run could not start: the item is put back as it was. */
+  async cancelRun(before: TodoRecord): Promise<void> {
+    await this.#store.todos.restoreState(before);
+    await this.#changed(before.sessionId);
+  }
+
+  /** D76: the run's item can run (not done / in review, no active run), else why not. */
+  async checkRunnable(sessionId: string, todoId: string): Promise<SessionTodo> {
+    await this.#session(sessionId);
+    const item = await this.#item(sessionId, todoId);
+    if (item.state === 'done' || item.state === 'review') throw new TodoError(422, 'invalid', `a ${item.state === 'done' ? 'done' : 'reviewed'} item cannot be run: reopen it first`);
+    if (item.runState === 'active' && item.runSessionId !== null && (await this.#store.sessions.get(item.runSessionId))?.closedAt === null) {
+      throw new TodoError(409, 'already-running', 'this item already runs in its own session');
+    }
+    return toTodo(item, this.#ttl);
+  }
+
+  /** D76: publishes the source session's change after a run began; answers its list. */
+  async announceRun(sessionId: string): Promise<SessionTodoList> {
+    return this.#changed(sessionId);
+  }
+
+  /**
+   * D76 · `reviewResolved` (lane B's review queue): the items in review whose run session is
+   * `sessionId` leave it: merged / committed / dismissed → done; discarded → open (the run is
+   * marked discarded, its link kept as history); sent back → in progress again (the run's).
+   */
+  async resolveReview(sessionId: string, outcome: ReviewOutcome): Promise<number> {
+    const items = (await this.#store.todos.listByRunSession(sessionId)).filter((record) => record.state === 'review');
+    const touched = new Set<string>();
+    for (const record of items) {
+      if (outcome === 'discarded') {
+        await this.#store.todos.setRun(record.id, sessionId, 'discarded');
+        await this.#store.todos.setState(record.id, 'open');
+      } else if (outcome === 'sent-back') {
+        await this.#store.todos.setState(record.id, 'in_progress', 'run');
+      } else {
+        await this.#store.todos.setState(record.id, 'done');
+      }
+      touched.add(record.sessionId);
+    }
+    for (const id of touched) await this.#changed(id);
+    return items.length;
+  }
+
+  /**
+   * D78: the calibration line for session `sessionId`'s agent: its own last estimates' accuracy
+   * when it has enough completed estimated items, else its folder's; `null` when neither has.
+   */
+  async calibration(sessionId: string): Promise<string | null> {
+    const own = await this.#store.todos.recentEstimated({ sessionId }, CALIBRATION_WINDOW);
+    const mine = todoCalibration(own, 'this session');
+    if (mine) return mine;
+    const root = (await this.#store.sessions.get(sessionId))?.root ?? null;
+    if (!root) return null;
+    return todoCalibration(await this.#store.todos.recentEstimated({ folder: root }, CALIBRATION_WINDOW), 'this folder');
   }
 
   /** D75: records that the item's finish reminder was sent (once per start). */
@@ -316,6 +436,8 @@ export class TodoService {
   async groups(): Promise<TodoGroup[]> {
     const sessions = (await this.#store.sessions.list()).filter((record) => record.closedAt === null);
     const byId = await this.#store.todos.listFor(sessions.map((record) => record.id));
+    // D78: the completed items' actual vs. estimate (also the ones removed after their done hour).
+    const actuals = await this.#store.todos.actualsFor(sessions.map((record) => record.id));
     const out: TodoGroup[] = [];
     for (const record of sessions) {
       const items = byId.get(record.id);
@@ -328,6 +450,7 @@ export class TodoService {
         machine: null,
         lastActivityAt: record.lastActivityAt ?? record.createdAt,
         todos: items.map((item) => toTodo(item, this.#ttl)),
+        actuals: actuals.has(record.id) ? todoActualsTotal(actuals.get(record.id) ?? []) : null,
       });
     }
     return out.sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''));

@@ -122,6 +122,19 @@ function summaryOf(body: unknown): string {
   return list ? todoListText(list) : '';
 }
 
+/** D78: the estimate calibration line an answer carries (`calibration`), `''` when none. */
+function calibrationOf(body: unknown): string {
+  const line = record(body)['calibration'];
+  return typeof line === 'string' && line !== '' ? `\n\n${line}` : '';
+}
+
+/** D76: a run session's linked item (`linked` of `GET /agent/v1/todos`), as `todo_list` adds it. */
+function linkedOf(body: unknown): string {
+  const linked = record(body)['linked'];
+  if (!isTodo(linked)) return '';
+  return `\n\nThe item you run (in the list of the session that started you):\n${todoLine(linked)}\nMark it done with todo_done [${linked.id}] when it is finished.`;
+}
+
 /** The item a mutating answer carries (`{ todo }`). */
 function todoOf(body: unknown): SessionTodo | undefined {
   return record(body)['todo'] as SessionTodo | undefined;
@@ -188,7 +201,7 @@ async function request(api: AgentApi, method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 
 /** `todo_list`: the compact list (D69). */
 export function todoList(api: AgentApi): Promise<CallToolResult> {
-  return request(api, 'GET', '/agent/v1/todos', undefined, (body) => textResult(summaryOf(body) || 'The todo list is empty.'));
+  return request(api, 'GET', '/agent/v1/todos', undefined, (body) => textResult(`${summaryOf(body) || 'The todo list is empty.'}${linkedOf(body)}${calibrationOf(body)}`));
 }
 
 /** `todo_get`: one item in full (D69). */
@@ -207,7 +220,7 @@ export async function todoAdd(api: AgentApi, input: ToolInput): Promise<CallTool
   return request(api, 'POST', '/agent/v1/todos', { title, ...notes(input), ...sizing(input) }, (body) => {
     const todo = todoOf(body);
     const summary = summaryOf(body);
-    return textResult(todo ? `Added ${todoLine(todo)}\n\n${summary}` : summary);
+    return textResult(`${todo ? `Added ${todoLine(todo)}\n\n${summary}` : summary}${calibrationOf(body)}`);
   });
 }
 
@@ -221,7 +234,7 @@ export async function todoUpdate(api: AgentApi, input: ToolInput): Promise<CallT
   return request(api, 'PUT', itemRoute(id), patch, (body) => {
     const todo = todoOf(body);
     const summary = summaryOf(body);
-    return textResult(todo ? `Updated ${todoLine(todo)}\n\n${summary}` : summary);
+    return textResult(`${todo ? `Updated ${todoLine(todo)}\n\n${summary}` : summary}${calibrationOf(body)}`);
   });
 }
 
@@ -243,7 +256,9 @@ export async function todoDone(api: AgentApi, input: ToolInput): Promise<CallToo
   return request(api, 'PUT', itemRoute(id), { state: input['done'] === false ? 'open' : 'done' }, (body) => {
     const todo = todoOf(body);
     const summary = summaryOf(body);
-    return textResult(todo ? `${todo.state === 'done' ? 'Done' : 'Reopened'}: ${todoLine(todo)}\n\n${summary}` : summary);
+    // D76: an item run in its own session goes to the developer's review instead of done.
+    const word = todo?.state === 'done' ? 'Done' : todo?.state === 'review' ? "Done (in review: the developer reviews the run's work)" : 'Reopened';
+    return textResult(todo ? `${word}: ${todoLine(todo)}\n\n${summary}` : summary);
   });
 }
 

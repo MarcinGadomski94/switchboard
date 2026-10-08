@@ -164,6 +164,12 @@ export interface WorktreeBranchOptions {
    * scheduled runs and teleports, D32 *Unchanged*).
    */
   readonly branch?: string;
+  /**
+   * D76: what the new branch is cut from (a branch name or a commit, as `git rev-parse`
+   * reads it in the repo; a todo's run cuts from its source session's branch).
+   * Omitted: the repo's current HEAD (gap #1).
+   */
+  readonly from?: string;
 }
 
 /** A repository of a folder's solution that {@link WorktreeManager.adopt} looks in (D38). */
@@ -436,7 +442,7 @@ export class WorktreeManager implements DiffProvider {
   ): Promise<WorktreeRecord[]> {
     const plans: Plan[] = [];
     for (const solution of solutions) {
-      const plan = await this.#plan(solution, sessionName, folder, options.branch ?? worktreeBranch(sessionName));
+      const plan = await this.#plan(solution, sessionName, folder, options.branch ?? worktreeBranch(sessionName), options.from);
       if (plans.some((other) => other.path === plan.path)) {
         throw new WorktreeError('path-exists', `"${solution}" names the same repository as another solution in scope`);
       }
@@ -488,19 +494,20 @@ export class WorktreeManager implements DiffProvider {
     return succeeded(result) && branch !== '' && branch !== 'HEAD' ? branch : null;
   }
 
-  async #plan(solution: string, sessionName: string, folder: FolderRef, branch: string): Promise<Plan> {
+  async #plan(solution: string, sessionName: string, folder: FolderRef, branch: string, from?: string): Promise<Plan> {
     const { repoPath } = await this.resolveRepo(solution, folder);
     const target = worktreePath(repoPath, sessionName);
     if ((await pathExists(target)) || (await this.#store.worktrees.getLiveByPath(target))) {
       throw new WorktreeError('path-exists', `${target} already exists`);
     }
-    const head = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
-    if (!succeeded(head) || head.stdout.trim() === '') throw new WorktreeError('no-commits', `${solution} has no commit to branch from`);
+    // D76: a todo's run is cut from its source session's branch (or commit).
+    const head = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${from ?? 'HEAD'}^{commit}`]);
+    if (!succeeded(head) || head.stdout.trim() === '') throw new WorktreeError('no-commits', from ? `${solution} has no ${from} to branch from` : `${solution} has no commit to branch from`);
     const headSha = head.stdout.trim();
     const existing = await this.#runGit(repoPath, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
     if (existing.code === 0) throw new WorktreeError('branch-exists', `${solution} already has a branch ${branch}`);
-    const symbolic = await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
-    const base = succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : headSha;
+    const symbolic = from ? null : await this.#runGit(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const base = from ?? (symbolic && succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : headSha);
     return { solution, repoPath, branch, path: target, headSha, base };
   }
 
@@ -768,6 +775,18 @@ export class WorktreeManager implements DiffProvider {
   }
 
   /** `true` when `ref` (a full ref name) resolves to a commit. */
+  /** D76: `true` when repo `repoPath` has local branch `branch` (a todo's run picks a free `todo/<slug>`). */
+  async hasLocalBranch(repoPath: string, branch: string): Promise<boolean> {
+    const result = await this.#runGit(repoPath, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    return result.code === 0;
+  }
+
+  /** D76: the commit checked out in `dir` (`git rev-parse HEAD`); `null` when git cannot tell. */
+  async headCommit(dir: string): Promise<string | null> {
+    const result = await this.#runGit(dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    return succeeded(result) && result.stdout.trim() !== '' ? result.stdout.trim() : null;
+  }
+
   async #refExists(repoPath: string, ref: string): Promise<boolean> {
     const result = await this.#runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
     return succeeded(result) && result.stdout.trim() !== '';

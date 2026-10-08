@@ -214,6 +214,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     // D65: taken over to / from another machine.
     movedTo: record.movedTo,
     movedFrom: record.movedFrom,
+    // D76: a todo's run session: the item it works on.
+    todoLink: record.todoLink,
     // D68: the open items of its todo list (the sidebar badge, the Todos nav count).
     openTodoCount: await store.todos.openCount(record.id),
   };
