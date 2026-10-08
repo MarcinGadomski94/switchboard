@@ -163,6 +163,9 @@ for (const size of SIZES) {
       // A sidebar row's ⋯ menu (always shown on a touch screen), with Close in it.
       await openDrawer(page);
       const row = page.locator('a.sb-session').first();
+      // On a short window the drawer scrolls to the row first; a scroll that moves the ⋯ closes its menu (D54), so let it settle.
+      await row.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
       await row.getByTestId('sidebar-session-menu').click();
       const rowMenu = page.getByTestId('sidebar-menu');
       await expect(rowMenu).toBeVisible();

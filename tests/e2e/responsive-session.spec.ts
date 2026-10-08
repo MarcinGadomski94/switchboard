@@ -26,7 +26,8 @@ async function detail(page: import('@playwright/test').Page, id: string): Promis
   return page.evaluate(async (sessionId) => (await (await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)).json()) as SessionDetail, id);
 }
 
-for (const size of SIZES) {
+// The four sizes and a common phone (390×844), where a too-wide sheet once showed.
+for (const size of [...SIZES, { name: 'phone portrait (390)', width: 390, height: 844 }]) {
   test(`${size.name} ${size.width}×${size.height}: send a message, switch tabs, open the right panel`, async ({ browser }) => {
     const context = await touchContext(browser, size);
     const page = await newTouchPage(context);
@@ -91,6 +92,7 @@ for (const size of SIZES) {
     await expect(panel).not.toHaveAttribute('inert');
     await page.waitForTimeout(250);
     await expectInsideWindow(panel, size, 'right panel');
+    await expectNoOverflow(page, size.width, 'right panel open');
     await expect(panel.getByTestId('agent-card').first()).toBeVisible();
     if (size.width < 768) {
       const sheet = await panel.boundingBox();

@@ -12,6 +12,8 @@
 
   .sb-sv > .sb-sv-panel {
     position: fixed;
+    /* The grid placement's end alignment would shrink an absolutely placed box to its content. */
+    justify-self: stretch;
     top: 0;
     right: 0;
     bottom: 0;

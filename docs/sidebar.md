@@ -40,7 +40,7 @@ With nothing pinned and no folder, the list is exactly the prototype's rows (the
 - The ⋯ menus are keyboard menus: the first item takes the focus, ↑ / ↓ move, Enter picks, Esc closes and gives the focus back to the ⋯, Tab or a click outside closes.
 
 ## Drag and drop
-Native HTML5 drag and drop (Chromium, Safari, Firefox); rows and folder heads are draggable. While dragging, the dragged item fades and the target shows where it goes: a 2 px line (`--status-run`) above or below a row or folder head (by which half the pointer is in), or a highlight when it goes **into** something.
+Native HTML5 drag and drop (Chromium, Safari, Firefox); rows and folder heads are draggable. D74: on a touch screen a **long press** (~400 ms without moving) lifts a row or folder head and it follows the finger to the same targets; a finger that moves first scrolls (`docs/responsive.md` → *Long-press drag*). While dragging, the dragged item fades and the target shows where it goes: a 2 px line (`--status-run`) above or below a row or folder head (by which half the pointer is in), or a highlight when it goes **into** something.
 
 | Dragged | Dropped on | Result |
 |---|---|---|

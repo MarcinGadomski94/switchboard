@@ -39,6 +39,9 @@ The sidebar and the session view's right panel slide out and back in on request,
 - `src/web/shell/Panes.tsx`: `PanesProvider` (the state, saving, the shortcuts, focus), `usePanes`, `loadPaneState`, `PaneHideButton`, `PaneHandle`.
 - `Shell.tsx` / `Sidebar.tsx` (the sidebar, its button and handle), `SessionView.tsx` / `RightPanel.tsx` / `AgentOverview.tsx` (the panel, its button and handle; the "as printed" popover closing).
 
+## Tablets and phones (D74)
+Below 1280 px both panes are drawers (`docs/responsive.md` → *Shell*): the sidebar slides over the page from the app bar's ☰ (or the session header's), the right panel from the session header's panel button (a bottom sheet on phones). The same slide, the same hide buttons and shortcuts; the state there is the drawers' (closed at first, never saved), and the stored choice above applies again at desktop width. No rail or handle on those layouts.
+
 ## Tests
 - `tests/web/panes.test.ts`: the state helpers (defaults, mistyped values, the first-paint loader with a failed and a late answer), the copy, and the shortcuts (both platforms' modifiers, ⌥B as `∫`, only in the session view for the panel, ignored in text fields, with a modal open, with ⇧, on a repeat, while composing, another layout's letter on the B key).
 - `tests/server/api/settings.test.ts`: the two keys' defaults, persistence across a reopened database, 422 on a mistyped value, a stored mistyped value reading as shown.

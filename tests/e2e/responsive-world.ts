@@ -107,7 +107,7 @@ export async function overflowOf(page: Page, width: number): Promise<Overflow> {
       const parent = el.parentElement?.getBoundingClientRect();
       if (parent && (parent.right > W + 1 || parent.left < -1)) continue;
       const style = getComputedStyle(el);
-      if (style.visibility === 'hidden' || style.position === 'fixed' || el.closest('[inert]')) continue;
+      if (style.visibility === 'hidden' || el.closest('[inert]')) continue;
       if (scrolledInside(el) || truncated(el)) continue;
       offenders.push(`${el.tagName.toLowerCase()}.${String(el.className)} [${el.dataset['testid'] ?? ''}] ${Math.round(box.left)}…${Math.round(box.right)}`);
     }
