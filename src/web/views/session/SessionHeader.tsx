@@ -319,8 +319,10 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           ) : null}
           {/* D65: take a session over to / from a paired machine. */}
           {!blocked ? <TakeoverAction session={session} sessionId={sessionId} /> : null}
-          {/* D80: revert to before the newest turn when it has a checkpoint (ruling D80-q1: without one, the sidebar row's ⋯ menu shows it disabled with the reason, so the prototype's header stays). */}
-          {undo && undo.turn !== null && !blocked && !closed ? (
+          {/* D80 (developer ruling 2026-10-08, int-header-overflow): *Undo last turn* is never in the header row; only in the
+              compact header's ⋯ menu (below 1024 px), like the sidebar row's ⋯ menu, disabled with the reason when the newest
+              turn has no checkpoint. Desktop: the sidebar row's ⋯ menu and each message's ↶ Revert. */}
+          {headerMenu && undo && !blocked && !closed ? (
             <button
               type="button"
               className="sb-button sb-sv-action"

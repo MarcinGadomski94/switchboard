@@ -74,8 +74,7 @@ test('pick a model and an effort in a running session: step lines, the chosen mo
   await expect(button).toHaveAttribute('title', `Model and effort. ${MODEL_APPLIES_LIVE}`);
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
   // D62 P5: the CLI switcher comes first.
-  // D80: Undo last turn sits before Pause once a turn has its checkpoint.
-  expect(actions).toEqual(['session-cli', 'session-model', 'session-close', 'session-remote', 'session-undo-turn', 'session-pause', 'session-handoff']);
+  expect(actions).toEqual(['session-cli', 'session-model', 'session-close', 'session-remote', 'session-pause', 'session-handoff']);
   await expect(button).toHaveCSS('font-size', '12px');
   await expect(button).toHaveCSS('border-top-left-radius', '6px');
   const pause = page.getByTestId('session-pause');

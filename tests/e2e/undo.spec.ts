@@ -183,10 +183,14 @@ test('the turn action opens the confirmation; Revert restores the files with a d
   expect(await exists(path.join(repo, 'first.txt'))).toBe(true);
   expect(await exists(path.join(repo, 'second.txt'))).toBe(true);
 
-  // The header's Undo last turn: the newest turn (2).
-  const undo = page.getByTestId('session-undo-turn');
+  // Ruling 2026-10-08 (int-header-overflow): no Undo in the desktop header row; the sidebar row's ⋯ menu has it: the newest turn (2).
+  await expect(page.getByTestId('session-undo-turn')).toHaveCount(0);
+  const row = page.locator(`a.sb-session[data-session-id="${id}"]`);
+  await row.hover();
+  await row.getByTestId('sidebar-session-menu').click();
+  const undo = page.getByTestId('sidebar-menu').getByTestId('sidebar-menu-undo-turn');
   await expect(undo).toHaveText(UNDO_LAST_TURN_LABEL);
-  await expect(undo).toHaveAttribute('data-turn', '2');
+  await expect(undo).toBeEnabled();
   await undo.click();
   await expect(page.getByTestId('revert-title')).toHaveText('Revert to before turn 2?');
   await expect(dialog.getByTestId('revert-file')).toHaveText(['−second.txt']);
@@ -212,7 +216,7 @@ test('a folder that is no git repository: the action is disabled and says why', 
   await expect(action).toHaveAttribute('title', /not a git repository/);
   await action.click({ force: true });
   await expect(page.getByTestId('revert-dialog')).toHaveCount(0);
-  // Ruling D80-q1: no header action without a checkpoint (the prototype's header stays); the row's ⋯ menu has it, disabled, saying why.
+  // Never in the desktop header row (ruling int-header-overflow); the row's ⋯ menu has it, disabled, saying why (ruling D80-q1).
   await expect(page.getByTestId('session-undo-turn')).toHaveCount(0);
   const row = page.locator(`a.sb-session[data-session-id="${id}"]`);
   await row.hover();
