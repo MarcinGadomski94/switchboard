@@ -45,6 +45,7 @@ import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
 import { toWorktree } from './wire.ts';
 import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
+import { recordCreatedBranch } from '../cleanup/created-branches.ts';
 
 /** Why the worktree manager refused a call. `code` maps to an HTTP status in the routes. */
 export type WorktreeErrorCode =
@@ -507,8 +508,9 @@ export class WorktreeManager implements DiffProvider {
   async #create(plan: Plan, sessionId: string | null): Promise<WorktreeRecord> {
     const added = await this.#runGit(plan.repoPath, ['worktree', 'add', '-b', plan.branch, plan.path, plan.headSha]);
     if (!succeeded(added)) throw new WorktreeError('git-failed', `git worktree add failed for ${plan.solution}: ${failureText(added)}`);
+    let record: WorktreeRecord;
     try {
-      return await this.#store.worktrees.create({
+      record = await this.#store.worktrees.create({
         repo: plan.solution,
         repoPath: plan.repoPath,
         branch: plan.branch,
@@ -521,6 +523,9 @@ export class WorktreeManager implements DiffProvider {
       if (succeeded(removed)) await this.#runGit(plan.repoPath, ['branch', '-d', plan.branch]);
       throw error;
     }
+    // D84: Clean-up lists only the branches Switchboard made (docs/cleanup.md).
+    await recordCreatedBranch(this.#store.settings, { repoPath: plan.repoPath, branch: plan.branch, kind: 'new' }).catch((error: unknown) => this.#onError(error));
+    return record;
   }
 
   // ── epic/task branching (D40) ─────────────────────────────────────────
@@ -642,6 +647,8 @@ export class WorktreeManager implements DiffProvider {
         ...plan.parent,
       });
       if (plan.reuse === 'local') this.#keptBranches.add(record.id);
+      // D84: Clean-up lists only the branches Switchboard made (docs/cleanup.md); a reused local branch is not one.
+      else await recordCreatedBranch(this.#store.settings, { repoPath: plan.repoPath, branch: plan.branch, kind: plan.reuse === 'origin' ? 'tracking' : 'new' }).catch((error: unknown) => this.#onError(error));
       return record;
     } catch (error) {
       const removed = await this.#runGit(plan.repoPath, ['worktree', 'remove', plan.path]);

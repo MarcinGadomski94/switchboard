@@ -70,6 +70,7 @@ import type {
 import type { LoginServiceRequest, LoginServiceStatus } from '../../core/login-service.ts';
 import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
+import type { CleanupRun, CleanupRunRequest, CleanupScan, CleanupSettings } from '../../core/cleanup.ts';
 import type { Device, DeviceAccessInput, DeviceAccessState, DevicePairingCode, DevicePushInput, DeviceSelfView, DevicesView } from '../../core/devices.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
@@ -387,6 +388,12 @@ export const api = {
   saveDevicePush: (body: DevicePushInput) => request<DeviceSelfView>('PUT', '/api/device/push', body),
   deleteDevicePush: () => request<DeviceSelfView>('DELETE', '/api/device/push'),
   testDevicePush: () => request<{ readonly ok: boolean; readonly error?: string }>('POST', '/api/device/push/test'),
+  /** D84: the clean-up dry run (nothing changes). */
+  cleanupScan: () => request<CleanupScan>('GET', '/api/cleanup'),
+  saveCleanupSettings: (body: CleanupSettings) => request<CleanupSettings>('PUT', '/api/cleanup/settings', body),
+  /** D84: removes the ticked items (202; poll {@link cleanupRun}); 422 `confirmation-required`, 409 `busy`. */
+  startCleanup: (body: CleanupRunRequest) => request<CleanupRun>('POST', '/api/cleanup/runs', body),
+  cleanupRun: (id: string) => request<CleanupRun>('GET', `/api/cleanup/runs/${enc(id)}`),
 } as const;
 
 /**

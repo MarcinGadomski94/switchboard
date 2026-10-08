@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, and the device's own name
  * and notifications.
  *
- * Everything else is refused; {@link DEVICE_REFUSED} lists those routes
+ * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
  * app's routes and fails on one in neither list, or in both). A request to a
  * paired machine's API through `/api/machines/{id}/api/<rest>` is judged as
@@ -125,6 +125,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/teleport$/],
   ['POST', /^\/api\/solutions\/[^/]+\/isolate$/],
   ['POST', /^\/api\/codebase-memory\/reindex$/],
+  // D84: Clean-up (desktop only).
+  ['*', /^\/api\/cleanup(?:\/.*)?$/],
   // Test hooks.
   ['*', /^\/api\/test(?:\/.*)?$/],
 ];

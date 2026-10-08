@@ -30,6 +30,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'devices', label: 'Devices' },
   // D55 (docs/updates.md): GitHub releases, the update and its state.
   { key: 'updates', label: 'Updates' },
+  // D84 (docs/cleanup.md): occasional, so last.
+  { key: 'cleanup', label: 'Clean-up' },
 ] as const;
 
 /** A section key. */

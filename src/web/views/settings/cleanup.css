@@ -1,0 +1,342 @@
+/* D84 · Settings → Clean-up (docs/cleanup.md). */
+
+/* The section sits in Settings' scrolling flex column: its blocks keep their height. */
+.sb-cleanup-bar,
+.sb-cleanup-notes,
+.sb-cleanup-group,
+.sb-cleanup-footer {
+  flex-shrink: 0;
+}
+
+.sb-cleanup-days {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-cleanup-days-input {
+  width: 72px;
+}
+
+.sb-cleanup-days-unit,
+.sb-cleanup-muted {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-3);
+}
+
+.sb-cleanup-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 6px;
+}
+
+.sb-cleanup-notes {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--status-need);
+}
+
+.sb-cleanup-group {
+  margin-top: 18px;
+  border: 1px solid var(--border-row);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.sb-cleanup-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-row);
+}
+
+.sb-cleanup-group-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-cleanup-hint {
+  padding: 8px 14px 4px;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-cleanup-empty {
+  padding: 6px 14px 12px;
+  font-size: 12.5px;
+  color: var(--muted-3);
+}
+
+.sb-cleanup-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-row);
+}
+
+.sb-cleanup-hint + .sb-cleanup-item {
+  border-top: none;
+}
+
+.sb-cleanup-check {
+  margin-top: 2px;
+}
+
+.sb-cleanup-item-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sb-cleanup-item-title {
+  font: 500 12.5px var(--font-mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-item-sub {
+  font-size: 12px;
+  color: var(--muted-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sb-cleanup-chip {
+  font: 500 10px/14px var(--font-mono);
+  padding: 1px 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  color: var(--muted-1);
+}
+
+.sb-cleanup-warning {
+  font-size: 12px;
+  color: var(--status-need);
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-files {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow: auto;
+  font: 400 11.5px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-cleanup-what summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted-1);
+}
+
+.sb-cleanup-removes,
+.sb-cleanup-preview {
+  margin: 4px 0;
+  padding-left: 18px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-keeps {
+  font-size: 11.5px;
+  color: var(--muted-3);
+}
+
+.sb-cleanup-item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+.sb-cleanup-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 0;
+  background: var(--bg-main);
+  border-top: 1px solid var(--border-row);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-cleanup-go {
+  color: var(--text-strong);
+  border-color: var(--muted-2);
+}
+
+.sb-cleanup-go:disabled,
+.sb-cleanup-bar .sb-set-button:disabled,
+.sb-cleanup-dialog .sb-set-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-cleanup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.sb-cleanup-dialog {
+  width: 640px;
+  max-width: calc(100% - 60px);
+  max-height: calc(100% - 60px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.sb-cleanup-dialog-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px 22px 12px;
+}
+
+.sb-cleanup-dialog-title {
+  font-size: var(--fs-modal-title);
+  font-weight: 600;
+}
+
+.sb-cleanup-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 22px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sb-cleanup-confirm {
+  padding: 10px 12px;
+  border: 1px solid var(--status-need);
+  border-radius: var(--radius-card);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.sb-cleanup-confirm-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-cleanup-progress {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.sb-cleanup-progress li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.sb-cleanup-progress li[data-status='done'] .sb-cleanup-mark {
+  color: var(--status-done);
+}
+
+.sb-cleanup-progress li[data-status='failed'] .sb-cleanup-mark,
+.sb-cleanup-step-error {
+  color: var(--status-fail);
+}
+
+.sb-cleanup-step-title {
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-step-error {
+  grid-column: 2;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sb-cleanup-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 22px 18px;
+  border-top: 1px solid var(--border-row);
+}
+
+/* D74: phones: a full-screen sheet; rows stack their meta under the text. */
+@media (max-width: 767px) {
+  .sb-cleanup-dialog {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .sb-cleanup-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .sb-cleanup-item-meta {
+    grid-column: 2;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
+@media (pointer: coarse) {
+  .sb-cleanup-check,
+  .sb-cleanup-group-label input,
+  .sb-cleanup-confirm-label input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .sb-cleanup-days-input {
+    font-size: 16px;
+  }
+}

@@ -47,6 +47,7 @@ import type { WorktreeManager } from './worktrees/manager.ts';
 import type { TodoService } from './todos/service.ts';
 import { registerTodoRoutes } from './api/todos.ts';
 import { registerDeviceRoutes } from './api/devices.ts';
+import { registerCleanupRoutes } from './api/cleanup.ts';
 import type { DeviceService } from './devices/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
@@ -133,5 +134,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
   await registerDeviceRoutes(app, context);
+  await registerCleanupRoutes(app, context);
   await registerHubRoutes(app, context);
 }

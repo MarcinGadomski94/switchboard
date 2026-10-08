@@ -141,6 +141,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Devices',
     // D55: after Machines (D73: after Devices).
     'Updates',
+    // D84: last.
+    'Clean-up',
   ]);
   await expect(page.getByTestId('settings-nav-claude')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('nav-settings')).toHaveAttribute('aria-current', 'page');

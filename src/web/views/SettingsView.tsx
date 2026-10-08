@@ -15,6 +15,7 @@ import { ClisSection } from './settings/ClisSection.tsx';
 import { AccountsSection } from './settings/AccountsSection.tsx';
 import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
+import { CleanupSection } from './settings/CleanupSection.tsx';
 import './settings.css';
 
 function Section({ section, settings, save }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings }) {
@@ -43,6 +44,8 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
       return <DevicesSection />;
     case 'updates':
       return <UpdatesSection />;
+    case 'cleanup':
+      return <CleanupSection />;
   }
 }
 
