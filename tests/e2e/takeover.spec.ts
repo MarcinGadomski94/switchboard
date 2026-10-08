@@ -32,8 +32,8 @@ test.afterEach(async () => {
   await removeWorld(tmp);
 });
 
-async function pageOf(browser: import('@playwright/test').Browser, target: PeerNode, route: string): Promise<Page> {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+async function pageOf(browser: import('@playwright/test').Browser, target: PeerNode, route: string, width = 1440): Promise<Page> {
+  const context = await browser.newContext({ viewport: { width, height: 900 } });
   contexts.push(context);
   const page = await context.newPage();
   await page.goto(`${target.baseUrl}${route}`);
@@ -108,7 +108,12 @@ test('a session of this machine moves to the peer: the header names the machine;
   const started = await startRepoSession(w.a, w.folders.a.gamma as string, 'gamma-work');
   await writeFile(path.join(w.paths.a.gamma, 'tracked.txt'), 'gamma edit\n');
 
-  const page = await pageOf(browser, w.a, `/sessions/${started.id}`);
+  // D74 follow-up: at 1440 with the sidebar and the right panel open the header is too narrow for the full label
+  // ("Move ▸", the full one as its tooltip); a wider window shows it whole.
+  const narrow = await pageOf(browser, w.a, `/sessions/${started.id}`);
+  await expect(narrow.getByTestId('session-takeover')).toHaveText('Move ▸');
+  await expect(narrow.getByTestId('session-takeover')).toHaveAttribute('title', 'Move to mac-laptop ▸');
+  const page = await pageOf(browser, w.a, `/sessions/${started.id}`, 1920);
   const action = page.getByTestId('session-takeover');
   await expect(action).toHaveText('Move to mac-laptop ▸');
   await expect(action).toHaveAttribute('data-direction', 'move');

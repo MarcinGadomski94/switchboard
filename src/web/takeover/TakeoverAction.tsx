@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Session } from '../../core/api.ts';
 import { openTakeover } from './store.ts';
-import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from './takeover.ts';
+import { MOVE_SHORT_LABEL, TAKE_OVER_LABEL, TAKE_OVER_SHORT_LABEL, moveLabel, offersTakeover } from './takeover.ts';
 import { usePairedMachines } from './usePairedMachines.ts';
 import './takeover.css';
 
@@ -12,7 +12,7 @@ import './takeover.css';
  * a session that cannot be taken over (closed, already moved, the peer unreachable)
  * and when no machine is paired.
  */
-export function TakeoverAction({ session, sessionId }: { readonly session: Session | null; readonly sessionId: string }) {
+export function TakeoverAction({ session, sessionId, short = false }: { readonly session: Session | null; readonly sessionId: string; readonly short?: boolean }) {
   const offered = session !== null && offersTakeover(session);
   const peer = session?.machine ?? null;
   const { machines } = usePairedMachines(offered && peer === null);
@@ -36,9 +36,10 @@ export function TakeoverAction({ session, sessionId }: { readonly session: Sessi
         className="sb-button sb-sv-action"
         data-testid="session-takeover"
         data-direction="take-over"
+        title={short ? TAKE_OVER_LABEL : undefined}
         onClick={() => openTakeover({ sessionId, targetMachine: null, machineName: peer.name, title })}
       >
-        {TAKE_OVER_LABEL}
+        {short ? TAKE_OVER_SHORT_LABEL : TAKE_OVER_LABEL}
       </button>
     );
   }
@@ -52,6 +53,7 @@ export function TakeoverAction({ session, sessionId }: { readonly session: Sessi
         className="sb-button sb-sv-action"
         data-testid="session-takeover"
         data-direction="move"
+        title={short ? moveLabel(only ? only.name : 'another machine') : undefined}
         aria-haspopup={only ? undefined : 'menu'}
         aria-expanded={only ? undefined : menu}
         onClick={() => {
@@ -59,7 +61,7 @@ export function TakeoverAction({ session, sessionId }: { readonly session: Sessi
           else setMenu((open) => !open);
         }}
       >
-        {moveLabel(only ? only.name : 'another machine')}
+        {short ? MOVE_SHORT_LABEL : moveLabel(only ? only.name : 'another machine')}
       </button>
       {menu ? (
         <div className="sb-sv-takeover-menu" role="menu" data-testid="session-takeover-menu">

@@ -1327,3 +1327,97 @@ a.sb-agent--link:focus-visible {
 .sb-sv-review-panel {
   padding: 0 0 4px;
 }
+
+/* D74 follow-up: a session column too narrow for the header's actions (the right panel / the sidebar open at a
+   desktop width) moves the ones that do not fit into this ⋯ menu (`header-overflow.ts`); nothing runs past the column. */
+.sb-sv-overflow-holder {
+  position: relative;
+  flex: none;
+}
+
+.sb-sv-overflow-more {
+  width: 30px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-sv-overflow-more:hover,
+.sb-sv-overflow-more[aria-expanded='true'] {
+  color: var(--text-strong);
+  background: var(--bg-selected-nav);
+}
+
+.sb-sv-overflow {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-modal);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.sb-sv-overflow[data-menu='closed'] {
+  display: none;
+}
+
+.sb-sv-overflow .sb-sv-action,
+.sb-sv-overflow .sb-cli-picker {
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+}
+
+.sb-sv-overflow > *,
+.sb-sv-overflow .sb-sv-remote,
+.sb-sv-overflow .sb-sv-model,
+.sb-sv-overflow .sb-sv-takeover {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.sb-sv-overflow .sb-sv-model-button,
+.sb-sv-overflow .sb-sv-remote-toggle {
+  justify-content: flex-start;
+}
+
+/* The tabs stay one line inside the column (scrolling sideways when it is narrower than they are, as on phones). */
+.sb-sv-tabs {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sb-sv-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.sb-sv-tab {
+  flex: none;
+  white-space: nowrap;
+}
+
+.sb-sv-chips {
+  min-width: 0;
+  max-width: 100%;
+}

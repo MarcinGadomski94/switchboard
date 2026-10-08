@@ -155,7 +155,8 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   const allowed = page.waitForResponse((r) => r.url().includes('/actions/allow-once'));
   await page.getByTestId('inbox-action').filter({ hasText: 'Allow once' }).click();
   expect((await allowed).status()).toBe(204);
-  await waitFor('A\'s permission decided', async () => ((await a.call('GET', '/api/inbox')).body as unknown[]).length === 0);
+  // (A's Inbox may still hold the session's D79 Review card.)
+  await waitFor('A\'s permission decided', async () => !((await a.call('GET', '/api/inbox')).body as Array<{ kind: string }>).some((item) => item.kind === 'permission'));
 
   // Pause from B's header; the session on A is paused.
   await row.click();
