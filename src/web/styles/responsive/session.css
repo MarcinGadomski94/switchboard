@@ -1,0 +1,486 @@
+/*
+ * D74 · responsive layout: the session view (docs/responsive.md → Session view).
+ * Thresholds: see responsive/shell.css. Desktop (≥ 1280 px) is untouched.
+ */
+
+@media (max-width: 1279px) {
+  /* One column: the right panel leaves the grid for a drawer. */
+  .sb-sv,
+  .sb-sv[data-panel='hidden'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-sv > .sb-sv-panel {
+    position: fixed;
+    /* The grid placement's end alignment would shrink an absolutely placed box to its content. */
+    justify-self: stretch;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    width: min(380px, 92vw);
+    height: var(--app-height, 100dvh);
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg-main);
+    box-shadow: 0 0 32px rgb(0 0 0 / 0.5);
+    overscroll-behavior: contain;
+  }
+
+  .sb-sv[data-panel='hidden'] > .sb-sv-panel {
+    transform: translateX(100%);
+  }
+
+  /* The panel's hide button closes the drawer: a full tap target, in the label's row (not over the table). */
+  .sb-sv-panel .sb-overview-label {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  .sb-sv-panel .sb-overview-label > .sb-overview-hide {
+    position: static;
+    margin: 0 0 0 auto;
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Header: a tighter frame; the chips and the tabs scroll sideways inside their rows. */
+  .sb-sv-header {
+    padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+    gap: 7px;
+  }
+
+  .sb-sv-top {
+    position: relative;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    gap: 8px;
+  }
+
+  .sb-sv-name {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .sb-sv-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .sb-sv-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sb-sv-chip {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .sb-sv-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .sb-sv-chips::-webkit-scrollbar,
+  .sb-sv-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sb-sv-tab {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .sb-sv-remote-copy,
+  .sb-sv-warning,
+  .sb-sv-error {
+    overflow-wrap: anywhere;
+  }
+
+  /* Chat: less padding; the composer pinned at the bottom (the shell is the visible height). */
+  .sb-chat {
+    padding: 14px max(14px, env(safe-area-inset-right)) 14px max(14px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+  }
+
+  .sb-chat-message {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .sb-chat-composer {
+    flex: none;
+    padding: 8px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  /* Quick replies scroll sideways on one line. */
+  .sb-chat-quick {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sb-chat-quick::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sb-chat-quick > * {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .sb-chat-compose {
+    min-width: 0;
+  }
+
+  .sb-chat-input {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* The top row stays one line: ☰ · dot · name · root · panel · ⋯. */
+  .sb-sv-top {
+    flex-wrap: nowrap;
+  }
+
+  .sb-sv-root {
+    flex: 1 1 0;
+  }
+
+  .sb-sv-name {
+    flex: 0 1 auto;
+  }
+
+  .sb-sv-panel-open {
+    margin-left: auto;
+  }
+
+  .sb-sv-more {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .sb-sv-more:hover,
+  .sb-sv-more[aria-expanded='true'] {
+    color: var(--text-strong);
+    background: var(--bg-selected-nav);
+  }
+
+  /* The ⋯ menu: the actions as a list under the top row. */
+  .sb-sv-actions[data-menu] {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 30;
+    margin-left: 0;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 4px;
+    width: max-content;
+    min-width: 220px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(var(--app-height, 100dvh) - 120px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 6px;
+    border: 1px solid var(--border-control);
+    border-radius: 10px;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-modal);
+  }
+
+  .sb-sv-actions[data-menu='closed'] {
+    display: none;
+  }
+
+  .sb-sv-actions[data-menu] .sb-sv-action,
+  .sb-sv-actions[data-menu] .sb-cli-picker {
+    box-sizing: border-box;
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+  }
+
+  .sb-sv-actions[data-menu] > *,
+  .sb-sv-actions[data-menu] .sb-sv-remote,
+  .sb-sv-actions[data-menu] .sb-sv-model,
+  .sb-sv-actions[data-menu] .sb-sv-takeover {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .sb-sv-actions[data-menu] .sb-sv-model-button,
+  .sb-sv-actions[data-menu] .sb-sv-remote-toggle {
+    justify-content: flex-start;
+  }
+
+  /* The actions' popovers become sheets at the window's bottom. */
+  .sb-sv-model-pop,
+  .sb-sv-remote-pop,
+  .sb-sv-takeover-menu {
+    position: fixed;
+    top: auto;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    z-index: 60;
+    width: auto;
+    max-height: calc(var(--app-height, 100dvh) - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-sv-root {
+    display: none;
+  }
+
+  .sb-sv-panel-open {
+    margin-left: auto;
+  }
+
+  .sb-sv-header {
+    gap: 6px;
+  }
+
+  /* The right panel: a bottom sheet. */
+  .sb-sv > .sb-sv-panel {
+    top: auto;
+    left: 0;
+    width: auto;
+    height: min(80dvh, calc(var(--app-height, 100dvh) - 40px));
+    padding-top: 0;
+    padding-left: env(safe-area-inset-left);
+    border-left: 0;
+    border-top: 1px solid var(--border-divider);
+    border-radius: 14px 14px 0 0;
+  }
+
+  .sb-sv[data-panel='hidden'] > .sb-sv-panel {
+    transform: translateY(100%);
+  }
+
+  /* The context bar: the track and the percentage only. */
+  .sb-chat-context {
+    gap: 8px;
+    font-size: 10.5px;
+  }
+
+  .sb-chat-context-compacted {
+    display: none;
+  }
+
+  .sb-chat-compose .sb-chat-send {
+    padding: 11px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-sv > .sb-sv-panel,
+  .sb-sv[data-panel='hidden'] > .sb-sv-panel {
+    transition: none;
+  }
+}
+
+/* ---------- Session tabs: Timeline, Diff, Artifacts ---------- */
+@media (max-width: 1023px) {
+  .sb-timeline {
+    padding: 14px max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-timeline__axis,
+  .sb-timeline__row,
+  .sb-timeline__controls {
+    grid-template-columns: 110px minmax(0, 1fr);
+  }
+
+  .sb-diff {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .sb-diff__head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-diff__head > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .sb-arts {
+    padding: 14px max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-arts__row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-arts__name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-timeline__axis,
+  .sb-timeline__row,
+  .sb-timeline__controls {
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .sb-timeline__bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Every other time tick, so the labels do not run into each other. */
+  .sb-timeline__ticks > :nth-child(even) {
+    visibility: hidden;
+  }
+
+  .sb-timeline__play-row {
+    flex-wrap: wrap;
+  }
+
+  /* Diff: the files as a strip that scrolls sideways over the diff. */
+  .sb-diff {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sb-diff__files {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-divider);
+    scrollbar-width: thin;
+  }
+
+  .sb-diff__file {
+    flex: none;
+    width: 200px;
+    box-sizing: border-box;
+  }
+
+  .sb-diff__note {
+    margin-left: 0;
+  }
+
+  .sb-diff__body {
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* ---------- The todo strip and its cards (also on the Todos page) ---------- */
+@media (max-width: 1023px) {
+  .sb-todos {
+    padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+  }
+
+  .sb-todos-progress {
+    width: 56px;
+  }
+
+  .sb-todos-done-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-todos-next {
+    display: none;
+  }
+
+  .sb-todos-body {
+    max-height: 38dvh;
+  }
+
+  /* A card: check · title · ⋯ on the first line, its priority, estimate and age under the title. */
+  .sb-todo-card-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-todo-card-row > .sb-todo-check {
+    order: 0;
+  }
+
+  .sb-todo-card-row > .sb-todo-title {
+    order: 1;
+    flex: 1 1 calc(100% - 15px - 32px - 20px);
+  }
+
+  .sb-todo-card-row > .sb-todo-menu-anchor {
+    order: 2;
+  }
+
+  .sb-todo-card-row > .sb-todo-tags,
+  .sb-todo-card-row > .sb-todo-meta,
+  .sb-todo-card-row > .sb-todo-start {
+    order: 3;
+  }
+
+  .sb-todo-card-row > :nth-child(3) {
+    margin-left: 25px;
+  }
+
+  .sb-todo-card-body {
+    padding-left: 0;
+  }
+
+  .sb-todo-card-foot {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* The card's menu and its Priority submenu open inward (the card fills the width). */
+  .sb-todo-menu.sb-todo-submenu {
+    right: 0;
+    top: calc(100% + 2px);
+  }
+}
+
+/* ---------- Short windows (a phone held sideways): the chat keeps the room ---------- */
+@media (max-width: 1279px) and (max-height: 500px) {
+  .sb-sv-chips,
+  .sb-chat-quick-label {
+    display: none;
+  }
+
+  .sb-sv-header {
+    gap: 4px;
+  }
+
+  .sb-chat-composer {
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .sb-todos-body {
+    max-height: 30dvh;
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { REMOTE_COPY_NOTE, remoteSessionUrl } from '../../../core/remote-session.ts';
 import { CLOSE_LABEL, REOPEN_LABEL, isClosed } from '../../../core/session-close.ts';
@@ -40,6 +40,70 @@ import { useAccountSwitcher } from './AccountSwitcher.tsx';
 import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
 import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
+import { usePanes } from '../../shell/Panes.tsx';
+import { DrawerButton, useInboxCount } from '../../shell/AppBar.tsx';
+import { useHeaderMenu } from '../../shell/useLayout.ts';
+
+/** D74: the sidebar's menu button at the start of a compact session header, with the Inbox count (the view has no app bar). */
+function SessionDrawerButton() {
+  return <DrawerButton pane="sidebar" badge={useInboxCount()} className="sb-sv-drawer" />;
+}
+
+function MoreGlyph() {
+  return (
+    <svg width="15" height="4" viewBox="0 0 15 4" aria-hidden="true" focusable="false">
+      <circle cx="2" cy="2" r="1.6" fill="currentColor" />
+      <circle cx="7.5" cy="2" r="1.6" fill="currentColor" />
+      <circle cx="13" cy="2" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * D74 · below 1024 px the header's actions (the CLI, account and model pickers,
+ * Close, Remote, take-over, Pause, Continue in terminal) sit in a ⋯ menu: the
+ * same elements, shown as a menu under the top row while it is open
+ * (`docs/responsive.md`). It closes on a tap outside, on Escape and after an
+ * action that does not open its own popover.
+ */
+function useActionsMenu(enabled: boolean) {
+  const [open, setOpen] = useState(false);
+  const actions = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!enabled) setOpen(false);
+  }, [enabled]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const down = (event: PointerEvent): void => {
+      const target = event.target as Node | null;
+      if (actions.current?.contains(target) || toggle.current?.contains(target)) return;
+      // A popover of an action (the model picker…) or a dialog it opened keeps the menu.
+      if (target instanceof Element && target.closest('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) return;
+      setOpen(false);
+    };
+    const key = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setOpen(false);
+        toggle.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('keydown', key);
+    };
+  }, [open]);
+  /** An action was clicked: the menu closes unless the action opens a popover of its own (or is the Remote switch, whose popover follows). */
+  const onActionClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (!enabled) return;
+    const button = event.target instanceof Element ? event.target.closest('button') : null;
+    if (!button || button.hasAttribute('aria-haspopup') || button.getAttribute('role') === 'switch' || button.closest('[role="dialog"], [role="menu"]')) return;
+    setOpen(false);
+  };
+  return { open, setOpen, actions, toggle, onActionClick };
+}
 
 /** Props of {@link SessionHeader}. */
 export interface SessionHeaderProps {
@@ -102,6 +166,10 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const [warning, setWarning] = useState<readonly AttachWarningReason[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [popover, setPopover] = useState(false);
+  // D74: the compact layouts (`docs/responsive.md`): the menu button, the panel button and, below 1024 px, the ⋯ menu.
+  const { compact } = usePanes();
+  const headerMenu = useHeaderMenu();
+  const actionsMenu = useActionsMenu(headerMenu);
   const shownError = error ?? closer.error?.text ?? loadError;
   // D62 P5: the CLI switcher (its picker among the actions, its confirmation under the top row).
   const switcher = useProviderSwitcher(session, onChanged);
@@ -165,6 +233,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   return (
     <div className="sb-sv-header" data-testid="session-header" data-session-id={sessionId}>
       <div className="sb-sv-top">
+        {compact ? <SessionDrawerButton /> : null}
         <span className="sb-sv-dot" data-testid="session-dot" style={{ background: statusColor(session?.status ?? 'idle') }} />
         {session ? (
           <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
@@ -179,7 +248,14 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
           {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
-        <div className="sb-sv-actions">
+        <div
+          className="sb-sv-actions"
+          ref={actionsMenu.actions}
+          id={headerMenu ? `sb-sv-actions-${sessionId}` : undefined}
+          data-menu={headerMenu ? (actionsMenu.open ? 'open' : 'closed') : undefined}
+          data-testid={headerMenu ? 'session-actions-menu' : undefined}
+          onClick={headerMenu ? actionsMenu.onActionClick : undefined}
+        >
           {/* D62 P5: the CLI the session runs on, and switching it (sessions Switchboard runs; not the demo's, not hooked). */}
           {session && !blocked && offersSwitcher(session) ? switcher.picker : null}
           {session && !blocked && offersSwitcher(session) ? accounts.picker : null}
@@ -266,6 +342,23 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           </button>
           )}
         </div>
+        {/* D74: after the row's own parts (their child paths are the prototype's); compact layouts only. */}
+        {compact ? <DrawerButton pane="rightPanel" className="sb-sv-panel-open" /> : null}
+        {headerMenu ? (
+          <button
+            type="button"
+            ref={actionsMenu.toggle}
+            className="sb-button sb-sv-more"
+            data-testid="session-more"
+            aria-label="Session actions"
+            aria-haspopup="true"
+            aria-expanded={actionsMenu.open}
+            aria-controls={`sb-sv-actions-${sessionId}`}
+            onClick={() => actionsMenu.setOpen((open) => !open)}
+          >
+            <MoreGlyph />
+          </button>
+        ) : null}
       </div>
       {/* Fix · peer reconnects: "Reconnecting to …" (nothing blocked) or "… is unreachable · retrying in 8 s" with Reconnect now. */}
       <MachineStatusNote machine={machine} testId="session-offline-note" className="sb-sv-remote-copy" />

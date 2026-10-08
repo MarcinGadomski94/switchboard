@@ -1,0 +1,657 @@
+/*
+ * D74 · responsive layout: the pages (docs/responsive.md → Pages). Thresholds:
+ * see responsive/shell.css. Desktop (≥ 1280 px) is untouched. Patterns:
+ *   - page heads wrap (title, then the controls on their own line);
+ *   - tables turn into stacked cards (the cells placed with grid areas);
+ *   - list | detail pages show the two in turn on a phone (`data-pane`, ListDetail.tsx).
+ */
+
+/* "‹ Back" of a phone's list → detail pages (mounted only there). */
+.sb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 0 10px 0 4px;
+  margin: 0 0 8px -4px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-back:hover {
+  color: var(--text-strong);
+  background: var(--bg-selected-nav);
+}
+
+/* A phone's list → detail pages: one half at a time. */
+@media (max-width: 767px) {
+  .sb-view[data-pane] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-inbox[data-pane='list'] > .sb-inbox__detail,
+  .sb-inbox[data-pane='detail'] > .sb-inbox__column,
+  .sb-solutions[data-pane='list'] > .sb-sol-detail,
+  .sb-solutions[data-pane='detail'] > .sb-sol-list,
+  .sb-settings-view[data-pane='list'] > .sb-set-content,
+  .sb-settings-view[data-pane='detail'] > .sb-set-nav {
+    display: none;
+  }
+}
+
+/* ---------- Inbox ---------- */
+@media (max-width: 1023px) {
+  .sb-inbox {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .sb-inbox__detail {
+    padding: 20px 22px;
+    overflow-wrap: anywhere;
+  }
+
+  .sb-inbox__title {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-inbox__column {
+    border-right: 0;
+  }
+
+  .sb-inbox__head {
+    padding: 14px 14px 10px;
+  }
+
+  .sb-inbox__detail {
+    padding: 12px max(14px, env(safe-area-inset-right)) 20px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-inbox__meta {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .sb-inbox__actions {
+    flex-wrap: wrap;
+  }
+
+  .sb-inbox__request-input {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* ---------- Solutions ---------- */
+@media (max-width: 1279px) {
+  .sb-solutions {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  }
+
+  /* A row: name over its branches; phase and changes on the name's line. */
+  .sb-sol-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'name phase changes'
+      'chips chips chips';
+    row-gap: 6px;
+  }
+
+  .sb-sol-row > :nth-child(1) {
+    grid-area: name;
+  }
+
+  .sb-sol-row > :nth-child(2) {
+    grid-area: chips;
+    padding-left: 15px;
+  }
+
+  .sb-sol-row > :nth-child(3) {
+    grid-area: phase;
+  }
+
+  .sb-sol-row > :nth-child(4) {
+    grid-area: changes;
+  }
+}
+
+@media (max-width: 1023px) {
+  .sb-solutions {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+
+  .sb-sol-detail {
+    padding: 14px;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-sol-head {
+    padding: 14px 14px 10px;
+  }
+
+  .sb-sol-titlebar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-sol-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sb-sol-pill {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .sb-sol-scroll {
+    padding: 0 6px 16px;
+  }
+
+  .sb-sol-list {
+    border-right: 0;
+  }
+
+  .sb-sol-detail {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+/* ---------- Schedules & loops ---------- */
+@media (max-width: 1023px) {
+  .sb-schedules {
+    padding: 16px max(14px, env(safe-area-inset-right)) 20px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-sch-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* The table's header row goes; each run is a card: dot · name, cron · next, the strip, the actions. */
+  .sb-sch-row--head {
+    display: none !important;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'dot names names'
+      '. cron next'
+      '. runs runs'
+      '. actions actions';
+    row-gap: 8px;
+    column-gap: 10px;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(1) {
+    grid-area: dot;
+    align-self: center;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(2) {
+    grid-area: names;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(3) {
+    grid-area: cron;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(4) {
+    grid-area: runs;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(5) {
+    grid-area: next;
+    text-align: right;
+  }
+
+  .sb-sch-row:not(.sb-sch-row--head) > :nth-child(6) {
+    grid-area: actions;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .sb-sch-desc {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-loops {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-loop {
+    padding: 14px;
+  }
+
+  .sb-loop__head {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------- MCP ---------- */
+@media (max-width: 1023px) {
+  .sb-mcp-head {
+    padding: 14px 14px 10px;
+  }
+
+  .sb-mcp-body {
+    padding: 12px max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-mcp-head-actions {
+    flex-wrap: wrap;
+  }
+
+  .sb-mcp-cli-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-mcp-cli-head > .sb-mcp-mono,
+  .sb-mcp-muted {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .sb-mcp-name-line,
+  .sb-mcp-status-line {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .sb-mcp-name {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-mcp-head-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* The actions go under the server's lines. */
+  .sb-mcp-row {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+
+  .sb-mcp-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .sb-mcp-form-row,
+  .sb-mcp-cli-form {
+    flex-direction: column;
+  }
+
+  .sb-mcp-group-head {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+
+/* ---------- Artifacts ---------- */
+@media (max-width: 1279px) {
+  .sb-art-cols,
+  .sb-art-row {
+    grid-template-columns: 80px minmax(0, 1fr) 220px 140px 70px 44px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .sb-art-head {
+    padding: 14px 14px 10px;
+  }
+
+  .sb-art-title-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .sb-art-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sb-art-filter {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  /* The column heads go; each artifact is a card: type · name · age, then where, then its session and note. */
+  .sb-art-cols {
+    display: none;
+  }
+
+  .sb-art-rows {
+    padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-art-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'type name age'
+      '. location location'
+      '. session meta';
+    row-gap: 4px;
+    column-gap: 10px;
+  }
+
+  .sb-art-row > :nth-child(1) {
+    grid-area: type;
+  }
+
+  .sb-art-row > :nth-child(2) {
+    grid-area: name;
+  }
+
+  .sb-art-row > :nth-child(3) {
+    grid-area: location;
+  }
+
+  .sb-art-row > :nth-child(4) {
+    grid-area: session;
+  }
+
+  .sb-art-row > :nth-child(5) {
+    grid-area: meta;
+    text-align: right;
+  }
+
+  .sb-art-row > :nth-child(6) {
+    grid-area: age;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-art-search {
+    margin-left: 0;
+    width: 100%;
+    flex: 1 1 100%;
+    box-sizing: border-box;
+  }
+
+  .sb-art-row {
+    grid-template-areas:
+      'type name age'
+      'location location location'
+      'session session meta';
+  }
+}
+
+/* ---------- History ---------- */
+@media (max-width: 1023px) {
+  .sb-hist-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 14px 14px 12px;
+  }
+
+  .sb-hist-rows {
+    padding: 4px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
+  }
+
+  /* A row: name · date, the summary and branches, the outcome (and its buttons). */
+  .sb-hist-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name date'
+      'summary summary'
+      'outcome outcome';
+    row-gap: 6px;
+  }
+
+  .sb-hist-row > :nth-child(1) {
+    grid-area: date;
+    text-align: right;
+  }
+
+  .sb-hist-row > :nth-child(2) {
+    grid-area: name;
+  }
+
+  .sb-hist-row > :nth-child(3) {
+    grid-area: summary;
+  }
+
+  .sb-hist-row > :nth-child(4) {
+    grid-area: outcome;
+    text-align: left;
+  }
+
+  .sb-hist-outcol {
+    align-items: flex-start;
+  }
+
+  .sb-hist-movebar {
+    flex-wrap: wrap;
+    padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-hist-search {
+    margin-left: 0;
+    width: 100%;
+    flex: 1 1 100%;
+    box-sizing: border-box;
+  }
+
+  .sb-hist-movebar-count {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------- Todos page ---------- */
+@media (max-width: 1023px) {
+  .sb-todos-page-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 14px 14px 10px;
+  }
+
+  .sb-todos-page-list {
+    padding: 10px max(12px, env(safe-area-inset-right)) 20px max(12px, env(safe-area-inset-left));
+  }
+
+  .sb-todos-group {
+    padding: 10px 12px;
+  }
+
+  .sb-todos-group-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-todos-group-place {
+    flex: 1 1 100%;
+    order: 9;
+  }
+}
+
+/* ---------- Embedded tool ---------- */
+@media (max-width: 1023px) {
+  .sb-tool-bar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .sb-tool-bar-desc {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    flex: 1 1 0;
+  }
+
+  .sb-tool-url {
+    order: 9;
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .sb-tool-overlay {
+    padding: 16px;
+  }
+
+  .sb-tool-overlay-card {
+    width: auto;
+    max-width: 440px;
+    box-sizing: border-box;
+  }
+
+  .sb-tool-overlay-actions {
+    flex-wrap: wrap;
+  }
+
+  .sb-cm-strip {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .sb-cm-chip {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .sb-cm-strip-note {
+    margin-left: 0;
+  }
+}
+
+/* ---------- Settings ---------- */
+@media (max-width: 1023px) {
+  .sb-settings-view {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .sb-set-content {
+    padding: 20px 22px;
+  }
+
+  .sb-set-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .sb-set-row-text {
+    flex: 1 1 220px;
+  }
+
+  .sb-set-scan-row {
+    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-areas:
+      'folder count'
+      'examples examples'
+      'rule rule';
+    row-gap: 4px;
+  }
+
+  .sb-set-scan-row > :nth-child(1) {
+    grid-area: folder;
+  }
+
+  .sb-set-scan-row > :nth-child(2) {
+    grid-area: count;
+  }
+
+  .sb-set-scan-row > :nth-child(3) {
+    grid-area: examples;
+  }
+
+  .sb-set-scan-row > :nth-child(4) {
+    grid-area: rule;
+    text-align: left;
+  }
+
+  .sb-set-sched {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'dot name cron'
+      '. desc desc';
+    row-gap: 4px;
+  }
+
+  .sb-set-sched > :nth-child(1) {
+    grid-area: dot;
+  }
+
+  .sb-set-sched > :nth-child(2) {
+    grid-area: name;
+  }
+
+  .sb-set-sched > :nth-child(3) {
+    grid-area: cron;
+  }
+
+  .sb-set-sched > :nth-child(4) {
+    grid-area: desc;
+  }
+
+  .sb-set-tool-row {
+    flex-wrap: wrap;
+  }
+
+  .sb-set-input[data-kind='name'] {
+    flex: 1 1 100%;
+  }
+
+  .sb-set-cli-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .sb-set-cli-command {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .sb-set-folder-rename {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .sb-set-folder-actions {
+    flex-wrap: wrap;
+  }
+
+  .sb-set-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-set-nav {
+    padding: 14px 10px;
+    overflow-y: auto;
+  }
+
+  .sb-set-nav-item,
+  .sb-set-nav-item:hover {
+    padding: 12px 10px;
+    font-size: 14px;
+  }
+
+  .sb-set-content {
+    max-width: none;
+    padding: 12px max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left));
+    overflow-wrap: anywhere;
+  }
+}

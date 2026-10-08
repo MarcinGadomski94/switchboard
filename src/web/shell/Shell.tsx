@@ -17,6 +17,8 @@ import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
 import { PaneHandle, usePanes } from './Panes.tsx';
 import { Sidebar } from './Sidebar.tsx';
+import { AppBar } from './AppBar.tsx';
+import { TouchTooltip } from './TouchTooltip.tsx';
 import './shell.css';
 
 function View({ route }: { readonly route: Route }) {
@@ -53,7 +55,29 @@ function View({ route }: { readonly route: Route }) {
  */
 export function Shell() {
   const { route } = useRouter();
-  const { state } = usePanes();
+  const { state, layout, compact, setHidden } = usePanes();
+  // D74 (docs/responsive.md): on tablets and phones the sidebar is a drawer over the page, opened from the app bar
+  // (the session view's header holds the menu button instead); desktop renders exactly what it did before.
+  if (compact) {
+    const drawerOpen = !state.sidebarHidden;
+    return (
+      <div className="sb-shell" data-testid="shell" data-layout={layout} data-drawer={drawerOpen ? 'open' : 'closed'}>
+        {route.view === 'session' ? null : <AppBar />}
+        <Sidebar hidden={!drawerOpen} />
+        {drawerOpen ? <div className="sb-scrim sb-drawer-scrim" data-testid="drawer-scrim" aria-hidden="true" onClick={() => setHidden('sidebar', true)} /> : null}
+        <main className="sb-main" data-testid="main" inert={drawerOpen}>
+          <View route={route} />
+        </main>
+        <UpdateBanner />
+        <ToastHost />
+        <ModalHost />
+        <TakeoverHost />
+        <ContinueHookedHost />
+        <FirstRunGate />
+        <TouchTooltip />
+      </div>
+    );
+  }
   return (
     <div className="sb-shell" data-testid="shell" data-sidebar={state.sidebarHidden ? 'hidden' : undefined}>
       <Sidebar hidden={state.sidebarHidden} />
@@ -69,6 +93,8 @@ export function Shell() {
       {/* D72: Continue in Switchboard of a hooked terminal session. */}
       <ContinueHookedHost />
       <FirstRunGate />
+      {/* D74: a touch screen's long-press tooltip (after everything, so the prototype's child paths hold). */}
+      <TouchTooltip />
     </div>
   );
 }

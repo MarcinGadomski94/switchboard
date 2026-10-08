@@ -13,7 +13,7 @@ import { Link, type Route, useRouter } from '../router.tsx';
 import { useToolsChanged } from '../tools/events.ts';
 import { TOOL_DOT, useProbeOnLoad, useToolState } from '../tools/probe.ts';
 import { useFrameHelperSites } from '../tools/useFrameHelper.ts';
-import { PANE_ID, PaneHideButton } from './Panes.tsx';
+import { PANE_ID, PaneHideButton, usePanes } from './Panes.tsx';
 import { SidebarSessions } from './SidebarSessions.tsx';
 import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
@@ -155,7 +155,13 @@ function SidebarTool({ tool, active }: { readonly tool: Tool; readonly active: b
  */
 export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   const { route, navigate } = useRouter();
-  const { open } = useModals();
+  const modals = useModals();
+  // D74: on tablets and phones the sidebar is a drawer; a dialog opened from it closes it first.
+  const panes = usePanes();
+  const open = (...args: Parameters<typeof modals.open>): void => {
+    if (panes.compact) panes.setHidden('sidebar', true);
+    modals.open(...args);
+  };
   const now = useNow(30_000);
 
   const sessions = useApi(api.listSessions);

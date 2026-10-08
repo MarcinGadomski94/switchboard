@@ -1,0 +1,401 @@
+/*
+ * D74 · responsive layout: dialogs, menus, toasts (docs/responsive.md → Dialogs).
+ * Thresholds: see responsive/shell.css. Desktop (≥ 1280 px) is untouched.
+ * Tablets keep centered dialogs that fit the window; phones show every dialog
+ * as a full-screen sheet (safe areas respected) and menus inside the window.
+ */
+
+@media (max-width: 1279px) {
+  /* Dialogs over the drawers (which are z-index 45). */
+  .sb-takeover-overlay,
+  .sb-close-overlay,
+  .sb-update-overlay,
+  .sb-hist-move-overlay {
+    z-index: 75;
+  }
+
+  /* Dialogs fit the window (a percentage of the overlay's auto-sized grid area does not limit them). */
+  .sb-modal-new,
+  .sb-modal-simple,
+  .sb-modal-wizard,
+  .sb-takeover,
+  .sb-update-dialog,
+  .sb-hist-move,
+  .sb-bulk-switch,
+  .sb-close-dialog {
+    max-width: calc(100vw - 32px);
+    max-height: calc(var(--app-height, 100dvh) - 32px);
+  }
+
+  .sb-modal-new {
+    height: min(800px, calc(var(--app-height, 100dvh) - 32px));
+  }
+
+  .sb-modal-wizard {
+    height: min(620px, calc(var(--app-height, 100dvh) - 32px));
+  }
+
+  /* Menus fit the window; long ones scroll. */
+  .sb-layout-menu {
+    max-height: calc(var(--app-height, 100dvh) - 16px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .sb-footer-cli-menu {
+    max-width: calc(100vw - 32px);
+    max-height: 60dvh;
+    overflow-y: auto;
+  }
+
+  .sb-todo-menu {
+    max-width: calc(100vw - 24px);
+  }
+
+  /* The toast stays inside the window, above the drawers. */
+  .sb-toast {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    right: 12px;
+    width: min(360px, calc(100vw - 24px));
+    box-sizing: border-box;
+    z-index: 80;
+  }
+
+  .sb-update-banner {
+    z-index: 80;
+    top: max(8px, env(safe-area-inset-top));
+    max-width: calc(100vw - 16px);
+    flex-wrap: wrap;
+  }
+}
+
+/* ---------- New session (Full): the side column goes under the form ---------- */
+@media (max-width: 1023px) {
+  .sb-modal-new {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(760px, calc(100vw - 32px));
+    height: calc(var(--app-height, 100dvh) - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sb-modal-new > .sb-ns-form {
+    flex: none;
+    overflow: visible;
+    padding: 18px 18px;
+  }
+
+  .sb-modal-new > .sb-ns-side {
+    flex: none;
+    position: static;
+    border-left: 0;
+    border-top: 1px solid var(--border-divider);
+  }
+
+  /* The Simple / Full switch stays at the sheet's top right (the form's head leaves it room). */
+  .sb-modal-new .sb-ns-mode-slot {
+    top: 16px;
+    right: 16px;
+  }
+
+  .sb-modal-new .sb-ns-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-right: 140px;
+  }
+
+  .sb-modal-new .sb-ns-recommended {
+    margin-left: 0;
+  }
+
+  .sb-ns-summary {
+    flex: none;
+    max-height: 40dvh;
+  }
+
+  .sb-ns-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-main);
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .sb-ns-task,
+  .sb-ns-branch,
+  .sb-ns-schedule {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-ns-group {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+
+  .sb-ns-folder-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .sb-ns-select {
+    flex: 1 1 200px;
+  }
+
+  .sb-ns-folder-check {
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .sb-ns-pills {
+    flex-wrap: wrap;
+  }
+
+  /* The setup wizard: the steps rail becomes a row over the step. */
+  .sb-modal-wizard {
+    width: calc(100vw - 32px);
+    height: min(760px, calc(var(--app-height, 100dvh) - 32px));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sb-wz-rail {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    padding: 12px 14px;
+    gap: 4px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-divider);
+    scrollbar-width: none;
+  }
+
+  .sb-wz-brand {
+    margin-bottom: 0;
+    margin-right: 8px;
+    flex: none;
+  }
+
+  .sb-wz-step {
+    flex: none;
+    padding: 6px 8px;
+  }
+
+  .sb-wz-note {
+    display: none;
+  }
+
+  .sb-wz-main {
+    padding: 20px 20px;
+  }
+
+  .sb-wz-scan-row {
+    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-areas:
+      'folder count'
+      'examples examples'
+      'rule rule';
+    row-gap: 4px;
+  }
+
+  .sb-wz-scan-row > :nth-child(1) {
+    grid-area: folder;
+  }
+
+  .sb-wz-scan-row > :nth-child(2) {
+    grid-area: count;
+  }
+
+  .sb-wz-scan-row > :nth-child(3) {
+    grid-area: examples;
+  }
+
+  .sb-wz-scan-row > :nth-child(4) {
+    grid-area: rule;
+    text-align: left;
+  }
+
+  .sb-wz-root,
+  .sb-wz-name,
+  .sb-wz-notify {
+    flex-wrap: wrap;
+  }
+
+  .sb-wz-field.sb-wz-name-field {
+    flex: 1 1 200px;
+  }
+
+  /* The palette: under the top edge, the window's width. */
+  .sb-overlay[data-modal='palette'] {
+    padding: max(48px, env(safe-area-inset-top)) 12px 12px;
+  }
+
+  .sb-modal-palette {
+    width: min(620px, 100%);
+  }
+
+  .sb-palette-results {
+    max-height: calc(var(--app-height, 100dvh) - 200px);
+  }
+}
+
+/* ---------- Phones: every dialog is a full-screen sheet ---------- */
+@media (max-width: 767px) {
+  .sb-overlay,
+  .sb-takeover-overlay,
+  .sb-close-overlay,
+  .sb-update-overlay,
+  .sb-hist-move-overlay {
+    place-items: stretch;
+  }
+
+  .sb-modal-new,
+  .sb-modal-simple,
+  .sb-modal-wizard,
+  .sb-takeover,
+  .sb-update-dialog,
+  .sb-hist-move,
+  .sb-bulk-switch,
+  .sb-close-dialog {
+    width: 100%;
+    max-width: none;
+    height: var(--app-height, 100dvh);
+    max-height: none;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* A short confirmation keeps its own height, at the bottom like a sheet. */
+  .sb-close-dialog {
+    height: auto;
+    align-self: end;
+    border-top: 1px solid var(--border-control);
+    border-radius: 14px 14px 0 0;
+    padding: 20px max(18px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  }
+
+  .sb-bulk-switch {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sb-modal-new > .sb-ns-form {
+    padding: 16px 14px;
+  }
+
+  .sb-modal-new .sb-ns-head {
+    padding-right: 0;
+    padding-top: 36px;
+  }
+
+  .sb-ns-simple {
+    padding: 16px 14px 16px;
+  }
+
+  .sb-ns-simple-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .sb-ns-simple-row,
+  .sb-ns-simple-actions {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .sb-ns-simple-waiting {
+    flex: 1 1 100%;
+    order: 9;
+    white-space: normal;
+  }
+
+  .sb-ns-simple-start {
+    flex: 1 1 auto;
+  }
+
+  .sb-ns-qa-fields,
+  .sb-br-epic,
+  .sb-br-branch {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-br-base,
+  .sb-br-other,
+  .sb-br-choices {
+    flex-wrap: wrap;
+  }
+
+  .sb-ns-label--row {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .sb-ns-label--row .sb-ns-hint {
+    margin-left: 0;
+    flex: 1 1 100%;
+  }
+
+  .sb-ns-group {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .sb-ns-folder {
+    padding-top: 0;
+  }
+
+  .sb-ns-resume-toggle,
+  .sb-ns-remote-toggle {
+    position: static;
+    align-self: flex-start;
+  }
+
+  .sb-modal-wizard {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sb-wz-main {
+    padding: 16px 14px;
+  }
+
+  .sb-wz-step-label {
+    display: none;
+  }
+
+  .sb-wz-step[data-state='current'] .sb-wz-step-label {
+    display: inline;
+  }
+
+  /* The palette keeps a strip of backdrop under it: a tap there closes it. */
+  .sb-overlay[data-modal='palette'] {
+    padding: max(10px, env(safe-area-inset-top)) 8px 8px;
+  }
+
+  .sb-palette-results {
+    max-height: calc(var(--app-height, 100dvh) - 160px);
+  }
+
+  .sb-palette-kind {
+    width: 56px;
+  }
+
+  .sb-palette-hint {
+    display: none;
+  }
+
+  .sb-hist-move-footer,
+  .sb-hist-move-actions {
+    flex-wrap: wrap;
+  }
+
+  .sb-attach-lightbox img {
+    max-width: 100vw;
+    max-height: 80dvh;
+  }
+}

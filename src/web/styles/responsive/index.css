@@ -1,0 +1,6 @@
+/* D74 · responsive layout (docs/responsive.md): imported last (main.tsx), so these rules follow every view's own. */
+@import './shell.css';
+@import './session.css';
+@import './pages.css';
+@import './modals.css';
+@import './touch.css';

@@ -1,9 +1,11 @@
+import { BackButton } from '../components/ListDetail.tsx';
+import { useLayout } from '../shell/useLayout.ts';
 import { useState } from 'react';
 import type { Settings } from '../../core/api.ts';
 import { type KnownSettings, readKnownSettings } from '../../core/settings.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
-import { Link } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { SETTINGS_SECTIONS, type SettingsSection, resolveSection } from './settings/model.ts';
 import { ClaudeSection, GithubSection, NotifySection, type SaveSettings, SchedulesSection, SessionsSection } from './settings/sections.tsx';
 import { ToolsSection } from './settings/ToolsSection.tsx';
@@ -53,6 +55,9 @@ function Section({ section, settings, save }: { readonly section: SettingsSectio
  */
 export function SettingsView({ section }: { readonly section: string | null }) {
   const current = resolveSection(section);
+  // D74 (docs/responsive.md → List and detail): on a phone `/settings` lists the sections and `/settings/<section>` shows one, with ‹ Settings back.
+  const phone = useLayout() === 'phone';
+  const { navigate } = useRouter();
   const loaded = useApi(api.settings);
   const [saved, setSaved] = useState<Settings | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -69,7 +74,7 @@ export function SettingsView({ section }: { readonly section: string | null }) {
   };
 
   return (
-    <section className="sb-view sb-settings-view" data-view="settings" data-testid="view-settings" data-section={current}>
+    <section className="sb-view sb-settings-view" data-view="settings" data-testid="view-settings" data-section={current} data-pane={phone ? (section === null ? 'list' : 'detail') : undefined}>
       <nav className="sb-set-nav" aria-label="Settings sections">
         <div className="sb-set-nav-title">Settings</div>
         {SETTINGS_SECTIONS.map((item) => (
@@ -78,13 +83,14 @@ export function SettingsView({ section }: { readonly section: string | null }) {
             to={{ view: 'settings', section: item.key }}
             className="sb-set-nav-item"
             data-testid={`settings-nav-${item.key}`}
-            aria-current={item.key === current ? 'page' : undefined}
+            aria-current={item.key === current && !(phone && section === null) ? 'page' : undefined}
           >
             {item.label}
           </Link>
         ))}
       </nav>
       <div className="sb-set-content" data-testid="settings-content">
+        {phone && section !== null ? <BackButton label="Settings" testId="settings-back" onBack={() => navigate({ view: 'settings', section: null })} /> : null}
         {settings ? <Section section={current} settings={settings} save={save} /> : null}
         {!settings && loaded.error ? (
           <div className="sb-set-note sb-set-error" data-testid="settings-note">

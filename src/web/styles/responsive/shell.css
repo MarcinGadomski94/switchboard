@@ -1,0 +1,239 @@
+/*
+ * D74 · responsive layout: the shell (docs/responsive.md). Every rule sits in a
+ * media query below the desktop threshold (src/web/shell/viewport.ts), so the
+ * desktop layout (≥ 1280 px, measured by the visual oracle at 1440×900) is
+ * untouched:
+ *   (max-width: 1279px)  compact = tablet + phone: app bar, sidebar drawer, right panel drawer
+ *   (max-width: 1023px)  tablet portrait and below: the session header's actions in its ⋯ menu
+ *   (max-width: 767px)   phone: full-screen drawer, the right panel a bottom sheet
+ */
+
+@media (max-width: 1279px) {
+  .sb-shell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    /* The visible height (above an on-screen keyboard: useVisualViewportHeight), else the dynamic viewport. */
+    height: var(--app-height, 100dvh);
+    overflow: hidden;
+  }
+
+  .sb-shell > .sb-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* The top app bar: ☰ · page title · Inbox. */
+  .sb-appbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--border-divider);
+    background: var(--bg-sidebar);
+  }
+
+  .sb-appbar-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-strong);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .sb-appbar-inbox {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 13px;
+    color: var(--text-2);
+    text-decoration: none;
+  }
+
+  .sb-appbar-inbox:hover {
+    color: var(--text-2);
+  }
+
+  .sb-appbar-inbox[aria-current='page'] {
+    background: var(--bg-selected-nav);
+    color: var(--text-strong);
+  }
+
+  .sb-appbar-inbox .sb-badge {
+    margin-left: 0;
+  }
+
+  /* A drawer's opener (☰ / the panel glyph). */
+  .sb-drawer-button {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--text-2);
+    cursor: pointer;
+  }
+
+  .sb-drawer-button:hover,
+  .sb-drawer-button[aria-expanded='true'] {
+    color: var(--text-strong);
+    background: var(--bg-selected-nav);
+  }
+
+  .sb-drawer-badge {
+    position: absolute;
+    top: 1px;
+    right: 0;
+    min-width: 16px;
+    height: 16px;
+    box-sizing: border-box;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--status-need);
+    color: var(--primary-fg);
+    font: 600 10px/16px var(--font-mono);
+    text-align: center;
+  }
+
+  /* The sidebar: a slide-over drawer from the left (D41's slide, without the rail). */
+  .sb-shell > .sb-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 45;
+    width: min(320px, 88vw);
+    height: var(--app-height, 100dvh);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    background: var(--bg-sidebar);
+    box-shadow: 0 0 32px rgb(0 0 0 / 0.5);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform var(--pane-slide) ease,
+      visibility 0s linear var(--pane-slide);
+  }
+
+  .sb-shell[data-drawer='open'] > .sb-sidebar {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform var(--pane-slide) ease,
+      visibility 0s linear 0s;
+  }
+
+  /* The drawer scrolls as one (the fixed top and bottom of the desktop sidebar would leave the sessions no room). */
+  .sb-shell > .sb-sidebar .sb-tools,
+  .sb-shell > .sb-sidebar .sb-sessions {
+    flex: none;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .sb-shell > .sb-sidebar .sb-settings {
+    margin-top: 6px;
+  }
+
+  .sb-shell > .sb-sidebar .sb-footer {
+    margin-top: auto;
+  }
+
+  /* The brand row's hide button closes the drawer: a full tap target. */
+  .sb-shell > .sb-sidebar .sb-brand > .sb-brand-hide {
+    width: 36px;
+    height: 36px;
+    margin-right: -8px;
+  }
+
+  .sb-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    background: rgb(0 0 0 / 0.5);
+  }
+
+  /* Modals and the palette open over a drawer. */
+  .sb-overlay {
+    position: fixed;
+    z-index: 70;
+  }
+
+  .sb-overlay[data-modal='palette'] {
+    z-index: 71;
+  }
+
+  .sb-touch-tooltip {
+    z-index: 90;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Phone: the drawer covers the screen. */
+  .sb-shell > .sb-sidebar {
+    width: 100vw;
+    box-shadow: none;
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* D74: a long-press tooltip on a touch screen (TouchTooltip.tsx), any layout. */
+.sb-touch-tooltip {
+  position: fixed;
+  z-index: 90;
+  max-width: min(320px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  pointer-events: none;
+}
+
+/* D74: the label of a sidebar row lifted by a long press, under the finger (SidebarSessions.tsx). */
+.sb-touch-ghost {
+  position: fixed;
+  z-index: 95;
+  max-width: 240px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--status-run);
+  border-radius: 8px;
+  background: var(--bg-selected-card);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.55);
+  pointer-events: none;
+  /* Above and left of the finger, so the target under it stays visible. */
+  transform: translate(-50%, calc(-100% - 18px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-shell > .sb-sidebar,
+  .sb-shell[data-drawer='open'] > .sb-sidebar {
+    transition: none;
+  }
+}
