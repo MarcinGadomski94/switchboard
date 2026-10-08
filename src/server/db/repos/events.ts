@@ -139,4 +139,12 @@ export class EventRepository {
   async update(id: number, patch: EventPatch): Promise<EventRecord | null> {
     return this.#table.update(id, patch);
   }
+
+  /** D80: how many user messages (`payload.type` `user`) the session has up to event `uptoId` (all when omitted): a turn's number. */
+  async countUserMessages(sessionId: string, uptoId?: number): Promise<number> {
+    const row = this.#table
+      .statement("SELECT COUNT(*) AS n FROM events WHERE session_id = ? AND id <= ? AND json_extract(payload, '$.type') = 'user'")
+      .get(sessionId, uptoId ?? Number.MAX_SAFE_INTEGER);
+    return Number(row?.['n'] ?? 0);
+  }
 }

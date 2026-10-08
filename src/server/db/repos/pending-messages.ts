@@ -52,6 +52,12 @@ export class PendingMessageRepository {
     return this.#table.select('session_id = ? AND delivered_at IS NULL', [sessionId], 'id');
   }
 
+  /** D80: deletes the session's undelivered messages of `kind`; `true` when there was one. */
+  async withdrawKind(sessionId: string, kind: string): Promise<boolean> {
+    const result = this.#table.statement('DELETE FROM pending_messages WHERE session_id = ? AND kind = ? AND delivered_at IS NULL').run(sessionId, kind);
+    return Number(result.changes) > 0;
+  }
+
   async markDelivered(id: number): Promise<PendingMessageRecord | null> {
     return this.#table.update(id, { deliveredAt: this.#ctx.now() });
   }

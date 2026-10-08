@@ -1,3 +1,4 @@
+import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.ts';
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
@@ -238,6 +239,14 @@ export const api = {
     request<Session>('POST', `/api/sessions/${enc(id)}/continue-in-switchboard`, confirmStopTerminal ? { confirmStopTerminal: true } : {}),
   /** D72: Resend of a message marked not sent (its terminal ended before taking it up). */
   resendMessage: (id: string, eventId: number) => request<void>('POST', `/api/sessions/${enc(id)}/events/${eventId}/resend`, {}),
+  /** D80: the session's turns with a checkpoint, why there are none, Redo (docs/undo.md). */
+  checkpoints: (id: string) => request<SessionCheckpoints>('GET', `/api/sessions/${enc(id)}/checkpoints`),
+  /** D80: what a revert to before turn `turn` changes (the confirm dialog). */
+  checkpointPlan: (id: string, turn: number) => request<CheckpointPlan>('GET', `/api/sessions/${enc(id)}/checkpoints/${turn}`),
+  /** D80: revert to before turn `turn` (409 `files-only-needed` with `plan` when the branch cannot go back). */
+  revertTurn: (id: string, turn: number, filesOnly = false) => request<CheckpointPlan>('POST', `/api/sessions/${enc(id)}/checkpoints/${turn}/revert`, { filesOnly }),
+  /** D80: undo the newest revert. */
+  redoRevert: (id: string) => request<CheckpointPlan>('POST', `/api/sessions/${enc(id)}/checkpoints/redo`, {}),
   resumeSession: (id: string) => request<Session>('POST', `/api/sessions/${enc(id)}/resume`),
   detachSession: (id: string) => request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/detach`),
   /** M4.1: a warning answers 409 `attach-warning` (`AttachWarning` body) until called again with `confirm`. */

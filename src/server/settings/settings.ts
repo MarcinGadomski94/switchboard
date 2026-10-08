@@ -46,7 +46,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
- * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` and
+ * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D80 `sessions.checkpoints` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
  * `usage.warnAtPct` a whole number 1–100, D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
@@ -173,4 +173,10 @@ export async function standingInstructionFor(repo: SettingRepository): Promise<s
 export async function todoReminderEnabled(repo: SettingRepository): Promise<boolean> {
   const stored = (await repo.getAll())['sessions.todoReminder'];
   return typeof stored === 'boolean' ? stored : SETTING_DEFAULTS['sessions.todoReminder'];
+}
+
+/** D80: whether a checkpoint is saved before each turn (Settings → Sessions; default on). */
+export async function checkpointsEnabled(repo: SettingRepository): Promise<boolean> {
+  const stored = (await repo.getAll())['sessions.checkpoints'];
+  return typeof stored === 'boolean' ? stored : SETTING_DEFAULTS['sessions.checkpoints'];
 }

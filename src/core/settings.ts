@@ -37,6 +37,11 @@ export interface KnownSettings {
    * agent one reminder to finish it (`docs/todos.md` → *In progress (D75)*). Editable, default `true`.
    */
   readonly 'sessions.todoReminder': boolean;
+  /**
+   * D80: before each turn of a supervised session, save a checkpoint of its git working trees
+   * (hidden refs), so a turn can be reverted (`docs/undo.md`). Editable, default `true`.
+   */
+  readonly 'sessions.checkpoints': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -114,7 +119,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.checkpoints'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -133,6 +138,7 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
   'sessions.todoReminder': true,
+  'sessions.checkpoints': true,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -160,6 +166,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
+    'sessions.checkpoints': bool('sessions.checkpoints', SETTING_DEFAULTS['sessions.checkpoints']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

@@ -238,7 +238,11 @@ export type LifecycleAction =
   /** D65: the session was taken over to another machine (a note on the closed source session: "Moved to <machine>"). */
   | 'moved-away'
   /** D72: a hooked terminal session now runs under Switchboard (`--resume` of its id; the chat's divider "Continued in Switchboard (was a terminal session)"). */
-  | 'continued';
+  | 'continued'
+  /** D80: the developer reverted the session's files to before turn `turn` (the chat's divider "Reverted to before turn N"). */
+  | 'reverted'
+  /** D80: the newest revert was undone (Redo; the chat's divider "Undid the revert to before turn N"). */
+  | 'revert-undone';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -267,6 +271,10 @@ export interface LifecyclePayload {
   readonly machine?: string;
   readonly machineId?: string;
   readonly remoteSessionId?: string;
+  /** D80 (`reverted` / `revert-undone`): the turn reverted to, the newest turn then, and whether the branch was left alone. */
+  readonly turn?: number;
+  readonly latestTurn?: number;
+  readonly filesOnly?: boolean;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */
