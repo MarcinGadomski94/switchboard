@@ -75,7 +75,7 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
 /** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.reviewCards'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -115,6 +115,14 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         description="When a turn ends with an item it started still in progress, send it one reminder to mark it done or say what's left"
       >
         <ToggleValue label="Remind the agent to finish started todos" value={settings['sessions.todoReminder']} disabled={busy} onToggle={() => flip('sessions.todoReminder')} />
+      </Row>
+      {/* D79: a Review card when a session with changes goes idle. */}
+      <Row
+        id="review-cards"
+        label="Raise review cards when a session with changes goes idle"
+        description="Once per change set, in the Inbox and on the session's header; advisory, never blocks the agent"
+      >
+        <ToggleValue label="Raise review cards when a session with changes goes idle" value={settings['sessions.reviewCards']} disabled={busy} onToggle={() => flip('sessions.reviewCards')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
     </>

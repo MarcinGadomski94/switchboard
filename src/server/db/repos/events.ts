@@ -126,6 +126,14 @@ export class EventRepository {
     return this.#table.select(where.join(' AND '), params, 'ts DESC, id DESC', query.limit);
   }
 
+  /**
+   * D79: the session's newest calls of tool `name` (`payload.type` = `tool`), newest
+   * first (ts, then id), at most `limit` (the review card's test status).
+   */
+  async toolCallsNewestFirst(sessionId: string, name: string, limit: number): Promise<EventRecord[]> {
+    return this.#table.select("session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') = ?", [sessionId, name], 'ts DESC, id DESC', limit);
+  }
+
   /** The newest event of the session for a `tool_use` id. */
   async findByToolUseId(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId], 'id DESC');

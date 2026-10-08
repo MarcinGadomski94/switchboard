@@ -560,15 +560,16 @@ describe('/hub · events (contract, field by field)', () => {
 
 describe('/hub · disconnects', () => {
   it('a client that goes away is dropped: the hub leaves the bus and stops asking for system info', async () => {
-    // The app's own listeners (D75's todo reminder, D76's review link) stay subscribed; the hub adds one while it has
-    // clients (the earlier tests' streams leave it as their sockets close).
-    const APP_LISTENERS = 2;
-    const settle = Date.now() + 5_000;
-    while (bus.listenerCount > APP_LISTENERS && Date.now() < settle) await new Promise((r) => setTimeout(r, 20));
-    const own = bus.listenerCount;
-    expect(own).toBe(APP_LISTENERS);
+    // The app's own services listen too (D75's todo reminder, D79's review cards): the hub adds one while a client is connected.
+    // Earlier tests' streams may still be leaving: wait until the count settles first.
+    let services = bus.listenerCount;
+    for (const settleBy = Date.now() + 5_000; Date.now() < settleBy; ) {
+      await new Promise((r) => setTimeout(r, 200));
+      if (bus.listenerCount === services) break;
+      services = bus.listenerCount;
+    }
     const stream = await connect();
-    expect(bus.listenerCount).toBe(own + 1);
+    expect(bus.listenerCount).toBe(services + 1);
     stream.close();
     streams.length = 0;
     await openHub({ port, cookie }).then((probe) => {
@@ -577,8 +578,8 @@ describe('/hub · disconnects', () => {
       probe.close();
     });
     const deadline = Date.now() + 5_000;
-    while (bus.listenerCount !== own && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
-    expect(bus.listenerCount).toBe(own);
+    while (bus.listenerCount !== services && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    expect(bus.listenerCount).toBe(services);
     const calls = systemCalls;
     await new Promise((r) => setTimeout(r, 600));
     expect(systemCalls).toBe(calls);

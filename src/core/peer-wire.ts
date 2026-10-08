@@ -10,6 +10,7 @@
  */
 import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
+import type { Review } from './reviews.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
 
 /** The machine whose answers are mapped. */
@@ -78,8 +79,16 @@ export function peerInboxItem(machine: PeerMachineRef, item: InboxItem): InboxIt
     id: ns(machine, item.id),
     sessionId: nsMaybe(machine, item.sessionId),
     ...(item.questions ? { questions: item.questions.map((question) => peerQuestion(machine, question)) } : {}),
+    // D79: a review item's card is acted on through its (remote) id.
+    ...(item.review ? { review: peerReview(machine, item.review) } : {}),
     machine: { id: machine.id, name: machine.name, state: machine.state },
   };
+}
+
+/** D79: a peer's review card: its id and session id namespaced, `machine` added. */
+export function peerReview(machine: PeerMachineRef, review: Review): Review {
+  // A peer before the D79 ruling sends no `handledByAgent`: false.
+  return { ...review, id: ns(machine, review.id), sessionId: ns(machine, review.sessionId), handledByAgent: review.handledByAgent === true, machine: { id: machine.id, name: machine.name, state: machine.state } };
 }
 
 /**
@@ -147,7 +156,7 @@ export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGr
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -179,6 +188,11 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
     }
     case 'inboxChanged':
       return payload;
+    case 'reviewsChanged': {
+      // D79: a peer's review card changed: its session id namespaced.
+      const changed = value as unknown as HubEvents['reviewsChanged'];
+      return typeof changed.sessionId === 'string' ? ({ sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
+    }
     case 'todosChanged': {
       const changed = value as unknown as HubEvents['todosChanged'];
       return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
@@ -198,7 +212,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D52: `schedule` / `schedules` (a peer's schedules), `terminal-loops`. */
 /** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
 /** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'none';
+/** D76: `todo-run` (a todo run's answer). D79: `review` (a review action's answer), `reviews` (`GET /api/reviews`). */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'review' | 'reviews' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -219,6 +234,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (upper === 'POST' && /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/run$/.test(pathname)) return 'todo-run';
   if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done|\/start)?)?$/.test(pathname)) return 'todo-list';
   if (pathname === '/api/todos') return upper === 'GET' ? 'todo-groups' : 'none';
+  // D79: the review cards and their actions (each answers the card).
+  if (pathname === '/api/reviews') return upper === 'GET' ? 'reviews' : 'none';
+  if (upper === 'POST' && /^\/api\/reviews\/[^/]+\/[a-z-]+$/.test(pathname)) return 'review';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
@@ -275,6 +293,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
         : body;
     case 'todo-groups':
       return Array.isArray(body) ? body.filter(isRecord).map((group) => peerTodoGroup(machine, group as unknown as TodoGroup)) : body;
+    case 'review':
+      return isRecord(body) && typeof body['id'] === 'string' && typeof body['sessionId'] === 'string' ? peerReview(machine, body as unknown as Review) : body;
+    case 'reviews':
+      return Array.isArray(body) ? body.filter((entry) => isRecord(entry) && typeof entry['id'] === 'string').map((review) => peerReview(machine, review as unknown as Review)) : body;
     case 'none':
       return body;
   }

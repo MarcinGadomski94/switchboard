@@ -21,7 +21,7 @@ import type { AnsweredOn } from './remote-control.ts';
 import type { ResolvedContext } from './context-meter.ts';
 import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
-import type { ReviewResolvedEvent } from './reviews.ts';
+import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type {
   AgentKind,
@@ -1161,8 +1161,8 @@ export interface InboxAction {
 /** `GET /api/inbox` item. Provisional: M3.1 / M3.2 / M3.3. */
 export interface InboxItem {
   readonly id: string;
-  /** A question batch, a permission request (D6) or a system item (M3.3). */
-  readonly kind: 'questions' | 'permission' | 'system';
+  /** A question batch, a permission request (D6), a system item (M3.3) or (D79) a review card. */
+  readonly kind: 'questions' | 'permission' | 'system' | 'review';
   readonly sessionId: string | null;
   /** Session name, schedule name or `worktrees`. */
   readonly source: string;
@@ -1187,6 +1187,8 @@ export interface InboxItem {
   readonly prefill?: NewSessionPrefill;
   /** Additive (D48): the paired machine the item comes from (a peer's item; its ids are remote ids); absent for this machine's own. */
   readonly machine?: SessionMachine | null;
+  /** Additive (D79): a review item's card (`kind: 'review'`; its actions are `POST /api/reviews/{id}/<action>`). */
+  readonly review?: Review;
 }
 
 /**
@@ -2093,11 +2095,17 @@ export interface HubEvents {
    */
   readonly todosChanged: TodosChanged;
   /**
-   * Additive (D76, shared with lane B's review queue): a review card of a session was
-   * resolved. A todo whose run session it is leaves `review` (`docs/todos.md` → *Review*).
-   * This machine's only: never forwarded between peers.
+   * Additive (D79, `docs/reviews.md`; D76 subscribes): a review was resolved (Merge, Commit, Discard,
+   * Send back, Dismiss). The shared contract with the todo lane: exactly
+   * `{ sessionId, outcome }`. This machine's only: never forwarded between peers.
    */
   readonly reviewResolved: ReviewResolvedEvent;
+  /**
+   * Additive (D79): a session's review card was raised, refreshed or acted on; the
+   * session header's badge reloads. Forwarded between peers (a peer's with its remote
+   * session id).
+   */
+  readonly reviewsChanged: { readonly sessionId: string };
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2129,6 +2137,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'machineState',
   'todosChanged',
   'reviewResolved',
+  'reviewsChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

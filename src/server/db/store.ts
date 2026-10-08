@@ -18,6 +18,7 @@ import { ProfileRepository } from './repos/profiles.ts';
 import { PermissionRepository } from './repos/permissions.ts';
 import { ProviderRepository } from './repos/providers.ts';
 import { QuestionRepository } from './repos/questions.ts';
+import { ReviewRepository } from './repos/reviews.ts';
 import { ScheduleRepository } from './repos/schedules.ts';
 import { SessionRepository } from './repos/sessions.ts';
 import { SettingRepository } from './repos/settings.ts';
@@ -69,6 +70,8 @@ export interface Store {
   readonly profiles: ProfileRepository;
   /** D68 (0026): each session's todo list. */
   readonly todos: TodoRepository;
+  /** D79: review cards (`session_reviews`, migration 0033). */
+  readonly reviews: ReviewRepository;
   /** D73 (0030): paired devices, their pairing codes and push subscriptions. */
   readonly devices: DeviceRepository;
   /** The raw connection, for repositories added later and for tests. */
@@ -134,6 +137,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     providers: new ProviderRepository(ctx),
     profiles: new ProfileRepository(ctx),
     todos: new TodoRepository(ctx),
+    reviews: new ReviewRepository(ctx),
     devices: new DeviceRepository(ctx),
     db,
     async close(): Promise<void> {

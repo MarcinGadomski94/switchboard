@@ -1,0 +1,286 @@
+/*
+ * D79 review card (ReviewCard.tsx, docs/reviews.md): no prototype markup; it reuses the
+ * Inbox detail's vocabulary (branch chips, the code-block card, primary / outlined
+ * actions) and the diff colors (styles/tokens.css). Two-class selectors where a rule must
+ * win over `.sb-button`'s reset.
+ */
+.sb-review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  min-width: 0;
+}
+
+.sb-review[data-variant='popover'] {
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  border-radius: var(--radius-card-lg);
+  padding: 14px 16px;
+  max-width: 640px;
+}
+
+.sb-review__repos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sb-review__repo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-control);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font: 400 12px var(--font-mono);
+  min-width: 0;
+}
+
+.sb-review__repo-name {
+  color: var(--text-2);
+}
+
+.sb-review__branch {
+  color: var(--branch-fg);
+  overflow-wrap: anywhere;
+}
+
+.sb-review__pr {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.sb-review__pr:hover {
+  text-decoration: underline;
+}
+
+.sb-review__stats {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-1);
+}
+
+.sb-review__outcome {
+  color: var(--status-done);
+}
+
+.sb-review__files,
+.sb-review__commits {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-code);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 400 12px/1.5 var(--font-mono);
+}
+
+.sb-review__file,
+.sb-review__commit {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sb-review__file-link {
+  color: var(--text-2b);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.sb-review__file-link:hover {
+  text-decoration: underline;
+}
+
+.sb-review__file-stat {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted-2);
+}
+
+.sb-review__add {
+  color: var(--diff-add-fg);
+}
+
+.sb-review__del {
+  color: var(--diff-del-fg);
+}
+
+.sb-review__tag {
+  flex: none;
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--status-need);
+}
+
+.sb-review__sha {
+  flex: none;
+  color: var(--branch-fg);
+}
+
+.sb-review__more {
+  color: var(--muted-3);
+}
+
+.sb-review__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-review__label {
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-review__summary {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-2b);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.sb-review__tests {
+  font: 400 12px var(--font-mono);
+  color: var(--muted-1);
+}
+
+.sb-review__tests[data-status='passed'] {
+  color: var(--status-done);
+}
+
+.sb-review__tests[data-status='failed'] {
+  color: var(--status-fail);
+}
+
+.sb-review__note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sb-review__conflicts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 400 12px var(--font-mono);
+  color: var(--status-fail);
+}
+
+.sb-review__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.sb-review__form--danger {
+  border-color: oklch(0.5 0.12 25);
+  background: var(--diff-del-bg);
+}
+
+.sb-review__input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  background: var(--bg-code);
+  color: inherit;
+  font: 400 13px/1.5 var(--font-mono);
+  resize: vertical;
+}
+
+.sb-review__hint {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-review__warning {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2b);
+}
+
+.sb-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sb-review .sb-review__action {
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+}
+
+.sb-review .sb-review__action[data-primary='true'] {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sb-review .sb-review__action[data-danger='true'] {
+  color: var(--diff-del-fg);
+  border-color: oklch(0.5 0.12 25);
+}
+
+.sb-review .sb-review__action[data-danger='true'][data-primary='true'] {
+  background: var(--status-fail);
+  color: var(--primary-fg);
+  border-color: var(--status-fail);
+}
+
+.sb-review .sb-review__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sb-review__error {
+  font-size: 12px;
+  color: var(--status-fail);
+}
+
+/* D74: a phone gives the card the whole width; the actions become a two-column grid of finger-sized buttons. */
+@media (max-width: 767px) {
+  .sb-review[data-variant='popover'] {
+    max-width: none;
+    padding: 12px;
+  }
+
+  .sb-review .sb-review__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sb-review .sb-review__actions .sb-review__action {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    min-height: 44px;
+    padding: 10px 12px;
+    text-align: center;
+    justify-content: center;
+  }
+}

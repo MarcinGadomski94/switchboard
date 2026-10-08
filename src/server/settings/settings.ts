@@ -46,7 +46,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Validates a `PUT /api/settings` body: an object with any subset of the editable
- * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` and
+ * keys (`EDITABLE_SETTINGS`). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` / D79 `sessions.reviewCards` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
  * `usage.warnAtPct` a whole number 1–100, D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
@@ -167,6 +167,12 @@ export async function standingInstructionFor(repo: SettingRepository): Promise<s
     'agents.standingInstruction': typeof text === 'string' ? currentStandingInstruction(text) : SETTING_DEFAULTS['agents.standingInstruction'],
     'agents.standingInstruction.enabled': typeof enabled === 'boolean' ? enabled : SETTING_DEFAULTS['agents.standingInstruction.enabled'],
   });
+}
+
+/** D79: Settings → Sessions → *Raise review cards when a session with changes goes idle* (default on). */
+export async function reviewCardsEnabled(repo: SettingRepository): Promise<boolean> {
+  const stored = (await repo.getAll())['sessions.reviewCards'];
+  return typeof stored === 'boolean' ? stored : SETTING_DEFAULTS['sessions.reviewCards'];
 }
 
 /** D75: whether the agent gets one reminder to finish a started todo (Settings → Sessions; default on). */

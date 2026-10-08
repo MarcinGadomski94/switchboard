@@ -5,6 +5,7 @@ import type { PermissionRequestRecord } from '../db/repos/permissions.ts';
 import { type QuestionBatchRecord, type QuestionRecord, ownAnswerOf } from '../db/repos/questions.ts';
 import type { SystemItemRecord } from '../db/repos/system-items.ts';
 import type { Store } from '../db/store.ts';
+import { reviewItems } from '../reviews/wire.ts';
 
 /**
  * API shapes of the Inbox (M3.1 + M3.2, `docs/questions.md`, `docs/inbox.md`):
@@ -235,7 +236,8 @@ function newestFirst<T extends { readonly createdAt: string }>(rows: readonly T[
  * first, newest first (the sidebar's session order): question batches that wait
  * for the developer (open, or stale and unanswered) and open permission requests.
  * Open system items follow in the order they were raised, oldest first (the
- * prototype's order). The same items {@link inboxCount} counts.
+ * prototype's order), then (D79) the open review cards, oldest first. The same
+ * items {@link inboxCount} counts.
  */
 export async function listInbox(store: Store): Promise<InboxItem[]> {
   const batches = (await store.questions.listBatches({ states: ['open', 'stale'] })).filter(isBatchWaiting).reverse();
@@ -248,6 +250,8 @@ export async function listInbox(store: Store): Promise<InboxItem[]> {
   for (const entry of waiting) items.push(await entry.item());
   const system = (await store.systemItems.list(['open'])).reverse();
   for (const record of system) items.push(systemItem(record));
+  // D79: the open review cards (pending, and merged / discarded ones still offering Clean up), oldest first.
+  items.push(...(await reviewItems(store)));
   return items;
 }
 
@@ -260,7 +264,9 @@ export async function inboxCount(store: Store): Promise<number> {
   const batches = (await store.questions.listBatches({ states: ['open', 'stale'] })).filter(isBatchWaiting).length;
   const permissions = (await store.permissions.list({ states: ['open'] })).length;
   const system = (await store.systemItems.list(['open'])).length;
-  return batches + permissions + system;
+  // D79: open review cards.
+  const reviews = await store.reviews.countOpen();
+  return batches + permissions + system + reviews;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

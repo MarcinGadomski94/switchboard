@@ -1113,6 +1113,28 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/run
 { "session": { "id": "9d2f…", "title": "Fix the login test", "name": "fix-the-login-test", "cwd": "/repos/app-wt-fix-the-login-test", "todoLink": { "sourceSessionId": "0b7c3e0a-…", "todoId": "3f9a1c2b7d4e" }, "…": "…" }, "list": { "sessionId": "0b7c3e0a-…", "openCount": 1, "reviewCount": 0, "todos": [{ "id": "3f9a1c2b7d4e", "state": "in_progress", "startedBy": "run", "runSessionId": "9d2f…", "runState": "active", "…": "…" }] }, "note": null }
 ```
 
+## Review queue (D79, 2026-10-08, additive)
+When one of this machine's sessions with changes goes idle (`run` → `idle` / `done`) it gets a Review card, once per change set (setting `sessions.reviewCards`, default `true`). Advisory: nothing waits on it. Details: `docs/reviews.md`.
+
+- **`GET /api/reviews`** → `Review[]`: the open cards (`state` `pending`, then `cleanup`), oldest first, each read from git again (a pending card whose changes are gone comes back `resolved` / `dismissed` with `handledByAgent: true`: shown as *Handled by the agent*, it counts as done), then the 20 newest resolved ones; then the paired machines' (remote ids `r~<machine>~<id>`, `machine` set). A peer asking gets this machine's only.
+- **`POST /api/reviews/{id}/merge | open-pr | commit | send-back | discard | cleanup | dismiss`** → `Review` (the card afterwards). Bodies: `commit` `{ message }` (1–4,000 characters), `send-back` `{ comment }` (1–4,000), `discard` / `cleanup` `{ confirm: true }`. Refusals `{ error, message }`: 404 `not-found`, 409 `not-offered` / `gone` / `busy` / `send-failed` / `conflicts` (+ `conflicts: string[]`) / `uncommitted` / `base-missing` / `base-dirty` / `no-branch` / `no-remote` / `not-merged` / `git-failed` / `gh-failed`, 422 `invalid`. An unknown action is no route (404). A remote id is forwarded to its machine (D48).
+- **`POST /api/inbox/{id}/actions/{action}`** also takes a review's id and action (204; the same refusals).
+- **`InboxItem.kind`** gains `review`; **`InboxItem.review`** (`Review`) carries the card. `inboxChanged.count` counts the open cards.
+- **`Review`** `{ id, sessionId, sessionTitle, folderPath, mode: "branch" | "folder", state: "pending" | "cleanup" | "resolved", outcome: null | "merged" | "committed" | "discarded" | "sent-back" | "dismissed", createdAt, updatedAt, resolvedAt, repos: ReviewRepo[], fileCount, added, removed, uncommitted, commitCount, summary, tests: { status: "passed" | "failed" | "not-reported", command, exitCode }, actions: ReviewActionId[], commitMessage, note, conflicts, handledByAgent, machine? }`; **`ReviewRepo`** `{ repo, dir, worktreeId, branch, base, baseSource: "local" | "origin" | "default" | null, files: { repo, path, added, removed, binary, uncommitted }[], added, removed, uncommitted, commits: { sha, subject }[], prUrl }`.
+- **Hub:** `reviewResolved` `{ sessionId, outcome }` (exactly; the shared contract with the todo lane, `ReviewResolvedEvent` in `src/core/reviews.ts`; this machine's only) once per resolution; `reviewsChanged` `{ sessionId }` (raised, refreshed, acted on; forwarded between peers with the remote session id).
+- **Peers:** `GET /api/reviews` and every action are on `PEER_API_ALLOW`. **Devices (D73):** `GET /api/reviews` and `merge`, `open-pr`, `commit`, `send-back`, `dismiss` are allowed; `discard` and `cleanup` are desktop-only (403 `local-only`). **Push:** a new toggle `review` ("Ready for review", default on) in `PushEvents`.
+
+```json
+POST /api/reviews/3f9a1c2b7d4e/merge
+→ 409 { "error": "conflicts", "message": "web-front: PROJ-79-release-notes conflicts with main", "conflicts": ["src/app.txt"] }
+
+GET /api/reviews
+[{ "id": "3f9a1c2b7d4e", "sessionId": "0b7c3e0a-…", "sessionTitle": "Add the release notes", "mode": "branch", "state": "pending", "outcome": null,
+   "repos": [{ "repo": "web-front", "branch": "PROJ-79-release-notes", "base": "main", "baseSource": "local", "files": [{ "path": "notes/release.md", "added": 1, "removed": 0, "binary": false, "uncommitted": false, "repo": "web-front" }], "commits": [{ "sha": "9c1…", "subject": "Release notes" }], "prUrl": null, "…": "…" }],
+   "fileCount": 1, "added": 1, "removed": 0, "uncommitted": 0, "commitCount": 1, "summary": "Added the release notes.", "tests": { "status": "not-reported", "command": null, "exitCode": null },
+   "actions": ["merge", "open-pr", "send-back", "discard", "dismiss"], "commitMessage": "Added the release notes.", "note": null, "conflicts": [], "…": "…" }]
+```
+
 ## Clean-up (D84, 2026-10-08, additive)
 Developer ruling D84 (`docs/decisions.md`, `docs/cleanup.md`): Settings → Clean-up lists what Switchboard created and no longer needs and removes only what the developer ticks and confirms. Types: `src/core/cleanup.ts`. No migration (the closed-session limit and the created-branches record are settings values). **This machine only:** every route answers a peer request 403 `peer-forbidden` (not on `PEER_API_ALLOW`) and a paired device 403 `local-only` (`DEVICE_REFUSED`).
 
@@ -1165,4 +1187,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
-| reviewResolved | { sessionId, outcome } (additive, D76, shared with the review queue: `ReviewResolvedEvent`, `outcome` `merged` / `committed` / `discarded` / `sent-back` / `dismissed`; a session's review card was resolved; the todos whose run session it is leave `review`; this machine's only, not forwarded between peers) |
+| reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape (`ReviewResolvedEvent`, `src/core/reviews.ts`); D76: the todos whose run session it is leave `review`; this machine's only, never forwarded between peers) |
+| reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |

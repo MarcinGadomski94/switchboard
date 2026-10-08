@@ -6,6 +6,7 @@ SPEC → Inbox, prototype `vInbox` markup + `inboxRaw` / `ib` / `card()` logic. 
 `InboxItem[]`, the same items `inboxCount` counts (`inboxChanged.count`):
 1. **Items that wait on a session**, newest first (the sidebar's session order): question batches that wait for the developer (open, or stale and still unanswered, `docs/questions.md`) and open permission requests (D6).
 2. **Open system items** (raised by M3.3, `docs/system-items.md`), oldest first: the order they were raised, which is the prototype's order (session items, then `SYS` in array order).
+3. **Open review cards** (D79, `docs/reviews.md`): pending ones and merged / discarded ones still offering Clean up, oldest first. The detail shows the card (`ReviewCard`) instead of branch chips, detail text and actions; picking one reads it from git again.
 
 Item shapes (`src/core/api.ts` → `InboxItem`):
 | Kind | source | title | label | detail | extra |
@@ -13,6 +14,7 @@ Item shapes (`src/core/api.ts` → `InboxItem`):
 | `questions` | session name | the question verbatim, or `n questions from <names>` | `Question` / `n questions` | `''` | `questions: Question[]` |
 | `permission` | session name | the tool's one-line label (`Bash · node -e …`) | `Permission` | the model's description, else the decision reason | `actions` Allow once / Deny, `permission` (tool + input verbatim, asking agent) |
 | `system` | stored source (schedule name, `worktrees`) | stored | `SYSTEM_ITEM_LABELS[kind]` (`schedule-run-failed` → `Scheduled run failed`, `worktree-removable` → `PR merged`), else the stored kind | stored | `actions` (the first is primary), `prefill` when stored (M3.3 "Open fix session") |
+| `review` (D79) | session name (`sourceTitle` its title) | `n files changed (+a −r)` / `n commits to review` / `Merged — clean up the worktree?` | `Review` / `Clean up` | the tests line | `review` (the card; its actions are its own, `docs/reviews.md`) |
 
 - `<names>` in a batch title: each distinct question source cut at the first `" · "` (prototype: `web · microfrontends/acme-app-front` → `web`). The questions keep their full source; the card shows it in mono blue.
 - **Branch chips** of session items (`sessionBranches`): every agent of the session with a branch, in agent order, as `<last folder of its solutionPath> ⎇ <branch>` (prototype), then the session's live worktrees (M2.2) as `<repo> ⎇ <branch>` when no agent already names that pair. A session working in place with no agent branch has no chips. System items carry their stored chips.
