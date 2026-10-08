@@ -146,8 +146,9 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   await input.press('Enter');
   expect((await posted).status()).toBe(202);
   await page.getByTestId('nav-inbox').click();
-  const permission = page.getByTestId('inbox-item').filter({ hasText: 'on-a' });
-  await expect(permission).toHaveAttribute('data-kind', 'permission', { timeout: 15_000 });
+  // The session's D79 Review card (forwarded from A) may be listed too: the permission is the one of its kind.
+  const permission = page.locator('[data-testid="inbox-item"][data-kind="permission"]').filter({ hasText: 'on-a' });
+  await expect(permission).toBeVisible({ timeout: 15_000 });
   await permission.click();
   await expect(page.getByTestId('inbox-machine')).toHaveText(aName);
   await expect(page.getByTestId('permission-request')).toBeVisible();

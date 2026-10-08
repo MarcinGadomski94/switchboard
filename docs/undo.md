@@ -69,10 +69,12 @@ something changed, a revert (safety checkpoint + restore) ≈ 0.5 s.
 touch screen always) and **Undo last turn** (the newest turn) open the confirmation.
 *Undo last turn* is in the sidebar row's ⋯ menu once the session has a turn,
 disabled with the reason (tooltip) when the newest turn has no checkpoint (a
-folder that is no git repo, the setting off, a hooked session, …); when it has
-one, the session header shows it too (in the header's ⋯ menu on narrow screens).
-A disabled action stays out of the header so the prototype's header (the visual
-oracle's demo sessions have no checkpoints) is unchanged (ruling D80-q1).
+folder that is no git repo, the setting off, a hooked session, …), and in the
+compact session header's ⋯ menu (below 1024 px) the same way. It is **never in
+the header row**: on the desktop the sidebar row's ⋯ menu and each message's ↶
+suffice (developer ruling 2026-10-08, int-header-overflow: an inline header
+button pushed the widest header under the right panel), so the prototype's
+header is unchanged (ruling D80-q1).
 
 - "Revert to before turn N?", the message's first line, "the changes of turns
   N..M are undone", and per working tree every file that changes (+ restored,
