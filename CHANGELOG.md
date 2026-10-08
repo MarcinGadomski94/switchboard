@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.13.0 (2026-10-09)
+
+### Work queue: run todos, review, undo
+- **Run a todo in its own session** (▸ Run in new session, or several at once): a fresh session in its own `todo/<slug>` worktree, cut from the source session's branch (in a workspace, one worktree per solution repo), with the item's handover plan as its first message. Its agent can only touch that one item. Same CLI, model and account as the source, unless a **Model by task** rule says otherwise.
+- **Review cards:** when a session with changes goes idle, a Review card appears in the Inbox and on the session header: the files changed, unmerged commits, the agent's summary and whether tests ran. **Merge** (locally), **Open PR**, **Commit** (for sessions working directly in a folder), **Send back** with a comment, **Discard**, **Clean up** the worktree. Agents are never blocked from committing themselves; a card whose changes the agent handled itself closes as "Handled by the agent". A todo run in its own session goes to **Review** when it's marked done and follows the card's outcome.
+- **Undo a turn:** a checkpoint of the working tree is saved before each message (hidden git refs; your index, branch and files are never touched). **Revert to before this turn** on any of your messages (or ⋯ → Undo last turn) puts the files back, also moving the branch back when the agent committed and nothing was pushed; **Redo** undoes the revert. The agent is told. Kept 7 days / 100 turns.
+- **Todos board:** Open · In progress · Review · Done across all sessions, with filters and search; drag to change a state (swipe between columns on phones).
+- **Estimates vs actuals:** each item records how long it really took and the tokens used ("est ~45m · took 32m · 58k tokens"); agents see their recent estimate accuracy.
+
+### Faster, cleaner
+- **Quick capture:** `todo …` in ⌘K, **Add to todo** on text selected in the chat, and the Android share sheet (paired devices). The session's agent fills in the description, plan, priority and estimate at its next idle moment.
+- **Model by task:** rules in Settings → Sessions pick the CLI, model, effort and account for todo runs by priority and estimate ("low ≤30 min → Sonnet").
+- **Fresh session when the context fills:** at 80% (adjustable) an offer to continue in a fresh session: the agent writes a handover, a new session takes over the folder, branch, sidebar place and todos, and the old one closes, linked.
+- **Clean-up** (Settings → Clean-up): merged or stale worktrees, Switchboard's own branches, closed sessions older than 30 days and old data files, with a preview first; remote branches only when ticked one by one.
+- **Quick replies are gone;** 📎 sits next to Send, and the chat gets the room.
+
+### Tutorial
+- A spotlight **tour** of Switchboard on first start, and short **What's new** tours for features you haven't seen after an update. Replay from Settings → Tutorial or ⌘K.
+
+### Fixed
+- The session header no longer runs under the right panel in narrow windows: actions that don't fit move into a ⋯ menu ("Move to <machine> ▸" shortens to "Move ▸" first).
+- No system notifications on a phone or tablet while Switchboard is open on it; they show as in-app toasts instead (also for permission requests, finished turns, errors and review cards).
+- Typing in a long conversation is much faster on phones.
+- "+ Add" in the todo strip: an item typed while the previous one was saving no longer loses repeated fields (e.g. its estimate).
+- On touch screens the message field is the intended 44 px tall.
+
+### Database
+- Migrations 0032–0037 run by themselves on first start.
+
 ## 1.12.0 (2026-10-08)
 
 ### Todo items in progress
