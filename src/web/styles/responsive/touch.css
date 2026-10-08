@@ -158,8 +158,9 @@
     top: -50px;
   }
 
+  /* 44 px outside: the field is content-box (the autosize writes its content height), so take its 12 + 12 px padding and border off. */
   .sb-chat-input {
-    min-height: 44px;
+    min-height: calc(44px - 24px);
   }
 
   /* iOS zooms into a focused field under 16 px. */
