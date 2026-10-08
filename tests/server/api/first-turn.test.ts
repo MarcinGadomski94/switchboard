@@ -95,6 +95,11 @@ function expectedArgv(claudeSessionId: string, name: string): string[] {
     'auto',
     '--session-id',
     claudeSessionId,
+    // D68: every spawn carries the session's switchboard MCP tools.
+    '--mcp-config',
+    expect.stringMatching(/agent-mcp[\\/][^\\/]+\.json$/),
+    '--allowedTools',
+    'mcp__switchboard',
     '--name',
     name,
     '--forward-subagent-text',

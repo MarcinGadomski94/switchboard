@@ -13,6 +13,9 @@ import { type GitWorld, makeGitWorld } from '../../helpers/git.ts';
 import { REPO_ROOT } from '../../helpers/net.ts';
 import { type SupervisorWorld, makeSupervisorWorld, payloadType, spawnedArgv, until, waitForStatus } from '../../helpers/supervisor.ts';
 
+/** D68: every spawn carries the session's switchboard MCP tools (its config file is per session). */
+const D68_MCP_ARGS = ['--mcp-config', expect.stringMatching(/agent-mcp[\\/][^\\/]+\.json$/) as unknown as string, '--allowedTools', 'mcp__switchboard'];
+
 /**
  * D25 oracle (server): `POST /api/sessions/teleport` on the real path: fake-claude
  * as the CLI (`--teleport`, docs/fake-claude.md → *Teleport*), a real git repo
@@ -122,7 +125,7 @@ describe('POST /api/sessions/teleport (D25)', () => {
     // The spawn: --teleport with the session_ form, no --session-id / --resume, in the new worktree.
     const [spawn] = await spawnedArgv(s.logFile);
     expect(spawn?.cwd).toBe(worktree);
-    expect(spawn?.argv).toEqual(buildClaudeArgs({ start: { kind: 'teleport', remoteSession: ID }, name: 'Remote 011CUtel', permissionMode: 'auto' }));
+    expect(spawn?.argv).toEqual(buildClaudeArgs({ start: { kind: 'teleport', remoteSession: ID }, name: 'Remote 011CUtel', permissionMode: 'auto', mcpArgs: D68_MCP_ARGS }));
     expect(spawn?.argv).not.toContain('--session-id');
     expect(spawn?.argv).not.toContain('--resume');
 
@@ -168,7 +171,7 @@ describe('POST /api/sessions/teleport (D25)', () => {
       return all.length >= 2 ? all : undefined;
     }, 'the resume spawn');
     expect(spawns[1]?.cwd).toBe(worktree);
-    expect(spawns[1]?.argv).toEqual(buildClaudeArgs({ start: { kind: 'resume', claudeSessionId: session.claudeSessionId }, name: 'Remote 011CUtel', permissionMode: 'auto' }));
+    expect(spawns[1]?.argv).toEqual(buildClaudeArgs({ start: { kind: 'resume', claudeSessionId: session.claudeSessionId }, name: 'Remote 011CUtel', permissionMode: 'auto', mcpArgs: D68_MCP_ARGS }));
     expect(spawns[1]?.argv).not.toContain('--teleport');
     await waitForStatus(s.store, session.id, ['done']);
   });

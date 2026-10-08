@@ -162,7 +162,7 @@ describe('M2.4 crash recovery (server child process + fake-claude, SIGKILL and r
     expect(newNeedPid).toBeGreaterThan(0);
     for (const [pid, session] of [[newRunPid, run], [newNeedPid, need]] as const) {
       const line = resumed.find((l) => l.pid === pid);
-      expect(line?.argv).toEqual([...BASELINE, '--resume', session.claudeSessionId, '--append-system-prompt', DEFAULT_STANDING_INSTRUCTION, '--name', session.name, '--forward-subagent-text', '--replay-user-messages']);
+      expect(line?.argv).toEqual([...BASELINE, '--resume', session.claudeSessionId, '--append-system-prompt', DEFAULT_STANDING_INSTRUCTION, '--mcp-config', expect.stringMatching(/agent-mcp[\\/][^\\/]+\.json$/), '--allowedTools', 'mcp__switchboard', '--name', session.name, '--forward-subagent-text', '--replay-user-messages']);
       expect(line?.cwd).toBe(await realpath(workspace));
     }
 
