@@ -250,8 +250,12 @@ describe('D65: the conversation transfer', () => {
     expect(finished.error, JSON.stringify(finished)).toBeNull();
     const target = path.join(w.b.configDir, 'projects', slugForCwd(w.paths.b.alpha));
     const sha = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
-    // Byte for byte: the copy starts with the whole source transcript (the session resumed on the target may
-    // already have appended its own lines after the copied ones: a race D80's timing change made visible).
+    // Byte for byte: the copy starts with the whole source transcript. The session the take-over resumes on the
+    // target is sent its first message right away (supervisor.takeOver), and its CLI appends that message's lines
+    // to the copied transcript; on master too, as soon as it gets to it (read 1.5 s later, the target is ~5 KB
+    // longer). Comparing the whole file only passed while the read beat the CLI; D80's checkpoint before that
+    // first message (~150 ms of git on the target) lets the CLI win.
+
     const copied = await readFile(path.join(target, `${started.claudeSessionId}.jsonl`));
     const source = await readFile(transcript);
     expect(copied.length).toBeGreaterThanOrEqual(source.length);

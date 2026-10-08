@@ -66,8 +66,13 @@ something changed, a revert (safety checkpoint + restore) ≈ 0.5 s.
 ## Reverting
 
 **Revert to before this turn** (the ↶ beside each user bubble; hover shows it, a
-touch screen always) and **Undo last turn** (the session header; in the ⋯ menu on
-narrow screens; the newest turn) open the confirmation:
+touch screen always) and **Undo last turn** (the newest turn) open the confirmation.
+*Undo last turn* is in the sidebar row's ⋯ menu once the session has a turn,
+disabled with the reason (tooltip) when the newest turn has no checkpoint (a
+folder that is no git repo, the setting off, a hooked session, …); when it has
+one, the session header shows it too (in the header's ⋯ menu on narrow screens).
+A disabled action stays out of the header so the prototype's header (the visual
+oracle's demo sessions have no checkpoints) is unchanged (ruling D80-q1).
 
 - "Revert to before turn N?", the message's first line, "the changes of turns
   N..M are undone", and per working tree every file that changes (+ restored,
@@ -116,9 +121,9 @@ not got it yet, otherwise the agent is told the files are back.
 
 Per session: a turn's checkpoint is kept while it is **at most 7 days old and among
 the last 100 turns** (whichever keeps fewer); safety checkpoints 7 days and the
-newest 20. The prune runs hourly and at start; a **closed** session's checkpoints
-go at once (a reopened session starts again with its next turn), a deleted
-session's at the next prune. Refs are deleted; their objects are left to the repo's
+newest 20. The prune runs hourly and at start. A **closed** session keeps its
+checkpoints under the same rule, so Reopen + revert works (ruling D80-q2); a
+deleted session's all go at the next prune. Refs are deleted; their objects are left to the repo's
 own `git gc` (Switchboard never runs gc).
 
 ## Peers and phones
@@ -129,7 +134,7 @@ tablets (D73) may use all of it (normal use, with the confirm).
 
 ## Tests
 
-`tests/server/checkpoints/service.test.ts` (the git side and the service: byte-identical index / HEAD / files after a checkpoint, tracked + untracked restored, later files removed, ignored files untouched, commits taken off the branch, pushed commits refused, files only, several turns back, Redo, retention, the 5,000-file timing), `tests/server/checkpoints/api.test.ts` (the real supervisor with fake-claude: the checkpoint before each turn, the routes, `turn-running`, the note on the next message's stdin, the allow-lists), `tests/server/peers/undo.test.ts` (through the proxy), `tests/web/undo.test.ts` (the dividers and the actions), `tests/e2e/undo.spec.ts` (the action, the confirmation, the divider and Redo, *Undo last turn*, a non-git folder, a phone).
+`tests/server/checkpoints/service.test.ts` (the git side and the service: byte-identical index / HEAD / files after a checkpoint, tracked + untracked restored, later files removed, ignored files untouched, commits taken off the branch, pushed commits refused, files only, several turns back, Redo, retention, the 5,000-file timing), `tests/server/checkpoints/api.test.ts` (the real supervisor with fake-claude: the checkpoint before each turn, the routes, `turn-running`, the note on the next message's stdin, the allow-lists), `tests/server/peers/undo.test.ts` (through the proxy), `tests/web/undo.test.ts` (the dividers and the actions), `tests/e2e/undo.spec.ts` (the action, the confirmation, the divider and Redo, *Undo last turn* in the header and the sidebar row's ⋯ menu, a non-git folder (disabled, saying why), a phone).
 
 ## Known limits
 

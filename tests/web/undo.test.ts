@@ -47,10 +47,13 @@ describe('D80: the chat', () => {
     expect(turnRevertFor(checkpoints({ turns: [], unsupported: 'not a repo' }), 1)).toEqual({ turn: null, reason: 'not a repo' });
   });
 
-  it('Undo last turn: the newest turn with a checkpoint; none without one', () => {
+  it('Undo last turn (ruling D80-q1): the newest turn when it has a checkpoint, else disabled with the reason; none before any turn', () => {
     expect(lastTurnRevert(checkpoints())).toEqual({ turn: 2, reason: null });
     expect(lastTurnRevert(checkpoints({ running: true }))).toEqual({ turn: 2, reason: STOP_FIRST });
-    expect(lastTurnRevert(checkpoints({ turns: [] }))).toBeNull();
+    // The newest turn (3) has no checkpoint, earlier ones do: disabled, saying why.
+    expect(lastTurnRevert(checkpoints({ latestTurn: 3 }))).toEqual({ turn: null, reason: NO_CHECKPOINT });
+    expect(lastTurnRevert(checkpoints({ turns: [], unsupported: 'not a repo' }))).toEqual({ turn: null, reason: 'not a repo' });
+    expect(lastTurnRevert(checkpoints({ turns: [], latestTurn: 0 }))).toBeNull();
     expect(lastTurnRevert(null)).toBeNull();
   });
 });

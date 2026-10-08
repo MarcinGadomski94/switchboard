@@ -432,7 +432,7 @@ describe('D80 revert to before a turn', () => {
 });
 
 describe('D80 retention', () => {
-  it('prunes checkpoints older than 7 days and a closed session’s, deleting their refs (no gc)', async () => {
+  it('prunes checkpoints older than 7 days, deleting their refs (no gc)', async () => {
     await turn('old', async () => write('a.txt', 'a\n'));
     clock += CHECKPOINT_MAX_AGE_MS + 60_000;
     await turn('new', async () => write('b.txt', 'b\n'));
@@ -440,17 +440,28 @@ describe('D80 retention', () => {
     const rows = await store.checkpoints.listOf(sessionId);
     expect(rows.map((row) => row.turnSeq)).toEqual([2]);
     expect(await git(repo, 'for-each-ref', '--format=%(refname)', 'refs/switchboard')).toBe(checkpointRef(sessionId, 2));
-
-    await store.sessions.update(sessionId, { closedAt: new Date(clock).toISOString() });
-    expect(await service.prune()).toBe(1);
-    expect(await store.checkpoints.listOf(sessionId)).toEqual([]);
-    expect(await git(repo, 'for-each-ref', '--format=%(refname)', 'refs/switchboard')).toBe('');
   });
 
-  it('a session dropped on close loses its checkpoints at once', async () => {
-    await turn('one');
-    await service.dropSession(sessionId);
-    expect(await store.checkpoints.listOf(sessionId)).toEqual([]);
+  it('a closed session keeps its checkpoints for the normal retention (Reopen + revert works); a deleted one loses them', async () => {
+    await turn('one', async () => write('a.txt', 'a\n'));
+    await store.sessions.update(sessionId, { closedAt: new Date(clock).toISOString() });
+    expect(await service.prune()).toBe(0);
+    expect(await git(repo, 'for-each-ref', '--format=%(refname)', 'refs/switchboard')).toBe(checkpointRef(sessionId, 1));
+    // Reopened: the revert works.
+    await store.sessions.update(sessionId, { closedAt: null });
+    await service.revert(sessionId, 1);
+    expect(await read('a.txt')).toBeNull();
+    // Closed again and past 7 days: retention as usual.
+    await store.sessions.update(sessionId, { closedAt: new Date(clock).toISOString() });
+    clock += CHECKPOINT_MAX_AGE_MS + 60_000;
+    expect(await service.prune()).toBe(2);
+    expect(await git(repo, 'for-each-ref', 'refs/switchboard')).toBe('');
+
+    const other = (await store.sessions.create({ name: 'gone', claudeSessionId: randomUUID(), cwd: repo })).id;
+    await turn('two', undefined, other);
+    await store.sessions.delete(other);
+    expect(await service.prune()).toBe(1);
+    expect(await store.checkpoints.listOf(other)).toEqual([]);
     expect(await git(repo, 'for-each-ref', 'refs/switchboard')).toBe('');
   });
 });

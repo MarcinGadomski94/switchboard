@@ -18,7 +18,7 @@ export const CHECKPOINT_MAX_TURNS = 100;
 /** Retention: at most this many safety captures (taken before a revert / Redo) per session. */
 export const CHECKPOINT_MAX_SAFETY = 20;
 
-/** How often the retention runs (hourly; also when a session is closed). */
+/** How often the retention runs (hourly, and once at start). */
 export const CHECKPOINT_PRUNE_INTERVAL_MS = 3600 * 1000;
 
 /** The confirm dialog lists at most this many files per working tree (the rest are counted). */
@@ -99,7 +99,8 @@ export interface RetentionGroup {
  * The groups of one session to prune (developer ruling): turn captures are kept
  * while they are at most 7 days old **and** among the last 100 turns (whichever
  * keeps fewer); safety captures while at most 7 days old and among the newest
- * {@link CHECKPOINT_MAX_SAFETY}. `closed` (the session was closed or deleted): all.
+ * {@link CHECKPOINT_MAX_SAFETY}. `closed` (the session was deleted): all. A closed session
+ * keeps them under the normal rule (ruling D80-q2).
  */
 export function prunableGroups(groups: readonly RetentionGroup[], now: number, options: { readonly closed?: boolean; readonly maxAgeMs?: number; readonly maxTurns?: number } = {}): string[] {
   if (options.closed) return [...new Set(groups.map((group) => group.groupId))];

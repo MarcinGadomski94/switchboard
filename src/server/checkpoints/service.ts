@@ -23,7 +23,6 @@ import type { CheckpointKind, CheckpointRecord } from '../db/repos/checkpoints.t
 import type { EventRecord } from '../db/repos/events.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
-import type { HubBus } from '../hub/bus.ts';
 import { CheckpointGit, type TreeSnapshot } from './git.ts';
 
 /** Why a revert / Redo was refused (the API's `{ error, message }`). */
@@ -75,8 +74,6 @@ export interface CheckpointServiceOptions {
    * default: its worktrees. Each is reduced to its working tree's top level (duplicates go).
    */
   readonly foldersOf?: (session: SessionRecord) => Promise<readonly string[]>;
-  /** `/hub`: a closed session's checkpoints are pruned at once. */
-  readonly bus?: HubBus;
   readonly git?: CheckpointGit;
   readonly env?: NodeJS.ProcessEnv;
   /** Epoch ms (tests pass a fake clock). */
@@ -100,7 +97,7 @@ export const UNSUPPORTED = {
  * files, and its branch when the agent committed and nothing is pushed), after a
  * safety capture of the current state, which {@link redo} restores. The chat gets
  * a divider and the agent a note with its next message; the conversation itself
- * stays. Retention: {@link prune} (hourly, and when a session is closed).
+ * stays. Retention: {@link prune} (hourly).
  */
 export class CheckpointService {
   readonly #store: Store;
@@ -110,14 +107,12 @@ export class CheckpointService {
   readonly #git: CheckpointGit;
   readonly #now: () => number;
   readonly #onError: (error: unknown) => void;
-  readonly #bus: HubBus | null;
   readonly #pruneIntervalMs: number;
   /** One capture / revert / Redo at a time per session. */
   readonly #locks = new Map<string, Promise<unknown>>();
   /** The last capture problem per session (shown as the action's reason when a turn has no checkpoint). */
   readonly #problems = new Map<string, string>();
   #timer: NodeJS.Timeout | null = null;
-  #unsubscribe: (() => void) | null = null;
   #pruning: Promise<number> | null = null;
 
   constructor(options: CheckpointServiceOptions) {
@@ -127,31 +122,22 @@ export class CheckpointService {
     this.#git = options.git ?? new CheckpointGit(options.env ? { env: options.env } : {});
     this.#now = options.now ?? Date.now;
     this.#onError = options.onError ?? ((error) => console.error('switchboard checkpoints:', error));
-    this.#bus = options.bus ?? null;
     this.#pruneIntervalMs = options.pruneIntervalMs ?? CHECKPOINT_PRUNE_INTERVAL_MS;
     this.#foldersOf = options.foldersOf ?? (async (session) => (await this.#store.worktrees.list({ sessionId: session.id })).map((worktree) => worktree.path));
   }
 
-  /** Starts the hourly retention and the prune of closed sessions. */
+  /** Starts the hourly retention (and runs it once now). */
   start(): void {
     if (this.#timer) return;
     this.#timer = setInterval(() => void this.prune().catch((error: unknown) => this.#onError(error)), this.#pruneIntervalMs);
     this.#timer.unref();
-    this.#unsubscribe =
-      this.#bus?.subscribe((message) => {
-        if (message.name === 'sessionUpdated' && message.payload.closedAt != null && !message.payload.id.includes('~')) {
-          void this.dropSession(message.payload.id).catch((error: unknown) => this.#onError(error));
-        }
-      }) ?? null;
     void this.prune().catch((error: unknown) => this.#onError(error));
   }
 
-  /** Stops the timer; waits for a prune in flight. */
+  /** Stops the timer; waits for a prune or capture in flight. */
   async stop(): Promise<void> {
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = null;
-    this.#unsubscribe?.();
-    this.#unsubscribe = null;
     await this.#pruning?.catch(() => undefined);
     await Promise.all([...this.#locks.values()].map((lock) => lock.catch(() => undefined)));
   }
@@ -464,19 +450,11 @@ export class CheckpointService {
     await this.#store.checkpoints.delete(row.id);
   }
 
-  /** Deletes every checkpoint of a session (closed or deleted). */
-  async dropSession(sessionId: string): Promise<void> {
-    await this.#exclusive(sessionId, async () => {
-      for (const row of await this.#store.checkpoints.listOf(sessionId)) await this.#deleteRow(row);
-      this.#problems.delete(sessionId);
-    });
-  }
-
   /**
    * The retention (developer ruling): per session, turn checkpoints older than 7 days
    * or beyond the newest 100 turns go (whichever keeps fewer), safety captures older
-   * than 7 days or beyond the newest 20; every checkpoint of a closed or deleted
-   * session goes. Refs are deleted; `git gc` is left to the repo's own cycle.
+   * than 7 days or beyond the newest 20; a closed session keeps its checkpoints under
+   * the same rule (ruling D80-q2: Reopen + revert works); a deleted session's all go. Refs are deleted; `git gc` is left to the repo's own cycle.
    * Answers how many rows were deleted.
    */
   async prune(): Promise<number> {
@@ -486,7 +464,8 @@ export class CheckpointService {
         for (const sessionId of await this.#store.checkpoints.sessionIds()) {
           const session = await this.#store.sessions.get(sessionId);
           const rows = await this.#store.checkpoints.listOf(sessionId);
-          const groups = prunableGroups(rows, this.#now(), { closed: !session || session.closedAt !== null });
+          // Ruling D80-q2: a closed session keeps its checkpoints for the normal retention; a deleted one loses them.
+          const groups = prunableGroups(rows, this.#now(), { closed: !session });
           if (groups.length === 0) continue;
           const doomed = new Set(groups);
           await this.#exclusive(sessionId, async () => {

@@ -343,7 +343,6 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const checkpoints = new CheckpointService({
     store: options.store,
     sessions: supervisor,
-    bus,
     env: supervisor.environment,
     enabled: () => checkpointsEnabled(options.store.settings),
     // Its worktrees and, like the session diff, the solutions it works on in place.

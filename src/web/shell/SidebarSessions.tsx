@@ -1,3 +1,5 @@
+import { UNDO_LAST_TURN_LABEL } from '../../core/checkpoints.ts';
+import { lastTurnRevert, openRevert, useCheckpoints } from '../views/session/checkpoints.ts';
 import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session, SessionActivity } from '../../core/api.ts';
@@ -166,6 +168,8 @@ interface MenuItem {
   readonly testId: string;
   readonly run: () => void;
   readonly disabled?: boolean;
+  /** D80: its tooltip (a disabled item's reason). */
+  readonly title?: string;
   /** D58: a folder in a folder list is indented by its level (0 = top level). */
   readonly level?: number;
   /** Picking it keeps the menu open (it switches to a sub-list). */
@@ -239,6 +243,7 @@ function Menu({ anchor, label, items, onClose }: { readonly anchor: HTMLElement;
           className="sb-layout-menu-item"
           data-testid={item.testId}
           disabled={item.disabled}
+          title={item.title}
           style={item.level ? { paddingLeft: 8 + item.level * 12 } : undefined}
           onClick={() => {
             item.run();
@@ -340,6 +345,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const [drag, setDrag] = useState<DragItem | null>(null);
   const [over, setOver] = useState<DropOver | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
+  // D80: the open session menu's checkpoints (*Undo last turn*), read when it opens.
+  const menuCheckpoints = useCheckpoints(menu?.kind === 'session' ? menu.id : '', menu?.kind === 'session' ? `${menu.id}:${menu.anchor.isConnected}` : '');
   // D65: the paired machines a session can be moved to from its ⋯ menu.
   const { machines: pairedMachines } = usePairedMachines(true);
   /** The folder a new folder's name field is in (`null` = the top level, D54's "+"); `undefined` = no field. */
@@ -596,6 +603,19 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
     // D74: a touch screen has no hover to show the row's ×: closing is in the menu too.
     if (coarse) items.push({ label: CLOSE_TOOLTIP, testId: 'sidebar-menu-close', run: () => closer.request({ ...session, activity: activityOf(session.id) ?? session.activity }) });
+    // D80 (ruling D80-q1): *Undo last turn* once the session has a turn; disabled with the reason when the newest turn has no checkpoint.
+    const undo = session.closedAt == null ? lastTurnRevert(menuCheckpoints) : null;
+    if (undo) {
+      items.push({
+        label: UNDO_LAST_TURN_LABEL,
+        testId: 'sidebar-menu-undo-turn',
+        disabled: undo.reason !== null,
+        title: undo.reason ?? `Revert the files to before turn ${undo.turn} (the newest)`,
+        run: () => {
+          if (undo.turn !== null) openRevert({ sessionId: session.id, turn: undo.turn });
+        },
+      });
+    }
     // D72: a hooked terminal session continues as a Switchboard-run one (on the machine whose terminal it is).
     if (offersHookedContinue(session)) {
       const title = session.displayTitle ?? session.title ?? session.name;

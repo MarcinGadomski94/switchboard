@@ -52,9 +52,9 @@ export function refreshCheckpoints(sessionId: string): void {
  */
 export function useCheckpoints(sessionId: string, refreshKey: string): SessionCheckpoints | null {
   useEffect(() => {
-    refreshCheckpoints(sessionId);
+    if (sessionId !== '') refreshCheckpoints(sessionId);
   }, [sessionId, refreshKey]);
-  return useSyncExternalStore(subscribe, () => cache.get(sessionId) ?? null);
+  return useSyncExternalStore(subscribe, () => (sessionId === '' ? null : (cache.get(sessionId) ?? null)));
 }
 
 /** What the turn action on a user bubble offers: the turn to revert to, or why it cannot. */
@@ -78,11 +78,16 @@ export function turnRevertFor(data: SessionCheckpoints | null, eventId: number):
   return { turn: null, reason: data.unsupported ?? NO_CHECKPOINT };
 }
 
-/** *Undo last turn*: the newest turn with a checkpoint (`null` = none, the item is not shown). */
+/**
+ * *Undo last turn* (ruling D80-q1): the newest turn, enabled when it has a checkpoint, else
+ * disabled with the reason; `null` (not shown) only before the read and while the session
+ * has no user turn yet.
+ */
 export function lastTurnRevert(data: SessionCheckpoints | null): TurnRevert | null {
-  const last = data?.turns.at(-1);
-  if (!data || !last) return null;
-  return { turn: last.turn, reason: data.running ? STOP_FIRST : null };
+  if (!data || data.latestTurn < 1) return null;
+  const last = data.turns.at(-1);
+  if (last && last.turn === data.latestTurn) return { turn: last.turn, reason: data.running ? STOP_FIRST : null };
+  return { turn: null, reason: data.unsupported ?? NO_CHECKPOINT };
 }
 
 // ── the open confirmation ─────────────────────────────────────────────

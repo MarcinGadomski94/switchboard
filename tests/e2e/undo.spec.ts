@@ -212,7 +212,32 @@ test('a folder that is no git repository: the action is disabled and says why', 
   await expect(action).toHaveAttribute('title', /not a git repository/);
   await action.click({ force: true });
   await expect(page.getByTestId('revert-dialog')).toHaveCount(0);
+  // Ruling D80-q1: no header action without a checkpoint (the prototype's header stays); the row's ⋯ menu has it, disabled, saying why.
   await expect(page.getByTestId('session-undo-turn')).toHaveCount(0);
+  const row = page.locator(`a.sb-session[data-session-id="${id}"]`);
+  await row.hover();
+  await row.getByTestId('sidebar-session-menu').click();
+  const undo = page.getByTestId('sidebar-menu').getByTestId('sidebar-menu-undo-turn');
+  await expect(undo).toHaveText(UNDO_LAST_TURN_LABEL);
+  await expect(undo).toBeDisabled();
+  await expect(undo).toHaveAttribute('title', /not a git repository/);
+});
+
+test('the sidebar row ⋯ menu: Undo last turn opens the confirmation for the newest turn', async ({ page }) => {
+  await page.goto(`${server.baseUrl}/`);
+  const id = await startSession(page, 'undo-menu', '[fake:write menu.txt] Write from the menu.');
+  await openWithHub(page, `${server.baseUrl}/sessions/${id}`);
+  await waitIdle(page, id);
+  const row = page.locator(`a.sb-session[data-session-id="${id}"]`);
+  await row.hover();
+  await row.getByTestId('sidebar-session-menu').click();
+  const undo = page.getByTestId('sidebar-menu').getByTestId('sidebar-menu-undo-turn');
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(page.getByTestId('revert-title')).toHaveText('Revert to before turn 1?');
+  await page.getByTestId('revert-confirm').click();
+  await expect(page.getByTestId('chat-divider').filter({ hasText: revertDivider(1) })).toBeVisible();
+  expect(await exists(path.join(repo, 'menu.txt'))).toBe(false);
 });
 
 test('a phone: the action shows without hover, Undo last turn sits in the ⋯ menu, the dialog fits the screen', async ({ browser }) => {
