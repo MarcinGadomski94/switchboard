@@ -25,7 +25,8 @@ import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
-import { todoReminderEnabled } from './settings/settings.ts';
+import { TodoEnricher } from './todos/enricher.ts';
+import { todoEnrichEnabled, todoReminderEnabled } from './settings/settings.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -336,6 +337,29 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.addHook('onClose', async () => {
     await reminder.stop();
+  });
+  // D81: a captured todo's agent is asked once, when it is next idle, to fill the item in (Settings → Sessions).
+  const enricher = new TodoEnricher({
+    bus,
+    store: options.store,
+    todos,
+    enabled: () => todoEnrichEnabled(options.store.settings),
+    deliver: async (sessionId, text) => {
+      if (await hooks.isHooked(sessionId)) {
+        // A hooked terminal session only while its waiter is held (else it waits for a later check).
+        if (!(await hooks.hasWaiter(sessionId))) return false;
+        await hooks.sendMessage(sessionId, text);
+        return true;
+      }
+      await supervisor.sendMessage(sessionId, text, 'service');
+      return true;
+    },
+  });
+  app.addHook('onReady', async () => {
+    enricher.start();
+  });
+  app.addHook('onClose', async () => {
+    await enricher.stop();
   });
   if (options.agentTools !== false) {
     supervisor.useAgentMcp(async (session) =>

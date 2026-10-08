@@ -37,6 +37,13 @@ export interface KnownSettings {
    * agent one reminder to finish it (`docs/todos.md` → *In progress (D75)*). Editable, default `true`.
    */
   readonly 'sessions.todoReminder': boolean;
+  /**
+   * D81: a captured todo (⌘K, a chat selection, the share sheet) is marked as waiting for its
+   * agent, which is asked once, when it is next idle, to fill in its description, plan, priority
+   * and estimate (`docs/todos.md` → *Quick capture (D81)*); off = captured items stay bare.
+   * Editable, default `true`.
+   */
+  readonly 'sessions.todoEnrich': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -114,7 +121,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.todoEnrich'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -133,6 +140,7 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
   'sessions.todoReminder': true,
+  'sessions.todoEnrich': true,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -160,6 +168,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
     'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
+    'sessions.todoEnrich': bool('sessions.todoEnrich', SETTING_DEFAULTS['sessions.todoEnrich']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

@@ -6,6 +6,7 @@ import { SupervisorError } from '../supervisor/supervisor.ts';
 import { TodoError, type TodoMessageSender, type TodoService } from '../todos/service.ts';
 import { isPeerRequest } from './machines.ts';
 import type { ApiContext } from '../routes.ts';
+import { registerTodoCaptureRoutes } from './todo-capture.ts';
 
 function sendTodoError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof TodoError) return reply.code(error.status).send({ error: error.code, message: error.message });
@@ -175,4 +176,7 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
       return sendTodoError(reply, error);
     }
   });
+
+  // D81: quick capture (⌘K, a chat selection, the share sheet) and the device origin's share target.
+  await registerTodoCaptureRoutes(app, context);
 }

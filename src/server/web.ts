@@ -3,6 +3,7 @@ import path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { isDeviceRequest } from './devices/mark.ts';
+import { manifestWithShareTarget } from './devices/share-target.ts';
 import { isProtectedPath, mayIssueCookie, serializeTokenCookie } from './security.ts';
 
 /** Options for {@link registerWeb}. */
@@ -100,10 +101,12 @@ export async function registerWeb(app: FastifyInstance, options: WebOptions): Pr
   app.get('/', { config: { public: true } }, sendPage);
   // D34: the installable-app files, never with the cookie (docs/security.md).
   for (const file of APP_FILES) {
-    app.get(file.path, { config: { public: true } }, async (_request, reply) => {
+    app.get(file.path, { config: { public: true } }, async (request, reply) => {
       const body = await readWebFile(webRoot, file.path.slice(1));
       if (body === null) return reply.callNotFound();
-      return reply.header('cache-control', 'no-cache').type(file.type).send(body);
+      // D81: on the device origin the installed app is a share target (the phone's share sheet).
+      const sent = file.path === '/manifest.webmanifest' && isDeviceRequest(request.raw) ? manifestWithShareTarget(body) : body;
+      return reply.header('cache-control', 'no-cache').type(file.type).send(sent);
     });
   }
   app.get<{ Params: { '*': string } }>(`${APP_ICONS_PREFIX}*`, { config: { public: true } }, async (request, reply) => {

@@ -48,6 +48,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   // D75: ▶ Start (normal use: in progress + the start message).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/start$/],
+  // D81: quick capture (the palette, a chat selection, the share sheet's page).
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

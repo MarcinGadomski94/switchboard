@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
-import type { TodoAuthor, TodoPriority, TodoStartSource, TodoState } from '../../../core/api.ts';
+import type { TodoAuthor, TodoCaptureSource, TodoPriority, TodoStartSource, TodoState } from '../../../core/api.ts';
 import type { RepoContext } from '../context.ts';
 import { placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
@@ -30,6 +30,12 @@ export interface TodoRecord {
   readonly startedBy: TodoStartSource | null;
   /** D75: when the one finish reminder of this start was sent; `null` = not sent. */
   readonly remindedAt: string | null;
+  /** D81 (0035): a captured item still waits for its agent to fill it in. */
+  readonly needsEnrichment: boolean;
+  /** D81 (0035): how it was captured; `null` for an item added any other way. */
+  readonly capturedFrom: TodoCaptureSource | null;
+  /** D81 (0035): when the agent was asked to fill it in (at most once); `null` = not asked. */
+  readonly enrichAskedAt: string | null;
 }
 
 const SPEC: TableSpec<TodoRecord> = {
@@ -52,6 +58,9 @@ const SPEC: TableSpec<TodoRecord> = {
     startedAt: ['started_at', 'text'],
     startedBy: ['started_by', 'text'],
     remindedAt: ['reminded_at', 'text'],
+    needsEnrichment: ['needs_enrichment', 'bool'],
+    capturedFrom: ['captured_from', 'text'],
+    enrichAskedAt: ['enrich_asked_at', 'text'],
   },
 };
 
@@ -217,6 +226,29 @@ export class TodoRepository {
   /** D75: records the finish reminder of the item's current start (`updated_at` unchanged: it is not an edit). */
   async markReminded(id: string): Promise<TodoRecord | null> {
     return this.#table.update(id, { remindedAt: this.#ctx.now() });
+  }
+
+  /** D81: marks a just-added item as captured (`from`) and, when `needsEnrichment`, as waiting for its agent to fill it in. */
+  async markCaptured(id: string, from: TodoCaptureSource, needsEnrichment: boolean): Promise<TodoRecord | null> {
+    return this.#table.update(id, { capturedFrom: from, needsEnrichment, enrichAskedAt: null });
+  }
+
+  /** D81: the session's open items that wait for their agent to fill them in and were not asked yet, in list order. */
+  async pendingEnrichment(sessionId: string): Promise<TodoRecord[]> {
+    return this.#table.select(`session_id = ? AND needs_enrichment = 1 AND enrich_asked_at IS NULL AND state = 'open'`, [sessionId], 'position, created_at, id');
+  }
+
+  /** D81: records that the agent was asked to fill these items in (`updated_at` unchanged: it is not an edit). */
+  async markEnrichAsked(ids: readonly string[]): Promise<void> {
+    const now = this.#ctx.now();
+    transaction(this.#ctx.db, () => {
+      for (const id of ids) this.#table.update(id, { enrichAskedAt: now });
+    });
+  }
+
+  /** D81: the item no longer waits to be filled in (the agent's `todo_update`, or the developer's own edit). */
+  async clearEnrichment(id: string): Promise<TodoRecord | null> {
+    return this.#table.update(id, { needsEnrichment: false });
   }
 
   async delete(id: string): Promise<boolean> {

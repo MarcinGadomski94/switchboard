@@ -75,7 +75,7 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
 /** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.todoEnrich'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -115,6 +115,14 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         description="When a turn ends with an item it started still in progress, send it one reminder to mark it done or say what's left"
       >
         <ToggleValue label="Remind the agent to finish started todos" value={settings['sessions.todoReminder']} disabled={busy} onToggle={() => flip('sessions.todoReminder')} />
+      </Row>
+      {/* D81: a captured todo is filled in by its agent when it is next idle (one message). */}
+      <Row
+        id="todo-enrich"
+        label="Let the agent fill in captured todos"
+        description="A todo captured from ⌘K, a chat selection or the share sheet is saved bare; when the session's agent is next idle, it is asked once to fill in the description, plan, priority and estimate"
+      >
+        <ToggleValue label="Let the agent fill in captured todos" value={settings['sessions.todoEnrich']} disabled={busy} onToggle={() => flip('sessions.todoEnrich')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
     </>
