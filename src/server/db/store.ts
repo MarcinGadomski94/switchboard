@@ -29,6 +29,7 @@ import { TodoRepository } from './repos/todos.ts';
 import { ToolRepository } from './repos/tools.ts';
 import { UsageRepository } from './repos/usage.ts';
 import { WorktreeRepository } from './repos/worktrees.ts';
+import { TutorialRepository } from './repos/tutorial.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -77,6 +78,8 @@ export interface Store {
   readonly devices: DeviceRepository;
   /** D80 (0034): the checkpoints taken before each turn (the refs live in the session's repos). */
   readonly checkpoints: CheckpointRepository;
+  /** D85 (0037): the tours this machine has seen (`docs/tutorial.md`). */
+  readonly tutorial: TutorialRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -143,6 +146,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     reviews: new ReviewRepository(ctx),
     devices: new DeviceRepository(ctx),
     checkpoints: new CheckpointRepository(ctx),
+    tutorial: new TutorialRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

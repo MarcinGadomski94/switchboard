@@ -47,7 +47,8 @@ export const TEST_SERVICE_HOME = path.join(os.tmpdir(), `switchboard-test-servic
  * drives (`tests/e2e/setup-wizard.spec.ts` turns it back on). D35: the fake
  * opener in front of the frame-helper setup's OS openers, so no test opens Chrome,
  * Finder or Explorer. D48: the fake Tailscale CLI (`tools/fake-tailscale`).
- * D55: the updater off (it would check GitHub releases at start). The per-user
+ * D55: the updater off (it would check GitHub releases at start). D85: the
+ * tutorial's tours do not open by themselves. The per-user
  * service redirected to {@link TEST_SERVICE_HOME} with tools/fake-servicectl as the
  * manager (the two are set together), so no test server reads or registers the
  * real login service.
@@ -66,6 +67,8 @@ export function testServerDefaults(): Record<string, string> {
     SWITCHBOARD_TAILSCALE_BIN: fakeTailscaleBinEnv(),
     // D55: the updater never asks the real GitHub; tests/e2e/updates.spec.ts turns it on against a fake.
     SWITCHBOARD_UPDATES: 'off',
+    // D85: no tour opens by itself over the page a spec drives (tests/e2e/tutorial.spec.ts turns it back on).
+    SWITCHBOARD_TUTORIAL: 'off',
     // Never the real home's login service (settings.spec read the developer's plist as "on").
     SWITCHBOARD_SERVICE_HOME: TEST_SERVICE_HOME,
     SWITCHBOARD_SERVICE_CTL: fakeServiceCtlEnv(),

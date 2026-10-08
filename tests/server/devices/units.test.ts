@@ -84,6 +84,9 @@ describe('D73 local-only routes', () => {
     ];
     for (const [method, url] of refused) expect(isLocalOnly(method, url), `${method} ${url}`).toBe(true);
     const allowed: Array<[string, string]> = [
+      // D85: the tutorial's state (read it, mark a tour seen).
+      ['GET', '/api/tutorial'],
+      ['PUT', '/api/tutorial/tours/main'],
       ['GET', '/api/sessions'],
       ['POST', '/api/sessions'],
       ['POST', '/api/sessions/a/messages'],

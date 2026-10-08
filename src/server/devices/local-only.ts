@@ -15,7 +15,8 @@
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications, and (D79) the review cards with Merge, Open PR, Commit, Send
- * back and Dismiss (Discard and Clean up stay on the desktop).
+ * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
+ * tutorial's state (read it, mark a tour seen).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -90,6 +91,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/tools\/[^/]+\/probe$/],
   // A paired machine's Reconnect.
   ['POST', /^\/api\/machines\/[^/]+\/reconnect$/],
+  // D85: the tutorial (one state per machine; reading it and marking a tour seen is normal use).
+  ['GET', /^\/api\/tutorial$/],
+  ['PUT', /^\/api\/tutorial\/tours\/[^/]+$/],
   // This device: who is asking, its name and notifications.
   ['GET|PUT', /^\/api\/device$/],
   ['PUT|DELETE', /^\/api\/device\/push$/],

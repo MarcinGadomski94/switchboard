@@ -38,6 +38,8 @@ import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
+import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
+import { appVersion } from './updates/wire.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
 import { claudeAgentsLister } from './supervisor/recovery.ts';
@@ -155,6 +157,12 @@ export interface AppOptions {
    * from PATH, the configured gh), started when the app is ready and stopped with it.
    */
   readonly reviews?: ReviewService;
+  /**
+   * D85: the tutorial's state (`docs/tutorial.md`). Without one the app makes its own
+   * over the store (this checkout's version; opens by itself unless demo mode or
+   * `SWITCHBOARD_TUTORIAL=off`).
+   */
+  readonly tutorial?: TutorialService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -450,7 +458,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
   const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints });
+  // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
+  const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

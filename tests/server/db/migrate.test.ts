@@ -1001,7 +1001,8 @@ describe('0025 session take-over (D65)', () => {
     }
     const store = await openStore(file);
     try {
-      expect(store.migrations.applied).toEqual([36]);
+      // D85's 0037 applies after it.
+      expect(store.migrations.applied).toEqual([36, 37]);
       const [older] = await store.sessions.list();
       expect([older?.continuedTo, older?.continuedFrom]).toEqual([null, null]);
       const fresh = await store.sessions.create({ name: 'older-83-2', claudeSessionId: 'c-fresh-83', continuedFrom: older?.id ?? null });
@@ -1009,6 +1010,51 @@ describe('0025 session take-over (D65)', () => {
       expect((await store.sessions.get(fresh.id))?.continuedFrom).toBe(older?.id);
     } finally {
       await store.close();
+    }
+  });
+
+  it('D85 (0037): adds tutorial_tours; an install with data starts the tutorial at 1.12.0, an empty one gets nothing', async () => {
+    const shipped = await loadMigrations();
+    const before = shipped.filter((m) => m.version < 37);
+    // An install with a session before the tutorial.
+    const file = path.join(tmp, 'd85-old', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: before });
+    try {
+      await earlier.sessions.create({ name: 'older-85', claudeSessionId: 'c-older-85' });
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual([37]);
+      expect(await store.settings.get('tutorial.lastVersion')).toBe('1.12.0');
+      expect(await store.tutorial.list()).toEqual([]);
+      await store.tutorial.set('main', 'completed', '1.13.0');
+      expect(() => store.db.prepare("INSERT INTO tutorial_tours (tour, status, version, updated_at) VALUES ('x', 'seen', '1', 'now')").run()).toThrow(/CHECK/);
+    } finally {
+      await store.close();
+    }
+    // A finished setup alone counts as data too.
+    const setupFile = path.join(tmp, 'd85-setup', 'switchboard.db');
+    const setupOnly = await openStore(setupFile, { migrations: before });
+    try {
+      await setupOnly.settings.set('setup.completedAt', '2026-10-01T00:00:00.000Z');
+    } finally {
+      await setupOnly.close();
+    }
+    const afterSetup = await openStore(setupFile);
+    try {
+      expect(await afterSetup.settings.get('tutorial.lastVersion')).toBe('1.12.0');
+    } finally {
+      await afterSetup.close();
+    }
+    // A brand-new database: no version, no rows (the service queues the main tour).
+    const fresh = await openStore(path.join(tmp, 'd85-new', 'switchboard.db'));
+    try {
+      expect(await fresh.settings.get('tutorial.lastVersion')).toBeUndefined();
+      expect(await fresh.tutorial.list()).toEqual([]);
+    } finally {
+      await fresh.close();
     }
   });
 
