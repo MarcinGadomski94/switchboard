@@ -145,7 +145,8 @@ test('a repo-folder session on the real path: add the repo → start in its work
   expect(await readFile(path.join(worktree, 'notes.md'), 'utf8')).toBe('written by fake-claude\n');
   expect(await exists(path.join(repo, 'notes.md'))).toBe(false);
   // The right panel: the one agent works in the repo (its name, not "workspace root").
-  await expect(page.getByTestId('agent-path').first()).toHaveText('app-repo');
+  // D14: its write places it in the repo (`app-repo/`); before that card update lands it reads the repo's name.
+  await expect(page.getByTestId('agent-path').first()).toHaveText(/^app-repo\/?$/);
 
   // 4. The Diff tab shows the worktree change, not committed.
   await page.getByTestId('session-tab-diff').click();

@@ -91,7 +91,8 @@ test('Remote on: link + QR + note, the sidebar glyph; pause keeps it on, resume 
   // It sits with the header actions, before Pause (after D31's model picker and D33's Close), in their style.
   const actions = await page.locator('.sb-sv-actions > *').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
   // D62 P5: the CLI switcher comes first.
-  expect(actions).toEqual(['session-cli', 'session-model', 'session-close', 'session-remote', 'session-pause', 'session-handoff']);
+  // D80: Undo last turn sits before Pause once a turn has its checkpoint.
+  expect(actions).toEqual(['session-cli', 'session-model', 'session-close', 'session-remote', 'session-undo-turn', 'session-pause', 'session-handoff']);
   await expect(toggle).toHaveCSS('font-size', '12px');
   await expect(toggle).toHaveCSS('border-top-left-radius', '6px');
   const pause = page.getByTestId('session-pause');

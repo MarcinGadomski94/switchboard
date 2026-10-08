@@ -96,6 +96,8 @@ test('the whole product on the real path: session → question → answer → pa
   const composer = page.getByTestId('chat-input');
   await composer.fill(`Write the notes. [fake:write ${WORKTREE.split(path.sep).join('/')}/notes.md]`);
   await composer.press('Enter');
+  // The status was already done before this turn (D80's checkpoint goes first): wait for the agent's write itself.
+  await expect(page.getByTestId('chat-step').filter({ hasText: 'notes.md' }).first()).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => status(page, NAME), { timeout: 15_000 }).toBe('done');
 
   // 6. Pause / Resume (D7).
