@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { isDeviceRequest } from './devices/mark.ts';
 
 /**
  * Request guard for the loopback service (ARCHITECTURE → Security, decisions gap #20).
@@ -128,6 +129,14 @@ export interface SecurityOptions {
    * cookie). Without it `/agent/*` is refused.
    */
   readonly agentTokenValid?: (sessionId: string, token: string) => boolean;
+  /**
+   * D73: the guard of requests that arrived on the **device listener**
+   * (`DeviceService.guard`, `docs/devices.md`). Such a request never goes through
+   * the loopback rules below (it comes from 127.0.0.1 through `tailscale serve`, so
+   * loopback proves nothing): only this guard decides. Without one, every device
+   * request is refused.
+   */
+  readonly deviceGuard?: (request: FastifyRequest, reply: FastifyReply) => Promise<FastifyReply | undefined>;
 }
 
 /** D68: `true` for `/agent` and `/agent/…` (the agent todo tools' endpoints, called by the `switchboard` MCP helper). */
@@ -163,7 +172,9 @@ function deny(reply: FastifyReply, status: 401 | 403, error: string): FastifyRep
 }
 
 /**
- * Installs the guard as the first `onRequest` hook, for every route and every 404:
+ * Installs the guard as the first `onRequest` hook, for every route and every 404.
+ * D73: a request that arrived on the device listener is judged by
+ * {@link SecurityOptions.deviceGuard} only; everything below is the UI listener's:
  * 1. `Host` must be a loopback name with the service port → else 403 `forbidden-host`.
  *    D48 P4: `/hook/*` then needs no `Origin` (403) and the hook token as a bearer
  *    (401), never the cookie. D68: `/agent/*` likewise, with the agent token of the
@@ -174,7 +185,11 @@ function deny(reply: FastifyReply, status: 401 | 403, error: string): FastifyRep
  */
 export function registerSecurity(app: FastifyInstance, options: SecurityOptions): void {
   const { port, token } = options;
+  // D73: the device a device-listener request authenticated as (`null` everywhere else).
+  if (!app.hasRequestDecorator('device')) app.decorateRequest('device', null);
   app.addHook('onRequest', async (request, reply) => {
+    // D73: the device listener has its own guard; loopback trust never applies to it.
+    if (isDeviceRequest(request.raw)) return options.deviceGuard ? options.deviceGuard(request, reply) : deny(reply, 403, 'forbidden-host');
     if (!isAllowedHost(request.headers.host, port)) return deny(reply, 403, 'forbidden-host');
     const origin = request.headers.origin;
     // D48 P4: the hook script's endpoints: no browser (any Origin refused), only the hook token.

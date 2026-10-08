@@ -1045,7 +1045,7 @@ describe('0029 sidebar shared layout (D71)', () => {
     place.run('s2', 'fc', 0);
     place.run('r~abcdefghijkl~x', null, 0);
     database.prepare('INSERT INTO machines (id, name, address, outbound_token, inbound_token_hash, paired_at) VALUES (?, ?, ?, ?, ?, ?)').run('abcdefghijkl', 'pc', null, 't'.repeat(43), 'h', ts);
-    expect(migrate(database, shipped).applied).toEqual([29]);
+    expect(migrate(database, shipped.filter((m) => m.version <= 29)).applied).toEqual([29]);
     expect(database.prepare('SELECT id, name, name_clock, parent_id, sort_key, place_clock, deleted_clock, collapsed, created_at FROM sidebar_folders ORDER BY id').all()).toEqual([
       { id: 'fa', name: 'Acme', name_clock: '', parent_id: null, sort_key: '000001i', place_clock: '', deleted_clock: null, collapsed: 0, created_at: ts },
       { id: 'fb', name: 'Later', name_clock: '', parent_id: null, sort_key: '000000i', place_clock: '', deleted_clock: null, collapsed: 1, created_at: ts },

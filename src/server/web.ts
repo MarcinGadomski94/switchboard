@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { isDeviceRequest } from './devices/mark.ts';
 import { isProtectedPath, mayIssueCookie, serializeTokenCookie } from './security.ts';
 
 /** Options for {@link registerWeb}. */
@@ -79,6 +80,11 @@ export async function registerWeb(app: FastifyInstance, options: WebOptions): Pr
   await app.register(fastifyStatic, { root: webRoot, serve: false });
 
   const sendPage = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    // D73: a paired device gets the same page, never the install token (its own credential is its cookie).
+    if (isDeviceRequest(request.raw)) {
+      const html = (await readIndexHtml(webRoot)) ?? UNBUILT_PAGE;
+      return reply.header('cache-control', 'no-store').type('text/html; charset=utf-8').send(html);
+    }
     // Developer ruling 2026-09-28 (D34): one origin, so one installed app and one cookie. A page load on
     // `localhost:<port>` (the guard has already accepted that Host) goes to `127.0.0.1:<port>`; API and
     // `/hub` requests are never redirected.

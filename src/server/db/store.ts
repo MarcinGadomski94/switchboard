@@ -6,6 +6,7 @@ import { type Migration, type MigrationResult, loadMigrations, migrate } from '.
 import { AgentRepository } from './repos/agents.ts';
 import { AttachmentRepository } from './repos/attachments.ts';
 import { ArtifactRepository } from './repos/artifacts.ts';
+import { DeviceRepository } from './repos/devices.ts';
 import { EventRepository } from './repos/events.ts';
 import { FolderRepository } from './repos/folders.ts';
 import { HistoryCacheRepository } from './repos/history-cache.ts';
@@ -68,6 +69,8 @@ export interface Store {
   readonly profiles: ProfileRepository;
   /** D68 (0026): each session's todo list. */
   readonly todos: TodoRepository;
+  /** D73 (0030): paired devices, their pairing codes and push subscriptions. */
+  readonly devices: DeviceRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -131,6 +134,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     providers: new ProviderRepository(ctx),
     profiles: new ProfileRepository(ctx),
     todos: new TodoRepository(ctx),
+    devices: new DeviceRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

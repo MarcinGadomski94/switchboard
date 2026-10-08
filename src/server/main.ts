@@ -31,6 +31,7 @@ import { createUsageMeter, withAccountUsage, withCliUsage, withUsage } from './u
 import { loadDemoData } from './demo/data.ts';
 import { createFrameHelperOpener } from './tools/frame-helper.ts';
 import { demoFolderChecks } from './demo/folders.ts';
+import { DeviceService } from './devices/service.ts';
 
 /**
  * The built UI served: `<repo>/dist/web` (the Vite build output). Tests set
@@ -140,7 +141,9 @@ async function main(): Promise<void> {
     // D48 P4 (docs/peers.md → Hooked terminal sessions): the hook token (0600) the installed hook script presents.
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
-    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, ...(usage ? { usage } : {}), logger: true });
+    // D73 (docs/devices.md): paired phones / tablets, the device listener (off by default) and web push. The demo has none.
+    const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name });
+    app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.
     const releaseCommands = config.demo ? null : supervisor.holdCommands();
@@ -150,6 +153,7 @@ async function main(): Promise<void> {
       await recovering;
       // Live claude processes are stopped (their status kept for M2.4) before the database closes.
       await updates?.close();
+      await devices.close();
       await peers.close();
       await hooks.close();
       await worktrees.stopPolling();
@@ -173,6 +177,8 @@ async function main(): Promise<void> {
     if (!config.demo) scheduler.start();
     // D48: the peer listener (when switched on) and the connections to paired machines.
     if (!config.demo) await peers.start().catch((error: unknown) => app.log.error(error, 'peers failed to start'));
+    // D73: device access (when switched on: the device listener and `tailscale serve`) and the push notifier.
+    if (!config.demo) await devices.start().catch((error: unknown) => app.log.error(error, 'devices failed to start'));
     // D48 P4: the hooked sessions' transcript and liveness polls.
     if (!config.demo) hooks.start();
     // D55: check GitHub releases now and every hour.

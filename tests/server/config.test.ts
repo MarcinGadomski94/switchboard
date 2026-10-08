@@ -23,6 +23,9 @@ describe('loadConfig', () => {
       peerTestLoopback: false,
       peerTimings: {},
       peerTestHooks: false,
+      // D73
+      deviceTestOrigin: null,
+      pushTestEndpoints: [],
     });
     expect(DEFAULT_PORT).toBe(13001);
     expect(LOOPBACK_HOST).toBe('127.0.0.1');
@@ -143,5 +146,12 @@ describe('peer timings and test hooks (fix · peer reconnects)', () => {
     expect(loadConfig({ env: {} }).peerTestHooks).toBe(false);
     expect(loadConfig({ env: { SWITCHBOARD_PEER_TEST_HOOKS: 'true' } }).peerTestHooks).toBe(false);
     expect(loadConfig({ env: { SWITCHBOARD_PEER_TEST_HOOKS: '1' } }).peerTestHooks).toBe(true);
+  });
+  it('D73: reads the device test origin and push test endpoints, refusing anything but loopback http', () => {
+    const config = loadConfig({ env: { SWITCHBOARD_DEVICE_TEST_ORIGIN: 'http://localhost:4925', SWITCHBOARD_PUSH_TEST_ENDPOINTS: 'http://127.0.0.1:4926, http://127.0.0.1:4927/' }, platform: 'linux', home: HOME, cwd: CWD });
+    expect(config.deviceTestOrigin).toBe('http://localhost:4925');
+    expect(config.pushTestEndpoints).toEqual(['http://127.0.0.1:4926', 'http://127.0.0.1:4927']);
+    expect(() => loadConfig({ env: { SWITCHBOARD_DEVICE_TEST_ORIGIN: 'https://evil.example:443' }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
+    expect(() => loadConfig({ env: { SWITCHBOARD_PUSH_TEST_ENDPOINTS: 'http://10.0.0.1:80' }, platform: 'linux', home: HOME, cwd: CWD })).toThrow(ConfigError);
   });
 });

@@ -68,6 +68,37 @@ export interface ServerConfig {
    * `POST|DELETE /api/test/peers/outage` (stop the peer listener for a while).
    */
   readonly peerTestHooks: boolean;
+  /**
+   * D73, **tests only**: `SWITCHBOARD_DEVICE_TEST_ORIGIN` (`http://localhost:<port>`
+   * or `http://127.0.0.1:<port>`) is the devices' origin instead of the
+   * `https://<machine>.<tailnet>.ts.net` one `tailscale status` gives, so a test
+   * browser reaches the device listener directly. `null` = the real origin.
+   */
+  readonly deviceTestOrigin: string | null;
+  /**
+   * D73, **tests only**: `SWITCHBOARD_PUSH_TEST_ENDPOINTS`, a comma list of
+   * `http://127.0.0.1:<port>` origins accepted as Web Push endpoints next to the
+   * browser vendors' push services (the fake push service). Default none.
+   */
+  readonly pushTestEndpoints: readonly string[];
+}
+
+/** D73: a test origin of the device listener (loopback http with a port), else a {@link ConfigError}. */
+function parseDeviceTestOrigin(raw: string | undefined): string | null {
+  if (raw === undefined || raw.trim() === '') return null;
+  const match = /^http:\/\/(localhost|127\.0\.0\.1):(\d{1,5})$/.exec(raw.trim());
+  if (!match) throw new ConfigError('SWITCHBOARD_DEVICE_TEST_ORIGIN must be http://localhost:<port> or http://127.0.0.1:<port>');
+  return `http://${match[1]}:${match[2]}`;
+}
+
+/** D73: the test push endpoints' origins (loopback http with a port), else a {@link ConfigError}. */
+function parsePushTestEndpoints(raw: string | undefined): string[] {
+  if (raw === undefined || raw.trim() === '') return [];
+  return raw.split(',').map((part) => {
+    const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/?$/.exec(part.trim());
+    if (!match) throw new ConfigError('SWITCHBOARD_PUSH_TEST_ENDPOINTS must be a comma list of http://127.0.0.1:<port>');
+    return `http://127.0.0.1:${match[1]}`;
+  });
 }
 
 /** A millisecond setting of the peer timings; `undefined` when unset. */
@@ -204,5 +235,7 @@ export function loadConfig(options: LoadConfigOptions = {}): ServerConfig {
     peerTestLoopback: env['SWITCHBOARD_PEER_TEST_LOOPBACK'] === '1',
     peerTimings: parsePeerTimings(env),
     peerTestHooks: env['SWITCHBOARD_PEER_TEST_HOOKS'] === '1',
+    deviceTestOrigin: parseDeviceTestOrigin(env['SWITCHBOARD_DEVICE_TEST_ORIGIN']),
+    pushTestEndpoints: parsePushTestEndpoints(env['SWITCHBOARD_PUSH_TEST_ENDPOINTS']),
   };
 }

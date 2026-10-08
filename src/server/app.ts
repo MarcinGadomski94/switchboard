@@ -35,6 +35,7 @@ import { SetupService } from './setup/service.ts';
 import { type ControlRequestHandler, SessionSupervisor } from './supervisor/supervisor.ts';
 import type { UsageMeter } from './usage/meter.ts';
 import { registerWeb } from './web.ts';
+import { DeviceService } from './devices/service.ts';
 import { WorktreeAdoption } from './worktrees/adopt.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
 
@@ -132,6 +133,13 @@ export interface AppOptions {
    * MCP server (its todo tools). Default `true`; tests of the CLIs' argv turn it off.
    */
   readonly agentTools?: boolean;
+  /**
+   * D73: paired devices, the device listener and web push (`docs/devices.md`). A
+   * caller that passes one owns it (main.ts starts it once the UI port is ours and
+   * closes it); without one the app makes its own, which is never started (no
+   * device listener, no push: the routes still answer) and closes with the app.
+   */
+  readonly devices?: DeviceService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -145,9 +153,27 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
   // D48 P4: the hook script presents this token to `/hook/*` (a file only the user can read).
   const hookToken = options.hookToken ?? (await loadOrCreateToken(options.config.dataDir, HOOK_TOKEN_FILE));
-  // D68: `/agent/*` takes a session's agent token (derived from the install token, `todos/agent-token.ts`).
-  registerSecurity(app, { port: options.config.port, token: options.token, hookToken, agentTokenValid: (sessionId, candidate) => agentTokenMatches(options.token, sessionId, candidate) });
   const bus = options.bus ?? new HubBus();
+  // D73: the device listener's requests go through this service's guard; it hands them to this app.
+  let peersRef: PeerService | null = null;
+  let devices = options.devices;
+  if (!devices) {
+    const own = new DeviceService({ config: options.config, store: options.store, bus, machineName: async () => (peersRef ? (await peersRef.self()).name : 'this computer') });
+    app.addHook('onClose', async () => {
+      await own.close();
+    });
+    devices = own;
+  }
+  devices.useApp(app);
+  const deviceService = devices;
+  // D68: `/agent/*` takes a session's agent token (derived from the install token, `todos/agent-token.ts`).
+  registerSecurity(app, {
+    port: options.config.port,
+    token: options.token,
+    hookToken,
+    agentTokenValid: (sessionId, candidate) => agentTokenMatches(options.token, sessionId, candidate),
+    deviceGuard: (request, reply) => deviceService.guard(request, reply),
+  });
   let supervisor = options.supervisor;
   let questions = options.questions;
   if (!supervisor) {
@@ -229,6 +255,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     peers = own;
   }
   peers.useApp(app);
+  peersRef = peers;
   let hooks = options.hooks;
   if (!hooks) {
     const own = new HookService({ config, store: options.store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
@@ -279,7 +306,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
   const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

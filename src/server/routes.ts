@@ -46,6 +46,8 @@ import type { TakeoverService } from './takeover/service.ts';
 import type { WorktreeManager } from './worktrees/manager.ts';
 import type { TodoService } from './todos/service.ts';
 import { registerTodoRoutes } from './api/todos.ts';
+import { registerDeviceRoutes } from './api/devices.ts';
+import type { DeviceService } from './devices/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -92,6 +94,8 @@ export interface ApiContext {
   readonly takeoverRunner: TakeoverRunner;
   /** D68: the sessions' todo lists (the UI's routes and the agent's, docs/todos.md). */
   readonly todos: TodoService;
+  /** D73: paired devices, the device listener and web push (docs/devices.md). */
+  readonly devices: DeviceService;
 }
 
 /**
@@ -100,7 +104,8 @@ export interface ApiContext {
  * line here (`docs/lanes.md` has the ownership map). Every contract route exists
  * from M1.4 on and answers 501 until its item implements it. The security guard
  * (security.ts) already covers every route registered here: none of them may be
- * marked `config.public`.
+ * marked `config.public`, except D73's device-listener pairing page and exchange
+ * (`/pair`, `/device/v1/pair`), which answer 404 anywhere but the device listener.
  */
 export async function registerApiRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   await registerSessionRoutes(app, context);
@@ -127,5 +132,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerTodoRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
+  await registerDeviceRoutes(app, context);
   await registerHubRoutes(app, context);
 }
