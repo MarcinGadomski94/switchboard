@@ -562,12 +562,12 @@ test('D76 · ⋯ Run in new session: a new session titled like the item gets its
   const notes = items.filter({ hasText: 'Tidy the release notes' });
   const todoId = (await notes.getAttribute('data-todo-id')) as string;
 
-  // ⋯ → Run in new session: a toast (the workspace is no git repository: no worktree, it says so).
+  // ⋯ → Run in new session: a toast (the source works in the workspace's acme-app-front repo: the run gets its own worktree there, no note).
   await notes.getByTestId('todo-menu-button').click();
   await notes.getByTestId('todo-menu-run').click();
   const toast = page.getByTestId('toast').filter({ hasText: 'Running in a new session' });
   await expect(toast).toContainText('Tidy the release notes');
-  await expect(toast).toContainText('not a git repository');
+  await expect(toast).not.toContainText('without a worktree');
   await expect(notes).toHaveAttribute('data-state', 'in_progress');
   await expect(notes.getByTestId('todo-run-link')).toHaveText(/Tidy the release notes/);
   await expect(notes.getByTestId('todo-run-status')).toHaveText(/working|idle|done/);

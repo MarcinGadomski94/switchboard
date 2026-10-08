@@ -54,8 +54,23 @@
   overflow-x: auto;
 }
 
-.sb-board-columns[data-columns='1'] {
-  grid-template-columns: minmax(0, 1fr);
+/* Phones: swipeable columns, one per screen width (scroll snap); the tab strip above follows. */
+.sb-board-columns[data-swipe='true'] {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.sb-board-columns[data-swipe='true']::-webkit-scrollbar {
+  display: none;
+}
+
+.sb-board-columns[data-swipe='true'] > .sb-board-column {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .sb-board-column {
@@ -224,7 +239,7 @@
   flex: none;
 }
 
-/* Phones: one column at a time, chosen with the picker (its counts). */
+/* Phones: the column tabs (names and counts) over the swipeable columns. */
 .sb-board-picker {
   display: flex;
   border: 1px solid var(--border-control);
@@ -247,6 +262,10 @@
   border-left: 1px solid var(--border-control);
 }
 
+.sb-board-pick[data-over='true'] {
+  background: color-mix(in srgb, var(--bg-card-2), var(--status-run) 18%);
+}
+
 .sb-board-pick[aria-selected='true'] {
   background: var(--bg-selected-nav);
   color: var(--text-strong);
@@ -266,9 +285,6 @@
     grid-template-columns: repeat(4, minmax(240px, 1fr));
   }
 
-  .sb-board-columns[data-columns='1'] {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Tablets, phones and short windows: the board scrolls as a whole (a column's own scroll leaves a touch menu no room). */

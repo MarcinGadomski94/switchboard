@@ -170,6 +170,8 @@ export interface WorktreeBranchOptions {
    * Omitted: the repo's current HEAD (gap #1).
    */
   readonly from?: string;
+  /** D76: per solution, what its branch is cut from (wins over {@link from}; a workspace todo run cuts each repo from its own current branch). */
+  readonly fromBySolution?: Readonly<Record<string, string>>;
 }
 
 /** A repository of a folder's solution that {@link WorktreeManager.adopt} looks in (D38). */
@@ -442,7 +444,7 @@ export class WorktreeManager implements DiffProvider {
   ): Promise<WorktreeRecord[]> {
     const plans: Plan[] = [];
     for (const solution of solutions) {
-      const plan = await this.#plan(solution, sessionName, folder, options.branch ?? worktreeBranch(sessionName), options.from);
+      const plan = await this.#plan(solution, sessionName, folder, options.branch ?? worktreeBranch(sessionName), options.fromBySolution?.[solution] ?? options.from);
       if (plans.some((other) => other.path === plan.path)) {
         throw new WorktreeError('path-exists', `"${solution}" names the same repository as another solution in scope`);
       }

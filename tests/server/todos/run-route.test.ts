@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session, SessionTodoList, TodoRunResult } from '../../../src/core/api.ts';
-import { REPO_WORKTREE_NOTE_HEADER } from '../../../src/core/first-turn.ts';
+import { REPO_WORKTREE_NOTE_HEADER, WORKSPACE_WORKTREES_NOTE_HEADER } from '../../../src/core/first-turn.ts';
 import { todoStartMessage } from '../../../src/core/todos.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -151,17 +151,72 @@ describe('POST /api/sessions/{id}/todos/{todoId}/run (D76)', () => {
     expect((await call('POST', `/api/sessions/${source.id}/todos/nope/run`)).statusCode).toBe(404);
   });
 
-  it('a workspace folder (no git repository): the same folder without a worktree, and the answer says so', async () => {
+  it('a workspace folder: one todo/<slug> worktree per solution repo of the source, each cut from its current branch; the session-start block names them (D76-workspace ruling)', async () => {
+    const { s, g, workspace } = await setup();
+    const started = await call('POST', '/api/sessions', {
+      name: 'ws-source',
+      title: 'Source',
+      task: 'Hello',
+      folder: workspace.id,
+      workType: 'feature',
+      mode: 'orchestrator',
+      phase: 'ui-first',
+      coordination: null,
+      qa: null,
+      solutions: ['web-front', 'mobile'],
+      worktrees: false,
+      ultracode: false,
+    });
+    expect(started.statusCode, started.body).toBe(201);
+    const source = started.json() as Session;
+    // The web repo's main checkout is on a feature branch with a commit of its own; mobile stays on main.
+    await g.git(g.web, 'checkout', '-q', '-b', 'feature/web-x');
+    const webTip = await g.commit(g.web, 'src/web.txt', 'web\n');
+    const mobileTip = await g.git(g.mobile, 'rev-parse', 'HEAD');
+    const todoId = await addTodo(source.id, 'Tidy the docs');
+    const response = await call('POST', `/api/sessions/${source.id}/todos/${todoId}/run`);
+    expect(response.statusCode, response.body).toBe(201);
+    const result = response.json() as TodoRunResult;
+    expect(result.note).toBeNull();
+    expect(result.session).toMatchObject({ title: 'Tidy the docs', cwd: g.workspace, worktrees: true, solutions: ['web-front', 'mobile'], workType: 'feature', mode: 'orchestrator', folder: workspace.id });
+    const trees = await s.store.worktrees.list({ sessionId: result.session.id });
+    expect(trees.map((tree) => [tree.repo, tree.branch])).toEqual([
+      ['web-front', 'todo/tidy-the-docs'],
+      ['mobile', 'todo/tidy-the-docs'],
+    ]);
+    expect(await g.git(trees[0]!.path, 'rev-parse', 'HEAD')).toBe(webTip);
+    expect(await g.git(trees[1]!.path, 'rev-parse', 'HEAD')).toBe(mobileTip);
+    expect((await s.store.sessions.get(result.session.id))?.branch).toBe('todo/tidy-the-docs');
+    const { cwd, first } = await spawnOf(s, result.session);
+    expect(cwd).toBe(g.workspace);
+    expect(first.startsWith(todoStartMessage({ id: todoId, title: 'Tidy the docs', description: null, plan: 'No plan' }))).toBe(true);
+    expect(first).toContain(`${trees[0]!.path} (branch todo/tidy-the-docs, from feature/web-x)`);
+    expect(first).toContain(`${trees[1]!.path} (branch todo/tidy-the-docs, from main)`);
+  });
+
+  it('a workspace source without solution repos: the same folder without a worktree, and the answer says so', async () => {
     const { s, workspace, g } = await setup();
-    const started = await call('POST', '/api/sessions', { simple: true, name: 'ws-source', title: 'Source', task: 'Hello', folder: workspace.id });
+    const started = await call('POST', '/api/sessions', { simple: true, name: 'ws-simple', title: 'Source', task: 'Hello', folder: workspace.id });
     const source = started.json() as Session;
     const todoId = await addTodo(source.id, 'Tidy the docs');
     const response = await call('POST', `/api/sessions/${source.id}/todos/${todoId}/run`);
     expect(response.statusCode, response.body).toBe(201);
     const result = response.json() as TodoRunResult;
-    expect(result.note).toBe("The source session's folder is not a git repository (a workspace): the run works in the same folder, without a worktree.");
+    expect(result.note).toBe('The source session uses no solution repository yet: the run works in the workspace folder, without a worktree.');
     expect(result.session).toMatchObject({ title: 'Tidy the docs', cwd: g.workspace, worktrees: false, folder: workspace.id });
     const { first } = await spawnOf(s, result.session);
     expect(first).toBe(todoStartMessage({ id: todoId, title: 'Tidy the docs', description: null, plan: 'No plan' }));
+
+    // Once its agent touched a solution (D38), a run of the same simple source gets that repo's worktree and a worktree note.
+    await s.store.sessions.update(source.id, { solutions: ['mobile'] });
+    const second = await addTodo(source.id, 'Update the mobile readme');
+    const again = (await call('POST', `/api/sessions/${source.id}/todos/${second}/run`)).json() as TodoRunResult;
+    expect(again.note).toBeNull();
+    expect(again.session).toMatchObject({ worktrees: true, solutions: ['mobile'], workType: null });
+    const tree = (await s.store.worktrees.list({ sessionId: again.session.id }))[0];
+    expect(tree?.branch).toBe('todo/update-the-mobile-readme');
+    const run = await spawnOf(s, again.session);
+    expect(run.first).toContain(WORKSPACE_WORKTREES_NOTE_HEADER);
+    expect(run.first).toContain(`  - mobile: ${tree?.path} (branch todo/update-the-mobile-readme, from main)`);
   });
 });

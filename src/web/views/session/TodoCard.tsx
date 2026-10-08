@@ -297,17 +297,37 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
   const [openSub, setOpenSub] = useState<string | null>(null);
   // Opens upwards when there is no room under the ⋯ inside the scrolling list (the last card above the composer).
   const [up, setUp] = useState(false);
+  // D77: on a phone's swipeable board the columns strip clips both ways: the menu is placed in the window instead (fixed).
+  const [fixed, setFixed] = useState<{ readonly top: number; readonly right: number } | null>(null);
   useLayoutEffect(() => {
     const menu = ref.current;
     if (!menu) return;
     const rect = menu.getBoundingClientRect();
-    // D77: a board card's menu stays within its column's list (or the board, where the board scrolls as a whole) and the window.
-    const found = menu.parentElement?.closest('.sb-todos-body, .sb-todos-page-list, .sb-board-cards');
-    const scroller = found && /auto|scroll/.test(getComputedStyle(found).overflowY) ? found : null;
+    if (anchor && menu.closest('.sb-board-columns[data-swipe="true"]')) {
+      const a = anchor.getBoundingClientRect();
+      const below = a.bottom + 4;
+      setFixed({ top: below + rect.height <= window.innerHeight ? below : Math.max(4, a.top - 4 - rect.height), right: Math.max(4, window.innerWidth - a.right) });
+      return;
+    }
+    // D77: a board card's menu stays within its column's list (where the column scrolls) and the window.
+    const selector = '.sb-todos-body, .sb-todos-page-list, .sb-board-cards';
+    let scroller = menu.parentElement?.closest(selector) ?? null;
+    while (scroller && !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement?.closest(selector) ?? null;
     const bottom = Math.min(scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight, window.innerHeight);
     const top = Math.max(scroller ? scroller.getBoundingClientRect().top : 0, 0);
     if (rect.bottom > bottom && (anchor?.getBoundingClientRect().top ?? 0) - top > rect.height) setUp(true);
   }, [anchor]);
+  // A fixed menu does not follow a scroll: the scroll closes it.
+  useEffect(() => {
+    if (!fixed) return;
+    const placed = anchor?.getBoundingClientRect().top ?? 0;
+    const scrolled = (): void => {
+      // Only a scroll that moved its ⋯ (the menu would float away from it).
+      if (Math.abs((anchor?.getBoundingClientRect().top ?? 0) - placed) > 2) close.current();
+    };
+    window.addEventListener('scroll', scrolled, true);
+    return () => window.removeEventListener('scroll', scrolled, true);
+  }, [fixed, anchor]);
   // The first entry takes the focus once, when the menu opens. Not on later renders: the card re-renders
   // with a new `onClose` whenever the session or the list refreshes (a hub event), and re-focusing then
   // pulled the focus out of an open submenu back to the first entry.
@@ -370,7 +390,7 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
     }
   };
   return (
-    <div ref={ref} className="sb-todo-menu" role="menu" aria-label={label} data-testid="todo-menu" data-placement={up ? 'top' : 'bottom'} onKeyDown={keys}>
+    <div ref={ref} className="sb-todo-menu" role="menu" aria-label={label} data-testid="todo-menu" data-placement={fixed ? 'fixed' : up ? 'top' : 'bottom'} style={fixed ? { position: 'fixed', top: fixed.top, right: fixed.right, bottom: 'auto', left: 'auto' } : undefined} onKeyDown={keys}>
       {entries.map((entry) =>
         entry.submenu ? (
           <div key={entry.id} className="sb-todo-submenu-anchor" role="none">

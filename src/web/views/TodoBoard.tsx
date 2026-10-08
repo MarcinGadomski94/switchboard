@@ -20,7 +20,7 @@ function placeOf(group: TodoGroup): string {
   return parts[parts.length - 1] ?? '';
 }
 
-/** The phone's column (the board shows one column at a time there), kept in this browser. */
+/** The phone's column (one column per screen width, swiped sideways), kept in this browser. */
 const PHONE_COLUMN_KEY = 'sb.todos.boardColumn';
 
 function readPhoneColumn(): TodoState {
@@ -49,8 +49,10 @@ interface Drag {
  * progress without sending anything, Done means done (the review is skipped), Review only for an
  * item run in its own session; within a column the order is priority, then session, then position.
  * The mouse drags after a few pixels; a touch screen lifts the card after a long press (D74, the
- * sidebar's rule); the card's ⋯ → **Move to** does the same without dragging. On phones the board
- * shows one column at a time with a column picker (its counts); the picker's choice is kept.
+ * sidebar's rule); the card's ⋯ → **Move to** does the same without dragging. On phones (ruling
+ * 2026-10-08) the columns are **swipeable**: one column per screen width (scroll snap), with a tab
+ * strip (the names and counts) that follows the swipe and scrolls to a column when tapped; a card
+ * moves with ⋯ → Move to, or by a long-press drag onto a tab. The last column is kept.
  * Under it, the per-session totals of the completed items' actual vs. estimate (D78).
  */
 export function TodoBoard({
@@ -75,13 +77,46 @@ export function TodoBoard({
   const layout = useLayout();
   const phone = layout === 'phone';
   const [phoneColumn, setPhoneColumn] = useState<TodoState>(readPhoneColumn);
-  const pickColumn = (state: TodoState): void => {
+  const columnsRef = useRef<HTMLDivElement | null>(null);
+  const keepColumn = (state: TodoState): void => {
     setPhoneColumn(state);
     try {
       window.localStorage.setItem(PHONE_COLUMN_KEY, state);
     } catch {
       // Private mode: not remembered.
     }
+  };
+  /** Scrolls the swipeable columns to `state`'s column. */
+  const scrollToColumn = useCallback((state: TodoState, smooth: boolean): void => {
+    const strip = columnsRef.current;
+    const target = strip?.querySelector<HTMLElement>(`[data-board-column="${state}"]`);
+    if (!strip || !target) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    const left = target.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+    strip.scrollTo({ left, behavior: smooth && !reduce ? 'smooth' : 'auto' });
+  }, []);
+  const pickColumn = (state: TodoState): void => {
+    keepColumn(state);
+    scrollToColumn(state, true);
+  };
+  // A phone opens on the kept column.
+  useEffect(() => {
+    if (phone) scrollToColumn(readPhoneColumn(), false);
+  }, [phone, scrollToColumn]);
+  /** The swipe settled on a column: the tab strip follows. */
+  const onSwipe = (): void => {
+    const strip = columnsRef.current;
+    if (!strip) return;
+    let best: TodoState | null = null;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const el of strip.querySelectorAll<HTMLElement>('[data-board-column]')) {
+      const gap = Math.abs(el.getBoundingClientRect().left - strip.getBoundingClientRect().left);
+      if (gap < distance) {
+        distance = gap;
+        best = (el.dataset['boardColumn'] as TodoState | undefined) ?? null;
+      }
+    }
+    if (best && best !== phoneColumn) keepColumn(best);
   };
 
   const machines = useMemo(() => {
@@ -117,8 +152,9 @@ export function TodoBoard({
   }, []);
 
   const columnAt = (x: number, y: number): TodoState | null => {
-    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-board-column]');
-    const state = el?.dataset['boardColumn'];
+    // A column, or (phones) a column's tab.
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-board-column], [data-board-drop]');
+    const state = el?.dataset['boardColumn'] ?? el?.dataset['boardDrop'];
     return state && (BOARD_COLUMNS as readonly string[]).includes(state) ? (state as TodoState) : null;
   };
 
@@ -206,7 +242,6 @@ export function TodoBoard({
   useEffect(() => cancel, [cancel]);
 
   const totals = groups.filter((group) => todoActualsTotalLabel(group.actuals) !== '');
-  const shown = phone ? [phoneColumn] : BOARD_COLUMNS;
 
   return (
     <div className="sb-board" data-testid="todo-board" data-dragging={dragging ? 'true' : undefined} ref={board}>
@@ -272,6 +307,8 @@ export function TodoBoard({
               className="sb-board-pick"
               data-testid={`board-pick-${state}`}
               aria-selected={state === phoneColumn}
+              data-board-drop={state}
+              data-over={over === state ? 'true' : undefined}
               onClick={() => pickColumn(state)}
             >
               {BOARD_COLUMN_LABELS[state]} <span className="sb-board-pick-count">{columns[state].length}</span>
@@ -279,8 +316,8 @@ export function TodoBoard({
           ))}
         </div>
       ) : null}
-      <div className="sb-board-columns" data-columns={shown.length}>
-        {shown.map((state) => (
+      <div className="sb-board-columns" data-swipe={phone ? 'true' : undefined} ref={columnsRef} onScroll={phone ? onSwipe : undefined}>
+        {BOARD_COLUMNS.map((state) => (
           <section
             key={state}
             className="sb-board-column"

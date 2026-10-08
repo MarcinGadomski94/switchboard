@@ -3,7 +3,9 @@ import { TITLE_MAX, shortNameFromTitle } from '../../core/session-title.ts';
 import { todoStartMessage } from '../../core/todos.ts';
 import type { RefusalBody } from '../api/worktree-errors.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
+import { repoSolutionName } from '../folders/ref.ts';
 import { FolderError } from '../folders/service.ts';
+import { WorktreeError } from '../worktrees/manager.ts';
 import type { ApiContext } from '../routes.ts';
 import { type SessionStartContext, startNewSession } from '../sessions/start.ts';
 import { toSession } from '../sessions/wire.ts';
@@ -33,10 +35,13 @@ export function runSlug(title: string): string {
  * D76 · ▸ Run in new session (`docs/todos.md` → *Run in a new session*): starts a new
  * supervised session for item `todoId` of session `sessionId`:
  *
- * - in the source session's folder; in a **repo** folder on its own worktree, on a free
- *   `todo/<slug>` branch cut from the branch (or, detached, the commit) the source session
- *   has checked out; in a workspace or plain folder (not a git repository) in the same
- *   folder without a worktree, and the answer's `note` says so;
+ * - in the source session's folder, on a free `todo/<slug>` branch: in a **repo** folder one
+ *   worktree cut from the branch (or, detached, the commit) the source session has checked
+ *   out; in a **workspace** folder one worktree per solution repo the source session uses
+ *   (its `solutions`), each cut from the source's branch in that repo (its worktree's, else the
+ *   main checkout's), as a Full start with worktrees per solution when the source has the
+ *   router's answers; without such repos, or in a plain folder, in the same folder without a
+ *   worktree, and the answer's `note` says so;
  * - on the source session's CLI, model, effort and account ({@link todoRunOptions});
  * - titled like the item, its first message the item's start message (D75's, with its
  *   "mark it done" line);
@@ -64,24 +69,53 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   const names = new Set((await store.sessions.list()).map((record) => record.name));
   const name = shortNameFromTitle(todo.title, names);
 
-  let ownWorktree: { branch: string; from: string } | undefined;
+  // The source's branch in each repo the run gets a worktree in (D76; ruling D76-workspace: a workspace's solution repos).
+  const from: Record<string, string> = {};
+  const repoPaths: string[] = [];
   let note: string | null = null;
   if (folder.kind === 'repo') {
     const cwd = source.cwd ?? folder.root;
-    const from = (await worktrees.checkedOutBranch(cwd)) ?? (await worktrees.headCommit(cwd));
-    if (from === null) note = "The source session's branch could not be read: the run works in the same folder, without a worktree.";
+    const ref = (await worktrees.checkedOutBranch(cwd)) ?? (await worktrees.headCommit(cwd));
+    if (ref === null) note = "The source session's branch could not be read: the run works in the same folder, without a worktree.";
     else {
-      const slug = runSlug(todo.title);
-      let branch = `${TODO_RUN_BRANCH_PREFIX}${slug}`;
-      for (let n = 2; await worktrees.hasLocalBranch(folder.root, branch); n++) branch = `${TODO_RUN_BRANCH_PREFIX}${slug}-${n}`;
-      ownWorktree = { branch, from };
+      from[repoSolutionName(folder)] = ref;
+      repoPaths.push(folder.root);
     }
+  } else if (folder.kind === 'workspace') {
+    for (const solution of source.solutions) {
+      let repoPath: string;
+      try {
+        repoPath = (await worktrees.resolveRepo(solution, folder)).repoPath;
+      } catch (error) {
+        if (error instanceof WorktreeError) continue;
+        throw error;
+      }
+      // The source's own worktree of that repo (its branch), else the main checkout's.
+      const own = (await store.worktrees.list({ sessionId: source.id, repo: solution }))[0];
+      const dir = own?.path ?? repoPath;
+      const ref = (await worktrees.checkedOutBranch(dir)) ?? (await worktrees.headCommit(dir));
+      if (ref === null) continue;
+      from[solution] = ref;
+      repoPaths.push(repoPath);
+    }
+    if (repoPaths.length === 0) note = "The source session uses no solution repository yet: the run works in the workspace folder, without a worktree.";
   } else {
-    note = `The source session's folder is not a git repository${folder.kind === 'workspace' ? ' (a workspace)' : ''}: the run works in the same folder, without a worktree.`;
+    note = "The source session's folder is not a git repository: the run works in the same folder, without a worktree.";
+  }
+  let ownWorktree: { branch: string; from: Readonly<Record<string, string>> } | undefined;
+  if (repoPaths.length > 0) {
+    // One branch name, free in every repo.
+    const slug = runSlug(todo.title);
+    let branch = `${TODO_RUN_BRANCH_PREFIX}${slug}`;
+    const taken = async (candidate: string): Promise<boolean> => {
+      for (const repoPath of repoPaths) if (await worktrees.hasLocalBranch(repoPath, candidate)) return true;
+      return false;
+    };
+    for (let n = 2; await taken(branch); n++) branch = `${TODO_RUN_BRANCH_PREFIX}${slug}-${n}`;
+    ownWorktree = { branch, from };
   }
 
-  const body = {
-    simple: true,
+  const common = {
     name,
     title: runTitle(todo.title),
     task: todoStartMessage({ id: todo.id, title: todo.title, description: todo.description, plan: todo.plan }),
@@ -92,11 +126,28 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
     profileId: launch.profileId,
     worktrees: false,
   };
+  // A workspace source with the router's answers starts the run as a Full start with the same answers (its first message carries
+  // the session-start block with the worktrees, like a Full start with worktrees per solution); every other one as a simple start.
+  const full = folder.kind === 'workspace' && source.workType !== null && source.mode !== null && source.phase !== null;
+  const body = full
+    ? {
+        ...common,
+        workType: source.workType,
+        mode: source.mode,
+        phase: source.phase,
+        coordination: source.coordination,
+        qa: source.workType === 'qa' && source.qaStack ? { stack: source.qaStack, confluenceUrl: source.qaConfluenceUrl ?? '', figmaUrls: source.qaFigmaUrls } : null,
+        solutions: Object.keys(from),
+        ultracode: source.ultracode,
+      }
+    : { ...common, simple: true };
   let before: TodoRecord | null = null;
   let outcome;
   try {
     outcome = await startNewSession(context, body, {
       ...(ownWorktree ? { ownWorktree } : {}),
+      // The run's branch is todo/<slug> (ownWorktree), never a D32 ticket branch.
+      worktreeBranch: 'session',
       // Linked before the process starts, so its agent can mark the item from its first turn.
       beforeSpawn: async (session) => {
         await store.sessions.update(session.id, { todoLink: { sourceSessionId: sessionId, todoId } });

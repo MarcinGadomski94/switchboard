@@ -138,7 +138,7 @@ for (const size of SIZES) {
       await context.close();
     });
 
-    test('D77 · the Todos board: four columns in the board (tablet), one column with a picker (phone); nothing past the window', async ({ browser }) => {
+    test('D77 · the Todos board: four columns side by side (tablet), swipeable columns with tabs (phone); nothing past the window', async ({ browser }) => {
       const context = await touchContext(browser, size);
       const page = await newTouchPage(context);
       await openPage(page, app.baseUrl, '/todos');
@@ -158,13 +158,29 @@ for (const size of SIZES) {
       await expect(board).toBeVisible();
       await expect(board.getByTestId('todo-item').first()).toBeVisible();
       if (size.width < 768) {
-        // One column at a time: the picker (with counts) chooses it.
-        await expect(board.getByTestId('board-column-picker')).toBeVisible();
-        await expect(board.locator('[data-board-column]')).toHaveCount(1);
+        // Swipeable columns, one per screen width; the tab strip (with counts) follows the swipe and scrolls when tapped.
+        const tabs = board.getByTestId('board-column-picker');
+        await expect(tabs).toBeVisible();
+        await expect(board.locator('[data-board-column]')).toHaveCount(4);
+        const wide = { ...size, height: 100_000 };
+        await expectInsideWindow(board.getByTestId('board-column-open'), wide, 'the Open column');
         await expect(board.getByTestId('board-column-open').getByTestId('todo-item')).toHaveCount(2);
+        // One column per screen: the next one starts past the window's right edge.
+        const next = await board.getByTestId('board-column-in_progress').boundingBox();
+        expect(next?.x ?? 0).toBeGreaterThanOrEqual(size.width - 20);
+        // A tap on a tab scrolls to its column.
         await board.getByTestId('board-pick-in_progress').click();
+        await expect.poll(async () => (await board.getByTestId('board-column-in_progress').boundingBox())?.x ?? -1).toBeLessThan(40);
+        await expectInsideWindow(board.getByTestId('board-column-in_progress'), wide, 'the In progress column');
         await expect(board.getByTestId('board-column-in_progress').getByTestId('todo-item')).toHaveCount(1);
-        await expectInsideWindow(board.getByTestId('board-column-in_progress'), { ...size, height: 100_000 }, 'the column');
+        await expect(board.getByTestId('board-pick-in_progress')).toHaveAttribute('aria-selected', 'true');
+        // A swipe (the strip scrolled sideways) moves the tab with it.
+        await board.locator('.sb-board-columns').evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
+        await expect(board.getByTestId('board-pick-done')).toHaveAttribute('aria-selected', 'true');
+        await expect(board.getByTestId('board-pick-open')).toHaveAttribute('aria-selected', 'false');
+        await board.getByTestId('board-pick-open').click();
+        await expect(board.getByTestId('board-pick-open')).toHaveAttribute('aria-selected', 'true');
+        await expect.poll(async () => (await board.getByTestId('board-column-open').boundingBox())?.x ?? -1).toBeLessThan(40);
       } else {
         await expect(board.getByTestId('board-column-picker')).toHaveCount(0);
         await expect(board.locator('[data-board-column]')).toHaveCount(4);

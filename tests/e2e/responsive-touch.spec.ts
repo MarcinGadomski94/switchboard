@@ -183,6 +183,41 @@ test('D77 · the Todos board: a card held still lifts and goes into another colu
   await context.close();
 });
 
+test('D77 · a phone board: a card held still and dropped on a column tab moves there', async ({ browser }) => {
+  const context = await touchContext(browser, PHONE);
+  const page = await newTouchPage(context);
+  await openPage(page, app.baseUrl, '/todos');
+  const todoId = await page.evaluate(async (session) => {
+    const answer = (await (await fetch(`/api/sessions/${session}/todos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Drag me to a tab' }) })).json()) as { todos: Array<{ id: string; title: string }> };
+    window.localStorage.setItem('sb.todos.view', 'board');
+    window.localStorage.removeItem('sb.todos.boardColumn');
+    return answer.todos.find((todo) => todo.title === 'Drag me to a tab')?.id ?? '';
+  }, 'free-talk-feature');
+  await openPage(page, app.baseUrl, '/todos');
+  const board = page.getByTestId('todo-board');
+  const card = board.locator(`[data-testid="todo-item"][data-todo-id="${todoId}"]`);
+  await card.scrollIntoViewIfNeeded();
+  const finger = await Finger.of(page);
+  const start = await center(card.getByTestId('todo-session-label'));
+  const tab = board.getByTestId('board-pick-done');
+  const target = await center(tab);
+  await finger.down(start);
+  await page.waitForTimeout(550);
+  await expect(board.getByTestId('board-ghost')).toBeVisible();
+  await finger.move(start, target);
+  await expect(tab).toHaveAttribute('data-over', 'true');
+  await finger.up();
+  await expect(board.getByTestId('board-column-done').locator(`[data-todo-id="${todoId}"]`)).toHaveAttribute('data-state', 'done');
+  await page.evaluate(
+    async ({ session, id }) => {
+      await fetch(`/api/sessions/${session}/todos/${id}`, { method: 'DELETE' });
+      window.localStorage.removeItem('sb.todos.view');
+    },
+    { session: 'free-talk-feature', id: todoId },
+  );
+  await context.close();
+});
+
 test('a finger that moves at once scrolls the drawer and never starts a drag', async ({ browser }) => {
   const page = await drawerAt(browser, { name: 'phone', width: 360, height: 760 });
   const sidebar = page.getByTestId('sidebar');
