@@ -18,6 +18,7 @@ import {
   type DeviceAccessState,
   type DeviceHttpsState,
   type DevicePairingCode,
+  type DevicePresenceInput,
   type DeviceSelfView,
   type DevicesView,
   type PushEvents,
@@ -27,6 +28,7 @@ import {
   deviceNameFromUserAgent,
   mergePushEvents,
   readPushEvents,
+  validPresenceClient,
 } from '../../core/devices.ts';
 import { isPort, normalizePairingCode } from '../../core/peers.ts';
 import { LOOPBACK_HOST, type ServerConfig } from '../config.ts';
@@ -49,6 +51,7 @@ import {
 } from './credentials.ts';
 import { isLocalOnly } from './local-only.ts';
 import { isDeviceRequest, markDeviceRequest } from './mark.ts';
+import { DevicePresence } from './presence.ts';
 import { type VapidKeys, generateVapidKeys, validVapidKeys } from './push/crypto.ts';
 import { type PushNotice, PushNotifier } from './push/notifier.ts';
 import { type PushOutcome, sendPush, validSubscription } from './push/sender.ts';
@@ -72,7 +75,9 @@ import { type TailscaleCallOptions, isTailscaleFailure, serveOff, serveOn, serve
  * - **Revoking** deletes the device and destroys its open connections (its `/hub`
  *   stream ends at once).
  * - **Push:** VAPID keys (`<dataDir>/vapid.json`, 0600) and each device's
- *   subscription; {@link PushNotifier} picks the happenings.
+ *   subscription; {@link PushNotifier} picks the happenings. D87: a device with
+ *   Switchboard open in front ({@link DevicePresence}) gets no system
+ *   notification; its page shows the happening as a toast instead.
  *
  * The UI listener (13001) is untouched by all of this.
  */
@@ -185,6 +190,7 @@ export class DeviceService {
   readonly #machineName: () => Promise<string>;
   readonly #fetch: typeof fetch | undefined;
   readonly #notifier: PushNotifier;
+  readonly #presence: DevicePresence;
   #app: FastifyInstance | null = null;
   #server: http.Server | null = null;
   #listening: string | null = null;
@@ -208,6 +214,7 @@ export class DeviceService {
     this.#onError = options.onError ?? ((error) => console.error('switchboard devices:', error));
     this.#machineName = options.machineName ?? (async () => 'this computer');
     this.#fetch = options.fetch;
+    this.#presence = new DevicePresence({ now: this.#now });
     this.#notifier = new PushNotifier({
       bus: options.bus,
       inbox: async () => [...(await listInbox(this.#store)), ...(options.remoteInbox?.() ?? [])],
@@ -556,6 +563,7 @@ export class DeviceService {
     const removed = await this.#store.devices.delete(id);
     if (!removed) throw new DeviceError(404, 'not-found', 'no such device');
     this.#seen.delete(id);
+    this.#presence.forget(id);
     const sockets = this.#deviceSockets.get(id);
     this.#deviceSockets.delete(id);
     for (const socket of sockets ?? []) socket.destroy();
@@ -703,13 +711,49 @@ export class DeviceService {
     return this.#vapid;
   }
 
-  /** Sends a notice to every device whose toggle for its kind is on (only while device access is on). */
+  // ── D87 presence ──────────────────────────────────────────────────────
+
+  /**
+   * `PUT /api/device/presence` `{ client, visible, focused? }`: one open page of
+   * this device says whether it is in front. Answered 204 on this machine's own UI
+   * too (`device` = `null`: nothing recorded; the desktop gets no push).
+   */
+  reportPresence(device: DeviceRecord | null, body: unknown): void {
+    const input = (typeof body === 'object' && body !== null && !Array.isArray(body) ? body : null) as Partial<DevicePresenceInput> | null;
+    if (!input || !validPresenceClient(input.client) || typeof input.visible !== 'boolean' || (input.focused !== undefined && typeof input.focused !== 'boolean')) {
+      throw new DeviceError(422, 'invalid', 'the body must be { client: 8–64 of A–Z a–z 0–9 _ -, visible: boolean, focused?: boolean }');
+    }
+    if (!device) return;
+    this.#presence.report(device.id, input.client, { visible: input.visible, focused: input.focused === true });
+  }
+
+  /**
+   * A `/hub` stream of a device page opened (`/hub?client=<id>`); the returned
+   * function is called when it closes (the page counts as not in front then).
+   * `null` when the request is not a device's or names no usable client.
+   */
+  hubConnected(device: DeviceRecord | null, client: unknown): (() => void) | null {
+    if (!device || !validPresenceClient(client)) return null;
+    return this.#presence.connect(device.id, client);
+  }
+
+  /** `true` while the device has Switchboard open in front (D87). */
+  inFront(deviceId: string): boolean {
+    return this.#presence.inFront(deviceId);
+  }
+
+  /**
+   * Sends a notice to every device whose toggle for its kind is on (only while
+   * device access is on), except (D87) the devices with Switchboard open in front:
+   * their page shows the `/hub` `notice` as a toast. A skipped notice is not kept
+   * for later (it was seen in the app).
+   */
   async deliver(notice: PushNotice): Promise<void> {
     if (!(await this.#accessSetting()).enabled) return;
     const subscriptions = await this.#store.devices.pushList();
     await Promise.all(
       subscriptions
-        .filter((record) => readPushEvents(record.events)[notice.kind])
+        .filter((record) => readPushEvents(record.events)[notice.kind] && !this.#presence.inFront(record.deviceId))
         .map((record) => this.#deliverTo(record.deviceId, notice.payload, notice.urgency)),
     );
   }

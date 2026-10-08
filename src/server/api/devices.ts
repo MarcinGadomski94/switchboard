@@ -23,6 +23,9 @@ import type { ApiContext } from '../routes.ts';
  * - `PUT /api/device/push` `{ subscription?, events? }` → DeviceSelfView, `DELETE /api/device/push`;
  * - `POST /api/device/push/test` → `{ ok, error? }`.
  *
+ * Any UI (D87; recorded for a paired device only, this machine's UI gets 204 too):
+ * - `PUT /api/device/presence` `{ client, visible, focused? }` → 204 · 422 `invalid`.
+ *
  * Device listener without a credential:
  * - `GET /pair` → the pairing page; `POST /device/v1/pair` `{ code, name? }` → 201 `{ device }` + the credential cookie.
  */
@@ -71,6 +74,7 @@ export async function registerDeviceRoutes(app: FastifyInstance, context: ApiCon
     if (!device) return reply;
     return run(reply, () => devices.deletePush(device));
   });
+  app.put('/api/device/presence', async (request, reply) => run(reply, async () => devices.reportPresence(request.device, request.body), 204));
   app.post('/api/device/push/test', async (request, reply) => {
     const device = deviceOf(request, reply);
     if (!device) return reply;

@@ -14,7 +14,7 @@
  * the UI needs (system / usage, settings, CLIs, accounts, machines, tools and
  * their probes, MCP and hooks status, updates), the UI preferences
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
- * and notifications, and (D79) the review cards with Merge, Open PR, Commit, Send
+ * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
  * tutorial's state (read it, mark a tour seen).
  *
@@ -98,6 +98,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET|PUT', /^\/api\/device$/],
   ['PUT|DELETE', /^\/api\/device\/push$/],
   ['POST', /^\/api\/device\/push\/test$/],
+  // D87: this device's open page says whether it is in front (no system notifications meanwhile).
+  ['PUT', /^\/api\/device\/presence$/],
 ];
 
 /**

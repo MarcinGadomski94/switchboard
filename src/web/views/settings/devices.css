@@ -33,3 +33,8 @@
 .sb-dev-test {
   padding: 12px 0;
 }
+
+/* D87: the note above the toggles. */
+.sb-dev-quiet {
+  padding: 8px 0 4px;
+}
