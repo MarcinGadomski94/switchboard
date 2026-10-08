@@ -1091,6 +1091,33 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Clean-up (D84, 2026-10-08, additive)
+Developer ruling D84 (`docs/decisions.md`, `docs/cleanup.md`): Settings → Clean-up lists what Switchboard created and no longer needs and removes only what the developer ticks and confirms. Types: `src/core/cleanup.ts`. No migration (the closed-session limit and the created-branches record are settings values). **This machine only:** every route answers a peer request 403 `peer-forbidden` (not on `PEER_API_ALLOW`) and a paired device 403 `local-only` (`DEVICE_REFUSED`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/cleanup | — | 200 CleanupScan `{ scannedAt, closedSessionDays, staleDays, items: CleanupItem[], notes: string[] }` (the dry run; changes nothing, no network) |
+| PUT | /api/cleanup/settings | `{ closedSessionDays }` (whole number 1–3650) | 200 `{ closedSessionDays }` · 422 `invalid` |
+| POST | /api/cleanup/runs | `{ items: [{ id, fingerprint, confirm? }] }` (≥ 1, distinct ids; `confirm` = `uncommitted` \| `unmerged` \| `remote`) | 202 CleanupRun · 422 `invalid` · 422 `confirmation-required` (`items`: the ids that need one; nothing runs) · 409 `busy` |
+| GET | /api/cleanup/runs/{runId} | — | 200 CleanupRun · 404 `not-found` |
+
+`CleanupItem`: `{ id, group: worktrees | localBranches | remoteBranches | sessions | data, title, subtitle, reasons: CleanupReason[], sizeBytes: number | null, sizeCapped, lastChangeAt: string | null, removes: string[], keeps: string[], warnings: [{ kind: CleanupConfirm, message, files: string[] }], confirm: CleanupConfirm | null, selected, fingerprint }`. `CleanupRun`: `{ id, startedAt, finishedAt: string | null, items: [{ id, group, title, status: pending | running | done | failed, error: string | null, sizeBytes: number | null }], summary: { done, failed, freedBytes } }`. A run re-scans; an item no longer listed or whose fingerprint changed fails alone ("changed since the preview: scan again"); every other item still runs.
+
+```json
+POST /api/cleanup/runs
+{ "items": [
+  { "id": "wt:5d0c…", "fingerprint": "8e1f0a2b3c4d5e6f" },
+  { "id": "rb:91ab…", "fingerprint": "0a9b8c7d6e5f4a3b", "confirm": "remote" }
+] }
+→ 202
+{ "id": "c1f2…", "startedAt": "2026-10-08T18:23:35.000Z", "finishedAt": null,
+  "items": [
+    { "id": "wt:5d0c…", "group": "worktrees", "title": "/Users/me/src/web-front-wt-free-talk", "status": "pending", "error": null, "sizeBytes": null },
+    { "id": "rb:91ab…", "group": "remoteBranches", "title": "origin/session/free-talk", "status": "pending", "error": null, "sizeBytes": null }
+  ],
+  "summary": { "done": 0, "failed": 0, "freedBytes": 0 } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

@@ -407,6 +407,9 @@ The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line pe
 ### Restarts and recovery
 When Switchboard starts, sessions that were live are resumed (Claude Code: `claude --resume`) and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
 
+### Clean-up
+**Settings → Clean-up** lists what Switchboard created and no longer needs, grouped, with sizes and ages: worktrees whose branch is merged or whose closed session saw no change for 14 days (or whose folder is gone), its own `session/…` / `todo/…` and recorded branches that are merged or orphaned, branches it pushed (take-over leftovers, merged session branches), closed sessions older than 30 days (configurable) and old attachments and data files. It is a dry run: each item shows exactly what goes. **Clean up selected** asks for an extra confirmation for uncommitted changes, unmerged branches and remote branches (never ticked for you), then shows the progress and a result; a failure affects nothing else. Nothing that Switchboard did not create is ever listed, and it never runs `git gc`. This machine only, desktop only. Details: `docs/cleanup.md`.
+
 ### Install as an app
 Switchboard can run in its own app window with a Dock icon (a PWA):
 - **Chrome:** Settings → Claude Code → **Install as app**, or the install icon in the address bar.

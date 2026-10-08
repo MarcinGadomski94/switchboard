@@ -88,6 +88,9 @@ Whenever the developer creates a worktree (a new session with Worktree on, in a 
 - **Where:** `NewSession.branch` / `NewRepoSession.branch` (required with `worktrees: true`, not read without; `src/server/sessions/validate.ts`, rule `ticket`) and `IsolateRequest.branch` (`src/server/api/solutions.ts`). The worktree record stores the branch, so everything that shows it (the answers block and the repo worktree note of the first message, the move message, the Diff tab, Solutions' branch chips and cards, Artifacts, the right panel, toasts, the "PR merged" Inbox item, the pull request check `gh pr view <branch>`) names the ticket branch without further change.
 - **Unchanged:** the worktree folder (`../{repo}-wt-{name}`, the short name), scheduled runs (`startNewSession(…, { worktreeBranch: 'session' })`: every run gets its own `session/{run name}`; a schedule template's `branch` is dropped when it is saved) and teleports (D25: `session/{name}`, then the CLI checks out the remote branch).
 
+## Created branches (D84)
+Whenever the manager runs `git worktree add -b` itself (a session's `session/{name}`, a new D40 task branch, a new local branch tracking `origin/<task>`), it records `{ repoPath, branch, kind: new | tracking }` in the settings value `cleanup.createdBranches` (`src/server/cleanup/created-branches.ts`). A reused local branch is not recorded. Clean-up (`docs/cleanup.md`) uses the record to tell Switchboard's branches from the developer's.
+
 ## Remove (gap #3)
 `remove(worktreeId)` (the Inbox "Remove worktree" action, M3.3):
 - **uncommitted** = any line of `git status --porcelain --untracked-files=all` in the worktree (modified, staged or untracked) → refused, `409 uncommitted`;

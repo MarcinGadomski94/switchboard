@@ -739,6 +739,16 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **ASSUMED / OPEN:** `.loop/questions.md` → *D75 · Todo progress*.
   - Details: `docs/todos.md` → *In progress (D75)*; `docs/handoff/contracts/local-api.md` → *Todo in progress and ▶ Start that sends (D75)*; `docs/database.md` (0031); `docs/settings.md` (`sessions.todoReminder`).
 
+## Clean-up (added 2026-10-08)
+- **D84 Clean-up page: Switchboard's own leftovers, listed with sizes and ages, removed only when ticked and confirmed.** Developer rulings 2026-10-08. Groups: worktrees (merged, closed/deleted session + no change for 14 days, folder missing; uncommitted changes need an extra confirmation listing the files), local branches (`session/*`, `todo/*`, D40/D47 branches marked Switchboard-created; merged or worktree / session gone; unmerged ones need an extra confirmation), remote branches (take-over leftovers, branches Switchboard made and pushed; never ticked by default, each ticked by hand, separate confirmation), closed sessions older than 30 days (configurable) with their events and attachments, attachments / data files past retention. Dry run first; **Clean up selected** shows progress and a result; failures are listed and nothing else is affected. Never `git gc`.
+  - **Where (choice recorded):** Settings → **Clean-up**, the last section (`/settings/cleanup`); it is occasional, so no sidebar entry.
+  - **Switchboard-created (choice recorded):** worktrees = live `worktrees` rows (adopted D38 ones included: made by a Switchboard session's agent); branches = named in a `worktrees` row with `session/` / `todo/` naming, or in the new **created-branches record** (`cleanup.createdBranches`, a settings value like the take-over leftovers, **no migration**) that the worktree manager now writes whenever it runs `git worktree add -b` itself (`new`; `tracking` when the new local branch tracks an existing `origin/<task>`, whose remote copy is then not Switchboard's). A reused or picked branch is never recorded; D40 branches created before this version are not listed unless named `session/` / `todo/`.
+  - **Dry run equals the run:** each item carries a fingerprint; a run re-scans and refuses (that item only) anything that changed since the preview. Branch deletes are pinned to the previewed sha (`git update-ref -d <ref> <sha>`, `git push --force-with-lease=<ref>:<sha> … :<ref>`).
+  - **Peers (choice recorded): this machine only.** Proxying would add destructive routes to the peer API for a rare task; a paired machine is cleaned on its own Switchboard.
+  - **Devices:** refused (`DEVICE_REFUSED`). **No scheduled clean-up** in this version.
+  - **Open-session worktrees** are listed only once their PR is merged (a fresh worktree is trivially "merged" into its base); a running session's worktrees and sessions are never listed.
+  - **ASSUMED / OPEN:** `.loop/questions.md` → *D84 · Clean-up*. Details: `docs/cleanup.md`, `docs/handoff/contracts/local-api.md` → *Clean-up (D84)*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

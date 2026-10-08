@@ -37,6 +37,7 @@ Values the API cannot tell read **unknown** (never invented).
 - **Machines** (D48): `docs/peers.md`.
 - **Devices** (D73, after Machines, `/settings/devices`): on this machine the device access switch, Pair a device (QR code + one-time code) and the paired devices (Rename, Revoke); on a paired device its name and notifications. `docs/devices.md`.
 - **Updates** (D55, after Machines, `/settings/updates`): `GET /api/updates`: Version, Install (release install / git checkout + folder), Last check, Latest release, Restart (automatic / by hand), Previous version (after an update); **Check for updates**, **Update to <v>…** (a release install with a newer release), the git commands (a git checkout), the release notes as Markdown, an error line. Off (the demo, `SWITCHBOARD_UPDATES=off`): "Updates are off here". `docs/updates.md` → *The UI*.
+- **Clean-up** (D84, last, `/settings/cleanup`): Switchboard's own leftovers (worktrees, branches, remote branches, old closed sessions, old data files) as a checklist with sizes, ages and what goes; the closed-session limit (`PUT /api/cleanup/settings`); **Clean up selected** with its confirmations, progress and result. Desktop only. `docs/cleanup.md`.
 
 ## Demo
 The demo seed stores `service.startAtLogin: true` (`src/server/demo/data/setup.json` → `settings`), so Claude Code shows the prototype's "Start at login · on".

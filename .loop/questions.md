@@ -1615,6 +1615,20 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D75-strip-collapsed · a strip opened through **+ Todo** is not remembered as expanded (unchanged D68 behavior); the e2e opens it again after the Todos page's **Open**.
 - VERIFIED D75-esc-menu · Esc in a card's ⋯ menu used to stop the running turn too (D50's capture-phase Esc did not count a `role="menu"`); fixed, covered in tests/e2e/todos.spec.ts.
 
+## D84 · Clean-up (2026-10-08)
+- ASSUMED D84-where · Settings → Clean-up (last section), not a sidebar entry: the ruling allowed either; it is occasional.
+- ASSUMED D84-adopted · worktrees the agent of a Switchboard session created and Switchboard adopted (D38) count as Switchboard's (they have a `worktrees` row); the developer's own hand-made worktrees have none and are never listed.
+- ASSUMED D84-marker · "marked as Switchboard-created" is a new settings value `cleanup.createdBranches` written by the worktree manager on its own `git worktree add -b` (no migration). Branches from before this version are recognized only by `session/` / `todo/` naming plus a `worktrees` row; older D40 task branches with ticket names are therefore not listed.
+- ASSUMED D84-session-data · a branch "recorded in session data" means named in a `worktrees` row (which survives the session's deletion); `sessions.branch` alone names no repo, so it is not used.
+- ASSUMED D84-open-session · an open (not closed) session's worktree is listed only when its PR is `MERGED` (ancestry alone would list every fresh worktree); a running session's worktrees and the session itself are never listed.
+- ASSUMED D84-stale · "no changes for 14 days" = the newest of the last commit, uncommitted files' modification times, the session's last activity and its closing.
+- ASSUMED D84-remote-read · remote branches are read from the remote-tracking refs of the last fetch (a scan never touches the network); the delete is pinned to the previewed sha with `--force-with-lease`, so a branch that moved on the remote is refused.
+- ASSUMED D84-data · "previews / orphaned data files" = attachment rows past 30 days (normally already pruned at start), files in `attachments/` no row owns, folders of deleted sessions, `handovers/` exports untouched for 30 days, `takeover/` staging folders of no running operation untouched for a day. Nothing else in the data folder is touched.
+- ASSUMED D84-limit-setting · the closed-session limit is its own key (`cleanup.closedSessionDays`, `PUT /api/cleanup/settings`), not part of `PUT /api/settings` (keeps it off the device-allowed settings write).
+- ASSUMED D84-peers · this machine only (the ruling's fallback): proxying destructive clean-up to a paired machine was judged too costly for a rare task.
+- ASSUMED D84-run-memory · runs are kept in memory (last ten); a restart during a run loses its progress view (each finished step already happened).
+- OPEN D84-old-task-branches · should ticket-named D40/D47 task branches created before this version be listable (e.g. when a removed `worktrees` row names them and their PR is merged)? Today they are left alone.
+
 ## Stabilize 1.4.0 (2026-10-01)
 - VERIFIED stabilize-stale-tests · stale tests, code as decided: `tests/core/stop-turn.test.ts` (D57: withdrawn entries carry `attachments`), `tests/server/inbox/inbox-list.test.ts` (D55: `update-available` label), `tests/web/model-picker.test.ts` (long messages: chat items carry `cut`), `tests/e2e/shell.spec.ts` (D62: `/api/clis` is a real route, no longer 501), `tests/e2e/visual/tools.spec.ts` (D61: the TOOLS rows compared with y relative to the TOOLS label, as visual/shell does)
 - VERIFIED stabilize-peer-listener · regression (since D62 P5): `tests/e2e/peer-reconnect.spec.ts` failed every run (bisected: green at 2b625d6, red from ad836bb). Stopping the peer listener waited for open connections; a proxied read in flight (the session header's peer `/api/clis`) kept its keep-alive socket and the peer's hellos reused it and got 503 for ~20 s, past the grace. Fix: the peer app force-closes connections on close; regression test in tests/server/peers/reconnect-world.test.ts (fails without the fix)
