@@ -24,6 +24,7 @@ import type { QueuedReason } from './event-payload.ts';
 import type { MachineStateEvent, SessionMachine } from './peers.ts';
 import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
+import type { DeviceNotice } from './devices.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -2145,6 +2146,15 @@ export interface HubEvents {
    * session id).
    */
   readonly reviewsChanged: { readonly sessionId: string };
+  /**
+   * Additive (D87, `docs/devices.md`): a push-worthy happening (a permission
+   * request, a question batch, a finished turn, a session error, a review card,
+   * another Inbox item; this machine's and the paired machines'), the same one the
+   * devices' web push carries. A paired device's open pages show it as a toast
+   * (a device with Switchboard open in front gets no system notification). This
+   * machine's only: never forwarded between peers.
+   */
+  readonly notice: DeviceNotice;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2177,6 +2187,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'todosChanged',
   'reviewResolved',
   'reviewsChanged',
+  'notice',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

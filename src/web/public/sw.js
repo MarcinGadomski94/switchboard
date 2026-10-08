@@ -21,6 +21,8 @@
  *
  * D73: it also shows web push notifications on paired devices (`push`,
  * `notificationclick`, `pushsubscriptionchange` at the end of this file).
+ * D87: not while a Switchboard page of this origin is visible: the page gets the
+ * payload as a message and shows its toast instead (`pushDecision`).
  */
 
 /** Bump when offline.html changes: a new version re-caches it and drops the old cache. */
@@ -154,8 +156,63 @@ function safePath(url) {
   return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') && !url.includes('\\') ? url : '/';
 }
 
+/**
+ * D87 (docs/devices.md → No notifications while Switchboard is open): what to do
+ * with a push, given the windows of this worker's clients. The server already
+ * sends no push to a device with Switchboard open in front; this is the guard for
+ * the moments in between (a page that came to the front after the server sent).
+ *
+ * - `show`: no window of this origin is visible, or the payload is the test
+ *   notification (asked for from the open page on purpose), or the browser
+ *   requires a notification for every push (`mustShow`, WebKit: Safari and every
+ *   iOS / iPadOS browser revoke a subscription whose pushes show nothing);
+ * - `post`: the visible windows of this origin get the payload as a message
+ *   (`{ type: 'switchboard-notice', notice }`) and the page shows a toast (deduped
+ *   by the payload's id with the `/hub` `notice` it may have had already).
+ *
+ * Chromium allows the skip: its userVisibleOnly check
+ * (`PushMessagingNotificationManager::EnforceUserVisibleOnlyRequirements`) asks for
+ * no notification while a tab of the origin is visible; Firefox counts a push
+ * without a notification against a per-origin quota that a visit refills.
+ * @template {{ readonly url: string, readonly visibilityState: string }} C
+ * @param {readonly C[]} windows the worker's window clients (`includeUncontrolled`)
+ * @param {string} origin this worker's origin
+ * @param {{ kind?: unknown }} data the decrypted payload
+ * @param {boolean} mustShow the browser wants a notification for every push
+ * @returns {{ action: 'show' } | { action: 'post', clients: C[] }}
+ */
+function pushDecision(windows, origin, data, mustShow) {
+  if (mustShow || data.kind === 'test') return { action: 'show' };
+  const visible = windows.filter((client) => client.visibilityState === 'visible' && sameOrigin(client.url, origin));
+  return visible.length > 0 ? { action: 'post', clients: visible } : { action: 'show' };
+}
+
+/**
+ * @param {string} url
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function sameOrigin(url, origin) {
+  try {
+    return new URL(url).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * D87: `true` for WebKit (Safari, and every browser on iOS / iPadOS): a push there
+ * must always show a notification. Chromium (Chrome, Edge, Samsung Internet, …)
+ * names `Chrome/` and Android browsers `Android`; Firefox has no `AppleWebKit/`.
+ * @param {string} userAgent
+ * @returns {boolean}
+ */
+function webKitPush(userAgent) {
+  return /AppleWebKit\//.test(userAgent) && !/Chrome\/|Chromium\/|Android/.test(userAgent);
+}
+
 worker.addEventListener('push', (event) => {
-  /** @type {{ title?: unknown, body?: unknown, url?: unknown, tag?: unknown }} */
+  /** @type {{ title?: unknown, body?: unknown, url?: unknown, tag?: unknown, kind?: unknown, id?: unknown }} */
   let data = {};
   try {
     data = event.data ? /** @type {typeof data} */ (event.data.json()) : {};
@@ -171,7 +228,23 @@ worker.addEventListener('push', (event) => {
     data: { url: safePath(data.url) },
   };
   if (typeof data.tag === 'string' && data.tag) options.tag = data.tag;
-  event.waitUntil(worker.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      /** @type {readonly WindowClient[]} */
+      let windows = [];
+      try {
+        windows = await worker.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      } catch {
+        windows = [];
+      }
+      const decision = pushDecision(windows, worker.location.origin, data, webKitPush(worker.navigator?.userAgent ?? ''));
+      if (decision.action === 'post') {
+        for (const client of decision.clients) client.postMessage({ type: 'switchboard-notice', notice: data });
+        return;
+      }
+      await worker.registration.showNotification(title, options);
+    })(),
+  );
 });
 
 worker.addEventListener('notificationclick', (event) => {

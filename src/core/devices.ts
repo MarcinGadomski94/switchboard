@@ -142,6 +142,45 @@ export interface PushPayload {
   /** Replaces an earlier notification with the same tag. */
   readonly tag: string;
   readonly kind: PushEventKind | 'test';
+  /**
+   * D87: this happening's id (the `/hub` `notice` carries the same one), so a page
+   * that gets it both from the hub and from its service worker shows one toast.
+   * Absent on the test notification.
+   */
+  readonly id?: string;
+}
+
+/**
+ * D87 (`docs/devices.md` → *No notifications while Switchboard is open*): the
+ * `/hub` `notice` event: a happening that is push-worthy (what {@link PushPayload}
+ * carries, with its id). Open pages of a paired device show it as a toast (when
+ * that device's toggle for the kind is on), because a device with Switchboard
+ * open in front gets no system notification for it.
+ */
+export interface DeviceNotice extends PushPayload {
+  readonly kind: PushEventKind;
+  readonly id: string;
+}
+
+/** D87: a visible page reports itself at least this often (`PUT /api/device/presence`). */
+export const PRESENCE_HEARTBEAT_MS = 30_000;
+
+/** D87: a page whose last report is older than this counts as not visible (its heartbeat lapsed). */
+export const PRESENCE_LAPSE_MS = 75_000;
+
+/** D87: body of `PUT /api/device/presence`: one open page of this device and whether it is in front. */
+export interface DevicePresenceInput {
+  /** The page's own id (random per page load; the same one its `/hub?client=` stream names). */
+  readonly client: string;
+  /** `document.visibilityState === 'visible'`. */
+  readonly visible: boolean;
+  /** `document.hasFocus()` (recorded; not needed for "open in front"). */
+  readonly focused?: boolean;
+}
+
+/** D87: `true` for a usable page id (8–64 characters of `A–Z a–z 0–9 _ -`). */
+export function validPresenceClient(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(value);
 }
 
 /** Longest notification body. */

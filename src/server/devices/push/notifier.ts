@@ -1,5 +1,5 @@
 import type { InboxItem, Session } from '../../../core/api.ts';
-import { type PushEventKind, type PushPayload, shortText } from '../../../core/devices.ts';
+import { type DeviceNotice, type PushEventKind, type PushPayload, shortText } from '../../../core/devices.ts';
 import type { HubBus, HubMessage } from '../../hub/bus.ts';
 
 /**
@@ -21,9 +21,12 @@ import type { HubBus, HubMessage } from '../../hub/bus.ts';
  *   (it went idle after working);
  * - **errors**: a session's status becomes `fail`.
  *
- * Each becomes a short payload (title, body ≤ 140 characters, deep link, tag);
+ * Each becomes a short payload (title, body ≤ 140 characters, deep link, tag, and
+ * (D87) an id); it is published on the bus as the `/hub` `notice` event (a paired
+ * device's open pages show it as a toast), then
  * {@link PushNotifierOptions.deliver} sends it to every device whose toggle for the
- * kind is on.
+ * kind is on and that does not have Switchboard open in front (D87, the device
+ * service decides).
  */
 
 /** An Inbox item is announced only when created within this long (a reconnect's old items are not news). */
@@ -108,6 +111,7 @@ export class PushNotifier {
   #inboxRun: Promise<void> = Promise.resolve();
   #inboxAgain = false;
   #inboxQueued = false;
+  #sequence = 0;
   #unsubscribe: (() => void) | null = null;
 
   constructor(options: PushNotifierOptions) {
@@ -197,6 +201,10 @@ export class PushNotifier {
   }
 
   #send(notice: PushNotice): void {
-    this.#options.deliver(notice).catch((error: unknown) => this.#onError(error));
+    // D87: one id per happening, shared by the hub's `notice` and the push (a page that gets both shows one toast).
+    this.#sequence += 1;
+    const payload: DeviceNotice = { ...notice.payload, kind: notice.kind, id: `${notice.payload.tag}:${this.#now().toString(36)}:${this.#sequence.toString(36)}` };
+    this.#options.bus.publish('notice', payload);
+    this.#options.deliver({ ...notice, payload }).catch((error: unknown) => this.#onError(error));
   }
 }

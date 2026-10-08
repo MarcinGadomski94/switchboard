@@ -169,7 +169,8 @@ describe('D73 push delivery', () => {
     w.bus.publish('sessionUpdated', session('s1', 'run'));
     w.bus.publish('sessionUpdated', session('s1', 'idle'));
     const turn = (await fake.waitFor(2))[1];
-    expect(turn?.payload).toEqual({ kind: 'turnFinished', title: 'web finished', body: 'The turn is done; the session is waiting for you.', url: '/sessions/s1', tag: 'session-s1' });
+    // D87: with the happening's id (the same one the `/hub` `notice` carries).
+    expect(turn?.payload).toEqual({ kind: 'turnFinished', title: 'web finished', body: 'The turn is done; the session is waiting for you.', url: '/sessions/s1', tag: 'session-s1', id: expect.stringMatching(/^session-s1:/) });
     // An error.
     w.bus.publish('sessionUpdated', session('s1', 'fail'));
     expect((await fake.waitFor(3))[2]?.payload).toMatchObject({ kind: 'errors', url: '/sessions/s1' });

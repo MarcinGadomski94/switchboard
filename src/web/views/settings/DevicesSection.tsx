@@ -342,6 +342,10 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
       </Row>
       {enabled ? (
         <div className="sb-dev-events" data-testid="device-push-events">
+          {/* D87: a device with Switchboard open in front gets toasts, not system notifications. */}
+          <div className="sb-set-row-desc sb-dev-quiet" data-testid="device-push-quiet">
+            No notifications while Switchboard is open on this device.
+          </div>
           {PUSH_EVENT_KINDS.map((kind) => (
             <div className="sb-set-row" data-row={`push-${kind}`} key={kind}>
               <div className="sb-set-row-text">

@@ -11,9 +11,12 @@ import './styles/responsive/index.css';
 // worker that shows the offline page.
 import './pwa/app-install.ts';
 import { registerServiceWorker } from './pwa/service-worker.ts';
+// D87 (docs/devices.md): the page says whether it is in front (no system notifications on a device meanwhile).
+import { startPresence } from './pwa/presence-page.ts';
 import { loadPaneState } from './shell/Panes.tsx';
 
 if (import.meta.env.PROD) registerServiceWorker();
+startPresence();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Switchboard: #root element missing from index.html');

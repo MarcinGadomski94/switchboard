@@ -1,5 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { HUB_EVENT_NAMES, type HubEventName, type HubEvents } from '../../core/api.ts';
+import { pageClientId } from '../pwa/presence.ts';
+import { presenceHubOpened } from '../pwa/presence-page.ts';
 
 /**
  * Client of the `/hub` Server-Sent Events stream (D5, contract → Event hub). One
@@ -7,7 +9,9 @@ import { HUB_EVENT_NAMES, type HubEventName, type HubEvents } from '../../core/a
  * closed after the last one leaves. Payloads are one line of camelCase JSON per
  * event. The browser reconnects by itself after a dropped stream; when the server
  * refuses the stream (non-200, e.g. before M2.3 lands), the client retries with a
- * backoff of 2 s doubling up to 60 s.
+ * backoff of 2 s doubling up to 60 s. D87: the stream names the page
+ * (`/hub?client=<id>`, `pwa/presence.ts`): on a paired device the server knows the
+ * page is gone once its stream drops.
  */
 
 type Handler<K extends HubEventName> = (payload: HubEvents[K]) => void;
@@ -45,11 +49,12 @@ function dispatch(name: HubEventName, raw: string): void {
 function open(): void {
   if (source || subscribers === 0) return;
   setStatus('connecting');
-  const es = new EventSource('/hub', { withCredentials: true });
+  const es = new EventSource(`/hub?client=${encodeURIComponent(pageClientId())}`, { withCredentials: true });
   source = es;
   es.onopen = () => {
     retryMs = RETRY_MIN_MS;
     setStatus('open');
+    presenceHubOpened();
   };
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED) {

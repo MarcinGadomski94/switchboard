@@ -831,6 +831,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Devices:** `GET /api/tutorial` and `PUT /api/tutorial/tours/{id}` are normal use (`DEVICE_ALLOWED`). Not on the peer API.
   - Details: `docs/tutorial.md`, `docs/handoff/contracts/local-api.md` → *Tutorial (D85)*; ASSUMED items: `.loop/questions.md` → *D85 · Tutorial*.
 
+## No notifications while Switchboard is open (added 2026-10-08)
+- **D87 No system notifications on a device while Switchboard is in front there; a toast instead.** Developer report 2026-10-08 ("On mobile, even if I am in the browser and in the conversations, I'm getting notifications in the Android system — it shouldn't happen when I'm in the app; only the notifications that show as a toast should appear"). Until now every push-worthy happening went to every subscribed device (D73), whatever the device was showing.
+  - **Presence:** each page (tab or installed app, device origins and this machine's UI) reports `visible` / `focused` (`PUT /api/device/presence`) on visibility and focus changes, on `pagehide`, when its hub stream (re)opens and every 30 s while visible; its `/hub?client=<id>` stream ties it to the page. Recorded per paired device, in memory (no migration): a page is in front while its last report said visible, at most 75 s ago, and its stream is open. Devices only (the desktop gets no push).
+  - **Server suppression:** a device with ≥ 1 page in front gets no push (this machine's and the paired machines' happenings alike). Happenings that occur while it is in front are **not queued** and sent later when it goes to the background (they were seen in the app). The test notification is always sent.
+  - **Toasts:** every push-worthy happening is published as the `/hub` `notice` event (the push payload plus an id); a paired device's page shows it as a toast (permission requests, finished turns, errors, review cards, other Inbox items; question batches keep the M3.4 question toast), once per id, per the device's toggles. This machine's own UI is unchanged.
+  - **Service-worker guard:** a push that arrives while a window of the origin is visible is posted to that window (toast, deduped by id) instead of shown, except the test notification and on WebKit (Safari / iOS, where a silent push can cost the subscription). Relies on Chromium's userVisibleOnly rule: no notification is required while a tab of the origin is visible.
+  - Settings → Devices (the device's own page) says *No notifications while Switchboard is open on this device*.
+  - Details: `docs/devices.md` → *Notifications*, `docs/handoff/contracts/local-api.md` → *Devices (D73)*; ASSUMED items: `.loop/questions.md` → *D87 · Quiet pushes*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
