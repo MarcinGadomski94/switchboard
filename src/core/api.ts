@@ -2248,8 +2248,18 @@ export interface ProfilePinInput {
   readonly pinned: boolean;
 }
 
-/** D68 (`docs/todos.md`): an item's state. */
-export type TodoState = 'open' | 'done';
+/**
+ * D68 (`docs/todos.md`): an item's state. D75: `in_progress` between open and done
+ * (several items may be in progress at once; they keep their place in the priority order).
+ */
+export type TodoState = 'open' | 'in_progress' | 'done';
+
+/**
+ * D75: how an item went in progress: `start` = the developer's ▶ Start (which sends the
+ * start message), `agent` = the agent's `todo_start`, `developer` = ⋯ → Mark in progress.
+ * Only `start` and `agent` arm the finish reminder.
+ */
+export type TodoStartSource = 'start' | 'agent' | 'developer';
 
 /** D68: who added an item: the developer (the UI) or the session's agent (the `switchboard` MCP tools). */
 export type TodoAuthor = 'developer' | 'agent';
@@ -2291,14 +2301,21 @@ export interface SessionTodo {
   readonly doneAt: string | null;
   /** When a done item is removed by itself (`doneAt` + 1 hour); `null` while open. */
   readonly removeAt: string | null;
+  /** D75: when it went in progress (kept while done; `null` while open, and from an older peer). */
+  readonly startedAt?: string | null;
+  /** D75: how it went in progress ({@link TodoStartSource}); `null` like {@link startedAt}. */
+  readonly startedBy?: TodoStartSource | null;
 }
 
 /** D68: `GET /api/sessions/{id}/todos` and the answer of every write under it: the whole list in order. */
 export interface SessionTodoList {
   readonly sessionId: string;
   readonly todos: readonly SessionTodo[];
+  /** Items not done yet: D75, open and in progress together (the sidebar's ☐ count). */
   readonly openCount: number;
   readonly doneCount: number;
+  /** D75 (additive): the items in progress (part of {@link openCount}); absent from an older peer. */
+  readonly inProgressCount?: number;
 }
 
 /** D68: one session's group on the Todos page (`GET /api/todos`): its open items, and its done ones (still shown until removed). */
@@ -2344,6 +2361,7 @@ export interface TodoPatchInput {
   readonly priority?: TodoPriority;
   /** D70: `null` removes the estimate. */
   readonly estimateMinutes?: number | null;
+  /** Tick (`done`), untick (`open`); D75: `in_progress` (⋯ → Mark in progress; the agent's `todo_start`). */
   readonly state?: TodoState;
 }
 

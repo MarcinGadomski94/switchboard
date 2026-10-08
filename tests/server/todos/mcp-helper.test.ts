@@ -87,7 +87,7 @@ describe('MCP messages', () => {
     for (const version of ['2025-06-18', '2024-11-05']) expect((await (await connect(stubApi({}))).rpc('initialize', { protocolVersion: version, capabilities: {}, clientInfo: { name: 'x', version: '1' } }))['result']).toMatchObject({ protocolVersion: version, serverInfo: { name: 'switchboard', version: '0.0.0' } });
     expect((await (await connect(stubApi({}))).rpc('initialize', { protocolVersion: '1999-01-01', capabilities: {}, clientInfo: { name: 'x', version: '1' } }))['result']).toMatchObject({ protocolVersion: '2025-11-25' });
     expect(await mcp.rpc('tools/list')).toEqual({ jsonrpc: '2.0', id: 2, result: { tools: LISTED_TOOLS } });
-    expect(TODO_TOOLS.map((tool) => tool.name)).toEqual(['todo_list', 'todo_get', 'todo_add', 'todo_update', 'todo_done', 'todo_remove']);
+    expect(TODO_TOOLS.map((tool) => tool.name)).toEqual(['todo_list', 'todo_get', 'todo_add', 'todo_update', 'todo_start', 'todo_done', 'todo_remove']);
     // All four MCP behavior hints are declared (as booleans) on every tool, and a title.
     for (const tool of TODO_TOOLS) {
       for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint'] as const) expect(typeof tool.annotations[hint]).toBe('boolean');
@@ -96,6 +96,8 @@ describe('MCP messages', () => {
     }
     expect(TODO_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['todo_list', 'todo_get']);
     expect(TODO_TOOLS.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name)).toEqual(['todo_update', 'todo_remove']);
+    // D75: the instructions say to start and finish every item.
+    expect(AGENT_MCP_INSTRUCTIONS).toContain('todo_start');
     // D69: the instructions explain the fields and that the agent fills them; D70: the plan's "No plan: <reason>", the priority levels, the estimate, revising.
     const instructions = String((init['result'] as Record<string, unknown>)['instructions']);
     expect(instructions).toBe(AGENT_MCP_INSTRUCTIONS);
@@ -167,6 +169,8 @@ describe('MCP messages', () => {
     const invalid = await call('todo_add', { title: 'Bad', plan: 'p', priority: 'asap', estimate_minutes: 1.5 });
     expect(invalid.isError).toBe(true);
     expect(invalid.content[0]?.text).toMatch(/Invalid arguments for tool todo_add: .*at priority\n.*at estimate_minutes/);
+    // D75: todo_start marks it in progress.
+    expect((await call('todo_start', { id: 'aaa111' })).content[0]?.text).toMatch(/^Started: \[aaa111\] /);
     expect((await call('todo_done', { id: '[aaa111]' })).content[0]?.text).toMatch(/^Done: \[aaa111\] ☑/);
     await call('todo_done', { id: 'aaa111', done: false });
     await call('todo_update', { id: 'aaa111', title: 'Fix both login tests', plan: '' });
@@ -177,6 +181,7 @@ describe('MCP messages', () => {
       ['GET', '/agent/v1/todos/aaa111', undefined],
       ['POST', '/agent/v1/todos', { title: 'Fix the login test', description: 'Retries hide a race.', plan: '1. Find the race', priority: 'high', estimateMinutes: 45 }],
       ['POST', '/agent/v1/todos', { title: 'Old-style text', plan: 'No plan: a one-line rename', priority: 'low', estimateMinutes: 5 }],
+      ['PUT', '/agent/v1/todos/aaa111', { state: 'in_progress' }],
       ['PUT', '/agent/v1/todos/aaa111', { state: 'done' }],
       ['PUT', '/agent/v1/todos/aaa111', { state: 'open' }],
       ['PUT', '/agent/v1/todos/aaa111', { title: 'Fix both login tests', plan: '' }],

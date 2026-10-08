@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionTodo, SessionTodoList, TodoFieldsInput, TodoPatchInput } from '../../../core/api.ts';
-import { moveTodo, splitTodos, todoEstimateTotal, todoMoveScope, todoStartMessage } from '../../../core/todos.ts';
+import { moveTodo, splitTodos, todoCountsLabel, todoMoveScope, todoStartMessage } from '../../../core/todos.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { TodoCard, TodoForm } from './TodoCard.tsx';
-import { requestComposerFill } from './composer-fill.ts';
 import './todos.css';
 
 export { authorLabel } from './TodoCard.tsx';
@@ -17,6 +16,24 @@ export function todoRefusal(error: unknown): string {
     if (error.unreachable) return 'Switchboard could not be reached.';
   }
   return 'That did not work. Try again.';
+}
+
+/**
+ * D75 · ▶ Start: marks the item in progress and sends its start message to the session
+ * (`POST …/todos/{todoId}/start`). A paired machine still on 1.11 or earlier has no such
+ * route (its peer API refuses it, 403, or answers an unknown route, 404 without
+ * `not-found`): the message is then sent as a plain message and the item stays as it was.
+ */
+export async function startTodo(sessionId: string, todo: SessionTodo): Promise<SessionTodoList> {
+  try {
+    return await api.startTodo(sessionId, todo.id);
+  } catch (error) {
+    const code = error instanceof ApiError ? (error.body as { error?: unknown } | null)?.error : undefined;
+    const olderPeer = error instanceof ApiError && sessionId.startsWith('r~') && (error.status === 403 || (error.status === 404 && code !== 'not-found'));
+    if (!olderPeer) throw error;
+    await api.sendMessage(sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }));
+    return api.sessionTodos(sessionId);
+  }
 }
 
 /** The strip's open / closed state, kept in this browser. */
@@ -88,6 +105,7 @@ export function TodoCards({
   run,
   now,
   onStart,
+  working = false,
 }: {
   readonly sessionId: string;
   /** Every item of the session (the order Move up / down rewrites). */
@@ -97,8 +115,10 @@ export function TodoCards({
   readonly disabled: boolean;
   readonly run: (write: () => Promise<SessionTodoList>) => Promise<boolean>;
   readonly now: number;
-  /** ▶ Start for an open item; `null` = not offered. */
+  /** ▶ Start for an open or in-progress item; `null` = not offered. */
   readonly onStart: ((todo: SessionTodo) => void) | null;
+  /** D75: the session is working (an in-progress card's edge pulses). */
+  readonly working?: boolean;
 }) {
   return (
     <ul className="sb-todos-list">
@@ -113,6 +133,7 @@ export function TodoCards({
             count={scope.length}
             disabled={disabled}
             now={now}
+            working={working}
             actions={{
               onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
               onSave: (fields) => run(() => api.updateTodo(sessionId, todo.id, savePatch(fields))),
@@ -122,7 +143,9 @@ export function TodoCards({
               },
               onDelete: () => void run(() => api.deleteTodo(sessionId, todo.id)),
               onPriority: (priority) => void run(() => api.updateTodo(sessionId, todo.id, { priority })),
-              onStart: onStart && todo.state === 'open' ? () => onStart(todo) : null,
+              // D75: by hand from the ⋯ menu (nothing is sent).
+              onProgress: (state) => void run(() => api.updateTodo(sessionId, todo.id, { state })),
+              onStart: onStart && todo.state !== 'done' ? () => onStart(todo) : null,
             }}
           />
         );
@@ -139,7 +162,8 @@ export function TodoCards({
  * this browser); expanded, the open items as cards ({@link TodoCard}), the add
  * form at the top, and the done items under a collapsed **Done (n)** with **Clear
  * done**. With no items it is not shown: the composer's **+ Todo** opens it with
- * the add form (`adding`). **▶ Start** fills this session's composer (never sends).
+ * the add form (`adding`). D75: **▶ Start** sends the item's start message to this session
+ * and marks it in progress (the composer and its draft are not touched).
  */
 export function TodoStrip({
   sessionId,
@@ -147,9 +171,12 @@ export function TodoStrip({
   blocked,
   adding,
   onAddingChange,
+  working = false,
 }: {
   readonly sessionId: string;
   readonly todos: ReturnType<typeof useSessionTodos>;
+  /** D75: the session is working (its status `run`): an in-progress card's left edge pulses. */
+  readonly working?: boolean;
   /** Why nothing can be changed (an unreachable peer's session), `null` when it can. */
   readonly blocked: string | null;
   readonly adding: boolean;
@@ -190,8 +217,6 @@ export function TodoStrip({
   };
 
   const total = open.length + done.length;
-  // D70: the open items' known estimates (`~2h 15m`, `+` when some have none).
-  const estimateTotal = todoEstimateTotal(all);
   const progress = total === 0 ? 0 : done.length / total;
 
   return (
@@ -202,8 +227,9 @@ export function TodoStrip({
             {expanded ? '▾' : '▸'}
           </span>
           <span className="sb-todos-title">Todo</span>
-          <span className="sb-todos-counts" data-testid="todo-count">
-            {open.length} open{estimateTotal ? <span data-testid="todo-estimate-total"> · {estimateTotal}</span> : null} · {done.length} done
+          {/* D70: the open items' known estimates (`~2h 15m`, `+` when some have none); D75: `1 in progress · 2 open · ~2h · 1 done`. */}
+          <span className="sb-todos-counts" data-testid="todo-count" title={todoCountsLabel(all)}>
+            {todoCountsLabel(all)}
           </span>
           {!expanded && open[0] ? (
             <span className="sb-todos-next" data-testid="todo-next">
@@ -247,7 +273,9 @@ export function TodoStrip({
               disabled={disabled}
               run={run}
               now={now}
-              onStart={(todo) => requestComposerFill(sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }))}
+              working={working}
+              // D75: sends the start message to this session (queued while it works) and marks the item in progress.
+              onStart={(todo) => void run(() => startTodo(sessionId, todo))}
             />
           ) : null}
           {done.length > 0 ? (

@@ -148,13 +148,14 @@ describe('injection at spawn, against the fakes', () => {
   });
 });
 
-describe('the standing instruction (D64 + D68 + D69 + D70)', () => {
+describe('the standing instruction (D64 + D68 + D69 + D70 + D75)', () => {
   it('the default tells the agent to use the switchboard todo tools and fill every field, in one short sentence', () => {
-    // D69: the bound went from 400 to 450 characters for the title / description / handover plan words; D70: to 510 for the plan / priority / estimate words (502).
+    // D69: the bound went from 400 to 450 characters for the title / description / handover plan words; D70: to 510 for the plan / priority / estimate words (502);
+    // D75: to 560 for "always mark an item in progress when you start it and done when you finish it" (550).
     expect(DEFAULT_STANDING_INSTRUCTION).toContain(
-      "Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.",
+      "Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left.",
     );
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(510);
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(560);
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[0] as string)).toBe(true);
   });
 

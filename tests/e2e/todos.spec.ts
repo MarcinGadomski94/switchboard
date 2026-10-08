@@ -9,11 +9,11 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * D68 / D69 on the real path (D13, fake-claude): the session's todo strip above
  * the composer as cards (+ Todo while empty, + Add with title, description and
  * handover plan, open a card, the plan disclosure, Edit with Save / Cancel, the ⋯
- * menu's Move and Delete, tick, Done (n), Clear done), ▶ Start filling the composer
- * without sending (a draft is kept), a live update when the agent adds an item
+ * menu's Move and Delete, tick, Done (n), Clear done), D75 ▶ Start sending the item's
+ * message and marking it in progress (a draft is not touched), the finish reminder, a live update when the agent adds an item
  * (through the agent route its `switchboard` MCP tools call, with the session's
  * own token), the sidebar row's count and the Todos nav count, and the Todos page
- * (cards per session, Open session, ▶ Start opening the session with its composer filled).
+ * (cards per session, Open session, D75 ▶ Start sending with a toast that opens the session).
  * D70: priorities sort the open cards (tinted, labelled), estimates and their totals,
  * the priority changed in the edit form re-sorts, Move stays within a level, and the
  * add form is prefilled (No plan, medium).
@@ -173,9 +173,11 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await first.getByTestId('todo-menu-down').click();
   await expect(items.getByTestId('todo-title')).toHaveText(['Rename PROJ-12 settings keys', 'Fix the login flake']);
   await items.nth(1).getByTestId('todo-menu-button').click();
-  // D70: Edit, Priority ▸, Move up, ….
+  // D70: Edit, Priority ▸, D75 Mark in progress, Move up, ….
   await page.keyboard.press('ArrowDown');
   await expect(items.nth(1).getByTestId('todo-menu-priority')).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(items.nth(1).getByTestId('todo-menu-in-progress')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(items.nth(1).getByTestId('todo-menu-up')).toBeFocused();
   await page.keyboard.press('Enter');
@@ -233,7 +235,34 @@ test('the strip: + Todo, add with all three fields, open a card, the plan, edit,
   await page.getByTestId('todo-toggle').click();
 });
 
-test('▶ Start fills the composer without sending and keeps a draft; on the Todos page it opens the session', async ({ page }) => {
+/** What the agent's `todo_done` does: `PUT /agent/v1/todos/{id}` with the session's agent token. */
+async function agentPuts(sessionId: string, todoId: string, fields: Record<string, string>): Promise<number> {
+  const secret = (await readFile(path.join(world.dataDir, 'sb_token'), 'utf8')).trim();
+  const token = createHmac('sha256', secret).update(`switchboard-agent-todos:${sessionId}`).digest('base64url');
+  const url = new URL(world.baseUrl);
+  const body = JSON.stringify(fields);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port: Number(url.port),
+        path: `/agent/v1/todos/${todoId}`,
+        method: 'PUT',
+        headers: { host: url.host, authorization: `Bearer ${token}`, 'x-switchboard-session': sessionId, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('D75 · ▶ Start sends the message and marks it in progress (the draft stays); the reminder; ⋯ Mark in progress / not started; tick; the Todos page sends with a toast', async ({ page }) => {
+  // A held turn and the reminder's own turn on the real path.
+  test.setTimeout(60_000);
   await page.goto(world.baseUrl);
   const { id } = await world.startSession(page, 'todo-start', 'Reply with just OK.');
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
@@ -245,7 +274,8 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   const form = strip.getByTestId('todo-form');
   await form.getByTestId('todo-form-title').fill('Fix the login test flake');
   await form.getByTestId('todo-form-description').fill('Retries hide a race.');
-  await form.getByTestId('todo-form-plan').fill('1. Remove the retry\n2. Await the refresh');
+  // The fake agent holds its turn 4 s on this plan's token, so the working edge can be seen.
+  await form.getByTestId('todo-form-plan').fill('1. Remove the retry\n2. Await the refresh [fake:hold 4]');
   await form.getByTestId('todo-form-save').click();
   await expect(strip.getByTestId('todo-item')).toHaveCount(1);
   await form.getByTestId('todo-form-title').fill('Update the README');
@@ -256,50 +286,81 @@ test('▶ Start fills the composer without sending and keeps a draft; on the Tod
   await expect(items).toHaveCount(2);
   const todoId = (await items.nth(0).getAttribute('data-todo-id')) as string;
   const readmeId = (await items.nth(1).getAttribute('data-todo-id')) as string;
+  const flake = strip.locator(`[data-testid="todo-item"][data-todo-id="${todoId}"]`);
+  const readme = strip.locator(`[data-testid="todo-item"][data-todo-id="${readmeId}"]`);
+  const row = page.locator(`.sb-session[data-session-id="${id}"]`);
 
-  // Empty composer: the message is the id and title, a blank line, then the plan; focused, not sent.
-  await items.nth(0).getByTestId('todo-start').click();
-  await expect(input).toHaveValue(`Work on todo [${todoId}]: Fix the login test flake\n\n1. Remove the retry\n2. Await the refresh`);
-  await expect(input).toBeFocused();
-  await expect(messages).toHaveCount(1);
-
-  // A draft is never replaced: the message goes after it. "No plan" (D70): the description.
+  // A draft in the composer is not touched: ▶ Start sends its own message.
   await input.fill('My own draft');
-  await items.nth(1).getByTestId('todo-start').click();
-  await expect(input).toHaveValue(`My own draft\n\nWork on todo [${readmeId}]: Update the README\n\nThe install section is stale.`);
-  await expect(messages).toHaveCount(1);
-  await input.fill('');
+  await flake.getByTestId('todo-start').click();
+  await expect(messages).toHaveCount(2);
+  await expect(messages.nth(1)).toContainText(`Work on todo [${todoId}]: Fix the login test flake`);
+  await expect(messages.nth(1)).toContainText(`When it's finished, mark it done with todo_done [${todoId}]`);
+  await expect(input).toHaveValue('My own draft');
+  // In progress: ◐, the IN PROGRESS label next to the priority, the counts; it keeps its place (priority order).
+  await expect(flake).toHaveAttribute('data-state', 'in_progress');
+  await expect(flake.getByTestId('todo-in-progress')).toHaveText(/in progress/i);
+  await expect(flake.getByTestId('todo-check')).toHaveAttribute('data-progress', 'true');
+  await expect(flake.getByTestId('todo-check')).not.toBeChecked();
+  await expect(items.getByTestId('todo-title')).toHaveText(['Fix the login test flake', 'Update the README']);
+  await expect(page.getByTestId('todo-count')).toHaveText('1 in progress · 1 open · 0 done');
+  await expect(row.getByTestId('session-todo-count')).toHaveText('☐ 2');
+  // While the agent works on it, its left edge pulses (not with reduced motion).
+  await expect(flake).toHaveAttribute('data-working', 'true');
+  expect(await flake.evaluate((el) => getComputedStyle(el).animationName)).toBe('sb-todo-working');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await flake.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+  await page.emulateMedia({ reducedMotion: null });
+  // Esc in the card's ⋯ menu closes the menu; it does not stop the turn (D50's Esc).
+  await flake.getByTestId('todo-menu-button').click();
+  await expect(flake.getByTestId('todo-menu-not-started')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(flake.getByTestId('todo-menu')).toHaveCount(0);
+  await expect(flake).toHaveAttribute('data-working', 'true');
 
-  // The Todos page: the same cards under the session's header; ▶ Start opens the session with its composer filled.
+  // The turn ended with the item still in progress and untouched: one reminder, sent by Switchboard.
+  await expect(messages).toHaveCount(3, { timeout: 15_000 });
+  await expect(messages.nth(2)).toHaveText(new RegExp(`Todo \\[${todoId}\\] 'Fix the login test flake' is still in progress`));
+  await expect(flake).not.toHaveAttribute('data-working', 'true', { timeout: 15_000 });
+  // The agent marks it done (todo_done): done, and no second reminder.
+  expect(await agentPuts(id, todoId, { state: 'done' })).toBe(200);
+  await expect(page.getByTestId('todo-count')).toHaveText('1 open · 1 done');
+  await expect(messages).toHaveCount(3);
+
+  // ⋯ → Mark in progress / Mark not started: by hand, nothing is sent.
+  await readme.getByTestId('todo-menu-button').click();
+  await readme.getByTestId('todo-menu-in-progress').click();
+  await expect(readme).toHaveAttribute('data-state', 'in_progress');
+  await expect(page.getByTestId('todo-count')).toHaveText('1 in progress · 0 open · 1 done');
+  await readme.getByTestId('todo-menu-button').click();
+  await expect(readme.getByTestId('todo-menu-in-progress')).toHaveCount(0);
+  await readme.getByTestId('todo-menu-not-started').click();
+  await expect(readme).toHaveAttribute('data-state', 'open');
+  await expect(readme.getByTestId('todo-in-progress')).toHaveCount(0);
+  await expect(messages).toHaveCount(3);
+
+  // The Todos page: ▶ Start sends to that session without opening it; a toast offers Open.
   await page.getByTestId('nav-todos').click();
   const group = page.locator(`[data-testid="todos-group"][data-session-id="${id}"]`);
-  await expect(group.getByTestId('todos-group-title')).toHaveText('todo-start');
-  await expect(group.getByTestId('todos-group-count')).toHaveText('2 open');
-  await expect(group.getByTestId('todos-open-session')).toBeVisible();
-  const cards = group.getByTestId('todo-item');
-  await expect(cards.getByTestId('todo-title')).toHaveText(['Fix the login test flake', 'Update the README']);
-  await expect(cards.nth(0).getByTestId('todo-plan-toggle')).toBeVisible();
-  await expect(cards.nth(1).getByTestId('todo-description')).toContainText('The install section is stale.');
-  await cards.nth(1).getByTestId('todo-start').click();
-  await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));
-  await expect(input).toHaveValue(`Work on todo [${readmeId}]: Update the README\n\nThe install section is stale.`);
-  await expect(input).toBeFocused();
-  await expect(messages).toHaveCount(1);
-
-  // Ticking on the page updates the counts; Show done brings the done card; Open session opens it.
-  await page.getByTestId('nav-todos').click();
-  await group.getByTestId('todo-item').nth(1).getByTestId('todo-check').click();
   await expect(group.getByTestId('todos-group-count')).toHaveText('1 open');
-  await expect(page.getByTestId('todos-summary')).toHaveText('2 open in 2 sessions'); // this one's and the first test's session
-  await page.getByTestId('todos-show-done').check();
-  await expect(group.getByTestId('todos-group-done').getByTestId('todo-title')).toHaveText('Update the README');
-  await group.getByTestId('todo-item').nth(0).getByTestId('todo-check').click();
-  await expect(group.getByTestId('todos-group-count')).toHaveText('0 open');
-  await page.getByTestId('todos-show-done').uncheck();
-  await expect(group).toHaveCount(0);
-  await page.getByTestId('todos-show-done').check();
-  await group.getByTestId('todos-open-session').click();
+  const card = group.locator(`[data-testid="todo-item"][data-todo-id="${readmeId}"]`);
+  await card.getByTestId('todo-start').click();
+  await expect(card).toHaveAttribute('data-state', 'in_progress');
+  await expect(card.getByTestId('todo-in-progress')).toBeVisible();
+  await expect(page).toHaveURL(/\/todos$/);
+  const toast = page.getByTestId('toast');
+  await expect(toast).toContainText('Sent to the agent');
+  await expect(toast).toContainText('Update the README');
+  // In progress counts as open (the group's count, the sidebar's ☐).
+  await expect(group.getByTestId('todos-group-count')).toHaveText('1 open');
+  await toast.getByTestId('toast-jump').click();
   await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));
+  await expect(messages.filter({ hasText: `Work on todo [${readmeId}]: Update the README` })).toHaveCount(1);
+  // A tick on an in-progress card marks it done (the strip opened again: a fresh mount starts collapsed here).
+  await expect(page.getByTestId('todo-count')).toHaveText('1 in progress · 0 open · 1 done');
+  if ((await strip.getAttribute('data-expanded')) === 'false') await page.getByTestId('todo-toggle').click();
+  await expect(strip.locator(`[data-todo-id="${readmeId}"]`)).toHaveAttribute('data-state', 'in_progress');
+  await strip.locator(`[data-todo-id="${readmeId}"]`).getByTestId('todo-check').click();
   await expect(page.getByTestId('todo-count')).toHaveText('0 open · 2 done');
 });
 

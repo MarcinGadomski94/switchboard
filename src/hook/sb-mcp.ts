@@ -8,9 +8,9 @@
  * `npm ci --omit=dev` brings them).
  *
  * It is built on the SDK's high-level API: one `McpServer` over a
- * `StdioServerTransport`, each of the six tools registered with `registerTool`
+ * `StdioServerTransport`, each of the seven tools registered with `registerTool`
  * next to its own handler: `todo_list`, `todo_get` (D69), `todo_add`,
- * `todo_update` (D70: with priority and estimate), `todo_done`, `todo_remove`,
+ * `todo_update` (D70: with priority and estimate), `todo_start` (D75), `todo_done`, `todo_remove`,
  * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only).
  * Names, descriptions, annotations and the instructions come from
  * `src/core/todos.ts` ({@link TODO_TOOLS}); the zod input schemas here carry the
@@ -225,7 +225,18 @@ export async function todoUpdate(api: AgentApi, input: ToolInput): Promise<CallT
   });
 }
 
-/** `todo_done`: marks an item done (`done: false` reopens it). */
+/** D75 · `todo_start`: marks an item in progress (the agent started it). */
+export async function todoStart(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = idOf(input);
+  if (id === '') return textResult(NEED_ID, true);
+  return request(api, 'PUT', itemRoute(id), { state: 'in_progress' }, (body) => {
+    const todo = todoOf(body);
+    const summary = summaryOf(body);
+    return textResult(todo ? `Started: ${todoLine(todo)}\nMark it done with todo_done when it is finished.\n\n${summary}` : summary);
+  });
+}
+
+/** `todo_done`: marks an item done (`done: false` reopens it: open, not started). */
 export async function todoDone(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
   const id = idOf(input);
   if (id === '') return textResult(NEED_ID, true);
@@ -292,7 +303,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
 
 /**
  * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
- * {@link AGENT_MCP_INSTRUCTIONS}) and its six tools, calling `api`. Connect it to a
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its seven tools (D75: `todo_start`), calling `api`. Connect it to a
  * transport (a `StdioServerTransport` in the helper process).
  */
 export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
@@ -348,6 +359,13 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       annotations: update.annotations,
     },
     (input) => serial(() => todoUpdate(api, input)),
+  );
+
+  const start = tool('todo_start');
+  server.registerTool(
+    'todo_start',
+    { title: start.annotations.title, description: start.description, inputSchema: inputSchema('todo_start', { id: field.id('todo_start') }), annotations: start.annotations },
+    (input) => serial(() => todoStart(api, input)),
   );
 
   const done = tool('todo_done');

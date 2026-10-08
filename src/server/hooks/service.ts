@@ -545,6 +545,12 @@ export class HookService {
   }
 
   /** `true` when `sessionId` is an open hooked session. */
+  /** D75: `true` while a hooked session's waiter is held (a message sent now reaches the agent at its next idle). */
+  async hasWaiter(sessionId: string): Promise<boolean> {
+    const record = await this.#store.sessions.get(sessionId);
+    return record !== null && record.hooked && record.closedAt === null && this.#waiters.has(record.claudeSessionId);
+  }
+
   async isHooked(sessionId: string): Promise<boolean> {
     const record = await this.#store.sessions.get(sessionId);
     return record !== null && record.hooked;

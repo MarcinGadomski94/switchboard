@@ -232,6 +232,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'Cleanup',
     'Ultracode by default',
     'Session-start questions',
+    'Remind the agent to finish started todos',
     'Standing instruction for agents',
   ]);
   await expect(page.locator('.sb-set-row').getByTestId('setting-value')).toHaveText([
@@ -242,6 +243,7 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
     'off',
     'from AGENTS.md',
     'on',
+    'on',
   ]);
   const ultracode = row(page, 'ultracode').getByRole('switch');
   const worktrees = row(page, 'worktrees').getByRole('switch');
@@ -250,8 +252,12 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
   await expect(ultracode).toHaveAttribute('aria-checked', 'true');
   await worktrees.click();
   await expect(worktrees).toHaveText('off');
-  expect(calls.filter((c) => c.method === 'PUT' && c.path === '/api/settings').map((c) => c.status)).toEqual([200, 200]);
-  expect(await getSettings()).toMatchObject({ 'sessions.ultracode': true, 'sessions.worktrees': false });
+  // D75: the todo finish reminder (on by default).
+  const reminder = row(page, 'todo-reminder').getByRole('switch');
+  await reminder.click();
+  await expect(reminder).toHaveText('off');
+  expect(calls.filter((c) => c.method === 'PUT' && c.path === '/api/settings').map((c) => c.status)).toEqual([200, 200, 200]);
+  expect(await getSettings()).toMatchObject({ 'sessions.ultracode': true, 'sessions.worktrees': false, 'sessions.todoReminder': false });
 
   await page.getByTestId('settings-nav-notify').click();
   const threshold = row(page, 'warn-at').locator('select');
@@ -264,15 +270,16 @@ test('Sessions & worktrees and the usage threshold persist in SQLite, also acros
   expect(await server.stop()).toBe(0);
   server = await startServer(env);
   await connect();
-  expect(await getSettings()).toMatchObject({ 'sessions.ultracode': true, 'sessions.worktrees': false, 'usage.warnAtPct': 80 });
+  expect(await getSettings()).toMatchObject({ 'sessions.ultracode': true, 'sessions.worktrees': false, 'usage.warnAtPct': 80, 'sessions.todoReminder': false });
   await page.goto(`${server.baseUrl}/settings/sessions`);
   await expect(row(page, 'ultracode').getByRole('switch')).toHaveText('on');
+  await expect(row(page, 'todo-reminder').getByRole('switch')).toHaveText('off');
   await expect(row(page, 'worktrees').getByRole('switch')).toHaveText('off');
   await page.goto(`${server.baseUrl}/settings/notify`);
   await expect(row(page, 'warn-at').locator('select')).toHaveValue('80');
 
   // Back to the defaults for the other tests.
-  const reset = await api.put('/api/settings', { data: { 'sessions.ultracode': false, 'sessions.worktrees': true, 'usage.warnAtPct': 90 } });
+  const reset = await api.put('/api/settings', { data: { 'sessions.ultracode': false, 'sessions.worktrees': true, 'usage.warnAtPct': 90, 'sessions.todoReminder': true } });
   expect(reset.status()).toBe(200);
 });
 

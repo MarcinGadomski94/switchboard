@@ -10,7 +10,7 @@
  */
 import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
-import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority } from './todos.ts';
+import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
 
 /** The machine whose answers are mapped. */
 export type PeerMachineRef = SessionMachine;
@@ -116,6 +116,10 @@ export function peerTodo(machine: PeerMachineRef, todo: SessionTodo): SessionTod
     plan,
     priority: isTodoPriority(raw.priority) ? raw.priority : DEFAULT_TODO_PRIORITY,
     estimateMinutes: estimate.ok ? estimate.value : null,
+    // D75: a peer before 1.12 knows open / done only (and sends no start); anything unknown reads as open.
+    state: todoStateOf(raw.state),
+    startedAt: typeof raw.startedAt === 'string' ? raw.startedAt : null,
+    startedBy: raw.startedBy === 'start' || raw.startedBy === 'agent' || raw.startedBy === 'developer' ? raw.startedBy : null,
   };
 }
 
@@ -206,7 +210,8 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (upper === 'POST' && /^\/api\/schedules\/[^/]+\/(?:run|pause|resume)$/.test(pathname)) return 'schedule';
   if (pathname === '/api/terminal-loops') return upper === 'GET' ? 'terminal-loops' : 'none';
   // D68: a session's todo list (every route under it answers the whole list) and the Todos page's groups.
-  if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done)?)?$/.test(pathname)) return 'todo-list';
+  // D75: also ▶ Start (`…/todos/{todoId}/start`).
+  if (/^\/api\/sessions\/[^/]+\/todos(?:\/[^/]+(?:\/order|\/clear-done|\/start)?)?$/.test(pathname)) return 'todo-list';
   if (pathname === '/api/todos') return upper === 'GET' ? 'todo-groups' : 'none';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
   // D51: a Workflow agent's chat: its events carry the session id.

@@ -19,7 +19,6 @@ import {
   checkTodoNote,
   checkTodoPatch,
   checkTodoTitle,
-  composerWithStart,
   legacyTodoFields,
   moveTodo,
   todoListText,
@@ -157,17 +156,15 @@ describe('the D69 field rules', () => {
     expect(checkTodoPatch({ description: '', text: 'Renamed' })).toEqual({ ok: true, value: { title: 'Renamed', description: null } });
   });
 
-  it('▶ Start: the message is the id and title, then the plan (else the description); a draft is kept, the message added after it', () => {
+  it('▶ Start: the message is the id and title, then the plan (else the description), then (D75) the line asking to mark it done', () => {
     const item: { id: string; title: string; description: string | null; plan: string | null } = { id: 'a1b2c3d4e5f6', title: 'Fix the login test flake', description: 'Retries hide a race.', plan: '1. Find the race' };
-    expect(todoStartMessage(item)).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\n1. Find the race');
-    expect(todoStartMessage({ ...item, plan: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.');
-    expect(todoStartMessage({ ...item, plan: null, description: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake');
+    const finish = "When it's finished, mark it done with todo_done [a1b2c3d4e5f6]; if you stop before it's finished, say what's left.";
+    expect(todoStartMessage(item)).toBe(`Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\n1. Find the race\n\n${finish}`);
+    expect(todoStartMessage({ ...item, plan: null })).toBe(`Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.\n\n${finish}`);
+    expect(todoStartMessage({ ...item, plan: null, description: null })).toBe(`Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\n${finish}`);
     // D70: "No plan" (with or without a reason) is not a plan: the description goes instead.
-    expect(todoStartMessage({ ...item, plan: 'No plan' })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.');
-    expect(todoStartMessage({ ...item, plan: 'No plan: a one-line fix', description: null })).toBe('Work on todo [a1b2c3d4e5f6]: Fix the login test flake');
-    expect(composerWithStart('', 'M')).toBe('M');
-    expect(composerWithStart('  \n', 'M')).toBe('M');
-    expect(composerWithStart('My draft\n', 'M')).toBe('My draft\n\nM');
+    expect(todoStartMessage({ ...item, plan: 'No plan' })).toBe(`Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\nRetries hide a race.\n\n${finish}`);
+    expect(todoStartMessage({ ...item, plan: 'No plan: a one-line fix', description: null })).toBe(`Work on todo [a1b2c3d4e5f6]: Fix the login test flake\n\n${finish}`);
   });
 
   it("a done card's countdown: minutes rounded up, 'removed soon' once due", () => {

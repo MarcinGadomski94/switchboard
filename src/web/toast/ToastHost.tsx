@@ -14,6 +14,8 @@ export interface Toast {
   readonly text: string;
   /** Session opened by "Jump to session"; no jump button without one. */
   readonly sessionId: string | null;
+  /** The jump button's label (default "Jump to session"; D75's ▶ Start toast: "Open"). */
+  readonly jumpLabel?: string;
 }
 
 interface ToastValue {
@@ -74,8 +76,8 @@ export function ToastHost() {
       <div className="sb-toast-text">{toast.text}</div>
       <div className="sb-toast-actions">
         {toast.sessionId ? (
-          <button type="button" className="sb-button sb-toast-jump" onClick={jump}>
-            Jump to session
+          <button type="button" className="sb-button sb-toast-jump" data-testid="toast-jump" onClick={jump}>
+            {toast.jumpLabel ?? 'Jump to session'}
           </button>
         ) : null}
         <button type="button" className="sb-button sb-toast-later" onClick={() => dismiss(toast.id)}>

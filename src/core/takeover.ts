@@ -1,4 +1,4 @@
-import type { TodoAuthor, TodoPriority, TodoState } from './api.ts';
+import type { TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 
@@ -133,7 +133,8 @@ export interface SourceInspect {
    * agent's first turn). Absent from an older Switchboard: the list stays behind. D69: each
    * item also carries `title`, `description` and `plan`; `text` (= title) stays for a 1.7.0 target.
    * D70: and `priority` and `estimateMinutes` (an older target ignores them; from an older
-   * source they are medium and none, its missing plan `No plan`).
+   * source they are medium and none, its missing plan `No plan`). D75: `state` may be
+   * `in_progress`, with `startedAt` / `startedBy`.
    */
   readonly todos?: ReadonlyArray<{
     readonly text: string;
@@ -146,6 +147,9 @@ export interface SourceInspect {
     readonly addedBy: TodoAuthor;
     readonly createdAt: string;
     readonly doneAt: string | null;
+    /** D75: when / how it went in progress (an older target ignores them and reads `in_progress` as open). */
+    readonly startedAt?: string | null;
+    readonly startedBy?: TodoStartSource | null;
   }>;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];

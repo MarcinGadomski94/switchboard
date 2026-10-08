@@ -203,6 +203,8 @@ export const api = {
     } satisfies NewTodoInput),
   updateTodo: (id: string, todoId: string, patch: TodoPatchInput) =>
     request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch.title === undefined ? patch : { ...patch, text: patch.title }),
+  /** D75 · ▶ Start: the item goes in progress and its start message is sent to the session (queued while busy); answers the list. */
+  startTodo: (id: string, todoId: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/${enc(todoId)}/start`),
   deleteTodo: (id: string, todoId: string) => request<SessionTodoList>('DELETE', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`),
   clearDoneTodos: (id: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/clear-done`),
   reorderTodos: (id: string, ids: readonly string[]) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/order`, { ids } satisfies TodoOrderInput),

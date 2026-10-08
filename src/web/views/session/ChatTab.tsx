@@ -22,8 +22,6 @@ import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPI
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
-import { onComposerFill, takeComposerFill } from './composer-fill.ts';
-import { composerWithStart } from '../../../core/todos.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -206,7 +204,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       </div>
       {/* D53: an offline machine's session has no live line (the offline note says why). */}
       <ChatActivityLine activity={blocked ? null : activity} />
-      <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} />
+      <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} working={session?.status === 'run'} />
       <Composer
         sessionId={sessionId}
         blocked={blocked}
@@ -363,30 +361,6 @@ function Composer({
     }
   };
 
-  // D69 · ▶ Start: a todo's message goes into the field (never sent by itself); a draft already there is kept,
-  // the message added after it. Taken when the composer mounts (the Todos page opened the session) or later.
-  const [filled, setFilled] = useState(0);
-  useEffect(() => {
-    const take = (): void => {
-      const text = takeComposerFill(sessionId);
-      if (text === null) return;
-      setDraft((current) => composerWithStart(current, text));
-      setError(null);
-      setFilled((count) => count + 1);
-    };
-    take();
-    return onComposerFill((id) => {
-      if (id === sessionId) take();
-    });
-  }, [sessionId]);
-  useEffect(() => {
-    if (filled === 0) return;
-    const field = input.current;
-    if (!field) return;
-    field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
-  }, [filled]);
-
   // D50: Esc stops the running turn, read in the window's capture phase (before a popover's own handler closes it).
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -394,7 +368,8 @@ function Composer({
       const context = {
         stoppable: stoppableRef.current,
         stopping: stoppingRef.current,
-        overlayOpen: document.querySelector(OVERLAY_SELECTOR) !== null,
+        // D75: Esc in an open menu (a todo card's ⋯) closes the menu, never stops the turn ▶ Start began.
+        overlayOpen: document.querySelector(OVERLAY_SELECTOR) !== null || (active instanceof Element && active.closest('[role="menu"]') !== null),
         editingElsewhere: isEditing(active) && active !== input.current,
       };
       if (!escStops(event, context)) return;

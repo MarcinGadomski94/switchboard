@@ -31,6 +31,12 @@ export interface KnownSettings {
   readonly 'agents.standingInstruction': string;
   /** D64: whether the standing instruction is passed on. Editable, default `true`. */
   readonly 'agents.standingInstruction.enabled': boolean;
+  /**
+   * D75: when a turn ends while an item started in the session (▶ Start or the agent's
+   * `todo_start`) is still in progress and the agent did not touch it in that turn, send the
+   * agent one reminder to finish it (`docs/todos.md` → *In progress (D75)*). Editable, default `true`.
+   */
+  readonly 'sessions.todoReminder': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -64,10 +70,11 @@ export function isNewSessionMode(value: unknown): value is NewSessionMode {
  * table above" that only existed in its head). D68 added one sentence: the
  * session's todo list goes through the built-in `switchboard` MCP tools; D69: the
  * agent fills a title, a short description and a handover plan; D70: also a priority
- * and an estimate (minutes), a plan is always given (`No plan: reason` allowed).
+ * and an estimate (minutes), a plan is always given (`No plan: reason` allowed); D75:
+ * an item is always marked in progress when started and done when finished.
  */
 export const DEFAULT_STANDING_INSTRUCTION =
-  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.";
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left.";
 
 /**
  * D68: earlier defaults. A stored text equal to one of them (saved unchanged, or
@@ -81,6 +88,8 @@ export const PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS: readonly string[] = [
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools; mark items done when finished; check it when asked what's left.",
   // D69 (1.8.0): before D70's priority, estimate and mandatory plan.
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.",
+  // D70 (1.9.0 – 1.11.0): before D75's in progress.
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.",
 ];
 
 /** D68: the stored instruction as it applies now (an earlier default is the current default). */
@@ -105,7 +114,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -123,6 +132,7 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'newSession.mode': 'simple',
   'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
   'agents.standingInstruction.enabled': true,
+  'sessions.todoReminder': true,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -149,6 +159,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'newSession.mode': isNewSessionMode(value['newSession.mode']) ? value['newSession.mode'] : SETTING_DEFAULTS['newSession.mode'],
     'agents.standingInstruction': typeof value['agents.standingInstruction'] === 'string' ? currentStandingInstruction(value['agents.standingInstruction'] as string) : DEFAULT_STANDING_INSTRUCTION,
     'agents.standingInstruction.enabled': bool('agents.standingInstruction.enabled', SETTING_DEFAULTS['agents.standingInstruction.enabled']),
+    'sessions.todoReminder': bool('sessions.todoReminder', SETTING_DEFAULTS['sessions.todoReminder']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

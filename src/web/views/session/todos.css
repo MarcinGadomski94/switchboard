@@ -197,14 +197,14 @@
   --todo-tint: var(--todo-low-tint);
 }
 
-.sb-todo-card[data-state='open'][data-priority] {
+.sb-todo-card:is([data-state='open'], [data-state='in_progress'])[data-priority] {
   border-left: 3px solid var(--todo-edge);
   /* The 3px edge takes 2px more than the 1px border: the content stays where it was. */
   padding-left: 10px;
   background: var(--todo-tint);
 }
 
-.sb-todo-card[data-state='open'][data-priority]:hover {
+.sb-todo-card:is([data-state='open'], [data-state='in_progress'])[data-priority]:hover {
   background: color-mix(in srgb, var(--todo-tint), var(--bg-selected-card) 60%);
   border-left-color: var(--todo-edge);
 }
@@ -225,6 +225,42 @@
   border-radius: var(--radius-chip);
   padding: 0 5px;
   line-height: 16px;
+}
+
+/* ── D75: in progress: the IN PROGRESS label next to the priority, a half-filled box (◐),
+   and a pulsing left edge while the session works (still with reduced motion: no pulse). ── */
+.sb-todo-in-progress {
+  font: 500 10px var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--status-run);
+  border: 1px solid color-mix(in oklch, var(--status-run), transparent 45%);
+  border-radius: var(--radius-chip);
+  padding: 0 5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.sb-todo-check[data-progress='true'] {
+  border-color: var(--status-run);
+  background: linear-gradient(90deg, var(--status-run) 50%, transparent 50%);
+}
+
+.sb-todo-card[data-state='in_progress'][data-working='true'] {
+  animation: sb-todo-working 1.8s ease-in-out infinite;
+}
+
+@keyframes sb-todo-working {
+  50% {
+    border-left-color: var(--status-run);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-todo-card[data-state='in_progress'][data-working='true'] {
+    animation: none;
+    border-left-color: var(--status-run);
+  }
 }
 
 .sb-todo-estimate {

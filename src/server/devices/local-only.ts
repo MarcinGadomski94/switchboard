@@ -46,6 +46,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/sessions\/[^/]+\/todos(?:\/clear-done)?$/],
   ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
+  // D75: ▶ Start (normal use: in progress + the start message).
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/start$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

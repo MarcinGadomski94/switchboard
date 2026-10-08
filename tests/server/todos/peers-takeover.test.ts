@@ -35,7 +35,7 @@ async function run(node: PeerNode, body: Record<string, unknown>): Promise<Run> 
   }, 90_000);
 }
 
-describe('D68 / D69 / D70 · todos of a paired machine', () => {
+describe('D68 / D69 / D70 / D75 · todos of a paired machine', () => {
   it('are edited through the proxy, listed on the Todos page and travel with a take-over', async () => {
     const w = (world = await takeoverWorld(tmp));
     const started = await startRepoSession(w.a, w.folders.a.alpha as string, 'todo-peer');
@@ -54,6 +54,22 @@ describe('D68 / D69 / D70 · todos of a paired machine', () => {
       ['Ship the migration', 'open'],
       ['Done already', 'done'],
     ]);
+
+    // D75 · ▶ Start through the proxy: in progress there, the start message sent to the pc's session; its turn ends with the
+    // item untouched (the fake agent never calls todo_done), so the pc sends the one finish reminder.
+    const shipId = list.todos[0]?.id as string;
+    const startedThere = await w.b.call('POST', `/api/sessions/${encodeURIComponent(remote)}/todos/${shipId}/start`);
+    expect(startedThere.status, JSON.stringify(startedThere.body)).toBe(200);
+    expect((startedThere.body as SessionTodoList)).toMatchObject({ sessionId: remote, inProgressCount: 1 });
+    expect((startedThere.body as SessionTodoList).todos[0]).toMatchObject({ id: shipId, sessionId: remote, state: 'in_progress', startedBy: 'start' });
+    await waitFor('the start message and the reminder on the pc', async () => {
+      const text = JSON.stringify((await w.a.call('GET', `/api/sessions/${started.id}/events`)).body);
+      return text.includes(`Work on todo [${shipId}]`) && text.includes(`Todo [${shipId}] 'Ship the migration' is still in progress`) ? true : null;
+    }, 30_000);
+    await waitFor('the reminder turn to end', async () => {
+      const session = (await w.a.call('GET', `/api/sessions/${started.id}`)).body as Session;
+      return session.status === 'done' || session.status === 'idle' ? true : null;
+    }, 30_000);
 
     // The mac's lists: the session's count (sessionUpdated forwarded) and the Todos page's group.
     await waitFor('the remote session count', async () => {
@@ -74,7 +90,8 @@ describe('D68 / D69 / D70 · todos of a paired machine', () => {
     const moved = (await w.b.call('GET', `/api/sessions/${created.id}/todos`)).body as SessionTodoList;
     // D69: with the description and plan; D70: the priority and estimate (an item added without a plan has No plan).
     expect(moved.todos.map((t) => [t.title, t.description, t.plan, t.priority, t.estimateMinutes, t.state, t.addedBy])).toEqual([
-      ['Ship the migration', 'For 1.8.', 'Run 0027 on a copy first.', 'high', 45, 'open', 'developer'],
+      // D75: still in progress after the move.
+      ['Ship the migration', 'For 1.8.', 'Run 0027 on a copy first.', 'high', 45, 'in_progress', 'developer'],
       ['Done already', null, 'No plan', 'medium', null, 'done', 'developer'],
     ]);
     expect(created.openTodoCount).toBe(1);

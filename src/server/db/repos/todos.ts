@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { SQLInputValue } from 'node:sqlite';
-import type { TodoAuthor, TodoPriority, TodoState } from '../../../core/api.ts';
+import type { TodoAuthor, TodoPriority, TodoStartSource, TodoState } from '../../../core/api.ts';
 import type { RepoContext } from '../context.ts';
 import { placeholders } from '../context.ts';
 import { transaction } from '../database.ts';
 import { StoreError, Table, type TableSpec } from '../table.ts';
 
-/** D68: a stored todo item (`session_todos`, migration 0026; D69: 0027's title, description and plan; D70: 0028's priority and estimate). */
+/** D68: a stored todo item (`session_todos`, migration 0026; D69: 0027's title, description and plan; D70: 0028's priority and estimate; D75: 0031's in progress). */
 export interface TodoRecord {
   readonly id: string;
   readonly sessionId: string;
@@ -24,6 +24,12 @@ export interface TodoRecord {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly doneAt: string | null;
+  /** D75: when it went in progress (kept while done, `null` while open). */
+  readonly startedAt: string | null;
+  /** D75: how it went in progress (▶ Start, the agent, ⋯ → Mark in progress); `null` like {@link startedAt}. */
+  readonly startedBy: TodoStartSource | null;
+  /** D75: when the one finish reminder of this start was sent; `null` = not sent. */
+  readonly remindedAt: string | null;
 }
 
 const SPEC: TableSpec<TodoRecord> = {
@@ -43,6 +49,9 @@ const SPEC: TableSpec<TodoRecord> = {
     createdAt: ['created_at', 'text'],
     updatedAt: ['updated_at', 'text'],
     doneAt: ['done_at', 'text'],
+    startedAt: ['started_at', 'text'],
+    startedBy: ['started_by', 'text'],
+    remindedAt: ['reminded_at', 'text'],
   },
 };
 
@@ -89,15 +98,15 @@ export class TodoRepository {
     return Number(row?.['n'] ?? 0);
   }
 
-  /** Open items per session (sessions without any are left out). */
+  /** Open items per session (sessions without any are left out); D75: in-progress items count as open (not done). */
   async openCounts(): Promise<Map<string, number>> {
-    const rows = this.#ctx.db.prepare(`SELECT session_id, COUNT(*) AS n FROM session_todos WHERE state = 'open' GROUP BY session_id`).all();
+    const rows = this.#ctx.db.prepare(`SELECT session_id, COUNT(*) AS n FROM session_todos WHERE state <> 'done' GROUP BY session_id`).all();
     return new Map(rows.map((row) => [String(row['session_id']), Number(row['n'])]));
   }
 
-  /** The session's open items. */
+  /** The session's open items (D75: open and in progress: the sidebar's ☐ count). */
   async openCount(sessionId: string): Promise<number> {
-    const row = this.#ctx.db.prepare(`SELECT COUNT(*) AS n FROM session_todos WHERE session_id = ? AND state = 'open'`).get(sessionId);
+    const row = this.#ctx.db.prepare(`SELECT COUNT(*) AS n FROM session_todos WHERE session_id = ? AND state <> 'done'`).get(sessionId);
     return Number(row?.['n'] ?? 0);
   }
 
@@ -132,18 +141,23 @@ export class TodoRepository {
         createdAt: now,
         updatedAt: now,
         doneAt: null,
+        startedAt: null,
+        startedBy: null,
+        remindedAt: null,
       });
     });
   }
 
-  /** Copies items into `sessionId` (a take-over, D65): their fields, state, author and order; their done time is kept. */
-  async import(sessionId: string, items: ReadonlyArray<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'>>): Promise<number> {
+  /** Copies items into `sessionId` (a take-over, D65): their fields, state, author and order; their done time is kept (D75: and their start). */
+  async import(sessionId: string, items: ReadonlyArray<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'> & Partial<Pick<TodoRecord, 'startedAt' | 'startedBy'>>>): Promise<number> {
     return transaction(this.#ctx.db, () => {
       const now = this.#ctx.now();
       const row = this.#ctx.db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS next FROM session_todos WHERE session_id = ?').get(sessionId);
       let position = Number(row?.['next'] ?? 0);
       for (const item of items) {
         const doneAt = item.state === 'done' ? (item.doneAt ?? now) : null;
+        // D75: an in-progress item always has its start (an older source's has none: now, by the developer).
+        const started = item.state === 'open' ? null : (item.startedAt ?? (item.state === 'in_progress' ? now : null));
         this.#table.insert({
           id: newId(),
           sessionId,
@@ -158,6 +172,10 @@ export class TodoRepository {
           createdAt: item.createdAt,
           updatedAt: now,
           doneAt,
+          startedAt: started,
+          startedBy: started === null ? null : (item.startedBy ?? 'developer'),
+          // A fresh start on the new session: its reminder may come once there.
+          remindedAt: null,
         });
         position += 1;
       }
@@ -170,13 +188,35 @@ export class TodoRepository {
     return this.#table.update(id, { ...fields, updatedAt: this.#ctx.now() });
   }
 
-  /** Ticks (`done`: `done_at` now) or unticks (`open`: no `done_at`) an item; one already in that state is unchanged. */
-  async setState(id: string, state: TodoState): Promise<TodoRecord | null> {
+  /**
+   * Ticks (`done`: `done_at` now) or unticks (`open`: no `done_at`) an item; one already in that
+   * state is unchanged. D75: `in_progress` starts it (`started_at` now, `startedBy`, no reminder
+   * sent yet; `done_at` cleared); `open` clears its start too; `done` keeps it.
+   */
+  async setState(id: string, state: TodoState, startedBy: TodoStartSource = 'developer'): Promise<TodoRecord | null> {
     const current = this.#table.get(id);
     if (!current) return null;
     if (current.state === state) return current;
     const now = this.#ctx.now();
-    return this.#table.update(id, { state, doneAt: state === 'done' ? now : null, updatedAt: now });
+    if (state === 'in_progress') return this.#table.update(id, { state, doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now });
+    if (state === 'open') return this.#table.update(id, { state, doneAt: null, startedAt: null, startedBy: null, remindedAt: null, updatedAt: now });
+    return this.#table.update(id, { state, doneAt: now, updatedAt: now });
+  }
+
+  /** D75: starts the item afresh (▶ Start, also of an item already in progress): `started_at` now, `startedBy`, the reminder re-armed. */
+  async start(id: string, startedBy: TodoStartSource): Promise<TodoRecord | null> {
+    const now = this.#ctx.now();
+    return this.#table.update(id, { state: 'in_progress', doneAt: null, startedAt: now, startedBy, remindedAt: null, updatedAt: now });
+  }
+
+  /** D75: puts back an item's state and start as they were (a ▶ Start whose message could not be sent). */
+  async restoreState(record: Pick<TodoRecord, 'id' | 'state' | 'doneAt' | 'startedAt' | 'startedBy' | 'remindedAt' | 'updatedAt'>): Promise<TodoRecord | null> {
+    return this.#table.update(record.id, { state: record.state, doneAt: record.doneAt, startedAt: record.startedAt, startedBy: record.startedBy, remindedAt: record.remindedAt, updatedAt: record.updatedAt });
+  }
+
+  /** D75: records the finish reminder of the item's current start (`updated_at` unchanged: it is not an edit). */
+  async markReminded(id: string): Promise<TodoRecord | null> {
+    return this.#table.update(id, { remindedAt: this.#ctx.now() });
   }
 
   async delete(id: string): Promise<boolean> {

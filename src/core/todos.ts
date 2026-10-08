@@ -2,9 +2,10 @@
  * D68 (`docs/todos.md`): a session's todo list, the rules both sides share (the
  * server, the UI, the agent's `switchboard` MCP tools). D69: each item has a title,
  * a description and a handover plan. D70: the plan is mandatory (`No plan` allowed),
- * and each item has a priority and an estimate. Pure: no I/O.
+ * and each item has a priority and an estimate. D75: an item can be in progress,
+ * ▶ Start sends its message, and the agent is reminded to finish it. Pure: no I/O.
  */
-import type { SessionTodo, SessionTodoList, TodoPriority } from './api.ts';
+import type { SessionTodo, SessionTodoList, TodoPriority, TodoState } from './api.ts';
 
 /** A done item is removed by itself this long after it was marked done (1 hour, ruling D68). */
 export const TODO_DONE_TTL_MS = 60 * 60 * 1000;
@@ -75,6 +76,24 @@ export function checkTodoNote(value: unknown, field: 'description' | 'plan'): To
   const trimmed = value.trim();
   if (trimmed.length > max) return { ok: false, message: `${field} must be at most ${max} characters` };
   return { ok: true, value: trimmed === '' ? null : trimmed };
+}
+
+/** D75: the states, in their order (open → in progress → done). */
+export const TODO_STATES: readonly TodoState[] = ['open', 'in_progress', 'done'];
+
+/** D75: `true` for one of {@link TODO_STATES}. */
+export function isTodoState(value: unknown): value is TodoState {
+  return typeof value === 'string' && (TODO_STATES as readonly string[]).includes(value);
+}
+
+/** D75: a state as given (an older peer's unknown one, or none) read safely: anything but `in_progress` / `done` is `open`. */
+export function todoStateOf(value: unknown): TodoState {
+  return value === 'in_progress' || value === 'done' ? value : 'open';
+}
+
+/** D75: `true` for an item not done yet (open or in progress): it counts as open, sorts with the open ones and has an estimate. */
+export function todoIsOpen(todo: Pick<SessionTodo, 'state'>): boolean {
+  return todo.state !== 'done';
 }
 
 /** D70: `true` for one of {@link TODO_PRIORITIES}. */
@@ -211,11 +230,24 @@ export function todoEstimateLabel(minutes: number | null | undefined): string {
  * open items have none (`~2h 15m+`); `''` when none is known.
  */
 export function todoEstimateTotal(todos: readonly Pick<SessionTodo, 'state' | 'estimateMinutes'>[]): string {
-  const open = todos.filter((todo) => todo.state === 'open');
+  // D75: in-progress items are not finished either: they count with the open ones.
+  const open = todos.filter(todoIsOpen);
   const known = open.filter((todo) => typeof todo.estimateMinutes === 'number' && todo.estimateMinutes > 0);
   if (known.length === 0) return '';
   const total = known.reduce((sum, todo) => sum + (todo.estimateMinutes ?? 0), 0);
   return `~${formatTodoMinutes(total)}${known.length < open.length ? '+' : ''}`;
+}
+
+/**
+ * D75: the strip header's counts: `1 in progress · 2 open · ~2h · 1 done` (the in-progress part
+ * only when some are; `open` = open and not started; the estimate of open + in progress).
+ */
+export function todoCountsLabel(todos: readonly Pick<SessionTodo, 'state' | 'estimateMinutes'>[]): string {
+  const inProgress = todos.filter((todo) => todo.state === 'in_progress').length;
+  const open = todos.filter((todo) => todo.state !== 'in_progress' && todo.state !== 'done').length;
+  const done = todos.filter((todo) => todo.state === 'done').length;
+  const estimate = todoEstimateTotal(todos);
+  return [inProgress > 0 ? `${inProgress} in progress` : null, `${open} open`, estimate || null, `${done} done`].filter((part) => part !== null).join(' · ');
 }
 
 /**
@@ -281,11 +313,12 @@ export function todoRemovalLabel(removeAt: string | null, now: number): string {
 
 /**
  * The open and done items of a list. D70: the open ones by priority (urgent first),
- * the manual order (position) within a level; the done ones in list order.
+ * the manual order (position) within a level; the done ones in list order. D75: the
+ * in-progress ones are open ones (they keep their place by priority, not moved to the top).
  */
 export function splitTodos(todos: readonly SessionTodo[]): { readonly open: SessionTodo[]; readonly done: SessionTodo[] } {
   const sorted = [...todos].sort((a, b) => a.position - b.position);
-  const open = sorted.filter((t) => t.state === 'open').sort((a, b) => todoPriorityRank(a.priority) - todoPriorityRank(b.priority) || a.position - b.position);
+  const open = sorted.filter(todoIsOpen).sort((a, b) => todoPriorityRank(a.priority) - todoPriorityRank(b.priority) || a.position - b.position);
   return { open, done: sorted.filter((t) => t.state === 'done') };
 }
 
@@ -323,10 +356,16 @@ export function moveTodo(all: readonly SessionTodo[], id: string, step: -1 | 1):
   return ids;
 }
 
+/** D75: an item's state mark in the agent's tools: `☐` open, `◐ IN PROGRESS`, `☑` done. */
+function stateMark(state: TodoState): string {
+  return state === 'done' ? '☑' : state === 'in_progress' ? '◐ IN PROGRESS' : '☐';
+}
+
 /**
  * One item as the agent's tools print it, compact (D69: the title only, and which of
  * description / plan it has, not their text, to save context; D70: its priority and
- * estimate, `~?` when it has none; `has plan` only for a real plan, not `No plan`):
+ * estimate, `~?` when it has none; `has plan` only for a real plan, not `No plan`;
+ * D75: `◐ IN PROGRESS` for an item in progress):
  * `[a1b2c3] ☐ HIGH ~45m Fix the login test (added by the developer) · has description, plan`.
  */
 export function todoLine(todo: SessionTodo): string {
@@ -334,10 +373,10 @@ export function todoLine(todo: SessionTodo): string {
   const has = [todo.description ? 'description' : null, todoHasPlan(todo.plan) ? 'plan' : null].filter((part) => part !== null);
   const priority = (isTodoPriority(todo.priority) ? todo.priority : DEFAULT_TODO_PRIORITY).toUpperCase();
   const estimate = todoEstimateLabel(todo.estimateMinutes) || '~?';
-  return `[${todo.id}] ${todo.state === 'done' ? '☑' : '☐'} ${priority} ${estimate} ${title}${todo.addedBy === 'developer' ? ' (added by the developer)' : ''}${has.length ? ` · has ${has.join(', ')}` : ''}`;
+  return `[${todo.id}] ${stateMark(todo.state)} ${priority} ${estimate} ${title}${todo.addedBy === 'developer' ? ' (added by the developer)' : ''}${has.length ? ` · has ${has.join(', ')}` : ''}`;
 }
 
-/** The list as the agent's tools print it (open items first, by priority (D70), then done ones). */
+/** The list as the agent's tools print it (open items first, by priority (D70; D75 the in-progress ones among them), then done ones). */
 export function todoListText(list: SessionTodoList): string {
   const { open, done } = splitTodos(list.todos);
   if (open.length === 0 && done.length === 0) return 'The todo list is empty.';
@@ -352,7 +391,7 @@ export function todoDetailText(todo: SessionTodo): string {
   const title = todo.title ?? todo.text;
   const estimate = todoEstimateLabel(todo.estimateMinutes);
   const lines = [
-    `[${todo.id}] ${todo.state === 'done' ? '☑ done' : '☐ open'} · added by the ${todo.addedBy === 'agent' ? 'agent' : 'developer'}`,
+    `[${todo.id}] ${todo.state === 'done' ? '☑ done' : todo.state === 'in_progress' ? '◐ in progress' : '☐ open'} · added by the ${todo.addedBy === 'agent' ? 'agent' : 'developer'}`,
     `Title: ${title}`,
     `Priority: ${TODO_PRIORITY_LABELS[isTodoPriority(todo.priority) ? todo.priority : DEFAULT_TODO_PRIORITY]}`,
     `Estimate: ${estimate ? `${estimate} (${todo.estimateMinutes} minutes for an AI agent)` : '(none)'}`,
@@ -366,25 +405,30 @@ export function todoDetailText(todo: SessionTodo): string {
   return lines.join('\n');
 }
 
+/** D75: the last line of the start message: the agent marks the item done itself (developer ruling). */
+export function todoFinishLine(id: string): string {
+  return `When it's finished, mark it done with todo_done [${id}]; if you stop before it's finished, say what's left.`;
+}
+
 /**
- * D69 · ▶ Start: the message that puts an agent on an item (filled into the
- * composer, never sent by itself): `Work on todo [<id>]: <title>`, a blank line,
- * then the plan (else the description; nothing when it has neither). D70: `No plan`
- * counts as none ({@link todoHasPlan}).
+ * D69 · ▶ Start: the message that puts an agent on an item: `Work on todo [<id>]: <title>`,
+ * a blank line, then the plan (else the description; nothing when it has neither). D70:
+ * `No plan` counts as none ({@link todoHasPlan}). D75: ▶ Start **sends** it (a normal user
+ * message, queued while the agent is busy; the composer is not touched), and it ends with
+ * {@link todoFinishLine}.
  */
 export function todoStartMessage(todo: Pick<SessionTodo, 'id' | 'title' | 'description'> & { readonly plan: string | null }): string {
   const head = `Work on todo [${todo.id}]: ${todo.title}`;
   const body = todoHasPlan(todo.plan) ? todo.plan : todo.description;
-  return body ? `${head}\n\n${body}` : head;
+  return `${body ? `${head}\n\n${body}` : head}\n\n${todoFinishLine(todo.id)}`;
 }
 
 /**
- * D69: the composer's text after ▶ Start: the start message when the draft is
- * empty; else the draft is kept and the message added after a blank line (a draft
- * is never replaced).
+ * D75: the one automatic reminder Switchboard sends when a turn ended while an item started
+ * in the session is still in progress and the agent did not touch it in that turn.
  */
-export function composerWithStart(draft: string, message: string): string {
-  return draft.trim() === '' ? message : `${draft.replace(/\s+$/, '')}\n\n${message}`;
+export function todoReminderMessage(todo: Pick<SessionTodo, 'id' | 'title'>): string {
+  return `Todo [${todo.id}] '${todo.title}' is still in progress. If it's finished, mark it done with todo_done; if not, say what's left.`;
 }
 
 /** An MCP tool definition (`tools/list`). */
@@ -440,7 +484,7 @@ const ESTIMATE = {
 
 /**
  * D68 / D69: the tools of the `switchboard` MCP server, scoped to the agent's own
- * session. Each item has a title, a description (for the developer) and a plan
+ * session. D75: `todo_start` marks an item in progress. Each item has a title, a description (for the developer) and a plan
  * (the handover for an AI agent); `todo_list` stays compact, `todo_get` gives the rest.
  * D70: `todo_add` requires the plan (`No plan: <reason>` allowed), a priority and an
  * estimate (minutes for an AI agent); `todo_update` revises them.
@@ -449,7 +493,7 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
   {
     name: 'todo_list',
     description:
-      "List this session's todo list (things that still need doing), open items by priority: each item's id, state, priority, estimate and title, and whether it has a description or plan (not their text; use todo_get for that). Use it when the user asks what is left.",
+      "List this session's todo list (things that still need doing), open items by priority: each item's id, state (open, in progress or done), priority, estimate and title, and whether it has a description or plan (not their text; use todo_get for that). Use it when the user asks what is left.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { title: 'List todo items', ...READS },
   },
@@ -484,9 +528,16 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
     annotations: { title: 'Change a todo item', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: 'todo_start',
+    description:
+      'Mark an item in progress when you start working on it (several can be in progress at once). Always mark it done with todo_done when it is finished; if you stop before it is finished, say what is left.',
+    inputSchema: { type: 'object', properties: { id: ID }, required: ['id'], additionalProperties: false },
+    annotations: { title: 'Start a todo item', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: 'todo_done',
-    description: 'Mark an item on the todo list done once it is finished (done: false reopens it).',
-    inputSchema: { type: 'object', properties: { id: ID, done: { type: 'boolean', description: 'false reopens the item; default true.' } }, required: ['id'], additionalProperties: false },
+    description: 'Mark an item done as soon as it is finished: always, also when you were not asked to (done: false reopens it as not started).',
+    inputSchema: { type: 'object', properties: { id: ID, done: { type: 'boolean', description: 'false reopens the item (open, not started); default true.' } }, required: ['id'], additionalProperties: false },
     annotations: { title: 'Mark a todo item done', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
@@ -497,6 +548,6 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
   },
 ];
 
-/** D69 / D70: the `switchboard` MCP server's `instructions` (for CLIs that pass them on to the model). */
+/** D69 / D70: the `switchboard` MCP server's `instructions` (for CLIs that pass them on to the model). D75: start and finish every item. */
 export const AGENT_MCP_INSTRUCTIONS =
-  "This session's todo list in Switchboard. Each item has a title (one short line), a description (for the developer: plain and brief), a plan (a handover for an AI agent who picks the item up later without this conversation: context, relevant files, steps, acceptance criteria; \"No plan: <reason>\" when there is nothing to plan), a priority (urgent = blocking or breaking now; high = should be next; medium = normal; low = nice-to-have or cleanup) and an estimate (minutes an AI agent would take). When the user asks to add something to the todo list, use todo_add and fill all of them from the conversation; revise the priority and estimate with todo_update when you learn more. Use todo_list when asked what is left, todo_get to read an item in full before working on it, and todo_done when an item is finished.";
+  "This session's todo list in Switchboard. Each item has a title (one short line), a description (for the developer: plain and brief), a plan (a handover for an AI agent who picks the item up later without this conversation: context, relevant files, steps, acceptance criteria; \"No plan: <reason>\" when there is nothing to plan), a priority (urgent = blocking or breaking now; high = should be next; medium = normal; low = nice-to-have or cleanup) and an estimate (minutes an AI agent would take). When the user asks to add something to the todo list, use todo_add and fill all of them from the conversation; revise the priority and estimate with todo_update when you learn more. Use todo_list when asked what is left and todo_get to read an item in full before working on it. Mark an item in progress with todo_start when you start it and done with todo_done when you finish it: always.";

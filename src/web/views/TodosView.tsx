@@ -1,14 +1,15 @@
 import { useCallback, useState } from 'react';
 import type { SessionTodoList, TodoGroup } from '../../core/api.ts';
-import { splitTodos, todoEstimateTotal, todoStartMessage } from '../../core/todos.ts';
+import { splitTodos, todoEstimateTotal } from '../../core/todos.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { MachineTag } from '../components/MachineTag.tsx';
-import { Link, useRouter } from '../router.tsx';
-import { TodoCards, todoRefusal, useMinuteClock } from './session/TodoStrip.tsx';
-import { requestComposerFill } from './session/composer-fill.ts';
+import { useSessionList } from '../folders/useFolders.ts';
+import { Link } from '../router.tsx';
+import { useToasts } from '../toast/ToastHost.tsx';
+import { TodoCards, startTodo, todoRefusal, useMinuteClock } from './session/TodoStrip.tsx';
 import './session/todos.css';
 import './todos-view.css';
 
@@ -25,12 +26,16 @@ function placeOf(group: TodoGroup): string {
  * session's items as the same cards as the session's strip, grouped under a
  * session header (its title, machine tag, where it works, its open count, D70 its
  * open items' estimate total, and
- * **Open session**); the done ones behind **Show done**. **▶ Start** opens the
- * session and fills its composer (never sends).
+ * **Open session**); the done ones behind **Show done**. D75: **▶ Start** sends the item's
+ * start message to its session (no need to open it) and marks it in progress; a small
+ * toast offers **Open**. An in-progress card's edge pulses while its session works.
  */
 export function TodosView() {
   const groups = useApi(api.todos);
-  const { navigate } = useRouter();
+  const { show } = useToasts();
+  // D75: which sessions are working (an in-progress card's edge pulses).
+  const sessions = useSessionList();
+  const working = new Set((sessions.data ?? []).filter((session) => session.status === 'run').map((session) => session.id));
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const now = useMinuteClock();
@@ -115,9 +120,20 @@ export function TodosView() {
                   disabled={disabled}
                   run={run}
                   now={now}
+                  working={working.has(group.sessionId)}
                   onStart={(todo) => {
-                    requestComposerFill(group.sessionId, todoStartMessage({ id: todo.id, title: todo.title ?? todo.text, description: todo.description, plan: todo.plan }));
-                    navigate(session);
+                    void run(() => startTodo(group.sessionId, todo)).then((ok) => {
+                      if (!ok) return;
+                      show({
+                        id: `todo-start-${todo.id}`,
+                        title: 'Sent to the agent',
+                        sub: 'now',
+                        branch: '',
+                        text: `${todo.title ?? todo.text} · ${group.title}`,
+                        sessionId: group.sessionId,
+                        jumpLabel: 'Open',
+                      });
+                    });
                   }}
                 />
               ) : null}

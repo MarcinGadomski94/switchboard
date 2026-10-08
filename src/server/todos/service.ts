@@ -12,8 +12,11 @@ import {
   checkTodoPatch,
   checkTodoTitle,
   isTodoPriority,
+  isTodoState,
   legacyTodoFields,
   todoRemoveAt,
+  todoStartMessage,
+  todoStateOf,
 } from '../../core/todos.ts';
 import type { TodoFields, TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
@@ -65,8 +68,14 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     updatedAt: record.updatedAt,
     doneAt: record.doneAt,
     removeAt: todoRemoveAt(record.doneAt, ttlMs),
+    // D75: when and how it went in progress.
+    startedAt: record.startedAt ?? null,
+    startedBy: record.startedBy ?? null,
   };
 }
+
+/** D75: sends a text to a session as a normal user message (queued while the agent is busy; a hooked session's waits in its mailbox). */
+export type TodoMessageSender = (sessionId: string, text: string) => Promise<void>;
 
 /**
  * D69: a taken-over item's fields: its title, description and plan when the source
@@ -115,6 +124,8 @@ export class TodoService {
   readonly #ttl: number;
   readonly #onError: (error: unknown) => void;
   #timer: ReturnType<typeof setTimeout> | null = null;
+  /** D75: item id → when the agent last changed it (other than `todo_start`): the finish reminder skips an item touched in the turn. */
+  readonly #agentTouches = new Map<string, number>();
   #started = false;
   #closed = false;
 
@@ -159,7 +170,14 @@ export class TodoService {
 
   async #listOf(sessionId: string): Promise<SessionTodoList> {
     const todos = (await this.#store.todos.list(sessionId)).map((record) => toTodo(record, this.#ttl));
-    return { sessionId, todos, openCount: todos.filter((t) => t.state === 'open').length, doneCount: todos.filter((t) => t.state === 'done').length };
+    // D75: open = not done (open and in progress: the sidebar's count); inProgressCount says how many of them are started.
+    return {
+      sessionId,
+      todos,
+      openCount: todos.filter((t) => t.state !== 'done').length,
+      doneCount: todos.filter((t) => t.state === 'done').length,
+      inProgressCount: todos.filter((t) => t.state === 'in_progress').length,
+    };
   }
 
   /** The session's item `todoId` (`GET /agent/v1/todos/{todoId}`: the agent's `todo_get`). */
@@ -189,9 +207,10 @@ export class TodoService {
   /**
    * New title (or its D68 alias `text`), description (`''` / `null` removes it),
    * plan (D70: cannot be emptied: 422), priority, estimate (`null` removes it) and / or
-   * state (`done` ticks, `open` unticks: the hour's removal is cancelled).
+   * state (`done` ticks, `open` unticks: the hour's removal is cancelled; D75 `in_progress`
+   * starts it: by the agent (`todo_start`) or the developer (⋯ → Mark in progress), `by`).
    */
-  async update(sessionId: string, todoId: string, patch: Readonly<Record<string, unknown>>): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+  async update(sessionId: string, todoId: string, patch: Readonly<Record<string, unknown>>, by: TodoAuthor = 'developer'): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
     await this.#session(sessionId);
     await this.#item(sessionId, todoId);
     const given = ['title', 'text', 'description', 'plan', 'priority', 'estimateMinutes', 'state'].some((key) => patch[key] !== undefined);
@@ -200,11 +219,18 @@ export class TodoService {
     if (!fields.ok) throw new TodoError(422, 'invalid', fields.message);
     let state: TodoState | null = null;
     if (patch['state'] !== undefined) {
-      if (patch['state'] !== 'open' && patch['state'] !== 'done') throw new TodoError(422, 'invalid', 'state must be open or done');
+      if (!isTodoState(patch['state'])) throw new TodoError(422, 'invalid', 'state must be open, in_progress or done');
       state = patch['state'];
     }
     if (Object.keys(fields.value).length > 0) await this.#store.todos.setFields(todoId, fields.value);
-    if (state !== null) await this.#store.todos.setState(todoId, state);
+    if (state !== null) {
+      const current = await this.#item(sessionId, todoId);
+      // D75: the agent's todo_start on an item the developer marked in progress makes it the agent's start (the reminder applies).
+      if (state === 'in_progress' && by === 'agent' && current.state === 'in_progress' && current.startedBy === 'developer') await this.#store.todos.start(todoId, 'agent');
+      else await this.#store.todos.setState(todoId, state, by === 'agent' ? 'agent' : 'developer');
+    }
+    // D75: the agent touched the item (anything but marking it in progress), so a turn ending now needs no reminder for it.
+    if (by === 'agent' && (Object.keys(fields.value).length > 0 || (state !== null && state !== 'in_progress'))) this.#agentTouches.set(todoId, this.#now());
     const record = await this.#item(sessionId, todoId);
     return { todo: toTodo(record, this.#ttl), list: await this.#changed(sessionId) };
   }
@@ -214,7 +240,53 @@ export class TodoService {
     await this.#session(sessionId);
     await this.#item(sessionId, todoId);
     await this.#store.todos.delete(todoId);
+    this.#agentTouches.delete(todoId);
     return this.#changed(sessionId);
+  }
+
+  /**
+   * D75 · ▶ Start (`POST /api/sessions/{id}/todos/{todoId}/start`): the item goes in progress
+   * (afresh, also when it already was: its reminder is re-armed) and its start message
+   * ({@link todoStartMessage}) is sent to the session as a normal user message through `send`
+   * (queued while the agent is busy). When the message cannot be sent the item is put back as
+   * it was and the sender's error is thrown. A done item cannot be started (422: reopen it first).
+   */
+  async startItem(sessionId: string, todoId: string, send: TodoMessageSender): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+    await this.#session(sessionId);
+    const before = await this.#item(sessionId, todoId);
+    if (before.state === 'done') throw new TodoError(422, 'invalid', 'a done item cannot be started: reopen it first');
+    // In progress before the message goes, so a turn that ends at once already sees it started.
+    const started = await this.#store.todos.start(todoId, 'start');
+    try {
+      await send(sessionId, todoStartMessage({ id: before.id, title: before.title, description: before.description, plan: before.plan }));
+    } catch (error) {
+      await this.#store.todos.restoreState(before);
+      throw error;
+    }
+    return { todo: toTodo(started ?? before, this.#ttl), list: await this.#changed(sessionId) };
+  }
+
+  /**
+   * D75: the items a turn that ran from `turnStartedAt` (epoch ms; 0 = unknown) and just ended
+   * should remind the agent of: in progress, started by ▶ Start or the agent (not ⋯ → Mark in
+   * progress), not reminded for this start yet, and not changed by the agent since the turn
+   * began (marking it in progress does not count).
+   */
+  async remindable(sessionId: string, turnStartedAt: number): Promise<SessionTodo[]> {
+    const out: SessionTodo[] = [];
+    for (const record of await this.#store.todos.list(sessionId)) {
+      if (record.state !== 'in_progress' || record.remindedAt !== null) continue;
+      if (record.startedBy !== 'start' && record.startedBy !== 'agent') continue;
+      const touched = this.#agentTouches.get(record.id);
+      if (touched !== undefined && touched >= turnStartedAt) continue;
+      out.push(toTodo(record, this.#ttl));
+    }
+    return out;
+  }
+
+  /** D75: records that the item's finish reminder was sent (once per start). */
+  async markReminded(todoId: string): Promise<void> {
+    await this.#store.todos.markReminded(todoId);
   }
 
   /** Clear done: removes the session's done items now. */
@@ -263,19 +335,23 @@ export class TodoService {
 
   /** Copies a taken-over session's items into the new session (D65); publishes nothing (the session is not announced yet). */
   async import(sessionId: string, todos: readonly unknown[]): Promise<number> {
-    const items: Array<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt'>> = [];
+    const items: Array<TodoFields & Pick<TodoRecord, 'state' | 'addedBy' | 'createdAt' | 'doneAt' | 'startedAt' | 'startedBy'>> = [];
     for (const raw of todos.slice(0, TODO_MAX_PER_SESSION)) {
       if (typeof raw !== 'object' || raw === null) continue;
       const item = raw as Record<string, unknown>;
       const fields = importedFields(item);
       if (!fields) continue;
-      const state: TodoState = item['state'] === 'done' ? 'done' : 'open';
+      // D75: in progress travels too (an older source sends open / done only).
+      const state: TodoState = todoStateOf(item['state']);
+      const startedBy = item['startedBy'];
       items.push({
         ...fields,
         state,
         addedBy: item['addedBy'] === 'agent' ? 'agent' : 'developer',
         createdAt: typeof item['createdAt'] === 'string' ? item['createdAt'] : new Date(this.#now()).toISOString(),
         doneAt: state === 'done' && typeof item['doneAt'] === 'string' ? item['doneAt'] : null,
+        startedAt: state !== 'open' && typeof item['startedAt'] === 'string' ? item['startedAt'] : null,
+        startedBy: startedBy === 'start' || startedBy === 'agent' || startedBy === 'developer' ? startedBy : null,
       });
     }
     const count = await this.#store.todos.import(sessionId, items);

@@ -415,6 +415,15 @@
     display: none;
   }
 
+  /* D75: the longer counts (`1 in progress · 2 open · ~2h · 1 done`) give way before the bar and + Add. */
+  .sb-todos-counts {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .sb-todos-body {
     max-height: 38dvh;
   }

@@ -79,7 +79,7 @@ async function session(name: string): Promise<string> {
 describe('the UI routes (D68)', () => {
   it('add, edit, tick, untick, reorder, delete, clear done: each answers the whole list; 404 / 422 as documented', async () => {
     const id = await session('ui');
-    expect((await ui('GET', `/api/sessions/${id}/todos`)).json()).toEqual({ sessionId: id, todos: [], openCount: 0, doneCount: 0 });
+    expect((await ui('GET', `/api/sessions/${id}/todos`)).json()).toEqual({ sessionId: id, todos: [], openCount: 0, doneCount: 0, inProgressCount: 0 });
     const added = await ui('POST', `/api/sessions/${id}/todos`, { text: 'Write the docs' });
     expect(added.statusCode).toBe(201);
     const first = (added.json() as SessionTodoList).todos[0]!;

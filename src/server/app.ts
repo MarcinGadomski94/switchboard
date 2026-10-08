@@ -24,6 +24,8 @@ import { McpService } from './mcp/service.ts';
 import { agentTokenFor, agentTokenMatches } from './todos/agent-token.ts';
 import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
+import { TodoReminder } from './todos/reminder.ts';
+import { todoReminderEnabled } from './settings/settings.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -313,6 +315,28 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     todos = own;
   }
+  // D75: one reminder to the agent to finish a started todo when a turn ends with it still in progress (Settings → Sessions).
+  const reminder = new TodoReminder({
+    bus,
+    todos,
+    enabled: () => todoReminderEnabled(options.store.settings),
+    deliver: async (sessionId, text) => {
+      if (await hooks.isHooked(sessionId)) {
+        // A hooked terminal session only while its waiter is held (else the agent would not see it until much later).
+        if (!(await hooks.hasWaiter(sessionId))) return false;
+        await hooks.sendMessage(sessionId, text);
+        return true;
+      }
+      await supervisor.sendMessage(sessionId, text, 'service');
+      return true;
+    },
+  });
+  app.addHook('onReady', async () => {
+    reminder.start();
+  });
+  app.addHook('onClose', async () => {
+    await reminder.stop();
+  });
   if (options.agentTools !== false) {
     supervisor.useAgentMcp(async (session) =>
       withClaudeConfigFile(

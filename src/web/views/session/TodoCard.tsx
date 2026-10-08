@@ -234,10 +234,12 @@ export interface TodoCardActions {
   readonly onSave: (fields: TodoFieldsInput) => Promise<boolean>;
   readonly onMove: (step: -1 | 1) => void;
   readonly onDelete: () => void;
-  /** ▶ Start (open items); `null` = not offered. */
+  /** ▶ Start (open and in-progress items; D75: sends the start message and marks it in progress); `null` = not offered. */
   readonly onStart: (() => void) | null;
   /** D70: ⋯ → Priority (open items): sets the item's priority (the list re-sorts). */
   readonly onPriority: (priority: TodoPriority) => void;
+  /** D75: ⋯ → Mark in progress (`in_progress`) / Mark not started (`open`). */
+  readonly onProgress: (state: 'open' | 'in_progress') => void;
 }
 
 /** One entry of a submenu (D70: ⋯ → Priority): a radio item, the current one checked. */
@@ -411,8 +413,10 @@ function CardMenu({ entries, label, onClose, anchor }: { readonly entries: reado
  * D69 · one todo as a card (`docs/todos.md` → *Cards*): a round box to tick,
  * the bold title, D70 its priority label and estimate (an open card is tinted by its
  * priority: `data-priority`), the description (Markdown, two lines until the card is
- * opened), who added it and how long ago, a ⋯ menu (Edit, D70 Priority ▸, Move up, Move down,
- * Delete), **▸ Handover plan** when it has one, and **▶ Start**. A click on the
+ * opened), who added it and how long ago, a ⋯ menu (Edit, D70 Priority ▸, D75 Mark in progress /
+ * Mark not started, Move up, Move down, Delete), **▸ Handover plan** when it has one, and **▶ Start**.
+ * D75: an item in progress has a half-filled box (◐), an **In progress** label next to its
+ * priority and, while the session works, a pulsing left edge; ticking it marks it done. A click on the
  * card (or its title) opens it in place: the full description and the plan.
  * A done item: the box filled, the title struck through, no description, and
  * when it goes (`removed in 42m`).
@@ -424,6 +428,7 @@ export function TodoCard({
   disabled,
   actions,
   now,
+  working = false,
 }: {
   readonly todo: SessionTodo;
   /** Its place among the items it moves among (D70: the open items of its priority, or the done ones; for Move up / down). */
@@ -433,6 +438,8 @@ export function TodoCard({
   readonly disabled: boolean;
   readonly actions: TodoCardActions;
   readonly now: number;
+  /** D75: the session is working (its status `run`): an in-progress card's left edge pulses. */
+  readonly working?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -441,6 +448,8 @@ export function TodoCard({
   const menuButton = useRef<HTMLButtonElement | null>(null);
   const ids = useId();
   const isDone = todo.state === 'done';
+  // D75: started (◐, IN PROGRESS); a tick marks it done.
+  const inProgress = todo.state === 'in_progress';
   const title = todo.title ?? todo.text;
   // D70: "No plan" (or "No plan: <reason>") is not offered as a handover plan.
   const hasPlan = todoHasPlan(todo.plan);
@@ -486,7 +495,14 @@ export function TodoCard({
   };
 
   const startButton = actions.onStart ? (
-    <button type="button" className="sb-todo-start" data-testid="todo-start" disabled={disabled} title="Put this item into the message box (not sent)" onClick={actions.onStart}>
+    <button
+      type="button"
+      className="sb-todo-start"
+      data-testid="todo-start"
+      disabled={disabled}
+      title={inProgress ? 'Send this item to the agent again' : 'Send this item to the agent and mark it in progress'}
+      onClick={actions.onStart}
+    >
       ▶ Start
     </button>
   ) : null;
@@ -505,6 +521,14 @@ export function TodoCard({
             submenu: TODO_PRIORITIES.map((level) => ({ id: level, label: TODO_PRIORITY_LABELS[level], checked: level === priority, run: () => actions.onPriority(level) })),
           },
         ]),
+    // D75: by hand, without sending anything (▶ Start sends the message too).
+    ...(isDone
+      ? []
+      : [
+          inProgress
+            ? { id: 'not-started', label: 'Mark not started', disabled, run: () => actions.onProgress('open') }
+            : { id: 'in-progress', label: 'Mark in progress', disabled, run: () => actions.onProgress('in_progress') },
+        ]),
     { id: 'up', label: 'Move up', disabled: disabled || index <= 0, run: () => actions.onMove(-1) },
     { id: 'down', label: 'Move down', disabled: disabled || index >= count - 1, run: () => actions.onMove(1) },
     { id: 'delete', label: 'Delete', disabled, run: actions.onDelete },
@@ -519,6 +543,7 @@ export function TodoCard({
       data-added-by={todo.addedBy}
       data-priority={priority}
       data-expanded={expanded ? 'true' : 'false'}
+      data-working={inProgress && working ? 'true' : undefined}
       onClick={onCardClick}
     >
       <div className="sb-todo-card-row" ref={row}>
@@ -526,7 +551,8 @@ export function TodoCard({
           type="checkbox"
           className="sb-todo-check"
           data-testid="todo-check"
-          aria-label={isDone ? `Reopen ${title}` : `Mark ${title} done`}
+          aria-label={isDone ? `Reopen ${title}` : `Mark ${title} done${inProgress ? ' (in progress)' : ''}`}
+          data-progress={inProgress ? 'true' : undefined}
           checked={isDone}
           disabled={disabled}
           onChange={actions.onToggleDone}
@@ -547,6 +573,11 @@ export function TodoCard({
             <span className="sb-todo-priority" data-testid="todo-priority" data-priority={priority} title={`Priority: ${TODO_PRIORITY_LABELS[priority]}`}>
               {TODO_PRIORITY_LABELS[priority]}
             </span>
+            {inProgress ? (
+              <span className="sb-todo-in-progress" data-testid="todo-in-progress" title={todo.startedAt ? `In progress since ${new Date(todo.startedAt).toLocaleString()}` : 'In progress'}>
+                In progress
+              </span>
+            ) : null}
             {estimate ? (
               <span className="sb-todo-estimate" data-testid="todo-estimate" title={`Estimate: ${todo.estimateMinutes} minutes for an AI agent`}>
                 {estimate}

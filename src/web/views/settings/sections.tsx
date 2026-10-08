@@ -72,10 +72,10 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
   );
 }
 
-/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode) and D64's standing instruction for agents. */
+/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -107,6 +107,14 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         description="Asked in the new-session form and passed to the agent as confirmed answers"
       >
         <Value>from AGENTS.md</Value>
+      </Row>
+      {/* D75: one reminder when a turn ends with a started todo still in progress and untouched. */}
+      <Row
+        id="todo-reminder"
+        label="Remind the agent to finish started todos"
+        description="When a turn ends with an item it started still in progress, send it one reminder to mark it done or say what's left"
+      >
+        <ToggleValue label="Remind the agent to finish started todos" value={settings['sessions.todoReminder']} disabled={busy} onToggle={() => flip('sessions.todoReminder')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
     </>

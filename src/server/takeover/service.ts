@@ -339,6 +339,9 @@ export class TakeoverService {
           addedBy: todo.addedBy,
           createdAt: todo.createdAt,
           doneAt: todo.doneAt,
+          // D75: an item in progress stays in progress there (an older target reads it as open).
+          startedAt: todo.startedAt,
+          startedBy: todo.startedBy,
         })),
         blockers,
       },

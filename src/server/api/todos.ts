@@ -1,13 +1,34 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { TodoGroup } from '../../core/api.ts';
 import { AGENT_SESSION_HEADER } from '../../core/todos.ts';
-import { TodoError, type TodoService } from '../todos/service.ts';
+import { HookError } from '../hooks/service.ts';
+import { SupervisorError } from '../supervisor/supervisor.ts';
+import { TodoError, type TodoMessageSender, type TodoService } from '../todos/service.ts';
 import { isPeerRequest } from './machines.ts';
 import type { ApiContext } from '../routes.ts';
 
 function sendTodoError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof TodoError) return reply.code(error.status).send({ error: error.code, message: error.message });
+  // D75 · ▶ Start: the start message could not be sent (as `POST …/messages` answers it).
+  if (error instanceof HookError) return reply.code(error.status).send({ error: error.code, message: error.message });
+  if (error instanceof SupervisorError) {
+    const status = error.code === 'not-found' ? 404 : error.code === 'closing' ? 503 : 409;
+    return reply.code(status).send({ error: error.code, message: error.message });
+  }
   throw error;
+}
+
+/**
+ * D75: sends a text to a session as `POST /api/sessions/{id}/messages` does: a normal user
+ * message (queued while the agent is busy, D44 / D50; a session without a live process is
+ * resumed with it), or, for a hooked terminal session, into its mailbox for its next idle
+ * waiter (D48 P4). Its refusals (closed, detached, …) are thrown.
+ */
+export function sessionMessageSender(context: Pick<ApiContext, 'store' | 'supervisor' | 'hooks'>): TodoMessageSender {
+  return async (sessionId, text) => {
+    if ((await context.store.sessions.get(sessionId))?.hooked === true) await context.hooks.sendMessage(sessionId, text);
+    else await context.supervisor.sendMessage(sessionId, text, 'user');
+  };
 }
 
 function field(body: unknown, name: string): unknown {
@@ -33,9 +54,11 @@ function agentSession(request: FastifyRequest): string {
  *   `GET /api/sessions/{id}/todos`, `POST …/todos` `{ title, description?, plan? }`
  *   (201; D69, `text` is accepted for `title`), `PUT …/todos/order` `{ ids }`,
  *   `PUT …/todos/{todoId}` `{ title?, description?, plan?, state? }`,
- *   `DELETE …/todos/{todoId}`, `POST …/todos/clear-done`: each answers the
+ *   `DELETE …/todos/{todoId}`, `POST …/todos/clear-done`, D75 `POST …/todos/{todoId}/start`
+ *   (▶ Start: in progress, and the start message sent to the session): each answers the
  *   session's whole list (`SessionTodoList`). 404 `not-found` (no session, or no
- *   such item in it), 422 `invalid`, 409 `too-many`.
+ *   such item in it), 422 `invalid`, 409 `too-many`; ▶ Start also the message route's
+ *   refusals (409 `closed` / `detached`, a hooked session's `hooked-unavailable`, …).
  * - `GET /api/todos`: every open session's items, grouped (`TodoGroup[]`), this
  *   machine's first, then the paired machines' as last known (a peer's request
  *   gets this machine's own only).
@@ -88,6 +111,17 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
     }
   });
 
+  // D75 · ▶ Start: the item goes in progress and its start message is sent (never through the composer).
+  const send = sessionMessageSender(context);
+  app.post<{ Params: { id: string; todoId: string } }>('/api/sessions/:id/todos/:todoId/start', async (request, reply) => {
+    try {
+      const { list } = await todos.startItem(request.params.id, request.params.todoId, send);
+      return list;
+    } catch (error) {
+      return sendTodoError(reply, error);
+    }
+  });
+
   app.delete<{ Params: { id: string; todoId: string } }>('/api/sessions/:id/todos/:todoId', async (request, reply) => {
     try {
       return await todos.remove(request.params.id, request.params.todoId);
@@ -127,7 +161,8 @@ export async function registerTodoRoutes(app: FastifyInstance, context: ApiConte
 
   app.put<{ Params: { todoId: string } }>('/agent/v1/todos/:todoId', async (request, reply) => {
     try {
-      return await todos.update(agentSession(request), request.params.todoId, fields(request.body));
+      // D75: the agent's writes (todo_start: `state: in_progress`) are the agent's.
+      return await todos.update(agentSession(request), request.params.todoId, fields(request.body), 'agent');
     } catch (error) {
       return sendTodoError(reply, error);
     }
