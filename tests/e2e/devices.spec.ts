@@ -75,14 +75,10 @@ async function phone(browser: Browser, userAgent: string): Promise<BrowserContex
   return browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent, deviceScaleFactor: 2 });
 }
 
-/**
- * A click on the phone's Settings page. Until the responsive layout (D74, a
- * parallel lane) lands, the desktop Settings nav overlaps the content at 390 px,
- * so the click is dispatched on the element rather than at its position.
- */
+/** A tap on the phone (D74's phone layout: Settings → Devices is the detail page, nothing overlaps). */
 async function press(target: Locator): Promise<void> {
   await expect(target).toBeEnabled();
-  await target.dispatchEvent('click');
+  await target.tap();
 }
 
 /** On the desktop: Settings → Devices with device access on. */
@@ -161,8 +157,11 @@ test('pairs a phone with a QR code, enables its notifications, and revokes it', 
     }, { endpoint: sub.endpoint, keys: sub.keys });
 
     const mobile = await pairPhone(android, url, 'Pixel');
-    // It sees this machine's sessions.
-    await expect(mobile.getByText(SESSION_TITLE).first()).toBeVisible();
+    // It sees this machine's sessions (D74: the phone layout, the sessions in the sidebar drawer behind ☰).
+    await expect(mobile.getByTestId('app-bar')).toBeVisible();
+    await mobile.getByTestId('drawer-open').tap();
+    await expect(mobile.getByTestId('sidebar').getByText(SESSION_TITLE)).toBeVisible();
+    await mobile.getByTestId('drawer-scrim').tap();
     // Its credential is an HttpOnly, Secure, SameSite=Strict cookie on the devices' origin only; never the install token.
     const cookies = await android.cookies();
     expect(cookies.map((c) => c.name)).toEqual(['__Host-sb_device']);
@@ -172,8 +171,13 @@ test('pairs a phone with a QR code, enables its notifications, and revokes it', 
     await expect(page.getByTestId('devices-paired-note')).toHaveText('Paired: Pixel.');
     await expect(page.getByTestId('device').getByTestId('device-name')).toHaveText('Pixel');
 
-    // The phone's own Settings → Devices: this device and its notifications.
-    await mobile.goto(`http://localhost:${devicePort}/settings/devices`);
+    // The phone's own Settings → Devices (D74: Settings lists the sections on a phone, Devices opens as the detail page).
+    await mobile.goto(`http://localhost:${devicePort}/settings`);
+    await expect(mobile.getByTestId('view-settings')).toHaveAttribute('data-pane', 'list');
+    await mobile.getByTestId('settings-nav-devices').tap();
+    await expect(mobile).toHaveURL(`http://localhost:${devicePort}/settings/devices`);
+    await expect(mobile.getByTestId('view-settings')).toHaveAttribute('data-pane', 'detail');
+    await expect(mobile.getByTestId('settings-back')).toBeVisible();
     await expect(mobile.getByTestId('this-device-name')).toHaveText('Pixel');
     await expect(mobile.getByTestId('devices-access')).toHaveCount(0);
     await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-support', 'ready');

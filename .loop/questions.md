@@ -1580,7 +1580,8 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D73-ios-separate · an iPhone's Home Screen app has its own cookies, so it is paired separately (the pairing page and docs say so); the Safari tab's pairing remains a separate device until revoked
 - ASSUMED D73-pair-page · a self-contained server page (no app bundle) with a strict CSP; it shows this machine's name to whoever on the tailnet opens it
 - ASSUMED D73-no-hub-event · no new `/hub` event: Settings → Devices re-reads the list every 2 s while a code waits
-- ASSUMED D73-e2e-click · on the phone context, clicks in Settings are dispatched on the element: the desktop Settings layout overlaps at 390 px until the responsive lane (D74) lands; switch to real taps then
+- RESOLVED D73-e2e-click · after merging D74 the phone E2E uses real taps (sidebar in the ☰ drawer, Settings list → Devices detail)
+- RESOLVED D73-vapid-short-scalar · found by a flaky run after the merge: Node's `getPrivateKey()` returned 31 bytes for ~1/256 keys, which the key-file check then refused (new keys at every start, breaking subscriptions); the scalar is now padded to 32 bytes, with a test over 1500 keys
 - OPEN D73-real-tailscale · not run against a real `tailscaled`, Apple or Google push: `docs/devices.md` → *Manual checklist*
 - ANSWERED D73-question-https-port · keep 8443
 - ANSWERED D73-question-push-peers · yes, include peers

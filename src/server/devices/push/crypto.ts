@@ -19,7 +19,10 @@ export interface VapidKeys {
 export function generateVapidKeys(): VapidKeys {
   const ecdh = createECDH('prime256v1');
   ecdh.generateKeys();
-  return { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url') };
+  // `getPrivateKey()` drops leading zero bytes (about 1 key in 256 is shorter): stored as the full 32-byte scalar.
+  const scalar = ecdh.getPrivateKey();
+  const privateKey = Buffer.concat([Buffer.alloc(32 - scalar.length), scalar]);
+  return { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: privateKey.toString('base64url') };
 }
 
 /** `true` when `keys` is a usable pair (65-byte uncompressed public point, 32-byte private scalar that matches it). */

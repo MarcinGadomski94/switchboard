@@ -44,20 +44,38 @@ function payloadOf(push: ReceivedPush): { kind: string; title: string; url: stri
 describe('D73 pushes for a paired machine', () => {
   it("notifies this machine's devices of the peer's questions and finished turns, once each, linking the remote session", async () => {
     tmp = await makeTempDir('devices-peers');
-    const free = await freeTestPorts();
-    push = await startFakePush(free.at(-1) as number);
-    const devicePort = free.at(-2) as number;
-    const release = await reserve(devicePort);
-    const origin = `http://localhost:${devicePort}`;
-    const env = { SWITCHBOARD_DEVICE_TEST_ORIGIN: origin, SWITCHBOARD_PUSH_TEST_ENDPOINTS: push.origin };
-    let a: PeerNode;
-    let b: PeerNode;
-    let bId: string;
-    try {
-      ({ a, b, bId } = await pairedNodes(tmp, env));
-    } finally {
-      await release();
+    // Six test ports (two servers, two peer listeners, the device listener, the fake push service) while other test
+    // files share the range: the setup is retried when a port is taken meanwhile.
+    let world: { a: PeerNode; b: PeerNode; bId: string; devicePort: number; origin: string } | null = null;
+    for (let attempt = 0; attempt < 6 && !world; attempt++) {
+      const free = await freeTestPorts();
+      if (free.length < 6) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        continue;
+      }
+      push = await startFakePush(free.at(-1) as number).catch(() => null);
+      if (!push) continue;
+      const port = free.at(-2) as number;
+      const release = await reserve(port).catch(() => null);
+      if (!release) {
+        await push.close();
+        push = null;
+        continue;
+      }
+      const portOrigin = `http://localhost:${port}`;
+      try {
+        const started = await pairedNodes(`${tmp}/try-${attempt}`, { SWITCHBOARD_DEVICE_TEST_ORIGIN: portOrigin, SWITCHBOARD_PUSH_TEST_ENDPOINTS: push.origin });
+        world = { a: started.a, b: started.b, bId: started.bId, devicePort: port, origin: portOrigin };
+      } catch {
+        await push.close();
+        push = null;
+        await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1_000));
+      } finally {
+        await release();
+      }
     }
+    if (!world || !push) throw new Error('the two-machine world could not start on the test ports');
+    const { a, b, bId, devicePort } = world;
     nodes.push(a, b);
 
     // A: device access on, a phone paired and subscribed.

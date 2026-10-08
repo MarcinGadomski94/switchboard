@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InboxItem, Session } from '../../../src/core/api.ts';
-import { encryptPayload, generateVapidKeys, vapidAuthorization } from '../../../src/server/devices/push/crypto.ts';
+import { encryptPayload, generateVapidKeys, validVapidKeys, vapidAuthorization } from '../../../src/server/devices/push/crypto.ts';
 import { isAllowedPushEndpoint, validSubscription } from '../../../src/server/devices/push/sender.ts';
 import { VAPID_FILE, loadOrCreateVapidKeys } from '../../../src/server/devices/service.ts';
 import { type DeviceWorld, startDeviceWorld } from '../../helpers/devices.ts';
@@ -49,6 +49,14 @@ describe('D73 push crypto', () => {
     // Another key's signature is refused.
     const other = generateVapidKeys();
     expect(() => verifyVapid(header.replace(keys.publicKey, other.publicKey), 'https://web.push.apple.com', now)).toThrow('signature');
+  });
+
+  it('always stores the full 32-byte private scalar (getPrivateKey drops leading zero bytes)', () => {
+    for (let i = 0; i < 1500; i++) {
+      const keys = generateVapidKeys();
+      expect(Buffer.from(keys.privateKey, 'base64url')).toHaveLength(32);
+      expect(validVapidKeys(keys)).toBe(true);
+    }
   });
 
   it('keeps the VAPID keys in the data folder (0600), the same pair across restarts', async () => {
@@ -223,7 +231,9 @@ describe('D73 push delivery', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(fake.received).toEqual([]);
     // Notifications off for a device removes its subscription.
-    await w.enableAccess();
-    expect((await w.device('DELETE', '/api/device/push', { cookie: a.cookie })).body.device.push).toBe(false);
+    expect((await w.enableAccess())?.https).toBe('ok');
+    const off = await w.device('DELETE', '/api/device/push', { cookie: a.cookie });
+    expect(off.status, off.text).toBe(200);
+    expect(off.body.device.push).toBe(false);
   });
 });

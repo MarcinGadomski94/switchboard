@@ -208,12 +208,16 @@ async function startOnce(options: DeviceWorldOptions): Promise<DeviceWorld> {
     },
     async enableAccess(extra: Record<string, unknown> = {}) {
       let state: any = null;
-      for (const port of [world.devicePort, ...shuffled(await freeTestPorts()).filter((p) => p !== world.devicePort)]) {
-        world.devicePort = port;
-        world.origin = `http://localhost:${port}`;
-        config.deviceTestOrigin = world.origin;
-        state = (await ui('PUT', '/api/devices/access', { ...extra, enabled: true, port })).body;
-        if (!String(state?.message ?? '').includes('EADDRINUSE')) return state;
+      // Other test files share the port range (a two-machine test takes six): wait for a free one, up to ~15 s.
+      for (let round = 0; round < 30; round++) {
+        for (const port of [world.devicePort, ...shuffled(await freeTestPorts()).filter((p) => p !== world.devicePort)]) {
+          world.devicePort = port;
+          world.origin = `http://localhost:${port}`;
+          config.deviceTestOrigin = world.origin;
+          state = (await ui('PUT', '/api/devices/access', { ...extra, enabled: true, port })).body;
+          if (!String(state?.message ?? '').includes('EADDRINUSE')) return state;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
       return state;
     },
