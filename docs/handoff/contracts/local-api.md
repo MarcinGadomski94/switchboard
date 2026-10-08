@@ -1091,6 +1091,28 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Todo run in a new session, review, board and actuals (D76, D77, D78, 2026-10-08, additive)
+
+An item can run in a session of its own; its run's work waits in a **review** state; the Todos page has a **board**; finished items record what they took (`docs/todos.md` → *Run in a new session (D76)*, *Review (D76)*, *Board (D77)*, *Actual vs. estimate (D78)*; `docs/decisions.md` → D76, D77, D78). Migration 0032 rebuilds `session_todos` (the state CHECK) and adds `sessions.todo_link` and `todo_actuals`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/todos/{todoId}/run | — | 201 `TodoRunResult` `{ session: Session, list: SessionTodoList, note: string \| null }`: a new supervised session (simple start) in the source session's folder; in a repo folder on its own worktree, branch `todo/<slug>` (free: `-2`, `-3`, …) cut from the source session's checked-out branch (or commit); elsewhere in the same folder without a worktree and `note` says so; the source's CLI, model, effort and account (`todoRunOptions`); title = the item's (80 characters), first message = its ▶ Start message. The item `in_progress` (`startedBy: "run"`, `runSessionId`, `runState: "active"`), the session `todoLink`. · 404 `not-found` · 422 `invalid` (done or in review) · 409 `already-running` (its run session is open and active) · 409 `no-folder` (the source's folder is no longer saved) · `POST /api/sessions`'s refusals (422 field errors, 409 worktree / folder / CLI refusals); a refused start leaves the item as it was |
+
+- **`TodoState`** gains **`review`**: in progress → review → done; review → in progress / open (the review queue's outcomes, the board). **`TodoStartSource`** gains **`run`**.
+- **`SessionTodo`** gains `runSessionId` (`string | null`; kept after the run), `runState` (`"active" | "discarded" | null`), `startedFirstAt`, `actualMs`, `actualTokens` (`number | null`). **`SessionTodoList`** gains `reviewCount`; `openCount` (and `todosChanged.openCount`, `Session.openTodoCount`) counts `open` + `in_progress` only (review is neither open nor done). **`TodoGroup`** gains `actuals` (`TodoActualsTotal | null`: `{ count, estimated, estimateMinutes, estimatedActualMs, actualMs, tokens }` over the session's completed items, also those removed after their done hour). **`Session`** gains `todoLink` (`{ sourceSessionId, todoId } | null`).
+- **`PUT …/todos/{todoId}`:** `state: "done"` of an item with `runState: "active"` (not already in review) stores **`review`**, unless **`skipReview: true`** (the board's drag to Done); `state: "review"` only for an item with a `runSessionId` (else 422 `invalid`); review → done is done.
+- **Agent routes:** a run session's agent token also reaches its **one linked item** (`todoLink.todoId` in `todoLink.sourceSessionId`, while its run is active): `GET /agent/v1/todos/{todoId}`, `PUT /agent/v1/todos/{todoId}` (answer `{ todo, list, linked: true, calibration }` with the run session's **own** list); `DELETE` and every other item of the source session answer 404. `GET /agent/v1/todos` answers the list plus `linked` (`SessionTodo | null`) and `calibration`; `POST` / `PUT` answers carry `calibration` (`string | null`: the estimate-accuracy line once ≥ 3 completed items with estimates exist: this session's last 10, else its folder's).
+- **`reviewResolved`** (bus / hub event, see the table below): merged / committed / dismissed → `done`; discarded → `open` with `runState: "discarded"` (the link kept); sent-back → `in_progress` (`startedBy: "run"`).
+- **Result events** gain `payload.tokens` (`number | null`: the turn's `usage` input + cache creation + output tokens), which the actuals add up.
+- **Peers (D48):** the run route is on `PEER_API_ALLOW` (answer kind `todo-run`: `session` and `list` namespaced) and on the devices' allow-list (D73); a peer's `runSessionId` and `todoLink.sourceSessionId` are namespaced (`r~<machine>~<id>`). A peer before D76 has no route (403 / 404) and no review state (its items read as before).
+- **Take-over (D65):** an item in review travels as done (its run session stays behind); a run's start as the developer's.
+
+```json
+POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/run
+{ "session": { "id": "9d2f…", "title": "Fix the login test", "name": "fix-the-login-test", "cwd": "/repos/app-wt-fix-the-login-test", "todoLink": { "sourceSessionId": "0b7c3e0a-…", "todoId": "3f9a1c2b7d4e" }, "…": "…" }, "list": { "sessionId": "0b7c3e0a-…", "openCount": 1, "reviewCount": 0, "todos": [{ "id": "3f9a1c2b7d4e", "state": "in_progress", "startedBy": "run", "runSessionId": "9d2f…", "runState": "active", "…": "…" }] }, "note": null }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1116,3 +1138,4 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | updateChanged | UpdateStatus (additive, D55: the updater's check or update changed; this machine's only, never forwarded between peers) |
 | machineState | Machine (+ `removed: true` once removed) (additive, fix · peer reconnects: a paired machine's connection changed, or it was paired, renamed or removed; this machine's only, never forwarded between peers) |
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
+| reviewResolved | { sessionId, outcome } (additive, D76, shared with the review queue: `ReviewResolvedEvent`, `outcome` `merged` / `committed` / `discarded` / `sent-back` / `dismissed`; a session's review card was resolved; the todos whose run session it is leave `review`; this machine's only, not forwarded between peers) |
