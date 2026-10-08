@@ -106,6 +106,8 @@ interface BranchCandidate {
   readonly branch: string;
   readonly records: WorktreeRecord[];
   created: CreatedBranch | null;
+  /** Named only in a `worktrees` row, without Switchboard naming or a created record: listed only when merged, never ticked. */
+  readonly legacy: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -366,14 +368,16 @@ export class CleanupService {
     const createdKeys = new Map(created.map((entry) => [keyOf(entry.repoPath, entry.branch), entry]));
     for (const record of records) {
       const key = keyOf(record.repoPath, record.branch);
-      if (!hasSwitchboardBranchName(record.branch) && !createdKeys.has(key)) continue;
-      const candidate = candidates.get(key) ?? { repoPath: record.repoPath, branch: record.branch, records: [], created: createdKeys.get(key) ?? null };
+      // D84 ruling (2026-10-08): a branch with neither Switchboard naming nor a created record (e.g. a ticket-named
+      // task branch from before the record existed) is a legacy candidate: listed only when merged, never ticked.
+      const legacy = !hasSwitchboardBranchName(record.branch) && !createdKeys.has(key);
+      const candidate = candidates.get(key) ?? { repoPath: record.repoPath, branch: record.branch, records: [], created: createdKeys.get(key) ?? null, legacy };
       candidate.records.push(record);
       candidates.set(key, candidate);
     }
     for (const entry of created) {
       const key = keyOf(entry.repoPath, entry.branch);
-      if (!candidates.has(key)) candidates.set(key, { repoPath: entry.repoPath, branch: entry.branch, records: [], created: entry });
+      if (!candidates.has(key)) candidates.set(key, { repoPath: entry.repoPath, branch: entry.branch, records: [], created: entry, legacy: false });
     }
     const remoteRefs = new Map<string, Map<string, string>>();
     const remoteUrls = new Map<string, string>();
@@ -407,12 +411,13 @@ export class CleanupService {
           const ancestor = base !== null && (await this.#isAncestor(repoPath, oid, base));
           const onRemotes = (await this.#count(repoPath, [oid, '--not', '--remotes'])) === 0;
           const merged = ancestor || (prMerged && onRemotes);
-          if (merged || worktreeGone || sessionsDone) {
+          if (candidate.legacy ? merged : merged || worktreeGone || sessionsDone) {
             const reasons: CleanupReason[] = [];
             if (ancestor) reasons.push('merged');
             else if (merged) reasons.push('pr-merged');
             if (worktreeGone) reasons.push('worktree-gone');
             reasons.push(...sessionReasons);
+            if (candidate.legacy) reasons.push('untracked-origin');
             const warnings: CleanupWarning[] = [];
             if (!merged) {
               const ahead = base !== null ? await this.#count(repoPath, [`${base}..${oid}`]) : null;
@@ -436,7 +441,7 @@ export class CleanupService {
               warnings,
               confirm: merged ? null : 'unmerged',
               // Ticked when merged and every worktree holding it goes by default too (the run removes worktrees first).
-              selected: merged && where.every((dir) => candidate.records.some((record) => record.path === dir && planned.get(`wt:${record.id}`)?.item.selected === true)),
+              selected: !candidate.legacy && merged && where.every((dir) => candidate.records.some((record) => record.path === dir && planned.get(`wt:${record.id}`)?.item.selected === true)),
               extra: [oid, base ?? ''],
             });
             add({ item, action: { kind: 'local-branch', repoPath, branch: candidate.branch, oid } });
@@ -445,7 +450,8 @@ export class CleanupService {
       }
 
       // Remote copies: only of branches that were new (a tracked origin branch was not pushed by Switchboard).
-      if (!hasSwitchboardBranchName(candidate.branch) && candidate.created?.kind !== 'new') continue;
+      // Legacy candidates have no remote copy Switchboard is known to have pushed.
+      if (candidate.legacy || (!hasSwitchboardBranchName(candidate.branch) && candidate.created?.kind !== 'new')) continue;
       if (candidate.created?.kind === 'tracking') continue;
       let refs = remoteRefs.get(repoPath);
       if (!refs) {

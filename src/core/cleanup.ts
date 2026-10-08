@@ -25,7 +25,7 @@ export const CLEANUP_GROUP_LABELS: Readonly<Record<CleanupGroup, string>> = {
 /** Each group's one-line explanation. */
 export const CLEANUP_GROUP_HINTS: Readonly<Record<CleanupGroup, string>> = {
   worktrees: 'Worktrees Switchboard made whose branch is merged, whose session is closed and that saw no change for 14 days, or whose folder is gone. Removing a worktree keeps its branch.',
-  localBranches: 'Branches Switchboard made that are merged, or whose worktree or session is gone. Unmerged ones need an extra confirmation.',
+  localBranches: 'Branches Switchboard made that are merged, or whose worktree or session is gone. Unmerged ones need an extra confirmation. Other branches a Switchboard worktree used are listed only when merged, never ticked for you.',
   remoteBranches: 'Branches Switchboard pushed. Never ticked for you: each one is deleted on its remote only when you tick it, after a separate confirmation.',
   sessions: 'Closed sessions older than the limit below: the session record with its events, todos and attachments.',
   data: 'Attachments past their 30 days, files nothing refers to any more, old chat exports and take-over staging folders.',
@@ -65,7 +65,9 @@ export type CleanupReason =
   | 'closed-long-ago'
   | 'past-retention'
   | 'orphaned'
-  | 'takeover-leftover';
+  | 'takeover-leftover'
+  /** D84 ruling: a branch only a `worktrees` row names (no Switchboard naming, no created record): listed when merged, never ticked. */
+  | 'untracked-origin';
 
 /** A reason's chip text. */
 export const CLEANUP_REASON_LABELS: Readonly<Record<CleanupReason, string>> = {
@@ -80,6 +82,7 @@ export const CLEANUP_REASON_LABELS: Readonly<Record<CleanupReason, string>> = {
   'past-retention': 'past retention',
   orphaned: 'orphaned',
   'takeover-leftover': 'take-over leftover',
+  'untracked-origin': 'not known to be made by Switchboard',
 };
 
 /** The extra confirmation an item needs before a run may remove it. */

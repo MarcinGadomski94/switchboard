@@ -114,9 +114,13 @@ describe('Clean-up · what is listed (D84)', () => {
     const scan = await service({ daysAhead: 20 }).scan();
     const titles = scan.items.map((item) => item.title);
     expect(byGroup(scan, 'worktrees').map((item) => item.title).sort()).toEqual([record.path, reusedPath].sort());
-    expect(byGroup(scan, 'localBranches').map((item) => item.title)).toEqual(['session/alpha']);
+    // D84 ruling: a branch only a worktrees row names is listed when merged (feature/reused is at main), never ticked.
+    expect(byGroup(scan, 'localBranches').map((item) => [item.title, item.selected])).toEqual([
+      ['feature/reused', false],
+      ['session/alpha', false],
+    ]);
     expect(byGroup(scan, 'remoteBranches')).toEqual([]);
-    for (const foreign of ['feature/mine', 'session/handmade', 'dev/own', 'feature/reused', 'origin/feature/mine', path.join(w.root, 'own-wt')]) expect(titles).not.toContain(foreign);
+    for (const foreign of ['feature/mine', 'session/handmade', 'dev/own', 'origin/feature/mine', path.join(w.root, 'own-wt')]) expect(titles).not.toContain(foreign);
     expect(reused.branch).toBe('feature/reused');
     // The marker records what Switchboard made.
     expect((await createdBranches(w.store.settings)).map((entry) => [entry.branch, entry.kind])).toEqual([['session/alpha', 'new']]);
@@ -165,6 +169,42 @@ describe('Clean-up · what is listed (D84)', () => {
     expect(item?.sizeBytes).toBeGreaterThan(0);
     expect(item?.lastChangeAt).not.toBeNull();
     expect(item?.selected).toBe(true);
+  });
+});
+
+describe('Clean-up · older ticket-named task branches (D84 ruling)', () => {
+  it('listed only when a worktrees row names them and they are merged; unticked; never an unmerged one or one without a row, never their remote copy', async () => {
+    const { w, service } = await setup();
+    const closed = await session(w, 'legacy', 40);
+    const rowFor = async (branch: string, commit: boolean): Promise<void> => {
+      const dir = path.join(w.root, branch.replace(/\//g, '-'));
+      await w.git(w.web, 'worktree', 'add', '-q', '-b', branch, dir);
+      if (commit) await w.commit(dir, `${branch.replace(/\//g, '-')}.txt`, 'x\n');
+      await w.git(w.web, 'worktree', 'remove', dir);
+      const record = await w.store.worktrees.create({ repo: 'web-front', repoPath: w.web, branch, baseRef: 'main', path: dir, sessionId: closed });
+      await w.store.worktrees.markRemoved(record.id);
+    };
+    // Merged into main, named by a removed row (a task branch from before the created-branches record).
+    await rowFor('PROJ-1-merged-task', true);
+    await w.git(w.web, 'merge', '-q', '--ff-only', 'PROJ-1-merged-task');
+    await w.git(w.web, 'push', '-q', 'origin', 'PROJ-1-merged-task');
+    await w.git(w.web, 'fetch', '-q', 'origin');
+    // Named by a row but not merged.
+    await rowFor('PROJ-2-open-task', true);
+    // Merged but no row names it.
+    await w.git(w.web, 'branch', 'PROJ-3-no-row');
+    const svc = service();
+    const scan = await svc.scan();
+    const local = byGroup(scan, 'localBranches');
+    expect(local.map((item) => [item.title, item.selected, item.confirm, item.reasons])).toEqual([
+      ['PROJ-1-merged-task', false, null, ['merged', 'worktree-gone', 'session-closed', 'untracked-origin']],
+    ]);
+    expect(scan.items.map((item) => item.title).filter((title) => title.includes('PROJ-2') || title.includes('PROJ-3'))).toEqual([]);
+    expect(byGroup(scan, 'remoteBranches')).toEqual([]);
+    // Ticked by hand it goes; the others stay.
+    const done = await run(svc, scan, local.map((item) => item.id));
+    expect(done.summary).toMatchObject({ done: 1, failed: 0 });
+    expect(await branches(w, w.web)).toEqual(['PROJ-2-open-task', 'PROJ-3-no-row', 'main']);
   });
 });
 
