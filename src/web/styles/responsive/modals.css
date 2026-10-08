@@ -14,6 +14,27 @@
     z-index: 75;
   }
 
+  /* Dialogs fit the window (a percentage of the overlay's auto-sized grid area does not limit them). */
+  .sb-modal-new,
+  .sb-modal-simple,
+  .sb-modal-wizard,
+  .sb-takeover,
+  .sb-update-dialog,
+  .sb-hist-move,
+  .sb-bulk-switch,
+  .sb-close-dialog {
+    max-width: calc(100vw - 32px);
+    max-height: calc(var(--app-height, 100dvh) - 32px);
+  }
+
+  .sb-modal-new {
+    height: min(800px, calc(var(--app-height, 100dvh) - 32px));
+  }
+
+  .sb-modal-wizard {
+    height: min(620px, calc(var(--app-height, 100dvh) - 32px));
+  }
+
   /* Menus fit the window; long ones scroll. */
   .sb-layout-menu {
     max-height: calc(var(--app-height, 100dvh) - 16px);
@@ -54,9 +75,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    width: calc(100% - 32px);
-    max-width: 760px;
-    height: calc(100% - 32px);
+    width: min(760px, calc(100vw - 32px));
+    height: calc(var(--app-height, 100dvh) - 32px);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -133,9 +153,8 @@
 
   /* The setup wizard: the steps rail becomes a row over the step. */
   .sb-modal-wizard {
-    width: calc(100% - 32px);
-    height: calc(100% - 32px);
-    max-height: 760px;
+    width: calc(100vw - 32px);
+    height: min(760px, calc(var(--app-height, 100dvh) - 32px));
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }
@@ -353,21 +372,13 @@
     display: inline;
   }
 
+  /* The palette keeps a strip of backdrop under it: a tap there closes it. */
   .sb-overlay[data-modal='palette'] {
-    padding: 0;
-  }
-
-  .sb-modal-palette {
-    width: 100%;
-    height: var(--app-height, 100dvh);
-    border: 0;
-    border-radius: 0;
-    padding-top: env(safe-area-inset-top);
-    box-sizing: border-box;
+    padding: max(10px, env(safe-area-inset-top)) 8px 8px;
   }
 
   .sb-palette-results {
-    max-height: none;
+    max-height: calc(var(--app-height, 100dvh) - 160px);
   }
 
   .sb-palette-kind {

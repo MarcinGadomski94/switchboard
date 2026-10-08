@@ -453,3 +453,24 @@
     top: calc(100% + 2px);
   }
 }
+
+/* ---------- Short windows (a phone held sideways): the chat keeps the room ---------- */
+@media (max-width: 1279px) and (max-height: 500px) {
+  .sb-sv-chips,
+  .sb-chat-quick-label {
+    display: none;
+  }
+
+  .sb-sv-header {
+    gap: 4px;
+  }
+
+  .sb-chat-composer {
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .sb-todos-body {
+    max-height: 30dvh;
+  }
+}
