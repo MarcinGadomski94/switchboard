@@ -144,6 +144,19 @@ export interface AppOptions {
   readonly logger?: boolean;
 }
 
+/** D73: a route as registered (method, URL pattern with `:params` / `*`). */
+export interface RegisteredRoute {
+  readonly method: string;
+  readonly url: string;
+}
+
+const REGISTERED_ROUTES = new WeakMap<FastifyInstance, RegisteredRoute[]>();
+
+/** D73: the routes {@link buildApp} registered on `app` (tests: every `/api` route must be classified for devices). */
+export function registeredRoutes(app: FastifyInstance): readonly RegisteredRoute[] {
+  return REGISTERED_ROUTES.get(app) ?? [];
+}
+
 /**
  * Builds the Fastify app without listening: the security guard first, then the
  * API routes, then the UI. Tests drive it with `inject()`; main.ts listens
@@ -151,6 +164,12 @@ export interface AppOptions {
  */
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: options.logger ?? false, trustProxy: false });
+  // D73: every route is recorded, so tests can check each `/api` route is classified for devices.
+  const routes: RegisteredRoute[] = [];
+  REGISTERED_ROUTES.set(app, routes);
+  app.addHook('onRoute', (route) => {
+    for (const method of ([] as string[]).concat(route.method)) routes.push({ method: method.toUpperCase(), url: route.url });
+  });
   // D48 P4: the hook script presents this token to `/hook/*` (a file only the user can read).
   const hookToken = options.hookToken ?? (await loadOrCreateToken(options.config.dataDir, HOOK_TOKEN_FILE));
   const bus = options.bus ?? new HubBus();

@@ -4,10 +4,35 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_PUSH_EVENTS, deviceNameFromUserAgent, mergePushEvents, readPushEvents, shortText } from '../../../src/core/devices.ts';
 import { MIGRATIONS_DIR } from '../../../src/server/db/migrate.ts';
 import type { Store } from '../../../src/server/db/store.ts';
-import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
+import { DEVICE_ALLOWED, DEVICE_PROXY, DEVICE_REFUSED, isLocalOnly, matchesRule } from '../../../src/server/devices/local-only.ts';
+import { registeredRoutes } from '../../../src/server/app.ts';
+import { startDeviceWorld } from '../../helpers/devices.ts';
 import { parseTailscaleStatus, servedByOther, tailscaleActionUrl } from '../../../src/server/devices/tailscale-serve.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { openTempStore } from '../../helpers/store.ts';
+
+describe('D73 device allow-list: every route classified', () => {
+  it('puts every registered /api route on exactly one of DEVICE_ALLOWED / DEVICE_REFUSED (or the paired-machine proxy)', async () => {
+    const world = await startDeviceWorld({ accessOff: true });
+    try {
+      const routes = registeredRoutes(world.app).filter((route) => route.url === '/api' || route.url.startsWith('/api/'));
+      expect(routes.length).toBeGreaterThan(150);
+      const problems: string[] = [];
+      for (const { method, url } of routes) {
+        const sample = url.replace(/:[^/]+/g, 'x1').replace(/\*$/, 'x1');
+        if (DEVICE_PROXY.test(sample)) continue;
+        const allowed = matchesRule(DEVICE_ALLOWED, method, sample);
+        const refused = matchesRule(DEVICE_REFUSED, method, sample);
+        if (allowed === refused) problems.push(`${method} ${url}: ${allowed ? 'on both lists' : 'not classified (add it to DEVICE_ALLOWED or DEVICE_REFUSED)'}`);
+        // The runtime agrees with the classification.
+        if (isLocalOnly(method, sample) !== !allowed) problems.push(`${method} ${url}: isLocalOnly disagrees`);
+      }
+      expect(problems).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+});
 
 describe('D73 local-only routes', () => {
   it('refuses machine administration and allows the work', () => {
@@ -49,6 +74,13 @@ describe('D73 local-only routes', () => {
       ['POST', '/api/%64evices/pairing'],
       ['POST', '/api//hooks/install'],
       ['GET', '/api/%E0%A4%A'],
+      // D73 allow-list: anything not listed, and a proxy inside a proxy.
+      ['POST', '/api/mcp/servers/a/reconnect'],
+      ['PUT', '/api/clis/default'],
+      ['POST', '/api/sessions/a/attach'],
+      ['POST', '/api/solutions/web/isolate'],
+      ['GET', '/api/some-route-added-later'],
+      ['POST', '/api/machines/r1/api/machines/r2/api/sessions'],
     ];
     for (const [method, url] of refused) expect(isLocalOnly(method, url), `${method} ${url}`).toBe(true);
     const allowed: Array<[string, string]> = [
@@ -62,8 +94,6 @@ describe('D73 local-only routes', () => {
       ['GET', '/api/machines/r1/api/folders'],
       ['POST', '/api/machines/r1/api/sessions'],
       ['GET', '/api/mcp'],
-      ['POST', '/api/mcp/servers/a/reconnect'],
-      ['PUT', '/api/clis/default'],
       ['POST', '/api/sessions/a/account'],
       ['PUT', '/api/settings'],
       ['GET', '/api/device'],
@@ -71,6 +101,9 @@ describe('D73 local-only routes', () => {
       ['POST', '/api/schedules'],
       ['GET', '/api/updates'],
       ['GET', '/hub'],
+      ['HEAD', '/api/sessions'],
+      ['GET', '/'],
+      ['GET', '/sessions/abc'],
     ];
     for (const [method, url] of allowed) expect(isLocalOnly(method, url), `${method} ${url}`).toBe(false);
   });
