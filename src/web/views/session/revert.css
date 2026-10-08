@@ -1,0 +1,261 @@
+/*
+ * D80 · Undo a turn (docs/undo.md; not in the prototype): the turn action beside a
+ * user bubble, the Redo button on the newest revert's divider, and the
+ * confirmation (the Close confirmation's overlay, panel and pill buttons).
+ */
+
+/* The action sits outside the bubble, at its top left (absolutely placed: the bubble keeps its box). */
+.sb-chat-message[data-role='user'][data-revert] {
+  position: relative;
+}
+
+.sb-chat-revert {
+  position: absolute;
+  right: calc(100% + 4px);
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.sb-chat-revert > svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+.sb-chat-message:hover > .sb-chat-revert,
+.sb-chat-revert:focus-visible {
+  opacity: 1;
+}
+
+.sb-chat-revert:hover {
+  background: var(--bg-selected-nav);
+  color: var(--text-strong);
+}
+
+.sb-chat-revert[data-disabled] {
+  cursor: not-allowed;
+  color: var(--muted-3);
+}
+
+.sb-chat-revert[data-disabled]:hover {
+  background: none;
+  color: var(--muted-3);
+}
+
+/* D74: a touch screen has no hover: the action shows faintly all the time. */
+@media (hover: none) {
+  .sb-chat-revert {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-chat-revert {
+    transition: none;
+  }
+}
+
+/* Redo on the newest revert's divider. */
+.sb-chat-redo {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sb-chat-redo:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-chat-redo-error {
+  margin-left: 8px;
+  color: var(--status-fail);
+}
+
+/* The confirmation. */
+.sb-revert-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.sb-revert-dialog {
+  /* D74: min() (not max-width: a grid track sizes to the fixed width first) so a phone's dialog fits. */
+  box-sizing: border-box;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.sb-revert-title {
+  font-size: var(--fs-body-lg);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-strong);
+}
+
+.sb-revert-quote {
+  padding: 6px 10px;
+  border-left: 2px solid var(--border-control);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sb-revert-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.sb-revert-repos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sb-revert-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-revert-repo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.sb-revert-repo-name {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.sb-revert-repo-count {
+  color: var(--muted-2);
+}
+
+.sb-revert-branch {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.sb-revert-branch[data-action='refused'] {
+  color: var(--status-need);
+}
+
+.sb-revert-files {
+  margin: 0;
+  padding: 6px 8px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-row);
+  border-radius: 6px;
+  font: 400 12px var(--font-mono);
+  color: var(--text-2);
+}
+
+.sb-revert-file {
+  display: flex;
+  gap: 8px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.sb-revert-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-revert-mark {
+  flex: 0 0 auto;
+  width: 10px;
+  color: var(--muted-2);
+}
+
+.sb-revert-file[data-change='added'] .sb-revert-mark {
+  color: var(--status-done);
+}
+
+.sb-revert-file[data-change='deleted'] .sb-revert-mark {
+  color: var(--status-fail);
+}
+
+.sb-revert-more {
+  line-height: 18px;
+  color: var(--muted-2);
+}
+
+.sb-revert-warning {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-need);
+}
+
+.sb-revert-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-fail);
+}
+
+.sb-revert-actions {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sb-revert-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sb-revert-outlined {
+  border: 1px solid var(--border-control);
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.sb-revert-primary:disabled,
+.sb-revert-outlined:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

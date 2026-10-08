@@ -13,6 +13,8 @@ import { CutNote, type FullTextControl } from './FullText.tsx';
 import type { QueuedReason } from '../../../core/event-payload.ts';
 import { ANSWERS_WRITTEN, type ChatItem, type ChatStep, QUEUED_TOOLTIPS, answeredOnText, batchQueued } from './chat.ts';
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
+import type { TurnRevert } from './checkpoints.ts';
+import { RedoButton, TurnRevertButton } from './RevertTurn.tsx';
 
 /**
  * The chat's items as the main chat (M4.2) and, D36, a subagent's own chat show
@@ -122,10 +124,14 @@ export interface ChatItemViewProps {
   readonly queuedNote?: string | null;
   /** Fix · long messages: restores a cut bubble's whole text ("Show full message"); absent = no note (a Workflow agent's chat). */
   readonly fullText?: FullTextControl;
+  /** D80: the turn action beside a user bubble (the main chat only; `null` / absent = none). */
+  readonly revert?: TurnRevert | null;
+  /** D80: this divider is the newest revert's and can be undone (Redo). */
+  readonly redo?: boolean;
 }
 
 /** One chat item (a user bubble, an agent block with its step lines, a question batch); shared by the main and subagent chats. */
-export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText }: ChatItemViewProps) {
+export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText, revert = null, redo = false }: ChatItemViewProps) {
   if (item.kind === 'user') {
     return (
       <div
@@ -137,6 +143,7 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         data-queued={item.queued ?? undefined}
         data-queued-note={item.queued && queuedNote ? 'true' : undefined}
         data-not-sent={item.notSent ? 'true' : undefined}
+        data-revert={revert && !item.queued ? 'true' : undefined}
       >
         {item.text !== '' || item.attachments.length === 0 ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
@@ -153,6 +160,8 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
           </div>
         ) : null}
         {item.notSent ? <NotSentNote sessionId={sessionId} eventId={item.id} /> : null}
+        {/* D80: revert to before this turn (not on a message still waiting: its turn has not run). */}
+        {revert && !item.queued ? <TurnRevertButton sessionId={sessionId} revert={revert} /> : null}
       </div>
     );
   }
@@ -178,8 +187,12 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
   if (item.kind === 'divider') {
     // D62 P5: the session switched to another CLI here.
     return (
-      <div className="sb-chat-divider" data-testid="chat-divider" data-from={item.from ?? undefined} data-to={item.to ?? undefined} role="separator">
-        <span className="sb-chat-divider-text">{item.text}</span>
+      <div className="sb-chat-divider" data-testid="chat-divider" data-from={item.from ?? undefined} data-to={item.to ?? undefined} data-revert={item.revert} role={redo && item.revert === 'reverted' ? undefined : 'separator'}>
+        <span className="sb-chat-divider-text">
+          {item.text}
+          {/* D80: the newest revert can be undone. */}
+          {redo && item.revert === 'reverted' ? <RedoButton sessionId={sessionId} /> : null}
+        </span>
       </div>
     );
   }

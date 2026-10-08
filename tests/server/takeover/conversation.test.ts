@@ -250,7 +250,12 @@ describe('D65: the conversation transfer', () => {
     expect(finished.error, JSON.stringify(finished)).toBeNull();
     const target = path.join(w.b.configDir, 'projects', slugForCwd(w.paths.b.alpha));
     const sha = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex');
-    expect(await sha(path.join(target, `${started.claudeSessionId}.jsonl`))).toBe(await sha(transcript));
+    // Byte for byte: the copy starts with the whole source transcript (the session resumed on the target may
+    // already have appended its own lines after the copied ones: a race D80's timing change made visible).
+    const copied = await readFile(path.join(target, `${started.claudeSessionId}.jsonl`));
+    const source = await readFile(transcript);
+    expect(copied.length).toBeGreaterThanOrEqual(source.length);
+    expect(createHash('sha256').update(copied.subarray(0, source.length)).digest('hex')).toBe(await sha(transcript));
     expect(await readFile(path.join(target, started.claudeSessionId, 'subagents', 'agent-1.jsonl'), 'utf8')).toBe('{"type":"summary","summary":"sub","leafUuid":"s"}\n');
     expect(finished.steps.find((step) => step.id === 'transfer')?.detail).toMatch(/2 files/);
     // The source's own transcript is still there (it is copied, never moved).

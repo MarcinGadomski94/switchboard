@@ -72,10 +72,10 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
   );
 }
 
-/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder and D64's standing instruction for agents. */
+/** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder, D80's checkpoints and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.checkpoints'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -115,6 +115,14 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         description="When a turn ends with an item it started still in progress, send it one reminder to mark it done or say what's left"
       >
         <ToggleValue label="Remind the agent to finish started todos" value={settings['sessions.todoReminder']} disabled={busy} onToggle={() => flip('sessions.todoReminder')} />
+      </Row>
+      {/* D80: a checkpoint of the session's git working trees before each turn (Undo a turn). */}
+      <Row
+        id="checkpoints"
+        label="Save a checkpoint before each turn"
+        description="Snapshots the session's git working trees (hidden refs, never your index or branch) so a turn can be reverted; kept 7 days or 100 turns"
+      >
+        <ToggleValue label="Save a checkpoint before each turn" value={settings['sessions.checkpoints']} disabled={busy} onToggle={() => flip('sessions.checkpoints')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
     </>

@@ -48,7 +48,11 @@ async function snapshot(w: TakeoverWorld, repo: string): Promise<{ head: string;
     branch: await w.git(repo, 'rev-parse', '--abbrev-ref', 'HEAD'),
     status: await w.git(repo, 'status', '--porcelain'),
     index: await w.git(repo, 'ls-files', '--stage'),
-    refs: await w.git(repo, 'for-each-ref', '--format=%(refname) %(objectname)'),
+    // D80's checkpoint refs (`refs/switchboard/checkpoints/…`) are Switchboard's own: a closed session's go at once.
+    refs: (await w.git(repo, 'for-each-ref', '--format=%(refname) %(objectname)'))
+      .split('\n')
+      .filter((line) => !line.startsWith('refs/switchboard/'))
+      .join('\n'),
   };
 }
 
