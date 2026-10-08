@@ -14,6 +14,7 @@ import {
   isEditableSetting,
   isNewSessionMode,
 } from '../../core/settings.ts';
+import { FRESH_OFFER_MAX_PCT, FRESH_OFFER_MIN_PCT } from '../../core/fresh-session.ts';
 import { type ModelRule, parseModelRules, readModelRules } from '../../core/model-routing.ts';
 import type { ServerConfig } from '../config.ts';
 import type { FolderRecord } from '../db/repos/folders.ts';
@@ -50,7 +51,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * keys (`EDITABLE_SETTINGS`). D82's `sessions.modelRules` is a rule list (`parseModelRules`; the
  * route then checks each model and profile, {@link checkModelRules}). `sessions.worktrees` / `sessions.ultracode` / D75 `sessions.todoReminder` and
  * D41's `ui.sidebarHidden` / `ui.rightPanelHidden` are booleans,
- * `usage.warnAtPct` a whole number 1–100, D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
+ * `usage.warnAtPct` a whole number 1–100, D83's `sessions.freshOfferPct` a whole number 50–95 (`sessions.freshOffer` a boolean), D64's `agents.standingInstruction` text (at most 4,000 characters) and its `.enabled` a boolean, D56's `newSession.mode` `simple` or `full`. A read-only or unknown key,
  * or a value of the wrong type, fails the whole body (nothing is stored).
  */
 export function validateSettingsPatch(body: unknown): SettingsValidation {
@@ -66,6 +67,12 @@ export function validateSettingsPatch(body: unknown): SettingsValidation {
     if (key === 'usage.warnAtPct') {
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < WARN_AT_PCT_MIN || raw > WARN_AT_PCT_MAX) {
         errors.push({ field: key, message: `${key} must be a whole number ${WARN_AT_PCT_MIN}–${WARN_AT_PCT_MAX}` });
+        continue;
+      }
+    } else if (key === 'sessions.freshOfferPct') {
+      // D83: the fresh-session offer's threshold.
+      if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < FRESH_OFFER_MIN_PCT || raw > FRESH_OFFER_MAX_PCT) {
+        errors.push({ field: key, message: `${key} must be a whole number ${FRESH_OFFER_MIN_PCT}–${FRESH_OFFER_MAX_PCT}` });
         continue;
       }
     } else if (key === 'newSession.mode') {

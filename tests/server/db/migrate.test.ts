@@ -990,6 +990,28 @@ describe('0025 session take-over (D65)', () => {
     return Object.fromEntries(tables.map((row) => [String(row['name']), database.prepare(`SELECT rowid AS _rowid, * FROM ${String(row['name'])} ORDER BY rowid`).all()]));
   }
 
+  it('D83 (0036): adds continued_to / continued_from, NULL for every session that is there; the repository reads and writes them', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd83', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 36) });
+    try {
+      await earlier.sessions.create({ name: 'older-83', claudeSessionId: 'c-older-83' });
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toEqual([36]);
+      const [older] = await store.sessions.list();
+      expect([older?.continuedTo, older?.continuedFrom]).toEqual([null, null]);
+      const fresh = await store.sessions.create({ name: 'older-83-2', claudeSessionId: 'c-fresh-83', continuedFrom: older?.id ?? null });
+      expect((await store.sessions.update(older?.id ?? '', { continuedTo: fresh.id }))?.continuedTo).toBe(fresh.id);
+      expect((await store.sessions.get(fresh.id))?.continuedFrom).toBe(older?.id);
+    } finally {
+      await store.close();
+    }
+  });
+
   it('adds moved_to / moved_from (NULL for every session that is there); the repository keeps them as JSON', async () => {
     const shipped = await loadMigrations();
     const file = path.join(tmp, 'd65', 'switchboard.db');
@@ -1012,7 +1034,9 @@ describe('0025 session take-over (D65)', () => {
       for (const session of sessions) expect([session.movedTo, session.movedFrom]).toEqual([null, null]);
       // Every column the sessions had keeps its value.
       const after = dump(store.db);
-      const strip = (rows: readonly unknown[] | undefined) => (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined }));
+      // D83 (0036) adds two more columns later.
+      const strip = (rows: readonly unknown[] | undefined) =>
+        (rows ?? []).map((row) => ({ ...(row as Record<string, unknown>), moved_to: undefined, moved_from: undefined, continued_to: undefined, continued_from: undefined }));
       expect(strip(after['sessions'])).toEqual(strip(before['sessions']));
       // The two moves round-trip.
       const one = sessions[0]!;

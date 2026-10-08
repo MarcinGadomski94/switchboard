@@ -84,6 +84,8 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION,
       'agents.standingInstruction.enabled': true,
       'sessions.modelRules': [],
+      'sessions.freshOffer': true,
+      'sessions.freshOfferPct': 80,
       'service.startAtLogin': false,
       'service.address': `127.0.0.1:${PORT}`,
       'workspace.root': workspace,

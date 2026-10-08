@@ -22,6 +22,7 @@ import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPI
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
+import { FreshOffer } from './FreshOffer.tsx';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -205,6 +206,14 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       {/* D53: an offline machine's session has no live line (the offline note says why). */}
       <ChatActivityLine activity={blocked ? null : activity} />
       <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} working={session?.status === 'run'} />
+      {/* D83: "Context 82% — Continue in a fresh session" once the context fills (between turns; never a hooked session). */}
+      <FreshOffer
+        sessionId={sessionId}
+        session={session}
+        activity={activity}
+        blocked={blocked}
+        reserveTodo={todos.list !== null && todos.list !== undefined && todos.list.todos.length === 0 && !addingTodo && blocked === null}
+      />
       <Composer
         sessionId={sessionId}
         blocked={blocked}

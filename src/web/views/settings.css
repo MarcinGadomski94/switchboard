@@ -534,3 +534,11 @@
   padding: 1px 5px;
   margin-right: 4px;
 }
+
+/* D83: the fresh-session offer's threshold and switch, side by side. */
+.sb-set-fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}

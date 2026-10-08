@@ -128,6 +128,9 @@ export class TranscriptHistory implements HistoryProvider {
 
   async #storedSessions(records: readonly SessionRecord[]): Promise<HistorySession[]> {
     const worktrees = await this.#store.worktrees.list({ includeRemoved: true });
+    // D83: the other session of a continuation, with its title (`null` when it is gone).
+    const titles = new Map(records.map((record) => [record.id, record.title ?? record.name]));
+    const link = (id: string | null) => (id === null ? null : { sessionId: id, title: titles.get(id) ?? null });
     return records.map((record) => ({
       id: record.id,
       name: record.name,
@@ -150,6 +153,8 @@ export class TranscriptHistory implements HistoryProvider {
       remoteSource: record.remoteSource,
       closedAt: record.closedAt,
       hooked: record.hooked,
+      continuedTo: link(record.continuedTo),
+      continuedFrom: link(record.continuedFrom),
     }));
   }
 

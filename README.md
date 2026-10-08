@@ -323,6 +323,9 @@ Each session has a todo list for things that still need doing. Say "add that to 
 ### Model by task
 Settings → Sessions → **Model by task** routes a todo to a CLI, model, effort and account by its priority and estimate: an ordered list of rules (e.g. *low, ≤ 30 min → Sonnet*; *urgent → Opus, effort max*; *> 2 h → Codex CLI*), the first match wins, no match keeps the normal choice. Off until you add a rule; a rule's model must exist for its CLI and its account be enabled. A routed run says which rule picked it ("Routed by rule: low ≤30 min → Sonnet"). [`docs/model-routing.md`](docs/model-routing.md)
 
+### Fresh session when the context fills
+When a session's context reaches 80 % (Settings → Sessions, 50–95 %, on by default), a bar above the message box offers **Continue in a fresh session**: the agent writes a handover (goal, state, decisions, files touched, open questions, next steps), a new session starts in the same folder / worktree / branch on the same CLI, model and account with that handover as its first message, takes over the sidebar place, todo list and pin, and the old session is closed; each links the other. **Not now** waits until the context is 10 points fuller. Also in a session's ⋯ menu, at any time; not for hooked terminal sessions. Works for a paired machine's sessions too. [`docs/fresh-session.md`](docs/fresh-session.md)
+
 ### Inbox and notifications
 - Every question batch and permission request from every session lands in the **Inbox**. Answer it there or in the session's chat.
 - A new question also raises a **toast**, a chime and an OS notification (when allowed).

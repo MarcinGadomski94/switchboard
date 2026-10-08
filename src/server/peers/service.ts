@@ -103,6 +103,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   // D50: Stop (interrupt) and the background-task stop work on a peer's session too.
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|pause|resume|close|reopen|interrupt)$/],
+  // D83: continue that machine's session in a fresh one (the handover and the new session run there).
+  ['POST', /^\/api\/sessions\/[^/]+\/fresh$/],
   // D72: Continue in Switchboard of a hooked terminal session runs on the machine whose terminal it is.
   ['POST', /^\/api\/sessions\/[^/]+\/continue-in-switchboard$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],

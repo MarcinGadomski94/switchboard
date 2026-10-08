@@ -1284,6 +1284,13 @@ a.sb-agent--link:focus-visible {
   text-align: center;
 }
 
+/* D83: "Continued from / in <title>" links the other session. */
+.sb-chat-divider-link {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* D63: the header's account picker and pin. */
 .sb-sv-account {
   gap: 6px;

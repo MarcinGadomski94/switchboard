@@ -238,7 +238,11 @@ export type LifecycleAction =
   /** D65: the session was taken over to another machine (a note on the closed source session: "Moved to <machine>"). */
   | 'moved-away'
   /** D72: a hooked terminal session now runs under Switchboard (`--resume` of its id; the chat's divider "Continued in Switchboard (was a terminal session)"). */
-  | 'continued';
+  | 'continued'
+  /** D83: the new session of a continuation started (the chat's divider "Continued from <old session>"; `linkedSessionId`, `linkedTitle`). */
+  | 'continued-from'
+  /** D83: the session was continued in a fresh one and closed (the divider "Continued in <new session>"; `linkedSessionId`, `linkedTitle`). */
+  | 'continued-in';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {
@@ -267,6 +271,9 @@ export interface LifecyclePayload {
   readonly machine?: string;
   readonly machineId?: string;
   readonly remoteSessionId?: string;
+  /** D83 (`continued-from` / `continued-in`): the other session of the continuation (its id on the same machine; a peer's is namespaced in the UI) and its title then. */
+  readonly linkedSessionId?: string;
+  readonly linkedTitle?: string;
 }
 
 /** `system/init.permissionMode` differs from the requested mode (D6: an unsupported `auto` silently becomes `default`). */

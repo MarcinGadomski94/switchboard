@@ -6,7 +6,7 @@
  * the stored sessions and the parsed transcript facts (`transcript.ts`).
  * `docs/derivations.md` → *History*.
  */
-import type { BranchRef, HistoryItem } from './api.ts';
+import type { BranchRef, HistoryItem, SessionLink } from './api.ts';
 import type { FolderKind, Phase, SessionMode, SessionOrigin, SessionStatus, WorkType } from './model.ts';
 import { REMOTE_MODE_LINE } from './remote-session.ts';
 import { CLOSED_TAG } from './session-close.ts';
@@ -77,6 +77,9 @@ export interface HistorySession {
   readonly closedAt?: string | null;
   /** D72: a hooked terminal session (optional: not hooked when absent); its row offers Continue in Switchboard (open or closed). */
   readonly hooked?: boolean;
+  /** D83: continued in / from a fresh session (optional: none when absent); the row links the other session. */
+  readonly continuedTo?: SessionLink | null;
+  readonly continuedFrom?: SessionLink | null;
 }
 
 /**
@@ -264,6 +267,9 @@ function sessionRow(session: HistorySession, transcript: HistoryTranscript | und
     closedAt: session.closedAt ?? null,
     // D72: a hooked terminal session's row offers Continue in Switchboard (a closed one's too: it is reopened first).
     ...(session.hooked === true ? { hooked: true } : {}),
+    // D83: links to the session it was continued in / continues.
+    ...(session.continuedTo ? { continuedTo: session.continuedTo } : {}),
+    ...(session.continuedFrom ? { continuedFrom: session.continuedFrom } : {}),
   };
   return {
     item,

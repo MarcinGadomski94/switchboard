@@ -1106,6 +1106,29 @@ PUT /api/settings
 ] }
 ```
 
+## Continue in a fresh session (D83, 2026-10-08, additive)
+
+When a supervised session's context fills, it can continue in a fresh session (`docs/fresh-session.md`, `docs/decisions.md` → D83): the agent writes a handover in one turn, a new session starts in the same folder / worktree / branch on the same CLI, model, effort and account with the handover as its first message, takes the old one's sidebar place, todo list and pin, and the old one is closed. Migration 0036 adds `sessions.continued_to` / `continued_from`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/sessions/{id}/fresh | `{}` (none needed) | 202 `FreshContinueResult` `{ session }` (the old session, `freshContinue: { step: "handover" }`) once the handover was asked for; the rest runs on, its progress on `sessionUpdated` · 404 `not-found` · 409 `hooked-unavailable` (a hooked terminal session; the message says why) · 409 `turn-running` (a turn runs or waits: offered once it ends) · 409 `switching` (a CLI / account switch or a continuation runs) · 409 `closed` / `detached` · 503 `closing` |
+
+- **`Session.continuedTo`** / **`continuedFrom`** (additive): `SessionLink` `{ sessionId, title }` — on the old (closed) session the fresh one ("Continued in <title>"), on the fresh one the old one ("Continued from <title>"); `title` is `null` once that session was deleted; `null` / absent otherwise. A paired machine's are namespaced (`r~<machine>~<id>`).
+- **`Session.freshContinue`** (additive): `{ step: "handover" | "starting" }` while a continuation runs, `null` / absent otherwise. Messages to the session are refused meanwhile (409 `switching`).
+- **Lifecycle events** (`LifecyclePayload.action`, additive): `continued-from` (the fresh session's first divider, label `Continued from <old title>`) and `continued-in` (the old session's, `Continued in <new title>`; kind `error` with `message` when a continuation failed: `Could not continue in a fresh session: <why>`), both with `linkedSessionId` (namespaced for a peer's) and `linkedTitle`.
+- **Settings** (additive, editable): `sessions.freshOffer` (boolean, default `true`) and `sessions.freshOfferPct` (whole number 50–95, default 80; 422 otherwise).
+- **`HistoryItem.continuedTo`** / **`continuedFrom`** (additive): the same links on a stored session's History row.
+- **The fresh session:** name `<old name>-<n>` and title `<old title> (<n>)` (a continued session counts on), the old one's folder, cwd, branch, branching, CLI, model, effort, account and pin; a new conversation of its CLI; its todos are the old session's (moved: ids and states kept) and so are its worktrees.
+- **Peers (D48):** the route is on `PEER_API_ALLOW`; its answer is mapped `wrapped`. **Devices (D73):** on `DEVICE_ALLOWED`.
+
+```json
+POST /api/sessions/0b7c3e0a-…/fresh
+{}
+→ 202 { "session": { "id": "0b7c3e0a-…", "status": "run", "freshContinue": { "step": "handover" }, "continuedTo": null, "…": "…" } }
+sessionUpdated (later, the old session) { "id": "0b7c3e0a-…", "closedAt": "2026-10-08T10:02:00.000Z", "continuedTo": { "sessionId": "5e1f…", "title": "Fix login (2)" }, "freshContinue": null, "…": "…" }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

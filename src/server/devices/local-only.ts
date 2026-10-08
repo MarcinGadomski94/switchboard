@@ -6,7 +6,7 @@
  * `/hub` are not `/api` and are not judged here.
  *
  * Allowed is what a phone needs for normal use: sessions (list, detail, events,
- * diff, attachments, messages, stop, pause / resume, close / reopen, title,
+ * diff, attachments, messages, stop, pause / resume, close / reopen, D83's continue in a fresh session, title,
  * model, CLI / account switch, todos), the Inbox and its answers, starting a
  * session (folders read, models, solutions, branching preflight, staged
  * attachments), the sidebar layout, History and its Continue, schedules and
@@ -38,7 +38,7 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
-  ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|attachments|pause|resume|close|reopen|interrupt|account|provider|continue-in-switchboard)$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|attachments|pause|resume|close|reopen|interrupt|account|provider|continue-in-switchboard|fresh)$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],

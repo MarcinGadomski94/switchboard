@@ -3,6 +3,7 @@ import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   AccountsOverview,
+  FreshContinueResult,
   NewProfileInput,
   CliMcpServerInput,
   CliMcpView,
@@ -185,6 +186,8 @@ export const api = {
   interruptSession: (id: string) => request<InterruptResult>('POST', `/api/sessions/${enc(id)}/interrupt`),
   /** D50 ruling: stop the session's background tasks (`stop_task` each); `taskIds` absent = every stoppable one. */
   stopBackground: (id: string, body: StopBackgroundRequest = {}) => request<StopBackgroundResult>('POST', `/api/sessions/${enc(id)}/background/stop`, body),
+  /** D83: continue the session in a fresh one (202 once the handover turn started; a peer's session id is forwarded). */
+  freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),

@@ -97,6 +97,8 @@ describe('sessions', () => {
       // D65 (0025): not taken over.
       movedTo: null,
       movedFrom: null,
+      continuedTo: null,
+      continuedFrom: null,
     });
     expect(await store.sessions.get(created.id)).toEqual(created);
   });

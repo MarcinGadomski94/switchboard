@@ -143,6 +143,13 @@ export interface SessionRecord {
   readonly movedTo: SessionMove | null;
   /** D65 (0025): set on the **new** session: the machine and session it was taken over from. */
   readonly movedFrom: SessionMove | null;
+  /**
+   * D83 (0036): set on the **old** session once it was continued in a fresh one (the
+   * id of the new session; the old one is closed): "Continued in <new session>".
+   */
+  readonly continuedTo: string | null;
+  /** D83 (0036): set on the **new** session: the session it continues ("Continued from <old session>"). */
+  readonly continuedFrom: string | null;
 }
 
 /** D65: the other end of a take-over (`sessions.moved_to` / `moved_from`). */
@@ -226,6 +233,8 @@ const SPEC: TableSpec<SessionRecord> = {
     profilePinned: ['profile_pinned', 'bool'],
     movedTo: ['moved_to', 'json'],
     movedFrom: ['moved_from', 'json'],
+    continuedTo: ['continued_to', 'text'],
+    continuedFrom: ['continued_from', 'text'],
   },
 };
 

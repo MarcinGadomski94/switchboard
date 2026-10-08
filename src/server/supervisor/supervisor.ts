@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext } from '../../core/context-meter.ts';
+import { type ContextState, DEFAULT_AUTO_COMPACT, EMPTY_CONTEXT, autoCompactConfig, contextFromTranscript, readContextState, reduceContext, resolveContext } from '../../core/context-meter.ts';
 import { newestChain, parseTranscript } from '../../core/transcript-sync.ts';
-import type { AttachWarningReason, InterruptOutcome, NewSession, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
+import type { AttachWarningReason, InterruptOutcome, NewSession, SessionFreshContinue, SessionProviderSwitch, ResumeCommand, Session, SessionActivity, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { textLabel } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
@@ -44,7 +44,8 @@ import type { AgentProcess } from '../cli/agent-process.ts';
 import { CliRegistry } from '../cli/registry.ts';
 import type { ProviderUsage } from '../cli/bridge-common.ts';
 import { CLI_LABELS, type CliProviderId, type HandoverSource, switchDividerLabel, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
-import { chatMarkdown, findCodexRollout, handoverRequest, incomingAfterAccountSwitch, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
+import { chatMarkdown, findCodexRollout, freshHandoverRequest, handoverRequest, incomingAfterAccountSwitch, incomingFresh, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
+import { FRESH_BUSY_REASON, FRESH_HOOKED_REASON, type FreshStep, continuationNumber, continuedFromLabel, continuedInLabel, freshName, freshTitle } from '../../core/fresh-session.ts';
 import { CONTINUE_AFTER_SWITCH, accountSwitchLabel, sessionProfileId } from '../../core/accounts.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { copyClaudeConversation, copyCodexRollout } from '../accounts/transplant.ts';
@@ -361,7 +362,9 @@ export type SupervisorErrorCode =
   | 'not-available'
   /** D62 P5: a switch of the session's CLI is running, or it cannot switch now. */
   | 'switching'
-  | 'switch-failed';
+  | 'switch-failed'
+  /** D83: a turn runs: a fresh session is offered once it ends. */
+  | 'turn-running';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -454,6 +457,32 @@ export interface SwitchProviderOptions {
   readonly handoverDir: string;
   /** Default {@link HANDOVER_TIMEOUT_MS}. */
   readonly handoverTimeoutMs?: number;
+}
+
+/** D83: options of {@link SessionSupervisor.continueFresh}. */
+export interface FreshContinueOptions {
+  /** The context percent the request names (default: the session's meter now). */
+  readonly percent?: number | null;
+  /** How long the agent may take to write its handover (default {@link HANDOVER_TIMEOUT_MS}). */
+  readonly handoverTimeoutMs?: number;
+  /** Runs once the fresh session's process started, before its first message (the route moves the todos, worktrees and sidebar place). Errors are reported, not fatal. */
+  readonly onStarted?: (from: SessionRecord, to: SessionRecord) => Promise<void>;
+  /** The old session's close: runs before its `sessionUpdated` (the route closes its Inbox items). */
+  readonly beforeClosePublish?: (sessionId: string) => Promise<void>;
+}
+
+/** D83: a started continuation. */
+export interface FreshContinueStart {
+  readonly record: SessionRecord;
+  /** Resolves when it is over (never rejects): the fresh session, or why there is none. */
+  readonly done: Promise<FreshContinueOutcome>;
+}
+
+/** D83: how a continuation ended. */
+export type FreshContinueOutcome = { readonly ok: true; readonly session: SessionRecord } | { readonly ok: false; readonly reason: string };
+
+interface RunningFresh {
+  step: FreshStep;
 }
 
 /** D62 P5: a started switch. */
@@ -559,6 +588,8 @@ export class SessionSupervisor {
   readonly #accounts: AccountService | null;
   /** D63: the sessions an account switch runs for. */
   readonly #accountSwitches = new Set<string>();
+  /** D83: the continuations in a fresh session in progress, by (old) session. */
+  readonly #freshRuns = new Map<string, RunningFresh>();
   /** D63: when each session last switched account (epoch ms): the automatic switcher's cooldown. */
   readonly #lastAccountSwitch = new Map<string, number>();
   /** D63: the profile each live process was started on (a switch changes the stored one only once its new process starts). */
@@ -595,7 +626,12 @@ export class SessionSupervisor {
     });
     registerWorkflowSource(this.#store, this.#workflows);
     // D62 P5: `Session.providerSwitch`.
-    registerSwitchSource(this.#store, { current: (sessionId) => this.currentSwitch(sessionId), accountSwitching: (sessionId) => this.#accountSwitches.has(sessionId) });
+    registerSwitchSource(this.#store, {
+      current: (sessionId) => this.currentSwitch(sessionId),
+      accountSwitching: (sessionId) => this.#accountSwitches.has(sessionId),
+      // D83: a continuation in a fresh session.
+      fresh: (sessionId) => this.currentFresh(sessionId),
+    });
   }
 
   /**
@@ -1026,6 +1062,7 @@ export class SessionSupervisor {
     const running = this.#switches.get(session.id);
     if (running) throw new SupervisorError('switching', `${session.title ?? session.name} is switching to ${CLI_LABELS[running.to]}: wait for it to finish`);
     if (this.#accountSwitches.has(session.id)) throw new SupervisorError('switching', `${session.title ?? session.name} is switching account: wait for it to finish`);
+    if (this.#freshRuns.has(session.id)) throw new SupervisorError('switching', `${session.title ?? session.name} is continuing in a fresh session: wait for it to finish`);
   }
 
   /** D62 P5: the switch in progress for the session (`Session.providerSwitch`), `null` when none runs. */
@@ -1090,7 +1127,7 @@ export class SessionSupervisor {
       let handover: string | null = null;
       let reason = options.capacity.reason ?? `${CLI_LABELS[from]} cannot take a turn now`;
       if (options.capacity.ok) {
-        const asked = await this.#askHandover(sessionId, to, options.handoverTimeoutMs ?? HANDOVER_TIMEOUT_MS);
+        const asked = await this.#askHandover(sessionId, handoverRequest(to), options.handoverTimeoutMs ?? HANDOVER_TIMEOUT_MS);
         if ('text' in asked) handover = asked.text;
         else reason = asked.reason;
       }
@@ -1146,12 +1183,13 @@ export class SessionSupervisor {
   }
 
   /**
-   * D62 P5: asks the outgoing agent for a handover and waits for its turn: its
+   * D62 P5: asks the outgoing agent for a handover (`request`; D83 reuses it for a
+   * fresh session) and waits for its turn: its
    * last main-agent reply after the request, or why there is none (the turn
    * failed, the process ended, it took longer than `timeoutMs`). A paused session
    * is resumed for it (the same CLI, `--resume` / its own conversation).
    */
-  async #askHandover(sessionId: string, to: CliProviderId, timeoutMs: number): Promise<{ readonly text: string } | { readonly reason: string }> {
+  async #askHandover(sessionId: string, request: string, timeoutMs: number): Promise<{ readonly text: string } | { readonly reason: string }> {
     let live = this.#live.get(sessionId);
     if (live?.stopping) {
       await live.finished;
@@ -1168,7 +1206,7 @@ export class SessionSupervisor {
     const target = live;
     const before = (await this.#store.events.list(sessionId)).length;
     const deadline = Date.now() + timeoutMs;
-    await this.#send(target, handoverRequest(to), 'service');
+    await this.#send(target, request, 'service');
     // The request's turn ends when nothing is pending or open any more (a running turn's own result may come first).
     for (;;) {
       let idle = false;
@@ -1190,6 +1228,148 @@ export class SessionSupervisor {
     const reply = [...events].reverse().find((event) => (event.payload as { type?: string } | null)?.type === 'assistant' && event.agentId === mainAgentId);
     const text = (reply?.payload as { text?: string } | undefined)?.text ?? '';
     return text.trim() === '' ? { reason: `${CLI_LABELS[target.provider]} wrote no handover` } : { text };
+  }
+
+  // ── continuing in a fresh session (D83, docs/fresh-session.md) ──────────
+
+  /** D83: the continuation in progress for the session (`Session.freshContinue`), `null` when none runs. */
+  currentFresh(sessionId: string): SessionFreshContinue | null {
+    const running = this.#freshRuns.get(sessionId);
+    return running ? { step: running.step } : null;
+  }
+
+  /**
+   * D83: continues the session in a fresh one when its context fills. Checks and
+   * starts it, then returns; the rest runs on (`done`), its progress on
+   * `sessionUpdated` (`freshContinue`):
+   * 1. **Handover:** the session's agent is asked for a handover in one turn (the
+   *    D62 mechanism: a service message, at most `handoverTimeoutMs`, its last
+   *    reply; a paused session is resumed for it);
+   * 2. **the fresh session** is stored with the same folder, cwd (its worktree),
+   *    branch, CLI, model, effort and account (and pin), named and titled after the
+   *    old one (`fix-login-2`, `Fix login (2)`), its process started new with the
+   *    divider "Continued from <old>"; `options.onStarted` runs (the route moves the
+   *    todo list, the worktrees and the sidebar place there); the handover goes in
+   *    as its first message;
+   * 3. **the old session** gets "Continued in <new>", its link, and is closed (D33's
+   *    close, confirmed: its process stops the way Pause stops it).
+   * A failed handover or start leaves the old session as it was (an error line says
+   * why) and keeps nothing of the new one.
+   * @throws {SupervisorError} `not-found`, `closed`, `detached`, `not-available`
+   * (a hooked terminal session), `switching` (a CLI / account switch or another
+   * continuation runs), `turn-running` (a turn runs: offer it after it ends), `closing`.
+   */
+  async continueFresh(sessionId: string, options: FreshContinueOptions = {}): Promise<FreshContinueStart> {
+    await this.#gate;
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (session.hooked) throw new SupervisorError('not-available', FRESH_HOOKED_REASON);
+    if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
+    const live = this.#live.get(sessionId);
+    const busy = session.status === 'run' || session.status === 'need' || (live !== undefined && !live.stopping && (live.recorder.turnBusy() || live.interrupting !== null));
+    if (busy) throw new SupervisorError('turn-running', FRESH_BUSY_REASON);
+    const state: RunningFresh = { step: 'handover' };
+    this.#freshRuns.set(sessionId, state);
+    await this.#emitSession(sessionId);
+    const done = this.#runFresh(sessionId, state, options).finally(() => {
+      this.#freshRuns.delete(sessionId);
+      this.#switchRuns.delete(done);
+      if (!this.#closing) void this.#emitSession(sessionId).catch((error: unknown) => this.#onError(error));
+    });
+    this.#switchRuns.add(done);
+    return { record: await this.#get(sessionId), done };
+  }
+
+  async #runFresh(sessionId: string, state: RunningFresh, options: FreshContinueOptions): Promise<FreshContinueOutcome> {
+    let created: SessionRecord | null = null;
+    try {
+      const current = await this.#get(sessionId);
+      const percent = options.percent ?? resolveContext(readContextState(current.context), current.model).percent;
+      const asked = await this.#askHandover(sessionId, freshHandoverRequest(percent), options.handoverTimeoutMs ?? HANDOVER_TIMEOUT_MS);
+      if (!('text' in asked)) throw new Error(asked.reason);
+      state.step = 'starting';
+      await this.#emitSession(sessionId);
+      this.#assertOpen();
+      const old = await this.#get(sessionId);
+      // A message the developer sent meanwhile is refused (`switching`); a close meanwhile ends it here.
+      this.#assertNotClosed(old);
+      const oldTitle = old.title ?? old.name;
+      const continued = old.continuedFrom !== null;
+      const first = continuationNumber(oldTitle, continued) + 1;
+      let n = first;
+      while ((await this.#store.sessions.getByName(freshName(old.name, continued, n))) !== null) n += 1;
+      const cwd = await canonicalFolder(old.cwd ?? '');
+      created = await this.#store.sessions.create({
+        name: freshName(old.name, continued, n),
+        title: freshTitle(oldTitle, continued, n),
+        task: old.task,
+        claudeSessionId: randomUUID(),
+        status: 'idle',
+        workType: old.workType,
+        mode: old.mode,
+        phase: old.phase,
+        coordination: old.coordination,
+        qaStack: old.qaStack,
+        qaConfluenceUrl: old.qaConfluenceUrl,
+        qaFigmaUrls: [...old.qaFigmaUrls],
+        solutions: [...old.solutions],
+        worktrees: old.worktrees,
+        ultracode: old.ultracode,
+        attached: true,
+        cwd,
+        folderId: old.folderId,
+        root: old.root,
+        rootKind: old.rootKind,
+        requestedPermissionMode: old.requestedPermissionMode ?? DEFAULT_PERMISSION_MODE,
+        branch: old.branch,
+        branching: old.branching,
+        model: old.model,
+        effort: old.effort,
+        provider: old.provider,
+        profileId: old.profileId,
+        profilePinned: old.profilePinned,
+        continuedFrom: old.id,
+      });
+      const fresh = created;
+      await this.#store.agents.create({ sessionId: fresh.id, kind: 'main', name: mainAgentName(fresh.mode, fresh.solutions), status: 'idle' });
+      const live = await this.#spawn(fresh, { kind: 'new', claudeSessionId: fresh.claudeSessionId }, 'continued-from', undefined, {
+        label: continuedFromLabel(oldTitle),
+        payload: { linkedSessionId: old.id, linkedTitle: oldTitle },
+      });
+      const freshTitleNow = fresh.title ?? fresh.name;
+      await this.#store.sessions.update(old.id, { continuedTo: fresh.id });
+      if (options.onStarted) {
+        try {
+          await options.onStarted(old, await this.#get(fresh.id));
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
+      await this.#send(live, incomingFresh({ fromTitle: oldTitle, cwd, branch: old.branch, handover: asked.text }), 'service');
+      const linkEvent = await this.#store.events.append({
+        sessionId: old.id,
+        kind: 'text',
+        label: continuedInLabel(freshTitleNow),
+        payload: { type: 'lifecycle', action: 'continued-in', linkedSessionId: fresh.id, linkedTitle: freshTitleNow },
+      });
+      this.#emitEvent(linkEvent);
+      this.#freshRuns.delete(sessionId);
+      await this.close(old.id, { confirm: true, ...(options.beforeClosePublish ? { beforePublish: options.beforeClosePublish } : {}) });
+      await this.#emitSession(fresh.id);
+      return { ok: true, session: await this.#get(fresh.id) };
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      this.#onError(error);
+      if (created) {
+        await this.#stopLive(created.id);
+        await this.#store.sessions.update(sessionId, { continuedTo: null }).catch(() => undefined);
+        await this.#store.sessions.delete(created.id).catch(() => undefined);
+      }
+      await this.recordServiceEvent(sessionId, 'error', `Could not continue in a fresh session: ${text}`, { type: 'lifecycle', action: 'continued-in', message: text }).catch(() => undefined);
+      return { ok: false, reason: text };
+    }
   }
 
   // ── account profiles (D63, docs/accounts.md) ─────────────────────────────
@@ -2844,4 +3024,6 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'taken-over': 'Taken over from another machine',
   'moved-away': 'Moved to another machine',
   continued: CONTINUED_DIVIDER,
+  'continued-from': 'Continued from another session',
+  'continued-in': 'Continued in a fresh session',
 };

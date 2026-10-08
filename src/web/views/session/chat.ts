@@ -125,7 +125,16 @@ export type ChatItem =
   /** A question batch: the inline card while it waits, else the answers bubble. */
   | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean }
   /** D62 P5: the session switched to another CLI: a divider ("Switched from Claude Code to Codex CLI · handover by …"). */
-  | { readonly kind: 'divider'; readonly key: string; readonly id: number; readonly text: string; readonly from: string | null; readonly to: string | null };
+  | {
+      readonly kind: 'divider';
+      readonly key: string;
+      readonly id: number;
+      readonly text: string;
+      readonly from: string | null;
+      readonly to: string | null;
+      /** D83: the other session of a continuation ("Continued from / in <title>" opens it); absent otherwise. */
+      readonly linkedSessionId?: string;
+    };
 
 /**
  * D44: the clock's tooltip on a message the agent has not taken up yet
@@ -352,6 +361,18 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // D72: a hooked terminal session continued in Switchboard: "Continued in Switchboard (was a terminal session)".
       if (lifecycle.action === 'continued' && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
+      }
+      // D83: a fresh session starts with "Continued from <old>", the session it continues ends with "Continued in <new>" (each a link).
+      if ((lifecycle.action === 'continued-from' || lifecycle.action === 'continued-in') && event.kind === 'text') {
+        out.push({
+          kind: 'divider',
+          key: `d:${event.id}`,
+          id: event.id,
+          text: event.label,
+          from: null,
+          to: null,
+          ...(typeof lifecycle.linkedSessionId === 'string' ? { linkedSessionId: lifecycle.linkedSessionId } : {}),
+        });
       }
     } else {
       const mark = stepMark(event);

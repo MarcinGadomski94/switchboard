@@ -3,11 +3,12 @@ import type { HistoryItem } from '../../core/api.ts';
 import { REMOTE_CONTROL_BADGE, formatHistoryDate, historyBranchLine } from '../../core/history.ts';
 import { REMOTE_COPY_NOTE, REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { CLOSED_TAG, REOPEN_LABEL } from '../../core/session-close.ts';
+import { continuedFromLabel, continuedInLabel } from '../../core/fresh-session.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { FolderTag } from '../folders/FolderTag.tsx';
 import { useFolderTags } from '../folders/useFolders.ts';
-import { useRouter } from '../router.tsx';
+import { Link, useRouter } from '../router.tsx';
 import { statusColor } from '../shell/format.ts';
 import { actionErrorText } from './session/session-header.ts';
 import { CONTINUE_IN_SWITCHBOARD, moveSelectedLabel, pruneSelection, showsDialog } from './history-move.ts';
@@ -310,6 +311,17 @@ function HistoryRow({ item, folderTag, selected, moving, onToggle, onContinue, r
             <span className="sb-hist-closed" data-testid="history-closed-tag" title={`Closed ${formatHistoryDate(item.closedAt as string)} · Reopen puts it back in the sidebar`}>
               {CLOSED_TAG}
             </span>
+          ) : null}
+          {/* D83: continued in / from a fresh session: the other session, linked. */}
+          {item.continuedTo?.title ? (
+            <Link to={{ view: 'session', id: item.continuedTo.sessionId, tab: 'chat' }} className="sb-hist-link" data-testid="history-continued-in">
+              {continuedInLabel(item.continuedTo.title)}
+            </Link>
+          ) : null}
+          {item.continuedFrom?.title ? (
+            <Link to={{ view: 'session', id: item.continuedFrom.sessionId, tab: 'chat' }} className="sb-hist-link" data-testid="history-continued-from">
+              {continuedFromLabel(item.continuedFrom.title)}
+            </Link>
           ) : null}
         </span>
       </div>

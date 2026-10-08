@@ -744,6 +744,12 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Storage:** the editable setting `sessions.modelRules` (`GET` / `PUT /api/settings`, default `[]`), no migration.
   - **ASSUMED:** `.loop/questions.md` → *D82 · Model by task*.
   - Details: `docs/model-routing.md`; `docs/handoff/contracts/local-api.md` → *Model by task (D82)*; `docs/settings.md` (`sessions.modelRules`).
+- **D83 Fresh session when the context fills.** Developer ruling, 2026-10-08. Builds on D49 (context meter), D62 / D63 (the handover mechanism), D33 (close), D54 / D71 (sidebar places), D68 (todos), D48 (peers).
+  - **The offer:** when a supervised session's context reaches the threshold (**Settings → Sessions**, default **80 %**, configurable **50–95**, **on by default**), a **bar above the composer** (no Inbox item, no push kind) says **"Context 82% — Continue in a fresh session"** with **Continue** / **Not now** (snoozed until **+10 points**). Refused while a turn runs (offered after it ends); not for hooked terminal sessions (the reason is said). Also a manual action in the session's ⋯ menu: **Continue in a fresh session**.
+  - **Continue:** the agent writes a handover in one turn (goal, state, decisions, files touched, open questions, next steps; the D62 / D63 handover request mechanism); a **new session in the same folder / worktree / branch**, same CLI / model / effort / account, starts with the handover as its first message; it takes the old one's **sidebar place, todo list (moved, ids and states kept) and pin**; the **old session is closed** with "Continued in <new session>", the new chat starts with "Continued from <old session>" (links both ways, History links). Works for a paired machine's session via the proxy.
+  - **Storage:** migration **0036** (`sessions.continued_to` / `continued_from`); settings `sessions.freshOffer` / `sessions.freshOfferPct`; route `POST /api/sessions/{id}/fresh` (peer and device allow-lists).
+  - **ASSUMED:** `.loop/questions.md` → *D83 · Fresh session*.
+  - Details: `docs/fresh-session.md`; `docs/handoff/contracts/local-api.md` → *Continue in a fresh session (D83)*; `docs/database.md` (0036); `docs/settings.md`.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.

@@ -16,6 +16,7 @@ import { openContinueHooked } from '../../hooked-continue/store.ts';
 import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../../core/hooked-continue.ts';
 import { usePairedMachines } from '../../takeover/usePairedMachines.ts';
 import { moveLinkId, movedToLabel, takenOverLabel } from '../../../core/takeover.ts';
+import { continuedInLabel } from '../../../core/fresh-session.ts';
 import { statusColor } from '../../shell/format.ts';
 import {
   ATTACH_ANYWAY,
@@ -409,6 +410,17 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
       {session?.movedFrom && !session.movedTo ? (
         <div className="sb-sv-remote-copy sb-sv-moved" data-testid="session-taken-over-note">
           <span>{takenOverLabel(session.movedFrom.machineName)}</span>
+        </div>
+      ) : null}
+      {/* D83: continued in a fresh session (this one is closed): the link to it (the fresh one's chat starts with the way back). */}
+      {session?.continuedTo ? (
+        <div className="sb-sv-remote-copy sb-sv-moved" data-testid="session-continued-in-note">
+          <span>{continuedInLabel(session.continuedTo.title ?? 'a session that no longer exists')}</span>
+          {session.continuedTo.title !== null ? (
+            <Link to={{ view: 'session', id: session.continuedTo.sessionId, tab: 'chat' }} className="sb-sv-remote-copy-link" data-testid="session-continued-in-link">
+              Open the fresh session
+            </Link>
+          ) : null}
         </div>
       ) : null}
       {session?.remoteSource ? (
