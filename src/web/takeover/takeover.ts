@@ -36,6 +36,10 @@ export function moveLabel(machineName: string): string {
   return `Move to ${machineName} ▸`;
 }
 
+/** D74 follow-up: the short labels a crowded session header uses before it moves the action into its ⋯ menu. */
+export const MOVE_SHORT_LABEL = 'Move ▸';
+export const TAKE_OVER_SHORT_LABEL = 'Take over';
+
 /** The dialog's title. */
 export function dialogTitle(direction: TakeoverDirection, machineName: string): string {
   return direction === 'take-over' ? `Take over from ${machineName}` : `Move to ${machineName}`;

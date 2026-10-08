@@ -1,6 +1,6 @@
 import { UNDO_LAST_TURN_LABEL } from '../../../core/checkpoints.ts';
 import { lastTurnRevert, openRevert, useCheckpoints } from './checkpoints.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { REMOTE_COPY_NOTE, remoteSessionUrl } from '../../../core/remote-session.ts';
 import { CLOSE_LABEL, REOPEN_LABEL, isClosed } from '../../../core/session-close.ts';
@@ -47,6 +47,8 @@ import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.t
 import { usePanes } from '../../shell/Panes.tsx';
 import { DrawerButton, useInboxCount } from '../../shell/AppBar.tsx';
 import { useHeaderMenu } from '../../shell/useLayout.ts';
+import type { OverflowKey } from './header-overflow.ts';
+import { useHeaderOverflow } from './useHeaderOverflow.ts';
 
 /** D74: the sidebar's menu button at the start of a compact session header, with the Inbox count (the view has no app bar). */
 function SessionDrawerButton() {
@@ -174,6 +176,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const { compact } = usePanes();
   const headerMenu = useHeaderMenu();
   const actionsMenu = useActionsMenu(headerMenu);
+  // D74 follow-up: a session column too narrow for the actions (the right panel / sidebar open) moves some into a ⋯ menu.
+  const topRow = useRef<HTMLDivElement>(null);
+  const overflowRefs = useMemo(() => ({ top: topRow, actions: actionsMenu.actions, menu: { current: null as HTMLDivElement | null } }), [actionsMenu.actions]);
+  const overflow = useHeaderOverflow(!headerMenu, overflowRefs);
+  const overflowMenu = useActionsMenu(overflow.hidden.length > 0);
   const shownError = error ?? closer.error?.text ?? loadError;
   // D62 P5: the CLI switcher (its picker among the actions, its confirmation under the top row).
   const switcher = useProviderSwitcher(session, onChanged);
@@ -238,36 +245,16 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
     }
   };
 
-  return (
-    <div className="sb-sv-header" data-testid="session-header" data-session-id={sessionId}>
-      <div className="sb-sv-top">
-        {compact ? <SessionDrawerButton /> : null}
-        <span className="sb-sv-dot" data-testid="session-dot" style={{ background: statusColor(session?.status ?? 'idle') }} />
-        {session ? (
-          <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
-        ) : (
-          // D45: nothing while the session loads (its placeholder once it is late); the id when it could not be loaded.
-          <div className="sb-sv-name" data-testid="session-name">
-            {placeholder ? <TitleSkeleton /> : missing || loadError ? sessionId : null}
-          </div>
-        )}
-        {/* D48: a peer's session names its machine. */}
-        {session?.machine ? <MachineTag machine={session.machine} testId="session-machine" /> : null}
-        <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
-          {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
-        </div>
-        <div
-          className="sb-sv-actions"
-          ref={actionsMenu.actions}
-          id={headerMenu ? `sb-sv-actions-${sessionId}` : undefined}
-          data-menu={headerMenu ? (actionsMenu.open ? 'open' : 'closed') : undefined}
-          data-testid={headerMenu ? 'session-actions-menu' : undefined}
-          onClick={headerMenu ? actionsMenu.onActionClick : undefined}
-        >
+  // D74 follow-up: the actions, in the row or (`where = 'menu'`) in the ⋯ menu of a narrow session column.
+  const actionItems = (where: 'row' | 'menu') => {
+    const at = (key: OverflowKey): boolean => headerMenu || overflow.hidden.includes(key) === (where === 'menu');
+    return (
+        <>
           {/* D62 P5: the CLI the session runs on, and switching it (sessions Switchboard runs; not the demo's, not hooked). */}
-          {session && !blocked && offersSwitcher(session) ? switcher.picker : null}
-          {session && !blocked && offersSwitcher(session) ? accounts.picker : null}
-          {session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
+          {at('cli') && session && !blocked && offersSwitcher(session) ? switcher.picker : null}
+          {at('account') && session && !blocked && offersSwitcher(session) ? accounts.picker : null}
+          {at('model') && session && !hooked && !blocked ? <ModelPicker sessionId={sessionId} session={session} onChanged={onChanged} /> : null}
+          {at('close') ? (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -284,7 +271,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           >
             {closed ? REOPEN_LABEL : CLOSE_LABEL}
           </button>
-          {remote ? (
+          ) : null}
+          {at('remote') && remote ? (
             <div className="sb-sv-remote" data-testid="session-remote">
               <button
                 type="button"
@@ -318,11 +306,11 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             </div>
           ) : null}
           {/* D65: take a session over to / from a paired machine. */}
-          {!blocked ? <TakeoverAction session={session} sessionId={sessionId} /> : null}
+          {at('takeover') && !blocked ? <TakeoverAction session={session} sessionId={sessionId} short={overflow.short} /> : null}
           {/* D80 (developer ruling 2026-10-08, int-header-overflow): *Undo last turn* is never in the header row; only in the
               compact header's ⋯ menu (below 1024 px), like the sidebar row's ⋯ menu, disabled with the reason when the newest
               turn has no checkpoint. Desktop: the sidebar row's ⋯ menu and each message's ↶ Revert. */}
-          {headerMenu && undo && !blocked && !closed ? (
+          {where === 'row' && headerMenu && undo && !blocked && !closed ? (
             <button
               type="button"
               className="sb-button sb-sv-action"
@@ -337,7 +325,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
               {UNDO_LAST_TURN_LABEL}
             </button>
           ) : null}
-          {hooked ? null : (
+          {hooked || !at('pause') ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -354,7 +342,7 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           </button>
           )}
           {/* D48: the terminal handoff is on the machine the session runs on; not offered for a peer's session. */}
-          {session?.machine || hooked ? null : (
+          {session?.machine || hooked || !at('handoff') ? null : (
           <button
             type="button"
             className="sb-button sb-sv-action"
@@ -367,7 +355,68 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
             {attached ? CONTINUE_IN_TERMINAL : ATTACH_HERE}
           </button>
           )}
+        </>
+    );
+  };
+
+  return (
+    <div className="sb-sv-header" data-testid="session-header" data-session-id={sessionId}>
+      <div className="sb-sv-top" ref={topRow} data-overflow={overflow.hidden.length > 0 ? overflow.hidden.join(' ') : overflow.short ? 'short' : undefined}>
+        {compact ? <SessionDrawerButton /> : null}
+        <span className="sb-sv-dot" data-testid="session-dot" style={{ background: statusColor(session?.status ?? 'idle') }} />
+        {session ? (
+          <InlineTitle session={session} gesture="click" as="div" className="sb-sv-name" testId="session-name" onRenamed={onChanged} />
+        ) : (
+          // D45: nothing while the session loads (its placeholder once it is late); the id when it could not be loaded.
+          <div className="sb-sv-name" data-testid="session-name">
+            {placeholder ? <TitleSkeleton /> : missing || loadError ? sessionId : null}
+          </div>
+        )}
+        {/* D48: a peer's session names its machine. */}
+        {session?.machine ? <MachineTag machine={session.machine} testId="session-machine" /> : null}
+        <div className="sb-sv-root" data-testid="session-root" title={session && !missing ? rootLine(session) : undefined}>
+          {placeholder ? <RootSkeleton /> : <span className="sb-sv-root-text">{missing ? 'no such session' : session ? rootLine(session) : ''}</span>}
         </div>
+        <div
+          className="sb-sv-actions"
+          ref={actionsMenu.actions}
+          id={headerMenu ? `sb-sv-actions-${sessionId}` : undefined}
+          data-menu={headerMenu ? (actionsMenu.open ? 'open' : 'closed') : undefined}
+          data-testid={headerMenu ? 'session-actions-menu' : undefined}
+          onClick={headerMenu ? actionsMenu.onActionClick : undefined}
+        >
+          {actionItems('row')}
+        </div>
+        {overflow.hidden.length > 0 ? (
+          <div className="sb-sv-overflow-holder" data-testid="session-overflow">
+            <button
+              type="button"
+              ref={overflowMenu.toggle}
+              className="sb-button sb-sv-overflow-more"
+              data-testid="session-more"
+              aria-label="More session actions"
+              aria-haspopup="true"
+              aria-expanded={overflowMenu.open}
+              aria-controls={`sb-sv-overflow-${sessionId}`}
+              onClick={() => overflowMenu.setOpen((open) => !open)}
+            >
+              <MoreGlyph />
+            </button>
+            <div
+              className="sb-sv-overflow"
+              id={`sb-sv-overflow-${sessionId}`}
+              ref={(element) => {
+                overflowMenu.actions.current = element;
+                overflowRefs.menu.current = element;
+              }}
+              data-menu={overflowMenu.open ? 'open' : 'closed'}
+              data-testid="session-actions-menu"
+              onClick={overflowMenu.onActionClick}
+            >
+              {actionItems('menu')}
+            </div>
+          </div>
+        ) : null}
         {/* D74: after the row's own parts (their child paths are the prototype's); compact layouts only. */}
         {compact ? <DrawerButton pane="rightPanel" className="sb-sv-panel-open" /> : null}
         {headerMenu ? (
