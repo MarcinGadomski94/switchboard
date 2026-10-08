@@ -21,6 +21,8 @@ import { loadConfig } from '../../../src/server/config.ts';
 import { loadMigrations } from '../../../src/server/db/migrate.ts';
 import { type Store, openStore } from '../../../src/server/db/store.ts';
 import { TutorialService, tutorialAutoOpen } from '../../../src/server/tutorial/service.ts';
+import { PEER_API_ALLOW } from '../../../src/server/peers/service.ts';
+import { isLocalOnly } from '../../../src/server/devices/local-only.ts';
 import { generateToken } from '../../../src/server/token.ts';
 import { makeTempDir, removeTempDir } from '../../helpers/net.ts';
 import { type SupervisorWorld, makeSupervisorWorld } from '../../helpers/supervisor.ts';
@@ -240,5 +242,11 @@ describe('tutorial routes', () => {
     const bad = await call('PUT', '/api/tutorial/tours/main', { status: 'seen' });
     expect(bad.statusCode).toBe(422);
     expect(bad.json()).toMatchObject({ error: 'invalid' });
+    // One state per machine: a paired device uses it (normal use); a paired machine's peer API does not reach it.
+    expect(isLocalOnly('GET', '/api/tutorial')).toBe(false);
+    expect(isLocalOnly('PUT', '/api/tutorial/tours/main')).toBe(false);
+    for (const [method, url] of [['GET', '/api/tutorial'], ['PUT', '/api/tutorial/tours/main']] as const) {
+      expect(PEER_API_ALLOW.some(([verb, pattern]) => verb === method && pattern.test(url))).toBe(false);
+    }
   });
 });

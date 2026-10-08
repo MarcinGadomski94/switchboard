@@ -417,6 +417,9 @@ The sidebar footer shows CPU, RAM in use and a compact usage grid: **one line pe
 ### Restarts and recovery
 When Switchboard starts, sessions that were live are resumed (Claude Code: `claude --resume`) and told "Switchboard restarted. Continue." Closed sessions stay closed. [`docs/supervisor.md`](docs/supervisor.md)
 
+### Tutorial
+The first time Switchboard opens it shows a short tour: each step dims the page except one part (the sessions, + New session, the chat, the Inbox, the todo list, the Todos board, review cards, Undo a turn, the usage grid, ⌘K, schedules, MCP, machines and devices, Settings) and says what it is and what to do. **Back · Next · Skip tour**, or → ← Esc. After an update, each new feature gets a 1–3 step **What's new** tour instead, once. Seen once per machine (stored in its database); replay any of them from **Settings → Tutorial** or **⌘K → Tutorial**. On a phone the card is a bottom sheet. [`docs/tutorial.md`](docs/tutorial.md)
+
 ### Clean-up
 **Settings → Clean-up** lists what Switchboard created and no longer needs, grouped, with sizes and ages: worktrees whose branch is merged or whose closed session saw no change for 14 days (or whose folder is gone), its own `session/…` / `todo/…` and recorded branches that are merged or orphaned, branches it pushed (take-over leftovers, merged session branches), closed sessions older than 30 days (configurable) and old attachments and data files. It is a dry run: each item shows exactly what goes. **Clean up selected** asks for an extra confirmation for uncommitted changes, unmerged branches and remote branches (never ticked for you), then shows the progress and a result; a failure affects nothing else. Nothing that Switchboard did not create is ever listed, and it never runs `git gc`. This machine only, desktop only. Details: `docs/cleanup.md`.
 

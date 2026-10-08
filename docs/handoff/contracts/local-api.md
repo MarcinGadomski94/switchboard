@@ -1250,6 +1250,31 @@ POST /api/cleanup/runs
   "summary": { "done": 0, "failed": 0, "freedBytes": 0 } }
 ```
 
+## Tutorial (D85, 2026-10-08, additive)
+Developer ruling D85 (`docs/decisions.md`, `docs/tutorial.md`): the interactive tutorial's state, **one per machine** (migration 0037). Types: `src/core/tutorial.ts`. A paired device may call both routes (`DEVICE_ALLOWED`); they are not on the peer API (`PEER_API_ALLOW`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/tutorial | — | 200 TutorialState. The first read after a start catches up: a new install's main tour, or the What's-new features newer than `lastVersion`, are queued (`pending`), and `lastVersion` becomes this build's version. |
+| PUT | /api/tutorial/tours/{id} | `{ status: "completed" \| "skipped" }` | 200 TutorialState · 404 `not-found` (`id` is not `main` or a registry feature id) · 422 `invalid` |
+
+`TutorialState`: `{ autoOpen, install: "new" | "existing", lastVersion, main: TourRecord, whatsNew: [{ id, title, version, status, updatedAt }] }`; `TourRecord` = `{ status: "pending" | "completed" | "skipped" | null, updatedAt: string | null }` (`null` = never queued; a replay still works). `autoOpen` is `false` in demo mode and with `SWITCHBOARD_TUTORIAL=off`. The UI opens by itself the main tour when it is `pending`, else the `pending` What's-new tours in registry order; a replay (Settings → Tutorial, ⌘K → Tutorial) sends no `PUT`.
+
+```json
+GET /api/tutorial
+→ 200
+{ "autoOpen": true, "install": "existing", "lastVersion": "1.13.0",
+  "main": { "status": null, "updatedAt": null },
+  "whatsNew": [
+    { "id": "run-in-new-session", "title": "Run in new session", "version": "1.13.0", "status": "pending", "updatedAt": "2026-10-08T19:02:11.000Z" },
+    { "id": "todo-board", "title": "Todos board", "version": "1.13.0", "status": "completed", "updatedAt": "2026-10-08T19:03:40.000Z" }
+  ] }
+
+PUT /api/tutorial/tours/run-in-new-session
+{ "status": "skipped" }
+→ 200 TutorialState
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

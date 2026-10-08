@@ -17,6 +17,7 @@ Location: `~/RiderProjects/Personal/switchboard` (a standalone repo; it began in
 - Tests never call the real push services either: web push goes to the fake push service (`tests/helpers/fake-push.ts`).
 - Tests never call the real `claude`, `gh`, `tailscale` or network (beyond loopback). Use `tools/fake-claude`, `tools/fake-gh`, `tools/fake-tailscale` and temp git repos / temp data folders; peers are two test servers on loopback ports.
 - TSDoc on exported surface; `docs/*.md` for non-obvious behavior.
+- Every new user-facing feature adds a What's-new mini-tour entry to `WHATS_NEW` in `src/core/tutorial.ts` (with `data-tour` anchors; `docs/tutorial.md`).
 
 ## Loop
 - Follow `docs/handoff/LOOP.md`: max 5 attempts per item, state in `.loop/progress.md`, questions and assumptions in `.loop/questions.md`.
