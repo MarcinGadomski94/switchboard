@@ -56,6 +56,27 @@ for (const size of SIZES) {
     await expect(page.getByTestId('chat-send')).toBeVisible({ timeout: 20_000 });
     await expectNoOverflow(page, size.width, 'session chat');
 
+    // A wide code block and a wide table scroll inside themselves, never the page.
+    const wide = [
+      'Code:',
+      '',
+      '```',
+      `const line = '${'x'.repeat(240)}';`,
+      '```',
+      '',
+      '| Column one | Column two | Column three | Column four | Column five | Column six |',
+      '|---|---|---|---|---|---|',
+      `| ${'a'.repeat(30)} | ${'b'.repeat(30)} | ${'c'.repeat(30)} | ${'d'.repeat(30)} | ${'e'.repeat(30)} | ${'f'.repeat(30)} |`,
+    ].join('\n');
+    await input.fill(`[fake:say "${JSON.stringify(wide).slice(1, -1)}"] Show wide content.`);
+    await send.tap();
+    const code = chat.locator('.sb-md pre').last();
+    await expect(code).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('chat-send')).toBeVisible({ timeout: 20_000 });
+    expect(await code.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expectInsideWindow(code, { ...size, height: 100_000 }, 'code block');
+    await expectNoOverflow(page, size.width, 'wide code and table');
+
     // The tabs.
     for (const tab of ['timeline', 'diff', 'artifacts', 'chat'] as const) {
       await page.getByTestId(`session-tab-${tab}`).tap();
