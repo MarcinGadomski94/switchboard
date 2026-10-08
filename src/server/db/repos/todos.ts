@@ -459,6 +459,22 @@ export class TodoRepository {
     });
   }
 
+  /**
+   * D83 × D76 / D78: a session continued in a fresh one hands its run links and its
+   * completed items' actuals to the fresh session: items whose run session it was are now
+   * run by `toSessionId` (still `active` / `discarded` as they were), and the `todo_actuals`
+   * history of its list follows the list. Answers the sessions whose lists hold the relinked
+   * items (to publish them).
+   */
+  async followContinuation(fromSessionId: string, toSessionId: string): Promise<string[]> {
+    return transaction(this.#ctx.db, () => {
+      const rows = this.#ctx.db.prepare('SELECT DISTINCT session_id FROM session_todos WHERE run_session_id = ?').all(fromSessionId);
+      this.#ctx.db.prepare('UPDATE session_todos SET run_session_id = ?, updated_at = ? WHERE run_session_id = ?').run(toSessionId, this.#ctx.now(), fromSessionId);
+      this.#ctx.db.prepare('UPDATE todo_actuals SET session_id = ? WHERE session_id = ?').run(toSessionId, fromSessionId);
+      return rows.map((row) => String(row['session_id']));
+    });
+  }
+
   /** The earliest `done_at` of any done item, `null` when there is none. */
   async earliestDone(): Promise<string | null> {
     const row = this.#ctx.db.prepare(`SELECT MIN(done_at) AS at FROM session_todos WHERE state = 'done'`).get();

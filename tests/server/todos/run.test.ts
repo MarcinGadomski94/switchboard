@@ -151,9 +151,15 @@ describe('the rules (D76 / D78)', () => {
     expect(todoCalibration(low.slice(0, 2), 'this session')).toBeNull();
   });
 
-  it('todoRunOptions: the source session’s CLI, model, effort and account; the run’s title and slug', () => {
+  it('todoRunOptions: the source session’s CLI, model, effort and account unless a D82 rule routes it; the run’s title and slug', () => {
     const source = { provider: 'codex' as const, model: 'gpt-5', effort: 'high', profileId: 'p1' };
-    expect(todoRunOptions({ source, todo: item('a', 'open') })).toEqual(source);
+    expect(todoRunOptions({ source, todo: item('a', 'open') })).toEqual({ settings: source, rule: null, explanation: null });
+    // D82 wired in: a matching Model by task rule routes the run (its line explains it); no match or no rules = the source's settings.
+    const rule = { id: 'r1', priority: 'low' as const, estimate: { kind: 'at-most' as const, minutes: 30 }, provider: 'claude' as const, model: 'sonnet' };
+    const routed = todoRunOptions({ source, todo: item('a', 'open', { priority: 'low', estimateMinutes: 20 }), rules: [rule] });
+    expect(routed).toEqual({ settings: { provider: 'claude', model: 'sonnet', effort: null, profileId: null }, rule, explanation: 'Routed by rule: low ≤30 min → sonnet' });
+    expect(todoRunOptions({ source, todo: item('a', 'open', { priority: 'low', estimateMinutes: 45 }), rules: [rule] })).toEqual({ settings: source, rule: null, explanation: null });
+    expect(todoRunOptions({ source, todo: item('a', 'open', { priority: 'low', estimateMinutes: 20 }), rules: [] }).settings).toEqual(source);
     expect(runTitle('x'.repeat(120))).toHaveLength(80);
     expect(runSlug('Fix the login flake!')).toBe('fix-the-login-flake');
   });

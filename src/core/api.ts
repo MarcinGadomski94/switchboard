@@ -2411,6 +2411,11 @@ export interface TodoRunResult {
   readonly list: SessionTodoList;
   /** Why the run has no worktree (the source is not in a git repository), `null` when it has one. */
   readonly note: string | null;
+  /**
+   * Additive (D82 wired into D76): the *Model by task* rule that routed the run
+   * (`Routed by rule: low ≤30 min → Sonnet`), `null` = the source's settings; absent from an older peer.
+   */
+  readonly routing?: string | null;
 }
 
 /** D78: one session's actual vs. estimate of its completed items (`TodoGroup.actuals`). */

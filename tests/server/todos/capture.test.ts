@@ -67,13 +67,17 @@ describe('migration 0035 (D81)', () => {
     const shipped = await loadMigrations();
     expect(shipped.find((m) => m.version === 35)).toMatchObject({ name: 'todo_capture' });
     const db = await openDatabase(':memory:');
-    migrate(db, shipped.filter((m) => m.version <= 31));
+    // Up to 0034 (0032 rebuilt session_todos before it: 0035 only adds columns, so it composes with that rebuild).
+    migrate(db, shipped.filter((m) => m.version <= 34));
     const ts = '2026-10-08T09:00:00.000Z';
     db.prepare('INSERT INTO sessions (id, name, claude_session_id, cwd, root, root_kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('s', 'old', 'c', '/tmp/x', '/tmp/x', 'repo', ts, ts);
     db.prepare('INSERT INTO session_todos (id, session_id, title, plan, state, added_by, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run('a', 's', 'Old one', 'No plan', 'open', 'agent', 0, ts, ts);
     expect(migrate(db, shipped.filter((m) => m.version <= 35)).applied).toEqual([35]);
     const columns = db.prepare('PRAGMA table_info(session_todos)').all().map((row) => String(row['name']));
     expect(columns.slice(-3)).toEqual(['needs_enrichment', 'captured_from', 'enrich_asked_at']);
+    // The final table has 0031's, 0032's (rebuild: review, run, actuals) and 0035's columns.
+    expect(columns).toEqual(expect.arrayContaining(['started_at', 'started_by', 'reminded_at', 'run_session_id', 'run_state', 'started_first_at', 'span_started_at', 'actual_ms', 'actual_tokens']));
+    expect(migrate(db, shipped).applied.every((version) => version > 35)).toBe(true);
     expect({ ...db.prepare(`SELECT needs_enrichment, captured_from, enrich_asked_at FROM session_todos WHERE id = 'a'`).get() }).toEqual({ needs_enrichment: 0, captured_from: null, enrich_asked_at: null });
     db.prepare(`UPDATE session_todos SET needs_enrichment = 1, captured_from = 'share' WHERE id = 'a'`).run();
     expect(() => db.prepare(`UPDATE session_todos SET needs_enrichment = 2 WHERE id = 'a'`).run()).toThrow(/CHECK/);

@@ -40,7 +40,8 @@ describe('D83 on a peer\'s session (D48 proxy)', () => {
 
     const continued = await waitFor('A continued it', async () => {
       const old = (await a.call('GET', `/api/sessions/${local.id}`)).body as Session;
-      return old.continuedTo ? old : undefined;
+      // Closed once the fresh session's first message is sent (D80's checkpoint before it takes a moment).
+      return old.continuedTo && old.closedAt ? old : undefined;
     });
     const freshLocal = continued.continuedTo?.sessionId as string;
     expect(continued.closedAt).not.toBeNull();

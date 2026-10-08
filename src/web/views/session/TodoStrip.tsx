@@ -52,14 +52,15 @@ export function useRunSessions(): (id: string | null | undefined) => TodoRunSess
   );
 }
 
-/** D76: the toast of a started run (its note when it has no worktree), with **Open** to the run session. */
+/** D76: the toast of a started run (its note when it has no worktree; D82: the rule that routed it), with **Open** to the run session. */
 export function runToast(result: TodoRunResult, todo: Pick<SessionTodo, 'id' | 'title'>): Toast {
   return {
     id: `todo-run-${todo.id}`,
     title: 'Running in a new session',
     sub: 'now',
     branch: '',
-    text: result.note ? `${todo.title} · ${result.note}` : todo.title,
+    // D82: the Model by task rule that routed the run, after the note.
+    text: [todo.title, result.note, result.routing ?? null].filter((part): part is string => !!part).join(' · '),
     sessionId: result.session.id,
     jumpLabel: 'Open',
   };

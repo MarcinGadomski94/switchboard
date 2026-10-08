@@ -521,14 +521,26 @@ export class TodoService {
 
   /**
    * D83: the old session's whole list moves to the fresh session that continues it
-   * (ids and states kept); both lists are published. Answers how many moved.
+   * (ids and states kept, with D76's run fields, D78's actuals and D81's capture flags);
+   * both lists are published. The D76 links follow too: the fresh session runs the items the
+   * old one ran (and takes over its `todoLink`, so its agent still reaches its one item), and
+   * the runs of the moved items now name the fresh session as their source. Answers how many moved.
    */
   async moveAll(fromSessionId: string, toSessionId: string): Promise<number> {
     const moved = await this.#store.todos.moveAll(fromSessionId, toSessionId);
+    const relinked = await this.#store.todos.followContinuation(fromSessionId, toSessionId);
+    const from = await this.#store.sessions.get(fromSessionId);
+    if (from?.todoLink) await this.#store.sessions.update(toSessionId, { todoLink: from.todoLink });
+    if (moved > 0) {
+      for (const session of await this.#store.sessions.list()) {
+        if (session.todoLink?.sourceSessionId === fromSessionId) await this.#store.sessions.update(session.id, { todoLink: { ...session.todoLink, sourceSessionId: toSessionId } });
+      }
+    }
     if (moved > 0) {
       await this.#publish(fromSessionId);
       await this.#changed(toSessionId);
     }
+    for (const sessionId of relinked) if (sessionId !== toSessionId && (moved === 0 || sessionId !== fromSessionId)) await this.#changed(sessionId);
     return moved;
   }
 

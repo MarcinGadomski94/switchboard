@@ -45,7 +45,7 @@ export function applyModelRouting<T extends LaunchSettings>(
 
 `routingExplanation(rule, labels?)` makes the line the UI shows (`Routed by rule: <match> → <targets>`); `labels.models` names models by their labels (`Sonnet`), `labels.profileName` names accounts. A Claude Code rule that sets a model names only the model.
 
-The server reads the stored rules with `modelRulesOf(store.settings)` (`src/server/settings/settings.ts`). The todo run options (lane A's `todoRunOptions`) call `applyModelRouting` with the normal choice and the todo, and show the explanation when a rule matched.
+The server reads the stored rules with `modelRulesOf(store.settings)` (`src/server/settings/settings.ts`). **Wired into D76's runs (integration 1.13):** `todoRunOptions` (`src/server/todos/run-options.ts`, pure) takes the source session's settings, the item and the rules, calls `applyModelRouting`, and answers `{ settings, rule, explanation }`; `TodoLaunchSettings` is `LaunchSettings` (one type). `runTodo` reads the rules with `modelRulesOf` and names the routed CLI's models (its reported list, `routingModelOptions`) and profiles in the line. The run's answer carries it as `TodoRunResult.routing` and the **Run toast** shows it after the item's title (`Fix the login flake · Routed by rule: low ≤30 min → Sonnet`). No rules / no match: the source's settings, `routing: null`, nothing shown. Tests: `tests/server/todos/run.test.ts` (pure), `tests/server/todos/run-integration.test.ts` (the real route: model and `--model` routed; no match = the source's).
 
 ## Storage and validation
 

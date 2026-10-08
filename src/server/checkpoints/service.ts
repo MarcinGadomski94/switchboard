@@ -154,6 +154,11 @@ export class CheckpointService {
     }
   }
 
+  /** Waits for the session's capture / record / revert in flight (readers see the newest turn's rows; the supervisor stores a turn's row in the background). */
+  async #settled(sessionId: string): Promise<void> {
+    await (this.#locks.get(sessionId) ?? Promise.resolve()).catch(() => undefined);
+  }
+
   // ── before a turn ───────────────────────────────────────────────────
 
   /** The top-level folders of the git working trees the session uses (its cwd's first), without duplicates. */
@@ -271,6 +276,7 @@ export class CheckpointService {
 
   /** `GET /api/sessions/{id}/checkpoints`. */
   async list(sessionId: string): Promise<SessionCheckpoints> {
+    await this.#settled(sessionId);
     const session = await this.#session(sessionId);
     const enabled = await this.#enabled();
     const rows = await this.#store.checkpoints.listOf(sessionId, 'turn');
@@ -302,6 +308,7 @@ export class CheckpointService {
 
   /** The confirm dialog (`GET /api/sessions/{id}/checkpoints/{turn}`): the files that change, what happens to the branch. */
   async preview(sessionId: string, turn: number): Promise<CheckpointPlan> {
+    await this.#settled(sessionId);
     const session = await this.#session(sessionId);
     if (session.hooked) throw new CheckpointError('hooked-unavailable', UNSUPPORTED.hooked);
     const rows = await this.#store.checkpoints.turn(sessionId, turn);
@@ -319,6 +326,7 @@ export class CheckpointService {
    * message.
    */
   async revert(sessionId: string, turn: number, options: { readonly filesOnly?: boolean } = {}): Promise<CheckpointPlan> {
+    await this.#settled(sessionId);
     const session = await this.#session(sessionId);
     if (session.hooked) throw new CheckpointError('hooked-unavailable', UNSUPPORTED.hooked);
     const rows = await this.#store.checkpoints.turn(sessionId, turn);

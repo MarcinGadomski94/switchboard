@@ -2729,7 +2729,9 @@ export class SessionSupervisor {
       }
       await this.#refreshStatus(live);
     });
-    if (checkpoints && capture !== null && eventId !== null) await checkpoints.record(capture, eventId).catch((error: unknown) => this.#onError(error));
+    // Stored in the background: the message is on its way, and the checkpoint service's per-session queue keeps a later
+    // capture or revert after this record (awaiting it here only delayed every send's answer by the git work).
+    if (checkpoints && capture !== null && eventId !== null) void checkpoints.record(capture, eventId).catch((error: unknown) => this.#onError(error));
   }
 
   async #onLine(live: Live, line: string): Promise<void> {

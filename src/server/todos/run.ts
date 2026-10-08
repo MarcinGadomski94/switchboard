@@ -10,6 +10,11 @@ import type { ApiContext } from '../routes.ts';
 import { type SessionStartContext, startNewSession } from '../sessions/start.ts';
 import { toSession } from '../sessions/wire.ts';
 import { todoRunOptions } from './run-options.ts';
+import { modelRulesOf } from '../settings/settings.ts';
+import { readModelOptionsSetting } from '../settings/models.ts';
+import { CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
+import { routingModelOptions } from '../../core/model-routing.ts';
+import type { SessionModelOption } from '../../core/api.ts';
 import { TodoError } from './service.ts';
 
 /** The prefix of a todo run's branch (`todo/<slug>`). */
@@ -42,7 +47,9 @@ export function runSlug(title: string): string {
  *   main checkout's), as a Full start with worktrees per solution when the source has the
  *   router's answers; without such repos, or in a plain folder, in the same folder without a
  *   worktree, and the answer's `note` says so;
- * - on the source session's CLI, model, effort and account ({@link todoRunOptions});
+ * - on the source session's CLI, model, effort and account, unless a D82 *Model by task* rule
+ *   matches the item's priority and estimate ({@link todoRunOptions}; the answer's `routing`
+ *   then carries the rule's line, shown in the Run toast);
  * - titled like the item, its first message the item's start message (D75's, with its
  *   "mark it done" line);
  * - linked both ways before its process starts: the session's `todoLink` (its agent may mark
@@ -65,7 +72,21 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
     if (!(error instanceof FolderError)) throw error;
     return { ok: false, status: error.status === 404 ? 409 : error.status, body: { error: error.code === 'not-found' ? 'no-folder' : error.code, message: error.message } };
   }
-  const launch = todoRunOptions({ source: { provider: source.provider, model: source.model, effort: source.effort, profileId: source.profileId }, todo });
+  // D82: the Model by task rules route the run (none = the source's settings); the explanation names the routed CLI's models and profiles.
+  const rules = await modelRulesOf(store.settings);
+  const reported = new Map<CliProviderId, readonly SessionModelOption[] | null>();
+  const profileNames = new Map<string, string>();
+  if (rules.length > 0) {
+    for (const provider of CLI_PROVIDERS) reported.set(provider, await readModelOptionsSetting(store.settings, provider));
+    for (const profile of await store.profiles.list()) profileNames.set(profile.id, profile.name);
+  }
+  const routed = todoRunOptions({
+    source: { provider: source.provider, model: source.model, effort: source.effort, profileId: source.profileId },
+    todo,
+    rules,
+    labels: (provider) => ({ models: routingModelOptions(provider, reported.get(provider) ?? null), profileName: (id) => profileNames.get(id) ?? null }),
+  });
+  const launch = routed.settings;
   const names = new Set((await store.sessions.list()).map((record) => record.name));
   const name = shortNameFromTitle(todo.title, names);
 
@@ -164,5 +185,5 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   }
   const list = await todos.announceRun(sessionId);
   const session = await toSession(store, outcome.record, supervisor.activity(outcome.record.id));
-  return { ok: true, result: { session, list, note } };
+  return { ok: true, result: { session, list, note, routing: routed.explanation } };
 }

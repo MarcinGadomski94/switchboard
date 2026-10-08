@@ -1714,6 +1714,15 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D83-restart · a continuation running when Switchboard stops ends with it (like a CLI switch); nothing is kept of a half-started fresh session.
 - ASSUMED D83-peer-place · for a paired machine's session the fresh session takes the old one's place in **this** machine's sidebar (where it was placed by its remote id); with the D71 shared layout the machine that ran it moves it there too, and the second move finds it placed already.
 
+## Integration 1.13 (2026-10-08)
+- ASSUMED int-routing-place · the routed run's line ("Routed by rule: …") is shown in the Run toast (after the item's title and any worktree note), not in the run session's chat; the session's own model chip shows the routed model.
+- ASSUMED int-routing-labels · the server names models with the routed CLI's last reported list (else Claude Code's aliases) and profiles by name, like the editor's preview.
+- ASSUMED int-fresh-actuals · a fresh continuation moves the old list's `todo_actuals` history too (totals and the "this session" calibration continue in the fresh session). Tokens of an in-progress span are summed from the working session at the span's end, so turns of the closed old session in that span are not counted (approximate, as documented).
+- ASSUMED int-fresh-run · a run session continued in a fresh one hands its run over: the item's `runSessionId` becomes the fresh session (its review resolves the item, the D75 reminder goes there) and the fresh session takes its `todoLink`; the old one keeps its link as history.
+- VERIFIED int-review-loop · tests/server/todos/run-integration.test.ts: run → agent done → review → merge / dismiss / discard / send back / changes gone / commit, through the real route, fake-claude, git, ReviewService and TodoReviewLink.
+- FIXED int-checkpoint-send · lane C awaited the checkpoint row after writing each message, which made a scheduled Run now answer `ok` (tests/server/peers/schedules-loops.test.ts failed on feature/undo alone); stored in the background now, readers wait for it.
+- FIXED int-stale-tests · tests/server/todos/capture.test.ts (0035 after 0032–0034, not straight after 0031), tests/server/peers/fresh-session.test.ts (waits for the close, which follows the first send and its checkpoint).
+
 ## D84 · Clean-up (2026-10-08)
 - ASSUMED D84-where · Settings → Clean-up (last section), not a sidebar entry: the ruling allowed either; it is occasional.
 - ASSUMED D84-adopted · worktrees the agent of a Switchboard session created and Switchboard adopted (D38) count as Switchboard's (they have a `worktrees` row); the developer's own hand-made worktrees have none and are never listed.
