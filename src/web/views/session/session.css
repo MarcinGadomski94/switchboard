@@ -869,7 +869,7 @@ a.sb-agent--link:focus-visible {
   color: oklch(0.74 0.12 250);
 }
 
-/* Composer: quick replies, then the message field and Send. */
+/* Composer: the message field, 📎 and Send (D86: no quick replies). */
 .sb-chat-composer {
   padding: 10px 22px 16px;
   border-top: 1px solid var(--border-divider);
@@ -934,30 +934,6 @@ a.sb-agent--link:focus-visible {
   flex: none;
   white-space: nowrap;
   color: var(--muted-3);
-}
-
-.sb-chat-quick {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.sb-chat-quick-label {
-  font: 500 10.5px var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-3);
-  margin-right: 4px;
-}
-
-.sb-chat-quick .sb-chat-quick-reply {
-  font-size: 12px;
-  border: 1px solid var(--border-control);
-  border-radius: 14px;
-  padding: 4px 10px;
-  color: var(--text-2);
-  cursor: pointer;
 }
 
 .sb-chat-compose {

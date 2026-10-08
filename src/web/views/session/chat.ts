@@ -21,7 +21,7 @@ import type {
 /**
  * The chat tab's content from the session's events and questions (SPEC → Session →
  * Chat; prototype `vSession` chat markup + `msgs` / `card()` / `ssAnswered` /
- * `quick` / `sendDraft`), kept free of React so it can be unit-tested. The rules
+ * `sendDraft`; D86: no quick replies), kept free of React so it can be unit-tested. The rules
  * are in `docs/chat.md`.
  */
 
@@ -498,23 +498,6 @@ export const ANSWERS_WRITTEN = '● Answers written into the briefs. Blocked age
 export function composerPlaceholder(sessionName: string): string {
   return `Message ${sessionName}…`;
 }
-
-/** Label of the quick-reply row (prototype). */
-export const QUICK_REPLIES_LABEL = 'Quick replies';
-
-/** A quick reply: the pill's label and the text it puts in the composer (it does not send). */
-export interface QuickReply {
-  readonly label: string;
-  readonly text: string;
-}
-
-/** The quick replies, labels and texts verbatim from the prototype (`quickDef` / `quick`). */
-export const QUICK_REPLIES: readonly QuickReply[] = [
-  { label: 'Accept recommended', text: 'Accept recommended: feature-building · single-solution · UI-first · sequential' },
-  { label: 'Match Figma exactly', text: "Match the Figma frame exactly; don't add variants." },
-  { label: 'Stop and ask designer', text: 'Stop and park this until the designer confirms.' },
-  { label: 'Commit when green', text: "Commit once all checks are green. Stage only this feature's files." },
-];
 
 /** The text `POST /messages` sends for a draft, `null` when there is nothing to send (prototype `sendDraft`: trimmed, empty ignored). */
 /**

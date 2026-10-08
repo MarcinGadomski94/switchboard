@@ -80,7 +80,7 @@ export interface Overflow {
  * Measures horizontal overflow at a window `width`: the page's scroll width, and
  * every visible element that sticks out of the window (outermost only) unless a
  * sideways-scrolling box inside the window holds it (a tab bar, a code block, a
- * diff, quick replies: those scroll inside themselves, which is allowed).
+ * diff: those scroll inside themselves, which is allowed).
  */
 export async function overflowOf(page: Page, width: number): Promise<Overflow> {
   return page.evaluate((W) => {

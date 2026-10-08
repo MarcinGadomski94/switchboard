@@ -12,7 +12,7 @@ The desktop layout is the prototype's and stays **pixel-identical at 1280 px and
 | tablet | 768–1279 px | 768 × 1024, 1024 × 768, 820 × 1180 | top app bar; the sidebar a slide-over drawer; the session's right panel a drawer from the right |
 | tablet portrait and below | ≤ 1023 px | 768 × 1024 | the session header's actions move into its ⋯ menu; tables become cards |
 | phone | ≤ 767 px | 360 × 740, 390 × 844, 640 × 360 | one column; the drawer covers the screen; the right panel a bottom sheet; dialogs full-screen sheets; list → detail pages |
-| short | ≤ 1279 px wide and ≤ 500 px high | 640 × 360 | the session's chips and the quick-reply label hide, so the chat keeps room |
+| short | ≤ 1279 px wide and ≤ 500 px high | 640 × 360 | the session's chips hide, so the chat keeps room (D86 removed the quick replies, whose label also hid here) |
 
 The numbers live in `src/web/shell/viewport.ts` (`DESKTOP_MIN` 1280, `TABLET_MIN` 768, `HEADER_MENU_BELOW` 1024) and the CSS uses the same ones: `(max-width: 1279px)`, `(max-width: 1023px)`, `(max-width: 767px)`. 1280 rather than 1366 keeps small laptop windows (1280 × 800) on the desktop layout; the old shell had a 1100 px minimum width, so nothing between 1100 and 1279 px was designed for the desktop either.
 
@@ -31,7 +31,7 @@ The CSS is in `src/web/styles/responsive/` (imported last, from `main.tsx`): `sh
 - **Chips and tabs:** each one line that scrolls sideways (no scrollbar drawn).
 - **Header actions in a narrow session column (D74 follow-up, 2026-10-08):** at any width from 1024 px up the actions adapt to the width the header really has (the right panel and the sidebar open shrink the session column), not to the window's: measured after each render and on every size change (`useHeaderOverflow.ts`, `ResizeObserver` + `MutationObserver`; the pure choice in `header-overflow.ts`). When everything fits nothing changes (the desktop specs are pixel-identical). Otherwise "Move to <machine> ▸" shortens to **Move ▸** ("Take over"; the full label as its tooltip), then actions move into a **⋯** menu at the row's end in this order: Move, Continue in terminal, Remote, Close, then the account and CLI pickers, Pause, and the model picker last. The tabs stay one line inside the column (scrolling sideways when narrower) and the chips wrap inside it. Oracle: `tests/e2e/header-overflow.spec.ts` (1280 / 1366 / 1440 × sidebar × right panel, a long machine name, Remote on, a long model label).
 - **Right panel:** a drawer from the right on a tablet (`min(380px, 92vw)`), a bottom sheet on a phone (`min(80dvh, …)`, rounded top); its scrim and its overview's hide button close it.
-- **Chat:** tighter padding; messages may use the whole width; code blocks, diffs and Markdown tables scroll inside themselves. The composer is pinned at the bottom (safe-area padding), quick replies are one line that scrolls sideways, the context bar drops its "compacted" note on phones.
+- **Chat:** tighter padding; messages may use the whole width; code blocks, diffs and Markdown tables scroll inside themselves. The composer is pinned at the bottom (safe-area padding), the 📎 sits next to Send in the field's row (D86: no quick replies), the context bar drops its "compacted" note on phones.
 - **Timeline:** a narrower label column, every other time tick; the log and terminal stack. **Diff:** on phones the files become a strip that scrolls sideways above the diff. **Artifacts:** rows wrap.
 - **Todo strip and cards:** the strip's "next" line hides on phones; a card keeps check · title · ⋯ on its first line and puts its priority, estimate and age under the title; the Priority submenu opens inward.
 
@@ -62,7 +62,7 @@ The CSS is in `src/web/styles/responsive/` (imported last, from `main.tsx`): `sh
 
 On a coarse pointer (any width), `touch.css`:
 
-- **Tap targets ≥ 44 × 44 px**: nav items, session and folder rows, ⋯ buttons, tabs, header actions, Send, quick replies, question options, todo controls, page actions and filters, dialog pills and buttons, menu items.
+- **Tap targets ≥ 44 × 44 px**: nav items, session and folder rows, ⋯ buttons, tabs, header actions, Send, the composer's 📎, question options, todo controls, page actions and filters, dialog pills and buttons, menu items.
 - **Hover-only controls get a touch path:** a sidebar row's and a folder's **⋯** are always shown; the row's **×** (hover only) hides and **Close** is in the row's ⋯ menu instead (`sidebar-menu-close`, coarse pointers only).
 - **Tooltips:** a long press (~500 ms) on an element with a `title` shows it in a bubble above the element (`TouchTooltip.tsx`); the click that would follow is swallowed; the next touch dismisses it. Not in the sessions list, where a long press drags.
 - Fields are at least 16 px (iOS zooms into smaller ones).

@@ -56,7 +56,8 @@ import { rememberNewSessionMode } from '../../helpers/new-session-mode.ts';
  * in this folder, listed per surface in the report (`docs/visual/full-pass.md`).
  * A developer ruling that changes a surface on purpose (`Surface.rulings`, e.g.
  * D37: finished subagents leave the session's right panel) is listed there, and
- * its copy must show on the app.
+ * its copy must show on the app. A ruling that removes a part (`Surface.removed`,
+ * D86: the quick replies) names the prototype copy the app must no longer show.
  * The toast runs on the real path in `toast.spec.ts`.
  */
 
@@ -103,6 +104,12 @@ interface Surface {
    * finished" line in the session's right panel). The detail is gated by the view's own spec.
    */
   readonly rulings?: readonly { readonly id: string; readonly appCopy: string; readonly note: string }[];
+  /**
+   * Developer rulings that remove a part on purpose (D86: the quick replies): copy
+   * the prototype shows and the app must no longer show, and the note the report
+   * carries. It is not a landmark any more; the detail is gated by the view's own spec.
+   */
+  readonly removed?: readonly { readonly id: string; readonly protoCopy: string; readonly note: string }[];
   /** Modals: the prototype panel's inline width (how the panel is found there). */
   readonly panelWidth?: string;
   /** Modals: the panel height follows its content (the palette), so it is compared only once implemented. */
@@ -192,7 +199,15 @@ const SURFACES: readonly Surface[] = [
     kind: 'view',
     testId: 'view-session',
     placeholder: 'empty',
-    landmarks: ['Quick replies', 'Agents & solutions', 'Terminal handoff'],
+    // D86: "Quick replies" was a landmark; the row is gone from the app (see `removed`).
+    landmarks: ['Agents & solutions', 'Terminal handoff'],
+    removed: [
+      {
+        id: 'D86',
+        protoCopy: 'Quick replies',
+        note: 'D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field\'s row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype\'s boxes and checks the 📎 on its own',
+      },
+    ],
     rulings: [
       {
         id: 'D37',
@@ -859,6 +874,23 @@ test('full visual pass: every SPEC view and modal against the prototype (sidebar
         note: surface.landmarks.map((t) => JSON.stringify(t)).join(', '),
       });
       content.checks += 1;
+      // D86: a removal ruling: the prototype shows the copy, the app no longer does.
+      for (const removal of surface.removed ?? []) {
+        await expect.poll(() => landmarkScope(protoPage, surface, 'proto'), { message: `prototype ${surface.id}: ${removal.protoCopy}` }).toContain(removal.protoCopy);
+        await expect.poll(() => landmarkScope(appPage, surface, 'app'), { message: `app ${surface.id}: ${removal.id} no ${removal.protoCopy}` }).not.toContain(removal.protoCopy);
+        rows.push({
+          surface: surface.id,
+          group: 'content',
+          part: `${removal.id} ruling (removed in the app)`,
+          geometry: 'none',
+          proto: JSON.stringify(removal.protoCopy),
+          app: 'absent',
+          result: 'ok',
+          note: removal.note,
+        });
+        content.checks += 1;
+        notes.push(removal.note);
+      }
       // Developer rulings: the app shows the ruled copy (the prototype has none), noted in the report.
       for (const ruling of surface.rulings ?? []) {
         await expect.poll(() => landmarkScope(appPage, surface, 'app'), { message: `app ${surface.id}: ${ruling.id} ${ruling.appCopy}` }).toContain(ruling.appCopy);

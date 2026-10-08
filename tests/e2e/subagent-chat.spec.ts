@@ -14,7 +14,7 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  *   the brief ("Brief from the main agent") as the first bubble, the subagent's
  *   text and its `✓ Read · hello.txt` step, the call's result ("Result") last, and
  *   in the composer's place the note "Subagents take no messages · reply in the
- *   main chat" (no field, no quick replies);
+ *   main chat" (no field, no 📎);
  * - Esc, the browser's Back and the bar's link return to the main chat at the
  *   scroll position it had; a reload on the subagent's address shows it; an
  *   unknown agent id shows "This subagent has no chat here" with the back link;
@@ -169,10 +169,10 @@ test('D36: the Agent step opens the subagent chat; Esc, Back and the bar return 
     'chat-message',
     'subagent-result',
   ]);
-  // No composer: the note in its place, no quick replies.
+  // No composer: the note in its place (and no 📎).
   await expect(page.getByTestId('chat-composer')).toHaveCount(0);
   await expect(page.getByTestId('chat-input')).toHaveCount(0);
-  await expect(page.getByTestId('chat-quick-reply')).toHaveCount(0);
+  await expect(page.getByTestId('attach-button')).toHaveCount(0);
   await expect(page.getByTestId('subagent-note')).toHaveText(NOTE);
   // The session header's Chat tab stays the current tab.
   await expect(page.getByTestId('view-session')).toHaveAttribute('data-tab', 'chat');

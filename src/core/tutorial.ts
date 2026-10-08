@@ -95,10 +95,10 @@ export const MAIN_TOUR: readonly TourStep[] = [
     id: 'chat',
     title: 'The chat',
     what: "A session's chat: the agent's replies, its tool calls and its questions. The message box sends the next turn.",
-    todo: ['Type in the message box and press Enter (Shift+Enter for a new line).', 'Use a quick reply under the box for the usual answers.', 'Attach files or images with the paperclip, or drop them on the box.', 'Stop ends the running turn.'],
+    todo: ['Type in the message box and press Enter (Shift+Enter for a new line).', 'Attach files or images with the paperclip next to Send, or paste or drop them on the box.', 'Stop ends the running turn.'],
     anchors: ['composer'],
     route: SESSION,
-    missing: `${NO_SESSION}Its chat has a message box with quick replies, attachments and Stop.`,
+    missing: `${NO_SESSION}Its chat has a message box with attachments and Stop.`,
   },
   {
     id: 'inbox',

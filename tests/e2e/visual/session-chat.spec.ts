@@ -24,7 +24,7 @@ import { checkOtherPills, sameCopyBesidesOther } from './own-answer.ts';
  * prototype, 1440×900, `simulateIncoming` off, on two sessions:
  * 1. `calendar-func-fix`: its header has the same height on both pages (M4.1), so
  *    every box is absolute: the user bubble, the agent text with its step lines
- *    (`✓ …`, `● …`) and the composer (quick replies, field, Send).
+ *    (`✓ …`, `● …`) and the composer (field, Send; D86: see below).
  * 2. `free-talk-feature` (the prototype's default): the inline question card
  *    (3 questions), then one option picked per question (All answered, Send at
  *    full opacity), then Send → the answers bubble and its note. The prototype's
@@ -39,13 +39,30 @@ import { checkOtherPills, sameCopyBesidesOther } from './own-answer.ts';
  * parts keep their boxes; a question's and its options row's text differ only by
  * that pill at the end (`sameCopyBesidesOther`), and the pill is gated on its own
  * (`own-answer.ts`), with the card open and once an option is picked.
+ * D86 (deliberate deviation, `docs/decisions.md` → D86, `docs/visual/README.md`):
+ * the app has no quick-replies row, which the prototype still has. Its parts (the
+ * row, the `QUICK REPLIES` label, the four pills and their computed styles) are not
+ * compared any more. What was measured with the row in place is re-anchored on the
+ * prototype's own boxes: the composer keeps its x, width and bottom and is shorter
+ * by the row + the composer's gap (`freed`, measured on the prototype); the chat
+ * area keeps its x, width and top and is taller by the same amount; the field's
+ * row and Send keep their boxes; the field is narrower by the 📎 (36 px) + the row's
+ * gap (8 px), and the 📎 is checked on its own between the field and Send.
  */
 
 interface PartSpec {
   readonly path: readonly number[];
+  /** D86: the app's path when it differs from the prototype's (the composer lost its first row). */
+  readonly appPath?: readonly number[];
+  /** D86: the box the app should have, from the prototype's box and the height the quick replies freed. */
+  readonly expect?: (proto: Box, freed: number) => Box;
   readonly geometry: Geometry;
   readonly copy: boolean;
 }
+
+/** D86: the composer's 📎 (width) and the gap of the field's row. */
+const ATTACH_WIDTH = 36;
+const COMPOSE_GAP = 8;
 
 const MAIN = [1, 0, 0] as const;
 const CHAT = [...MAIN, 1] as const;
@@ -63,19 +80,55 @@ const MESSAGE_PARTS: Readonly<Record<string, PartSpec>> = {
   step1: { path: [...CHAT, 1, 1, 1], geometry: 'box', copy: true },
 };
 
-/** The composer (anchored at the bottom: absolute on both sessions). */
+/**
+ * The composer (anchored at the bottom: absolute on both sessions). D86: the
+ * prototype's quick-replies row (`[...COMPOSER, 0]`: label + 4 pills) is excluded;
+ * the field's row is the app's first composer row, and the 📎 sits in it before Send.
+ */
 const COMPOSER_PARTS: Readonly<Record<string, PartSpec>> = {
-  composer: { path: COMPOSER, geometry: 'box', copy: false },
-  quick: { path: [...COMPOSER, 0], geometry: 'box', copy: true },
-  quickLabel: { path: [...COMPOSER, 0, 0], geometry: 'box', copy: true },
-  pill0: { path: [...COMPOSER, 0, 1], geometry: 'box', copy: true },
-  pill1: { path: [...COMPOSER, 0, 2], geometry: 'box', copy: true },
-  pill2: { path: [...COMPOSER, 0, 3], geometry: 'box', copy: true },
-  pill3: { path: [...COMPOSER, 0, 4], geometry: 'box', copy: true },
-  compose: { path: [...COMPOSER, 1], geometry: 'box', copy: false },
-  input: { path: [...COMPOSER, 1, 0], geometry: 'box', copy: false },
-  send: { path: [...COMPOSER, 1, 1], geometry: 'box', copy: true },
+  composer: { path: COMPOSER, geometry: 'box', copy: false, expect: (p, freed) => ({ ...p, y: p.y + freed, height: p.height - freed }) },
+  compose: { path: [...COMPOSER, 1], appPath: [...COMPOSER, 0], geometry: 'box', copy: false },
+  input: { path: [...COMPOSER, 1, 0], appPath: [...COMPOSER, 0, 0], geometry: 'box', copy: false, expect: (p) => ({ ...p, width: p.width - ATTACH_WIDTH - COMPOSE_GAP }) },
+  send: { path: [...COMPOSER, 1, 1], appPath: [...COMPOSER, 0, 2], geometry: 'box', copy: true },
 };
+
+/** D86: the prototype's quick-replies row (measured only to know the height the app freed). */
+const PROTO_QUICK = [...COMPOSER, 0] as const;
+const PROTO_COMPOSE = [...COMPOSER, 1] as const;
+
+/** D86: the height the quick-replies row took in the prototype's composer: the row + the gap to the field's row. */
+async function freedHeight(protoPage: Page): Promise<number> {
+  const proto = await measure(protoPage, { quick: [...PROTO_QUICK], compose: [...PROTO_COMPOSE] });
+  const quick = proto['quick'];
+  const compose = proto['compose'];
+  if (!quick || !compose) throw new Error('D86: the prototype has no quick-replies row to measure');
+  return compose.box.y - quick.box.y;
+}
+
+/**
+ * D86: the composer's 📎 (an addition, checked on its own): in the field's row
+ * between the field and Send, 8 px from each, 36 px wide, as tall as the field
+ * (whose prototype box is the reference), the prototype field's computed
+ * border-radius.
+ */
+async function checkAttach(protoPage: Page, appPage: Page, label: string, failures: string[]): Promise<string> {
+  const proto = await measure(protoPage, { input: [...PROTO_COMPOSE, 0], send: [...PROTO_COMPOSE, 1] });
+  const shot = await measure(appPage, { attach: [...COMPOSER, 0, 1] });
+  const [input, send, attach] = [proto['input'], proto['send'], shot['attach']];
+  if (!input || !send || !attach) {
+    failures.push(`${label} 📎: missing`);
+    return `| ${label} | 📎 (D86) | addition | missing | missing | FAIL | |`;
+  }
+  const want: Box = { x: input.box.x + input.box.width - ATTACH_WIDTH, y: input.box.y, width: ATTACH_WIDTH, height: input.box.height };
+  const issues = [
+    ...compareBoxes(`${label} 📎 (D86)`, want, attach.box, 'box'),
+    ...(Math.abs(send.box.x - COMPOSE_GAP - (attach.box.x + attach.box.width)) > 0.5 ? [`${label} 📎 (D86): not 8 px before Send`] : []),
+    ...(attach.style['border-radius'] !== input.style['border-radius'] ? [`${label} 📎 (D86).border-radius: field ${input.style['border-radius']} vs 📎 ${attach.style['border-radius']}`] : []),
+    ...(await appPage.locator('.sb-chat-compose [data-testid="attach-button"]').getAttribute('aria-label')) !== 'Attach files' ? [`${label} 📎 (D86): no "Attach files" label`] : [],
+  ];
+  failures.push(...issues);
+  return `| ${label} | 📎 (D86) | addition | ${fmtBox(want)} | ${fmtBox(attach.box)} | ${issues.length ? 'FAIL' : 'ok'} | |`;
+}
 
 function questionParts(index: number): Record<string, PartSpec> {
   const base = [...CARD, 1 + index];
@@ -197,8 +250,11 @@ async function compare(
   await scrollChatTop(protoPage);
   await scrollChatTop(appPage);
   const paths = { ...Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, spec.path])), __chat: [...CHAT] };
+  const appPaths = { ...Object.fromEntries(Object.entries(parts).map(([name, spec]) => [name, spec.appPath ?? spec.path])), __chat: [...CHAT] };
   const proto = await measure(protoPage, paths);
-  const shot = await measure(appPage, paths);
+  const shot = await measure(appPage, appPaths);
+  // D86: only the composer's parts re-anchor on it.
+  const freed = Object.values(parts).some((spec) => spec.expect) ? await freedHeight(protoPage) : 0;
   const rows: string[] = [];
   for (const [name, spec] of Object.entries(parts)) {
     const p = proto[name];
@@ -209,7 +265,8 @@ async function compare(
       continue;
     }
     const relative = options.chatRelative && options.inChat;
-    const pBox = relative ? relativeTo(p.box, proto['__chat']?.box.y ?? 0) : p.box;
+    const protoBox = spec.expect ? spec.expect(p.box, freed) : p.box;
+    const pBox = relative ? relativeTo(protoBox, proto['__chat']?.box.y ?? 0) : protoBox;
     const aBox = relative ? relativeTo(a.box, shot['__chat']?.box.y ?? 0) : a.box;
     const boxIssues = compareBoxes(`${label} ${name}`, pBox, aBox, spec.geometry);
     // D39: the Other… pill ends a question's (and its options row's) text; it is checked on its own.
@@ -221,13 +278,16 @@ async function compare(
     failures.push(...boxIssues, ...copyIssues, ...styleIssues);
     const ok = boxIssues.length + copyIssues.length + styleIssues.length === 0;
     rows.push(
-      `| ${label} | ${name} | ${relative ? `${spec.geometry} (y rel. chat)` : spec.geometry} | ${fmtBox(pBox)} | ${fmtBox(aBox)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? `${JSON.stringify(besidesOther ? p.text : a.text).slice(0, 70)}${besidesOther ? ' + "Other…" (D39)' : ''}` : ''} |`,
+      `| ${label} | ${name} | ${relative ? `${spec.geometry} (y rel. chat)` : spec.geometry}${spec.expect ? ' (D86: expected from the prototype)' : ''} | ${fmtBox(pBox)} | ${fmtBox(aBox)} | ${ok ? 'ok' : 'FAIL'} | ${spec.copy ? `${JSON.stringify(besidesOther ? p.text : a.text).slice(0, 70)}${besidesOther ? ' + "Other…" (D39)' : ''}` : ''} |`,
     );
   }
   return { rows, app: shot };
 }
 
-/** The chat area itself: x, width and bottom (its top follows the header). */
+/**
+ * The chat area itself: x, width and bottom (its top follows the header). D86: its
+ * bottom is lower than the prototype's by the height the quick replies freed.
+ */
 async function compareChatArea(protoPage: Page, appPage: Page, label: string, geometry: Geometry, failures: string[]): Promise<string> {
   const proto = await measure(protoPage, { chat: [...CHAT] });
   const shot = await measure(appPage, { chat: [...CHAT] });
@@ -237,12 +297,14 @@ async function compareChatArea(protoPage: Page, appPage: Page, label: string, ge
     failures.push(`${label} chat: missing`);
     return `| ${label} | chat | ${geometry} | missing | missing | FAIL | |`;
   }
+  const freed = await freedHeight(protoPage);
+  const want: Box = { ...p.box, height: p.box.height + freed };
   const issues = [
-    ...compareBoxes(`${label} chat`, p.box, a.box, geometry),
+    ...compareBoxes(`${label} chat`, want, a.box, geometry),
     ...COMPARED_STYLES.filter((prop) => p.style[prop] !== a.style[prop]).map((prop) => `${label} chat.${prop}: prototype ${p.style[prop]} vs app ${a.style[prop]}`),
   ];
   failures.push(...issues);
-  return `| ${label} | chat | ${geometry} | ${fmtBox(p.box)} | ${fmtBox(a.box)} | ${issues.length ? 'FAIL' : 'ok'} | |`;
+  return `| ${label} | chat | ${geometry} (D86: +${round(freed)} px) | ${fmtBox(want)} | ${fmtBox(a.box)} | ${issues.length ? 'FAIL' : 'ok'} | |`;
 }
 
 /** Picks option `index` of every question of the card on either page. */
@@ -279,6 +341,8 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   const calendarChat = await compareChatArea(protoPage, appPage, 'calendar-func-fix', 'box', failures);
   const calendar = await compare(protoPage, appPage, 'calendar-func-fix', MESSAGE_PARTS, { chatRelative: false, inChat: true }, failures);
   const calendarComposer = await compare(protoPage, appPage, 'calendar-func-fix', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
+  const calendarAttach = await checkAttach(protoPage, appPage, 'calendar-func-fix', failures);
+  if ((await appPage.getByTestId('chat-quick-reply').count()) !== 0) failures.push('D86: the app still shows quick replies');
   const placeholders = await Promise.all(
     [protoPage, appPage].map((page) => page.locator('[placeholder^="Message "]').first().getAttribute('placeholder')),
   );
@@ -296,6 +360,7 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
   const freeMessages = await compare(protoPage, appPage, 'free-talk-feature', MESSAGE_PARTS, { chatRelative: true, inChat: true }, failures);
   const freeCard = await compare(protoPage, appPage, 'free-talk-feature', CARD_PARTS, { chatRelative: true, inChat: true }, failures);
   const freeComposer = await compare(protoPage, appPage, 'free-talk-feature', COMPOSER_PARTS, { chatRelative: false, inChat: false }, failures);
+  const freeAttach = await checkAttach(protoPage, appPage, 'free-talk-feature', failures);
   const opacities: string[] = [];
   const sendOpacity = async (state: string, want: string) => {
     const [p, a] = [await opacityAt(protoPage, [...CARD, 4, 1]), await opacityAt(appPage, [...CARD, 4, 1])];
@@ -335,8 +400,6 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
     const answers = style('.sb-chat-answers-bubble');
     const note = style('.sb-chat-answers-note');
     const composer = style('.sb-chat-composer');
-    const label = style('.sb-chat-quick-label');
-    const pill = style('.sb-chat-quick-reply');
     const input = style('.sb-chat-input');
     const send = style('.sb-chat-send');
     return {
@@ -351,8 +414,6 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
       noteColor: note.color,
       composerBorder: `${composer.borderTopWidth} ${composer.borderTopStyle} ${composer.borderTopColor}`,
       composerPadding: `${composer.paddingTop} ${composer.paddingRight} ${composer.paddingBottom} ${composer.paddingLeft}`,
-      label: `${label.fontSize} ${label.fontWeight} ${label.letterSpacing} ${label.textTransform} ${label.color}`,
-      pill: `${pill.fontSize} ${pill.borderTopWidth} ${pill.borderTopColor} ${pill.borderTopLeftRadius} ${pill.color}`,
       input: `${input.fontSize} ${input.borderTopColor} ${input.borderTopLeftRadius} ${input.backgroundColor} ${input.color}`,
       send: `${send.backgroundColor} ${send.color} ${send.borderTopLeftRadius} ${send.fontWeight}`,
     };
@@ -370,8 +431,6 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
     noteColor: noteBlue ?? 'oklch(0.74 0.12 250)',
     composerBorder: `1px solid ${hexToRgb('#232428')}`,
     composerPadding: '10px 22px 16px 22px',
-    label: `10.5px 500 0.63px uppercase ${hexToRgb('#76756f')}`,
-    pill: `12px 1px ${hexToRgb('#2c2d32')} 14px ${hexToRgb('#c9c8c3')}`,
     input: `13px ${hexToRgb('#2c2d32')} 10px ${hexToRgb('#111214')} ${hexToRgb('#e8e7e3')}`,
     send: `${hexToRgb('#e8e7e3')} ${hexToRgb('#111214')} 10px 500`,
   };
@@ -386,6 +445,8 @@ test('Chat tab matches the prototype (messages, step lines, question card, answe
     'chat.md': report({
       rows: [calendarChat, ...calendar.rows, ...calendarComposer.rows, freeChat, ...freeMessages.rows, ...freeCard.rows, ...freeComposer.rows, ...picked.rows, ...answered.rows],
       otherRows: [
+        calendarAttach,
+        freeAttach,
         ...otherOpen.map((check) => `| free-talk-feature | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
         ...otherPicked.map((check) => `| free-talk-feature picked | ${check.part} | addition | — | ${check.note.replaceAll('|', '\\|')} | ${check.ok ? 'ok' : 'FAIL'} | |`),
       ],
@@ -432,7 +493,7 @@ Geometry: \`box\` = x, y, width, height; \`bottom\` = x, width and the bottom ed
 |---|---|---|---|---|---|---|
 ${input.rows.join('\n')}
 
-## D39 · Other… (an addition, checked on its own)
+## D39 · Other… and D86 · 📎 (additions, checked on their own)
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
 ${input.otherRows.join('\n')}
@@ -448,6 +509,7 @@ ${input.opacities.join('\n')}
 ${input.computedRows.join('\n')}
 
 ## Known differences (not findings)
+- D86 (deliberate deviation): the prototype's quick-replies row (\`QUICK REPLIES\` label + four pills) is gone from the app, so it is not compared (nor the label's and pills' SPEC tokens). The composer keeps its x, width and bottom and is shorter by that row + the composer's 8 px gap (measured on the prototype); the chat area is taller by the same height; the field's row and Send keep their boxes; the field is 44 px narrower (the 📎, 36 px, + 8 px gap), and the 📎 is checked on its own above. Rows marked "D86: expected from the prototype" show the expected box.
 - D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question and of its options row is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above).
 - The prototype's \`•\` note line (prod-monitoring only) shows as \`✓\` in the app: the demo seed turns every prototype tool line into a real step event, and a note has no event of its own (\`docs/chat.md\`). Not in the compared sessions.
 - After Send the prototype also flips its mock agent statuses; the app's demo answers are queued for the session's next run (no live process), which the chat does not show differently.

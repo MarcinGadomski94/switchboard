@@ -17,20 +17,20 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (73) | green (3) | 1.74% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
-| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (73) | green (4) | 10.85% | 11.20% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
-| Session · Timeline | Session → Timeline | M4.4 | gated | green (73) | green (3) | 10.93% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
-| Session · Diff | Session → Diff | M4.5 | gated | green (73) | green (3) | 8.16% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (73) | green (3) | 5.73% | 4.96% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
-| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (73) | green (3) | 1.65% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (73) | green (3) | 1.97% | 0.40% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (73) | green (3) | 3.36% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
-| History | History | M7.4 | gated | green (73) | green (3) | 1.76% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (73) | green (3) | 1.66% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
-| Settings | Settings | M8.2 (M9.1 row) | gated | green (73) | green (3) | 1.85% | 0.26% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
-| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (73) | green (3) | 7.03% | 8.87% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
-| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (73) | green (3) | 1.31% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
-| Palette | Modals → Palette | M8.3 | gated | green (73) | green (3) | 1.41% | 0.00% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (74) | green (3) | 1.72% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (74) | green (5) | 11.14% | 11.56% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field's row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype's boxes and checks the 📎 on its own · D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
+| Session · Timeline | Session → Timeline | M4.4 | gated | green (74) | green (3) | 10.92% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
+| Session · Diff | Session → Diff | M4.5 | gated | green (74) | green (3) | 8.15% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (74) | green (3) | 5.71% | 4.96% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (74) | green (3) | 1.63% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (74) | green (3) | 1.92% | 0.36% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (74) | green (3) | 3.34% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
+| History | History | M7.4 | gated | green (74) | green (3) | 1.74% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (74) | green (3) | 1.64% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Settings | Settings | M8.2 (M9.1 row) | gated | green (74) | green (3) | 1.89% | 0.32% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
+| New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (74) | green (3) | 7.02% | 8.88% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
+| Setup wizard | Modals → Setup wizard | M5.3 | gated | green (74) | green (3) | 1.28% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
+| Palette | Modals → Palette | M8.3 | gated | green (74) | green (3) | 1.65% | 1.24% | palette.spec.ts (lane) | `full-pass-palette-side-by-side.png` | — |
 
 ## Sidebar
 The same parts are gated on every surface that opened; listed here as measured on `inbox`. A part that fails on another surface is listed under *Content and chrome* and *Findings*.
@@ -39,6 +39,7 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | Surface | Part | Geometry | Prototype | App | Result | Notes |
 |---|---|---|---|---|---|---|
 | inbox | nav:MCP (D61) | relative | — | vs nav:Schedules & loops | ok |  |
+| inbox | nav:Todos (D68) | relative | — | vs nav:History | ok |  |
 | inbox | sidebar | box | 0,0 256×900 | 0,0 256×900 | ok |  |
 | inbox | brand | box | 0,0 255×50 | 0,0 255×50 | ok | copy "SSwitchboard⌘K" |
 | inbox | paletteKey | box | 211.8,17 27.2×20 | 211.8,17 27.2×20 | ok | copy "⌘K" |
@@ -120,7 +121,8 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | landmarks | none | present | present | ok | "5 waiting on you", "Send all answers" |
 | inbox | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | inbox | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
-| session-chat | landmarks | none | present | present | ok | "Quick replies", "Agents & solutions", "Terminal handoff" |
+| session-chat | landmarks | none | present | present | ok | "Agents & solutions", "Terminal handoff" |
+| session-chat | D86 ruling (removed in the app) | none | "Quick replies" | absent | ok | D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field's row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype's boxes and checks the 📎 on its own |
 | session-chat | D37 ruling (app only) | none | — | "✓ 1 finished" | ok | D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
 | session-chat | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-chat | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |

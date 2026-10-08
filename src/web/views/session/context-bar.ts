@@ -2,7 +2,7 @@ import type { SessionContext } from '../../../core/api.ts';
 import { formatClockTime, formatTokens } from '../../activity/activity.ts';
 
 /**
- * D49 · the context bar above the quick replies (`docs/chat.md` → *Context bar*):
+ * D49 · the context bar, the composer's first row (`docs/chat.md` → *Context bar*):
  * what it shows for a session's `Session.context`. Pure, for the unit tests.
  */
 export interface ContextBarView {

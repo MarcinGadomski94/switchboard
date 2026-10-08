@@ -9,7 +9,7 @@ import { attachmentsBlocker, messageToSend } from '../../components/attachments.
 import { refusalText } from '../inbox.ts';
 import { type Answering, ChatItemView } from './ChatItems.tsx';
 import { useFullText } from './FullText.tsx';
-import { COMPOSER_MAX_LINES, QUICK_REPLIES, QUICK_REPLIES_LABEL, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
+import { COMPOSER_MAX_LINES, chatItems, composerKeyAction, composerPlaceholder, hookedQueuedNote } from './chat.ts';
 import { contextBarView } from './context-bar.ts';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
 import type { LoadState } from './session-loading.ts';
@@ -56,9 +56,9 @@ export interface ChatTabProps {
  * right, agent text left with its mono step lines), the question batches from the
  * session detail (the shared `QuestionCard` inline while a batch waits, answered
  * through `POST /api/questions/batch/{batchId}/answers`; the answers bubble once
- * answered), then the composer: quick-reply pills fill the draft, Enter or Send
- * posts it to `POST /api/sessions/{id}/messages`. It stays scrolled to the newest
- * item unless the developer scrolled up. D19: while a turn runs, the live activity
+ * answered), then the composer: Enter or Send posts the draft (with its 📎 /
+ * pasted / dropped attachments) to `POST /api/sessions/{id}/messages`. It stays
+ * scrolled to the newest item unless the developer scrolled up. D19: while a turn runs, the live activity
  * line sits above the composer (`ChatActivityLine`). D36: with `agentId`, the same
  * events show that subagent's own chat (`SubagentChatView`); an Agent / Task step
  * line opens it, and the main chat comes back at the place it was left. D45: the
@@ -233,7 +233,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         // D50 ruling: no turn, but background tasks: "Stop background tasks" beside Send (button + confirmation only).
         // D48 ruling D48-cache-persist: none for an offline peer's session (nothing can reach it).
         background={session && blocked === null ? stoppableBackground({ live: session.live, status: session.status, activity, hooked: session.hooked === true }) : []}
-        // D49: the context bar above the quick replies (none for a session without meter data: the demo seed).
+        // D49: the context bar, the composer's first row (none for a session without meter data: the demo seed).
         context={session?.context ?? null}
         // D22: the session's display title (its title, else its name).
         placeholder={composerPlaceholder(session ? displayTitle(session) : '')}
@@ -285,9 +285,9 @@ export function ContextBar({ context }: { readonly context: SessionContext }) {
 }
 
 /**
- * The composer (prototype): D49 the context bar, quick replies, then the message
- * field and Send. D50: while a turn runs (`stoppable`) Send is the ■ Stop button,
- * and Esc stops the turn too when nothing else owns the key (`escStops`); the
+ * The composer (prototype): D49 the context bar, then the message field, 📎 and
+ * Send (D86: no quick replies). D50: while a turn runs (`stoppable`) Send is the
+ * ■ Stop button, and Esc stops the turn too when nothing else owns the key (`escStops`); the
  * messages the Stop took back come back into the field, before what is there.
  */
 function Composer({
@@ -472,27 +472,6 @@ function Composer({
   return (
     <div className="sb-chat-composer" data-testid="chat-composer" data-tour="composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
       {context ? <ContextBar context={context} /> : null}
-      <div className="sb-chat-quick">
-        <span className="sb-chat-quick-label">{QUICK_REPLIES_LABEL}</span>
-        {QUICK_REPLIES.map((reply) => (
-          <button
-            key={reply.label}
-            type="button"
-            className="sb-button sb-chat-quick-reply"
-            data-testid="chat-quick-reply"
-            disabled={blocked !== null}
-            onClick={() => {
-              setDraft(reply.text);
-              setError(null);
-              input.current?.focus();
-            }}
-          >
-            {reply.label}
-          </button>
-        ))}
-        {/* D57: 📎 at the row's right end (the pills, the field and Send keep their places). */}
-        <AttachButton className="sb-attach-button--composer" onFiles={attachments.add} disabled={blocked !== null} />
-      </div>
       <AttachmentChips items={attachments.items} notice={attachments.notice} onRemove={attachments.remove} />
       <div className="sb-chat-compose" data-multiline={multiline ? 'true' : undefined}>
         <textarea
@@ -507,6 +486,13 @@ function Composer({
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={pasteFiles(attachments.add, blocked === null)}
+        />
+        {/* D86: 📎 in the message box's row, next to Send (the quick replies' row it ended is gone). */}
+        <AttachButton
+          className="sb-attach-button--composer"
+          onFiles={attachments.add}
+          disabled={blocked !== null}
+          style={multiline && oneLine.current ? { height: oneLine.current.height, boxSizing: 'border-box' } : undefined}
         />
         {!stoppable && !stopping && background.length > 0 ? <StopBackground sessionId={sessionId} tasks={background} /> : null}
         {stoppable || stopping ? (

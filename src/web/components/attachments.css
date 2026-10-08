@@ -143,10 +143,20 @@
   cursor: default;
 }
 
-/* The composer: the 📎 at the right end of the quick replies' row (the pills keep their places). */
-.sb-attach-button--composer {
-  margin-left: auto;
-  height: 26px;
+/*
+ * D86 · the composer's 📎: in the message box's row, between the field and Send,
+ * as tall as the one-line field (ChatTab keeps that height while the field grows,
+ * and it stays at the bottom like Send).
+ */
+.sb-chat-compose .sb-attach-button--composer {
+  flex: none;
+  width: 36px;
+  height: auto;
+  border-radius: 10px;
+}
+
+.sb-chat-compose[data-multiline='true'] .sb-attach-button--composer {
+  align-self: flex-end;
 }
 
 .sb-chat-composer .sb-attach-chips {

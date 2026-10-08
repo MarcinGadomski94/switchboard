@@ -5,7 +5,7 @@ Prototype: `docs/handoff/prototype/Switchboard App.dc.html` offline, `simulateIn
 
 **Gate:** green
 
-Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.20%**, free-talk-feature with the open card **11.09%**, after Send **5.10%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
+Pixel diff (advisory, channel threshold 24) of the main column (256,0 804×900): calendar-func-fix **0.75%**, free-talk-feature with the open card **11.64%**, after Send **5.65%**. The header rows differ where M4.1 recorded it (hand-written mock chips wrap the prototype's free-talk-feature header to two rows).
 
 Side by side (prototype left, app right): `chat-calendar-side-by-side.png`, `chat-card-side-by-side.png`, `chat-answered-side-by-side.png`.
 
@@ -14,7 +14,7 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
-| calendar-func-fix | chat | box | 256,120 804×678 | 256,120 804×678 | ok | |
+| calendar-func-fix | chat | box (D86: +34 px) | 256,120 804×712 | 256,120 804×712 | ok | |
 | calendar-func-fix | user | box | 578.9,140 455.1×40.9 | 578.9,140 455.1×40.9 | ok | "Reminders fire an hour late after the DST switch. Fix in calendar-fun |
 | calendar-func-fix | userBubble | box | 578.9,140 455.1×40.9 | 578.9,140 455.1×40.9 | ok | "Reminders fire an hour late after the DST switch. Fix in calendar-fun |
 | calendar-func-fix | agent | box | 282,196.9 691.8×82.8 | 282,196.9 691.8×82.8 | ok |  |
@@ -22,17 +22,11 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | calendar-func-fix | steps | box | 282,244.8 691.8×35 | 282,244.8 691.8×35 | ok | "✓ recon · codebase-memory · ReminderScheduler.cs● dotnet build · self |
 | calendar-func-fix | step0 | box | 282,244.8 691.8×16 | 282,244.8 691.8×16 | ok | "✓ recon · codebase-memory · ReminderScheduler.cs" |
 | calendar-func-fix | step1 | box | 282,263.8 691.8×16 | 282,263.8 691.8×16 | ok | "● dotnet build · self-heal 1/3" |
-| calendar-func-fix | composer | box | 256,798 804×102 | 256,798 804×102 | ok |  |
-| calendar-func-fix | quick | box | 278,809 760×26 | 278,809 760×26 | ok | "Quick repliesAccept recommendedMatch Figma exactlyStop and ask design |
-| calendar-func-fix | quickLabel | box | 278,815 90.1×14 | 278,815 90.1×14 | ok | "Quick replies" |
-| calendar-func-fix | pill0 | box | 378.1,809 142.5×26 | 378.1,809 142.5×26 | ok | "Accept recommended" |
-| calendar-func-fix | pill1 | box | 526.6,809 135.5×26 | 526.6,809 135.5×26 | ok | "Match Figma exactly" |
-| calendar-func-fix | pill2 | box | 668.2,809 144.8×26 | 668.2,809 144.8×26 | ok | "Stop and ask designer" |
-| calendar-func-fix | pill3 | box | 818.9,809 132.5×26 | 818.9,809 132.5×26 | ok | "Commit when green" |
+| calendar-func-fix | composer | box (D86: expected from the prototype) | 256,832 804×68 | 256,832 804×68 | ok |  |
 | calendar-func-fix | compose | box | 278,843 760×41 | 278,843 760×41 | ok |  |
-| calendar-func-fix | input | box | 278,843 688.5×41 | 278,843 688.5×41 | ok |  |
+| calendar-func-fix | input | box (D86: expected from the prototype) | 278,843 644.5×41 | 278,843 644.5×41 | ok |  |
 | calendar-func-fix | send | box | 974.5,843 63.5×41 | 974.5,843 63.5×41 | ok | "Send" |
-| free-talk-feature | chat | bottom | 256,147 804×651 | 256,120 804×678 | ok | |
+| free-talk-feature | chat | bottom (D86: +34 px) | 256,147 804×685 | 256,120 804×712 | ok | |
 | free-talk-feature | user | box (y rel. chat) | 492.6,20 541.4×61.8 | 492.6,20 541.4×61.8 | ok | "Free talk screen at 360, web and mobile in parallel. Figma frame is i |
 | free-talk-feature | userBubble | box (y rel. chat) | 492.6,20 541.4×61.8 | 492.6,20 541.4×61.8 | ok | "Free talk screen at 360, web and mobile in parallel. Figma frame is i |
 | free-talk-feature | agent | box (y rel. chat) | 282,97.8 691.8×120.8 | 282,97.8 691.8×120.8 | ok |  |
@@ -63,15 +57,9 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | free-talk-feature | foot | box (y rel. chat) | 299,583.2 718×34.1 | 299,583.2 718×34.1 | ok | "0 of 3 answeredSend all answers" |
 | free-talk-feature | status | box (y rel. chat) | 299,591 88.9×18.6 | 299,591 88.9×18.6 | ok | "0 of 3 answered" |
 | free-talk-feature | cardSend | box (y rel. chat) | 882,583.2 135×34.1 | 882,583.2 135×34.1 | ok | "Send all answers" |
-| free-talk-feature | composer | box | 256,798 804×102 | 256,798 804×102 | ok |  |
-| free-talk-feature | quick | box | 278,809 760×26 | 278,809 760×26 | ok | "Quick repliesAccept recommendedMatch Figma exactlyStop and ask design |
-| free-talk-feature | quickLabel | box | 278,815 90.1×14 | 278,815 90.1×14 | ok | "Quick replies" |
-| free-talk-feature | pill0 | box | 378.1,809 142.5×26 | 378.1,809 142.5×26 | ok | "Accept recommended" |
-| free-talk-feature | pill1 | box | 526.6,809 135.5×26 | 526.6,809 135.5×26 | ok | "Match Figma exactly" |
-| free-talk-feature | pill2 | box | 668.2,809 144.8×26 | 668.2,809 144.8×26 | ok | "Stop and ask designer" |
-| free-talk-feature | pill3 | box | 818.9,809 132.5×26 | 818.9,809 132.5×26 | ok | "Commit when green" |
+| free-talk-feature | composer | box (D86: expected from the prototype) | 256,832 804×68 | 256,832 804×68 | ok |  |
 | free-talk-feature | compose | box | 278,843 760×41 | 278,843 760×41 | ok |  |
-| free-talk-feature | input | box | 278,843 688.5×41 | 278,843 688.5×41 | ok |  |
+| free-talk-feature | input | box (D86: expected from the prototype) | 278,843 644.5×41 | 278,843 644.5×41 | ok |  |
 | free-talk-feature | send | box | 974.5,843 63.5×41 | 974.5,843 63.5×41 | ok | "Send" |
 | free-talk-feature picked | card | box (y rel. chat) | 282,234.7 752×397.7 | 282,234.7 752×397.7 | ok |  |
 | free-talk-feature picked | cardHead | box (y rel. chat) | 299,249.7 718×14 | 299,249.7 718×14 | ok | "3 questions · relayed verbatim" |
@@ -103,9 +91,11 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | free-talk-feature answered | answer2 | box (y rel. chat) | 826.5,292.5 193.5×20.9 | 826.5,292.5 193.5×20.9 | ok | "(orchestrator): Nullable" |
 | free-talk-feature answered | note | box (y rel. chat) | 282,339.5 752×16 | 282,339.5 752×16 | ok | "● Answers written into the briefs. Blocked agents are resuming…" |
 
-## D39 · Other… (an addition, checked on its own)
+## D39 · Other… and D86 · 📎 (additions, checked on their own)
 | Session | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|---|
+| calendar-func-fix | 📎 (D86) | addition | 930.5,843 36×41 | 930.5,843 36×41 | ok | |
+| free-talk-feature | 📎 (D86) | addition | 930.5,843 36×41 | 930.5,843 36×41 | ok | |
 | free-talk-feature | q0Options · D39 Other… is the last pill, after the prototype's options | addition | — | 3 options + Other… (prototype 3 options) | ok | |
 | free-talk-feature | q0Options · D39 copy | addition | — | "Other…" | ok | |
 | free-talk-feature | q0Options · D39 on the options' line | addition | — | 703.9,454.8 62.8×31.4 · first option 299,454.8 172×31.4 | ok | |
@@ -169,12 +159,11 @@ Geometry: `box` = x, y, width, height; `bottom` = x, width and the bottom edge. 
 | noteColor | oklch(0.74 0.12 250) | oklch(0.74 0.12 250) | ok |
 | composerBorder | 1px solid rgb(35, 36, 40) | 1px solid rgb(35, 36, 40) | ok |
 | composerPadding | 10px 22px 16px 22px | 10px 22px 16px 22px | ok |
-| label | 10.5px 500 0.63px uppercase rgb(118, 117, 111) | 10.5px 500 0.63px uppercase rgb(118, 117, 111) | ok |
-| pill | 12px 1px rgb(44, 45, 50) 14px rgb(201, 200, 195) | 12px 1px rgb(44, 45, 50) 14px rgb(201, 200, 195) | ok |
 | input | 13px rgb(44, 45, 50) 10px rgb(17, 18, 20) rgb(232, 231, 227) | 13px rgb(44, 45, 50) 10px rgb(17, 18, 20) rgb(232, 231, 227) | ok |
 | send | rgb(232, 231, 227) rgb(17, 18, 20) 10px 500 | rgb(232, 231, 227) rgb(17, 18, 20) 10px 500 | ok |
 
 ## Known differences (not findings)
+- D86 (deliberate deviation): the prototype's quick-replies row (`QUICK REPLIES` label + four pills) is gone from the app, so it is not compared (nor the label's and pills' SPEC tokens). The composer keeps its x, width and bottom and is shorter by that row + the composer's 8 px gap (measured on the prototype); the chat area is taller by the same height; the field's row and Send keep their boxes; the field is 44 px narrower (the 📎, 36 px, + 8 px gap), and the 📎 is checked on its own above. Rows marked "D86: expected from the prototype" show the expected box.
 - D39: every question ends its options with an **Other…** pill (the developer's own answer), which the prototype does not have. It is the options row's last child, on the options' line, so every prototype part keeps its box; the text of a question and of its options row is the prototype's plus "Other…" at its end, and the pill is checked on its own (the D39 section above).
 - The prototype's `•` note line (prod-monitoring only) shows as `✓` in the app: the demo seed turns every prototype tool line into a real step event, and a note has no event of its own (`docs/chat.md`). Not in the compared sessions.
 - After Send the prototype also flips its mock agent statuses; the app's demo answers are queued for the session's next run (no live process), which the chat does not show differently.
