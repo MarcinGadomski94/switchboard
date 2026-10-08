@@ -55,7 +55,7 @@ describe('D83 · the fresh session’s name and title', () => {
     expect(freshTitle('x'.repeat(80), false, 2)).toHaveLength(80);
     expect(freshName('fix-login', false, 2)).toBe('fix-login-2');
     expect(freshName('fix-login-2', true, 3)).toBe('fix-login-3');
-    expect(freshName('slit-3010', false, 2)).toBe('slit-3010-2');
+    expect(freshName('proj-3010', false, 2)).toBe('proj-3010-2');
     expect(freshName('a'.repeat(64), false, 2)).toHaveLength(64);
     expect(continuationNumber('Fix login (2)', true)).toBe(2);
     expect(continuationNumber('Fix login (2)', false)).toBe(1);
