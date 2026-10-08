@@ -26,10 +26,12 @@ import { agentMcpLaunch, withClaudeConfigFile } from './todos/agent-mcp.ts';
 import { TodoService } from './todos/service.ts';
 import { TodoReminder } from './todos/reminder.ts';
 import { TodoReviewLink } from './todos/review-link.ts';
-import { reviewCardsEnabled, todoReminderEnabled } from './settings/settings.ts';
+import { checkpointsEnabled, reviewCardsEnabled, todoReminderEnabled } from './settings/settings.ts';
 import { ReviewGit } from './reviews/git.ts';
 import { ReviewService } from './reviews/service.ts';
 import { sessionMessageSender } from './api/todos.ts';
+import { CheckpointService } from './checkpoints/service.ts';
+import { folderOfSession } from './folders/ref.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
@@ -373,6 +375,36 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     reviews = own;
   }
+  // D80: a checkpoint of the session's working trees before each turn (Settings → Sessions), the revert and Redo, the retention.
+  const checkpoints = new CheckpointService({
+    store: options.store,
+    sessions: supervisor,
+    env: supervisor.environment,
+    enabled: () => checkpointsEnabled(options.store.settings),
+    // Its worktrees and, like the session diff, the solutions it works on in place.
+    foldersOf: async (session) => {
+      const own = (await options.store.worktrees.list({ sessionId: session.id })).map((worktree) => worktree.path);
+      const folder = folderOfSession(session);
+      if (!folder || folder.kind !== 'workspace') return own;
+      const inPlace: string[] = [];
+      for (const solution of session.solutions) {
+        try {
+          inPlace.push((await worktrees.resolveRepo(solution, folder)).repoPath);
+        } catch {
+          // Not a solution of this folder (any more): nothing to checkpoint there.
+        }
+      }
+      return [...own, ...inPlace];
+    },
+  });
+  supervisor.useCheckpoints(checkpoints);
+  app.addHook('onReady', async () => {
+    checkpoints.start();
+  });
+  app.addHook('onClose', async () => {
+    supervisor.useCheckpoints(null);
+    await checkpoints.stop();
+  });
   if (options.agentTools !== false) {
     supervisor.useAgentMcp(async (session) =>
       withClaudeConfigFile(
@@ -385,7 +417,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
   const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

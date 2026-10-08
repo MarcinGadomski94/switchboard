@@ -1,3 +1,5 @@
+import { UNDO_LAST_TURN_LABEL } from '../../../core/checkpoints.ts';
+import { lastTurnRevert, openRevert, useCheckpoints } from './checkpoints.ts';
 import { useEffect, useRef, useState } from 'react';
 import type { AttachWarning, AttachWarningReason, Session } from '../../../core/api.ts';
 import { REMOTE_COPY_NOTE, remoteSessionUrl } from '../../../core/remote-session.ts';
@@ -207,6 +209,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const pause = session && !hooked ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
   const remote = session && !hooked ? remoteToggle(session) : null;
+  // D80: *Undo last turn* (the newest turn with a checkpoint; read again when the status changes).
+  const undo = lastTurnRevert(useCheckpoints(sessionId, `${session?.status ?? ''}:${session?.lastActivityAt ?? ''}`));
 
   // D24: on → off (or on and back) never leaves the popover of an old link open.
   const remoteUrl = remote?.url ?? null;
@@ -314,6 +318,22 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
           ) : null}
           {/* D65: take a session over to / from a paired machine. */}
           {!blocked ? <TakeoverAction session={session} sessionId={sessionId} /> : null}
+          {/* D80: revert to before the newest turn when it has a checkpoint (ruling D80-q1: without one, the sidebar row's ⋯ menu shows it disabled with the reason, so the prototype's header stays). */}
+          {undo && undo.turn !== null && !blocked && !closed ? (
+            <button
+              type="button"
+              className="sb-button sb-sv-action"
+              data-testid="session-undo-turn"
+              data-turn={undo.turn ?? undefined}
+              disabled={undo.reason !== null}
+              title={undo.reason ?? `Revert the files to before turn ${undo.turn} (the newest)`}
+              onClick={() => {
+                if (undo.turn !== null) openRevert({ sessionId, turn: undo.turn });
+              }}
+            >
+              {UNDO_LAST_TURN_LABEL}
+            </button>
+          ) : null}
           {hooked ? null : (
           <button
             type="button"

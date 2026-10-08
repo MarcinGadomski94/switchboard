@@ -3,6 +3,7 @@ import { ModalHost } from '../modals/ModalHost.tsx';
 import { type Route, useRouter } from '../router.tsx';
 import { TakeoverHost } from '../takeover/TakeoverDialog.tsx';
 import { ContinueHookedHost } from '../hooked-continue/ContinueHookedDialog.tsx';
+import { RevertHost } from '../views/session/RevertTurn.tsx';
 import { ToastHost } from '../toast/ToastHost.tsx';
 import { UpdateBanner } from '../updates/UpdateBanner.tsx';
 import { ArtifactsView } from '../views/ArtifactsView.tsx';
@@ -73,6 +74,7 @@ export function Shell() {
         <ModalHost />
         <TakeoverHost />
         <ContinueHookedHost />
+        <RevertHost />
         <FirstRunGate />
         <TouchTooltip />
       </div>
@@ -92,6 +94,8 @@ export function Shell() {
       <TakeoverHost />
       {/* D72: Continue in Switchboard of a hooked terminal session. */}
       <ContinueHookedHost />
+      {/* D80: the revert confirmation (a portal over the page; nothing here while it is closed). */}
+      <RevertHost />
       <FirstRunGate />
       {/* D74: a touch screen's long-press tooltip (after everything, so the prototype's child paths hold). */}
       <TouchTooltip />

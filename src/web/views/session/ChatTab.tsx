@@ -22,6 +22,7 @@ import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPI
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
+import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -131,6 +132,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const fullText = useFullText(sessionId, events);
   // D45: nothing half-loaded shows while the events are on their way (a failed load shows what there is, as before).
   const items = session && eventsState !== 'loading' ? chatItems(fullText.events, session.questions, mainAgentId, session.agents) : [];
+  // D80: the session's checkpoints (the turn actions, Redo), read again when an event arrives or the status changes.
+  const checkpoints = useCheckpoints(sessionId, `${events.length}:${events.at(-1)?.id ?? 0}:${session?.status ?? ''}`);
 
   // Keep the newest item in view while the developer is at the bottom; D36: first, go back to the remembered place.
   useLayoutEffect(() => {
@@ -199,6 +202,9 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             // D53: a hooked session's queued message says what it waits on.
             queuedNote={blocked ? null : hookedQueuedNote(session)}
             fullText={fullText.control}
+            // D80: revert to before a turn (none while the machine is offline); Redo on the newest revert's divider.
+            revert={item.kind === 'user' && blocked === null ? turnRevertFor(checkpoints, item.id) : null}
+            redo={item.kind === 'divider' && blocked === null && checkpoints?.redo?.eventId === item.id}
           />
         ))}
       </div>

@@ -51,6 +51,8 @@ import { registerCleanupRoutes } from './api/cleanup.ts';
 import type { DeviceService } from './devices/service.ts';
 import type { ReviewService } from './reviews/service.ts';
 import { registerReviewRoutes } from './api/reviews.ts';
+import { registerCheckpointRoutes } from './api/checkpoints.ts';
+import type { CheckpointService } from './checkpoints/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -101,6 +103,8 @@ export interface ApiContext {
   readonly devices: DeviceService;
   /** D79: the review cards (docs/reviews.md). */
   readonly reviews: ReviewService;
+  /** D80: checkpoints before each turn, revert and Redo (docs/undo.md). */
+  readonly checkpoints: CheckpointService;
 }
 
 /**
@@ -136,6 +140,7 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerSidebarRoutes(app, context);
   await registerTodoRoutes(app, context);
   await registerReviewRoutes(app, context);
+  await registerCheckpointRoutes(app, context);
   await registerUpdateRoutes(app, context);
   await registerMcpRoutes(app, context);
   await registerDeviceRoutes(app, context);

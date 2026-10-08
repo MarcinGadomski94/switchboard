@@ -78,6 +78,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.ultracode': false,
       'sessions.todoReminder': true,
       'sessions.reviewCards': true,
+      'sessions.checkpoints': true,
       'usage.warnAtPct': 90,
       'ui.sidebarHidden': false,
       'ui.rightPanelHidden': false,

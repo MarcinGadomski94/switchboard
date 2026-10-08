@@ -7,7 +7,7 @@
  *
  * Allowed is what a phone needs for normal use: sessions (list, detail, events,
  * diff, attachments, messages, stop, pause / resume, close / reopen, title,
- * model, CLI / account switch, todos), the Inbox and its answers, starting a
+ * model, CLI / account switch, todos, D80's revert of a turn and Redo), the Inbox and its answers, starting a
  * session (folders read, models, solutions, branching preflight, staged
  * attachments), the sidebar layout, History and its Continue, schedules and
  * loops (save, run, pause / resume, delete, hook a terminal session), the reads
@@ -43,6 +43,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],
+  // D80: Undo a turn (the checkpoints, the confirm dialog's plan, revert, Redo): normal use, with the confirm.
+  ['GET', /^\/api\/sessions\/[^/]+\/checkpoints(?:\/[^/]+)?$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/checkpoints\/(?:redo|[^/]+\/revert)$/],
   // Todos.
   ['GET', /^\/api\/todos$/],
   ['POST', /^\/api\/sessions\/[^/]+\/todos(?:\/clear-done)?$/],

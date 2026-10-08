@@ -28,6 +28,7 @@ import {
 import { type CanUseToolMessage, type ControlResponseMessage, type InitMessage, type StreamMessage, parseStreamLine } from '../../core/stream-json.ts';
 import { type AttachmentService, NO_ATTACHMENTS, type PreparedAttachments } from '../attachments/service.ts';
 import type { EventRecord } from '../db/repos/events.ts';
+import type { PendingCapture } from '../checkpoints/service.ts';
 import type { PendingMessageRecord } from '../db/repos/pending-messages.ts';
 import type { SessionPatch, SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
@@ -472,6 +473,15 @@ interface RunningSwitch {
   handoverBy: HandoverSource | null;
 }
 
+/**
+ * D80: the checkpoint before each turn (`checkpoints/service.ts`): `capture` runs
+ * before the user message is written to the process, `record` once its event exists.
+ */
+export interface TurnCheckpoints {
+  capture(sessionId: string): Promise<PendingCapture | null>;
+  record(capture: PendingCapture, eventId: number): Promise<void>;
+}
+
 /** One live `claude` process of a session. */
 interface Live {
   readonly sessionId: string;
@@ -565,6 +575,8 @@ export class SessionSupervisor {
   readonly #profileOfLive = new Map<string, string>();
   /** D68: the built-in `switchboard` MCP server of a spawn (the session's todo tools); `null` = none. */
   #agentMcp: ((session: SessionRecord) => Promise<AgentMcpLaunch | null>) | null = null;
+  /** D80: the checkpoint taken before each turn (`checkpoints/service.ts`); `null` = none. */
+  #checkpoints: TurnCheckpoints | null = null;
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -606,6 +618,17 @@ export class SessionSupervisor {
    */
   useAgentMcp(launch: ((session: SessionRecord) => Promise<AgentMcpLaunch | null>) | null): void {
     this.#agentMcp = launch;
+  }
+
+  /** D80: takes a checkpoint of the session's working trees before each user message goes to its process (`null` = none). */
+  useCheckpoints(checkpoints: TurnCheckpoints | null): void {
+    this.#checkpoints = checkpoints;
+  }
+
+  /** D80: `true` while a turn of the session runs (or a message waits to be taken up) on its live process. */
+  turnRunning(sessionId: string): boolean {
+    const live = this.#live.get(sessionId);
+    return live !== undefined && !live.stopping && live.proc.running && live.recorder.turnBusy();
   }
 
   /** D68: publishes the session's `sessionUpdated` now (its todo count changed). */
@@ -2255,9 +2278,10 @@ export class SessionSupervisor {
   }
 
   /** Records a lifecycle event for a session without a live process (restart recovery). */
-  async recordServiceEvent(sessionId: string, kind: 'text' | 'error', label: string, payload: LifecyclePayload): Promise<void> {
+  async recordServiceEvent(sessionId: string, kind: 'text' | 'error', label: string, payload: LifecyclePayload): Promise<EventRecord> {
     const event = await this.#store.events.append({ sessionId, kind, label, payload });
     this.#emitEvent(event);
+    return event;
   }
 
   /**
@@ -2503,11 +2527,16 @@ export class SessionSupervisor {
     options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments } = {},
   ): Promise<void> {
     const attachments = options.attachments ?? NO_ATTACHMENTS;
+    // D80: the working trees as they are before this message's turn (never blocks the message: a failure is no checkpoint).
+    const checkpoints = this.#checkpoints;
+    const capture = checkpoints ? await checkpoints.capture(live.sessionId).catch((error: unknown) => (this.#onError(error), null)) : null;
+    let eventId: number | null = null;
     await this.#enqueue(live, async () => {
       const pending = await this.#store.pendingMessages.pending(live.sessionId);
       const full = [...pending.map((message) => message.text), text].filter((part, index, parts) => part !== '' || parts.length === 1).join('\n\n');
       const sent = messageWithFiles(full, attachments.filesText);
-      await live.recorder.recordUserMessage(full, origin, { ...(options.resuming ? { resuming: true } : {}), attachments: attachments.refs, sentText: sent });
+      const event = await live.recorder.recordUserMessage(full, origin, { ...(options.resuming ? { resuming: true } : {}), attachments: attachments.refs, sentText: sent });
+      eventId = event.id;
       if (live.proc.write(userMessageLine(sent, attachments.blocks))) {
         for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
         if (pending.length > 0 && this.#handler.pendingDelivered) {
@@ -2520,6 +2549,7 @@ export class SessionSupervisor {
       }
       await this.#refreshStatus(live);
     });
+    if (checkpoints && capture !== null && eventId !== null) await checkpoints.record(capture, eventId).catch((error: unknown) => this.#onError(error));
   }
 
   async #onLine(live: Live, line: string): Promise<void> {
@@ -2844,4 +2874,6 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'taken-over': 'Taken over from another machine',
   'moved-away': 'Moved to another machine',
   continued: CONTINUED_DIVIDER,
+  reverted: 'Reverted the files to an earlier turn',
+  'revert-undone': 'Undid a revert',
 };

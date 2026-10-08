@@ -1,3 +1,4 @@
+import { CheckpointRepository } from './repos/checkpoints.ts';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { RepoContext } from './context.ts';
@@ -74,6 +75,8 @@ export interface Store {
   readonly reviews: ReviewRepository;
   /** D73 (0030): paired devices, their pairing codes and push subscriptions. */
   readonly devices: DeviceRepository;
+  /** D80 (0034): the checkpoints taken before each turn (the refs live in the session's repos). */
+  readonly checkpoints: CheckpointRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -139,6 +142,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     todos: new TodoRepository(ctx),
     reviews: new ReviewRepository(ctx),
     devices: new DeviceRepository(ctx),
+    checkpoints: new CheckpointRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

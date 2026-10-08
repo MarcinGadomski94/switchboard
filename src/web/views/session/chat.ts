@@ -125,7 +125,16 @@ export type ChatItem =
   /** A question batch: the inline card while it waits, else the answers bubble. */
   | { readonly kind: 'questions'; readonly key: string; readonly batchId: string; readonly questions: readonly Question[]; readonly waiting: boolean }
   /** D62 P5: the session switched to another CLI: a divider ("Switched from Claude Code to Codex CLI · handover by …"). */
-  | { readonly kind: 'divider'; readonly key: string; readonly id: number; readonly text: string; readonly from: string | null; readonly to: string | null };
+  | {
+      readonly kind: 'divider';
+      readonly key: string;
+      readonly id: number;
+      readonly text: string;
+      readonly from: string | null;
+      readonly to: string | null;
+      /** D80: a revert's divider (`reverted`) or its Redo's (`undone`). */
+      readonly revert?: 'reverted' | 'undone';
+    };
 
 /**
  * D44: the clock's tooltip on a message the agent has not taken up yet
@@ -352,6 +361,10 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       // D72: a hooked terminal session continued in Switchboard: "Continued in Switchboard (was a terminal session)".
       if (lifecycle.action === 'continued' && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
+      }
+      // D80: "Reverted to before turn N" (the newest one carries Redo) and "Undid the revert to before turn N".
+      if ((lifecycle.action === 'reverted' || lifecycle.action === 'revert-undone') && event.kind === 'text') {
+        out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null, revert: lifecycle.action === 'reverted' ? 'reverted' : 'undone' });
       }
     } else {
       const mark = stepMark(event);
