@@ -153,6 +153,11 @@
     min-width: 44px;
   }
 
+  /* D86: "+ Todo" (44 px here) sits wholly above the composer's top edge: with the quick replies gone it would cover Send. */
+  .sb-chat-composer > .sb-button.sb-chat-todo-add {
+    top: -50px;
+  }
+
   .sb-chat-input {
     min-height: 44px;
   }

@@ -281,6 +281,10 @@ test('tap targets are at least 44 × 44 px on a touch screen; the row ⋯ shows 
   // D86: the 📎 sits in the composer's row, next to Send (no quick replies).
   await expect(page.locator('.sb-chat-quick-reply')).toHaveCount(0);
   await big(page.getByTestId('chat-composer').getByTestId('attach-button'), 'composer 📎');
+  // D86: "+ Todo" (44 px on touch) stays wholly above the composer (with no quick-replies row it would cover Send).
+  const todoAdd = await page.getByTestId('chat-todo-add').boundingBox();
+  const composerBox = await page.getByTestId('chat-composer').boundingBox();
+  if (todoAdd && composerBox) expect(todoAdd.y + todoAdd.height).toBeLessThanOrEqual(composerBox.y);
   await big(page.getByTestId('question').first().locator('.sb-qcard__option'), 'question option');
   await page.getByTestId('session-more').tap();
   await big(page.getByTestId('session-actions-menu').locator('.sb-sv-action'), 'header action');
