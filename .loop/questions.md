@@ -1561,17 +1561,18 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 
 ## D73 · Devices (2026-10-08)
 - ASSUMED D73-transport · `tailscale serve --bg --https=<port> http://127.0.0.1:<device port>` to a second loopback listener (shape a); a listener on the Tailscale IP with plain HTTP (shape b) is no secure context (no PWA install / push on iOS) · `docs/devices.md` → *Transport*
-- ASSUMED D73-https-port · HTTPS port **8443** by default (Tailscale serves HTTPS on 443 / 8443 / 10000 only): leaves a 443 the developer may already serve untouched; 443 / 10000 selectable through `PUT /api/devices/access { httpsPort }` (no UI control yet) · revert: default 443 for a shorter URL
+- ANSWERED D73-https-port (developer ruling 2026-10-08: keep 8443) · HTTPS port **8443** by default (Tailscale serves HTTPS on 443 / 8443 / 10000 only): leaves a 443 the developer may already serve untouched; 443 / 10000 selectable through `PUT /api/devices/access { httpsPort }` (no UI control yet) · revert: default 443 for a shorter URL
 - ASSUMED D73-device-port · device listener default 127.0.0.1:**13003** (next to 13001 / 13002); changeable through the API, no UI control
 - ASSUMED D73-serve-host · `tailscale serve` keeps the browser's `Host` (its reverse proxy copies the incoming Host); as a fallback a request with `Host: 127.0.0.1:<device port>` is accepted only when `X-Forwarded-Host` names the devices' origin. UNVERIFIED against a real `tailscaled` (manual checklist step 3)
 - ASSUMED D73-serve-own · Switchboard turns off only the serve entry it made (`devices.serve`), refuses to overwrite a port served by something else (`tailscale serve status --json`), and leaves its own entry in place when it stops (re-applied at start; 502 from Tailscale meanwhile)
 - ASSUMED D73-serve-consent · the first `tailscale serve` on a tailnet may need Serve enabled in the admin console: the CLI's link is shown ("Open Tailscale"); `--yes` is never passed
-- ASSUMED D73-local-only · the list in `src/server/devices/local-only.ts` (devices, machines writes but Reconnect, hooks install/remove, MCP edits/toggles/sign-ins, updates incl. check/dismiss, Start at login, CLI commands, account profiles, tools, frame helper, adding/removing folders, setup wizard, take-over, test hooks); a deny-list, so a route added later is allowed for devices unless it is listed · revert: an allow-list like the peer API's
-- ASSUMED D73-takeover-local · taking a session over to / from a paired machine (D65) is local-only for a device (it stops terminals and moves files between machines); a session's account switch and Reconnect stay allowed
+- ANSWERED D73-local-only (developer ruling 2026-10-08: an allow-list) · `DEVICE_ALLOWED` in `src/server/devices/local-only.ts`; everything else refused, `DEVICE_REFUSED` lists it; a test fails on an unclassified `/api` route. Now also refused (were allowed under the deny-list): MCP reconnect / check, the default CLI and CLI checks, terminal attach / detach, teleport, solution isolation, codebase-memory reindex
+- ANSWERED D73-takeover-local (developer ruling 2026-10-08: stays desktop-only) · taking a session over to / from a paired machine (D65) is local-only for a device (it stops terminals and moves files between machines); a session's account switch and Reconnect stay allowed
 - ASSUMED D73-rate-limit · one global limit (10 tries per 10 minutes on the device listener) because every caller is 127.0.0.1 behind `tailscaled`; a burst of wrong codes from anyone also blocks the right one until the window passes
 - ASSUMED D73-cookie · `__Host-sb_device`, Max-Age 400 days (Chrome's cap), refreshed on every page load, so a device in use never expires; revoke is the way to end it
 - ASSUMED D73-tailscale-login · `Tailscale-User-Login` recorded at pairing and required to match later when present; a device paired from a tagged node (no header) is checked by its credential only
-- ASSUMED D73-push-scope · pushes for this machine's own sessions and Inbox only; a paired machine's items notify through that machine's own devices · revert: add `peers.remoteInbox()` to the notifier
+- ANSWERED D73-push-scope (developer ruling 2026-10-08: include peers) · a paired machine's questions, permission requests and finished turns / errors notify this machine's devices through the peer stream (no echo); each item id once (24 h memory), only items created after start and within 10 minutes (a reconnect's backlog is not news); the peer client now refreshes its Inbox cache before passing `inboxChanged` on
+- ASSUMED D73-push-fresh · the 10-minute freshness window: a question asked on a peer while it was unreachable for longer than that is not announced when it comes back (it is in the Inbox)
 - ASSUMED D73-push-events · default toggles all on (permission, questions, turn finished, session errors, other Inbox items); "turn finished" = status `run` → `idle` / `done`; "errors" = status → `fail`; nothing is sent while device access is off
 - ASSUMED D73-push-content · the payload carries the session name and up to 140 characters (the first question, the permission item's title) through the vendor's push service, end-to-end encrypted; `PRIVACY.md` says so
 - ASSUMED D73-vapid-sub · VAPID `sub` = the project's GitHub page (no personal address)
@@ -1581,9 +1582,10 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D73-no-hub-event · no new `/hub` event: Settings → Devices re-reads the list every 2 s while a code waits
 - ASSUMED D73-e2e-click · on the phone context, clicks in Settings are dispatched on the element: the desktop Settings layout overlaps at 390 px until the responsive lane (D74) lands; switch to real taps then
 - OPEN D73-real-tailscale · not run against a real `tailscaled`, Apple or Google push: `docs/devices.md` → *Manual checklist*
-- OPEN D73-question-https-port · keep 8443 as the default HTTPS port, or use 443 (shorter link, but it takes over whatever the developer serves on 443)?
-- OPEN D73-question-push-peers · should a paired machine's questions / permission requests also notify this machine's devices (today: only that machine's own devices)?
-- OPEN D73-question-takeover · keep take-over (D65) local-only for devices, or allow it from a phone?
+- ANSWERED D73-question-https-port · keep 8443
+- ANSWERED D73-question-push-peers · yes, include peers
+- ANSWERED D73-question-takeover · stays desktop-only
+- FLAKY (pre-existing) tests/server/peers › reconnect-world / schedules-loops unreachable-peer tests fail 1–2 per run under `--maxWorkers=2` on the D73 branch and equally on its base without the D73 changes (checked 2026-10-08) · load / port contention; watch for it
 
 ## Stabilize 1.4.0 (2026-10-01)
 - VERIFIED stabilize-stale-tests · stale tests, code as decided: `tests/core/stop-turn.test.ts` (D57: withdrawn entries carry `attachments`), `tests/server/inbox/inbox-list.test.ts` (D55: `update-available` label), `tests/web/model-picker.test.ts` (long messages: chat items carry `cut`), `tests/e2e/shell.spec.ts` (D62: `/api/clis` is a real route, no longer 501), `tests/e2e/visual/tools.spec.ts` (D61: the TOOLS rows compared with y relative to the TOOLS label, as visual/shell does)

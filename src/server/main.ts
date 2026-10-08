@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     const hookToken = await loadOrCreateToken(config.dataDir, HOOK_TOKEN_FILE);
     const hooks = new HookService({ config, store, bus, questions, hookTokenFile: path.join(config.dataDir, HOOK_TOKEN_FILE) });
     // D73 (docs/devices.md): paired phones / tablets, the device listener (off by default) and web push. The demo has none.
-    const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name });
+    const devices = new DeviceService({ config, store, bus, machineName: async () => (await peers.self()).name, remoteInbox: () => peers.remoteInbox() });
     app = await buildApp({ config, token, store, webRoot: WEB_ROOT, providers, supervisor, questions, worktrees, systemItems, bus, folders, setup, scheduler, peers, hooks, hookToken, clis, devices, ...(usage ? { usage } : {}), logger: true });
     // D7 / M2.4 restart recovery runs once the port is ours (a second instance that
     // cannot bind must never touch the first one's processes); session commands wait for it.

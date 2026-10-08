@@ -177,7 +177,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   let peersRef: PeerService | null = null;
   let devices = options.devices;
   if (!devices) {
-    const own = new DeviceService({ config: options.config, store: options.store, bus, machineName: async () => (peersRef ? (await peersRef.self()).name : 'this computer') });
+    const own = new DeviceService({ config: options.config, store: options.store, bus, machineName: async () => (peersRef ? (await peersRef.self()).name : 'this computer'), remoteInbox: () => peersRef?.remoteInbox() ?? [] });
     app.addHook('onClose', async () => {
       await own.close();
     });

@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { InboxItem } from '../../core/api.ts';
 import {
   DEFAULT_DEVICE_HTTPS_PORT,
   DEFAULT_DEVICE_PORT,
@@ -135,6 +136,8 @@ export interface DeviceServiceOptions {
   readonly onError?: (error: unknown) => void;
   /** Replaces `fetch` for push deliveries (tests). */
   readonly fetch?: typeof fetch;
+  /** The paired machines' Inbox items as cached (`PeerService.remoteInbox`), for their pushes. */
+  readonly remoteInbox?: () => readonly InboxItem[];
 }
 
 /** A device the guard authenticated, with the presented secret (to refresh the cookie). */
@@ -207,7 +210,8 @@ export class DeviceService {
     this.#fetch = options.fetch;
     this.#notifier = new PushNotifier({
       bus: options.bus,
-      inbox: () => listInbox(this.#store),
+      inbox: async () => [...(await listInbox(this.#store)), ...(options.remoteInbox?.() ?? [])],
+      now: this.#now,
       deliver: (notice) => this.deliver(notice),
       onError: (error) => this.#onError(error),
     });

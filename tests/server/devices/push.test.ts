@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Session } from '../../../src/core/api.ts';
+import type { InboxItem, Session } from '../../../src/core/api.ts';
 import { encryptPayload, generateVapidKeys, vapidAuthorization } from '../../../src/server/devices/push/crypto.ts';
 import { isAllowedPushEndpoint, validSubscription } from '../../../src/server/devices/push/sender.ts';
 import { VAPID_FILE, loadOrCreateVapidKeys } from '../../../src/server/devices/service.ts';
@@ -89,6 +89,51 @@ async function pushWorld(): Promise<{ w: DeviceWorld; fake: FakePushService }> {
   return { w: world, fake: push };
 }
 
+describe('D73 push selection (notifier)', () => {
+  it("announces each Inbox item once, a paired machine's too, and only while it is fresh", async () => {
+    const { PushNotifier } = await import('../../../src/server/devices/push/notifier.ts');
+    const { HubBus } = await import('../../../src/server/hub/bus.ts');
+    let now = Date.parse('2026-10-08T12:00:00Z');
+    const bus = new HubBus();
+    let items: InboxItem[] = [item('old-local', now - 5 * 60_000)];
+    const sent: string[] = [];
+    const notifier = new PushNotifier({ bus, inbox: async () => items, now: () => now, deliver: async (notice) => void sent.push(`${notice.kind} ${notice.payload.url} ${notice.payload.title}`) });
+    await notifier.start();
+    now += 1_000;
+    const peer = { id: 'abcdefghijkl', name: 'pc-office', state: 'online' as const };
+    items = [...items, item('r~abcdefghijkl~b1', now, peer, 'r~abcdefghijkl~s1'), item('r~abcdefghijkl~old', now - 3 * 3600_000, peer)];
+    bus.publish('inboxChanged', { count: 3 });
+    await notifier.idle();
+    expect(sent).toEqual(['questions /sessions/r~abcdefghijkl~s1 api · pc-office needs you']);
+    // The machine drops (its items leave the merged Inbox) and comes back: nothing again.
+    items = items.filter((i) => !i.machine);
+    bus.publish('inboxChanged', { count: 1 });
+    await notifier.idle();
+    items = [...items, item('r~abcdefghijkl~b1', now, peer, 'r~abcdefghijkl~s1')];
+    bus.publish('inboxChanged', { count: 2 });
+    await notifier.idle();
+    expect(sent).toHaveLength(1);
+    await notifier.stop();
+  });
+});
+
+function item(id: string, createdMs: number, machine?: { id: string; name: string; state: 'online' }, sessionId = 's1'): InboxItem {
+  return {
+    id,
+    kind: 'questions',
+    sessionId,
+    source: 'api',
+    status: 'need',
+    title: 'Which DB?',
+    label: '1 question',
+    detail: '',
+    createdAt: new Date(createdMs).toISOString(),
+    branches: [],
+    questions: [],
+    ...(machine ? { machine } : {}),
+  } as InboxItem;
+}
+
 describe('D73 push delivery', () => {
   it('delivers encrypted, VAPID-signed notifications for the toggled events only', async () => {
     const { w, fake } = await pushWorld();
@@ -120,15 +165,17 @@ describe('D73 push delivery', () => {
     // An error.
     w.bus.publish('sessionUpdated', session('s1', 'fail'));
     expect((await fake.waitFor(3))[2]?.payload).toMatchObject({ kind: 'errors', url: '/sessions/s1' });
-    // A paired machine's session never notifies here.
-    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'run'));
-    w.bus.publish('sessionUpdated', session('r~abcdefghijkl~s9', 'idle'));
+    // A paired machine's session (its events come through the peer stream) notifies too, with the machine named and the remote link.
+    const remote = { ...session('r~abcdefghijkl~s9', 'run'), machine: { id: 'abcdefghijkl', name: 'pc-office', state: 'online' } } as Session;
+    w.bus.publish('sessionUpdated', remote);
+    w.bus.publish('sessionUpdated', { ...remote, status: 'idle' });
+    expect((await fake.waitFor(4))[3]?.payload).toMatchObject({ kind: 'turnFinished', title: 'web · pc-office finished', url: '/sessions/r~abcdefghijkl~s9' });
 
     // A permission request: a new Inbox item after inboxChanged; high urgency; the tool named.
     const record = await w.store.sessions.create({ name: 'api', claudeSessionId: 'c-1' });
     await w.store.permissions.create({ sessionId: record.id, requestId: 'r1', toolName: 'Bash', input: { command: 'rm -rf build' } });
     w.bus.publish('inboxChanged', { count: 1 });
-    const permission = (await fake.waitFor(4))[3];
+    const permission = (await fake.waitFor(5))[4];
     expect(permission?.payload).toMatchObject({ kind: 'permission', url: `/sessions/${record.id}` });
     expect((permission?.payload as { title: string }).title).toContain('needs permission');
     expect(permission?.urgency).toBe('high');
@@ -142,11 +189,11 @@ describe('D73 push delivery', () => {
     w.bus.publish('sessionUpdated', session('s2', 'done'));
     await w.store.systemItems.create({ kind: 'schedule-run-failed', source: 'nightly', title: 'Scheduled run failed' });
     w.bus.publish('inboxChanged', { count: 2 });
-    const inbox = (await fake.waitFor(5))[4];
+    const inbox = (await fake.waitFor(6))[5];
     expect(inbox?.payload).toMatchObject({ kind: 'inbox', url: '/inbox' });
     await w.devices.notifierIdle();
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(fake.received).toHaveLength(5);
+    expect(fake.received).toHaveLength(6);
     expect(fake.refused).toEqual([]);
   });
 

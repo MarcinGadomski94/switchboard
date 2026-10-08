@@ -573,9 +573,9 @@ export class PeerConnection {
       const { sessionId, activity } = payload as HubEvents['activity'];
       this.#sessions = this.#sessions.map((known) => (known.id === sessionId ? { ...known, activity } : known));
     }
-    if (name === 'inboxChanged') void this.refreshInbox();
-    if (name === 'questionBatch') {
-      // The toast reads the batch's Inbox item: have it in the cache before the event goes out.
+    if (name === 'inboxChanged' || name === 'questionBatch') {
+      // The Inbox cache is fetched before the event goes on: the toast reads the batch's item (questionBatch), and
+      // D73's push notifier and the Inbox page compare the merged Inbox on inboxChanged, so it must hold the new item.
       void this.refreshInbox().then(() => {
         if (!this.#closed) this.#options.onEvent(name, payload);
       });

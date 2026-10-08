@@ -380,8 +380,8 @@ Pair Switchboards on your tailnet (a Mac and Windows PCs), in **Settings → Mac
 Use Switchboard from your phone or tablet over **Tailscale**, in **Settings → Devices**:
 - **Device access** (off by default): Switchboard publishes a second, device-only listener on `127.0.0.1` to your tailnet with `tailscale serve`, so devices open `https://<machine>.<tailnet>.ts.net:8443` with a real HTTPS certificate. Nothing is opened to your LAN or the internet. Your tailnet needs **MagicDNS** and **HTTPS certificates** turned on (Settings tells you what is missing).
 - **Pair a device** shows a **QR code** and a one-time code (10 minutes, single use). Scan it on the phone, confirm the name, **Pair**: the phone gets its own credential and sees everything you see here. Each device is listed with when it was last seen and can be renamed or **revoked** (it loses access at once).
-- **What stays on the computer:** pairing devices, machines, hooks, MCP server edits, updates, Start at login, CLI commands, accounts, tools, folders and take-overs. The work itself (sessions, answers, Inbox, schedules, todos) all works from the phone.
-- **Notifications:** on the phone, Settings → Devices → **Enable notifications**: permission requests, questions, finished turns, session errors and other Inbox items, each switchable; a tap opens the session. On iPhone and iPad add Switchboard to the Home Screen first (and pair it there).
+- **What stays on the computer:** a device may only call the routes on an allow-list (the work); refused are pairing devices, machines, hooks, MCP server edits, updates, Start at login, CLI commands, accounts, tools, folders and take-overs. The work itself (sessions, answers, Inbox, schedules, todos) all works from the phone.
+- **Notifications:** on the phone, Settings → Devices → **Enable notifications**: permission requests, questions, finished turns, session errors and other Inbox items, each switchable, also from your paired machines' sessions; a tap opens the session. On iPhone and iPad add Switchboard to the Home Screen first (and pair it there).
 
 [`docs/devices.md`](docs/devices.md)
 
