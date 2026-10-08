@@ -105,6 +105,7 @@ describe('palette model (M8.3)', () => {
       'view | History | ',
       'view | Settings | ',
       'action | New session | ',
+      'action | Add todo… | todo <title>',
       'tool | Codebase Memory | localhost:13000',
       'tool | Acme Tool | ',
       'session | free-talk-feature | orch · feature · UI-first',
@@ -148,6 +149,7 @@ describe('palette model (M8.3)', () => {
       'view | History | ',
       'view | Settings | ',
       'action | New session | ',
+      'action | Add todo… | todo <title>',
     ]);
   });
 

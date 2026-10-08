@@ -79,6 +79,7 @@ describe('GET/PUT /api/settings (M8.2)', () => {
       'sessions.todoReminder': true,
       'sessions.reviewCards': true,
       'sessions.checkpoints': true,
+      'sessions.todoEnrich': true,
       'usage.warnAtPct': 90,
       'ui.sidebarHidden': false,
       'ui.rightPanelHidden': false,

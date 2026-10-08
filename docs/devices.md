@@ -69,8 +69,15 @@ Developer ruling 2026-10-08: device requests to `/api/…` are refused (403 `loc
 ## Install as an app
 The device origin serves the same manifest (`display: standalone`, theme color, icons) and `apple-touch-icon` as the UI. Android Chrome offers *Install app*; iOS Safari: Share → **Add to Home Screen**. The manifest and icons are public on the device listener (browsers fetch them without credentials) and hold nothing sensitive.
 
+## Share to Switchboard (D81)
+The developer's ruling (`docs/decisions.md` → D81): the installed app is a **Web Share Target**, so a link or a text shared from the phone's share sheet becomes a todo.
+- **Only on the device origin.** The manifest the device listener serves gains `share_target` (`src/server/devices/share-target.ts`: `POST /share-target`, `application/x-www-form-urlencoded`, `title` / `text` / `url`); the UI listener's manifest has none. Android Chrome lists an installed app (Install app, after pairing) in its share sheet once it has read that manifest; re-install the app if it was installed before D81. **iPhone / iPad: Safari does not support Web Share Target**, so there is no Switchboard entry in the iOS share sheet (no workaround in a web app).
+- **The share:** Android POSTs the form to `/share-target`. The **service worker** answers it itself (no network): a 303 to `/share?title=…&text=…&url=…` (each field cut to 4,000 characters, empty ones left out). Without the worker (a first load), the **server** answers the same for a paired device (`src/server/api/todo-capture.ts`); its guard applies as to any request (Host, Origin, the device cookie; an unpaired device gets 401, the UI listener 404).
+- **The page** `/share` (a normal page load, so the device's credential applies) shows what was shared (the title, editable; the text and the link as the note) and asks **Add to which session?**: the open sessions of this machine and the paired machines, most recently active first. A tap saves it through `POST /api/sessions/{id}/todos/capture` (`from: share`; on the devices' allow-list), bare and waiting for the agent (`docs/todos.md` → *Quick capture (D81)*); then **Open session** or **Done**. The share's address is replaced by `/share`, so Back does not offer it again.
+- UNVERIFIED on a real Android phone (no real phone in tests): whether Chrome's share-target POST carries an `Origin` header the device guard accepts matters only when the service worker is not active; with the worker (an installed app always has it) the POST never reaches the server. Manual check: step 9 below.
+
 ## API
-`docs/handoff/contracts/local-api.md` → *Devices (D73)*.
+`docs/handoff/contracts/local-api.md` → *Devices (D73)*; D81's share target: *Quick capture (D81)*.
 
 ## Tests
 - `tests/server/devices/listener.test.ts`: unpaired requests (only the pairing page, its exchange and the app files; 401 / redirect otherwise), loopback trust never applied (the install token, loopback Hosts refused), Host / Origin / `X-Forwarded-Host`, the UI listener unchanged, pairing (cookie attributes, hash only, single use, wrong codes burned after 5, expiry, rate limit, the Tailscale login), local-only refusals (encoded paths, through a paired machine), revoke (access and the `/hub` stream end).
@@ -79,7 +86,8 @@ The device origin serves the same manifest (`display: standalone`, theme color, 
 - `tests/server/devices/push.test.ts`: the notifier's once-per-item and freshness rules (a peer's item, a reconnect), the RFC 8291 example vector, VAPID JWT, the key file (0600, stable), the endpoint allow-list, delivery per event and per toggle verified and decrypted by the fake push service (`tests/helpers/fake-push.ts`), 404 / 410 cleanup, nothing while access is off.
 - `tests/server/devices/units.test.ts`: every registered `/api` route classified, the allow-list, names from user agents, toggles, `tailscale status` / `serve status` parsing, migration 0030.
 - `tests/web/devices.test.ts`: the device's push states (iOS in a tab, denied, unsupported), the section's copy, the service worker's `push` / `notificationclick`.
-- `tests/e2e/devices.spec.ts`: desktop + a 390×844 phone context (real taps on D74's phone layout: the sessions in the ☰ drawer, Settings list → Devices detail): QR pairing end to end, the phone sees the sessions, notifications enabled and a test push decrypted by the fake push service, an iPhone told to add the app first, revoke, a wrong code.
+- `tests/e2e/devices.spec.ts`: desktop + a 390×844 phone context (real taps on D74's phone layout: the sessions in the ☰ drawer, Settings list → Devices detail): QR pairing end to end, the phone sees the sessions, notifications enabled and a test push decrypted by the fake push service, an iPhone told to add the app first, revoke, a wrong code. D81: the device manifest's share target, a share (the form POST a share sheet makes) → `/share` → a tap saves the todo in the chosen session; the local manifest has none.
+- `tests/server/todos/capture.test.ts` (D81): the share target's manifest member and page address; on the device listener a paired device's share is a 303 to `/share?…`, an unpaired one 401; the capture route with the device's credential.
 - Test-only variables: `SWITCHBOARD_DEVICE_TEST_ORIGIN` (`http://localhost:<port>`, the devices' origin instead of the `*.ts.net` one) and `SWITCHBOARD_PUSH_TEST_ENDPOINTS` (the fake push service's origin).
 
 ## Manual checklist (real Tailscale, real phones)
@@ -92,3 +100,4 @@ Not automated (no real Tailscale, Apple or Google in tests). On the computer:
 6. Revoke the iPhone on the computer: the open app loses its live updates at once and returns to the pairing page.
 7. Switch device access off: `tailscale serve status` no longer lists 8443; the phone cannot connect.
 8. Toggles: turn *Turn finished* off on a device; finish a turn → no notification; a question still notifies.
+9. D81 share (Android): install the app after pairing (or re-install it), open a web page in Chrome → Share → **Switchboard** → the page asks *Add to which session?* with the page's title and link → tap a session → *Added to …*; the todo is on that session's strip with *✎ waiting for the agent to fill in*.

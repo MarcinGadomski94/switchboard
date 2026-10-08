@@ -75,7 +75,7 @@ export function ClaudeSection({ settings }: { readonly settings: KnownSettings }
 /** Sessions & worktrees: fixed rules plus the New-session defaults (worktrees, ultracode), D75's todo finish reminder, D80's checkpoints and D64's standing instruction for agents. */
 export function SessionsSection({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
-  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.reviewCards' | 'sessions.checkpoints'): void => {
+  const flip = (key: 'sessions.worktrees' | 'sessions.ultracode' | 'sessions.todoReminder' | 'sessions.reviewCards' | 'sessions.checkpoints' | 'sessions.todoEnrich'): void => {
     setBusy(true);
     void save({ [key]: !settings[key] }).finally(() => setBusy(false));
   };
@@ -131,6 +131,14 @@ export function SessionsSection({ settings, save }: { readonly settings: KnownSe
         description="Snapshots the session's git working trees (hidden refs, never your index or branch) so a turn can be reverted; kept 7 days or 100 turns"
       >
         <ToggleValue label="Save a checkpoint before each turn" value={settings['sessions.checkpoints']} disabled={busy} onToggle={() => flip('sessions.checkpoints')} />
+      </Row>
+      {/* D81: a captured todo is filled in by its agent when it is next idle (one message). */}
+      <Row
+        id="todo-enrich"
+        label="Let the agent fill in captured todos"
+        description="A todo captured from ⌘K, a chat selection or the share sheet is saved bare; when the session's agent is next idle, it is asked once to fill in the description, plan, priority and estimate"
+      >
+        <ToggleValue label="Let the agent fill in captured todos" value={settings['sessions.todoEnrich']} disabled={busy} onToggle={() => flip('sessions.todoEnrich')} />
       </Row>
       <StandingInstructionRow settings={settings} save={save} />
     </>

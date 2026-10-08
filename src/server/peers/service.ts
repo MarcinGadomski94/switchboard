@@ -171,6 +171,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions\/[^/]+\/todos(?:\/clear-done)?$/],
   // D75: ▶ Start (in progress + the start message sent there); D76: ▸ Run in new session (the run session starts on that machine).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/[^/]+\/(?:start|run)$/],
+  // D81: quick capture into that machine's session (its machine asks its agent to fill the item in).
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/todos\/[^/]+$/],
   ['GET', /^\/api\/todos$/],

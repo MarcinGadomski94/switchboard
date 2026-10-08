@@ -1,6 +1,8 @@
 import type { Session, SolutionGroup, Tool } from '../../core/api.ts';
 import { openSessions } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
+import { captureTargets, captureTitle, paletteTodoText } from '../../core/todo-capture.ts';
+import { TODO_TITLE_MAX } from '../../core/todos.ts';
 import { modeLine, urlHost } from '../shell/format.ts';
 
 /**
@@ -13,7 +15,7 @@ import { modeLine, urlHost } from '../shell/format.ts';
  */
 
 /** Kind label of a result (shown upper-cased). */
-export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'solution';
+export type PaletteKind = 'view' | 'action' | 'tool' | 'session' | 'solution' | 'todo';
 
 /**
  * The routes the palette navigates to: a structural subset of the router's
@@ -32,7 +34,13 @@ export type PaletteTarget =
   /** Open the New-session modal. */
   | { readonly type: 'new-session' }
   /** Open the Solutions view with this solution (its `path`) selected. */
-  | { readonly type: 'solution'; readonly path: string };
+  | { readonly type: 'solution'; readonly path: string }
+  /** D81: "Add todo…": the query becomes `todo ` (the palette stays open for the title). */
+  | { readonly type: 'add-todo' }
+  /** D81: capture `title` (and `note`, the whole text when the title had to be cut) into the session. */
+  | { readonly type: 'capture'; readonly sessionId: string; readonly title: string; readonly note: string | null }
+  /** D81: `todo ` without a title yet: nothing to pick. */
+  | { readonly type: 'none' };
 
 /** One palette result: a kind label, the label and a mono hint (may be empty). */
 export interface PaletteEntry {
@@ -86,6 +94,8 @@ export function paletteEntries(data: PaletteData): PaletteEntry[] {
     target: { type: 'route', route },
   }));
   entries.push({ key: 'action:new-session', kind: 'action', label: 'New session', hint: '', target: { type: 'new-session' } });
+  // D81: quick capture (typing `todo <text>` does the same directly).
+  entries.push({ key: 'action:add-todo', kind: 'action', label: ADD_TODO_LABEL, hint: 'todo <title>', target: { type: 'add-todo' } });
   for (const tool of data.tools ?? []) {
     entries.push({ key: `tool:${tool.id}`, kind: 'tool', label: tool.name, hint: urlHost(tool.url), target: { type: 'route', route: { view: 'tool', id: tool.id } } });
   }
@@ -130,4 +140,36 @@ export function clampIndex(index: number, count: number): number {
 /** The index after ↑ (`-1`) or ↓ (`+1`): it stops at the first and the last row, no wrap. */
 export function moveIndex(index: number, count: number, step: 1 | -1): number {
   return clampIndex(clampIndex(index, count) + step, count);
+}
+
+/** D81: the palette's capture action (picking it types `todo ` for the title). */
+export const ADD_TODO_LABEL = 'Add todo…';
+
+/** D81: the query "Add todo…" fills in. */
+export const ADD_TODO_QUERY = 'todo ';
+
+/**
+ * D81 · `todo <text>` (`docs/todos.md` → *Quick capture (D81)*): the results while the query is
+ * a `todo` command ({@link paletteTodoText}), `null` otherwise. In a session, the first row adds
+ * the item to that session; then (and outside a session, only) the other open sessions, most
+ * recently active first, as targets to pick. The title is the text (cut at a word to 120
+ * characters, the whole text then kept as the note). `todo ` alone: one row asking for the title.
+ */
+export function paletteTodoEntries(query: string, sessions: readonly Session[] | null, currentSessionId: string | null): PaletteEntry[] | null {
+  const text = paletteTodoText(query);
+  if (text === null) return null;
+  if (text === '') return [{ key: 'todo:empty', kind: 'todo', label: ADD_TODO_LABEL, hint: 'type the title', target: { type: 'none' } }];
+  const title = text.length <= TODO_TITLE_MAX && !/[\r\n]/.test(text) ? text : captureTitle(text, TODO_TITLE_MAX);
+  const note = title === text ? null : text;
+  const targets = captureTargets(sessions ?? []);
+  const current = currentSessionId === null ? undefined : targets.find((session) => session.id === currentSessionId);
+  const rows: PaletteEntry[] = [];
+  if (current) {
+    rows.push({ key: `todo:${current.id}`, kind: 'todo', label: `Add “${title}”`, hint: `to ${displayTitle(current)}`, target: { type: 'capture', sessionId: current.id, title, note } });
+  }
+  for (const session of targets) {
+    if (session.id === current?.id) continue;
+    rows.push({ key: `todo:${session.id}`, kind: 'todo', label: current ? `Add to ${displayTitle(session)}` : displayTitle(session), hint: current ? '' : `add “${title}”`, target: { type: 'capture', sessionId: session.id, title, note } });
+  }
+  return rows.slice(0, PALETTE_MAX_RESULTS);
 }

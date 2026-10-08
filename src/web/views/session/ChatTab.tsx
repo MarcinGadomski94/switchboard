@@ -23,6 +23,7 @@ import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
 import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
+import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -208,6 +209,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
           />
         ))}
       </div>
+      {/* D81: a selection in the conversation offers "Add to todo". */}
+      <SelectionCapture container={scroller} sessionId={sessionId} disabled={blocked !== null} />
       {/* D53: an offline machine's session has no live line (the offline note says why). */}
       <ChatActivityLine activity={blocked ? null : activity} />
       <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} working={session?.status === 'run'} />

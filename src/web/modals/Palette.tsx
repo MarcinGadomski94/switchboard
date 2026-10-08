@@ -3,10 +3,14 @@ import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import { useRouter } from '../router.tsx';
+import { captureTodo } from '../capture/capture.ts';
+import { useToasts } from '../toast/ToastHost.tsx';
+import { todoRefusal } from '../views/session/TodoStrip.tsx';
 import { requestSolutionFocus } from '../views/solution-focus.ts';
 import { useModals } from './ModalHost.tsx';
-import { PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries } from './palette.ts';
+import { ADD_TODO_QUERY, PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries, paletteTodoEntries } from './palette.ts';
 import './palette.css';
 
 /** `sessionUpdated` comes in bursts; the session results reload at most this often. */
@@ -28,7 +32,11 @@ const RESULTS_ID = 'sb-palette-results';
  * does in the prototype.
  */
 export function Palette({ onClose }: { readonly onClose: () => void }) {
-  const { navigate } = useRouter();
+  const { navigate, route } = useRouter();
+  const { show } = useToasts();
+  // D81: a capture on its way (Enter again waits), or why it was refused.
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
   const { open } = useModals();
   const sessions = useApi(api.listSessions);
   const tools = useApi(api.tools);
@@ -44,7 +52,12 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
     () => paletteEntries({ sessions: sessions.data, tools: tools.data, solutions: solutions.data }),
     [sessions.data, tools.data, solutions.data],
   );
-  const results = useMemo(() => filterPalette(entries, query), [entries, query]);
+  // D81: `todo <text>` lists where to add it (this session first); anything else filters as before.
+  const currentSessionId = route.view === 'session' ? route.id : null;
+  const results = useMemo(
+    () => paletteTodoEntries(query, sessions.data, currentSessionId) ?? filterPalette(entries, query),
+    [entries, query, sessions.data, currentSessionId],
+  );
   const selected = clampIndex(index, results.length);
 
   useEffect(() => {
@@ -69,6 +82,35 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
     const { target } = entry;
     if (target.type === 'new-session') {
       open('new-session');
+      return;
+    }
+    if (target.type === 'none') return;
+    if (target.type === 'add-todo') {
+      setQuery(ADD_TODO_QUERY);
+      setIndex(0);
+      inputRef.current?.focus();
+      return;
+    }
+    if (target.type === 'capture') {
+      if (capturing) return;
+      setCapturing(true);
+      setCaptureError(null);
+      const where = (sessions.data ?? []).find((session) => session.id === target.sessionId);
+      void captureTodo(target.sessionId, { title: target.title, note: target.note, from: 'palette' })
+        .then(() => {
+          onClose();
+          show({
+            id: `todo-capture:${target.sessionId}`,
+            title: 'Added to todos',
+            sub: where ? displayTitle(where) : '',
+            branch: '',
+            text: target.title,
+            sessionId: target.sessionId === currentSessionId ? null : target.sessionId,
+            jumpLabel: 'Open',
+          });
+        })
+        .catch((error: unknown) => setCaptureError(todoRefusal(error)))
+        .finally(() => setCapturing(false));
       return;
     }
     onClose();
@@ -114,6 +156,7 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
           onChange={(event) => {
             setQuery(event.target.value);
             setIndex(0);
+            setCaptureError(null);
           }}
           onKeyDown={onKeyDown}
           role="combobox"
@@ -125,7 +168,12 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
           autoComplete="off"
           spellCheck={false}
         />
-        <div className="sb-palette-results" id={RESULTS_ID} role="listbox" aria-label="Results" data-testid="palette-results" ref={listRef}>
+        {captureError ? (
+          <div className="sb-palette-error" role="alert" data-testid="palette-error">
+            {captureError}
+          </div>
+        ) : null}
+        <div className="sb-palette-results" id={RESULTS_ID} aria-busy={capturing || undefined} role="listbox" aria-label="Results" data-testid="palette-results" ref={listRef}>
           {results.map((entry, i) => (
             <div
               key={entry.key}

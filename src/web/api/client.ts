@@ -63,6 +63,7 @@ import type {
   WorkflowAgentChat,
   FullEventAnswer,
   NewTodoInput,
+  CaptureTodoInput,
   SessionTodoList,
   TodoGroup,
   TodoOrderInput,
@@ -207,6 +208,8 @@ export const api = {
     } satisfies NewTodoInput),
   updateTodo: (id: string, todoId: string, patch: TodoPatchInput) =>
     request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`, patch.title === undefined ? patch : { ...patch, text: patch.title }),
+  /** D81 · quick capture: the item saved bare, marked for its agent to fill in (`docs/todos.md` → *Quick capture (D81)*). */
+  captureTodo: (id: string, input: CaptureTodoInput) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/capture`, input),
   /** D75 · ▶ Start: the item goes in progress and its start message is sent to the session (queued while busy); answers the list. */
   startTodo: (id: string, todoId: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/${enc(todoId)}/start`),
   /** D76: ▸ Run in new session: a new session works on the item (201 `{ session, list, note }`). */

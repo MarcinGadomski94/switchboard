@@ -14,6 +14,7 @@ import { SchedulesView } from '../views/SchedulesView.tsx';
 import { SettingsView } from '../views/SettingsView.tsx';
 import { SolutionsView } from '../views/SolutionsView.tsx';
 import { TodosView } from '../views/TodosView.tsx';
+import { SharePage } from '../capture/SharePage.tsx';
 import { ToolView } from '../views/ToolView.tsx';
 import { SessionView } from '../views/session/SessionView.tsx';
 import { PaneHandle, usePanes } from './Panes.tsx';
@@ -40,6 +41,8 @@ function View({ route }: { readonly route: Route }) {
       return <HistoryView />;
     case 'todos':
       return <TodosView />;
+    case 'share':
+      return <SharePage />;
     case 'tool':
       return <ToolView key={route.id} toolId={route.id} />;
     case 'settings':

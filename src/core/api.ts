@@ -2288,6 +2288,13 @@ export type TodoStartSource = 'start' | 'agent' | 'developer' | 'run';
 export type TodoAuthor = 'developer' | 'agent';
 
 /**
+ * D81: how a quickly captured item came in: `palette` = ⌘K `todo <text>` / Add todo…,
+ * `selection` = a chat selection's "Add to todo", `share` = the phone's share sheet (D73's
+ * app as a Web Share Target).
+ */
+export type TodoCaptureSource = 'palette' | 'selection' | 'share';
+
+/**
  * D70 (`docs/todos.md` → *Priority and estimate*): an item's priority. Open items
  * sort by it (urgent first), their manual order within a level.
  */
@@ -2341,6 +2348,10 @@ export interface SessionTodo {
   readonly actualMs?: number | null;
   /** D78: the tokens of the turns that worked on it (approximate, `docs/todos.md` → *Actual vs. estimate*); `null` = none known. */
   readonly actualTokens?: number | null;
+  /** D81 (additive): a captured item still waits for its agent to fill in its description, plan, priority and estimate; absent from an older peer. */
+  readonly needsEnrichment?: boolean;
+  /** D81 (additive): how it was captured ({@link TodoCaptureSource}); `null` for an item added any other way. */
+  readonly capturedFrom?: TodoCaptureSource | null;
 }
 
 /** D76: an item's run ({@link SessionTodo.runState}). */
@@ -2454,6 +2465,19 @@ export interface TodoFieldsInput {
   readonly plan: string;
   readonly priority: TodoPriority;
   readonly estimateMinutes: number | null;
+}
+
+/**
+ * D81: body of `POST /api/sessions/{id}/todos/capture`: a quick capture. `title` (1–120
+ * characters, one line), an optional `note` (the item's description, Markdown, at most
+ * 4,000 characters) and `from` (how it was captured). The item is stored with plan `No plan`,
+ * priority medium and no estimate, and (Settings → Sessions → *Let the agent fill in captured
+ * todos*, default on) marked as waiting for its agent to fill it in.
+ */
+export interface CaptureTodoInput {
+  readonly title: string;
+  readonly note?: string | null;
+  readonly from: TodoCaptureSource;
 }
 
 /** D68: body of `PUT /api/sessions/{id}/todos/order`: every item id of the session, in the new order. */

@@ -55,6 +55,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D79: review cards: the list, Merge (local only), Open PR, Commit, Send back, Dismiss (normal use from the phone).
   ['GET', /^\/api\/reviews$/],
   ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|dismiss)$/],
+  // D81: quick capture (the palette, a chat selection, the share sheet's page).
+  ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   // Inbox and answers.
   ['GET', /^\/api\/inbox$/],
   ['POST', /^\/api\/inbox\/[^/]+\/actions\/[^/]+$/],

@@ -1,6 +1,7 @@
 import type { SessionTodo, SessionTodoList, TodoAuthor, TodoGroup, TodoStartSource, TodoState } from '../../core/api.ts';
 import type { ReviewOutcome } from '../../core/reviews.ts';
 import { CALIBRATION_WINDOW, todoActualsTotal, todoCalibration } from '../../core/todo-actuals.ts';
+import { isTodoCaptureSource } from '../../core/todo-capture.ts';
 import {
   DEFAULT_TODO_PRIORITY,
   TODO_DESCRIPTION_MAX,
@@ -80,6 +81,9 @@ export function toTodo(record: TodoRecord, ttlMs: number = TODO_DONE_TTL_MS): Se
     startedFirstAt: record.startedFirstAt ?? null,
     actualMs: record.actualMs ?? null,
     actualTokens: record.actualTokens ?? null,
+    // D81: a captured item waiting for its agent to fill it in (an open one only), and how it was captured.
+    needsEnrichment: record.needsEnrichment === true && record.state === 'open',
+    capturedFrom: record.capturedFrom ?? null,
   };
 }
 
@@ -246,10 +250,43 @@ export class TodoService {
       if (state === 'in_progress' && by === 'agent' && current.state === 'in_progress' && current.startedBy === 'developer') await this.#store.todos.start(todoId, source);
       else await this.#store.todos.setState(todoId, state, source);
     }
+    // D81: the agent's todo_update fills a captured item in; so does the developer's own edit of what the agent would fill.
+    const fills = by === 'agent' ? Object.keys(fields.value).length > 0 : ['description', 'plan', 'priority', 'estimateMinutes'].some((key) => key in fields.value);
+    if (fills && (await this.#item(sessionId, todoId)).needsEnrichment) await this.#store.todos.clearEnrichment(todoId);
     // D75: the agent touched the item (anything but marking it in progress), so a turn ending now needs no reminder for it.
     if (by === 'agent' && (Object.keys(fields.value).length > 0 || (state !== null && state !== 'in_progress'))) this.#agentTouches.set(todoId, this.#now());
     const record = await this.#item(sessionId, todoId);
     return { todo: toTodo(record, this.#ttl), list: await this.#changed(sessionId) };
+  }
+
+  /**
+   * D81 · quick capture (`POST /api/sessions/{id}/todos/capture`): a title and an optional note
+   * (the description), saved bare (plan `No plan`, medium, no estimate) by the developer, marked
+   * as captured `from`, and, when `enrich` (Settings → Sessions → *Let the agent fill in captured
+   * todos*), as waiting for the agent to fill it in (`TodoEnricher` asks it when it is next idle).
+   */
+  async capture(sessionId: string, input: Readonly<Record<string, unknown>>, enrich: boolean): Promise<{ readonly todo: SessionTodo; readonly list: SessionTodoList }> {
+    await this.#session(sessionId);
+    const from = input['from'];
+    if (!isTodoCaptureSource(from)) throw new TodoError(422, 'invalid', 'from must be palette, selection or share');
+    const checked = checkNewTodo({ title: input['title'], description: input['note'] ?? null });
+    if (!checked.ok) throw new TodoError(422, 'invalid', checked.message);
+    if ((await this.#store.todos.count(sessionId)) >= TODO_MAX_PER_SESSION) {
+      throw new TodoError(409, 'too-many', `a session keeps at most ${TODO_MAX_PER_SESSION} todos: remove or clear some first`);
+    }
+    const added = await this.#store.todos.add(sessionId, { ...checked.value, plan: TODO_NO_PLAN, priority: DEFAULT_TODO_PRIORITY, estimateMinutes: null }, 'developer');
+    const record = (await this.#store.todos.markCaptured(added.id, from, enrich)) ?? added;
+    return { todo: toTodo(record, this.#ttl), list: await this.#changed(sessionId) };
+  }
+
+  /** D81: the session's open captured items that wait for the agent and were not asked yet. */
+  async pendingEnrichment(sessionId: string): Promise<SessionTodo[]> {
+    return (await this.#store.todos.pendingEnrichment(sessionId)).map((record) => toTodo(record, this.#ttl));
+  }
+
+  /** D81: records that the agent was asked to fill these items in (once per item). */
+  async markEnrichAsked(ids: readonly string[]): Promise<void> {
+    await this.#store.todos.markEnrichAsked(ids);
   }
 
   /** Deletes an item. */
