@@ -537,6 +537,63 @@ test('D70 · priorities sort and tint the cards, estimates and totals show; the 
   await page.keyboard.press('Escape');
 });
 
+/**
+ * Fix (todos.spec D76 flake, 2026-10-08): + Add stays open after a save and clears
+ * only the fields not edited meanwhile. It decided that by comparing values, so the
+ * next item typed while the save was still in flight lost any field that happened to
+ * equal the saved one (the same estimate, the same priority). The save is held here
+ * until the next item is typed, so the race is deterministic.
+ */
+test('+ Add: the next item typed while a save is in flight keeps its fields, even when they equal the saved ones', async ({ page }) => {
+  await page.goto(world.baseUrl);
+  const { id } = await world.startSession(page, 'todo-fast-typist', 'Reply with just OK.');
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  const strip = page.getByTestId('todo-strip');
+  await page.getByTestId('chat-todo-add').click();
+  const form = strip.getByTestId('todo-form');
+  // Hold the first POST until the next item is typed.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holds = 1;
+  await page.route(
+    (url) => url.pathname === `/api/sessions/${id}/todos`,
+    async (route) => {
+      if (route.request().method() === 'POST' && holds > 0) {
+        holds -= 1;
+        await held;
+      }
+      await route.continue();
+    },
+  );
+  await form.getByTestId('todo-form-title').fill('First fast item');
+  await form.getByTestId('todo-form-priority').selectOption('high');
+  await form.getByTestId('todo-form-estimate').fill('30m');
+  await form.getByTestId('todo-form-save').click();
+  await expect(form.getByTestId('todo-form-save')).toHaveAttribute('aria-busy', 'true');
+  // The next item, typed while the first save waits: the same priority and estimate, another title.
+  await form.getByTestId('todo-form-title').fill('Second fast item');
+  await form.getByTestId('todo-form-priority').selectOption('high');
+  await form.getByTestId('todo-form-estimate').fill('30m');
+  release();
+  await expect(strip.getByTestId('todo-item')).toHaveCount(1);
+  await expect(form.getByTestId('todo-form-save')).not.toHaveAttribute('aria-busy', 'true');
+  await expect(form.getByTestId('todo-form-title')).toHaveValue('Second fast item');
+  await expect(form.getByTestId('todo-form-priority')).toHaveValue('high');
+  await expect(form.getByTestId('todo-form-estimate')).toHaveValue('30m');
+  await form.getByTestId('todo-form-save').click();
+  await expect(strip.getByTestId('todo-item')).toHaveCount(2);
+  await expect(strip.getByTestId('todo-item').getByTestId('todo-estimate')).toHaveText(['~30m', '~30m']);
+  await expect(strip.getByTestId('todo-item').getByTestId('todo-priority')).toHaveText(['High', 'High']);
+  await expect(page.getByTestId('todo-count')).toHaveText('2 open · ~1h · 0 done');
+  // A field not touched since the save is still cleared for the next one.
+  await expect(form.getByTestId('todo-form-title')).toHaveValue('');
+  await expect(form.getByTestId('todo-form-estimate')).toHaveValue('');
+  await expect(form.getByTestId('todo-form-priority')).toHaveValue('medium');
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
 /** The id of the run session an item's card links to. */
 async function runIdOf(card: import('@playwright/test').Locator): Promise<string> {
   const href = (await card.getByTestId('todo-run-link').getAttribute('href')) ?? '';
