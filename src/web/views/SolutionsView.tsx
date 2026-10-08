@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { BackButton, useListDetail } from '../components/ListDetail.tsx';
 import type { Solution, SolutionGroup } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
@@ -88,10 +89,11 @@ function SolutionRow({ solution, selected, onSelect }: { readonly solution: Solu
   );
 }
 
-function SolutionDetail({ solution, toolId, onMoved }: { readonly solution: Solution; readonly toolId: string | null; readonly onMoved: () => void }) {
+function SolutionDetail({ solution, toolId, onMoved, back }: { readonly solution: Solution; readonly toolId: string | null; readonly onMoved: () => void; readonly back?: ReactNode }) {
   const fresh = freshnessLine(solution.codebaseMemory);
   return (
     <div className="sb-sol-detail" data-testid="solution-detail" data-solution={solution.name}>
+      {back}
       <div>
         <div className="sb-sol-detail-path" data-testid="solution-path">
           {solution.path}
@@ -170,7 +172,12 @@ export function SolutionsView() {
   const [filter, setFilter] = useState<SolutionFilter>('All');
   // The ⌘K palette's solution results pick the selected row (M8.3).
   const [selectedPath, setSelectedPath] = useState<string | null>(() => peekSolutionFocus()?.path ?? null);
-  useSolutionFocus(setSelectedPath);
+  // D74: on a phone the list and the picked solution take the screen in turn (a solution opened from elsewhere shows at once).
+  const pane = useListDetail(peekSolutionFocus() !== null);
+  useSolutionFocus((path) => {
+    setSelectedPath(path);
+    pane.show();
+  });
 
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reloadSoon = (): void => {
@@ -221,14 +228,17 @@ export function SolutionsView() {
           key={solution.path}
           solution={solution}
           selected={selected?.path === solution.path}
-          onSelect={() => setSelectedPath(solution.path)}
+          onSelect={() => {
+            setSelectedPath(solution.path);
+            pane.show();
+          }}
         />
       )),
     ]);
   }
 
   return (
-    <section className="sb-view sb-solutions" data-view="solutions" data-testid="view-solutions">
+    <section className="sb-view sb-solutions" data-view="solutions" data-testid="view-solutions" data-pane={pane.pane(selected !== null)}>
       <div className="sb-sol-list">
         <div className="sb-sol-head">
           <div className="sb-sol-titlebar">
@@ -271,7 +281,12 @@ export function SolutionsView() {
         </div>
       </div>
       {selected ? (
-        <SolutionDetail solution={selected} toolId={toolId} onMoved={solutions.reload} />
+        <SolutionDetail
+          solution={selected}
+          toolId={toolId}
+          onMoved={solutions.reload}
+          back={pane.detail ? <BackButton label="Solutions" testId="solutions-back" onBack={pane.back} /> : null}
+        />
       ) : (
         <div className="sb-sol-detail" data-testid="solution-detail" />
       )}

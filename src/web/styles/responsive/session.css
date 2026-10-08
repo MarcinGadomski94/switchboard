@@ -290,3 +290,166 @@
     transition: none;
   }
 }
+
+/* ---------- Session tabs: Timeline, Diff, Artifacts ---------- */
+@media (max-width: 1023px) {
+  .sb-timeline {
+    padding: 14px max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-timeline__axis,
+  .sb-timeline__row,
+  .sb-timeline__controls {
+    grid-template-columns: 110px minmax(0, 1fr);
+  }
+
+  .sb-diff {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .sb-diff__head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-diff__head > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .sb-arts {
+    padding: 14px max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
+  }
+
+  .sb-arts__row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-arts__name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-timeline__axis,
+  .sb-timeline__row,
+  .sb-timeline__controls {
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .sb-timeline__bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Every other time tick, so the labels do not run into each other. */
+  .sb-timeline__ticks > :nth-child(even) {
+    visibility: hidden;
+  }
+
+  .sb-timeline__play-row {
+    flex-wrap: wrap;
+  }
+
+  /* Diff: the files as a strip that scrolls sideways over the diff. */
+  .sb-diff {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sb-diff__files {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-divider);
+    scrollbar-width: thin;
+  }
+
+  .sb-diff__file {
+    flex: none;
+    width: 200px;
+    box-sizing: border-box;
+  }
+
+  .sb-diff__note {
+    margin-left: 0;
+  }
+
+  .sb-diff__body {
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* ---------- The todo strip and its cards (also on the Todos page) ---------- */
+@media (max-width: 1023px) {
+  .sb-todos {
+    padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+  }
+
+  .sb-todos-progress {
+    width: 56px;
+  }
+
+  .sb-todos-done-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+
+@media (max-width: 767px) {
+  .sb-todos-next {
+    display: none;
+  }
+
+  .sb-todos-body {
+    max-height: 38dvh;
+  }
+
+  /* A card: check · title · ⋯ on the first line, its priority, estimate and age under the title. */
+  .sb-todo-card-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sb-todo-card-row > .sb-todo-check {
+    order: 0;
+  }
+
+  .sb-todo-card-row > .sb-todo-title {
+    order: 1;
+    flex: 1 1 calc(100% - 15px - 32px - 20px);
+  }
+
+  .sb-todo-card-row > .sb-todo-menu-anchor {
+    order: 2;
+  }
+
+  .sb-todo-card-row > .sb-todo-tags,
+  .sb-todo-card-row > .sb-todo-meta,
+  .sb-todo-card-row > .sb-todo-start {
+    order: 3;
+  }
+
+  .sb-todo-card-row > :nth-child(3) {
+    margin-left: 25px;
+  }
+
+  .sb-todo-card-body {
+    padding-left: 0;
+  }
+
+  .sb-todo-card-foot {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* The card's menu and its Priority submenu open inward (the card fills the width). */
+  .sb-todo-menu.sb-todo-submenu {
+    right: 0;
+    top: calc(100% + 2px);
+  }
+}

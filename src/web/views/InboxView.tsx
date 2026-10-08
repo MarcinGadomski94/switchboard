@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
+import { BackButton, useListDetail } from '../components/ListDetail.tsx';
 import type { AnswerBatch, InboxAction, InboxItem, Session } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
@@ -221,6 +222,8 @@ export function InboxView() {
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   // Items answered / acted on from this page, hidden until the list reloads.
   const [done, setDone] = useState<ReadonlySet<string>>(() => new Set());
+  // D74 (docs/responsive.md): on a phone the list and the picked item take the screen in turn.
+  const pane = useListDetail();
 
   useHubEvent('inboxChanged', () => inbox.reload());
   useEffect(() => setDone(new Set()), [inbox.data]);
@@ -254,7 +257,7 @@ export function InboxView() {
   };
 
   return (
-    <section className="sb-view sb-inbox" data-view="inbox" data-testid="view-inbox">
+    <section className="sb-view sb-inbox" data-view="inbox" data-testid="view-inbox" data-pane={pane.pane(current !== null)}>
       <div className="sb-inbox__column">
         <div className="sb-inbox__head">
           <div className="sb-inbox__heading">Inbox</div>
@@ -264,7 +267,11 @@ export function InboxView() {
         </div>
         <div className="sb-inbox__list" data-testid="inbox-list">
           {items.map((item) => (
-            <ListCard key={item.id} item={item} selected={item.id === current?.id} now={now} onPick={() => setSelectedId(item.id)} />
+            <ListCard key={item.id} item={item} selected={item.id === current?.id} now={now} onPick={() => {
+                setSelectedId(item.id);
+                pane.show();
+              }}
+            />
           ))}
           {loaded && items.length === 0 ? (
             <div className="sb-inbox__all-clear" data-testid="inbox-all-clear">
@@ -274,6 +281,7 @@ export function InboxView() {
         </div>
       </div>
       <div className="sb-inbox__detail" data-testid="inbox-detail" data-item-id={current?.id}>
+        {pane.detail && current ? <BackButton label="Inbox" testId="inbox-back" onBack={pane.back} /> : null}
         {current ? (
           <Detail
             item={current}
