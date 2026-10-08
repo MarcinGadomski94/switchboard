@@ -17,6 +17,8 @@
  * Plain JavaScript, served as-is from Vite's public folder; type-checked through
  * JSDoc (`tsconfig.sw.json`). Bump CACHE_VERSION whenever offline.html changes.
  *
+ * D81: it answers the share target's POST itself (the phone's share sheet, below).
+ *
  * D73: it also shows web push notifications on paired devices (`push`,
  * `notificationclick`, `pushsubscriptionchange` at the end of this file).
  */
@@ -78,6 +80,11 @@ worker.addEventListener('activate', (event) => {
 
 worker.addEventListener('fetch', (event) => {
   const { request } = event;
+  // D81: the phone's share sheet (the device origin's manifest makes the app a share target).
+  if (request.method === 'POST' && new URL(request.url).pathname === SHARE_TARGET_ACTION) {
+    event.respondWith(shareTarget(request));
+    return;
+  }
   if (request.mode !== 'navigate' || request.method !== 'GET') return;
   event.respondWith(navigate(event));
 });
@@ -98,6 +105,38 @@ async function navigate(event) {
     const offline = await caches.match(OFFLINE_URL, { cacheName: CACHE });
     return offline ?? Response.error();
   }
+}
+
+// ── D81 share target (docs/devices.md → Share to Switchboard) ───────────────
+// A share is a POST of title / text / url (urlencoded) to /share-target. The
+// worker answers it itself, without the network: a 303 to /share?… with the
+// shared fields, the page that asks which session the item goes to (it saves
+// through the API like any page, with the device's credential). Without the
+// worker the server answers the same (src/server/api/todo-capture.ts).
+
+/** Where the operating system POSTs a share (src/server/devices/share-target.ts). */
+const SHARE_TARGET_ACTION = '/share-target';
+
+/** Each shared field is cut to this many characters (as the server does). */
+const SHARED_FIELD_MAX = 4000;
+
+/**
+ * @param {Request} request the share's POST
+ * @returns {Promise<Response>}
+ */
+async function shareTarget(request) {
+  const query = new URLSearchParams();
+  try {
+    const form = await request.formData();
+    for (const key of ['title', 'text', 'url']) {
+      const value = form.get(key);
+      if (typeof value === 'string' && value.trim() !== '') query.set(key, value.slice(0, SHARED_FIELD_MAX));
+    }
+  } catch {
+    // An unreadable body: the page opens empty (a title can still be typed).
+  }
+  const text = query.toString();
+  return Response.redirect(new URL(text ? `/share?${text}` : '/share', worker.location.origin).href, 303);
 }
 
 // ── D73 web push (docs/devices.md → Notifications) ──────────────────────────

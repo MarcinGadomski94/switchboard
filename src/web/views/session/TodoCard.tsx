@@ -16,6 +16,7 @@ import {
   todoRemovalLabel,
 } from '../../../core/todos.ts';
 import { formatAge } from '../../shell/format.ts';
+import { EnrichWaiting } from '../../capture/EnrichWaiting.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 
 /** Who added an item, as the card shows it (subtle). */
@@ -583,6 +584,8 @@ export function TodoCard({
                 {estimate}
               </span>
             ) : null}
+            {/* D81: a captured item until its agent fills it in. */}
+            {todo.needsEnrichment === true ? <EnrichWaiting /> : null}
           </span>
         )}
         <span className="sb-todo-meta" data-testid="todo-meta">

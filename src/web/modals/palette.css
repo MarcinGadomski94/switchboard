@@ -48,3 +48,11 @@
   font: 400 11px var(--font-mono);
   color: var(--muted-4);
 }
+
+/* D81: a refused capture (`todo <text>`), between the input and the results. */
+.sb-palette-error {
+  padding: 8px 18px;
+  font-size: 12px;
+  color: var(--status-fail);
+  border-bottom: 1px solid var(--border-control);
+}

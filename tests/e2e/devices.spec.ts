@@ -240,3 +240,49 @@ test('a wrong code is refused on the pairing page', async ({ page, browser }) =>
     await context.close();
   }
 });
+
+test('D81 · the share sheet: the device origin’s app is a share target; a share opens "Add to which session?" and saves there (the local manifest has none)', async ({ page, browser }) => {
+  // This machine's own UI is no share target.
+  const local = await (await fetch(`${server.baseUrl}/manifest.webmanifest`)).json();
+  expect(local.share_target).toBeUndefined();
+  await ensureAccess(page);
+  const url = await makeCode(page);
+  const android = await phone(browser, ANDROID_UA);
+  try {
+    const mobile = await pairPhone(android, url, 'Pixel share');
+    const manifest = await mobile.evaluate(async () => (await (await fetch('/manifest.webmanifest')).json()) as { share_target?: unknown });
+    expect(manifest.share_target).toEqual({ action: '/share-target', method: 'POST', enctype: 'application/x-www-form-urlencoded', params: { title: 'title', text: 'text', url: 'url' } });
+    // What Android does with a share: a POST navigation of the form to the share target (the service worker or the server answers 303 → /share?…).
+    await mobile.evaluate(() => {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/share-target';
+      form.enctype = 'application/x-www-form-urlencoded';
+      for (const [name, value] of [['title', 'Flaky test write-up'], ['text', 'Read before the retry work.'], ['url', 'https://example.com/flaky']]) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name as string;
+        input.value = value as string;
+        form.append(input);
+      }
+      document.body.append(form);
+      form.submit();
+    });
+    await mobile.waitForURL(/\/share\?/);
+    await expect(mobile.getByTestId('view-share')).toBeVisible();
+    await expect(mobile.getByTestId('share-title')).toHaveValue('Flaky test write-up');
+    await expect(mobile.getByTestId('share-note')).toHaveText('Read before the retry work.\n\nhttps://example.com/flaky');
+    const target = mobile.getByTestId('share-session').filter({ hasText: SESSION_TITLE });
+    await expect(target).toBeVisible();
+    await mobile.screenshot({ path: path.join(process.env['SWITCHBOARD_SHOTS'] ?? path.join('test-results', 'shots'), 'share-picker-phone.png') });
+    await press(target);
+    await expect(mobile.getByTestId('share-saved')).toContainText(`Added to ${SESSION_TITLE}`);
+    // Saved through the device's own credential (the capture route is a device route), bare and waiting for the agent.
+    const sessions = (await (await fetch(`${server.baseUrl}/api/sessions`, { headers: { cookie: `sb_token=${token}` } })).json()) as Array<{ id: string; title: string | null }>;
+    const id = sessions.find((s) => s.title === SESSION_TITLE)?.id as string;
+    const list = (await (await fetch(`${server.baseUrl}/api/sessions/${id}/todos`, { headers: { cookie: `sb_token=${token}` } })).json()) as { todos: Array<Record<string, unknown>> };
+    expect(list.todos.find((t) => t['title'] === 'Flaky test write-up')).toMatchObject({ capturedFrom: 'share', addedBy: 'developer', plan: 'No plan', priority: 'medium' });
+  } finally {
+    await android.close();
+  }
+});

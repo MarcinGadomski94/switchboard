@@ -97,6 +97,7 @@ const VIEW_ROWS = [
   'view | History | ',
   'view | Settings | ',
   'action | New session | ',
+  'action | Add todo… | todo <title>',
 ];
 
 test('palette: views, New session, sessions and solutions from the real API; filter, max 10, ↑↓ Enter, click, Esc', async ({ page }) => {
