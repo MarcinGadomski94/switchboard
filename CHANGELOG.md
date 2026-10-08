@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.12.0 (2026-10-08)
+
+### Todo items in progress
+- **▶ Start sends the task right away** (queued if the agent is busy) instead of filling the message box, and marks the item **in progress**; a draft you typed is left alone. On the Todos page it sends without leaving the page (a toast offers **Open**).
+- **In progress** is a new state between open and done: a ◐ half-filled box, an **IN PROGRESS** label next to the priority, and an edge that pulses while the session works. Set it with ▶ Start, from the card's ⋯ menu (**Mark in progress** / **Mark not started**), or by the agent with the new `todo_start` tool. Several items can be in progress; the list keeps its priority order.
+- Agents must mark a started item done: the start message, the tool descriptions and the standing instruction say so, and when a turn ends with a started item still in progress and untouched, Switchboard sends the agent **one** reminder for it (Settings → Sessions → "Remind the agent to finish started todos", on by default).
+- Counts: "1 in progress · 2 open · ~2h · 0 done"; the sidebar count and the estimate total include items in progress.
+
+### Fixed
+- Esc in a todo card's ⋯ menu only closes the menu; it no longer also stops the running turn.
+
+### Database
+- Migration 0031 (todo in-progress state) runs by itself on first start; existing items keep their state.
+
 ## 1.11.0 (2026-10-08)
 
 ### Phones and tablets
