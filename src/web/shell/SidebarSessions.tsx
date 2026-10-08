@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session, SessionActivity } from '../../core/api.ts';
 import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
@@ -37,6 +37,8 @@ import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../core/hooked-c
 import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
 import { usePairedMachines } from '../takeover/usePairedMachines.ts';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
+import { LONG_PRESS_MS, type Press, dropOverAt, pressHeld, pressMove, pressStart } from './touch-drag.ts';
+import { useCoarsePointer } from './useLayout.ts';
 import './sidebar-layout.css';
 
 /** The text of a refused layout write. */
@@ -351,6 +353,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   /** The session whose row was last revealed (the effect below). */
   const revealed = useRef<string | null>(null);
   const currentId = sessions.find((s) => isCurrent(s.id))?.id ?? null;
+  // D74: on a touch screen the row's ⋯ is always shown and its menu also closes the session (the × needs a hover).
+  const coarse = useCoarsePointer();
 
   // The session on screen (opened from the palette, the Inbox, a link, …) has its row scrolled into the list's view,
   // once per session: a later layout change or a scroll by hand is left alone. In a collapsed folder its folder's head
@@ -407,6 +411,119 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     setDrag(null);
     setOver(null);
   };
+
+  /**
+   * D74 · long-press drag on a touch screen (`touch-drag.ts`, `docs/responsive.md`):
+   * a row or folder held still for {@link LONG_PRESS_MS} lifts (`drag` set, as a mouse
+   * drag sets it) and follows the finger; the target under it is read back from its
+   * `data-drop-zone` (`dropOverAt`), so the drop and its indicator are the mouse
+   * drag's (`resolveDrop`, `indicatorOf`). A finger that moves first is a scroll
+   * (the browser's), and no drag starts.
+   */
+  const touch = useRef<{ press: Press; item: DragItem; label: string; pointerId: number; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  const [ghost, setGhost] = useState<{ readonly label: string; readonly x: number; readonly y: number } | null>(null);
+  /** Until when a click is swallowed (the click a lifted row's release may send). */
+  const swallowClick = useRef(0);
+  const latest = useRef({ drag, over, layout, listedIds });
+  latest.current = { drag, over, layout, listedIds };
+
+  const cancelTouch = useCallback((): void => {
+    const current = touch.current;
+    if (current?.timer) clearTimeout(current.timer);
+    touch.current = null;
+    setGhost(null);
+  }, []);
+
+  const touchStart = (item: DragItem, label: string) => (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse' || !event.isPrimary) return;
+    // The ⋯, the × and a name field keep their own touches.
+    if (event.target instanceof Element && event.target.closest('button, input, textarea')) return;
+    cancelTouch();
+    const start = { x: event.clientX, y: event.clientY };
+    const pressed = { press: pressStart(start), item, label, pointerId: event.pointerId, timer: null as ReturnType<typeof setTimeout> | null };
+    pressed.timer = setTimeout(() => {
+      if (touch.current !== pressed) return;
+      pressed.timer = null;
+      pressed.press = pressHeld(pressed.press);
+      if (pressed.press.phase !== 'dragging') return;
+      setMenu(null);
+      setDrag(item);
+      setGhost({ label, x: start.x, y: start.y });
+    }, LONG_PRESS_MS);
+    touch.current = pressed;
+  };
+
+  useEffect(() => {
+    const list = listRef.current;
+    const dropAt = (x: number, y: number): DropOver | null => {
+      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-drop-zone]');
+      if (!el || !list?.contains(el)) return null;
+      return dropOverAt(el, y);
+    };
+    const move = (event: globalThis.PointerEvent): void => {
+      const current = touch.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      if (current.press.phase === 'pending') {
+        current.press = pressMove(current.press, { x: event.clientX, y: event.clientY });
+        if (current.press.phase === 'cancelled') cancelTouch();
+        return;
+      }
+      if (current.press.phase !== 'dragging') return;
+      setGhost({ label: current.label, x: event.clientX, y: event.clientY });
+      const { layout: now, listedIds: listed, over: was } = latest.current;
+      const next = dropAt(event.clientX, event.clientY);
+      const valid = next && resolveDrop(now, current.item, next, listed) !== null ? next : null;
+      if (!sameOver(was, valid)) setOver(valid);
+      if (list) edgeScroll(dragScrollStep(event.clientY, list.getBoundingClientRect()));
+    };
+    const up = (event: globalThis.PointerEvent): void => {
+      const current = touch.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      const dragging = current.press.phase === 'dragging';
+      cancelTouch();
+      if (!dragging) return;
+      swallowClick.current = Date.now() + 600;
+      const { layout: now, listedIds: listed } = latest.current;
+      const at = event.type === 'pointerup' ? dropAt(event.clientX, event.clientY) : null;
+      const action = at ? resolveDrop(now, current.item, at, listed) : null;
+      setDrag(null);
+      setOver(null);
+      edgeScroll(0);
+      if (!action) return;
+      if (action.kind === 'place') void run(() => api.placeSidebarSession(action.input));
+      else void run(() => api.moveSidebarFolder(action.folderId, action.index, action.parentId));
+    };
+    // A lifted row's finger never scrolls the list (or the page); only a non-passive listener may say so.
+    const hold = (event: TouchEvent): void => {
+      if (touch.current?.press.phase === 'dragging' && event.cancelable) event.preventDefault();
+    };
+    // The long press must not open the browser's link menu or select text.
+    const menu = (event: Event): void => {
+      if (touch.current) event.preventDefault();
+    };
+    const click = (event: globalThis.MouseEvent): void => {
+      if (Date.now() < swallowClick.current) {
+        swallowClick.current = 0;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    list?.addEventListener('touchmove', hold, { passive: false });
+    list?.addEventListener('contextmenu', menu);
+    list?.addEventListener('click', click, true);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      list?.removeEventListener('touchmove', hold);
+      list?.removeEventListener('contextmenu', menu);
+      list?.removeEventListener('click', click, true);
+    };
+  }, [cancelTouch, edgeScroll, run]);
+  useEffect(() => cancelTouch, [cancelTouch]);
 
   const place = (input: Parameters<typeof api.placeSidebarSession>[0]): void => {
     void run(() => api.placeSidebarSession(input));
@@ -466,6 +583,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     items.push({ label: 'Move up', testId: 'sidebar-menu-up', run: () => step(-1), disabled: stepPosition(stored, visible, session.id, -1) === null });
     items.push({ label: 'Move down', testId: 'sidebar-menu-down', run: () => step(1), disabled: stepPosition(stored, visible, session.id, 1) === null });
     items.push({ label: 'Move to folder ▸', testId: 'sidebar-menu-move-to-folder', keepOpen: true, run: () => setMenu((m) => (m && m.kind === 'session' ? { ...m, folders: true } : m)) });
+    // D74: a touch screen has no hover to show the row's ×: closing is in the menu too.
+    if (coarse) items.push({ label: CLOSE_TOOLTIP, testId: 'sidebar-menu-close', run: () => closer.request({ ...session, activity: activityOf(session.id) ?? session.activity }) });
     // D72: a hooked terminal session continues as a Switchboard-run one (on the machine whose terminal it is).
     if (offersHookedContinue(session)) {
       const title = session.displayTitle ?? session.title ?? session.name;
@@ -574,6 +693,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         className="sb-session"
         data-session-id={session.id}
         data-group={group.kind}
+        data-group-folder={group.kind === 'folder' ? group.folderId : undefined}
+        data-drop-zone="row"
         data-drop={shown ? indicator(shown) : undefined}
         data-dragging={drag?.kind === 'session' && drag.id === session.id ? 'true' : undefined}
         aria-current={isCurrent(session.id) ? 'page' : undefined}
@@ -581,12 +702,18 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         style={level > 0 ? ({ marginLeft: 12 + level * LEVEL_INDENT } satisfies CSSProperties) : undefined}
         draggable
         onDragStart={(event) => {
+          // D74: a touch press drags by long press (below); the browser's own touch drag is not used.
+          if (touch.current) {
+            event.preventDefault();
+            return;
+          }
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/x-switchboard-session', session.id);
           setMenu(null);
           setDrag({ kind: 'session', id: session.id });
         }}
         onDragEnd={endDrag}
+        onPointerDown={touchStart({ kind: 'session', id: session.id }, displayTitle(session))}
         {...target(at)}
       >
         {/* D30: waiting on background work reads as working: the running color, pulsing. */}
@@ -708,18 +835,24 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         data-parent-id={parentOf(folder) ?? undefined}
         data-level={level}
         data-collapsed={folder.collapsed ? 'true' : 'false'}
+        data-drop-zone="folder-head"
         data-drop={shown ? indicator(shown) : undefined}
         data-dragging={drag?.kind === 'folder' && drag.id === folder.id ? 'true' : undefined}
         style={level > 0 ? { marginLeft: level * LEVEL_INDENT } : undefined}
         draggable={renaming !== folder.id}
         onDragStart={(event) => {
           event.stopPropagation();
+          if (touch.current) {
+            event.preventDefault();
+            return;
+          }
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/x-switchboard-folder', folder.id);
           setMenu(null);
           setDrag({ kind: 'folder', id: folder.id });
         }}
         onDragEnd={endDrag}
+        onPointerDown={renaming === folder.id ? undefined : touchStart({ kind: 'folder', id: folder.id }, folder.name)}
         onClick={toggle}
         {...target(headAt)}
       >
@@ -790,6 +923,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         className="sb-sessions"
         data-testid="sidebar-sessions"
         data-dragging={drag ? drag.kind : undefined}
+        data-touch-drag={ghost ? 'true' : undefined}
         // D71 fix: a drag held near the list's top / bottom edge scrolls it (every engine; WebKit has no drag auto-scroll here).
         onDragOverCapture={(event) => {
           if (drag) edgeScroll(dragScrollStep(event.clientY, event.currentTarget.getBoundingClientRect()));
@@ -802,7 +936,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         }}
       >
         {showPinnedHead ? (
-          <div className="sb-group-label" data-testid="sidebar-pinned-head" data-drop={indicator(pinnedHead)} {...target(pinnedHead)}>
+          <div className="sb-group-label" data-testid="sidebar-pinned-head" data-drop-zone="pinned-head" data-drop={indicator(pinnedHead)} {...target(pinnedHead)}>
             Pinned
             {arranged.pinned.length === 0 ? <span className="sb-group-hint">drop here to pin</span> : null}
           </div>
@@ -811,13 +945,22 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         {(byParent.get(null) ?? []).flatMap(renderFolder)}
         {creating === null ? newFolderField(null, 0) : null}
         {draggingPlaced || draggingNested ? (
-          <div className="sb-group-label sb-loose-zone" data-testid="sidebar-loose-zone" data-drop={indicator(looseZone)} {...target(looseZone)}>
+          <div className="sb-group-label sb-loose-zone" data-testid="sidebar-loose-zone" data-drop-zone="loose" data-drop={indicator(looseZone)} {...target(looseZone)}>
             <span className="sb-group-hint">{draggingNested ? 'drop here to move to the top level' : 'drop here to unpin / take out of the folder'}</span>
           </div>
         ) : null}
         {arranged.loose.map((session) => row(session, { kind: 'loose' }, looseIds))}
       </div>
       {openMenu}
+      {/* D74: the lifted row's label under the finger. */}
+      {ghost
+        ? createPortal(
+            <div className="sb-touch-ghost" data-testid="sidebar-touch-ghost" aria-hidden="true" style={{ left: ghost.x, top: ghost.y }}>
+              {ghost.label}
+            </div>,
+            document.body,
+          )
+        : null}
       {error ? (
         <div className="sb-session-close-error" role="alert" data-testid="sidebar-layout-error">
           {error}

@@ -1,6 +1,8 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client.ts';
-import { useRouter } from '../router.tsx';
+import { routePath, useRouter } from '../router.tsx';
+import { useLayout, useVisualViewportHeight } from './useLayout.ts';
+import { type Layout, isCompact } from './viewport.ts';
 import {
   PANES_SHOWN,
   type Pane,
@@ -20,6 +22,9 @@ import {
  * ⌥⌘B shortcuts), a pane's hide button and its reveal handle. The rules are in
  * `panes.ts`; the layout (the slide, the rails) in `shell.css` and `session.css`.
  */
+
+/** D74: both drawers closed (the compact layouts' first state). */
+const DRAWERS_CLOSED: PaneState = { sidebarHidden: true, rightPanelHidden: true };
 
 /** The `id` of each pane's element (the controls' `aria-controls`). */
 export const PANE_ID: Readonly<Record<Pane, string>> = { sidebar: 'sb-sidebar', rightPanel: 'sb-right-panel' };
@@ -48,6 +53,14 @@ export interface PanesValue {
   readonly setHidden: (pane: Pane, hidden: boolean) => void;
   /** Hides a shown pane, shows a hidden one. */
   readonly toggle: (pane: Pane) => void;
+  /**
+   * D74: the layout (`viewport.ts`). On tablets and phones (`compact`) the panes
+   * are drawers: `state` is whether each drawer is closed (both closed at first,
+   * never saved), and `setHidden` opens or closes the drawer; the stored D41
+   * state is kept for the desktop layout.
+   */
+  readonly layout: Layout;
+  readonly compact: boolean;
 }
 
 const PanesContext = createContext<PanesValue | null>(null);
@@ -76,8 +89,18 @@ function focusedElement(target: EventTarget | null): Element | null {
  * handle gives it to its hide button.
  */
 export function PanesProvider({ initial = PANES_SHOWN, children }: { readonly initial?: PaneState; readonly children: ReactNode }) {
-  const [state, setState] = useState<PaneState>(initial);
-  const current = useRef(state);
+  const [stored, setState] = useState<PaneState>(initial);
+  const current = useRef(stored);
+  // D74: the drawers of the compact layouts (closed at first; never saved).
+  const layout = useLayout();
+  const compact = isCompact(layout);
+  const [drawers, setDrawers] = useState<PaneState>(DRAWERS_CLOSED);
+  const drawersRef = useRef(drawers);
+  drawersRef.current = drawers;
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+  const state = compact ? drawers : stored;
+  useVisualViewportHeight(compact);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   const change = useRef<Change | null>(null);
   const { route } = useRouter();
@@ -85,6 +108,16 @@ export function PanesProvider({ initial = PANES_SHOWN, children }: { readonly in
   rightPanel.current = route.view === 'session';
 
   const setHidden = useCallback((pane: Pane, hidden: boolean) => {
+    if (compactRef.current) {
+      const next = withPane(drawersRef.current, pane, hidden);
+      if (next === drawersRef.current) return;
+      change.current = { pane, hidden, focus: document.activeElement };
+      // One drawer at a time: opening one closes the other.
+      const only = hidden ? next : withPane(next, pane === 'sidebar' ? 'rightPanel' : 'sidebar', true);
+      drawersRef.current = only;
+      setDrawers(only);
+      return;
+    }
     const next = withPane(current.current, pane, hidden);
     if (next === current.current) return;
     change.current = { pane, hidden, focus: document.activeElement };
@@ -92,7 +125,30 @@ export function PanesProvider({ initial = PANES_SHOWN, children }: { readonly in
     setState(next);
     saving.current = saving.current.then(() => api.saveSettings(panePatch(pane, hidden))).catch(() => undefined);
   }, []);
-  const toggle = useCallback((pane: Pane) => setHidden(pane, !isHidden(current.current, pane)), [setHidden]);
+  const toggle = useCallback(
+    (pane: Pane) => setHidden(pane, !isHidden(compactRef.current ? drawersRef.current : current.current, pane)),
+    [setHidden],
+  );
+
+  // D74: a drawer closes when the page changes (a link in it was followed) and when the layout turns desktop.
+  const path = routePath(route);
+  useEffect(() => {
+    drawersRef.current = DRAWERS_CLOSED;
+    setDrawers(DRAWERS_CLOSED);
+  }, [path, compact]);
+
+  // D74: Escape closes an open drawer (not while a modal is open: Escape is the modal's).
+  useEffect(() => {
+    if (!compact) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector(MODAL_SELECTOR)) return;
+      const open = drawersRef.current;
+      if (!open.rightPanelHidden) setHidden('rightPanel', true);
+      else if (!open.sidebarHidden) setHidden('sidebar', true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [compact, setHidden]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -122,7 +178,7 @@ export function PanesProvider({ initial = PANES_SHOWN, children }: { readonly in
     }
   }, [state]);
 
-  const value = useMemo<PanesValue>(() => ({ state, setHidden, toggle }), [state, setHidden, toggle]);
+  const value = useMemo<PanesValue>(() => ({ state, setHidden, toggle, layout, compact }), [state, setHidden, toggle, layout, compact]);
   return <PanesContext.Provider value={value}>{children}</PanesContext.Provider>;
 }
 

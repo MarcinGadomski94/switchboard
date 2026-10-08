@@ -4,6 +4,8 @@ import './fonts.ts';
 import './styles/tokens.css';
 import './styles/global.css';
 import { App } from './App.tsx';
+// D74: the responsive rules after every view's own (docs/responsive.md).
+import './styles/responsive/index.css';
 // D34 (docs/install-app.md): keep Chrome's install offer from the start (Settings →
 // Install as app; listening starts on import), and, in built UIs only, register the
 // worker that shows the offline page.

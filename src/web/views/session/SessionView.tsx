@@ -60,7 +60,8 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
   const loading = loadingParts(data.detailState, data.eventsState, tab === 'chat');
   const busy = anyLoading(loading);
   const placeholders = usePlaceholderDelay(sessionId, busy) ? loading : NOTHING_LOADING;
-  const panelHidden = usePanes().state.rightPanelHidden;
+  const { state, compact, setHidden } = usePanes();
+  const panelHidden = state.rightPanelHidden;
   return (
     <section
       className="sb-view sb-sv"
@@ -100,7 +101,9 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
         {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}
       </div>
       <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} placeholder={placeholders.panel} />
-      {panelHidden ? <PaneHandle pane="rightPanel" /> : null}
+      {/* D74: on tablets and phones the panel is a drawer / bottom sheet over the view (no rail), closed by its scrim. */}
+      {panelHidden && !compact ? <PaneHandle pane="rightPanel" /> : null}
+      {compact && !panelHidden ? <div className="sb-scrim sb-panel-scrim" data-testid="panel-scrim" aria-hidden="true" onClick={() => setHidden('rightPanel', true)} /> : null}
       {anyLoading(placeholders) ? <LoadingNote /> : null}
     </section>
   );
