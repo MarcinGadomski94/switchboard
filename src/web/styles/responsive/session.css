@@ -121,22 +121,6 @@
     padding: 8px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
 
-  /* Quick replies scroll sideways on one line. */
-  .sb-chat-quick {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .sb-chat-quick::-webkit-scrollbar {
-    display: none;
-  }
-
-  .sb-chat-quick > * {
-    flex: none;
-    white-space: nowrap;
-  }
-
   .sb-chat-compose {
     min-width: 0;
   }
@@ -490,8 +474,7 @@
 
 /* ---------- Short windows (a phone held sideways): the chat keeps the room ---------- */
 @media (max-width: 1279px) and (max-height: 500px) {
-  .sb-sv-chips,
-  .sb-chat-quick-label {
+  .sb-sv-chips {
     display: none;
   }
 

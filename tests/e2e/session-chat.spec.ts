@@ -8,7 +8,8 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * M4.2 oracle, real path (D13, no demo seed): `node src/server/main.ts` with
  * fake-claude as the CLI and a temp workspace. The Chat tab shows the task and the
  * agent's tool steps (`tool-use`), the composer sends with Enter and with Send
- * (`POST /messages`), a quick reply only fills the draft, an `ask-2q` batch shows
+ * (`POST /messages`), D86: no quick replies, the 📎 sits in the field's row next to
+ * Send (Tab order: field, 📎, Send), an `ask-2q` batch shows
  * as the inline question card (Send disabled at 45% until both are answered), its
  * answers reach the fake process (the tool result it built from them) and the card
  * turns into the answers bubble; a detached session refuses a message.
@@ -52,7 +53,7 @@ async function chatShape(page: Page): Promise<string[]> {
   );
 }
 
-test('messages, tool steps, composer, quick reply, inline question card → answers bubble, detached refusal', async ({ page }) => {
+test('messages, tool steps, composer (D86: 📎 next to Send, no quick replies), inline question card → answers bubble, detached refusal', async ({ page }) => {
   await page.goto(`${world.baseUrl}/`);
   const { id } = await world.startSession(page, 'chat-e2e', TASK);
   await expect.poll(async () => (await detail(page, id)).status).toBe('done');
@@ -66,13 +67,25 @@ test('messages, tool steps, composer, quick reply, inline question card → answ
   await expect(chat.locator('[data-testid="chat-message"][data-role="user"]')).toHaveAttribute('data-origin', 'task');
   expect(await chatShape(page)).toEqual(['chat-message:user', 'chat-message:agent', 'chat-message:agent']);
 
-  // Composer: placeholder, a quick reply fills the draft and sends nothing.
+  // Composer: placeholder; D86: no quick replies, the 📎 in the field's row between the field and Send.
   const input = page.getByTestId('chat-input');
   await expect(input).toHaveAttribute('placeholder', 'Message chat-e2e…');
-  await expect(page.getByTestId('chat-quick-reply')).toHaveText(['Accept recommended', 'Match Figma exactly', 'Stop and ask designer', 'Commit when green']);
-  await page.getByTestId('chat-quick-reply').nth(1).click();
-  await expect(input).toHaveValue("Match the Figma frame exactly; don't add variants.");
+  await expect(page.getByTestId('chat-quick-reply')).toHaveCount(0);
+  await expect(page.getByText('Quick replies', { exact: true })).toHaveCount(0);
+  const compose = page.getByTestId('chat-composer').locator('.sb-chat-compose');
+  expect(await compose.evaluate((el) => [...el.children].map((child) => (child as HTMLElement).dataset['testid']))).toEqual(['chat-input', 'attach-button', 'chat-send']);
+  // Keyboard: Tab goes field → 📎 → Send; Enter on the 📎 opens the file picker (nothing is sent).
+  await input.focus();
+  await page.keyboard.press('Tab');
+  await expect(compose.getByTestId('attach-button')).toBeFocused();
+  const chooser = page.waitForEvent('filechooser');
+  await page.keyboard.press('Enter');
+  expect((await chooser).isMultiple()).toBe(true);
+  await page.keyboard.press('Shift+Tab');
   await expect(input).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('chat-send')).toBeFocused();
   await expect(chat.getByTestId('chat-message')).toHaveCount(3);
 
   // Enter sends: POST /messages → 202, the draft clears, the message shows, the batch arrives inline.
@@ -149,10 +162,6 @@ test('messages, tool steps, composer, quick reply, inline question card → answ
   await expect(page.getByTestId('chat-error')).toHaveText('Not sent: the session continues in a terminal; attach it first');
   await expect(input).toHaveValue('Are you there?');
   await expect(chat.getByTestId('chat-text')).toHaveCount(6);
-  // Picking a quick reply clears the refusal.
-  await page.getByTestId('chat-quick-reply').first().click();
-  await expect(input).toHaveValue('Accept recommended: feature-building · single-solution · UI-first · sequential');
-  await expect(page.getByTestId('chat-error')).toHaveCount(0);
 });
 
 test('D26: Shift+Enter adds a line (nothing is sent), the field grows up to 8 lines, Enter sends the lines, the field shrinks back', async ({ page }) => {

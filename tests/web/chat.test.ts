@@ -6,8 +6,6 @@ import { answeredLines } from '../../src/web/components/question-card.ts';
 import {
   ANSWERS_WRITTEN,
   QUEUED_TOOLTIPS,
-  QUICK_REPLIES,
-  QUICK_REPLIES_LABEL,
   batchQueued,
   batchWaiting,
   chatItems,
@@ -21,7 +19,8 @@ import { REPO_ROOT } from '../helpers/net.ts';
 /**
  * M4.2: the chat tab's pure state (src/web/views/session/chat.ts, docs/chat.md):
  * the items from events + questions, the step marks, the answers bubble, the
- * composer copy and the quick replies (verbatim from the prototype).
+ * composer copy (verbatim from the prototype). D86: the prototype's quick replies
+ * are gone from the app (docs/decisions.md → D86).
  */
 
 const MAIN = 'agent-main';
@@ -228,11 +227,8 @@ describe('answers bubble and composer', () => {
     expect(key('a', true)).toBeNull();
   });
 
-  it('copy is verbatim from the prototype (quick replies, the answers note)', async () => {
+  it('copy is verbatim from the prototype (the answers note, the placeholder)', async () => {
     const proto = await readFile(path.join(REPO_ROOT, 'docs', 'handoff', 'prototype', 'Switchboard App.dc.html'), 'utf8');
-    expect(proto).toContain(`const quickDef = [${QUICK_REPLIES.map((q) => `'${q.label}'`).join(', ')}];`);
-    for (const reply of QUICK_REPLIES) expect(proto.replaceAll("\\'", "'")).toContain(`'${reply.text}'`);
-    expect(proto).toContain(`>${QUICK_REPLIES_LABEL}</span>`);
     expect(proto).toContain(`>${ANSWERS_WRITTEN}</div>`);
     expect(proto).toContain("draftPh: 'Message ' + s.id + '…'");
   });

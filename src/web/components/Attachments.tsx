@@ -1,4 +1,4 @@
-import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ClipboardEvent, type DragEvent, useCallback, useEffect, useRef, useState } from 'react';
 import type { AttachmentUpload } from '../../core/api.ts';
 import { type Attachment, formatSize } from '../../core/attachments.ts';
 import { ApiError } from '../api/client.ts';
@@ -268,7 +268,18 @@ export function pasteFiles(onFiles: (files: File[]) => void, enabled = true) {
  * The 📎 button: a file picker (several files). The `<input type="file">` is made
  * on click and never sits in the page (the forms' field lists stay as they were).
  */
-export function AttachButton({ onFiles, disabled = false, className = '' }: { readonly onFiles: (files: File[]) => void; readonly disabled?: boolean; readonly className?: string }) {
+export function AttachButton({
+  onFiles,
+  disabled = false,
+  className = '',
+  style,
+}: {
+  readonly onFiles: (files: File[]) => void;
+  readonly disabled?: boolean;
+  readonly className?: string;
+  /** Inline style (D86: the composer's 📎 keeps the one-line height while the field grows, like Send). */
+  readonly style?: CSSProperties;
+}) {
   const pick = (): void => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -287,6 +298,7 @@ export function AttachButton({ onFiles, disabled = false, className = '' }: { re
       aria-label="Attach files"
       title="Attach images or files (or paste / drop them)"
       disabled={disabled}
+      style={style}
       onClick={pick}
     >
       <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">

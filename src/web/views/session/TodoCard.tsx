@@ -44,6 +44,13 @@ function AutoTextarea({ value, onChange, ...rest }: { readonly value: string; re
   return <textarea ref={ref} rows={2} value={value} onChange={(event) => onChange(event.target.value)} {...rest} />;
 }
 
+/** The form's fields (each control's `name`). */
+type TodoFormField = 'title' | 'description' | 'plan' | 'priority' | 'estimate';
+const TODO_FORM_FIELDS: readonly string[] = ['title', 'description', 'plan', 'priority', 'estimate'] satisfies readonly TodoFormField[];
+function isTodoFormField(name: string): name is TodoFormField {
+  return TODO_FORM_FIELDS.includes(name);
+}
+
 /**
  * D69 · the item form (`docs/todos.md` → *Cards*): title (required, one line),
  * description (Markdown, optional) and handover plan (Markdown). D70: the plan is
@@ -72,6 +79,11 @@ export function TodoForm({
   const [priority, setPriority] = useState<TodoPriority>(initial?.priority ?? DEFAULT_TODO_PRIORITY);
   const [estimate, setEstimate] = useState(todoEstimateInput(initial?.estimateMinutes));
   const [saving, setSaving] = useState(false);
+  // How often each field was edited (its native `input` events, counted on the form by the control's `name`):
+  // + Add clears after a save only the fields not edited while it was in flight. Comparing values instead wiped
+  // a next item's field that equalled the saved one (the same estimate or priority); and React's onChange skips
+  // an input event that leaves the value as it was (a paste of the same text), so the raw event is counted.
+  const edits = useRef<Record<TodoFormField, number>>({ title: 0, description: 0, plan: 0, priority: 0, estimate: 0 });
   const titleInput = useRef<HTMLInputElement | null>(null);
   const ids = useId();
 
@@ -90,18 +102,18 @@ export function TodoForm({
       priority,
       estimateMinutes: parsedEstimate.value,
     };
-    const typed = { title, description, plan, priority, estimate };
+    const before = { ...edits.current };
     setSaving(true);
     try {
       const ok = await onSave(sent);
       // D69 ruling: + Add stays open for the next item, cleared and on the title (unless the fields were edited meanwhile).
       if (ok && mode === 'add') {
-        const reset = <T,>(before: T, empty: T) => (current: T): T => (current === before ? empty : current);
-        setTitle(reset(typed.title, ''));
-        setDescription(reset(typed.description, ''));
-        setPlan(reset(typed.plan, TODO_NO_PLAN));
-        setPriority(reset<TodoPriority>(typed.priority, DEFAULT_TODO_PRIORITY));
-        setEstimate(reset(typed.estimate, ''));
+        const untouched = (field: keyof typeof before): boolean => edits.current[field] === before[field];
+        if (untouched('title')) setTitle('');
+        if (untouched('description')) setDescription('');
+        if (untouched('plan')) setPlan(TODO_NO_PLAN);
+        if (untouched('priority')) setPriority(DEFAULT_TODO_PRIORITY);
+        if (untouched('estimate')) setEstimate('');
         titleInput.current?.focus();
       }
     } finally {
@@ -127,6 +139,10 @@ export function TodoForm({
       data-mode={mode}
       aria-label={mode === 'add' ? 'New todo' : 'Edit todo'}
       onKeyDown={keys}
+      onInput={(event) => {
+        const name = (event.target as HTMLInputElement).name;
+        if (isTodoFormField(name)) edits.current[name] += 1;
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
@@ -140,6 +156,7 @@ export function TodoForm({
         id={`${ids}-title`}
         className="sb-todo-form-title"
         data-testid="todo-form-title"
+        name="title"
         placeholder="What still needs doing (one line)"
         value={title}
         maxLength={TODO_TITLE_MAX}
@@ -161,6 +178,7 @@ export function TodoForm({
           id={`${ids}-priority`}
           className="sb-todo-form-select"
           data-testid="todo-form-priority"
+          name="priority"
           value={priority}
           disabled={disabled}
           onChange={(event) => setPriority(isTodoPriority(event.target.value) ? event.target.value : DEFAULT_TODO_PRIORITY)}
@@ -178,6 +196,7 @@ export function TodoForm({
           id={`${ids}-estimate`}
           className="sb-todo-form-estimate"
           data-testid="todo-form-estimate"
+          name="estimate"
           placeholder="e.g. 45m, 2h"
           value={estimate}
           maxLength={16}
@@ -199,6 +218,7 @@ export function TodoForm({
         id={`${ids}-description`}
         className="sb-todo-form-area"
         data-testid="todo-form-description"
+        name="description"
         placeholder="Plain and brief: what and why"
         value={description}
         maxLength={TODO_DESCRIPTION_MAX}
@@ -212,6 +232,7 @@ export function TodoForm({
         id={`${ids}-plan`}
         className="sb-todo-form-area sb-todo-form-plan"
         data-testid="todo-form-plan"
+        name="plan"
         placeholder={'Context, relevant files, steps, acceptance criteria: enough for an agent to pick it up cold'}
         value={plan}
         maxLength={TODO_PLAN_MAX}

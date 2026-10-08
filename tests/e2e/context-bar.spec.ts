@@ -7,7 +7,7 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * with fake-claude, whose `[fake:usage <tokens> [<window>]]` sets the main agent's
  * usage (and the result's reported window) and `[fake:compact <trigger> <pre> <post>]`
  * writes a `system/compact_boundary` after the turn's init. The bar sits directly
- * above the quick replies, reads `Context 62% · 124k / 200k`, turns yellow at 60 %
+ * above the message box's row (D86: the quick replies are gone), reads `Context 62% · 124k / 200k`, turns yellow at 60 %
  * and red at 80 % (the SPEC status tokens), updates live over `/hub`, resets after a
  * compaction with "compacted HH:MM" until the next turn, and survives a reload and a
  * Switchboard restart. A tick marks where the CLI auto-compacts (ruling
@@ -62,16 +62,16 @@ test('the bar: live values and colors at the thresholds, a compaction resets it,
   await expect(bar).toHaveAttribute('data-band', 'warn');
   expect(await fillColor(bar)).toBe(await tokenColor(page, '--status-need'));
 
-  // Placement: the composer's first row, directly above the quick replies, as wide as they are.
+  // Placement: the composer's first row, directly above the message box's row (D86: no quick replies between), as wide as it.
   const composer = page.getByTestId('chat-composer');
   expect(await composer.evaluate((el) => (el.firstElementChild as HTMLElement).dataset['testid'])).toBe('chat-context');
-  const quick = composer.locator('.sb-chat-quick');
-  const [barBox, quickBox] = [await bar.boundingBox(), await quick.boundingBox()];
-  if (!barBox || !quickBox) throw new Error('no boxes');
-  expect(barBox.y + barBox.height).toBeLessThanOrEqual(quickBox.y);
-  expect(quickBox.y - (barBox.y + barBox.height)).toBeLessThanOrEqual(8.5);
-  expect(Math.abs(barBox.x - quickBox.x)).toBeLessThanOrEqual(0.5);
-  expect(Math.abs(barBox.width - quickBox.width)).toBeLessThanOrEqual(0.5);
+  const row = composer.locator('.sb-chat-compose');
+  const [barBox, rowBox] = [await bar.boundingBox(), await row.boundingBox()];
+  if (!barBox || !rowBox) throw new Error('no boxes');
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(rowBox.y);
+  expect(rowBox.y - (barBox.y + barBox.height)).toBeLessThanOrEqual(8.5);
+  expect(Math.abs(barBox.x - rowBox.x)).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(barBox.width - rowBox.width)).toBeLessThanOrEqual(0.5);
   await expect(bar.locator('.sb-chat-context-track')).toHaveCSS('height', '4px');
   await expect(text).toHaveCSS('font-size', '11px');
   const fillWidth = async (): Promise<number> =>

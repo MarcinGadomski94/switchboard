@@ -278,7 +278,9 @@ test('tap targets are at least 44 × 44 px on a touch screen; the row ⋯ shows 
   await big(page.getByTestId('session-more'), 'session ⋯');
   await big(page.getByTestId('panel-open'), 'panel button');
   await big(page.getByTestId('chat-send'), 'Send');
-  await big(page.locator('.sb-chat-quick-reply'), 'quick reply');
+  // D86: the 📎 sits in the composer's row, next to Send (no quick replies).
+  await expect(page.locator('.sb-chat-quick-reply')).toHaveCount(0);
+  await big(page.getByTestId('chat-composer').getByTestId('attach-button'), 'composer 📎');
   await big(page.getByTestId('question').first().locator('.sb-qcard__option'), 'question option');
   await page.getByTestId('session-more').tap();
   await big(page.getByTestId('session-actions-menu').locator('.sb-sv-action'), 'header action');
