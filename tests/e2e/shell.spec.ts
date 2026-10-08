@@ -96,6 +96,13 @@ test('the shell renders from the real API and shows only what the API returns', 
       // D48: the sidebar's machines (peers); a fresh install has paired none.
       expect(call.status, call.url).toBe(200);
       expect((call.body as { machines: unknown[] }).machines, call.url).toEqual([]);
+    } else if (call.url === '/api/tutorial') {
+      // D85: the tours' state; test servers keep them from opening by themselves (SWITCHBOARD_TUTORIAL=off).
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ autoOpen: false });
+    } else if (call.url === '/api/device/presence') {
+      // D87: the page reports whether it is in the foreground (no body).
+      expect(call.status, call.url).toBe(204);
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);

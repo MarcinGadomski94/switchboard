@@ -52,12 +52,15 @@ function TourGate() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.tutorial(), api.setup().catch(() => null)]).then(
-      ([state, setup]) => {
-        if (cancelled) return;
+    // The first-run check is asked only when a tour is pending and the wizard was not closed in this tab
+    // (a tab where it was skipped never asks `GET /api/setup` again: setup-wizard.spec).
+    api.tutorial().then(
+      async (state) => {
         const tours = pendingTours(state);
-        if (tours.length === 0) return;
-        setWizard(setup?.autoOpen && !setupSkippedInThisTab() ? 'waiting' : 'none');
+        if (cancelled || tours.length === 0) return;
+        const setup = setupSkippedInThisTab() ? null : await api.setup().catch(() => null);
+        if (cancelled) return;
+        setWizard(setup?.autoOpen ? 'waiting' : 'none');
         setPending(tours);
       },
       () => undefined,
