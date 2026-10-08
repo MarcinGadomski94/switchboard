@@ -28,6 +28,14 @@ test.afterAll(async () => {
   await world?.stop();
 });
 
+// D79 raises a Review card in the Inbox for every session here that leaves changes; these tests count the Inbox's
+// questions only, so the cards are off for this file's server.
+test.beforeEach(async ({ page }) => {
+  await page.goto(`${world.baseUrl}/`);
+  const status = await page.evaluate(async () => (await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ 'sessions.reviewCards': false }) })).status);
+  expect(status).toBe(200);
+});
+
 async function detail(page: Page, id: string): Promise<SessionDetail> {
   return page.evaluate(async (sessionId) => (await (await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)).json()) as SessionDetail, id);
 }
