@@ -382,6 +382,16 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
    * the browser: WebKit has no drag auto-scroll for a scrolling box.
    */
   const scrolling = useRef<{ step: number; frame: number | null }>({ step: 0, frame: null });
+  /**
+   * D74: what a held drag scrolls: the list, or, in the drawer of a tablet or a
+   * phone (where the whole sidebar scrolls as one, docs/responsive.md), the sidebar.
+   */
+  const scroller = useCallback((): HTMLElement | null => {
+    const list = listRef.current;
+    if (!list) return null;
+    if (list.scrollHeight > list.clientHeight + 1) return list;
+    return list.closest<HTMLElement>('.sb-shell[data-layout] .sb-sidebar') ?? list;
+  }, []);
   const edgeScroll = useCallback((step: number): void => {
     const state = scrolling.current;
     state.step = step;
@@ -392,7 +402,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     }
     if (state.frame !== null) return;
     const tick = (): void => {
-      const list = listRef.current;
+      const list = scroller();
       if (!list || state.step === 0) {
         state.frame = null;
         return;
@@ -474,7 +484,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       const next = dropAt(event.clientX, event.clientY);
       const valid = next && resolveDrop(now, current.item, next, listed) !== null ? next : null;
       if (!sameOver(was, valid)) setOver(valid);
-      if (list) edgeScroll(dragScrollStep(event.clientY, list.getBoundingClientRect()));
+      const box = scroller()?.getBoundingClientRect();
+      if (box) edgeScroll(dragScrollStep(event.clientY, { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, window.innerHeight) }));
     };
     const up = (event: globalThis.PointerEvent): void => {
       const current = touch.current;
@@ -522,7 +533,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
       list?.removeEventListener('contextmenu', menu);
       list?.removeEventListener('click', click, true);
     };
-  }, [cancelTouch, edgeScroll, run]);
+  }, [cancelTouch, edgeScroll, run, scroller]);
   useEffect(() => cancelTouch, [cancelTouch]);
 
   const place = (input: Parameters<typeof api.placeSidebarSession>[0]): void => {

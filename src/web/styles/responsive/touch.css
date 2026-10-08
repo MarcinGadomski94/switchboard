@@ -1,0 +1,242 @@
+/*
+ * D74 · touch screens (docs/responsive.md → Touch): `(pointer: coarse)`, at any
+ * width. A finger needs tap targets of at least 44 × 44 px and cannot hover, so
+ * the controls a mouse finds on hover (a sidebar row's ⋯, a folder's ⋯) are
+ * always shown, and the row's × (hover only) gives way to Close in the ⋯ menu.
+ * The visual oracle runs with a mouse (fine pointer), so the desktop is untouched.
+ */
+
+@media (pointer: coarse) {
+  /* ---------- Sidebar ---------- */
+  .sb-new,
+  .sb-nav-item,
+  .sb-settings,
+  .sb-tool {
+    box-sizing: border-box;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .sb-sessions .sb-session,
+  .sb-sessions .sb-folder {
+    box-sizing: border-box;
+    min-height: 52px;
+    /* A long press lifts the row (touch-drag.ts): no link callout, no text selection. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .sb-sessions .sb-folder {
+    min-height: 44px;
+  }
+
+  .sb-sessions .sb-session {
+    padding-right: 44px;
+  }
+
+  /* The × needs a hover: Close is in the row's ⋯ menu instead. */
+  .sb-session .sb-session-close {
+    display: none;
+  }
+
+  .sb-session:hover .sb-session-age,
+  .sb-session:focus-visible .sb-session-age,
+  .sb-session:has(.sb-session-more:focus-visible) .sb-session-age {
+    visibility: visible;
+  }
+
+  .sb-session .sb-session-more,
+  .sb-session:hover .sb-session-more {
+    opacity: 1;
+    pointer-events: auto;
+    top: 50%;
+    right: 2px;
+    width: 44px;
+    height: 44px;
+    margin-top: -22px;
+    background: transparent;
+  }
+
+  .sb-folder .sb-folder-more {
+    opacity: 1;
+    pointer-events: auto;
+    width: 44px;
+    height: 44px;
+    margin-right: -10px;
+  }
+
+  .sb-folder-add,
+  .sb-folder-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sb-folder-add {
+    margin: -15px -12px -15px 0;
+  }
+
+  .sb-brand > .sb-brand-hide,
+  .sb-shell > .sb-sidebar .sb-brand > .sb-brand-hide {
+    width: 44px;
+    height: 44px;
+    margin: -11px -11px -11px auto;
+  }
+
+  .sb-sessions[data-touch-drag='true'] [data-dragging='true'] {
+    opacity: 0.6;
+    background: var(--bg-selected-card);
+    box-shadow: inset 0 0 0 1px var(--status-run);
+  }
+
+  .sb-layout-menu-item,
+  .sb-todo-menu-item,
+  .sb-footer-cli-item {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ---------- App bar, drawers, session header ---------- */
+  .sb-drawer-button,
+  .sb-sv-more {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sb-appbar-inbox,
+  .sb-back {
+    min-height: 44px;
+  }
+
+  .sb-sv-tab {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .sb-sv-action,
+  .sb-sv-primary,
+  .sb-sv-outlined,
+  .sb-sv-model-option,
+  .sb-sv-effort-option,
+  .sb-sv-takeover-menu button,
+  .sb-pane-hide.sb-overview-hide {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .sb-pane-hide.sb-overview-hide {
+    min-width: 44px;
+    justify-content: center;
+  }
+
+  /* ---------- Chat ---------- */
+  .sb-chat-quick .sb-chat-quick-reply,
+  .sb-chat-compose .sb-chat-send,
+  .sb-attach-button,
+  .sb-chat-todo-add,
+  .sb-qcard__option,
+  .sb-qcard__send,
+  .sb-qcard__own-answer {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sb-attach-button {
+    min-width: 44px;
+  }
+
+  .sb-chat-input {
+    min-height: 44px;
+  }
+
+  /* iOS zooms into a focused field under 16 px. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+
+  /* ---------- Todos ---------- */
+  .sb-todos-toggle,
+  .sb-todos-add-button,
+  .sb-todo-start,
+  .sb-todo-plan-toggle,
+  .sb-todos-done-toggle,
+  .sb-todos-clear {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .sb-todo-more {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+  }
+
+  .sb-todo-check {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* ---------- Pages ---------- */
+  .sb-inbox .sb-inbox__action,
+  .sb-inbox__open,
+  .sb-sol-pill,
+  .sb-sch-action,
+  .sb-sch-new,
+  .sb-mcp-action,
+  .sb-mcp-primary,
+  .sb-mcp-secondary,
+  .sb-art-filter,
+  .sb-hist-continue,
+  .sb-todos-group-open,
+  .sb-tool-action,
+  .sb-set-nav-item,
+  .sb-set-action,
+  .sb-set-button,
+  .sb-set-value-button,
+  .sb-set-select,
+  .sb-set-tool-test,
+  .sb-set-tool-open {
+    box-sizing: border-box;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .sb-set-nav-item {
+    display: flex;
+  }
+
+  /* ---------- Dialogs ---------- */
+  .sb-ns-pill,
+  .sb-ns-chip,
+  .sb-ns-browse,
+  .sb-ns-cancel,
+  .sb-ns-start,
+  .sb-ns-simple-start,
+  .sb-ns-mode-option,
+  .sb-palette-row {
+    box-sizing: border-box;
+    min-height: 44px;
+  }
+
+  .sb-ns-pill,
+  .sb-ns-chip,
+  .sb-ns-mode-option {
+    display: inline-flex;
+    align-items: center;
+  }
+}

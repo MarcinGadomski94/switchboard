@@ -138,6 +138,22 @@
       visibility 0s linear 0s;
   }
 
+  /* The drawer scrolls as one (the fixed top and bottom of the desktop sidebar would leave the sessions no room). */
+  .sb-shell > .sb-sidebar .sb-tools,
+  .sb-shell > .sb-sidebar .sb-sessions {
+    flex: none;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .sb-shell > .sb-sidebar .sb-settings {
+    margin-top: 6px;
+  }
+
+  .sb-shell > .sb-sidebar .sb-footer {
+    margin-top: auto;
+  }
+
   /* The brand row's hide button closes the drawer: a full tap target. */
   .sb-shell > .sb-sidebar .sb-brand > .sb-brand-hide {
     width: 36px;
