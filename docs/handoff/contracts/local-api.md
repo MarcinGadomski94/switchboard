@@ -1091,6 +1091,35 @@ POST /api/sessions/0b7c3e0a-…/todos/3f9a1c2b7d4e/start
 { "sessionId": "0b7c3e0a-…", "openCount": 2, "doneCount": 1, "inProgressCount": 1, "todos": [{ "id": "3f9a1c2b7d4e", "title": "Fix the login test", "state": "in_progress", "startedAt": "2026-10-08T10:00:00.000Z", "startedBy": "start", "priority": "high", "estimateMinutes": 45, "…": "…" }] }
 ```
 
+## Undo a turn (D80, 2026-10-08, additive)
+
+Before each turn of a supervised session Switchboard saves a checkpoint of every git working tree the session uses (a hidden ref `refs/switchboard/checkpoints/<session>/<turn>`, built with a throw-away index; the developer's index, HEAD, branch and files are never written); a turn can be reverted to and the revert undone (`docs/undo.md`, `docs/decisions.md` → D80). Migration 0034 adds `turn_checkpoints`; the setting `sessions.checkpoints` (default `true`) switches it off.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/checkpoints | — | 200 SessionCheckpoints · 404 `not-found` |
+| GET | /api/sessions/{id}/checkpoints/{turn} | — | 200 CheckpointPlan (what a revert to before `turn` changes; nothing is changed) · 404 `no-checkpoint` / `not-found` · 409 `hooked-unavailable` · 422 `invalid` (`turn` not a positive whole number) |
+| POST | /api/sessions/{id}/checkpoints/{turn}/revert | `{ filesOnly?: boolean }` | 200 CheckpointPlan (`filesOnly: true` when the branch was left alone) · 409 `turn-running` · 409 `files-only-needed` (`{ error, message, plan }`: the branch cannot go back; send again with `filesOnly: true`) · 404 `no-checkpoint` · 409 `hooked-unavailable` · 422 `invalid` · 500 `revert-failed` |
+| POST | /api/sessions/{id}/checkpoints/redo | — | 200 CheckpointPlan (the newest revert undone) · 409 `nothing-to-redo` (none, or a message was sent since) · 409 `turn-running` |
+
+- **`SessionCheckpoints`:** `enabled` (the setting), `unsupported` (why this session gets none: a hooked terminal session, a folder that is no git repository, the setting off; else `null`), `turns: CheckpointTurn[]` (oldest first: `turn`, `eventId` = the user message's event, `createdAt`, `repos` = the working trees' top-level folders, `firstLine`), `latestTurn` (the session's user messages so far), `running` (a turn runs: a revert is refused), `redo: { turn, eventId } | null` (`eventId` = the newest revert's divider).
+- **`CheckpointPlan`:** `turn`, `firstLine`, `latestTurn`, `repos: CheckpointRepoPlan[]` (`path`, `name`, `files: { path, change: "added" | "modified" | "deleted" }[]` — at most 200; `added` = restored, `deleted` = removed —, `fileCount`, `head: { action: "none" | "reset" | "refused", branch, commits, to, reason }`), `filesOnlyReason` (why the branch cannot go back: another branch, a rewritten history, pushed commits; `null` = it can), and in an answer `filesOnly`.
+- **The turn number** is the user message's place among the session's user messages (1 = the first); the UI takes it from `turns[].eventId`, never counts itself.
+- **Events:** a revert writes a lifecycle event `{ type: "lifecycle", action: "reverted", turn, latestTurn, filesOnly }` with the label `Reverted to before turn N` (the chat's divider); Redo `action: "revert-undone"`, `Undid the revert to before turn N`. Both arrive on `/hub` as `event`.
+- **The agent's note:** queued in the outbox (`pending_messages.kind` `checkpoint-note`) and sent with the next message: `Switchboard reverted the files to before turn N (<first line>); changes made in turns N..M are gone. Don't rely on them.` Redo withdraws it while undelivered, else queues `Switchboard undid its revert to before turn N: …`.
+- **Settings:** `sessions.checkpoints` (boolean, editable, default `true`).
+- **Peers (D48) and devices (D73):** all four routes are on `PEER_API_ALLOW` (answers pass unmapped: `none`) and on the devices' allow-list. A peer before D80 answers 403 `peer-forbidden` / 404: the UI then shows no turn actions and no *Undo last turn* for its sessions.
+
+```json
+GET /api/sessions/0b7c3e0a-…/checkpoints
+{ "enabled": true, "unsupported": null, "latestTurn": 3, "running": false, "redo": null,
+  "turns": [{ "turn": 1, "eventId": 412, "createdAt": "2026-10-08T10:00:00.000Z", "repos": ["/Users/me/dev/shop-front"], "firstLine": "Fix the header" }] }
+
+POST /api/sessions/0b7c3e0a-…/checkpoints/1/revert   {}
+409 { "error": "files-only-needed", "message": "The branch cannot be moved: 1 of the 2 commits made on main since this turn is already pushed. Only the files can be reverted.",
+      "plan": { "turn": 1, "repos": [{ "name": "shop-front", "fileCount": 3, "head": { "action": "refused", "branch": "main", "commits": 2, "to": "4be1…", "reason": "1 of the 2 commits made on main since this turn is already pushed" }, "…": "…" }], "…": "…" } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

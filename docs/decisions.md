@@ -739,6 +739,16 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **ASSUMED / OPEN:** `.loop/questions.md` → *D75 · Todo progress*.
   - Details: `docs/todos.md` → *In progress (D75)*; `docs/handoff/contracts/local-api.md` → *Todo in progress and ▶ Start that sends (D75)*; `docs/database.md` (0031); `docs/settings.md` (`sessions.todoReminder`).
 
+## Undo a turn (added 2026-10-08)
+- **D80 Checkpoint before each turn; revert to before any turn; Redo.** Developer rulings, 2026-10-08 (lane C).
+  - **Checkpoint:** when a supervised session's user message goes to its process, every git working tree the session uses (its cwd repo, its worktrees, its solutions in place) is saved to a hidden ref `refs/switchboard/checkpoints/<session>/<turn>`: tracked + untracked files, never ignored ones, built with a temporary index (`GIT_INDEX_FILE`, D65's technique: the developer's index copied, `add -A`, `write-tree`, `commit-tree` with HEAD as parent), never touching the developer's index, HEAD, branch or files; HEAD and the branch are recorded. Unchanged trees reuse the previous commit. Non-git folders get none (the action says why). About 0.15 s per turn on a 5,000-file repo.
+  - **Revert to before this turn** (on each user turn in the chat) and **Undo last turn** (session header / ⋯ menu): files back to the checkpoint (tracked + untracked as captured; files made later and not ignored removed; ignored files untouched); the branch moved back over the agent's commits with `update-ref` only when it is the same branch and none of them is pushed, otherwise refused with the reason and **Revert files only** offered; any earlier turn; a safety checkpoint first, so **Redo** undoes it; refused while a turn runs; a confirm dialog lists the files that change.
+  - **Conversation stays:** the chat gets the divider "Reverted to before turn N"; the agent gets, with its next message, "Switchboard reverted the files to before turn N (<first line>); changes made in turns N..M are gone. Don't rely on them."
+  - **Retention:** 7 days or the last 100 turns per session, whichever keeps fewer; hourly and on close / delete; refs deleted, `git gc` left to the repo.
+  - **Peers / devices:** through the proxy (it runs on the session's machine); allowed from phones. **Hooked terminal sessions: not supported** — their `UserPromptSubmit` hook is asynchronous, so a snapshot from it races the turn (recorded, the action says why).
+  - **Storage:** migration **0034** (`turn_checkpoints`); setting `sessions.checkpoints` (Settings → Sessions, default on).
+  - **ASSUMED / OPEN:** `.loop/questions.md` → *D80 · Undo a turn*. Details: `docs/undo.md`; contract → *Undo a turn (D80)*; `docs/database.md` (0034); `docs/security.md` → *Checkpoints (D80)*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
