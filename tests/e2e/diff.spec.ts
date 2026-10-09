@@ -19,7 +19,13 @@ import { seedFolderInDataDir } from '../helpers/folders.ts';
  * with the "Not committed" note only while the file has uncommitted changes,
  * follows new writes through `/hub` without a reload, diffs an in-place session
  * against HEAD, and shows "No changes yet." for a clean one.
+ *
+ * D90: the tab opens on "Since last commit" (uncommitted only; in place only the
+ * files the session touched), Whole branch shows the commits too, All uncommitted
+ * changes in this repo shows someone else's edit; the pick is remembered per
+ * session; hunks are separated by their `@@` row.
  */
+const SHOTS = '/tmp/d90-shots';
 let world: GitWorld;
 let server: ServerProcess;
 
@@ -126,9 +132,27 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   const tab = page.getByTestId('session-diff');
   await expect(tab).toHaveAttribute('data-session-id', id);
   await expect(tab).toHaveAttribute('data-state', 'ready');
+  const rows = page.getByTestId('diff-file');
+  const summary = page.getByTestId('diff-summary');
+
+  // D90: the default view is since the last commit: the committed app.txt is not in it.
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'head');
+  await expect(rows.locator('.sb-diff__file-name')).toHaveText(['README.md', 'plan.md']);
+  await expect(summary).toHaveText('Since last commit · 2 files · +2 −1');
+  await expect(page.getByTestId('diff-scope-head')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('diff-scope-branch')).toHaveText('Whole branch');
+  await expect(page.getByTestId('diff-scope-repo')).toHaveCount(0);
+  await page.screenshot({ path: path.join(SHOTS, 'd90-1-worktree-since-last-commit.png') });
+
+  // Whole branch: the behavior before D90 (vs the merge-base), remembered for this session.
+  await page.getByTestId('diff-scope-branch').click();
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'branch');
+  await expect(summary).toHaveText('Whole branch vs origin/main · 3 files · +3 −2');
+  await page.reload();
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'branch');
+  await expect(page.getByTestId('diff-scope-branch')).toHaveAttribute('aria-pressed', 'true');
 
   // The file list: file name + delta, "solution · path"; sorted by path; the first is selected.
-  const rows = page.getByTestId('diff-file');
   await expect(rows.locator('.sb-diff__file-name')).toHaveText(['README.md', 'plan.md', 'app.txt']);
   await expect(rows.locator('.sb-diff__file-delta')).toHaveText(['+1 −1', '+1', '+1 −1']);
   await expect(rows.locator('.sb-diff__file-sub')).toHaveText(['web-front · README.md', 'web-front · notes/plan.md', 'web-front · src/app.txt']);
@@ -143,16 +167,20 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await expect(name).toHaveText('web-front / README.md');
   await expect(branch).toHaveText('⎇ PROJ-42-diff-e2e');
   await expect(note).toHaveText('Not committed. Commit only when you approve.');
-  await expect(lines).toHaveText(['-hello', '+hello from the session']);
-  await expect(lines.nth(0)).toHaveAttribute('data-tone', 'del');
-  await expect(lines.nth(1)).toHaveAttribute('data-tone', 'add');
+  // D90: the hunk header is a subtle row of its own before the body.
+  await expect(lines).toHaveText(['@@ -1 +1 @@', '-hello', '+hello from the session']);
+  await expect(lines.nth(0)).toHaveAttribute('data-tone', 'hunk');
+  await expect(lines.nth(1)).toHaveAttribute('data-tone', 'del');
+  await expect(lines.nth(2)).toHaveAttribute('data-tone', 'add');
+  expect(await style(lines.nth(0), 'color')).toBe(await computed(page, '#6d6c67'));
+  expect(await style(lines.nth(0), 'background-color')).toBe(await computed(page, '#16171a'));
 
   // SPEC tokens + prototype styles.
-  expect(await style(lines.nth(1), 'color')).toBe(await computed(page, 'oklch(0.82 0.1 150)'));
-  expect(await style(lines.nth(1), 'background-color')).toBe(await computed(page, 'oklch(0.22 0.04 150)'));
-  expect(await style(lines.nth(0), 'color')).toBe(await computed(page, 'oklch(0.76 0.13 25)'));
-  expect(await style(lines.nth(0), 'background-color')).toBe(await computed(page, 'oklch(0.22 0.04 25)'));
-  expect(await style(lines.nth(0), 'white-space')).toBe('pre');
+  expect(await style(lines.nth(2), 'color')).toBe(await computed(page, 'oklch(0.82 0.1 150)'));
+  expect(await style(lines.nth(2), 'background-color')).toBe(await computed(page, 'oklch(0.22 0.04 150)'));
+  expect(await style(lines.nth(1), 'color')).toBe(await computed(page, 'oklch(0.76 0.13 25)'));
+  expect(await style(lines.nth(1), 'background-color')).toBe(await computed(page, 'oklch(0.22 0.04 25)'));
+  expect(await style(lines.nth(1), 'white-space')).toBe('pre');
   expect(await style(page.getByTestId('diff-body'), 'background-color')).toBe(await computed(page, '#0c0d0f'));
   expect(await style(page.getByTestId('diff-body'), 'font-family')).toContain('Geist Mono');
   expect(await style(note, 'color')).toBe(await computed(page, '#8d8c87'));
@@ -171,15 +199,16 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await expect(fileRow(page, 'app.txt')).toHaveAttribute('data-selected', 'true');
   await expect(rows.nth(0)).toHaveAttribute('data-selected', 'false');
   await expect(name).toHaveText('web-front / src/app.txt');
-  await expect(lines).toHaveText([' one', '-two', '+TWO', ' three']);
-  await expect(lines.nth(0)).toHaveAttribute('data-tone', 'ctx');
-  expect(await style(lines.nth(0), 'color')).toBe(await computed(page, '#8d8c87'));
+  await expect(lines).toHaveText(['@@ -1,3 +1,3 @@', ' one', '-two', '+TWO', ' three']);
+  await expect(lines.nth(1)).toHaveAttribute('data-tone', 'ctx');
+  expect(await style(lines.nth(1), 'color')).toBe(await computed(page, '#8d8c87'));
+  await page.screenshot({ path: path.join(SHOTS, 'd90-2-worktree-whole-branch.png') });
   await expect(note).toHaveCount(0);
 
   // The agent's new file (untracked): every line added, not committed.
   await fileRow(page, 'plan.md').click();
   await expect(name).toHaveText('web-front / notes/plan.md');
-  await expect(lines).toHaveText(['+written by fake-claude']);
+  await expect(lines).toHaveText(['@@ -0,0 +1 @@', '+written by fake-claude']);
   await expect(note).toBeVisible();
 
   // Keyboard selection.
@@ -193,18 +222,18 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await expect(rows.locator('.sb-diff__file-name')).toHaveText(['README.md', 'plan.md', 'app.txt', 'live.txt'], { timeout: 20_000 });
   await expect(name).toHaveText('web-front / notes/plan.md');
   await fileRow(page, 'live.txt').click();
-  await expect(lines).toHaveText(['+written by fake-claude']);
+  await expect(lines).toHaveText(['@@ -0,0 +1 @@', '+written by fake-claude']);
   await expect(page.getByTestId('diff-file').filter({ hasText: 'live.txt' }).locator('.sb-diff__file-sub')).toHaveText('web-front · src/live.txt');
 
-  // The same list over the contract route, and ?file= narrows it.
-  const listed = await page.evaluate(async (sid) => (await fetch(`/api/sessions/${sid}/diff`)).json(), id);
+  // The same list over the contract route (`?scope=branch`), and ?file= narrows it.
+  const listed = await page.evaluate(async (sid) => (await fetch(`/api/sessions/${sid}/diff?scope=branch`)).json(), id);
   expect((listed as Array<{ path: string; uncommitted: boolean }>).map((f) => [f.path, f.uncommitted])).toEqual([
     ['README.md', true],
     ['notes/plan.md', true],
     ['src/app.txt', false],
     ['src/live.txt', true],
   ]);
-  const one = await page.evaluate(async (sid) => (await fetch(`/api/sessions/${sid}/diff?file=src%2Fapp.txt`)).json(), id);
+  const one = await page.evaluate(async (sid) => (await fetch(`/api/sessions/${sid}/diff?scope=branch&file=src%2Fapp.txt`)).json(), id);
   expect((one as Array<{ path: string }>).map((f) => f.path)).toEqual(['src/app.txt']);
 
   // The developer's main checkout was never touched.
@@ -212,6 +241,8 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   expect(await world.git(world.web, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
 
   // In place (no worktree): against HEAD of the main checkout, its current branch, the note.
+  // Someone else changed README.md in the same repo before the session ran (D90: not the session's).
+  await writeFile(path.join(world.mobile, 'README.md'), 'edited by someone else\n');
   const inPlace = await startSession(page, {
     name: 'diff-in-place',
     task: '[fake:write mobile/docs/in-place.md]',
@@ -220,19 +251,48 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   });
   await expect.poll(() => sessionStatus(page, inPlace), { timeout: 20_000 }).toBe('done');
   await openWithHub(page, `${server.baseUrl}/sessions/${inPlace}/diff`);
+  // Since last commit: only the file the session touched.
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'head');
   await expect(rows.locator('.sb-diff__file-sub')).toHaveText(['mobile · docs/in-place.md']);
+  await expect(summary).toHaveText('Since last commit · 1 file · +1');
   await expect(name).toHaveText('mobile / docs/in-place.md');
   await expect(branch).toHaveText('⎇ main');
   await expect(note).toBeVisible();
-  await expect(lines).toHaveText(['+written by fake-claude']);
+  await expect(lines).toHaveText(['@@ -0,0 +1 @@', '+written by fake-claude']);
+  await expect(page.getByTestId('diff-scope-branch')).toHaveCount(0);
+  await expect(page.getByTestId('diff-scope-note')).toHaveCount(0);
+  await page.screenshot({ path: path.join(SHOTS, 'd90-3-in-place-touched-only.png') });
+  // All uncommitted changes in this repo: someone else's edit too, with the note.
+  await page.getByTestId('diff-scope-repo').click();
+  await expect(rows.locator('.sb-diff__file-sub')).toHaveText(['mobile · README.md', 'mobile · docs/in-place.md']);
+  await expect(summary).toHaveText('All uncommitted changes · 2 files · +2 −1');
+  await expect(page.getByTestId('diff-scope-note')).toHaveText("Includes other people's and other sessions' edits in this repo.");
+  await page.screenshot({ path: path.join(SHOTS, 'd90-4-in-place-all-uncommitted.png') });
+  // Each session remembers its own view: the worktree session is still on Whole branch.
+  await openWithHub(page, `${server.baseUrl}/sessions/${id}/diff`);
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'branch');
+  await openWithHub(page, `${server.baseUrl}/sessions/${inPlace}/diff`);
+  await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'repo');
+  await page.getByTestId('diff-scope-head').click();
+  await expect(rows).toHaveCount(1);
 
-  // A session without changes: the prototype's empty state.
+  // A session without changes: the empty state of each view.
   const clean = await startSession(page, { name: 'diff-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true, branch: 'PROJ-43-diff-clean' });
   await expect.poll(() => sessionStatus(page, clean), { timeout: 20_000 }).toBe('done');
   await openWithHub(page, `${server.baseUrl}/sessions/${clean}/diff`);
   await expect(page.getByTestId('session-diff')).toHaveAttribute('data-state', 'empty');
-  await expect(page.getByTestId('diff-empty')).toHaveText('No changes yet.');
+  await expect(page.getByTestId('diff-empty-text')).toHaveText('No uncommitted changes since the last commit.');
+  await expect(page.getByTestId('diff-empty-hint')).toHaveCount(0);
+  await expect(summary).toHaveText('Since last commit');
   await expect(rows).toHaveCount(0);
   await expect(lines).toHaveCount(0);
   expect(await style(page.getByTestId('diff-empty'), 'color')).toBe(await computed(page, '#76756f'));
+  await page.getByTestId('diff-scope-branch').click();
+  await expect(page.getByTestId('diff-empty')).toHaveText('No changes yet.');
+  // The branch gets a commit and nothing is uncommitted: the hint points at Whole branch.
+  await page.getByTestId('diff-scope-head').click();
+  await world.commit(path.join(ws, 'microfrontends', 'web-front-wt-diff-clean'), 'src/clean.txt', 'committed\n', 'a commit');
+  await page.reload();
+  await expect(page.getByTestId('diff-empty-text')).toHaveText('No uncommitted changes since the last commit.');
+  await expect(page.getByTestId('diff-empty-hint')).toHaveText('The branch has commits: switch to Whole branch to see them.');
 });

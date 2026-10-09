@@ -78,20 +78,21 @@ describe('GET /api/sessions/{id}/diff (M4.5)', () => {
     await mkdir(path.join(record.path, 'notes'));
     await writeFile(path.join(record.path, 'notes', 'new file.md'), '# New\n');
 
-    const response = await get(`/api/sessions/${id}/diff`);
+    // D90: the whole branch is `?scope=branch` (the default is since the last commit: diff-scope.test.ts).
+    const response = await get(`/api/sessions/${id}/diff?scope=branch`);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual([
-      { solution: 'web-front', path: 'README.md', branch: 'session/diff-api', added: 1, removed: 0, lines: [' hello', '+staged'], uncommitted: true },
-      { solution: 'web-front', path: 'docs/plan.md', branch: 'session/diff-api', added: 2, removed: 0, lines: ['+v1', '+v2'], uncommitted: true },
-      { solution: 'web-front', path: 'notes/new file.md', branch: 'session/diff-api', added: 1, removed: 0, lines: ['+# New'], uncommitted: true },
-      { solution: 'web-front', path: 'src/app.txt', branch: 'session/diff-api', added: 1, removed: 1, lines: [' one', '-two', '+TWO', ' three'], uncommitted: false },
+      { solution: 'web-front', path: 'README.md', branch: 'session/diff-api', added: 1, removed: 0, lines: ['@@ -1 +1,2 @@', ' hello', '+staged'], uncommitted: true },
+      { solution: 'web-front', path: 'docs/plan.md', branch: 'session/diff-api', added: 2, removed: 0, lines: ['@@ -0,0 +1,2 @@', '+v1', '+v2'], uncommitted: true },
+      { solution: 'web-front', path: 'notes/new file.md', branch: 'session/diff-api', added: 1, removed: 0, lines: ['@@ -0,0 +1 @@', '+# New'], uncommitted: true },
+      { solution: 'web-front', path: 'src/app.txt', branch: 'session/diff-api', added: 1, removed: 1, lines: ['@@ -1,3 +1,3 @@', ' one', '-two', '+TWO', ' three'], uncommitted: false },
     ] satisfies FileDiff[]);
 
     // ?file= narrows to one solution-relative path (spaces allowed, URL-encoded).
-    const one = await get(`/api/sessions/${id}/diff?file=${encodeURIComponent('notes/new file.md')}`);
+    const one = await get(`/api/sessions/${id}/diff?scope=branch&file=${encodeURIComponent('notes/new file.md')}`);
     expect(one.statusCode).toBe(200);
     expect((one.json() as FileDiff[]).map((f) => [f.path, f.uncommitted])).toEqual([['notes/new file.md', true]]);
-    const committed = await get(`/api/sessions/${id}/diff?file=src/app.txt`);
+    const committed = await get(`/api/sessions/${id}/diff?scope=branch&file=src/app.txt`);
     expect((committed.json() as FileDiff[]).map((f) => [f.path, f.uncommitted])).toEqual([['src/app.txt', false]]);
     expect((await get(`/api/sessions/${id}/diff?file=nope.txt`)).json()).toEqual([]);
 
@@ -108,10 +109,11 @@ describe('GET /api/sessions/{id}/diff (M4.5)', () => {
     const id = await sessionRow(w, 'in-place', ['mobile'], false);
     await w.commit(w.mobile, 'committed.txt', 'already committed\n');
     await writeFile(path.join(w.mobile, 'src', 'app.txt'), 'one\ntwo\n');
-    const response = await get(`/api/sessions/${id}/diff`);
+    // D90: every uncommitted change in the repo is `?scope=repo` (the default keeps only the session's own files).
+    const response = await get(`/api/sessions/${id}/diff?scope=repo`);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual([
-      { solution: 'mobile', path: 'src/app.txt', branch: 'main', added: 0, removed: 1, lines: [' one', ' two', '-three'], uncommitted: true },
+      { solution: 'mobile', path: 'src/app.txt', branch: 'main', added: 0, removed: 1, lines: ['@@ -1,3 +1,2 @@', ' one', ' two', '-three'], uncommitted: true },
     ] satisfies FileDiff[]);
   });
 

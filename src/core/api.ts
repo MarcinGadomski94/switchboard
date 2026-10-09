@@ -963,7 +963,12 @@ export interface FileDiff {
   readonly branch: string | null;
   readonly added: number;
   readonly removed: number;
-  /** Unified diff body lines, each starting with `+`, `-` or a space. */
+  /**
+   * Unified diff lines: hunk body lines, each starting with `+`, `-` or a space,
+   * and (D90, additive) each hunk's `@@ -a,b +c,d @@` header line before its body,
+   * so a reader can tell the hunks apart. A reader that only knows the three
+   * markers may treat an `@@` line as context.
+   */
   readonly lines: readonly string[];
   /**
    * `true` while the working tree holds changes to this file that are not
@@ -972,6 +977,49 @@ export interface FileDiff {
    * committed. Commit only when you approve." while it is `true`.
    */
   readonly uncommitted: boolean;
+}
+
+/**
+ * D90: which changes `GET /api/sessions/{id}/diff?scope=` shows
+ * (`docs/worktrees.md` → *Diff*):
+ * - `head` (the default): uncommitted changes against HEAD (staged, unstaged,
+ *   untracked) in the session's working trees; in a solution the session works on
+ *   in place, only the files this session touched;
+ * - `repo`: uncommitted changes against HEAD, every file (in place: other people's
+ *   and sessions' edits too);
+ * - `branch`: the whole branch (a worktree against the merge-base of its base
+ *   branch; in place against HEAD, every file): the behavior before D90.
+ */
+export type DiffScope = 'head' | 'branch' | 'repo';
+
+/** The {@link DiffScope} values. */
+export const DIFF_SCOPES: readonly DiffScope[] = ['head', 'branch', 'repo'];
+
+/** D90: one worktree of a session as the Diff tab names it (`DiffTargets.worktrees`). */
+export interface DiffWorktreeTarget {
+  readonly solution: string;
+  readonly branch: string;
+  /** The branch it is compared with in the `branch` scope (`origin/dev`), `null` when unknown. */
+  readonly base: string | null;
+  /** Commits on the branch since the merge-base with {@link base} (0 when the base does not resolve). */
+  readonly commits: number;
+}
+
+/** D90: one solution the session works on in place (`DiffTargets.inPlace`). */
+export interface DiffInPlaceTarget {
+  readonly solution: string;
+  /** The checked-out branch, `null` when detached. */
+  readonly branch: string | null;
+}
+
+/**
+ * D90: `GET /api/sessions/{id}/diff/targets`: the working trees the session's diff
+ * reads, so the Diff tab knows which views to offer (Whole branch with a worktree,
+ * All uncommitted changes with an in-place solution) and what the header names.
+ */
+export interface DiffTargets {
+  readonly worktrees: readonly DiffWorktreeTarget[];
+  readonly inPlace: readonly DiffInPlaceTarget[];
 }
 
 /** A stored artifact (data model; gap #9). Provisional: M4.6 / M7.3. */

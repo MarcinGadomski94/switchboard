@@ -303,7 +303,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 - **Get back:** **← Main chat**, **Esc** or the browser's Back returns you to the same spot.
 - **No composer:** subagents take no messages; reply in the main chat.
 
-**Tabs:** Timeline, Diff (per worktree), Artifacts.
+**Tabs:** Timeline, Diff, Artifacts. The **Diff** opens on the work **since the last commit** (in a folder the session works in place, only the files it touched); switch to **Whole branch** (a worktree's commits too) or **All uncommitted changes in this repo** (everyone's edits); the tab remembers the choice per session. [`docs/worktrees.md`](docs/worktrees.md) → *Diff*
 
 **Switching sessions:** a session you visited recently opens instantly; one still loading shows placeholders instead of a blank or stale view.
 

@@ -5,7 +5,7 @@
  * (`docs/handoff/prototype/Switchboard App.dc.html`, `files` / `df`); the rules
  * are in `docs/derivations.md` → *Diff tab*.
  */
-import type { FileDiff } from '../../../core/api.ts';
+import type { DiffScope, DiffTargets, FileDiff } from '../../../core/api.ts';
 import type { EventKind } from '../../../core/model.ts';
 
 /** The header note while the selected file has uncommitted changes (prototype copy). */
@@ -14,8 +14,8 @@ export const NOT_COMMITTED_NOTE = 'Not committed. Commit only when you approve.'
 /** The file list's empty state (prototype copy). */
 export const NO_CHANGES = 'No changes yet.';
 
-/** How a diff body line is colored: `+` added, `-` removed, anything else context. */
-export type DiffTone = 'add' | 'del' | 'ctx';
+/** How a diff line is colored: `+` added, `-` removed, `@@` a hunk header (D90: a subtle separator row), anything else context. */
+export type DiffTone = 'add' | 'del' | 'hunk' | 'ctx';
 
 /** One row of the file list. */
 export interface DiffFileRow {
@@ -85,8 +85,9 @@ export function deltaText(added: number, removed: number): string {
   return parts.length > 0 ? parts.join(' ') : NONE;
 }
 
-/** The tone of one diff line by its first character. */
+/** The tone of one diff line by its first character (`@@` = a hunk header). */
 export function lineTone(line: string): DiffTone {
+  if (line.startsWith('@@')) return 'hunk';
   if (line.startsWith('+')) return 'add';
   if (line.startsWith('-')) return 'del';
   return 'ctx';
@@ -134,4 +135,123 @@ export function diffModel(files: readonly FileDiff[], selectedKey: string | null
       }
     : { key: null, name: '', branch: '', note: true, lines: [] };
   return { rows, pane, empty: files.length === 0 };
+}
+
+// ── D90: which changes the tab shows ─────────────────────────────────────
+
+/** The view toggle's labels. */
+export const SCOPE_LABELS: Readonly<Record<DiffScope, string>> = {
+  head: 'Since last commit',
+  branch: 'Whole branch',
+  repo: 'All uncommitted changes in this repo',
+};
+
+/** The toggles' tooltips. */
+export const SCOPE_TITLES: Readonly<Record<DiffScope, string>> = {
+  head: "Uncommitted changes against the last commit; in a repo the session works in place, only the files this session touched",
+  branch: 'Everything the branch contains: its commits and the uncommitted changes, against where it left its base branch',
+  repo: "Every uncommitted change in the repo, including other people's and other sessions' edits",
+};
+
+/** The note under the header while `repo` is shown. */
+export const REPO_NOTE = "Includes other people's and other sessions' edits in this repo.";
+
+/** Empty states per view. */
+export const EMPTY_HEAD = 'No uncommitted changes since the last commit.';
+export const EMPTY_REPO = 'No uncommitted changes in this repo.';
+/** Under {@link EMPTY_HEAD} when a worktree's branch has commits. */
+export const HINT_WHOLE_BRANCH = 'The branch has commits: switch to Whole branch to see them.';
+
+/**
+ * The views the tab offers: Since last commit always; Whole branch with a
+ * worktree; All uncommitted changes with a solution worked on in place. Without
+ * targets (still loading, a machine before D90) only the default.
+ */
+export function scopeOptions(targets: DiffTargets | null): DiffScope[] {
+  const options: DiffScope[] = ['head'];
+  if (targets && targets.worktrees.length > 0) options.push('branch');
+  if (targets && targets.inPlace.length > 0) options.push('repo');
+  return options;
+}
+
+/**
+ * The view to show: the remembered one while the targets load (no second fetch),
+ * then the remembered one only when it is offered, else Since last commit.
+ */
+export function shownScope(remembered: DiffScope | null, targets: DiffTargets | null): DiffScope {
+  if (remembered === null) return 'head';
+  if (targets === null) return remembered;
+  return scopeOptions(targets).includes(remembered) ? remembered : 'head';
+}
+
+/** `Whole branch vs origin/dev` (the worktrees' distinct bases), `Whole branch` without one. */
+export function scopeTitle(scope: DiffScope, targets: DiffTargets | null): string {
+  if (scope === 'head') return SCOPE_LABELS.head;
+  if (scope === 'repo') return 'All uncommitted changes';
+  const bases = [...new Set((targets?.worktrees ?? []).map((w) => w.base).filter((base): base is string => base !== null).map(shortBase))];
+  return bases.length > 0 ? `Whole branch vs ${bases.join(', ')}` : 'Whole branch';
+}
+
+/** A base ref as the header names it: a full commit id cut to 7 characters. */
+function shortBase(base: string): string {
+  return /^[0-9a-f]{40,64}$/i.test(base) ? base.slice(0, 7) : base;
+}
+
+/** `Since last commit · 4 files · +120 −8`; the title alone without files; no delta without line changes. */
+export function headerLine(scope: DiffScope, files: readonly FileDiff[], targets: DiffTargets | null): string {
+  const title = scopeTitle(scope, targets);
+  if (files.length === 0) return title;
+  const added = files.reduce((sum, file) => sum + file.added, 0);
+  const removed = files.reduce((sum, file) => sum + file.removed, 0);
+  const parts = [title, `${files.length} ${files.length === 1 ? 'file' : 'files'}`];
+  if (added > 0 || removed > 0) parts.push(deltaText(added, removed));
+  return parts.join(' · ');
+}
+
+/** The empty state of a view and its hint (`null` = none). */
+export function emptyState(scope: DiffScope, targets: DiffTargets | null): { readonly text: string; readonly hint: string | null } {
+  if (scope === 'branch') return { text: NO_CHANGES, hint: null };
+  if (scope === 'repo') return { text: EMPTY_REPO, hint: null };
+  const commits = (targets?.worktrees ?? []).some((w) => w.commits > 0);
+  return { text: EMPTY_HEAD, hint: commits ? HINT_WHOLE_BRANCH : null };
+}
+
+/** `localStorage` key of the view picked per session (session id → scope). */
+export const DIFF_SCOPE_KEY = 'switchboard.diffScopes';
+
+/** At most this many sessions' views are kept (the newest). */
+const MAX_REMEMBERED = 200;
+
+/** The minimal storage this needs (`window.localStorage`; tests pass a map). */
+export interface ScopeStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function readScopes(storage: ScopeStorage | null): Record<string, DiffScope> {
+  try {
+    const raw = storage?.getItem(DIFF_SCOPE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, DiffScope] => entry[1] === 'head' || entry[1] === 'branch' || entry[1] === 'repo'));
+  } catch {
+    return {};
+  }
+}
+
+/** The view this browser last picked for the session, `null` when none. */
+export function loadScope(storage: ScopeStorage | null, sessionId: string): DiffScope | null {
+  return readScopes(storage)[sessionId] ?? null;
+}
+
+/** Remembers the session's view (the default is stored too: the newest pick wins). */
+export function saveScope(storage: ScopeStorage | null, sessionId: string, scope: DiffScope): void {
+  const all = readScopes(storage);
+  delete all[sessionId];
+  all[sessionId] = scope;
+  try {
+    storage?.setItem(DIFF_SCOPE_KEY, JSON.stringify(Object.fromEntries(Object.entries(all).slice(-MAX_REMEMBERED))));
+  } catch {
+    // Storage blocked: the pick lasts this page only.
+  }
 }

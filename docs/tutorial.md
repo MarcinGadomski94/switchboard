@@ -71,8 +71,8 @@ Each step names `data-tour="…"` anchors in order of preference; the first one 
 screen wins (laid out, not inside an `inert` / `aria-hidden` pane, so a closed drawer
 does not count). Before looking, a step may:
 
-- go to a `route` (`session` = the newest open session; settings sections; Todos;
-  the Inbox …), and
+- go to a `route` (`session` = the newest open session, on its Chat tab or, with
+  `tab: 'diff'` (D90), its Diff tab; settings sections; Todos; the Inbox …), and
 - on tablets and phones open the ☰ drawer (`drawer: true`, the element is in the
   sidebar) or close it (every other step). On desktop a hidden sidebar is shown for
   `drawer` steps and hidden again at the end.

@@ -158,7 +158,7 @@ describe('D38: adopted worktrees', () => {
     await until(async () => published.some((p) => p.id === session.id && p.solutions.includes('web-front')) || undefined, 'the published solutions');
     // The Diff lists the worktree's branch (the in-place write is web-front's too, but its worktree now stands for it).
     await g.commit(elsewhere, 'src/sweep.txt', 'swept\n');
-    const diff = await call('GET', `/api/sessions/${session.id}/diff`);
+    const diff = await call('GET', `/api/sessions/${session.id}/diff?scope=branch`);
     expect(diff.statusCode).toBe(200);
     expect(g.errors).toEqual([]);
     expect((diff.json() as Array<{ path: string; branch: string }>).map((f) => [f.path, f.branch])).toEqual([['src/sweep.txt', 'PROJ-38-sweep']]);

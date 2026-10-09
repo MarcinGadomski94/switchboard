@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import type { FileDiff } from '../../src/core/api.ts';
+import type { DiffTargets, FileDiff } from '../../src/core/api.ts';
 import { EVENT_KINDS } from '../../src/core/model.ts';
 import {
+  DIFF_SCOPE_KEY,
+  EMPTY_HEAD,
+  EMPTY_REPO,
+  HINT_WHOLE_BRANCH,
   NOT_COMMITTED_NOTE,
   NO_CHANGES,
+  REPO_NOTE,
+  SCOPE_LABELS,
   deltaText,
+  emptyState,
+  headerLine,
+  loadScope,
+  saveScope,
+  scopeOptions,
+  scopeTitle,
+  shownScope,
   diffModel,
   fileKey,
   lineTone,
@@ -104,5 +117,88 @@ describe('Diff tab model (M4.5)', () => {
 
   it('refreshes on events that can change files only', () => {
     expect(EVENT_KINDS.filter(refreshesDiff)).toEqual(['impl', 'loop', 'ok', 'tool', 'error']);
+  });
+});
+
+describe('Diff tab views (D90)', () => {
+  const WT: DiffTargets = { worktrees: [{ solution: 'web-front', branch: 'PROJ-1-x', base: 'origin/dev', commits: 2 }], inPlace: [] };
+  const IN_PLACE: DiffTargets = { worktrees: [], inPlace: [{ solution: 'mobile', branch: 'main' }] };
+  const BOTH: DiffTargets = { worktrees: [{ ...WT.worktrees[0]!, commits: 0 }], inPlace: IN_PLACE.inPlace };
+
+  it('copy', () => {
+    expect(SCOPE_LABELS).toEqual({ head: 'Since last commit', branch: 'Whole branch', repo: 'All uncommitted changes in this repo' });
+    expect(EMPTY_HEAD).toBe('No uncommitted changes since the last commit.');
+    expect(EMPTY_REPO).toBe('No uncommitted changes in this repo.');
+    expect(REPO_NOTE).toBe("Includes other people's and other sessions' edits in this repo.");
+  });
+
+  it('hunk headers are their own tone', () => {
+    expect(lineTone('@@ -10,6 +10,8 @@ section')).toBe('hunk');
+    expect(diffModel([file({ path: 'a', lines: ['@@ -1 +1 @@', '-a', '+b'] })], null).pane.lines.map((l) => l.tone)).toEqual(['hunk', 'del', 'add']);
+  });
+
+  it('options: Since last commit always; Whole branch with a worktree; All uncommitted with an in-place solution', () => {
+    expect(scopeOptions(null)).toEqual(['head']);
+    expect(scopeOptions({ worktrees: [], inPlace: [] })).toEqual(['head']);
+    expect(scopeOptions(WT)).toEqual(['head', 'branch']);
+    expect(scopeOptions(IN_PLACE)).toEqual(['head', 'repo']);
+    expect(scopeOptions(BOTH)).toEqual(['head', 'branch', 'repo']);
+  });
+
+  it('the shown view: the remembered one while the targets load, then only when offered', () => {
+    expect(shownScope(null, null)).toBe('head');
+    expect(shownScope('branch', null)).toBe('branch');
+    expect(shownScope('branch', WT)).toBe('branch');
+    expect(shownScope('branch', IN_PLACE)).toBe('head');
+    expect(shownScope('repo', IN_PLACE)).toBe('repo');
+    expect(shownScope('repo', WT)).toBe('head');
+  });
+
+  it('header line: what is shown · n files · +added −removed', () => {
+    const two = [file({ path: 'a', added: 100, removed: 8 }), file({ path: 'b', added: 20 })];
+    expect(headerLine('head', two, WT)).toBe('Since last commit · 2 files · +120 −8');
+    expect(headerLine('head', [file({ path: 'a' })], WT)).toBe('Since last commit · 1 file · +1');
+    expect(headerLine('branch', two, WT)).toBe('Whole branch vs origin/dev · 2 files · +120 −8');
+    expect(headerLine('repo', two, IN_PLACE)).toBe('All uncommitted changes · 2 files · +120 −8');
+    expect(headerLine('head', [], WT)).toBe('Since last commit');
+    expect(headerLine('head', [file({ path: 'img.png', added: 0 })], null)).toBe('Since last commit · 1 file');
+    // Several worktrees: their distinct bases; a commit id is cut; none known → no "vs".
+    const many: DiffTargets = {
+      worktrees: [WT.worktrees[0]!, { solution: 'b', branch: 'x', base: 'origin/dev', commits: 0 }, { solution: 'c', branch: 'y', base: 'a'.repeat(40), commits: 0 }],
+      inPlace: [],
+    };
+    expect(scopeTitle('branch', many)).toBe('Whole branch vs origin/dev, aaaaaaa');
+    expect(scopeTitle('branch', { worktrees: [{ solution: 'a', branch: 'x', base: null, commits: 0 }], inPlace: [] })).toBe('Whole branch');
+  });
+
+  it('empty states: the hint to Whole branch only when a worktree branch has commits', () => {
+    expect(emptyState('head', WT)).toEqual({ text: EMPTY_HEAD, hint: HINT_WHOLE_BRANCH });
+    expect(emptyState('head', BOTH)).toEqual({ text: EMPTY_HEAD, hint: null });
+    expect(emptyState('head', IN_PLACE)).toEqual({ text: EMPTY_HEAD, hint: null });
+    expect(emptyState('branch', WT)).toEqual({ text: NO_CHANGES, hint: null });
+    expect(emptyState('repo', IN_PLACE)).toEqual({ text: EMPTY_REPO, hint: null });
+  });
+
+  it('the view is remembered per session (newest 200), bad storage is ignored', () => {
+    const map = new Map<string, string>();
+    const storage = { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v) };
+    expect(loadScope(storage, 's1')).toBeNull();
+    saveScope(storage, 's1', 'branch');
+    saveScope(storage, 's2', 'repo');
+    expect(loadScope(storage, 's1')).toBe('branch');
+    expect(loadScope(storage, 's2')).toBe('repo');
+    saveScope(storage, 's1', 'head');
+    expect(loadScope(storage, 's1')).toBe('head');
+    for (let i = 0; i < 250; i++) saveScope(storage, `n${i}`, 'branch');
+    expect(Object.keys(JSON.parse(map.get(DIFF_SCOPE_KEY)!)).length).toBe(200);
+    expect(loadScope(storage, 's2')).toBeNull();
+    map.set(DIFF_SCOPE_KEY, '{"x":"nope","y":"repo"}');
+    expect(loadScope(storage, 'x')).toBeNull();
+    expect(loadScope(storage, 'y')).toBe('repo');
+    map.set(DIFF_SCOPE_KEY, 'not json');
+    expect(loadScope(storage, 'y')).toBeNull();
+    expect(loadScope(null, 'y')).toBeNull();
+    const throwing = { getItem: () => null, setItem: () => { throw new Error('blocked'); } };
+    expect(() => saveScope(throwing, 's', 'repo')).not.toThrow();
   });
 });

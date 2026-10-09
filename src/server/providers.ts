@@ -1,4 +1,4 @@
-import type { CodebaseMemoryStatus, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
+import type { CodebaseMemoryStatus, DiffScope, DiffTargets, FileDiff, HistoryItem, SolutionGroup, SystemInfo, ToolProbe } from '../core/api.ts';
 import type { LoginServiceStatus } from '../core/login-service.ts';
 import type { UpdateStatus } from '../core/updates.ts';
 import type { FolderRef } from './folders/ref.ts';
@@ -15,8 +15,15 @@ import type { FramingHeaders } from './tools/framing.ts';
 
 /** Diff of a session's worktrees (gap #10). Real implementation: M4.5. */
 export interface DiffProvider {
-  /** Changed files of the session, or only `file` (a solution-relative path) when given. */
-  diff(sessionId: string, file?: string): Promise<FileDiff[]>;
+  /**
+   * Changed files of the session, or only `file` (a solution-relative path) when
+   * given. D90: `scope` picks which changes ({@link DiffScope}); without one, the
+   * whole branch (`branch`, the behavior before D90: what `SessionDetail.files`
+   * and the Artifacts counts read). The route's default is `head`.
+   */
+  diff(sessionId: string, file?: string, scope?: DiffScope): Promise<FileDiff[]>;
+  /** D90: the working trees the diff reads (the Diff tab's views and header); absent → none known. */
+  targets?(sessionId: string): Promise<DiffTargets>;
 }
 
 /**

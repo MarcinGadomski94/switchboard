@@ -137,7 +137,7 @@ async function routeOf(step: TourStep): Promise<Route | 'none' | null> {
   if (target.view === 'session') {
     const sessions = await api.listSessions().catch(() => []);
     const first = openSessions(sessions)[0];
-    return first ? { view: 'session', id: first.id, tab: 'chat' } : 'none';
+    return first ? { view: 'session', id: first.id, tab: target.tab ?? 'chat' } : 'none';
   }
   if (target.view === 'settings') return { view: 'settings', section: target.section };
   return { view: target.view };

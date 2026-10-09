@@ -4,6 +4,8 @@ import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { Review, ReviewActionId } from '../../core/reviews.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
+  DiffScope,
+  DiffTargets,
   AccountsOverview,
   FreshContinueResult,
   NewProfileInput,
@@ -269,7 +271,10 @@ export const api = {
   fullEvent: (id: string, eventId: number) => request<FullEventAnswer>('GET', `/api/sessions/${enc(id)}/events/${eventId}/full`),
   /** D51: a Workflow agent's conversation (from its transcript). */
   workflowAgentChat: (id: string, agentId: string) => request<WorkflowAgentChat>('GET', `/api/sessions/${enc(id)}/workflow-agents/${enc(agentId)}/chat`),
-  sessionDiff: (id: string, file?: string) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file })}`),
+  /** D90: `scope` = since the last commit (`head`, the server's default), the whole branch, or every uncommitted change in the repo. */
+  sessionDiff: (id: string, file?: string, scope?: DiffScope) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file, scope })}`),
+  /** D90: the working trees the session's diff reads (which views the Diff tab offers). */
+  sessionDiffTargets: (id: string) => request<DiffTargets>('GET', `/api/sessions/${enc(id)}/diff/targets`),
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),

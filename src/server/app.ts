@@ -408,6 +408,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     },
   });
   supervisor.useCheckpoints(checkpoints);
+  // D90: the end of each turn, snapshotted for the Diff's "files this session touched" (in-place solutions).
+  app.addHook('onReady', async () => {
+    worktrees.touched.listen(bus);
+  });
+  app.addHook('onClose', async () => {
+    await worktrees.touched.stop();
+  });
   app.addHook('onReady', async () => {
     checkpoints.start();
   });

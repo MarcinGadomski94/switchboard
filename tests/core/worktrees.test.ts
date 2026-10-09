@@ -10,6 +10,8 @@ import {
   solutionCandidates,
   splitNulList,
   untrackedFileDiff,
+  newFileHunkHeader,
+  isHunkHeader,
   worktreeBranch,
   worktreePath,
 } from '../../src/core/worktrees.ts';
@@ -95,12 +97,12 @@ describe('parsePatch (git diff --no-renames)', () => {
     '',
   ].join('\n');
 
-  it('one entry per file with +/- counts and body lines only', () => {
+  it('one entry per file with +/- counts, each hunk header (D90) and its body lines', () => {
     const files = parsePatch(patch);
     expect(files.map((f) => f.path)).toEqual(['src/app.txt', 'dir with space/new file.md', 'gone.txt', 'img.png', 'run.sh', 'q"uote\tx', 'café.txt']);
-    expect(files[0]).toEqual({ path: 'src/app.txt', added: 2, removed: 1, lines: [' one', '-two', '+TWO', ' three', ' ten', '+eleven'], binary: false });
-    expect(files[1]).toMatchObject({ added: 2, removed: 0, lines: ['+# Title', '+--- not a header'] });
-    expect(files[2]).toMatchObject({ added: 0, removed: 1, lines: ['-bye'] });
+    expect(files[0]).toEqual({ path: 'src/app.txt', added: 2, removed: 1, lines: ['@@ -1,3 +1,3 @@', ' one', '-two', '+TWO', ' three', '@@ -10,2 +10,3 @@ section', ' ten', '+eleven'], binary: false });
+    expect(files[1]).toMatchObject({ added: 2, removed: 0, lines: ['@@ -0,0 +1,2 @@', '+# Title', '+--- not a header'] });
+    expect(files[2]).toMatchObject({ added: 0, removed: 1, lines: ['@@ -1 +0,0 @@', '-bye'] });
     expect(files[3]).toMatchObject({ added: 0, removed: 0, lines: [], binary: true });
     expect(files[4]).toMatchObject({ added: 0, removed: 0, lines: [], binary: false });
     expect(files[5]).toMatchObject({ added: 1, removed: 1 });
@@ -121,10 +123,15 @@ describe('parsePatch (git diff --no-renames)', () => {
 describe('untracked files', () => {
   it('text → every line added; binary → no lines; empty → nothing', () => {
     const text = untrackedFileDiff('n.txt', new TextEncoder().encode('a\r\nb\n'));
-    expect(text).toEqual({ path: 'n.txt', added: 2, removed: 0, lines: ['+a', '+b'], binary: false });
+    expect(text).toEqual({ path: 'n.txt', added: 2, removed: 0, lines: ['@@ -0,0 +1,2 @@', '+a', '+b'], binary: false });
     expect(untrackedFileDiff('b.bin', new Uint8Array([1, 0, 2]))).toMatchObject({ binary: true, lines: [], added: 0 });
     expect(untrackedFileDiff('e.txt', new Uint8Array())).toMatchObject({ binary: false, lines: [], added: 0 });
     expect(looksBinary(new TextEncoder().encode('plain'))).toBe(false);
+    // D90: a one-line file gets git's short header.
+    expect(untrackedFileDiff('o.txt', new TextEncoder().encode('only'))).toMatchObject({ added: 1, lines: ['@@ -0,0 +1 @@', '+only'] });
+    expect(newFileHunkHeader(3)).toBe('@@ -0,0 +1,3 @@');
+    expect(isHunkHeader('@@ -1 +1 @@')).toBe(true);
+    expect(isHunkHeader('+@@ not a header')).toBe(false);
   });
   it('ls-files -z entries, nested repos (dir/) dropped', () => {
     expect(splitNulList('a.txt\0dir/b.txt\0nested/\0')).toEqual(['a.txt', 'dir/b.txt']);

@@ -845,6 +845,15 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Service-worker guard:** a push that arrives while a window of the origin is visible is posted to that window (toast, deduped by id) instead of shown, except the test notification and on WebKit (Safari / iOS, where a silent push can cost the subscription). Relies on Chromium's userVisibleOnly rule: no notification is required while a tab of the origin is visible.
   - Settings → Devices (the device's own page) says *No notifications while Switchboard is open on this device*.
   - Details: `docs/devices.md` → *Notifications*, `docs/handoff/contracts/local-api.md` → *Devices (D73)*; ASSUMED items: `.loop/questions.md` → *D87 · Quiet pushes*.
+- **D90 The Diff tab shows the work since the last commit.** Developer request, 2026-10-09: "The diff is going all over the place instead of showing the current diff for the code that the agent is currently working on, from the last commit." Until now a worktree was diffed against the merge-base with its base branch (every commit of the branch) and an in-place solution against HEAD (every uncommitted change in that repo, whoever made it). Rulings:
+  - **Default view "Since last commit":** the uncommitted changes against HEAD (staged, unstaged, untracked; never ignored) in the session's own working trees: its worktrees and the solutions it works on in place.
+  - **In place, only the files this session touched:** the paths of its Write / Edit / MultiEdit / NotebookEdit calls, plus, where D80 checkpoints exist, the files that changed between a turn's checkpoint and the turn's end (Bash-made files and deletions too); intersected with the uncommitted changes. A toggle **All uncommitted changes in this repo** shows everything, with a note that it includes other people's and sessions' edits.
+  - **Whole branch** (worktree sessions): the behavior before D90, against the merge-base with the base branch.
+  - The pick is remembered per session in the browser. A header line says what is shown ("Since last commit · 4 files · +120 −8", "Whole branch vs origin/dev · …"); the empty state is "No uncommitted changes since the last commit." with a hint to Whole branch when the branch has commits.
+  - Hunks are separated by their `@@ -a,b +c,d @@` header as a subtle row (`FileDiff.lines` now carries it).
+  - API: `GET /api/sessions/{id}/diff?scope=head|branch|repo` (default `head`); `branch` keeps the old behavior (`SessionDetail.files`, the Artifacts counts and the D79 / D80 git reads are unchanged). Additive `GET /api/sessions/{id}/diff/targets` tells the tab which views exist. Peers pass the query through; devices may read both.
+  - What's new (1.14.0): "Diff shows the work since the last commit", one step on the Diff tab's toggle.
+  - Details: `docs/worktrees.md` → *Diff*, `docs/derivations.md` → *Diff tab*, `docs/handoff/contracts/local-api.md` → *Diff views (D90)*; ASSUMED items: `.loop/questions.md` → *D90 · Diff since the last commit*.
 
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
