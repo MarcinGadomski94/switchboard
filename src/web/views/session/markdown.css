@@ -269,3 +269,66 @@
 .sb-md .hljs-link {
   text-decoration: underline;
 }
+
+/* D92: a fenced code block's tools (Copy; D89's Save as artifact): top right, shown on hover / focus, always on touch screens. */
+.sb-md-code {
+  position: relative;
+}
+
+.sb-md-code-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.sb-md-code:hover .sb-md-code-tools,
+.sb-md-code-tools:focus-within {
+  opacity: 1;
+}
+
+.sb-md-code-tools .sb-button {
+  padding: 2px 7px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  background: var(--bg-card);
+  color: var(--muted-1);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sb-md-code-copy::before {
+  content: 'Copy';
+}
+
+.sb-md-code-copy[data-state='copied']::before {
+  content: 'Copied ✓';
+}
+
+.sb-md-code-copy[data-state='failed']::before {
+  content: 'Copy failed';
+}
+
+.sb-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .sb-md-code-tools {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-md-code-tools {
+    transition: none;
+  }
+}

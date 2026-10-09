@@ -106,6 +106,19 @@ test('agent Markdown (heading, list, table, highlighted code, box table), raw HT
   await expect(pre).toHaveCSS('background-color', 'rgb(12, 13, 15)');
   await expect(pre).toHaveCSS('font-family', /Geist Mono/);
 
+  // D92: Copy puts the block's code (without the tool labels) on the clipboard, then reads "Copied ✓" for a moment.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: world.baseUrl });
+  const block = reply.locator('.sb-md-code').first();
+  await block.hover();
+  const copy = block.getByTestId('chat-code-copy');
+  await expect(copy).toBeVisible();
+  await copy.click();
+  await expect(copy).toHaveAttribute('data-state', 'copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('const answer: number = 42;');
+  await expect(copy).toHaveAttribute('data-state', 'idle', { timeout: 4000 });
+  // The tool labels are CSS-drawn: the message's own text never contains them.
+  expect(await reply.textContent()).not.toContain('Copy');
+
   // The box-drawing table: every character and space kept, never wrapped, every line equally wide (monospace).
   const box = reply.locator('pre').nth(1);
   await expect(box).toHaveCSS('white-space', 'pre');

@@ -1,4 +1,4 @@
-import { type ReactNode, memo, useMemo } from 'react';
+import { type ReactNode, memo, useEffect, useMemo, useRef, useState } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
@@ -46,6 +46,62 @@ function hastLanguage(node: unknown): string | null {
   return codeLanguage(code?.properties?.className);
 }
 
+/** Copies `text` to the clipboard (the async API, else a hidden textarea); `true` when it worked. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the textarea (e.g. no secure context, or permission refused).
+  }
+  try {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** A fenced code block with its tools: **Copy** (D92), and D89's **Save as artifact** when the chat offers it. */
+function CodeBlock({ node, children, onSaveCode }: { readonly node: unknown; readonly children?: ReactNode; readonly onSaveCode: ((code: string, language: string | null) => void) | null }) {
+  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+  const code = (): string => hastText(node).replace(/\n$/, '');
+  const copy = (): void => {
+    void copyText(code()).then((ok) => {
+      setCopied(ok ? 'copied' : 'failed');
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied('idle'), 1500);
+    });
+  };
+  return (
+    <div className="sb-md-code">
+      <pre>{children}</pre>
+      {/* The labels are drawn by CSS (markdown.css / save-artifact.css): the message's text (copy, selection) never picks them up. */}
+      <div className="sb-md-code-tools">
+        <button type="button" className="sb-button sb-md-code-copy" data-testid="chat-code-copy" data-state={copied} aria-label={copied === 'copied' ? 'Copied' : 'Copy code'} title="Copy code" onClick={copy} />
+        {onSaveCode ? <button type="button" className="sb-button sb-md-code-save" data-testid="chat-code-save" aria-label="Save as artifact" title="Save as artifact" onClick={() => onSaveCode(code(), hastLanguage(node))} /> : null}
+      </div>
+      <span className="sb-visually-hidden" role="status" aria-live="polite">
+        {copied === 'copied' ? 'Copied to the clipboard' : copied === 'failed' ? 'Could not copy' : ''}
+      </span>
+    </div>
+  );
+}
+
 const REMARK_PLUGINS = [remarkGfm];
 /** Syntax colors for fenced blocks with a language (lowlight's common languages; no guessing without one). */
 const REHYPE_PLUGINS = [rehypeChatText, rehypeHighlight];
@@ -72,19 +128,15 @@ export interface ChatMarkdownProps {
  */
 export const ChatMarkdown = memo(function ChatMarkdown({ text, testId = 'chat-markdown', onSaveCode = null }: ChatMarkdownProps) {
   const components = useMemo<Components>(
-    () =>
-      onSaveCode
-        ? {
-            ...COMPONENTS,
-            pre: ({ node, children }) => (
-              <div className="sb-md-code">
-                <pre>{children}</pre>
-                {/* The label is drawn by CSS (save-artifact.css): the message's text (copy, selection) never picks it up. */}
-                <button type="button" className="sb-button sb-md-code-save" data-testid="chat-code-save" aria-label="Save as artifact" title="Save as artifact" onClick={() => onSaveCode(hastText(node).replace(/\n$/, ''), hastLanguage(node))} />
-              </div>
-            ),
-          }
-        : COMPONENTS,
+    () => ({
+      ...COMPONENTS,
+      // D92: every fenced code block has Copy; D89 adds Save as artifact where the chat offers it.
+      pre: ({ node, children }) => (
+        <CodeBlock node={node} onSaveCode={onSaveCode}>
+          {children}
+        </CodeBlock>
+      ),
+    }),
     [onSaveCode],
   );
   return (

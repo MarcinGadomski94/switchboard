@@ -77,38 +77,8 @@
   color: var(--text);
 }
 
-.sb-md-code {
-  position: relative;
-}
-
-.sb-md-code-save {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  padding: 2px 7px;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-button);
-  background: var(--bg-card);
-  color: var(--muted-1);
-  font-size: 11px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
 .sb-md-code-save::before {
   content: 'Save as artifact';
-}
-
-.sb-md-code:hover .sb-md-code-save,
-.sb-md-code-save:focus-visible {
-  opacity: 1;
-}
-
-@media (pointer: coarse) {
-  .sb-md-code-save {
-    opacity: 1;
-  }
 }
 
 .sb-save-art {
