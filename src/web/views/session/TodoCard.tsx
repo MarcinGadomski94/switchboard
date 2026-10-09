@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type MouseEvent, type TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTodo, TodoFieldsInput, TodoPriority, TodoState } from '../../../core/api.ts';
 import type { SessionStatus } from '../../../core/model.ts';
 import { todoActualsLabel } from '../../../core/todo-actuals.ts';
@@ -21,6 +21,9 @@ import { formatAge, statusColor } from '../../shell/format.ts';
 import { Link } from '../../router.tsx';
 import { EnrichWaiting } from '../../capture/EnrichWaiting.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
+import { type TodoFormDraft, draftField } from '../../../core/drafts.ts';
+import { initialDraft, useDraft } from '../../drafts/useDraft.ts';
+import { draftsOnce, knownDraft } from '../../drafts/session-drafts.ts';
 
 /** Who added an item, as the card shows it (subtle). */
 export function authorLabel(todo: Pick<SessionTodo, 'addedBy'>): string {
@@ -64,6 +67,7 @@ export function TodoForm({
   disabled,
   onSave,
   onCancel,
+  draft = null,
 }: {
   readonly initial: TodoFieldsInput | null;
   readonly mode: 'add' | 'edit';
@@ -71,14 +75,48 @@ export function TodoForm({
   /** Saves; answers whether it worked (the form stays open with its text when not). */
   readonly onSave: (fields: TodoFieldsInput) => Promise<boolean>;
   readonly onCancel: () => void;
+  /** D88: keep what is typed as the session's draft under this field (`todo-add`, `todo-edit:<id>`); `null` = not kept. */
+  readonly draft?: { readonly sessionId: string; readonly field: string } | null;
 }) {
-  const [title, setTitle] = useState(initial?.title ?? '');
-  const [description, setDescription] = useState(initial?.description ?? '');
-  // D70: the plan is required; a new item's starts as "No plan" so adding stays quick.
-  const [plan, setPlan] = useState(initial?.plan ?? TODO_NO_PLAN);
-  const [priority, setPriority] = useState<TodoPriority>(initial?.priority ?? DEFAULT_TODO_PRIORITY);
-  const [estimate, setEstimate] = useState(todoEstimateInput(initial?.estimateMinutes));
+  const blank: TodoFormDraft = {
+    title: initial?.title ?? '',
+    description: initial?.description ?? '',
+    // D70: the plan is required; a new item's starts as "No plan" so adding stays quick.
+    plan: initial?.plan ?? TODO_NO_PLAN,
+    priority: initial?.priority ?? DEFAULT_TODO_PRIORITY,
+    estimate: todoEstimateInput(initial?.estimateMinutes),
+  };
+  const [restored] = useState(() => (draft ? initialDraft<TodoFormDraft>(draft.sessionId, draft.field) : null));
+  const start = restored ?? blank;
+  const [title, setTitle] = useState(start.title);
+  const [description, setDescription] = useState(start.description);
+  const [plan, setPlan] = useState(start.plan);
+  const [priority, setPriority] = useState<TodoPriority>(isTodoPriority(start.priority) ? start.priority : DEFAULT_TODO_PRIORITY);
+  const [estimate, setEstimate] = useState(start.estimate);
   const [saving, setSaving] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const draftValue = useMemo<TodoFormDraft>(() => ({ title, description, plan, priority, estimate }), [title, description, plan, priority, estimate]);
+  const show = (value: TodoFormDraft): void => {
+    setTitle(value.title);
+    setDescription(value.description);
+    setPlan(value.plan);
+    setPriority(isTodoPriority(value.priority) ? value.priority : DEFAULT_TODO_PRIORITY);
+    setEstimate(value.estimate);
+  };
+  const kept = useDraft<TodoFormDraft>({
+    sessionId: draft?.sessionId ?? '',
+    field: draft?.field ?? null,
+    value: draftValue,
+    root: formRef,
+    // An Edit form is always kept while open; + Add only once something was typed.
+    initial: restored ?? (mode === 'edit' ? blank : null),
+    // Cleared elsewhere: + Add starts over, Edit goes back to the item as it is.
+    apply: (value) => show(value ?? blank),
+  });
+  const cancel = (): void => {
+    kept.clear();
+    onCancel();
+  };
   // How often each field was edited (its native `input` events, counted on the form by the control's `name`):
   // + Add clears after a save only the fields not edited while it was in flight. Comparing values instead wiped
   // a next item's field that equalled the saved one (the same estimate or priority); and React's onChange skips
@@ -106,6 +144,8 @@ export function TodoForm({
     setSaving(true);
     try {
       const ok = await onSave(sent);
+      // D88: saved: its draft goes (an Edit form closes; + Add keeps what was typed meanwhile, saved as usual).
+      if (ok && (mode === 'edit' || Object.values(edits.current).every((count, index) => count === Object.values(before)[index]))) kept.clear();
       // D69 ruling: + Add stays open for the next item, cleared and on the title (unless the fields were edited meanwhile).
       if (ok && mode === 'add') {
         const untouched = (field: keyof typeof before): boolean => edits.current[field] === before[field];
@@ -125,7 +165,7 @@ export function TodoForm({
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      onCancel();
+      cancel();
     } else if (isSaveKey(event)) {
       event.preventDefault();
       void save();
@@ -134,6 +174,7 @@ export function TodoForm({
 
   return (
     <form
+      ref={formRef}
       className="sb-todo-form"
       data-testid="todo-form"
       data-mode={mode}
@@ -242,7 +283,7 @@ export function TodoForm({
       />
       <div className="sb-todo-form-actions">
         <span className="sb-todo-form-keys">Esc cancels · ⌘/Ctrl+Enter saves</span>
-        <button type="button" className="sb-todo-form-cancel" data-testid="todo-form-cancel" onClick={onCancel}>
+        <button type="button" className="sb-todo-form-cancel" data-testid="todo-form-cancel" onClick={cancel}>
           Cancel
         </button>
         <button type="submit" className="sb-todo-form-save" data-testid="todo-form-save" disabled={!canSave} aria-busy={saving}>
@@ -506,8 +547,11 @@ export function TodoCard({
   onSelect = null,
   sessionLabel = null,
   dragProps = null,
+  draftSessionId = null,
 }: {
   readonly todo: SessionTodo;
+  /** D88: the session whose draft keeps this item's open Edit form (it reopens with the text); `null` = not kept. */
+  readonly draftSessionId?: string | null;
   /** D76: its run session (title, live status), `null` when it has none or it is not known here. */
   readonly runSession?: TodoRunSession | null;
   /** D76: multi-select (Run N in new sessions): whether it is selected; `null` = not selecting. */
@@ -529,7 +573,19 @@ export function TodoCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  // D88: an Edit form left open (on this device or another) opens again with what was typed.
+  const editField = draftSessionId !== null && !disabled ? draftField.todoEdit(todo.id) : null;
+  const [editing, setEditing] = useState(() => editField !== null && draftSessionId !== null && knownDraft(draftSessionId, editField) !== undefined);
+  useEffect(() => {
+    if (editField === null || draftSessionId === null) return undefined;
+    let live = true;
+    void draftsOnce(draftSessionId).then((values) => {
+      if (live && values.has(editField)) setEditing(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [draftSessionId, editField]);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement | null>(null);
   const ids = useId();
@@ -564,6 +620,7 @@ export function TodoCard({
           mode="edit"
           initial={{ title, description: todo.description, plan: todo.plan, priority, estimateMinutes: todo.estimateMinutes }}
           disabled={disabled}
+          draft={editField !== null && draftSessionId !== null ? { sessionId: draftSessionId, field: editField } : null}
           onCancel={() => setEditing(false)}
           onSave={async (fields) => {
             const ok = await actions.onSave(fields);

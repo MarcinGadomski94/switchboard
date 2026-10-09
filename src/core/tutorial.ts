@@ -68,6 +68,9 @@ export const PRE_TUTORIAL_VERSION = '1.12.0';
 /** The version the D76–D84 features ship in. */
 const V1_13 = '1.13.0';
 
+/** The version D88 ships in. */
+const V1_14 = '1.14.0';
+
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
 
@@ -407,6 +410,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['cleanup', 'settings-content'],
         route: { view: 'settings', section: 'cleanup' },
         missing: 'Clean-up is the last section of Settings (on this computer only).',
+      },
+    ],
+  },
+  {
+    id: 'drafts',
+    decision: 'D88',
+    version: V1_14,
+    title: 'Your drafts follow you',
+    steps: [
+      {
+        id: 'composer',
+        title: 'Your drafts follow you',
+        what: 'What you type and have not sent yet stays with the session: the message box, a question\'s own answer, a Send-back comment and the todo forms. Switch sessions, reload, or pick it up on your phone.',
+        todo: ['Type a message and switch to another session.', 'Come back (here or on a paired device): the text is still there.'],
+        anchors: ['composer'],
+        route: SESSION,
+        missing: `${NO_SESSION}Its message box keeps what you type until you send it.`,
       },
     ],
   },

@@ -182,6 +182,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D79: the review cards (list) and their actions, run on the machine whose session it is.
   ['GET', /^\/api\/reviews$/],
   ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|discard|cleanup|dismiss)$/],
+  // D88: a session's drafts live on the machine that runs it (read, save, clear).
+  ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON). */

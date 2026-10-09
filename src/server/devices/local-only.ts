@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen).
+ * tutorial's state (read it, mark a tour seen), and (D88) the sessions' drafts.
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -91,6 +91,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/tools\/[^/]+\/probe$/],
   // A paired machine's Reconnect.
   ['POST', /^\/api\/machines\/[^/]+\/reconnect$/],
+  // D88: a session's drafts (they follow the developer to the phone: read, save, clear).
+  ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
+  ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
   // D85: the tutorial (one state per machine; reading it and marking a tour seen is normal use).
   ['GET', /^\/api\/tutorial$/],
   ['PUT', /^\/api\/tutorial\/tours\/[^/]+$/],

@@ -163,7 +163,7 @@ export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGr
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'draftChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -199,6 +199,13 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
       // D79: a peer's review card changed: its session id namespaced.
       const changed = value as unknown as HubEvents['reviewsChanged'];
       return typeof changed.sessionId === 'string' ? ({ sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
+    }
+    case 'draftChanged': {
+      // D88: a draft of a peer's session changed: its session id namespaced (the field key keeps that machine's ids).
+      const changed = value as unknown as HubEvents['draftChanged'];
+      return typeof changed.sessionId === 'string' && typeof changed.field === 'string'
+        ? ({ sessionId: ns(machine, changed.sessionId), field: changed.field, client: typeof changed.client === 'string' ? changed.client : null } as HubEvents[K])
+        : null;
     }
     case 'todosChanged': {
       const changed = value as unknown as HubEvents['todosChanged'];

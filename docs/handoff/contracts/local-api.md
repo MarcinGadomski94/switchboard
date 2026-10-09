@@ -1277,6 +1277,33 @@ PUT /api/tutorial/tours/run-in-new-session
 → 200 TutorialState
 ```
 
+## Drafts (D88, 2026-10-09, additive)
+Developer ruling D88 (`docs/decisions.md`, `docs/chat.md` → *Drafts*): the unsent values of a session's fields, kept on the machine that runs the session (migration 0038). Types: `src/core/drafts.ts`. A paired device may call every route (`DEVICE_ALLOWED`); they are on the peer API (`PEER_API_ALLOW`), so a paired machine's session (`r~<machine>~<id>`) is forwarded there and its drafts live on that machine.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/drafts | — | 200 SessionDraft[] (by field; a composer draft's chips only while their upload exists in the session) · 404 `not-found` |
+| PUT | /api/sessions/{id}/drafts/{field} | `{ value, client? }` | 200 SessionDraft · 204 when `value` is empty (the draft is cleared) · 404 `not-found` · 409 `too-many` (200 drafts) · 413 `too-large` (the value's JSON over 64 KB) · 422 `invalid` (unknown field, a value not of the field's shape) |
+| DELETE | /api/sessions/{id}/drafts/{field}[?client=] | — | 204 (also when there was none) · 404 `not-found` · 422 `invalid` |
+
+`field`: `composer` · `todo-add` · `question:<batchId>` · `review:<reviewId>` · `todo-edit:<todoId>` (ids `[A-Za-z0-9._-]`, the session machine's own). `value` by field: composer `{ text, attachments: [{ id, name, size, kind, mediaType }] }`; question `{ picks: { <questionId>: <option index> | { text, editing } } }`; review `{ comment }`; todo-add / todo-edit `{ title, description, plan, priority, estimate }` (the estimate as typed). `SessionDraft` = `{ field, value, updatedAt, updatedBy }`, `updatedBy` = `local` / `device:<id>` / `peer`, then `/<client>` when the page sent one. `client` = the page's id (`[A-Za-z0-9_-]{1,64}`), echoed in `draftChanged`. Each save or clear that changed something publishes `draftChanged`.
+
+```json
+PUT /api/sessions/5b0c…/drafts/composer
+{ "value": { "text": "Half a thought about the upload", "attachments": [] }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
+→ 200
+{ "field": "composer", "value": { "text": "Half a thought about the upload", "attachments": [] },
+  "updatedAt": "2026-10-09T10:14:02.118Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" }
+
+GET /api/sessions/5b0c…/drafts
+→ 200
+[ { "field": "composer", "value": { "text": "Half a thought about the upload", "attachments": [] }, "updatedAt": "2026-10-09T10:14:02.118Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" },
+  { "field": "review:3fa81c0d22b9", "value": { "comment": "Please add a changelog line" }, "updatedAt": "2026-10-09T10:15:40.003Z", "updatedBy": "device:k2m4q7x9z3ab/51d0c7e2a4b8f913" } ]
+
+DELETE /api/sessions/5b0c…/drafts/composer?client=9f2c41aa07d3e5b1c8a0f6d2
+→ 204
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1304,4 +1331,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
 | reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape (`ReviewResolvedEvent`, `src/core/reviews.ts`); D76: the todos whose run session it is leave `review`; this machine's only, never forwarded between peers) |
 | reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |
+| draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null`; other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox \| review, title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |

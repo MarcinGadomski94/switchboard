@@ -275,6 +275,7 @@ Neither Codex nor OpenCode was run while this was built: their protocols come fr
 **Chat**
 - **Formatting:** agent and developer messages render as Markdown, with syntax colors and clickable links.
 - **Composer:** **Enter** sends, **Shift+Enter** adds a line.
+- **Drafts follow you:** what you typed and have not sent (the message box and its uploaded attachments, a question's picks and own answer, a review's Send-back comment, the todo forms) stays with the session: switch sessions, reload, or pick it up on a paired phone or machine. Saved on the machine that runs the session; sending, saving or Cancel clears it. [`docs/chat.md`](docs/chat.md#drafts-d88)
 - **Images and files:** paste a screenshot or an image (⌘V / Ctrl+V), drop files on the chat, or pick them with **📎** next to Send. They show as chips before you send and in your message afterwards (click an image to see it larger). Images and PDFs go to the agent directly; other files (logs, CSV, JSON, source files…) are saved in Switchboard's data folder and the agent gets their paths. The New-session forms take them for the first message too. Up to 20 MB per file, 50 MB and 20 files per message; kept 30 days.
 - **Live activity:** "Pondering… 1m 23s", "● Bash: npm test 0:42".
 - **Background waits:** a GitHub Actions run, a build, a subagent, a timer, a background workflow or any other task the CLI reports shows as working ("⏳ Waiting for GitHub Actions: …", "⏳ Running a workflow: …") instead of looking idle.

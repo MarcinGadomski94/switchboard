@@ -1754,6 +1754,17 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D85-undo-anchor · the Undo-a-turn step points at the per-message ↶ revert (`data-tour="undo-turn"`), never at a header button (the integration branch moves *Undo last turn* into the ⋯ menus); with no turn yet it is a centred card naming both.
 - ASSUMED D85-phone-copy · the phone variant is the layout (drawer opened, bottom sheet), not different step texts.
 
+## D88 · Drafts (2026-10-09)
+- ASSUMED D88-chips · the composer's draft keeps only chips already uploaded (`ready`); one still reading or uploading when the page leaves is not kept (its text is). On restore the server answers only the chips whose upload still exists in that session (the clean-up's 30 days may remove one).
+- ASSUMED D88-own-answer-closed · a restored or remotely changed "Other…" answer comes back closed (its text shown as the answer, a click edits it), so a restore never moves the focus into the card; an empty own answer is not restored.
+- ASSUMED D88-question-clear · the question draft is cleared when Send is pressed (the card cannot tell a refused answer from a sent one); a refused answer keeps the picks on screen but not on the server until they change again.
+- ASSUMED D88-edit-open · an open Edit form is kept even unchanged ("the todo edit form if open"), so it reopens; + Add is kept only once something differs from the defaults (`No plan`, medium).
+- ASSUMED D88-add-reopen · a `todo-add` draft opens the + Add form when the session is opened (here, after a reload, on another device); a form opened on another device while this one shows the session does not pop open here (its text follows once it is open).
+- ASSUMED D88-not-kept · not drafts: the New-session forms, the review card's Commit message (drafted from the agent's summary each time), an offline peer's session (its machine cannot be reached).
+- ASSUMED D88-orphans · a draft whose batch was answered elsewhere (claude.ai Remote Control), whose review was resolved elsewhere or whose todo was deleted stays until the session is deleted; the UI ignores it (no server-side clean-up of those).
+- ASSUMED D88-limits · 64 KB per value (the JSON's UTF-8 bytes), the composer's text at most 50,000 characters, at most 200 drafts per session.
+- ASSUMED D88-version · the What's-new entry is 1.14.0 while `package.json` stays 1.13.0 until the release; the tutorial's `lastVersion` takes the newest of the two (tests read it with `tutorialVersion`).
+
 ## D87 · Quiet pushes (2026-10-08)
 - ASSUMED D87-visible-not-focused · "in front" = the page is visible (`visibilityState`); focus is recorded but not required, on the server and in the service worker. A visible but unfocused page (a tablet's split screen, a desktop window behind another) can show the toast, so it gets no system notification.
 - ASSUMED D87-toast-device-only · the new `notice` toasts show only on a paired device's pages, per that device's toggles (the defaults while it has no subscription); this machine's own UI keeps its toasts as they were (questions, usage warnings).
