@@ -115,14 +115,15 @@ export interface PatchFile {
   readonly path: string;
   readonly added: number;
   readonly removed: number;
-  /** Hunk body lines, each starting with `+`, `-` or a space (hunk headers dropped). */
+  /** Each hunk's `@@` header line (D90) followed by its body lines, each starting with `+`, `-` or a space. */
   readonly lines: string[];
   readonly binary: boolean;
 }
 
 /**
  * Parses the output of `git diff --no-renames --src-prefix=a/ --dst-prefix=b/`
- * into one entry per file. `@@` hunk headers and `\ No newline at end of file`
+ * into one entry per file. Each hunk's `@@ -a,b +c,d @@` header is kept before its
+ * body (D90: the Diff tab draws a separator there); `\ No newline at end of file`
  * markers are dropped (the `FileDiff.lines` shape), a trailing `\r` is cut, and
  * binary files have no lines. Sections whose path cannot be read are skipped.
  */
@@ -142,8 +143,12 @@ export function parsePatch(text: string): PatchFile[] {
       let removed = 0;
       if (firstHunk !== -1) {
         for (const raw of section.slice(firstHunk)) {
-          if (raw.startsWith('@@') || raw.startsWith('\\')) continue;
+          if (raw.startsWith('\\')) continue;
           const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+          if (line.startsWith('@@')) {
+            body.push(line);
+            continue;
+          }
           const mark = line[0];
           if (mark === '+') added++;
           else if (mark === '-') removed++;
@@ -175,7 +180,7 @@ export function looksBinary(bytes: Uint8Array): boolean {
   return false;
 }
 
-/** A new, untracked text file as a diff: every line added. Binary content has no lines. */
+/** A new, untracked text file as a diff: one hunk (`@@ -0,0 +1,N @@`, git's header for a new file), every line added. Binary content has no lines. */
 export function untrackedFileDiff(filePath: string, bytes: Uint8Array): PatchFile {
   if (looksBinary(bytes)) return { path: filePath, added: 0, removed: 0, lines: [], binary: true };
   const text = new TextDecoder().decode(bytes);
@@ -183,7 +188,17 @@ export function untrackedFileDiff(filePath: string, bytes: Uint8Array): PatchFil
   const lines = text.split('\n');
   if (lines.at(-1) === '') lines.pop();
   const body = lines.map((line) => `+${line.endsWith('\r') ? line.slice(0, -1) : line}`);
-  return { path: filePath, added: body.length, removed: 0, lines: body, binary: false };
+  return { path: filePath, added: body.length, removed: 0, lines: [newFileHunkHeader(body.length), ...body], binary: false };
+}
+
+/** The hunk header git prints for a new file of `count` lines (`@@ -0,0 +1 @@` for one line). */
+export function newFileHunkHeader(count: number): string {
+  return count === 1 ? '@@ -0,0 +1 @@' : `@@ -0,0 +1,${count} @@`;
+}
+
+/** `true` for a hunk header line of `FileDiff.lines` (D90). */
+export function isHunkHeader(line: string): boolean {
+  return line.startsWith('@@');
 }
 
 /** Splits `git ls-files -z` output into paths, dropping folders (a nested repo shows as `dir/`). */

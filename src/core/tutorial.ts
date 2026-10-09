@@ -17,7 +17,7 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 export type TourRoute =
   | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' }
   | { readonly view: 'settings'; readonly section: string }
-  | { readonly view: 'session' };
+  | { readonly view: 'session'; readonly tab?: 'diff' };
 
 /** One step of a tour: a spotlight on an element and a card next to it. */
 export interface TourStep {
@@ -68,7 +68,7 @@ export const PRE_TUTORIAL_VERSION = '1.12.0';
 /** The version the D76–D84 features ship in. */
 const V1_13 = '1.13.0';
 
-/** The version D89 ships in. */
+/** The version D88, D89 and D90 ship in. */
 const V1_14 = '1.14.0';
 
 const SESSION: TourRoute = { view: 'session' };
@@ -414,6 +414,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
     ],
   },
   {
+    id: 'drafts',
+    decision: 'D88',
+    version: V1_14,
+    title: 'Your drafts follow you',
+    steps: [
+      {
+        id: 'composer',
+        title: 'Your drafts follow you',
+        what: 'What you type and have not sent yet stays with the session: the message box, a question\'s own answer, a Send-back comment and the todo forms. Switch sessions, reload, or pick it up on your phone.',
+        todo: ['Type a message and switch to another session.', 'Come back (here or on a paired device): the text is still there.'],
+        anchors: ['composer'],
+        route: SESSION,
+        missing: `${NO_SESSION}Its message box keeps what you type until you send it.`,
+      },
+    ],
+  },
+  {
     id: 'saved-artifacts',
     decision: 'D89',
     version: V1_14,
@@ -436,6 +453,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['artifacts-filters', 'artifacts'],
         route: { view: 'artifacts' },
         missing: 'Artifacts sits in the sidebar.',
+      },
+    ],
+  },
+  {
+    id: 'diff-since-commit',
+    decision: 'D90',
+    version: V1_14,
+    title: 'Diff shows the work since the last commit',
+    steps: [
+      {
+        id: 'toggle',
+        title: 'Diff shows the work since the last commit',
+        what: "The Diff tab opens on the uncommitted changes since the last commit; in a repo the session works in place, only the files this session touched. Whole branch shows everything a worktree's branch contains; All uncommitted changes in this repo shows other people's edits too.",
+        todo: ["Open a session's Diff tab.", 'Read the line at the top: what is shown, how many files, +/−.', 'Switch to Whole branch or All uncommitted changes; the tab remembers it for the session.'],
+        anchors: ['diff-scope', 'diff-scope-bar'],
+        route: { view: 'session', tab: 'diff' },
+        missing: `${NO_SESSION}Its Diff tab shows the changes since the last commit.`,
       },
     ],
   },

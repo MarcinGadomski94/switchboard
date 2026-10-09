@@ -319,11 +319,11 @@ describe('WorktreeManager · diff (gap #10)', () => {
 
     const files = await m.diff(sessionId);
     expect(files).toEqual([
-      { solution: 'web-front', path: 'README.md', branch: 'session/diff', added: 1, removed: 1, lines: ['-hello', '+hello again'], uncommitted: true },
+      { solution: 'web-front', path: 'README.md', branch: 'session/diff', added: 1, removed: 1, lines: ['@@ -1 +1 @@', '-hello', '+hello again'], uncommitted: true },
       { solution: 'web-front', path: 'img.bin', branch: 'session/diff', added: 0, removed: 0, lines: [], uncommitted: true },
-      { solution: 'web-front', path: 'notes/new.md', branch: 'session/diff', added: 2, removed: 0, lines: ['+# New', '+line'], uncommitted: true },
+      { solution: 'web-front', path: 'notes/new.md', branch: 'session/diff', added: 2, removed: 0, lines: ['@@ -0,0 +1,2 @@', '+# New', '+line'], uncommitted: true },
       // Committed on the session branch: in the diff (vs the merge-base), no longer uncommitted (M4.5).
-      { solution: 'web-front', path: 'src/app.txt', branch: 'session/diff', added: 1, removed: 1, lines: [' one', '-two', '+TWO', ' three'], uncommitted: false },
+      { solution: 'web-front', path: 'src/app.txt', branch: 'session/diff', added: 1, removed: 1, lines: ['@@ -1,3 +1,3 @@', ' one', '-two', '+TWO', ' three'], uncommitted: false },
     ]);
     expect((await m.diff(sessionId, 'src/app.txt')).map((f) => f.path)).toEqual(['src/app.txt']);
     expect((await m.diff(sessionId, 'notes/new.md')).map((f) => f.path)).toEqual(['notes/new.md']);
@@ -337,7 +337,7 @@ describe('WorktreeManager · diff (gap #10)', () => {
     await w.commit(w.mobile, 'committed.txt', 'committed\n');
     await writeFile(path.join(w.mobile, 'src', 'app.txt'), 'one\ntwo\nthree\nfour\n');
     expect(await m.diff(sessionId)).toEqual([
-      { solution: 'mobile', path: 'src/app.txt', branch: 'main', added: 1, removed: 0, lines: [' one', ' two', ' three', '+four'], uncommitted: true },
+      { solution: 'mobile', path: 'src/app.txt', branch: 'main', added: 1, removed: 0, lines: ['@@ -1,3 +1,4 @@', ' one', ' two', ' three', '+four'], uncommitted: true },
     ]);
     expect(w.errors).toEqual([]);
   });

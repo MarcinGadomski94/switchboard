@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { REVIEW_ACTION_LABELS, type Review, type ReviewActionId, resolutionLabel, testsLine } from '../../core/reviews.ts';
 import { ApiError, api, onDeviceOrigin } from '../api/client.ts';
 import { Link } from '../router.tsx';
@@ -15,6 +15,8 @@ import {
   shownActions,
   statsLine,
 } from './review-card.ts';
+import { type ReviewDraft, draftField } from '../../core/drafts.ts';
+import { initialDraft, useDraft } from '../drafts/useDraft.ts';
 import './review-card.css';
 
 /** How many files / commits a card lists before "+ n more". */
@@ -37,17 +39,37 @@ interface ReviewCardProps {
  * on click. On a paired device Discard and Clean up are not offered (desktop only).
  */
 export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
-  const [form, setForm] = useState<ReviewForm | null>(null);
+  // D88: the Send-back comment not yet sent is the session's draft (`review:<id>`); with one, its form opens.
+  const field = review.actions.includes('send-back') ? draftField.review(review.id) : null;
+  const [restored] = useState(() => initialDraft<ReviewDraft>(review.sessionId, field)?.comment ?? '');
+  const [form, setForm] = useState<ReviewForm | null>(restored !== '' ? 'send-back' : null);
   const [message, setMessage] = useState(review.commitMessage);
-  const [comment, setComment] = useState('');
+  const [comment, setComment] = useState(restored);
   const [busy, setBusy] = useState<ReviewActionId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<readonly string[]>(review.conflicts);
+  const shownId = useRef(review.id);
   useEffect(() => {
+    // Another card in the same place (not the first render: a restored draft stays).
+    if (shownId.current === review.id) return;
+    shownId.current = review.id;
     setForm(null);
     setComment('');
     setError(null);
   }, [review.id]);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const draftValue = useMemo<ReviewDraft>(() => ({ comment }), [comment]);
+  const kept = useDraft<ReviewDraft>({
+    sessionId: review.sessionId,
+    field,
+    value: draftValue,
+    root: cardRef,
+    initial: restored !== '' ? { comment: restored } : null,
+    apply: (value) => {
+      setComment(value?.comment ?? '');
+      if (value && value.comment.trim() !== '') setForm('send-back');
+    },
+  });
   useEffect(() => setMessage(review.commitMessage), [review.id, review.commitMessage]);
   useEffect(() => setConflicts(review.conflicts), [review.id, review.conflicts]);
 
@@ -57,6 +79,8 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
     setError(null);
     try {
       const answer = await api.reviewAction(review.id, action, body);
+      // D88: the comment was sent back: its draft goes.
+      if (action === 'send-back') kept.clear();
       setForm(null);
       setComment('');
       onChanged?.(answer);
@@ -70,6 +94,12 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
       setBusy(null);
     }
   };
+  // D88: Cancel drops the comment and its draft.
+  const cancelSendBack = (): void => {
+    kept.clear();
+    setComment('');
+    setForm(null);
+  };
   const pick = (action: ReviewActionId): void => {
     if (needsForm(action)) {
       setError(null);
@@ -82,7 +112,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
   const files = review.repos.flatMap((repo) => repo.files.map((file) => ({ ...file, multi: review.repos.length > 1 })));
   const commits = review.repos.flatMap((repo) => repo.commits.map((commit) => ({ ...commit, repo: repo.repo })));
   return (
-    <div className="sb-review" data-testid="review-card" data-tour="review-card" data-variant={variant} data-review-id={review.id} data-state={review.state} data-mode={review.mode}>
+    <div ref={cardRef} className="sb-review" data-testid="review-card" data-tour="review-card" data-variant={variant} data-review-id={review.id} data-state={review.state} data-mode={review.mode}>
       <div className="sb-review__repos">
         {review.repos.map((repo) => (
           <div key={`${repo.repo}\u0000${repo.dir}`} className="sb-review__repo" data-testid="review-repo">
@@ -197,7 +227,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
             onChange={(event) => setComment(event.target.value)}
           />
           <div className="sb-review__hint">{SEND_BACK_HINT}</div>
-          <FormButtons confirm="Send back" testId="review-send-back-confirm" busy={busy !== null} disabled={comment.trim() === ''} onConfirm={() => void run('send-back', { comment })} onCancel={() => setForm(null)} />
+          <FormButtons confirm="Send back" testId="review-send-back-confirm" busy={busy !== null} disabled={comment.trim() === ''} onConfirm={() => void run('send-back', { comment })} onCancel={cancelSendBack} />
         </div>
       ) : null}
       {form === 'discard' ? (

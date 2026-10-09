@@ -12,7 +12,8 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 | POST | /api/sessions/{id}/pause · /resume | — | Session |
 | POST | /api/sessions/{id}/detach · /attach | — | { resumeCommand } |
 | GET | /api/sessions/{id}/events | ?since=ts | Event[] |
-| GET | /api/sessions/{id}/diff | ?file= | FileDiff[] |
+| GET | /api/sessions/{id}/diff | ?file= · ?scope=head\|branch\|repo (D90, default head) | FileDiff[] |
+| GET | /api/sessions/{id}/diff/targets | — (D90) | DiffTargets |
 | GET | /api/inbox | — | InboxItem[] |
 | POST | /api/questions/batch/{batchId}/answers | { answers: [{questionId, answerIndex}] } | 204 (400 unless all are answered) |
 | POST | /api/inbox/{id}/actions/{action} | — | 204 |
@@ -1277,6 +1278,33 @@ PUT /api/tutorial/tours/run-in-new-session
 → 200 TutorialState
 ```
 
+## Drafts (D88, 2026-10-09, additive)
+Developer ruling D88 (`docs/decisions.md`, `docs/chat.md` → *Drafts*): the unsent values of a session's fields, kept on the machine that runs the session (migration 0038). Types: `src/core/drafts.ts`. A paired device may call every route (`DEVICE_ALLOWED`); they are on the peer API (`PEER_API_ALLOW`), so a paired machine's session (`r~<machine>~<id>`) is forwarded there and its drafts live on that machine.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/drafts | — | 200 SessionDraft[] (by field; a composer draft's chips only while their upload exists in the session) · 404 `not-found` |
+| PUT | /api/sessions/{id}/drafts/{field} | `{ value, client? }` | 200 SessionDraft · 204 when `value` is empty (the draft is cleared) · 404 `not-found` · 409 `too-many` (200 drafts) · 413 `too-large` (the value's JSON over 64 KB) · 422 `invalid` (unknown field, a value not of the field's shape) |
+| DELETE | /api/sessions/{id}/drafts/{field}[?client=] | — | 204 (also when there was none) · 404 `not-found` · 422 `invalid` |
+
+`field`: `composer` · `todo-add` · `question:<batchId>` · `review:<reviewId>` · `todo-edit:<todoId>` (ids `[A-Za-z0-9._-]`, the session machine's own). `value` by field: composer `{ text, attachments: [{ id, name, size, kind, mediaType }] }`; question `{ picks: { <questionId>: <option index> | { text, editing } } }`; review `{ comment }`; todo-add / todo-edit `{ title, description, plan, priority, estimate }` (the estimate as typed). `SessionDraft` = `{ field, value, updatedAt, updatedBy }`, `updatedBy` = `local` / `device:<id>` / `peer`, then `/<client>` when the page sent one. `client` = the page's id (`[A-Za-z0-9_-]{1,64}`), echoed in `draftChanged`. Each save or clear that changed something publishes `draftChanged`.
+
+```json
+PUT /api/sessions/5b0c…/drafts/composer
+{ "value": { "text": "Half a thought about the upload", "attachments": [] }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
+→ 200
+{ "field": "composer", "value": { "text": "Half a thought about the upload", "attachments": [] },
+  "updatedAt": "2026-10-09T10:14:02.118Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" }
+
+GET /api/sessions/5b0c…/drafts
+→ 200
+[ { "field": "composer", "value": { "text": "Half a thought about the upload", "attachments": [] }, "updatedAt": "2026-10-09T10:14:02.118Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" },
+  { "field": "review:3fa81c0d22b9", "value": { "comment": "Please add a changelog line" }, "updatedAt": "2026-10-09T10:15:40.003Z", "updatedBy": "device:k2m4q7x9z3ab/51d0c7e2a4b8f913" } ]
+
+DELETE /api/sessions/5b0c…/drafts/composer?client=9f2c41aa07d3e5b1c8a0f6d2
+→ 204
+```
+
 ## Artifacts saved on purpose (D89, 2026-10-09, changed)
 Developer request D89 (`docs/decisions.md`, `docs/artifacts.md`): artifacts are only what is **saved on purpose**: by the session's agent (the `switchboard` MCP tool `artifact_save`) or by the developer (Save as artifact on a chat message). This **replaces** the derived artifacts (gap #9): `Artifact` changes shape, `GET /api/artifacts` changes its filters, and the recorder no longer derives rows. Migration 0039. Types: `src/core/api.ts`, rules: `src/core/artifacts.ts`. A paired machine's session goes through the proxy like every session route (`PEER_API_ALLOW`; a version's bytes pass through as bytes with their headers); a paired device may call every route below (`DEVICE_ALLOWED`).
 
@@ -1309,6 +1337,34 @@ POST /agent/v1/artifacts
   "version": 2, "created": false }
 ```
 
+## Diff views (D90, 2026-10-09, additive)
+Developer ruling D90 (`docs/decisions.md`; details `docs/worktrees.md` → *Diff*): the Diff tab opens on the work since the last commit. Types: `src/core/api.ts` (`DiffScope`, `DiffTargets`).
+
+| Method | Path | Query | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/diff | `file` (as before), `scope` = `head` (default) \| `branch` \| `repo` | 200 FileDiff[] · 404 `not-found` · 422 `invalid` (`field: "scope"` for another or a repeated value) |
+| GET | /api/sessions/{id}/diff/targets | — | 200 DiffTargets · 404 `not-found` |
+
+- **`scope`:** `head` = uncommitted changes against HEAD (staged, unstaged, untracked; never ignored) in the session's working trees, and in a solution it works on in place only the files the session touched (its Write / Edit / MultiEdit / NotebookEdit paths and, with D80 checkpoints, what changed during its turns); `repo` = every uncommitted change against HEAD; `branch` = the behavior before D90 (a worktree against the merge-base with its base branch, in place against HEAD). **A behavior change:** a request without `scope` now gets `head`; ask `scope=branch` for the old list. `SessionDetail.files` is unchanged (the whole branch).
+- **`FileDiff.lines`** now also carries each hunk's `@@ -a,b +c,d @@` header line before its body (a new untracked file: `@@ -0,0 +1,N @@`). A reader that knows only `+` / `-` / space may show it as context.
+- **`DiffTargets`:** `{ worktrees: [{ solution, branch, base: string | null, commits: number }], inPlace: [{ solution, branch: string | null }] }`: the working trees the diff reads; `base` = the worktree's base ref, `commits` = commits on its branch since the merge-base with it (0 when it does not resolve). The tab offers Whole branch with a worktree and All uncommitted changes with an in-place solution.
+- **Peers (D48):** the query passes through; `GET …/diff/targets` is on `PEER_API_ALLOW`. A peer before D90 answers its old diff whatever the `scope` and refuses the targets (403 `peer-forbidden`): the UI then offers only the default view. **Devices (D73):** both routes are allowed.
+
+```json
+GET /api/sessions/0b7c3e0a-…/diff?scope=head
+→ 200
+[{ "solution": "web-front", "path": "README.md", "branch": "PROJ-42-diff", "added": 1, "removed": 0,
+   "lines": ["@@ -1 +1,2 @@", " hello", "+more"], "uncommitted": true }]
+
+GET /api/sessions/0b7c3e0a-…/diff/targets
+→ 200
+{ "worktrees": [{ "solution": "web-front", "branch": "PROJ-42-diff", "base": "origin/dev", "commits": 2 }],
+  "inPlace": [{ "solution": "mobile", "branch": "main" }] }
+
+GET /api/sessions/0b7c3e0a-…/diff?scope=all
+→ 422 { "error": "invalid", "errors": [{ "field": "scope", "message": "scope must be one of head, branch, repo" }] }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1336,5 +1392,6 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
 | reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape (`ReviewResolvedEvent`, `src/core/reviews.ts`); D76: the todos whose run session it is leave `review`; this machine's only, never forwarded between peers) |
 | reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |
+| draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null`; other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id) |
 | artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox \| review, title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |

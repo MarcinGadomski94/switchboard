@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from 'react';
 import type { AnswerBatch, Question } from '../../core/api.ts';
 import { OWN_ANSWER_MAX } from '../../core/own-answer.ts';
 import {
@@ -16,6 +16,8 @@ import {
   questionCardView,
   typeOwn,
 } from './question-card.ts';
+import { type QuestionDraft, draftField, rawDraftId } from '../../core/drafts.ts';
+import { initialDraft, useDraft } from '../drafts/useDraft.ts';
 import './question-card.css';
 
 /** Where the card sits: the Inbox detail (max 760px) or the session chat (inline). */
@@ -57,16 +59,30 @@ function focusOther(from: HTMLElement): void {
  */
 export function QuestionCard({ questions, variant = 'inbox', onSend, busy = false, error = null, note }: QuestionCardProps) {
   const batchId = questions[0]?.batchId ?? '';
+  const sessionId = questions[0]?.sessionId ?? '';
+  const readOnly = note !== undefined;
+  const answered = questions.every((question) => question.answeredAt !== null);
+  // D88: the picks not yet sent are the session's draft (`question:<batchId>`), shared by the chat's card and the Inbox's.
+  const field = readOnly || answered || batchId === '' || sessionId === '' ? null : draftField.question(batchId);
   const [state, setState] = useState<{ readonly batchId: string; readonly picks: QuestionPicks }>(() => ({
     batchId,
-    picks: initialPicks(questions),
+    picks: { ...initialPicks(questions), ...picksFromDraft(questions, initialDraft<QuestionDraft>(sessionId, field)) },
   }));
   // Another batch in the same card resets the picks.
   const picks = state.batchId === batchId ? state.picks : initialPicks(questions);
   const view = questionCardView(questions, picks);
   const body = answerBody(questions, picks);
-  const readOnly = note !== undefined;
-  const locked = busy || readOnly || questions.every((question) => question.answeredAt !== null);
+  const locked = busy || readOnly || answered;
+  const card = useRef<HTMLDivElement | null>(null);
+  const draftValue = useMemo<QuestionDraft>(() => ({ picks: draftPicks(picks) }), [picks]);
+  const kept = useDraft<QuestionDraft>({
+    sessionId,
+    field,
+    value: draftValue,
+    root: card,
+    initial: Object.keys(draftValue.picks).length > 0 ? draftValue : null,
+    apply: (value) => setState({ batchId, picks: { ...initialPicks(questions), ...picksFromDraft(questions, value) } }),
+  });
 
   const update = (next: QuestionPicks): void => {
     if (locked) return;
@@ -74,6 +90,8 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
   };
   const send = (): void => {
     if (!body || locked) return;
+    // D88: sent: the draft goes (a refused answer keeps the picks on screen).
+    kept.clear();
     void onSend(body);
   };
   const onOwnKey = (questionId: string, event: KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -90,6 +108,7 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
 
   return (
     <div
+      ref={card}
       className={`sb-qcard sb-qcard--${variant}${readOnly ? ' sb-qcard--readonly' : ''}`}
       data-testid="question-card"
       data-batch-id={batchId}
@@ -188,4 +207,28 @@ export function QuestionCard({ questions, variant = 'inbox', onSend, busy = fals
       )}
     </div>
   );
+}
+
+/** D88: the picks as the draft keeps them (by the question's raw id, so every machine's UI names them alike). */
+function draftPicks(picks: QuestionPicks): QuestionDraft['picks'] {
+  const out: Record<string, QuestionDraft['picks'][string]> = {};
+  for (const [id, pick] of Object.entries(picks)) out[rawDraftId(id)] = typeof pick === 'number' ? pick : { text: pick.text, editing: pick.editing };
+  return out;
+}
+
+/** D88: a draft's picks for these questions (an option index the question no longer has, or an empty own answer, is dropped). */
+function picksFromDraft(questions: readonly Question[], draft: QuestionDraft | null): QuestionPicks {
+  if (!draft) return {};
+  const out: Record<string, QuestionPicks[string]> = {};
+  for (const question of questions) {
+    const pick = draft.picks[rawDraftId(question.id)];
+    if (pick === undefined) continue;
+    if (typeof pick === 'number') {
+      if (pick < question.options.length) out[question.id] = pick;
+    } else if (pick.text.trim() !== '') {
+      // Restored closed (its text as the answer): an open field would take the focus from wherever the developer is.
+      out[question.id] = { text: pick.text, editing: false };
+    }
+  }
+  return out;
 }

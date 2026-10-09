@@ -40,6 +40,7 @@ import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
+import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
 import { Scheduler, scheduleRunnerFor } from './schedules/scheduler.ts';
 import { registerSecurity } from './security.ts';
@@ -411,6 +412,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     },
   });
   supervisor.useCheckpoints(checkpoints);
+  // D90: the end of each turn, snapshotted for the Diff's "files this session touched" (in-place solutions).
+  app.addHook('onReady', async () => {
+    worktrees.touched.listen(bus);
+  });
+  app.addHook('onClose', async () => {
+    await worktrees.touched.stop();
+  });
   app.addHook('onReady', async () => {
     checkpoints.start();
   });
@@ -463,7 +471,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial });
+  // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
+  const drafts = new DraftService({ store: options.store, bus });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

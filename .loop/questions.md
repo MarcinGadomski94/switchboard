@@ -1754,6 +1754,17 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D85-undo-anchor · the Undo-a-turn step points at the per-message ↶ revert (`data-tour="undo-turn"`), never at a header button (the integration branch moves *Undo last turn* into the ⋯ menus); with no turn yet it is a centred card naming both.
 - ASSUMED D85-phone-copy · the phone variant is the layout (drawer opened, bottom sheet), not different step texts.
 
+## D88 · Drafts (2026-10-09)
+- ASSUMED D88-chips · the composer's draft keeps only chips already uploaded (`ready`); one still reading or uploading when the page leaves is not kept (its text is). On restore the server answers only the chips whose upload still exists in that session (the clean-up's 30 days may remove one).
+- ASSUMED D88-own-answer-closed · a restored or remotely changed "Other…" answer comes back closed (its text shown as the answer, a click edits it), so a restore never moves the focus into the card; an empty own answer is not restored.
+- ASSUMED D88-question-clear · the question draft is cleared when Send is pressed (the card cannot tell a refused answer from a sent one); a refused answer keeps the picks on screen but not on the server until they change again.
+- ASSUMED D88-edit-open · an open Edit form is kept even unchanged ("the todo edit form if open"), so it reopens; + Add is kept only once something differs from the defaults (`No plan`, medium).
+- ASSUMED D88-add-reopen · a `todo-add` draft opens the + Add form when the session is opened (here, after a reload, on another device); a form opened on another device while this one shows the session does not pop open here (its text follows once it is open).
+- ASSUMED D88-not-kept · not drafts: the New-session forms, the review card's Commit message (drafted from the agent's summary each time), an offline peer's session (its machine cannot be reached).
+- ASSUMED D88-orphans · a draft whose batch was answered elsewhere (claude.ai Remote Control), whose review was resolved elsewhere or whose todo was deleted stays until the session is deleted; the UI ignores it (no server-side clean-up of those).
+- ASSUMED D88-limits · 64 KB per value (the JSON's UTF-8 bytes), the composer's text at most 50,000 characters, at most 200 drafts per session.
+- ASSUMED D88-version · the What's-new entry is 1.14.0 while `package.json` stays 1.13.0 until the release; the tutorial's `lastVersion` takes the newest of the two (tests read it with `tutorialVersion`).
+
 ## D87 · Quiet pushes (2026-10-08)
 - ASSUMED D87-visible-not-focused · "in front" = the page is visible (`visibilityState`); focus is recorded but not required, on the server and in the service worker. A visible but unfocused page (a tablet's split screen, a desktop window behind another) can show the toast, so it gets no system notification.
 - ASSUMED D87-toast-device-only · the new `notice` toasts show only on a paired device's pages, per that device's toggles (the defaults while it has no subscription); this machine's own UI keeps its toasts as they were (questions, usage warnings).
@@ -1776,6 +1787,17 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - UNVERIFIED D89-codex-opencode · the three tools reach Codex CLI and OpenCode through the same injection as the todo tools (D68), still not run against the real CLIs.
 - NOTE D89-migration-order · 0039 lands while D88's 0038 is in another lane: migrations apply by version set (not "highest applied"), so an install that got 0039 first still gets 0038 later; the migration tests that read `applied` were made order-tolerant.
 - RESOLVED D89-proxy-test · `tests/server/peers/proxy.test.ts` › "lists, reads and drives a remote session …" timed out at "A's permission decided" on 1.13.0 too: stale since D79 (a Review card can join A's Inbox when the turn ends). It now waits for the permission item to be gone (by kind), like `tests/e2e/peers.spec.ts`.
+
+## D90 · Diff since the last commit (2026-10-09)
+- ASSUMED D90-turn-end · "the turn's end" = the moment the session's status goes from `run` to `idle` / `done` (as the D79 review cards read it): a snapshot of each working tree the turn has a checkpoint in (the D80 throw-away-index technique, no ref), kept **in memory**. A turn without one (it ended before a restart) ends at the next turn's checkpoint; the latest such turn counts by its tool events only. A running turn is compared with the working tree now. No migration (the parallel lanes may add their own).
+- ASSUMED D90-precision · an edit by someone else to a file *during* one of the session's turns counts as touched (git cannot tell who wrote it); edits between turns or after the last turn's end do not (when the end snapshot exists). Files only Bash touched in a hooked terminal session (no checkpoints) are not shown in the default view; All uncommitted changes shows them.
+- ASSUMED D90-tools · only Claude Code's edit tools (Write, Edit, MultiEdit, NotebookEdit) name touched files; other CLIs' edits count through the checkpoints only.
+- ASSUMED D90-worktree-head · in a worktree "Since last commit" is every uncommitted change in it (the worktree is the session's own), not only its touched files; All uncommitted changes is offered only with an in-place solution.
+- ASSUMED D90-branch-in-place · `scope=branch` keeps the exact old behavior, so an in-place solution under it shows every uncommitted change (like `repo`); the tab offers Whole branch only with a worktree.
+- ASSUMED D90-targets-route · the toggle needs to know whether the session has worktrees / in-place solutions, their bases and whether a branch has commits: an additive read `GET /api/sessions/{id}/diff/targets` (allow-listed for peers and devices) instead of changing `GET …/diff`'s `FileDiff[]` shape. A peer before D90 refuses it: the tab then offers only Since last commit, and that peer's diff answers its old (whole-branch) view.
+- ASSUMED D90-hunks · the `@@` header lines are part of `FileDiff.lines` in every scope (an older reader shows them as context lines); the demo diff has no hunk headers, so the visual oracle is unchanged (the new view bar sits above the measured `.sb-diff` container).
+- ASSUMED D90-tab-count · the session tab's "Diff · n" count still reads `SessionDetail.files` (the whole branch), so it can differ from the default view's count. See the question below.
+- OPEN D90-q1 · Should the "Diff · n" tab count follow the view shown in the tab (Since last commit by default) instead of the whole branch?
 
 ## Stabilize 1.4.0 (2026-10-01)
 - VERIFIED stabilize-stale-tests · stale tests, code as decided: `tests/core/stop-turn.test.ts` (D57: withdrawn entries carry `attachments`), `tests/server/inbox/inbox-list.test.ts` (D55: `update-available` label), `tests/web/model-picker.test.ts` (long messages: chat items carry `cut`), `tests/e2e/shell.spec.ts` (D62: `/api/clis` is a real route, no longer 501), `tests/e2e/visual/tools.spec.ts` (D61: the TOOLS rows compared with y relative to the TOOLS label, as visual/shell does)

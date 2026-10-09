@@ -134,6 +134,24 @@ export class EventRepository {
     return this.#table.select("session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') = ?", [sessionId, name], 'ts DESC, id DESC', limit);
   }
 
+  /**
+   * D90: the distinct file paths the session's file-editing tool calls named
+   * (`payload.type` = `tool`, `payload.name` one of `names`; `input.file_path`, or
+   * `input.notebook_path` for NotebookEdit), as written (absolute or cwd-relative).
+   */
+  async editedFilePaths(sessionId: string, names: readonly string[]): Promise<string[]> {
+    if (names.length === 0) return [];
+    const marks = names.map(() => '?').join(', ');
+    return this.#table
+      .statement(
+        `SELECT DISTINCT COALESCE(json_extract(payload, '$.input.file_path'), json_extract(payload, '$.input.notebook_path')) AS p FROM events ` +
+          `WHERE session_id = ? AND json_extract(payload, '$.type') = 'tool' AND json_extract(payload, '$.name') IN (${marks})`,
+      )
+      .all(sessionId, ...names)
+      .map((row) => row['p'])
+      .filter((value): value is string => typeof value === 'string' && value !== '');
+  }
+
   /** The newest event of the session for a `tool_use` id. */
   async findByToolUseId(sessionId: string, toolUseId: string): Promise<EventRecord | null> {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId], 'id DESC');

@@ -99,6 +99,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff)$/],
+  // D90: which views the Diff tab offers for that machine's session (a peer before D90 answers 404: only the default view).
+  ['GET', /^\/api\/sessions\/[^/]+\/diff\/targets$/],
   // D51: a Workflow agent's conversation (its transcript on that machine).
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
   // Fix · long messages: a cut event's whole text (from the transcript on that machine).
@@ -187,6 +189,10 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
+  // D88: a session's drafts live on the machine that runs it (read, save, clear).
+  ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

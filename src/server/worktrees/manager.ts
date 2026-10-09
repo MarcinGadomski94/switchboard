@@ -1,6 +1,6 @@
 import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { BranchingPreflightRow, FileDiff, RepoBranches, Worktree } from '../../core/api.ts';
+import type { BranchingPreflightRow, DiffScope, DiffTargets, FileDiff, RepoBranches, Worktree } from '../../core/api.ts';
 import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
 import {
   PARENT_PR_FIELDS,
@@ -32,6 +32,7 @@ import {
   solutionCandidates,
   splitNulList,
   toFileDiff,
+  newFileHunkHeader,
   untrackedFileDiff,
   worktreeBranch,
   worktreePath,
@@ -43,6 +44,7 @@ import { type FolderRef, folderOfSession, repoSolutionName } from '../folders/re
 import { type RunOptions, type RunResult, failureText, runCommand, succeeded } from '../exec.ts';
 import type { DiffProvider } from '../providers.ts';
 import { isReadOnlyByLayout } from '../sessions/validate.ts';
+import { SessionTouchedFiles } from './touched.ts';
 import { toWorktree } from './wire.ts';
 import { checkoutOf, isMainCheckout } from '../solutions/checkout.ts';
 import { recordCreatedBranch } from '../cleanup/created-branches.ts';
@@ -295,8 +297,8 @@ interface DiffTarget {
   readonly solution: string;
   readonly dir: string;
   readonly branch: string | null;
-  /** `null` = diff against HEAD (in place); else the merge-base with this ref (worktree). */
-  readonly mergeBaseWith: string | null;
+  /** The worktree's base (`base_ref`); `null` in place. */
+  readonly baseRef: string | null;
   readonly worktree: boolean;
 }
 
@@ -355,6 +357,8 @@ export class WorktreeManager implements DiffProvider {
   /** D40: worktrees whose branch existed before (reused): {@link discard} never deletes it. */
   readonly #keptBranches = new Set<string>();
   #checking: Promise<PullRequestCheck[]> | null = null;
+  /** D90: the files a session touched in a working tree it uses in place (the Diff's default view). */
+  readonly touched: SessionTouchedFiles;
   /** D38: adoptions run one at a time (two sessions may share a branch; a worktree gets one row). */
   #adopting: Promise<unknown> = Promise.resolve();
   #timer: NodeJS.Timeout | undefined;
@@ -370,6 +374,7 @@ export class WorktreeManager implements DiffProvider {
     this.#ghTimeout = options.timeouts?.gh ?? 30_000;
     this.#fetchTimeout = options.timeouts?.fetch ?? 60_000;
     this.#onError = options.onError ?? ((error) => console.error('switchboard worktrees:', error));
+    this.touched = new SessionTouchedFiles({ store: this.#store, env: this.#env, onError: this.#onError });
   }
 
   /** Subscribes to `worktreeRemovable`; returns the unsubscribe function. */
@@ -1370,19 +1375,66 @@ export class WorktreeManager implements DiffProvider {
   // ── diff (gap #10) ────────────────────────────────────────────────────
 
   /**
-   * Changed files of a session (gap #10): each of its worktrees against the
-   * merge-base with its base branch, committed and uncommitted changes and new
-   * untracked files included; each solution in scope without a worktree (in
-   * place) against its HEAD, resolved in the session's own folder (D14). `file`
-   * limits the result to that solution-relative path. Each file says whether it
-   * still has uncommitted changes (`FileDiff.uncommitted`). A solution that
-   * cannot be read is skipped (reported through `onError`).
+   * Changed files of a session (gap #10; D90 `scope`, `docs/worktrees.md` → *Diff*):
+   * - `branch` (the default here, as before D90): each of its worktrees against the
+   *   merge-base with its base branch (committed and uncommitted changes, new
+   *   untracked files); each solution in scope without a worktree (in place)
+   *   against its HEAD, resolved in the session's own folder (D14);
+   * - `head`: every working tree against HEAD (uncommitted changes only); in place
+   *   only the files the session touched ({@link SessionTouchedFiles});
+   * - `repo`: every working tree against HEAD, every file.
+   *
+   * `file` limits the result to that solution-relative path. Each file says
+   * whether it still has uncommitted changes (`FileDiff.uncommitted`). A solution
+   * that cannot be read is skipped (reported through `onError`).
    */
-  async diff(sessionId: string, file?: string): Promise<FileDiff[]> {
+  async diff(sessionId: string, file?: string, scope: DiffScope = 'branch'): Promise<FileDiff[]> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
-    const worktrees = await this.#store.worktrees.list({ sessionId });
-    const targets: DiffTarget[] = worktrees.map((w) => ({ solution: w.repo, dir: w.path, branch: w.branch, mergeBaseWith: w.baseRef ?? 'HEAD', worktree: true }));
+    const files: FileDiff[] = [];
+    for (const target of await this.#diffTargets(session)) {
+      try {
+        const touched = scope === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
+        files.push(...(await this.#diffTarget(target, file, scope === 'branch' && target.worktree, touched)));
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    return files;
+  }
+
+  /**
+   * D90: the working trees the session's diff reads: its worktrees (branch, base,
+   * commits since the merge-base) and the solutions it works on in place (their
+   * checked-out branch). Unreadable ones are left out.
+   */
+  async targets(sessionId: string): Promise<DiffTargets> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) return { worktrees: [], inPlace: [] };
+    const worktrees: Array<DiffTargets['worktrees'][number]> = [];
+    const inPlace: Array<DiffTargets['inPlace'][number]> = [];
+    for (const target of await this.#diffTargets(session)) {
+      try {
+        if (!(await isDirectory(target.dir))) continue;
+        if (target.worktree) {
+          const base = target.baseRef === null ? null : await this.#mergeBase(target.dir, target.baseRef);
+          const count = base === null ? null : await this.#runGit(target.dir, ['rev-list', '--count', `${base}..HEAD`]);
+          const commits = count !== null && succeeded(count) ? Number.parseInt(count.stdout.trim(), 10) || 0 : 0;
+          worktrees.push({ solution: target.solution, branch: target.branch ?? '', base: target.baseRef, commits });
+        } else {
+          inPlace.push({ solution: target.solution, branch: await this.#currentBranch(target.dir) });
+        }
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    return { worktrees, inPlace };
+  }
+
+  /** The session's diff targets: its worktrees, then its in-place solutions (D14: resolved in its folder). */
+  async #diffTargets(session: SessionRecord): Promise<DiffTarget[]> {
+    const worktrees = await this.#store.worktrees.list({ sessionId: session.id });
+    const targets: DiffTarget[] = worktrees.map((w) => ({ solution: w.repo, dir: w.path, branch: w.branch, baseRef: w.baseRef ?? null, worktree: true }));
     const folder = folderOfSession(session);
     for (const solution of folder ? session.solutions : []) {
       if (worktrees.some((w) => w.repo === solution)) continue;
@@ -1393,34 +1445,37 @@ export class WorktreeManager implements DiffProvider {
         continue;
       }
       if (worktrees.some((w) => w.repoPath === repo.repoPath)) continue;
-      targets.push({ solution, dir: repo.repoPath, branch: null, mergeBaseWith: null, worktree: false });
+      targets.push({ solution, dir: repo.repoPath, branch: null, baseRef: null, worktree: false });
     }
-    const files: FileDiff[] = [];
-    for (const target of targets) {
-      try {
-        files.push(...(await this.#diffTarget(target, file)));
-      } catch (error) {
-        this.#onError(error);
-      }
-    }
-    return files;
+    return targets;
   }
 
-  async #diffTarget(target: DiffTarget, file: string | undefined): Promise<FileDiff[]> {
+  /** The merge-base of `ref` and HEAD, `null` when it does not resolve. */
+  async #mergeBase(dir: string, ref: string): Promise<string | null> {
+    const mergeBase = await this.#runGit(dir, ['merge-base', ref, 'HEAD']);
+    return succeeded(mergeBase) && mergeBase.stdout.trim() !== '' ? mergeBase.stdout.trim() : null;
+  }
+
+  /** The checked-out branch, `null` when detached. */
+  async #currentBranch(dir: string): Promise<string | null> {
+    const symbolic = await this.#runGit(dir, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    return succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : null;
+  }
+
+  /**
+   * One working tree's files: against the merge-base of its base and HEAD when
+   * `wholeBranch`, else against HEAD; `touched` (a set of relative paths) keeps only
+   * those files (D90, in place).
+   */
+  async #diffTarget(target: DiffTarget, file: string | undefined, wholeBranch: boolean, touched: ReadonlySet<string> | null): Promise<FileDiff[]> {
     if (!(await isDirectory(target.dir))) return [];
     const head = await this.#runGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
     if (!succeeded(head) || head.stdout.trim() === '') return [];
+    if (touched !== null && touched.size === 0) return [];
     const headSha = head.stdout.trim();
     let base = headSha;
-    if (target.mergeBaseWith !== null) {
-      const mergeBase = await this.#runGit(target.dir, ['merge-base', target.mergeBaseWith, 'HEAD']);
-      if (succeeded(mergeBase) && mergeBase.stdout.trim() !== '') base = mergeBase.stdout.trim();
-    }
-    let branch = target.branch;
-    if (branch === null) {
-      const symbolic = await this.#runGit(target.dir, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
-      branch = succeeded(symbolic) && symbolic.stdout.trim() !== '' ? symbolic.stdout.trim() : null;
-    }
+    if (wholeBranch && target.baseRef !== null) base = (await this.#mergeBase(target.dir, target.baseRef)) ?? headSha;
+    const branch = target.branch ?? (await this.#currentBranch(target.dir));
     const pathspec = file === undefined ? ['--'] : ['--', `:(literal)${file}`];
     const patch = await this.#runGit(target.dir, [
       '-c',
@@ -1436,14 +1491,15 @@ export class WorktreeManager implements DiffProvider {
       ...pathspec,
     ]);
     if (!succeeded(patch)) throw new WorktreeError('git-failed', `git diff failed in ${target.dir}: ${failureText(patch)}`);
-    const parsed: PatchFile[] = parsePatch(patch.stdout);
+    const keep = (relative: string): boolean => touched === null || touched.has(relative);
+    const parsed: PatchFile[] = parsePatch(patch.stdout).filter((entry) => keep(entry.path));
     const untracked = await this.#runGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', ...pathspec]);
     if (!succeeded(untracked)) throw new WorktreeError('git-failed', `git ls-files failed in ${target.dir}: ${failureText(untracked)}`);
-    for (const relative of splitNulList(untracked.stdout)) parsed.push(await this.#untracked(target.dir, relative));
+    const untrackedPaths = new Set(splitNulList(untracked.stdout).filter(keep));
+    for (const relative of untrackedPaths) parsed.push(await this.#untracked(target.dir, relative));
     parsed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     // Against HEAD every listed change is uncommitted; against a merge-base, only the files that still differ from HEAD (or are untracked).
     const dirty = base === headSha ? null : await this.#changedSinceHead(target.dir, pathspec);
-    const untrackedPaths = new Set(splitNulList(untracked.stdout));
     return parsed.map((entry) => toFileDiff(target.solution, branch, entry, dirty === null || dirty.has(entry.path) || untrackedPaths.has(entry.path)));
   }
 
@@ -1459,7 +1515,7 @@ export class WorktreeManager implements DiffProvider {
     const info = await lstat(absolute);
     if (info.isSymbolicLink()) {
       const link = await readlink(absolute);
-      return { path: relative, added: 1, removed: 0, lines: [`+${link}`], binary: false };
+      return { path: relative, added: 1, removed: 0, lines: [newFileHunkHeader(1), `+${link}`], binary: false };
     }
     if (info.size > UNTRACKED_READ_LIMIT) return { path: relative, added: 0, removed: 0, lines: [], binary: true };
     const handle = await open(absolute, 'r');

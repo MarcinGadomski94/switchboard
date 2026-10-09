@@ -1001,8 +1001,8 @@ describe('0025 session take-over (D65)', () => {
     }
     const store = await openStore(file);
     try {
-      // D85's 0037 applies after it (and the later ones: D89's 0039, …).
-      expect(store.migrations.applied.slice(0, 2)).toEqual([36, 37]);
+      // D85's 0037 (and every later one) applies after it.
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 36).map((m) => m.version));
       const [older] = await store.sessions.list();
       expect([older?.continuedTo, older?.continuedFrom]).toEqual([null, null]);
       const fresh = await store.sessions.create({ name: 'older-83-2', claudeSessionId: 'c-fresh-83', continuedFrom: older?.id ?? null });
@@ -1026,7 +1026,7 @@ describe('0025 session take-over (D65)', () => {
     }
     const store = await openStore(file);
     try {
-      expect(store.migrations.applied[0]).toBe(37);
+      expect(store.migrations.applied).toEqual(shipped.filter((m) => m.version >= 37).map((m) => m.version));
       expect(await store.settings.get('tutorial.lastVersion')).toBe('1.12.0');
       expect(await store.tutorial.list()).toEqual([]);
       await store.tutorial.set('main', 'completed', '1.13.0');

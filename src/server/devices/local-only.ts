@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen), and (D89) the saved artifacts (read, Save as artifact, Delete).
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts, and (D89) the saved artifacts (read, Save as artifact, Delete).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -37,6 +37,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET|POST', /^\/api\/sessions$/],
   ['GET', /^\/api\/sessions\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff|todos)$/],
+  // D90: which views the Diff tab offers (a read, like the diff).
+  ['GET', /^\/api\/sessions\/[^/]+\/diff\/targets$/],
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
@@ -95,6 +97,9 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/tools\/[^/]+\/probe$/],
   // A paired machine's Reconnect.
   ['POST', /^\/api\/machines\/[^/]+\/reconnect$/],
+  // D88: a session's drafts (they follow the developer to the phone: read, save, clear).
+  ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
+  ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
   // D85: the tutorial (one state per machine; reading it and marking a tour seen is normal use).
   ['GET', /^\/api\/tutorial$/],
   ['PUT', /^\/api\/tutorial\/tours\/[^/]+$/],

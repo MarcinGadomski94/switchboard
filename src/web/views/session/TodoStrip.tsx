@@ -7,6 +7,7 @@ import { useHubEvent } from '../../api/useHub.ts';
 import { useSessionList } from '../../folders/useFolders.ts';
 import { type Toast, useToasts } from '../../toast/ToastHost.tsx';
 import { TodoCard, TodoForm, type TodoRunSession } from './TodoCard.tsx';
+import { draftField } from '../../../core/drafts.ts';
 import './todos.css';
 
 export { authorLabel } from './TodoCard.tsx';
@@ -192,8 +193,11 @@ export function TodoCards({
   onRun = null,
   runSessionOf = null,
   selection = null,
+  drafts = false,
 }: {
   readonly sessionId: string;
+  /** D88: open Edit forms are kept as the session's drafts (the session's strip). */
+  readonly drafts?: boolean;
   /** Every item of the session (the order Move up / down rewrites). */
   readonly all: readonly SessionTodo[];
   /** The ones to show, in order (one state; D70: open ones by priority). */
@@ -229,6 +233,7 @@ export function TodoCards({
             working={working}
             runSession={runSessionOf ? runSessionOf(todo.runSessionId) : null}
             selected={selecting ? (selection?.picked.has(todo.id) ?? false) : null}
+            draftSessionId={drafts ? sessionId : null}
             onSelect={selecting && selection ? (on) => selection.toggle(sessionId, todo, on) : null}
             actions={{
               onToggleDone: () => void run(() => api.updateTodo(sessionId, todo.id, { state: todo.state === 'done' ? 'open' : 'done' })),
@@ -400,7 +405,18 @@ export function TodoStrip({
       </div>
       {expanded ? (
         <div className="sb-todos-body">
-          {adding ? <TodoForm key="add" mode="add" initial={null} disabled={disabled} onSave={add} onCancel={() => onAddingChange(false)} /> : null}
+          {adding ? (
+            <TodoForm
+              key="add"
+              mode="add"
+              initial={null}
+              disabled={disabled}
+              // D88: what is typed in + Add is the session's draft (`todo-add`).
+              draft={disabled ? null : { sessionId, field: draftField.todoAdd }}
+              onSave={add}
+              onCancel={() => onAddingChange(false)}
+            />
+          ) : null}
           {selection.selecting ? <TodoSelectionBar selection={selection} busy={running} onRun={runSelected} /> : null}
           {open.length + review.length > 0 ? (
             <TodoCards
@@ -417,6 +433,7 @@ export function TodoStrip({
               onRun={runOne}
               runSessionOf={runSessionOf}
               selection={selection}
+              drafts
             />
           ) : null}
           {done.length > 0 ? (
@@ -430,7 +447,7 @@ export function TodoStrip({
                   Clear done
                 </button>
               </div>
-              {showDone ? <TodoCards sessionId={sessionId} all={all} items={done} disabled={disabled} run={run} now={now} onStart={null} runSessionOf={runSessionOf} /> : null}
+              {showDone ? <TodoCards sessionId={sessionId} all={all} items={done} disabled={disabled} run={run} now={now} onStart={null} runSessionOf={runSessionOf} drafts /> : null}
             </div>
           ) : null}
           {error ? (

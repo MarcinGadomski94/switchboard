@@ -56,6 +56,8 @@ import { registerCheckpointRoutes } from './api/checkpoints.ts';
 import type { CheckpointService } from './checkpoints/service.ts';
 import type { TutorialService } from './tutorial/service.ts';
 import { registerTutorialRoutes } from './api/tutorial.ts';
+import type { DraftService } from './drafts/service.ts';
+import { registerDraftRoutes } from './api/drafts.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -112,6 +114,8 @@ export interface ApiContext {
   readonly checkpoints: CheckpointService;
   /** D85: the tutorial's state on this machine (docs/tutorial.md). */
   readonly tutorial: TutorialService;
+  /** D88: the sessions' drafts (docs/chat.md → Drafts). */
+  readonly drafts: DraftService;
 }
 
 /**
@@ -153,5 +157,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerDeviceRoutes(app, context);
   await registerCleanupRoutes(app, context);
   await registerTutorialRoutes(app, context);
+  await registerDraftRoutes(app, context);
   await registerHubRoutes(app, context);
 }
