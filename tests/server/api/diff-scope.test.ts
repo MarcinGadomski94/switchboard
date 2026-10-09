@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DiffTargets, FileDiff } from '../../../src/core/api.ts';
+import type { DiffCount, DiffTargets, FileDiff } from '../../../src/core/api.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { CheckpointGit } from '../../../src/server/checkpoints/git.ts';
 import { loadConfig } from '../../../src/server/config.ts';
@@ -68,6 +68,13 @@ async function files(url: string): Promise<Array<Pick<FileDiff, 'solution' | 'pa
 
 async function paths(url: string): Promise<string[]> {
   return (await files(url)).map((f) => `${f.solution}:${f.path}`);
+}
+
+/** D90 ruling: the tab count's answer (`GET …/diff/count`). */
+async function count(url: string): Promise<DiffCount> {
+  const response = await get(url);
+  expect(response.statusCode, url).toBe(200);
+  return response.json() as DiffCount;
 }
 
 async function sessionRow(w: GitWorld, name: string, solutions: string[], worktrees: boolean): Promise<string> {
@@ -144,6 +151,10 @@ describe('GET /api/sessions/{id}/diff?scope= (D90)', () => {
 
     const targets = (await get(`/api/sessions/${id}/diff/targets`)).json() as DiffTargets;
     expect(targets).toEqual({ worktrees: [{ solution: 'web-front', branch: 'session/scope-wt', base: 'main', commits: 1 }], inPlace: [] });
+    // D90 ruling: the tab count follows the view (head by default; branch offered with a worktree; repo is not: head).
+    expect(await count(`/api/sessions/${id}/diff/count`)).toEqual({ scope: 'head', files: 2 });
+    expect(await count(`/api/sessions/${id}/diff/count?scope=branch`)).toEqual({ scope: 'branch', files: 3 });
+    expect(await count(`/api/sessions/${id}/diff/count?scope=repo`)).toEqual({ scope: 'head', files: 2 });
     expect(forbiddenGitCalls(await w.gitCalls())).toEqual([]);
     expect(w.errors).toEqual([]);
   });
@@ -172,6 +183,10 @@ describe('GET /api/sessions/{id}/diff?scope= (D90)', () => {
     // In place, branch = the old behavior: every uncommitted change.
     expect(await paths(`/api/sessions/${id}/diff?scope=branch`)).toEqual(['mobile:README.md', 'mobile:agent.md', 'mobile:src/app.txt', 'mobile:theirs.txt']);
     expect((await get(`/api/sessions/${id}/diff/targets`)).json()).toEqual({ worktrees: [], inPlace: [{ solution: 'mobile', branch: 'main' }] });
+    // D90 ruling: the tab count of each view (in place, Whole branch is not offered: head).
+    expect(await count(`/api/sessions/${id}/diff/count`)).toEqual({ scope: 'head', files: 2 });
+    expect(await count(`/api/sessions/${id}/diff/count?scope=repo`)).toEqual({ scope: 'repo', files: 4 });
+    expect(await count(`/api/sessions/${id}/diff/count?scope=branch`)).toEqual({ scope: 'head', files: 2 });
     expect(w.errors).toEqual([]);
   });
 
@@ -213,6 +228,7 @@ describe('GET /api/sessions/{id}/diff?scope= (D90)', () => {
     await setStatus(w, hub, id, 'idle');
     await m.touched.idle();
     expect(await paths(`/api/sessions/${id}/diff`)).toEqual(['mobile:README.md', 'mobile:made-by-bash.txt', 'mobile:src/app.txt', 'mobile:src/renamed.txt']);
+    expect(await count(`/api/sessions/${id}/diff/count?scope=head`)).toEqual({ scope: 'head', files: 4 });
     expect(w.errors).toEqual([]);
   });
 
@@ -239,6 +255,8 @@ describe('GET /api/sessions/{id}/diff?scope= (D90)', () => {
     expect((await get(`/api/sessions/${id}/diff?scope=head&scope=repo`)).statusCode).toBe(422);
     expect((await get('/api/sessions/nope/diff?scope=repo')).statusCode).toBe(404);
     expect((await get('/api/sessions/nope/diff/targets')).statusCode).toBe(404);
+    expect((await get(`/api/sessions/${id}/diff/count?scope=all`)).statusCode).toBe(422);
+    expect((await get('/api/sessions/nope/diff/count')).statusCode).toBe(404);
   });
 });
 
@@ -250,6 +268,10 @@ describe('D90 routes: peers and devices', () => {
     expect(isLocalOnly('GET', '/api/sessions/abc/diff?scope=branch')).toBe(false);
     expect(isLocalOnly('GET', '/api/sessions/abc/diff/targets')).toBe(false);
     expect(isLocalOnly('POST', '/api/sessions/abc/diff/targets')).toBe(true);
+    // D90 ruling: the tab count.
+    expect(peerApiAllowed('GET', '/api/sessions/abc/diff/count?scope=branch')).toBe(true);
+    expect(isLocalOnly('GET', '/api/sessions/abc/diff/count?scope=repo')).toBe(false);
+    expect(isLocalOnly('DELETE', '/api/sessions/abc/diff/count')).toBe(true);
   });
 
   it('touched paths: a deleted file still maps into its repo; outside paths do not', async () => {

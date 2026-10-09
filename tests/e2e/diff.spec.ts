@@ -142,14 +142,24 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await expect(page.getByTestId('diff-scope-head')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('diff-scope-branch')).toHaveText('Whole branch');
   await expect(page.getByTestId('diff-scope-repo')).toHaveCount(0);
+  // D90 ruling: the session tab's count follows the view shown.
+  const tabCount = page.getByTestId('session-tab-diff');
+  await expect(tabCount).toHaveText('Diff · 2');
   await page.screenshot({ path: path.join(SHOTS, 'd90-1-worktree-since-last-commit.png') });
 
   // Whole branch: the behavior before D90 (vs the merge-base), remembered for this session.
   await page.getByTestId('diff-scope-branch').click();
   await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'branch');
   await expect(summary).toHaveText('Whole branch vs origin/main · 3 files · +3 −2');
+  await expect(tabCount).toHaveText('Diff · 3');
   await page.reload();
   await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'branch');
+  await expect(tabCount).toHaveText('Diff · 3');
+  // On another tab the count stays the remembered view's.
+  await tabCount.click();
+  await page.getByTestId('session-tab-chat').click();
+  await expect(tabCount).toHaveText('Diff · 3');
+  await page.getByTestId('session-tab-diff').click();
   await expect(page.getByTestId('diff-scope-branch')).toHaveAttribute('aria-pressed', 'true');
 
   // The file list: file name + delta, "solution · path"; sorted by path; the first is selected.
@@ -254,6 +264,7 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   // Since last commit: only the file the session touched.
   await expect(page.getByTestId('diff-view')).toHaveAttribute('data-scope', 'head');
   await expect(rows.locator('.sb-diff__file-sub')).toHaveText(['mobile · docs/in-place.md']);
+  await expect(page.getByTestId('session-tab-diff')).toHaveText('Diff · 1');
   await expect(summary).toHaveText('Since last commit · 1 file · +1');
   await expect(name).toHaveText('mobile / docs/in-place.md');
   await expect(branch).toHaveText('⎇ main');
@@ -266,6 +277,7 @@ test('Diff: files per solution/branch, unified diff, "Not committed" until commi
   await page.getByTestId('diff-scope-repo').click();
   await expect(rows.locator('.sb-diff__file-sub')).toHaveText(['mobile · README.md', 'mobile · docs/in-place.md']);
   await expect(summary).toHaveText('All uncommitted changes · 2 files · +2 −1');
+  await expect(page.getByTestId('session-tab-diff')).toHaveText('Diff · 2');
   await expect(page.getByTestId('diff-scope-note')).toHaveText("Includes other people's and other sessions' edits in this repo.");
   await page.screenshot({ path: path.join(SHOTS, 'd90-4-in-place-all-uncommitted.png') });
   // Each session remembers its own view: the worktree session is still on Whole branch.

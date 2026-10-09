@@ -5,6 +5,7 @@ import type { Review, ReviewActionId } from '../../core/reviews.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   DiffScope,
+  DiffCount,
   DiffTargets,
   AccountsOverview,
   FreshContinueResult,
@@ -286,6 +287,8 @@ export const api = {
   sessionDiff: (id: string, file?: string, scope?: DiffScope) => request<FileDiff[]>('GET', `/api/sessions/${enc(id)}/diff${query({ file, scope })}`),
   /** D90: the working trees the session's diff reads (which views the Diff tab offers). */
   sessionDiffTargets: (id: string) => request<DiffTargets>('GET', `/api/sessions/${enc(id)}/diff/targets`),
+  /** D90 ruling: the file count of the Diff tab's view (the session tab's "Diff · n"). */
+  sessionDiffCount: (id: string, scope: DiffScope) => request<DiffCount>('GET', `/api/sessions/${enc(id)}/diff/count${query({ scope })}`),
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),
   answerBatch: (batchId: string, body: AnswerBatch) => request<null>('POST', `/api/questions/batch/${enc(batchId)}/answers`, body),

@@ -1,6 +1,6 @@
 import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { BranchingPreflightRow, DiffScope, DiffTargets, FileDiff, RepoBranches, Worktree } from '../../core/api.ts';
+import { type BranchingPreflightRow, type DiffCount, type DiffScope, type DiffTargets, type FileDiff, type RepoBranches, type Worktree, offeredDiffScope } from '../../core/api.ts';
 import { type SessionBranching, cutPoint, parseSymrefHead } from '../../core/branching.ts';
 import {
   PARENT_PR_FIELDS,
@@ -1438,6 +1438,48 @@ export class WorktreeManager implements DiffProvider {
       }
     }
     return { worktrees, inPlace };
+  }
+
+  /**
+   * D90 ruling (2026-10-09): how many files the Diff tab's view lists for `scope`
+   * (the session tab's "Diff · n"), from file names only (`git diff --name-only` and
+   * the untracked files; no patches). `branch` without a worktree and `repo` without
+   * an in-place solution count `head`, as the tab shows then ({@link offeredDiffScope}).
+   * The count is the same as `diff(sessionId, undefined, answer.scope).length`.
+   */
+  async count(sessionId: string, scope: DiffScope): Promise<DiffCount> {
+    const session = await this.#store.sessions.get(sessionId);
+    if (!session) return { scope: 'head', files: 0 };
+    // The working trees that exist, as `targets()` lists them (so the view is the tab's).
+    const targets: DiffTarget[] = [];
+    for (const target of await this.#diffTargets(session)) if (await isDirectory(target.dir)) targets.push(target);
+    const shown = offeredDiffScope(scope, { worktrees: targets.filter((t) => t.worktree), inPlace: targets.filter((t) => !t.worktree) });
+    let files = 0;
+    for (const target of targets) {
+      try {
+        const touched = shown === 'head' && !target.worktree ? await this.touched.paths(session, target.dir) : null;
+        files += await this.#countTarget(target, shown === 'branch' && target.worktree, touched);
+      } catch (error) {
+        this.#onError(error);
+      }
+    }
+    return { scope: shown, files };
+  }
+
+  /** {@link #diffTarget}'s file count from names only. */
+  async #countTarget(target: DiffTarget, wholeBranch: boolean, touched: ReadonlySet<string> | null): Promise<number> {
+    if (!(await isDirectory(target.dir))) return 0;
+    const head = await this.#runGit(target.dir, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']);
+    if (!succeeded(head) || head.stdout.trim() === '') return 0;
+    if (touched !== null && touched.size === 0) return 0;
+    let base = head.stdout.trim();
+    if (wholeBranch && target.baseRef !== null) base = (await this.#mergeBase(target.dir, target.baseRef)) ?? base;
+    const names = await this.#runGit(target.dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', base, '--']);
+    if (!succeeded(names)) throw new WorktreeError('git-failed', `git diff --name-only failed in ${target.dir}: ${failureText(names)}`);
+    const untracked = await this.#runGit(target.dir, ['ls-files', '--others', '--exclude-standard', '-z', '--']);
+    if (!succeeded(untracked)) throw new WorktreeError('git-failed', `git ls-files failed in ${target.dir}: ${failureText(untracked)}`);
+    const keep = (relative: string): boolean => touched === null || touched.has(relative);
+    return new Set([...splitNulList(names.stdout), ...splitNulList(untracked.stdout)].filter(keep)).size;
   }
 
   /** The session's diff targets: its worktrees, then its in-place solutions (D14: resolved in its folder). */

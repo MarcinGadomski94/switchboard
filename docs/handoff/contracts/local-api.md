@@ -14,6 +14,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 | GET | /api/sessions/{id}/events | ?since=ts | Event[] |
 | GET | /api/sessions/{id}/diff | ?file= · ?scope=head\|branch\|repo (D90, default head) | FileDiff[] |
 | GET | /api/sessions/{id}/diff/targets | — (D90) | DiffTargets |
+| GET | /api/sessions/{id}/diff/count | ?scope=head\|branch\|repo (D90 ruling, default head) | DiffCount |
 | GET | /api/inbox | — | InboxItem[] |
 | POST | /api/questions/batch/{batchId}/answers | { answers: [{questionId, answerIndex}] } | 204 (400 unless all are answered) |
 | POST | /api/inbox/{id}/actions/{action} | — | 204 |
@@ -1312,11 +1313,13 @@ Developer ruling D90 (`docs/decisions.md`; details `docs/worktrees.md` → *Diff
 |---|---|---|---|
 | GET | /api/sessions/{id}/diff | `file` (as before), `scope` = `head` (default) \| `branch` \| `repo` | 200 FileDiff[] · 404 `not-found` · 422 `invalid` (`field: "scope"` for another or a repeated value) |
 | GET | /api/sessions/{id}/diff/targets | — | 200 DiffTargets · 404 `not-found` |
+| GET | /api/sessions/{id}/diff/count | `scope` = `head` (default) \| `branch` \| `repo` | 200 DiffCount · 404 `not-found` · 422 `invalid` (`field: "scope"`) |
 
 - **`scope`:** `head` = uncommitted changes against HEAD (staged, unstaged, untracked; never ignored) in the session's working trees, and in a solution it works on in place only the files the session touched (its Write / Edit / MultiEdit / NotebookEdit paths and, with D80 checkpoints, what changed during its turns); `repo` = every uncommitted change against HEAD; `branch` = the behavior before D90 (a worktree against the merge-base with its base branch, in place against HEAD). **A behavior change:** a request without `scope` now gets `head`; ask `scope=branch` for the old list. `SessionDetail.files` is unchanged (the whole branch).
 - **`FileDiff.lines`** now also carries each hunk's `@@ -a,b +c,d @@` header line before its body (a new untracked file: `@@ -0,0 +1,N @@`). A reader that knows only `+` / `-` / space may show it as context.
 - **`DiffTargets`:** `{ worktrees: [{ solution, branch, base: string | null, commits: number }], inPlace: [{ solution, branch: string | null }] }`: the working trees the diff reads; `base` = the worktree's base ref, `commits` = commits on its branch since the merge-base with it (0 when it does not resolve). The tab offers Whole branch with a worktree and All uncommitted changes with an in-place solution.
-- **Peers (D48):** the query passes through; `GET …/diff/targets` is on `PEER_API_ALLOW`. A peer before D90 answers its old diff whatever the `scope` and refuses the targets (403 `peer-forbidden`): the UI then offers only the default view. **Devices (D73):** both routes are allowed.
+- **`DiffCount` (ruling 2026-10-09):** `{ scope, files }`: how many files the Diff tab's view lists, for the session tab's **Diff · n** (file names only, no patches). `scope` is the view counted: the asked one when the session offers it (`branch` with a worktree, `repo` with an in-place solution), else `head`, which is what the tab shows then. `files` equals the length of `GET …/diff?scope=<that scope>`.
+- **Peers (D48):** the query passes through; `GET …/diff/targets` and `GET …/diff/count` are on `PEER_API_ALLOW`. A peer before D90 answers its old diff whatever the `scope` and refuses the targets (403 `peer-forbidden`): the UI then offers only the default view. A peer before the count refuses it: the tab count then reads `SessionDetail.files` (the whole branch). **Devices (D73):** all three routes are allowed.
 
 ```json
 GET /api/sessions/0b7c3e0a-…/diff?scope=head
@@ -1328,6 +1331,10 @@ GET /api/sessions/0b7c3e0a-…/diff/targets
 → 200
 { "worktrees": [{ "solution": "web-front", "branch": "PROJ-42-diff", "base": "origin/dev", "commits": 2 }],
   "inPlace": [{ "solution": "mobile", "branch": "main" }] }
+
+GET /api/sessions/0b7c3e0a-…/diff/count?scope=repo
+→ 200
+{ "scope": "repo", "files": 4 }
 
 GET /api/sessions/0b7c3e0a-…/diff?scope=all
 → 422 { "error": "invalid", "errors": [{ "field": "scope", "message": "scope must be one of head, branch, repo" }] }

@@ -255,3 +255,14 @@ export function saveScope(storage: ScopeStorage | null, sessionId: string, scope
     // Storage blocked: the pick lasts this page only.
   }
 }
+
+/**
+ * D90 ruling (2026-10-09): the session tab's "Diff · n": the count of the view the
+ * Diff tab shows (`counted`, `GET …/diff/count`); a machine without that route
+ * (`unsupported`) shows the detail's whole-branch count (`detailFiles`); `null`
+ * (no count) while neither is known.
+ */
+export function diffTabCount(counted: number | null, unsupported: boolean, detailFiles: number | null): number | null {
+  if (counted !== null) return counted;
+  return unsupported ? detailFiles : null;
+}

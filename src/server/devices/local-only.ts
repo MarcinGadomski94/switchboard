@@ -39,6 +39,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/(?:events|diff|todos)$/],
   // D90: which views the Diff tab offers (a read, like the diff).
   ['GET', /^\/api\/sessions\/[^/]+\/diff\/targets$/],
+  // D90 ruling: the session tab's "Diff · n" (a read, like the diff).
+  ['GET', /^\/api\/sessions\/[^/]+\/diff\/count$/],
   ['GET', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/full$/],
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],

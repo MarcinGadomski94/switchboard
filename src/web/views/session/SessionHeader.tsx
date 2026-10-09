@@ -123,7 +123,7 @@ export interface SessionHeaderProps {
   /** D45: the session's data is late: the title bar and root line placeholders show. */
   readonly placeholder?: boolean;
   readonly tab: SessionTab;
-  /** Changed files (`SessionDetail.files`) and session artifacts, for the tab counts; D45: `null` while the detail loads (no count). */
+  /** Changed files (D90 ruling: of the Diff tab's view, `useDiffCount`) and session artifacts, for the tab counts; `null` while unknown (no count). */
   readonly files: number | null;
   readonly artifacts: number | null;
   /** A header action changed the session: reload it. */

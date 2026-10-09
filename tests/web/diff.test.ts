@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DiffTargets, FileDiff } from '../../src/core/api.ts';
+import { type DiffTargets, type FileDiff, offeredDiffScope } from '../../src/core/api.ts';
 import { EVENT_KINDS } from '../../src/core/model.ts';
 import {
   DIFF_SCOPE_KEY,
@@ -11,6 +11,7 @@ import {
   REPO_NOTE,
   SCOPE_LABELS,
   deltaText,
+  diffTabCount,
   emptyState,
   headerLine,
   loadScope,
@@ -200,5 +201,23 @@ describe('Diff tab views (D90)', () => {
     expect(loadScope(null, 'y')).toBeNull();
     const throwing = { getItem: () => null, setItem: () => { throw new Error('blocked'); } };
     expect(() => saveScope(throwing, 's', 'repo')).not.toThrow();
+  });
+});
+
+describe('Diff tab count (D90 ruling)', () => {
+  it('counts the shown view; a machine without the count route shows the detail\'s whole branch; nothing while unknown', () => {
+    expect(diffTabCount(2, false, 5)).toBe(2);
+    expect(diffTabCount(0, false, 5)).toBe(0);
+    expect(diffTabCount(null, true, 5)).toBe(5);
+    expect(diffTabCount(null, false, 5)).toBeNull();
+    expect(diffTabCount(null, true, null)).toBeNull();
+  });
+
+  it('the server counts the view the tab shows (offeredDiffScope = scopeOptions)', () => {
+    const worktree = { worktrees: [{ solution: 'a', branch: 'b', base: 'main', commits: 1 }], inPlace: [] };
+    const inPlace = { worktrees: [], inPlace: [{ solution: 'a', branch: 'main' }] };
+    for (const targets of [worktree, inPlace, { worktrees: [], inPlace: [] }] as DiffTargets[]) {
+      for (const scope of ['head', 'branch', 'repo'] as const) expect(offeredDiffScope(scope, targets)).toBe(shownScope(scope, targets));
+    }
   });
 });

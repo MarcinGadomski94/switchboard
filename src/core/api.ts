@@ -1023,6 +1023,25 @@ export interface DiffTargets {
   readonly inPlace: readonly DiffInPlaceTarget[];
 }
 
+/**
+ * D90 (ruling 2026-10-09): `GET /api/sessions/{id}/diff/count?scope=`: how many files
+ * the Diff tab's view shows, for the session tab's "Diff · n" count, without the
+ * patches. `scope` is the view actually counted: the asked one when the session
+ * offers it (Whole branch with a worktree, All uncommitted changes with an in-place
+ * solution), else `head` (the tab shows Since last commit then too).
+ */
+export interface DiffCount {
+  readonly scope: DiffScope;
+  readonly files: number;
+}
+
+/** D90: the view the Diff tab shows for a remembered `scope` once the targets are known (the server's and the tab's rule). */
+export function offeredDiffScope(scope: DiffScope, targets: { readonly worktrees: readonly unknown[]; readonly inPlace: readonly unknown[] }): DiffScope {
+  if (scope === 'branch') return targets.worktrees.length > 0 ? 'branch' : 'head';
+  if (scope === 'repo') return targets.inPlace.length > 0 ? 'repo' : 'head';
+  return 'head';
+}
+
 /** A stored artifact (data model; gap #9). Provisional: M4.6 / M7.3. */
 export interface Artifact {
   readonly id: string;

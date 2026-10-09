@@ -7,26 +7,15 @@ import {
   REPO_NOTE,
   SCOPE_LABELS,
   SCOPE_TITLES,
-  type ScopeStorage,
   diffModel,
   emptyState,
   headerLine,
-  loadScope,
-  saveScope,
   scopeOptions,
   shownScope,
 } from './diff.ts';
+import { useDiffScope } from './useDiffScope.ts';
 import { useSessionRefresh } from './useSessionRefresh.ts';
 import './diff.css';
-
-/** `window.localStorage`, or `null` where reading it throws (blocked site data). */
-function browserStorage(): ScopeStorage | null {
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Diff tab (SPEC → Session → Diff; M4.5): a 300px file list (file, +/−,
@@ -40,7 +29,8 @@ function browserStorage(): ScopeStorage | null {
  * D90: a bar above it says what is shown ("Since last commit · 4 files · +120 −8")
  * and offers the other views the session has (Whole branch with a worktree, All
  * uncommitted changes in this repo with an in-place solution); the pick is
- * remembered per session in this browser. Hunks are separated by their `@@` row.
+ * remembered per session in this browser (the session tab's "Diff · n" counts the
+ * same view: `useDiffScope`). Hunks are separated by their `@@` row.
  */
 export function DiffTab({ sessionId }: { readonly sessionId: string }) {
   // Keyed by session: another session starts with no stale files and no selection.
@@ -48,7 +38,7 @@ export function DiffTab({ sessionId }: { readonly sessionId: string }) {
 }
 
 function SessionDiff({ sessionId }: { readonly sessionId: string }) {
-  const [remembered, setRemembered] = useState<DiffScope | null>(() => loadScope(browserStorage(), sessionId));
+  const [remembered, pickScope] = useDiffScope(sessionId);
   const targets = useApi(() => api.sessionDiffTargets(sessionId), [sessionId]);
   // A machine before D90 has no targets route: only the default view.
   const known = targets.data ?? (targets.error ? { worktrees: [], inPlace: [] } : null);
@@ -71,10 +61,7 @@ function SessionDiff({ sessionId }: { readonly sessionId: string }) {
   const options = scopeOptions(known);
   const empty = emptyState(scope, known);
 
-  const pick = (next: DiffScope) => {
-    saveScope(browserStorage(), sessionId, next);
-    setRemembered(next);
-  };
+  const pick = (next: DiffScope) => pickScope(next);
 
   const onKey = (key: string) => (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {

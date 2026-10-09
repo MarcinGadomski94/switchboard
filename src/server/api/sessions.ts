@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { DIFF_SCOPES, type DiffScope, type DiffTargets } from '../../core/api.ts';
+import { DIFF_SCOPES, type DiffCount, type DiffScope, type DiffTargets, offeredDiffScope } from '../../core/api.ts';
 import type { AttachRequest, AttachWarning, FileDiff, FreshContinueResult, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
@@ -484,6 +484,22 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     if (!record) return notFound(reply, request.params.id);
     if (!providers.diff?.targets) return { worktrees: [], inPlace: [] };
     return providers.diff.targets(record.id);
+  });
+
+  // D90 ruling: the session tab's "Diff · n": the file count of the view the Diff tab shows (`?scope=`, default `head`), without patches.
+  app.get<{ Params: IdParams; Querystring: { scope?: unknown } }>('/api/sessions/:id/diff/count', async (request, reply): Promise<DiffCount | FastifyReply> => {
+    const record = await store.sessions.get(request.params.id);
+    if (!record) return notFound(reply, request.params.id);
+    const scope = request.query.scope ?? 'head';
+    if (!isDiffScope(scope)) {
+      return reply.code(422).send({ error: 'invalid', errors: [{ field: 'scope', message: `scope must be one of ${DIFF_SCOPES.join(', ')}` }] });
+    }
+    if (!providers.diff) return { scope: 'head', files: 0 };
+    if (providers.diff.count) return providers.diff.count(record.id, scope);
+    // A provider without a count (the demo's): its targets decide the view, its diff the number.
+    const targets = providers.diff.targets ? await providers.diff.targets(record.id) : { worktrees: [], inPlace: [] };
+    const shown = offeredDiffScope(scope, targets);
+    return { scope: shown, files: (await providers.diff.diff(record.id, undefined, shown)).length };
   });
 
   registerPending(app, SESSION_ROUTES_PENDING);

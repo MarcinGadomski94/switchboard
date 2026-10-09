@@ -9,6 +9,7 @@ import { RightPanel } from './RightPanel.tsx';
 import { SessionHeader } from './SessionHeader.tsx';
 import { LoadingNote } from './SessionSkeletons.tsx';
 import { TimelineTab } from './TimelineTab.tsx';
+import { useDiffCount } from './useDiffScope.ts';
 import { actionErrorText } from './session-header.ts';
 import { NOTHING_LOADING, anyLoading, loadingParts } from './session-loading.ts';
 import { usePlaceholderDelay, useSessionData } from './useSessionData.ts';
@@ -56,6 +57,8 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
   });
 
   const session = data.detail;
+  // D90 ruling: the tab's count is the Diff tab's view (Since last commit by default), not the detail's whole branch.
+  const diffCount = useDiffCount(sessionId, session?.files.length ?? null);
   const failed = session ? null : data.detailError;
   const loading = loadingParts(data.detailState, data.eventsState, tab === 'chat');
   const busy = anyLoading(loading);
@@ -81,7 +84,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
           loadError={failed && failed.status !== 404 ? actionErrorText(failed.status, failed.body) : null}
           placeholder={placeholders.header}
           tab={tab}
-          files={session?.files.length ?? null}
+          files={diffCount}
           artifacts={session?.artifacts.length ?? null}
           onChanged={data.reload}
         />
