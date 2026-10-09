@@ -1,4 +1,5 @@
 import { LoopCards } from './LoopCards.tsx';
+import { LoopsBar } from './OwnedLoops.tsx';
 import { ScheduleHeader, ScheduleTable } from './ScheduleTable.tsx';
 import './schedule-table.css';
 import './schedules.css';
@@ -13,6 +14,7 @@ export function SchedulesView() {
     <section className="sb-view sb-schedules" data-view="schedules" data-testid="view-schedules">
       <ScheduleHeader />
       <ScheduleTable />
+      <LoopsBar />
       <LoopCards />
     </section>
   );

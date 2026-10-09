@@ -1409,6 +1409,34 @@ POST /api/sessions/0b7c3e0a-…/reload-instruction
 { "outcome": "restarted", "session": { "id": "0b7c3e0a-…", "instructionOutdated": false, "instructionPending": false } }
 ```
 
+## Switchboard loops (D94, 2026-10-09, additive)
+Developer ruling D94 (`docs/decisions.md`; details `docs/loops.md`): loops Switchboard fires itself into a session. Types in `src/core/api.ts`: `OwnedLoop`, `OwnedLoopInput`, `OwnedLoopSchedule`; `Session.ownedLoops` (additive, oldest first, ended ones included); `UserPayload.loop` (`{ id, label, run }`, additive) on a firing's message (origin `service`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/sessions/{id}/loops | — | 200 OwnedLoop[] · 404 |
+| POST | /api/sessions/{id}/loops | OwnedLoopInput (`prompt` + one of `cron` / `everyMinutes` / `at`) | 201 OwnedLoop (`createdBy: developer`) · 404 · 409 `closed`, `too-many` · 422 `invalid` + `errors` |
+| PUT | /api/sessions/{id}/loops/{loopId} | OwnedLoopInput (fields to change) | 200 OwnedLoop · 404 · 409 `ended` · 422 |
+| POST | /api/sessions/{id}/loops/{loopId}/pause · /resume · /run | `{}` | 200 OwnedLoop · 404 · 409 `ended`, `closed`, `pending` (run: the previous firing still waits), `unavailable` |
+| DELETE | /api/sessions/{id}/loops/{loopId} | — | 204 · 404 |
+| GET · POST | /agent/v1/loops | (POST) as above, snake_case too (`every_minutes`, `expires_at`, `max_runs`) | the session is the agent token's |
+| PUT · DELETE | /agent/v1/loops/{loopId} | | |
+| POST | /agent/v1/loops/{loopId}/pause · /resume | | |
+
+- **Peers (D48):** the `/api/sessions/{id}/loops…` routes are on `PEER_API_ALLOW`; a peer's answers map `sessionId` (kinds `owned-loops`, `owned-loop`); loop ids stay raw. **Devices (D73):** all allowed.
+- No new `/hub` event: every change publishes `sessionUpdated`.
+
+````json
+POST /api/sessions/0b7c3e0a-…/loops
+{ "prompt": "Check the CI run and report what failed.", "everyMinutes": 30, "label": "CI watch" }
+→ 201
+{ "id": "a1b2c3d4e5", "sessionId": "0b7c3e0a-…", "label": "CI watch", "title": "CI watch",
+  "prompt": "Check the CI run and report what failed.", "schedule": { "kind": "every", "minutes": 30 },
+  "scheduleText": "every 30 min", "expiresAt": null, "maxRuns": null, "state": "active", "endedReason": null,
+  "runs": 0, "skipped": 0, "lastFiredAt": null, "lastError": null, "nextFireAt": "2026-10-09T10:30:00.000Z",
+  "createdBy": "developer", "createdAt": "2026-10-09T10:00:00.000Z", "updatedAt": "2026-10-09T10:00:00.000Z" }
+````
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

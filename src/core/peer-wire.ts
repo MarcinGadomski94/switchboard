@@ -8,7 +8,7 @@
  * matter inside one answer (question ids, agent ids, event ids) stay as they are.
  * Pure: no I/O.
  */
-import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
+import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, OwnedLoop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 import type { Review } from './reviews.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
@@ -39,6 +39,8 @@ export function peerSession(machine: PeerMachineRef, session: Session): Session 
     id: ns(machine, session.id),
     activity: machine.state === 'online' ? (session.activity ?? null) : null,
     loops: (session.loops ?? []).map((loop: Loop) => ({ ...loop, sessionId: ns(machine, loop.sessionId) })),
+    // D94: its Switchboard loops (the loop ids stay raw: the loop routes name the session, which is namespaced).
+    ...(session.ownedLoops ? { ownedLoops: session.ownedLoops.map((loop) => peerOwnedLoop(machine, loop)) } : {}),
     machine: { id: machine.id, name: machine.name, state: machine.state },
     // D76: a run session's source session is on the same machine.
     ...(session.todoLink ? { todoLink: { ...session.todoLink, sourceSessionId: ns(machine, session.todoLink.sourceSessionId) } } : {}),
@@ -46,6 +48,11 @@ export function peerSession(machine: PeerMachineRef, session: Session): Session 
     ...(session.continuedTo ? { continuedTo: { ...session.continuedTo, sessionId: ns(machine, session.continuedTo.sessionId) } } : {}),
     ...(session.continuedFrom ? { continuedFrom: { ...session.continuedFrom, sessionId: ns(machine, session.continuedFrom.sessionId) } } : {}),
   };
+}
+
+/** D94: a peer's Switchboard loop: its session id namespaced (its own id stays raw). */
+export function peerOwnedLoop(machine: PeerMachineRef, loop: OwnedLoop): OwnedLoop {
+  return { ...loop, sessionId: ns(machine, loop.sessionId) };
 }
 
 /**
@@ -247,7 +254,30 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
 /** D76: `todo-run` (a todo run's answer). D79: `review` (a review action's answer), `reviews` (`GET /api/reviews`). */
 /** D89: `artifacts` (a session's artifacts), `artifact` (one with its versions), `artifact-save` (a save's answer). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'review' | 'reviews' | 'artifacts' | 'artifact' | 'artifact-save' | 'none';
+/** D94: `owned-loops` (a session's Switchboard loops), `owned-loop` (one, the answer of a create / change / action). */
+export type PeerAnswerKind =
+  | 'session'
+  | 'sessions'
+  | 'detail'
+  | 'events'
+  | 'workflow-chat'
+  | 'full-event'
+  | 'inbox'
+  | 'wrapped'
+  | 'schedule'
+  | 'schedules'
+  | 'terminal-loops'
+  | 'todo-list'
+  | 'todo-run'
+  | 'todo-groups'
+  | 'review'
+  | 'reviews'
+  | 'artifacts'
+  | 'artifact'
+  | 'artifact-save'
+  | 'owned-loops'
+  | 'owned-loop'
+  | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -275,6 +305,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   // D89: a session's saved artifacts (the list, one artifact, a save).
   if (/^\/api\/sessions\/[^/]+\/artifacts$/.test(pathname)) return upper === 'GET' ? 'artifacts' : upper === 'POST' ? 'artifact-save' : 'none';
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/.test(pathname)) return 'artifact';
+  // D94: a session's Switchboard loops (the list; a create, a change and an action answer the loop; Cancel answers 204).
+  if (/^\/api\/sessions\/[^/]+\/loops$/.test(pathname)) return upper === 'GET' ? 'owned-loops' : upper === 'POST' ? 'owned-loop' : 'none';
+  if (/^\/api\/sessions\/[^/]+\/loops\/[^/]+(?:\/(?:pause|resume|run))?$/.test(pathname)) return upper === 'PUT' || upper === 'POST' ? 'owned-loop' : 'none';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
   // Fix · long messages: a cut event's whole text carries the event under `event`.
@@ -342,6 +375,10 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return isRecord(body) && typeof body['id'] === 'string' ? peerArtifact(machine, body as unknown as ArtifactDetail) : body;
     case 'artifact-save':
       return isRecord(body) && isRecord(body['artifact']) ? { ...(body as unknown as ArtifactSaveResult), artifact: peerArtifact(machine, body['artifact'] as unknown as Artifact) } : body;
+    case 'owned-loops':
+      return Array.isArray(body) ? body.filter((loop) => isRecord(loop) && typeof loop['sessionId'] === 'string').map((loop) => peerOwnedLoop(machine, loop as unknown as OwnedLoop)) : body;
+    case 'owned-loop':
+      return isRecord(body) && typeof body['sessionId'] === 'string' ? peerOwnedLoop(machine, body as unknown as OwnedLoop) : body;
     case 'none':
       return body;
   }

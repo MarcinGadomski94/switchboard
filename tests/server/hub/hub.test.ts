@@ -80,6 +80,7 @@ const SESSION_KEYS = keys<Session>()([
   'chips',
   // additive, M7.2 (loop cards)
   'loops',
+  'ownedLoops',
   // additive, D22 (session titles)
   'title',
   'displayTitle',

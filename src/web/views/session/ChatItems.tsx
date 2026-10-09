@@ -1,3 +1,5 @@
+import { loopChipText } from '../../../core/owned-loops.ts';
+import '../owned-loops.css';
 import { Fragment, type ReactNode, useState } from 'react';
 import { NOT_SENT_NOTE, RESEND_LABEL } from '../../../core/hooked-continue.ts';
 import { ApiError, api } from '../../api/client.ts';
@@ -148,7 +150,14 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
         data-queued-note={item.queued && queuedNote ? 'true' : undefined}
         data-not-sent={item.notSent ? 'true' : undefined}
         data-revert={revert && !item.queued ? 'true' : undefined}
+        data-loop={item.loop ? item.loop.id : undefined}
       >
+        {/* D94: a Switchboard loop's firing. */}
+        {item.loop ? (
+          <div className="sb-chat-loop-chip" data-testid="chat-loop-chip" title="Sent by a Switchboard loop">
+            {loopChipText(item.loop)}
+          </div>
+        ) : null}
         {item.text !== '' || item.attachments.length === 0 ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
             <ChatMarkdown text={item.text} />

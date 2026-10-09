@@ -124,7 +124,7 @@ test('Loop cards: /loop + CronCreate + firings live, progress-file cap + breaker
   const list = page.getByTestId('loop-cards');
   await expect(list).toHaveAttribute('data-state', 'ready');
   await expect(page.getByTestId('loop-cards-empty')).toHaveText(
-    'No loops yet. A card appears when a session runs /loop, ScheduleWakeup, CronCreate or Workflow.',
+    "No loops yet. Create one with + New loop (or a session's ⋯ → New loop…); agents create them with the switchboard loop_create tool. A card also appears when a session's CLI runs /loop, ScheduleWakeup, CronCreate or Workflow.",
   );
 
   // A session in other/loopy; its first turn is no loop.

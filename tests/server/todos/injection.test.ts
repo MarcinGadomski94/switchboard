@@ -155,8 +155,8 @@ describe('the standing instruction (D64 + D68 + D69 + D70 + D75)', () => {
     expect(DEFAULT_STANDING_INSTRUCTION).toContain(
       "Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left.",
     );
-    // D89: the artifact sentence added; the bound moved up by that much only.
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(740);
+    // D89: the artifact sentence added; the bound moved up by that much only. D94: the loop sentence (826), likewise.
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(830);
     expect(DEFAULT_STANDING_INSTRUCTION.startsWith(PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS[0] as string)).toBe(true);
   });
 

@@ -357,9 +357,10 @@ Artifacts work like Claude's artifacts on claude.ai: deliverables are **saved on
 
 ### Schedules and loops
 - **Cron schedules:** start sessions from templates.
-- **Loop cards:** show observed `/loop`, `ScheduleWakeup`, `CronCreate` and Workflow runs: iteration, next firing, expiry.
+- **Loops run by Switchboard:** agents schedule recurring or one-time work with the `switchboard` MCP tool `loop_create` (or you do, with **+ New loop** or a session's ⋯ → **New loop…**), and Switchboard sends the prompt into the session at each firing: it waits while the agent is busy, resumes a paused session and survives restarts. Each loop is a card with its schedule, the exact next firing, its expiry (or "no expiry") and its runs; Pause / Resume, Run now, Edit, Cancel.
+- **Loop cards:** show observed `/loop`, `ScheduleWakeup`, `CronCreate` and Workflow runs: iteration, next firing, expiry (tagged "Managed by the CLI").
 
-[`docs/schedules.md`](docs/schedules.md)
+[`docs/schedules.md`](docs/schedules.md) · [`docs/loops.md`](docs/loops.md)
 
 ### MCP servers
 - **See** the MCP servers Claude Code loads in each folder, grouped by scope (local, project, user, plugins), with their status, tools and last check. Secrets stay masked.

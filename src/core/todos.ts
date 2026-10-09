@@ -7,6 +7,7 @@
  */
 import type { SessionTodo, SessionTodoList, TodoPriority, TodoState } from './api.ts';
 import { ARTIFACT_INSTRUCTIONS } from './artifacts.ts';
+import { LOOP_INSTRUCTIONS } from './owned-loops.ts';
 
 /** A done item is removed by itself this long after it was marked done (1 hour, ruling D68). */
 export const TODO_DONE_TTL_MS = 60 * 60 * 1000;
@@ -562,8 +563,10 @@ export const TODO_TOOLS: readonly TodoToolDefinition[] = [
 
 /**
  * D69 / D70: the `switchboard` MCP server's `instructions` (for CLIs that pass them on to the model). D75: start and finish every item.
- * D89: and its artifacts ({@link ARTIFACT_INSTRUCTIONS}).
+ * D89: and its artifacts ({@link ARTIFACT_INSTRUCTIONS}). D94: and its loops ({@link LOOP_INSTRUCTIONS}).
  */
 export const AGENT_MCP_INSTRUCTIONS =
   "This session's todo list in Switchboard. Each item has a title (one short line), a description (for the developer: plain and brief), a plan (a handover for an AI agent who picks the item up later without this conversation: context, relevant files, steps, acceptance criteria; \"No plan: <reason>\" when there is nothing to plan), a priority (urgent = blocking or breaking now; high = should be next; medium = normal; low = nice-to-have or cleanup) and an estimate (minutes an AI agent would take). When the user asks to add something to the todo list, use todo_add and fill all of them from the conversation; revise the priority and estimate with todo_update when you learn more. Use todo_list when asked what is left and todo_get to read an item in full before working on it. Mark an item in progress with todo_start when you start it and done with todo_done when you finish it: always. " +
-  ARTIFACT_INSTRUCTIONS;
+  ARTIFACT_INSTRUCTIONS +
+  ' ' +
+  LOOP_INSTRUCTIONS;

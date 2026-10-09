@@ -195,6 +195,12 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['GET', /^\/api\/sessions\/[^/]+\/drafts$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/drafts\/[^/]+$/],
+  // D94: a session's Switchboard loops fire on the machine that runs it (list, create, edit, pause / resume, run now, cancel).
+  ['GET', /^\/api\/sessions\/[^/]+\/loops$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/loops$/],
+  ['PUT', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/loops\/[^/]+\/(?:pause|resume|run)$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */

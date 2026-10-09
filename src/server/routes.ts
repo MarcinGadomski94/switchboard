@@ -58,6 +58,8 @@ import type { TutorialService } from './tutorial/service.ts';
 import { registerTutorialRoutes } from './api/tutorial.ts';
 import type { DraftService } from './drafts/service.ts';
 import { registerDraftRoutes } from './api/drafts.ts';
+import type { LoopService } from './loops/owned.ts';
+import { registerLoopRoutes } from './api/loops.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -116,6 +118,8 @@ export interface ApiContext {
   readonly tutorial: TutorialService;
   /** D88: the sessions' drafts (docs/chat.md → Drafts). */
   readonly drafts: DraftService;
+  /** D94: the loops Switchboard fires itself (docs/loops.md). */
+  readonly loops: LoopService;
 }
 
 /**
@@ -158,5 +162,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerCleanupRoutes(app, context);
   await registerTutorialRoutes(app, context);
   await registerDraftRoutes(app, context);
+  await registerLoopRoutes(app, context);
   await registerHubRoutes(app, context);
 }

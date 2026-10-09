@@ -12,7 +12,9 @@
  * next to its own handler: `todo_list`, `todo_get` (D69), `todo_add`,
  * `todo_update` (D70: with priority and estimate), `todo_start` (D75), `todo_done`, `todo_remove`,
  * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only), and
- * D89's `artifact_save`, `artifact_list`, `artifact_get` (`/agent/v1/artifacts`).
+ * D89's `artifact_save`, `artifact_list`, `artifact_get` (`/agent/v1/artifacts`), and
+ * D94's `loop_create`, `loop_list`, `loop_update`, `loop_pause`, `loop_resume`,
+ * `loop_cancel` (`/agent/v1/loops`: loops Switchboard fires itself).
  * Names, descriptions, annotations and the instructions come from
  * `src/core/todos.ts` ({@link TODO_TOOLS}) and `src/core/artifacts.ts`
  * ({@link ARTIFACT_TOOLS}); the zod input schemas here carry the
@@ -27,7 +29,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import type { Artifact, ArtifactDetail, ArtifactSaveResult, SessionTodo, SessionTodoList } from '../core/api.ts';
+import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
+import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
 import {
   AGENT_MCP_INSTRUCTIONS,
@@ -325,9 +328,76 @@ export async function artifactGet(api: AgentApi, input: ToolInput): Promise<Call
   });
 }
 
-/** Tool `name`'s definition in {@link TODO_TOOLS} or (D89) {@link ARTIFACT_TOOLS}. */
+// ── D94: Switchboard-owned loops ────────────────────────────────────────
+
+const NEED_LOOP_ID = 'Give the loop id (loop_list shows it in brackets).';
+
+/** The loop id a call gives (`[abc]` is fine), `''` when none. */
+function loopIdOf(input: ToolInput): string {
+  return typeof input['id'] === 'string' ? input['id'].trim().replace(/^\[|\]$/g, '') : '';
+}
+
+function loopRoute(id: string, action = ''): string {
+  return `/agent/v1/loops/${encodeURIComponent(id)}${action ? `/${action}` : ''}`;
+}
+
+function isLoop(body: unknown): body is OwnedLoop {
+  const value = record(body);
+  return typeof value['id'] === 'string' && typeof value['prompt'] === 'string';
+}
+
+/** The loop fields a call gives, as the API takes them (snake_case stays: the server reads both). */
+function loopFields(input: ToolInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of ['prompt', 'cron', 'every_minutes', 'at', 'expires_at', 'max_runs', 'label']) {
+    if (input[key] !== undefined) out[key] = input[key];
+  }
+  return out;
+}
+
+/** D94 · `loop_create`: a new loop in this session. */
+export async function loopCreate(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  if (typeof input['prompt'] !== 'string' || input['prompt'].trim() === '') return textResult('Give the prompt: the message Switchboard sends into this session at each firing.', true);
+  const schedules = ['cron', 'every_minutes', 'at'].filter((key) => input[key] !== undefined && input[key] !== null && input[key] !== '');
+  if (schedules.length !== 1) return textResult('Give exactly one of cron (a cron expression), every_minutes (an interval in minutes) or at (one ISO 8601 time).', true);
+  return request(api, 'POST', '/agent/v1/loops', loopFields(input), (body) =>
+    isLoop(body) ? textResult(`${loopDetailText(body, 'Created')}\nSwitchboard sends the prompt into this session at each firing; manage it with loop_list, loop_update, loop_pause, loop_resume and loop_cancel.`) : textResult('Switchboard did not answer with the loop.', true),
+  );
+}
+
+/** D94 · `loop_list`: this session's loops. */
+export function loopList(api: AgentApi): Promise<CallToolResult> {
+  return request(api, 'GET', '/agent/v1/loops', undefined, (body) => textResult(loopListText(Array.isArray(body) ? (body as OwnedLoop[]) : [])));
+}
+
+/** D94 · `loop_update`: changes only the fields given. */
+export async function loopUpdate(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = loopIdOf(input);
+  if (id === '') return textResult(NEED_LOOP_ID, true);
+  const fields = loopFields(input);
+  if (Object.keys(fields).length === 0) return textResult('Give what to change: prompt, a schedule (cron, every_minutes or at), expires_at, max_runs or label.', true);
+  return request(api, 'PUT', loopRoute(id), fields, (body) => (isLoop(body) ? textResult(loopDetailText(body, 'Updated')) : textResult('Switchboard did not answer with the loop.', true)));
+}
+
+/** D94 · `loop_pause` / `loop_resume`. */
+export async function loopAction(api: AgentApi, input: ToolInput, action: 'pause' | 'resume'): Promise<CallToolResult> {
+  const id = loopIdOf(input);
+  if (id === '') return textResult(NEED_LOOP_ID, true);
+  return request(api, 'POST', loopRoute(id, action), {}, (body) =>
+    isLoop(body) ? textResult(loopDetailText(body, action === 'pause' ? 'Paused' : 'Resumed')) : textResult('Switchboard did not answer with the loop.', true),
+  );
+}
+
+/** D94 · `loop_cancel`: the loop is removed. */
+export async function loopCancel(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = loopIdOf(input);
+  if (id === '') return textResult(NEED_LOOP_ID, true);
+  return request(api, 'DELETE', loopRoute(id), undefined, () => textResult(`Cancelled loop ${id}: it will not fire again.`));
+}
+
+/** Tool `name`'s definition in {@link TODO_TOOLS}, (D89) {@link ARTIFACT_TOOLS} or (D94) {@link LOOP_TOOLS}. */
 function tool(name: string): TodoToolDefinition {
-  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS].find((candidate) => candidate.name === name);
+  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS].find((candidate) => candidate.name === name);
   if (!found) throw new Error(`no tool ${name} in TODO_TOOLS / ARTIFACT_TOOLS`);
   return found;
 }
@@ -364,7 +434,24 @@ const field = {
   text: (name: string, key: string) => z.string().describe(about(name, key)).optional(),
   kind: (name: string) => z.enum(ARTIFACT_KINDS as unknown as [string, ...string[]]).describe(about(name, 'kind')).optional(),
   version: (name: string) => z.int().min(1).max(ARTIFACT_VERSIONS_MAX).describe(about(name, 'version')).optional(),
+  // D94: the loop tools' fields.
+  every: (name: string) => z.int().min(1).max(LOOP_EVERY_MAX).describe(about(name, 'every_minutes')).optional(),
+  expires: (name: string) => z.string().nullable().describe(about(name, 'expires_at')).optional(),
+  maxRuns: (name: string) => z.int().min(1).max(LOOP_MAX_RUNS_MAX).nullable().describe(about(name, 'max_runs')).optional(),
 };
+
+/** D94: the schedule and limit fields of `loop_create` / `loop_update`. */
+function loopShape(name: string) {
+  return {
+    prompt: field.text(name, 'prompt'),
+    cron: field.text(name, 'cron'),
+    every_minutes: field.every(name),
+    at: field.text(name, 'at'),
+    expires_at: field.expires(name),
+    max_runs: field.maxRuns(name),
+    label: field.text(name, 'label'),
+  };
+}
 
 /** Runs the calls one at a time, in the order they came (a list after an add sees the add, as before the SDK). */
 function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
@@ -378,7 +465,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
 
 /**
  * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
- * {@link AGENT_MCP_INSTRUCTIONS}) and its ten tools (D75: `todo_start`; D89: the three artifact tools), calling `api`. Connect it to a
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its sixteen tools (D75: `todo_start`; D89: the three artifact tools; D94: the six loop tools), calling `api`. Connect it to a
  * transport (a `StdioServerTransport` in the helper process).
  */
 export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
@@ -499,6 +586,45 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
       annotations: read.annotations,
     },
     (input) => serial(() => artifactGet(api, input)),
+  );
+
+  // D94: the loop tools.
+  const loopCreateTool = tool('loop_create');
+  server.registerTool(
+    'loop_create',
+    { title: loopCreateTool.annotations.title, description: loopCreateTool.description, inputSchema: inputSchema('loop_create', loopShape('loop_create')), annotations: loopCreateTool.annotations },
+    (input) => serial(() => loopCreate(api, input)),
+  );
+  const loopListTool = tool('loop_list');
+  server.registerTool(
+    'loop_list',
+    { title: loopListTool.annotations.title, description: loopListTool.description, inputSchema: inputSchema('loop_list', {}), annotations: loopListTool.annotations },
+    () => serial(() => loopList(api)),
+  );
+  const loopUpdateTool = tool('loop_update');
+  server.registerTool(
+    'loop_update',
+    {
+      title: loopUpdateTool.annotations.title,
+      description: loopUpdateTool.description,
+      inputSchema: inputSchema('loop_update', { id: field.text('loop_update', 'id'), ...loopShape('loop_update') }),
+      annotations: loopUpdateTool.annotations,
+    },
+    (input) => serial(() => loopUpdate(api, input)),
+  );
+  for (const action of ['pause', 'resume'] as const) {
+    const definition = tool(`loop_${action}`);
+    server.registerTool(
+      `loop_${action}`,
+      { title: definition.annotations.title, description: definition.description, inputSchema: inputSchema(`loop_${action}`, { id: field.text(`loop_${action}`, 'id') }), annotations: definition.annotations },
+      (input) => serial(() => loopAction(api, input, action)),
+    );
+  }
+  const loopCancelTool = tool('loop_cancel');
+  server.registerTool(
+    'loop_cancel',
+    { title: loopCancelTool.annotations.title, description: loopCancelTool.description, inputSchema: inputSchema('loop_cancel', { id: field.text('loop_cancel', 'id') }), annotations: loopCancelTool.annotations },
+    (input) => serial(() => loopCancel(api, input)),
   );
 
   return server;

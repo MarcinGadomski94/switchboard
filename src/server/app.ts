@@ -14,6 +14,8 @@ import { forwardServiceEvents } from './hub/wire.ts';
 import { QuestionPipeline, type QuestionSessions } from './inbox/pipeline.ts';
 import { SystemItemService } from './inbox/system-items.ts';
 import { LoopTracker } from './loops/tracker.ts';
+import { LoopService } from './loops/owned.ts';
+import { NO_ATTACHMENTS } from './attachments/service.ts';
 import { registerPeerForwarding } from './api/machines.ts';
 import { AttachmentService } from './attachments/service.ts';
 import { ArtifactService } from './artifacts/service.ts';
@@ -165,6 +167,12 @@ export interface AppOptions {
    * `SWITCHBOARD_TUTORIAL=off`).
    */
   readonly tutorial?: TutorialService;
+  /**
+   * D94: the loops Switchboard fires itself (`docs/loops.md`). Without one the app
+   * makes its own over the store (the real clock), started when the app is ready and
+   * closed with it.
+   */
+  readonly loops?: LoopService;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -468,8 +476,29 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => {
     await freshPlaces.stop();
   });
+  // D94: the loops Switchboard fires itself: a firing is a message through the usual path (a hooked session's mailbox, else the supervisor).
+  let ownedLoops = options.loops;
+  if (!ownedLoops) {
+    const own = new LoopService({
+      store: options.store,
+      announce: (sessionId) => supervisor.announce(sessionId),
+      deliver: async (session, text, mark) => {
+        if (session.hooked) await hooks.sendMessage(session.id, text, NO_ATTACHMENTS, { origin: 'service', loop: mark });
+        else await supervisor.sendMessage(session.id, text, 'service', NO_ATTACHMENTS, { loop: mark });
+      },
+    });
+    app.addHook('onReady', async () => {
+      if (!config.demo) own.start();
+    });
+    app.addHook('preClose', async () => {
+      await own.close();
+    });
+    ownedLoops = own;
+  }
+  const loopService = ownedLoops;
   // D65: taking a session over to / from a paired machine (this machine's end, and the runner the UI drives).
-  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, self: () => peers.self() });
+  const takeover = new TakeoverService({ store: options.store, config, supervisor, hooks, worktrees, folders, accounts, clis, questions, todos, loops: loopService, self: () => peers.self() });
+  loopService.useTakeover((sessionId) => takeover.isTakingOver(sessionId));
   const takeoverRunner = new TakeoverRunner({ service: takeover, peers });
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
@@ -480,7 +509,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     drafts.dispose();
     await drafts.idle();
   });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

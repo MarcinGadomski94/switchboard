@@ -14,6 +14,7 @@ import type {
   RequestPayload,
   ResultPayload,
   ToolPayload,
+  UserLoopMark,
   UserPayload,
   LifecyclePayload,
 } from '../../../core/event-payload.ts';
@@ -115,6 +116,8 @@ export type ChatItem =
       readonly cut: CutRef | null;
       /** D72: the message never reached the terminal it was handed to (Resend). */
       readonly notSent?: boolean;
+      /** D94: a Switchboard loop's firing (the chip "⟳ <label> · run <n>" above it). */
+      readonly loop?: UserLoopMark;
     }
   /**
    * Agent text (left) with the step lines that followed it; `text` is empty when
@@ -321,6 +324,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         cut: null,
         // D72: handed to a hooked session's terminal that ended first: "Not sent" with Resend.
         ...(user.notSent ? { notSent: true } : {}),
+        // D94: a Switchboard loop's firing.
+        ...(user.loop ? { loop: user.loop } : {}),
       });
       block = null;
     } else if (type === 'agent-prompt' && options.prompts) {

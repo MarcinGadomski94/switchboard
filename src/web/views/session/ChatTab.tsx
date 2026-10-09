@@ -22,6 +22,7 @@ import { STOP_LABEL, STOP_TIMEOUT_NOTE, STOP_TIMEOUT_PAUSE, STOP_TOOLTIP, STOPPI
 import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
+import { SessionLoopStrip } from '../OwnedLoops.tsx';
 import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
 import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 import { FreshOffer } from './FreshOffer.tsx';
@@ -232,6 +233,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       <SelectionCapture container={scroller} sessionId={sessionId} disabled={blocked !== null} />
       {/* D53: an offline machine's session has no live line (the offline note says why). */}
       <ChatActivityLine activity={blocked ? null : activity} />
+      {/* D94: the loops Switchboard fires into this session (Pause / Resume, Run now, Edit, Cancel). */}
+      <SessionLoopStrip session={session} blocked={blocked} />
       <TodoStrip sessionId={sessionId} todos={todos} blocked={blocked} adding={addingTodo} onAddingChange={setAddingTodo} working={session?.status === 'run'} />
       {/* D83: "Context 82% — Continue in a fresh session" once the context fills (between turns; never a hooked session). */}
       <FreshOffer

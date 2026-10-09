@@ -48,6 +48,7 @@ import type { QuestionPipeline } from '../inbox/pipeline.ts';
 import type { SessionSupervisor } from '../supervisor/supervisor.ts';
 import { TakeoverGit, TakeoverGitError, pathExists } from './git.ts';
 import type { TodoService } from '../todos/service.ts';
+import type { LoopService } from '../loops/owned.ts';
 import type { WorktreeManager } from '../worktrees/manager.ts';
 
 /** A refusal of a take-over route, sent as `{ error, message }`. */
@@ -87,6 +88,8 @@ export interface TakeoverServiceOptions {
   readonly questions: QuestionPipeline;
   /** D68: the todo lists (the session's travel with it); none = its todos stay behind. */
   readonly todos?: TodoService;
+  /** D94: the Switchboard loops (the session's travel with it and end here); none = they stay behind. */
+  readonly loops?: LoopService;
   /** This machine's id and name. */
   readonly self: () => Promise<{ readonly id: string; readonly name: string }>;
   readonly env?: NodeJS.ProcessEnv;
@@ -215,6 +218,7 @@ export class TakeoverService {
   readonly #targets = new Map<string, TargetOp>();
 
   readonly #todos: TodoService | null;
+  readonly #loops: LoopService | null;
 
   constructor(options: TakeoverServiceOptions) {
     this.#store = options.store;
@@ -227,6 +231,7 @@ export class TakeoverService {
     this.#clis = options.clis;
     this.#questions = options.questions;
     this.#todos = options.todos ?? null;
+    this.#loops = options.loops ?? null;
     this.#self = options.self;
     this.#env = options.env ?? process.env;
     this.#onError = options.onError ?? ((error) => console.error('switchboard take-over:', error));
@@ -239,6 +244,11 @@ export class TakeoverService {
   // ═══ source ═══════════════════════════════════════════════════════════
 
   /** What this machine would hand over for `sessionId` (read-only; nothing is touched). */
+  /** D94: `true` while this machine's session is being taken over (its loops skip their due times meanwhile). */
+  isTakingOver(sessionId: string): boolean {
+    return this.#activeSessions.has(sessionId);
+  }
+
   async inspect(sessionId: string): Promise<OpAnswer<SourceInspect>> {
     const log: string[] = [];
     const git = this.#git(log);
@@ -343,6 +353,8 @@ export class TakeoverService {
           startedAt: todo.startedAt,
           startedBy: todo.startedBy,
         })),
+        // D94: its Switchboard loops travel with it (they fire on the target from then on).
+        ...(this.#loops ? { loops: await this.#loops.portable(sessionId) } : {}),
         blockers,
       },
       log,
@@ -589,6 +601,8 @@ export class TakeoverService {
           machineId: move.machineId,
           remoteSessionId: move.sessionId,
         });
+        // D94: its Switchboard loops fire on the target now.
+        await this.#loops?.endAll(op.sessionId, `the session moved to ${move.machineName}`);
         await this.#supervisor.close(op.sessionId, { confirm: true, beforePublish: (id) => this.#questions.closeSession(id) });
         if (record.hooked) await this.#hooks.unhooked(op.sessionId);
       } catch (error) {
@@ -1151,6 +1165,8 @@ export class TakeoverService {
           await this.#worktrees.assign(op.worktreeRecords, session.id);
           // D68: the todo list, before the agent's first turn (an older source sends none).
           if (this.#todos && Array.isArray(source.todos) && source.todos.length > 0) await this.#todos.import(session.id, source.todos);
+          // D94: its Switchboard loops (an older source sends none).
+          if (this.#loops && Array.isArray(source.loops) && source.loops.length > 0) await this.#loops.importLoops(session.id, source.loops);
         },
       },
     );

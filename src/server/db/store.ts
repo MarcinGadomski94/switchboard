@@ -31,6 +31,7 @@ import { UsageRepository } from './repos/usage.ts';
 import { WorktreeRepository } from './repos/worktrees.ts';
 import { TutorialRepository } from './repos/tutorial.ts';
 import { DraftRepository } from './repos/drafts.ts';
+import { SessionLoopRepository } from './repos/session-loops.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -83,6 +84,8 @@ export interface Store {
   readonly tutorial: TutorialRepository;
   /** D88 (0038): the sessions' drafts (`docs/chat.md` → *Drafts*). */
   readonly drafts: DraftRepository;
+  /** D94 (0041): the loops Switchboard fires itself (`docs/loops.md`). */
+  readonly sessionLoops: SessionLoopRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -151,6 +154,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     checkpoints: new CheckpointRepository(ctx),
     tutorial: new TutorialRepository(ctx),
     drafts: new DraftRepository(ctx),
+    sessionLoops: new SessionLoopRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;

@@ -6,6 +6,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ARTIFACT_TOOLS } from '../../../src/core/artifacts.ts';
+import { LOOP_TOOLS } from '../../../src/core/owned-loops.ts';
 import { AGENT_MCP_INSTRUCTIONS, AGENT_TOKEN_ENV, TODO_TOOLS } from '../../../src/core/todos.ts';
 import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -51,8 +52,8 @@ async function connect(api: AgentApi, version?: string) {
   return { rpc, call, notify: (method: string) => client.send({ jsonrpc: '2.0', method } as JSONRPCMessage) };
 }
 
-/** `tools/list` as the SDK renders TODO_TOOLS and (D89) ARTIFACT_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
-const LISTED_TOOLS = [...TODO_TOOLS, ...ARTIFACT_TOOLS].map((tool) => ({
+/** `tools/list` as the SDK renders TODO_TOOLS, (D89) ARTIFACT_TOOLS and (D94) LOOP_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
+const LISTED_TOOLS = [...TODO_TOOLS, ...ARTIFACT_TOOLS, ...LOOP_TOOLS].map((tool) => ({
   name: tool.name,
   title: tool.annotations.title,
   description: tool.description,

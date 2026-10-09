@@ -43,6 +43,7 @@ import { openContinueHooked } from '../hooked-continue/store.ts';
 import { CONTINUE_HOOKED_LABEL, offersHookedContinue } from '../../core/hooked-continue.ts';
 import { TAKE_OVER_LABEL, moveLabel, offersTakeover } from '../takeover/takeover.ts';
 import { usePairedMachines } from '../takeover/usePairedMachines.ts';
+import { useModals } from '../modals/ModalHost.tsx';
 import { type DragItem, type DropIndicator, type DropOver, type RowGroup, folderSideOf, indicatorOf, resolveDrop, sameOver, sideOf } from './sidebar-dnd.ts';
 import { LONG_PRESS_MS, type Press, dropOverAt, pressHeld, pressMove, pressStart } from './touch-drag.ts';
 import { useCoarsePointer } from './useLayout.ts';
@@ -369,6 +370,8 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const currentId = sessions.find((s) => isCurrent(s.id))?.id ?? null;
   // D74: on a touch screen the row's ⋯ is always shown and its menu also closes the session (the × needs a hover).
   const coarse = useCoarsePointer();
+  // D94: ⋯ → New loop… opens the loop dialog on the session.
+  const modals = useModals();
 
   // The session on screen (opened from the palette, the Inbox, a link, …) has its row scrolled into the list's view,
   // once per session: a later layout change or a scroll by hand is left alone. In a collapsed folder its folder's head
@@ -671,6 +674,10 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         ...(fresh.disabledReason ? { title: fresh.disabledReason } : {}),
         run: () => continueFresh(session),
       });
+    }
+    // D94: a loop Switchboard fires into this session (an open session; a paired machine's fires there).
+    if (session.closedAt == null) {
+      items.push({ label: 'New loop…', testId: 'sidebar-menu-new-loop', run: () => modals.open('loop', { loop: { sessionId: session.id } }) });
     }
     // D91: the session's process runs an older standing instruction (disabled while a reload waits for the turn).
     if (offersInstructionReload(session)) {

@@ -618,6 +618,13 @@ export interface Session {
   /** Additive (M7.2, D9): the loops observed in the session, oldest first (the Schedules & loops cards). */
   readonly loops: readonly Loop[];
   /**
+   * Additive (D94, migration 0041): the loops Switchboard itself runs in this session
+   * (created by its agent with the `loop_create` tool or by the developer), oldest
+   * first, ended ones included (the cards show the active and paused ones). Absent
+   * from a Switchboard before D94.
+   */
+  readonly ownedLoops?: readonly OwnedLoop[];
+  /**
    * Additive (D22, migration 0006): the session's free-text title (trimmed, 1–80
    * characters); `null` when it has none. The server always sends it; optional
    * here so older payloads and fixtures still type-check.
@@ -947,6 +954,71 @@ export interface Loop {
   readonly note: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** D94: how a Switchboard loop is scheduled: a cron expression (machine-local time), an interval in minutes, or one time. */
+export type OwnedLoopSchedule =
+  | { readonly kind: 'cron'; readonly cron: string }
+  | { readonly kind: 'every'; readonly minutes: number }
+  | { readonly kind: 'at'; readonly at: string };
+
+/** D94: a Switchboard loop's state (`ended` carries `endedReason`). */
+export type OwnedLoopState = 'active' | 'paused' | 'ended';
+
+/** D94: who made the loop. */
+export type OwnedLoopAuthor = 'agent' | 'developer';
+
+/**
+ * D94 (`docs/loops.md`): a loop Switchboard owns and fires: at each due time it
+ * sends `prompt` into the session as a message (origin `service`, marked with the
+ * loop's label and run number). Survives restarts; never caught up after downtime.
+ */
+export interface OwnedLoop {
+  readonly id: string;
+  readonly sessionId: string;
+  /** The name it is shown by; `null` = derived from the prompt ({@link OwnedLoop.title}). */
+  readonly label: string | null;
+  /** What the card and the chip show: the label, else the prompt's first line (cut). */
+  readonly title: string;
+  readonly prompt: string;
+  readonly schedule: OwnedLoopSchedule;
+  /** The schedule in words: `every 30 min`, `02:00 daily`, `once at 10-12 15:00`. */
+  readonly scheduleText: string;
+  /** No firing at or after it; `null` = no expiry (until cancelled). */
+  readonly expiresAt: string | null;
+  /** It ends after this many firings; `null` = no limit. */
+  readonly maxRuns: number | null;
+  readonly state: OwnedLoopState;
+  /** Why it ended (`expired`, `session closed`, …); `null` unless ended. */
+  readonly endedReason: string | null;
+  /** Firings sent. */
+  readonly runs: number;
+  /** Due times not sent (the previous firing still waiting, Switchboard not running, …). */
+  readonly skipped: number;
+  readonly lastFiredAt: string | null;
+  /** Why the last due time was skipped; `null` when it was sent. */
+  readonly lastError: string | null;
+  /** The next due time; `null` while paused or ended. */
+  readonly nextFireAt: string | null;
+  readonly createdBy: OwnedLoopAuthor;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * D94: body of `POST /api/sessions/{id}/loops` (create: `prompt` and exactly one of
+ * `cron` / `everyMinutes` / `at`) and `PUT /api/sessions/{id}/loops/{loopId}` (update:
+ * only the fields given; one schedule field replaces the schedule). `expiresAt` /
+ * `maxRuns` `null` remove the limit; `label` `null` or `''` derives it from the prompt.
+ */
+export interface OwnedLoopInput {
+  readonly prompt?: string;
+  readonly cron?: string;
+  readonly everyMinutes?: number;
+  readonly at?: string;
+  readonly expiresAt?: string | null;
+  readonly maxRuns?: number | null;
+  readonly label?: string | null;
 }
 
 /** A session event (data model). Drives the chat, the timeline and the terminal tail. Provisional: M2.1. */

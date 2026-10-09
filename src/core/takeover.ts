@@ -1,4 +1,4 @@
-import type { TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
+import type { OwnedLoopAuthor, OwnedLoopSchedule, TodoAuthor, TodoPriority, TodoStartSource, TodoState } from './api.ts';
 import type { CliProviderId } from './cli-providers.ts';
 import { remoteId } from './peers.ts';
 
@@ -150,6 +150,24 @@ export interface SourceInspect {
     /** D75: when / how it went in progress (an older target ignores them and reads `in_progress` as open). */
     readonly startedAt?: string | null;
     readonly startedBy?: TodoStartSource | null;
+  }>;
+  /**
+   * Additive (D94): the session's Switchboard loops that have not ended (re-created on
+   * the target, where they fire from then on; they end on the source). Absent from an
+   * older Switchboard: they stay behind.
+   */
+  readonly loops?: ReadonlyArray<{
+    readonly label: string | null;
+    readonly prompt: string;
+    readonly schedule: OwnedLoopSchedule;
+    readonly expiresAt: string | null;
+    readonly maxRuns: number | null;
+    readonly state: 'active' | 'paused';
+    readonly runs: number;
+    readonly skipped: number;
+    readonly lastFiredAt: string | null;
+    readonly createdBy: OwnedLoopAuthor;
+    readonly createdAt: string;
   }>;
   /** Why it cannot be taken over now; empty = it can. */
   readonly blockers: readonly string[];

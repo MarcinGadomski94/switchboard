@@ -95,6 +95,18 @@ export interface UserPayload {
    * Absent otherwise.
    */
   readonly sentText?: string;
+  /**
+   * Additive (D94): the message is a firing of a Switchboard loop (`docs/loops.md`):
+   * the chat shows "⟳ <label> · run <n>" above it. Absent otherwise.
+   */
+  readonly loop?: UserLoopMark;
+}
+
+/** D94: which Switchboard loop sent a message, and which of its runs it is. */
+export interface UserLoopMark {
+  readonly id: string;
+  readonly label: string;
+  readonly run: number;
 }
 
 /** Assistant text; the text blocks of one `message.id` are merged into one event. */

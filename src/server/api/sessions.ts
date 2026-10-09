@@ -354,6 +354,8 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
         onStarted: async (from, to) => {
           // The old session's todo list (ids and states kept) and its worktrees become the fresh session's.
           await context.todos.moveAll(from.id, to.id);
+          // D94: so do its Switchboard loops (they fire in the fresh session from then on).
+          await context.loops.moveAll(from.id, to.id);
           await context.worktrees.assign(await store.worktrees.list({ sessionId: from.id }), to.id);
         },
         beforeClosePublish: (id) => context.questions.closeSession(id),

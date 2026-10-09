@@ -69,6 +69,8 @@ import type {
   ToolProbe,
   Worktree,
   WorkflowAgentChat,
+  OwnedLoop,
+  OwnedLoopInput,
   FullEventAnswer,
   NewTodoInput,
   CaptureTodoInput,
@@ -245,6 +247,12 @@ export const api = {
   /** D76: ▸ Run in new session: a new session works on the item (201 `{ session, list, note }`). */
   runTodo: (id: string, todoId: string) => request<TodoRunResult>('POST', `/api/sessions/${enc(id)}/todos/${enc(todoId)}/run`),
   deleteTodo: (id: string, todoId: string) => request<SessionTodoList>('DELETE', `/api/sessions/${enc(id)}/todos/${enc(todoId)}`),
+  /** D94: the session's Switchboard loops (a peer's session id is forwarded: they fire on that machine). */
+  sessionLoops: (id: string) => request<OwnedLoop[]>('GET', `/api/sessions/${enc(id)}/loops`),
+  createLoop: (id: string, input: OwnedLoopInput) => request<OwnedLoop>('POST', `/api/sessions/${enc(id)}/loops`, input),
+  updateLoop: (id: string, loopId: string, input: OwnedLoopInput) => request<OwnedLoop>('PUT', `/api/sessions/${enc(id)}/loops/${enc(loopId)}`, input),
+  loopAction: (id: string, loopId: string, action: 'pause' | 'resume' | 'run') => request<OwnedLoop>('POST', `/api/sessions/${enc(id)}/loops/${enc(loopId)}/${action}`),
+  cancelLoop: (id: string, loopId: string) => request<void>('DELETE', `/api/sessions/${enc(id)}/loops/${enc(loopId)}`),
   clearDoneTodos: (id: string) => request<SessionTodoList>('POST', `/api/sessions/${enc(id)}/todos/clear-done`),
   reorderTodos: (id: string, ids: readonly string[]) => request<SessionTodoList>('PUT', `/api/sessions/${enc(id)}/todos/order`, { ids } satisfies TodoOrderInput),
   /** D68: every open session's items, grouped (this machine's, then the paired machines' as last known). */

@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), and (D91) a
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -67,6 +67,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
   ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
+  // D94: a session's Switchboard loops: list, New loop…, Edit, Pause / Resume, Run now, Cancel (normal use).
+  ['GET|POST', /^\/api\/sessions\/[^/]+\/loops$/],
+  ['PUT|DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/loops\/[^/]+\/(?:pause|resume|run)$/],
   // D81: quick capture (the palette, a chat selection, the share sheet's page).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   // Inbox and answers.

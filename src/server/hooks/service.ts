@@ -5,7 +5,7 @@ import type { HookStatus, HooksStatus, Session, SessionActivity, SessionEvent, T
 import { type HookCommand, DeliveryLimiter, HOOK_MESSAGE_MAX, type TerminalAgentRow, parseTerminalAgents, rewakeSupported, waiterText } from '../../core/hooks.ts';
 import { textLabel, userMessageKind } from '../../core/derive/event-kind.ts';
 import { type Attachment, attachmentsLabel, messageWithFiles } from '../../core/attachments.ts';
-import type { UserPayload } from '../../core/event-payload.ts';
+import type { UserLoopMark, UserPayload } from '../../core/event-payload.ts';
 import { toolSummary } from '../../core/derive/activity.ts';
 import { NO_TURN, type TranscriptTurn, hookedActivity, transcriptTurn } from '../../core/derive/hooked-activity.ts';
 import { hookDelivery } from '../../core/derive/hooked-status.ts';
@@ -719,7 +719,12 @@ export class HookService {
    * with the D44 clock (`queued: turn`), queued in the mailbox, delivered by the
    * next waiter once the session is idle; the transcript's copy marks it delivered.
    */
-  async sendMessage(sessionId: string, text: string, attachments: PreparedAttachments = NO_ATTACHMENTS): Promise<void> {
+  async sendMessage(
+    sessionId: string,
+    text: string,
+    attachments: PreparedAttachments = NO_ATTACHMENTS,
+    options: { readonly origin?: 'user' | 'service'; readonly loop?: UserLoopMark } = {},
+  ): Promise<void> {
     const record = await this.#store.sessions.get(sessionId);
     if (!record || !record.hooked) throw new SupervisorError('not-found', `no hooked session ${sessionId}`);
     if (record.closedAt !== null) throw new SupervisorError('closed', 'the session is closed (unhooked): hook into it again first');
@@ -735,9 +740,11 @@ export class HookService {
     const payload: UserPayload = {
       type: 'user',
       text: trimmed,
-      origin: 'user',
+      // D94: a Switchboard loop's firing is the service's, marked with its loop.
+      origin: options.origin ?? 'user',
       delivered: false,
       queued: 'turn',
+      ...(options.loop ? { loop: options.loop } : {}),
       ...(attachments.refs.length > 0 ? { attachments: attachments.refs } : {}),
       ...(sent !== trimmed ? { sentText: sent } : {}),
     };

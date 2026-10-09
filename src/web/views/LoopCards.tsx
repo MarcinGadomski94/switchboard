@@ -8,6 +8,8 @@ import { useMachineStateChange } from '../api/useMachines.ts';
 import { useRouter } from '../router.tsx';
 import { CELL_COLOR, TERMINAL_LOOP_NOTE, type LoopCardModel, loopCards } from './loops.ts';
 import './loops.css';
+import { OwnedLoopCard } from './OwnedLoops.tsx';
+import { CLI_MANAGED_NOTE, ownedLoopCards } from './owned-loops.ts';
 
 /** Relative facts ("in 6 days", "15:00") are re-rendered this often. */
 const CLOCK_MS = 30_000;
@@ -74,6 +76,8 @@ export function LoopCards() {
   }, [reloadTerminal]);
 
   const cards = useMemo(() => (sessions ? loopCards(sessions, now, terminal.data ?? []) : []), [sessions, now, terminal.data]);
+  // D94: the loops Switchboard runs itself come first, as first-class cards with actions.
+  const owned = useMemo(() => (sessions ? ownedLoopCards(sessions, now) : []), [sessions, now]);
   const open = useCallback((sessionId: string) => navigate({ view: 'session', id: sessionId, tab: 'chat' }), [navigate]);
   // D52 / D48 P4: "Hook into…" a terminal session's loop: the machine follows it; its view opens.
   const hook = async (card: LoopCardModel): Promise<void> => {
@@ -95,12 +99,15 @@ export function LoopCards() {
   const state = sessions === null ? (fetched.error ? 'error' : 'loading') : 'ready';
 
   return (
-    <div className="sb-loops" data-testid="loop-cards" data-tour="loop-cards" data-state={state} data-count={cards.length}>
-      {state === 'ready' && cards.length === 0 ? (
+    <div className="sb-loops" data-testid="loop-cards" data-tour="loop-cards" data-state={state} data-count={cards.length} data-owned-count={owned.length}>
+      {state === 'ready' && cards.length === 0 && owned.length === 0 ? (
         <div className="sb-loops__empty" data-testid="loop-cards-empty">
-          No loops yet. A card appears when a session runs /loop, ScheduleWakeup, CronCreate or Workflow.
+          No loops yet. Create one with + New loop (or a session's ⋯ → New loop…); agents create them with the switchboard loop_create tool. A card also appears when a session's CLI runs /loop, ScheduleWakeup, CronCreate or Workflow.
         </div>
       ) : null}
+      {owned.map((card) => (
+        <OwnedLoopCard key={card.id} card={card} />
+      ))}
       {cards.map((card) => (
         <div
           key={card.id}
@@ -160,6 +167,10 @@ export function LoopCards() {
               {card.note}
             </div>
           ) : null}
+          {/* D94: Switchboard only observes these: the CLI runs them (a corner tag, out of the card's flow). */}
+          <span className="sb-loop__managed" data-testid="loop-managed">
+            {CLI_MANAGED_NOTE}
+          </span>
           {card.terminalId ? (
             <div className="sb-loop__note" data-testid="loop-why">
               {card.blocked ?? TERMINAL_LOOP_NOTE}

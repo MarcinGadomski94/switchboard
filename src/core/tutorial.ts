@@ -524,6 +524,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'owned-loops',
+    decision: 'D94',
+    version: V1_15,
+    title: 'Loops run by Switchboard',
+    steps: [
+      {
+        id: 'cards',
+        title: 'Loops run by Switchboard',
+        what: 'Agents now schedule recurring or one-time work with the switchboard loop_create tool instead of the CLI\'s own /loop or CronCreate, and Switchboard sends the prompt into the session at each firing: it waits while the agent is busy, resumes a paused session and survives restarts. Each loop is a card with its schedule, the exact next firing, its expiry (or "no expiry") and its runs; the CLI\'s own schedules still show, marked "Managed by the CLI".',
+        todo: ['Open Schedules & loops.', 'Pause / Resume, Run now, Edit or Cancel a loop on its card.'],
+        anchors: ['loop-cards', 'schedules'],
+        route: { view: 'schedules' },
+        missing: 'A card appears here once an agent (or you) creates a loop.',
+      },
+      {
+        id: 'new',
+        title: 'Make one yourself',
+        what: 'Create a loop for any open session: the prompt, every n minutes, a cron expression or once at a time, and an optional expiry and run limit. A session\'s ⋯ → New loop… does the same for that session.',
+        todo: ['Click + New loop.', 'Pick the session, write the prompt and the schedule, then Create loop.'],
+        anchors: ['loop-new', 'schedules'],
+        route: { view: 'schedules' },
+        missing: null,
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

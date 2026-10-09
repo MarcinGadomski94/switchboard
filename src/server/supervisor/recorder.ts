@@ -8,6 +8,7 @@ import {
   type RequestPayload,
   type RequestState,
   type ToolPayload,
+  type UserLoopMark,
   type UserMessageOrigin,
   type UserPayload,
   clip,
@@ -413,7 +414,7 @@ export class StreamRecorder {
   async recordUserMessage(
     text: string,
     origin: UserMessageOrigin,
-    options: { readonly resuming?: boolean; readonly attachments?: readonly Attachment[]; readonly sentText?: string } = {},
+    options: { readonly resuming?: boolean; readonly attachments?: readonly Attachment[]; readonly sentText?: string; readonly loop?: UserLoopMark } = {},
   ): Promise<EventRecord> {
     const queued = queuedReason({ turnRunning: this.#pendingTurns > 0 || this.#turnOpen, resuming: options.resuming === true });
     // D50: a new message ends the stop: a later interrupted result is a failure again.
@@ -430,6 +431,8 @@ export class StreamRecorder {
       ...(queued ? { queued } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(sentText !== undefined ? { sentText } : {}),
+      // D94: a Switchboard loop's firing (the chat's "⟳ <label> · run <n>" chip).
+      ...(options.loop ? { loop: options.loop } : {}),
     };
     const label = text.trim() === '' && attachments.length > 0 ? attachmentsLabel(attachments) : textLabel(text);
     const event = await this.#append(userMessageKind(text), label, payload);

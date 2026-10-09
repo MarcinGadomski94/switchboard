@@ -8,7 +8,7 @@ import { isTaskFinished, mainAgentName } from '../../core/derive/agents.ts';
 import { textLabel } from '../../core/derive/event-kind.ts';
 import { stoppableTask } from '../../core/stop-turn.ts';
 import { type StopReason, deriveSessionStatus } from '../../core/derive/status.ts';
-import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
+import type { LifecycleAction, LifecyclePayload, ModelPayload, RequestPayload, ToolPayload, UserLoopMark, UserMessageOrigin, UserPayload } from '../../core/event-payload.ts';
 import { type Withdrawn, withoutQueued } from '../../core/derive/queued.ts';
 import { type Attachment, messageWithFiles } from '../../core/attachments.ts';
 import { DEFAULT_MODEL_VALUE, type ModelChoice, checkModelChoice, modelStepLabel, normalizeEffort, normalizeModel, parseInitializeModels } from '../../core/model-choice.ts';
@@ -837,7 +837,13 @@ export class SessionSupervisor {
    * then queued (`resume`) until the new process takes it up. Refused while detached.
    * D57: `attachments` go with it (inline blocks, the attached files' lines).
    */
-  async sendMessage(sessionId: string, text: string, origin: UserMessageOrigin = 'user', attachments: PreparedAttachments = NO_ATTACHMENTS): Promise<SessionRecord> {
+  async sendMessage(
+    sessionId: string,
+    text: string,
+    origin: UserMessageOrigin = 'user',
+    attachments: PreparedAttachments = NO_ATTACHMENTS,
+    marks: { readonly loop?: UserLoopMark } = {},
+  ): Promise<SessionRecord> {
     await this.#gate;
     this.#assertOpen();
     const session = await this.#get(sessionId);
@@ -857,7 +863,7 @@ export class SessionSupervisor {
     }
     const resuming = !live;
     if (!live) live = await this.#spawn(await this.#get(sessionId), { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
-    await this.#send(live, text, origin, { resuming, attachments });
+    await this.#send(live, text, origin, { resuming, attachments, ...(marks.loop ? { loop: marks.loop } : {}) });
     return this.#get(sessionId);
   }
 
@@ -2829,7 +2835,7 @@ export class SessionSupervisor {
     live: Live,
     text: string,
     origin: UserMessageOrigin,
-    options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments } = {},
+    options: { readonly resuming?: boolean; readonly attachments?: PreparedAttachments; readonly loop?: UserLoopMark } = {},
   ): Promise<void> {
     const attachments = options.attachments ?? NO_ATTACHMENTS;
     // D80: the working trees as they are before this message's turn (never blocks the message: a failure is no checkpoint).
@@ -2840,7 +2846,12 @@ export class SessionSupervisor {
       const pending = await this.#store.pendingMessages.pending(live.sessionId);
       const full = [...pending.map((message) => message.text), text].filter((part, index, parts) => part !== '' || parts.length === 1).join('\n\n');
       const sent = messageWithFiles(full, attachments.filesText);
-      const event = await live.recorder.recordUserMessage(full, origin, { ...(options.resuming ? { resuming: true } : {}), attachments: attachments.refs, sentText: sent });
+      const event = await live.recorder.recordUserMessage(full, origin, {
+        ...(options.resuming ? { resuming: true } : {}),
+        attachments: attachments.refs,
+        sentText: sent,
+        ...(options.loop ? { loop: options.loop } : {}),
+      });
       eventId = event.id;
       if (live.proc.write(userMessageLine(sent, attachments.blocks))) {
         for (const message of pending) await this.#store.pendingMessages.markDelivered(message.id);
