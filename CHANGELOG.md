@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.15.0 (2026-10-10)
+
+### Loops run by Switchboard
+- Agents create recurring or scheduled work through the `switchboard` MCP tools instead of the CLI's own cron: `loop_create` (a cron expression, every N minutes, or once at a time; optional expiry and run limit), `loop_list`, `loop_update`, `loop_pause` / `loop_resume`, `loop_cancel`. Switchboard fires the prompt into the session as a normal message ("⟳ label · run n"): queued behind a running turn, never stacked (a firing still waiting skips the next one, counted), no catch-up burst after downtime, no expiry unless you set one. Loops survive process restarts, continuing a terminal session in Switchboard, fresh-session continuations and take-overs.
+- Schedules & loops and the session show them with the exact next run, expiry, runs and skips, and **Pause / Resume**, **Run now**, **Edit**, **Cancel**; create your own with **+ New loop** or the session's ⋯ → New loop…. The default standing instruction tells agents to use them.
+- Loops the CLI manages itself (`/loop`, `CronCreate`) keep their cards, tagged "Managed by the CLI".
+
+### Unlisted schedules
+- Turns the CLI starts by itself with no visible job (e.g. a cron job carried into a resumed process) now get an "Unlisted schedule in the CLI" card: how often (estimated), the last run, the count and an expected next time; it disappears when the series stops or the process ends.
+
+### Database
+- Migration 0041 runs by itself on first start.
+
 ## 1.14.1 (2026-10-09)
 
 ### Fixed
