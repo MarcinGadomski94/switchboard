@@ -62,7 +62,8 @@ export function SessionView({ sessionId, tab, agentId = null, artifactId = null 
   });
 
   const session = data.detail;
-  // D90 ruling: the tab's count is the Diff tab's view (Since last commit by default), not the detail's whole branch.
+  // D90 ruling: the tab's count is the Diff tab's view (Since last commit by default), not the detail's whole branch;
+  // D45-tab-counts: no count while the detail loads (the tabs read `Diff` / `Artifacts` until it is there).
   const diffCount = useDiffCount(sessionId, session?.files.length ?? null);
   const failed = session ? null : data.detailError;
   const loading = loadingParts(data.detailState, data.eventsState, tab === 'chat');
@@ -89,7 +90,7 @@ export function SessionView({ sessionId, tab, agentId = null, artifactId = null 
           loadError={failed && failed.status !== 404 ? actionErrorText(failed.status, failed.body) : null}
           placeholder={placeholders.header}
           tab={tab}
-          files={diffCount}
+          files={session ? diffCount : null}
           artifacts={session?.artifacts.length ?? null}
           onChanged={data.reload}
         />
