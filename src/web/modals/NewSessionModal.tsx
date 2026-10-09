@@ -1,5 +1,6 @@
-import { type MouseEvent, useEffect, useId, useState } from 'react';
+import { type MouseEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Folder, HistoryItem, ModelSettings, NewSessionPrefill, Schedule, SolutionGroup } from '../../core/api.ts';
+import { type NewSessionDraft, draftField, draftIsEmpty } from '../../core/drafts.ts';
 import { DEFAULT_MODEL_CHOICE } from '../../core/model-choice.ts';
 import { machineTagSuffix } from '../../core/peers.ts';
 import type { NewSessionMode } from '../../core/settings.ts';
@@ -38,6 +39,8 @@ import {
   chipGroups,
   folderChoices,
   formBranch,
+  DEFAULT_FORM,
+  formFromDraft,
   formFromPrefill,
   formModel,
   formModelOptions,
@@ -94,6 +97,7 @@ import { ModeToggle, SimpleSessionForm } from './SimpleSessionForm.tsx';
 import { AttachButton, AttachmentChips, pasteFiles, useAttachmentDraft, useFileDrop } from '../components/Attachments.tsx';
 import { attachmentsBlocker } from '../components/attachments.ts';
 import { offersModeToggle, openingMode, toSimpleBody } from './simple-session.ts';
+import { initialDraft, useDraft } from '../drafts/useDraft.ts';
 import './new-session.css';
 
 /** `sessionUpdated` comes in bursts; the name check's session list reloads at most this often. */
@@ -210,8 +214,13 @@ export function NewSessionModal({
   const [pickedMode, setPickedMode] = useState<NewSessionMode | null>(null);
   const mode: NewSessionMode | null = pickedMode ?? (scheduling || prefill ? 'full' : remembered.loading ? null : openingMode({ scheduling, prefill }, remembered.data));
   const simple = mode === 'simple' && !scheduling;
+  // D88 ruling 2026-10-09: a plain New session keeps what is typed as this machine's draft (`new-session`; Simple and
+  // Full share it); a prefill or a schedule opens with its own values and keeps none. Cancel keeps it (a mail draft);
+  // Start clears it, and so does **Clear**.
+  const draftKey = prefill || scheduling ? null : draftField.newSession;
+  const [restored] = useState(() => initialDraft<NewSessionDraft>(null, draftKey));
   // D56: the simple form's worktree branch as edited (`null` = derived from the title); kept apart from D32's Branch field.
-  const [simpleBranch, setSimpleBranch] = useState<string | null>(null);
+  const [simpleBranch, setSimpleBranch] = useState<string | null>(() => restored?.simpleBranch ?? null);
   // D57: the first message's attachments; uploaded at Start to the chosen machine (`POST /api/attachments`).
   const attach = useAttachmentDraft();
   const drop = useFileDrop(attach.add);
@@ -237,7 +246,7 @@ export function NewSessionModal({
   const schedules = useApi((): Promise<Schedule[]> => (scheduling ? api.schedules() : Promise.resolve([])), [scheduling]);
   const [cron, setCron] = useState(() => schedule?.cron ?? '');
 
-  const [form, setForm] = useState<NewSessionForm>(() => formFromPrefill(prefill));
+  const [form, setForm] = useState<NewSessionForm>(() => (restored ? formFromDraft(restored.form) : formFromPrefill(prefill)));
   // D40: the Branching section's state (epic, base, per-repo choices), next to the form's.
   const [branching, setBranching] = useState<BranchingForm>(() => branchingFromPrefill(prefill));
   // D62: the machine's CLIs; the session runs on the form's pick, else the default CLI (when it can be chosen).
@@ -259,11 +268,41 @@ export function NewSessionModal({
     setForm((current) => ({ ...current, ...patch }));
     setError(null);
   };
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const draftValue = useMemo<NewSessionDraft>(() => ({ form: { ...form }, simpleBranch }), [form, simpleBranch]);
+  const kept = useDraft<NewSessionDraft>({
+    sessionId: null,
+    field: draftKey,
+    value: draftValue,
+    root: overlayRef,
+    initial: restored,
+    apply: (value) => {
+      // Another device's text (or its Start / Clear: `null`) while this dialog is not being typed in.
+      const next = value ? formFromDraft(value.form) : DEFAULT_FORM;
+      // The folder as any form's once the saved folders are known (one no longer saved: the default).
+      setForm(folders.data && !remoting ? { ...next, folder: resolveFormFolder(next.folder, folders.data) } : next);
+      setSimpleBranch(value?.simpleBranch ?? null);
+      setError(null);
+    },
+  });
+  const drafted = draftKey !== null && !draftIsEmpty(draftKey, draftValue);
+  /** **Clear**: the typed text and its draft go; the dialog shows the defaults again. */
+  const clearDraft = (): void => {
+    kept.clear();
+    setForm(DEFAULT_FORM);
+    setSimpleBranch(null);
+    setError(null);
+  };
+  /** Started: the draft is done with. */
+  const started = (): void => {
+    if (draftKey !== null) kept.clear();
+    onClose();
+  };
   // D16: a terminal conversation picked instead of a task (never while scheduling), and its move.
   const [resume, setResume] = useState<ResumePick | null>(null);
   const [resumeOpen, setResumeOpen] = useState(false);
   const moves = useConversationMoves((id) => {
-    onClose();
+    started();
     navigate({ view: 'session', id, tab: 'chat' });
   });
   const resuming = resume !== null && !scheduling;
@@ -436,7 +475,7 @@ export function NewSessionModal({
       const ids = await uploadAttachments();
       // D56: a NewSimpleSession (no router answers, no solutions, no branching); D48: on the chosen machine.
       const session = await machineApi(peer).createSession({ ...toSimpleBody({ form: launch, folder, branch: simpleBranch, takenNames }), ...(ids.length > 0 ? { attachments: ids } : {}) });
-      onClose();
+      started();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
@@ -459,7 +498,7 @@ export function NewSessionModal({
       setError(null);
       try {
         const session = await api.teleportSession(toTeleportBody(remote, folder, form.name, form.task));
-        onClose();
+        started();
         navigate({ view: 'session', id: session.id, tab: 'chat' });
       } catch (caught) {
         const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
@@ -485,7 +524,7 @@ export function NewSessionModal({
       // D40: with a worktree, the branching (epic, base, per-repo choices; D47: the parent) goes with it.
       // D48: on a peer the session starts there; the answer is its remote id (the session view opens it like a local one).
       const session = await machineApi(peer).createSession(branchShown ? { ...body, branching: toBranching(stacking, branchingSolutions) } : body);
-      onClose();
+      started();
       navigate({ view: 'session', id: session.id, tab: 'chat' });
     } catch (caught) {
       const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
@@ -596,11 +635,16 @@ export function NewSessionModal({
       <AccountPicker machine={peer} provider={provider} value={form.profileId} onPick={(profileId) => update({ profileId })} testId="ns-account" disabled={busy} />
     </span>
   );
+  const clearButton = drafted ? (
+    <button type="button" className="sb-button sb-ns-cancel sb-ns-clear" data-testid="ns-clear-draft" title="Clear what is typed (it is kept when you cancel)" disabled={busy} onClick={clearDraft}>
+      Clear
+    </button>
+  ) : null;
   const modeToggle = mode !== null && offersModeToggle(scheduling) ? <ModeToggle mode={mode} onPick={pickMode} disabled={busy} /> : null;
 
   if (mode === null || simple) {
     return (
-      <div className="sb-overlay" data-modal="new-session" onClick={onClose}>
+      <div ref={overlayRef} className="sb-overlay" data-modal="new-session" onClick={onClose}>
         <div
           className="sb-modal-simple"
           role="dialog"
@@ -635,6 +679,7 @@ export function NewSessionModal({
               attachments={attach}
               onStart={() => void start()}
               onClose={onClose}
+              clear={clearButton}
             />
           )}
         </div>
@@ -643,7 +688,7 @@ export function NewSessionModal({
   }
 
   return (
-    <div className="sb-overlay" data-modal="new-session" onClick={onClose}>
+    <div ref={overlayRef} className="sb-overlay" data-modal="new-session" onClick={onClose}>
       <div
         className="sb-modal-new"
         role="dialog"
@@ -1110,6 +1155,12 @@ export function NewSessionModal({
             >
               {scheduling ? 'Save schedule' : remoting && busy ? 'Pulling…' : 'Start session'}
             </button>
+            {/* D88 ruling: Clear, out of the flow above the row (after every prototype part). */}
+            {drafted ? (
+              <button type="button" className="sb-ns-clear-link" data-testid="ns-clear-draft" title="Clear what is typed (it is kept when you cancel)" disabled={busy} onClick={clearDraft}>
+                Clear draft
+              </button>
+            ) : null}
           </div>
           {/* D56: the Simple / Full switch, on the Launch label line (out of the flow, after every prototype part). */}
           {modeToggle ? <div className="sb-ns-mode-slot">{modeToggle}</div> : null}

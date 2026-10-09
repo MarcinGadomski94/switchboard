@@ -27,3 +27,13 @@ export async function rememberNewSessionMode(page: Page, mode: NewSessionMode): 
   }, mode);
   if (status !== 200) throw new Error(`PUT /api/settings newSession.mode answered ${status}`);
 }
+
+/**
+ * D88 ruling (2026-10-09): Cancel keeps what was typed in the New-session dialog as
+ * this machine's draft, so the next opening restores it. Specs that expect a fresh
+ * form clear it first (`DELETE /api/drafts/new-session`, as **Clear draft** does).
+ */
+export async function forgetNewSessionDraft(page: Page): Promise<void> {
+  const status = await page.evaluate(async () => (await fetch('/api/drafts/new-session', { method: 'DELETE' })).status);
+  if (status !== 204) throw new Error(`DELETE /api/drafts/new-session answered ${status}`);
+}

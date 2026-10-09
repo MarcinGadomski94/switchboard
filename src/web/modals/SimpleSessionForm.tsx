@@ -74,6 +74,8 @@ export interface SimpleSessionFormProps {
   readonly attachments?: AttachmentDraft;
   readonly onStart: () => void;
   readonly onClose: () => void;
+  /** D88 ruling: **Clear** (the typed text and its draft), shown while something is kept. */
+  readonly clear?: ReactNode;
 }
 
 /**
@@ -259,6 +261,7 @@ export function SimpleSessionForm(props: SimpleSessionFormProps) {
         <span className="sb-ns-simple-waiting" data-testid="ns-simple-waiting">
           {blockers.length > 0 ? blockers[0] : (attaching ?? '')}
         </span>
+        {props.clear ?? null}
         <button type="button" className="sb-button sb-ns-cancel" data-testid="ns-cancel" onClick={props.onClose}>
           Cancel
         </button>

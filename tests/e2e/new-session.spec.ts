@@ -11,7 +11,7 @@ import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
 import { makeTempDir, removeTempDir } from '../helpers/net.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
-import { rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
+import { forgetNewSessionDraft, rememberNewSessionModeInDataDir } from '../helpers/new-session-mode.ts';
 
 /**
  * M5.1 oracle (E2E): the New-session modal on the real code path (no demo seed,
@@ -128,6 +128,8 @@ async function summary(modal: Locator): Promise<string[]> {
 }
 
 async function openModal(page: Page): Promise<Locator> {
+  // D88 ruling: a cancelled form is kept as a draft; each test starts from a fresh one.
+  await forgetNewSessionDraft(page);
   await page.getByTestId('new-session').click();
   const modal = page.getByTestId('modal-new-session');
   await expect(modal).toBeVisible();

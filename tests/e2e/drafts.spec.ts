@@ -189,3 +189,119 @@ test('the review card\'s Send-back comment and the todo + Add form come back aft
   await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
   await expect(page.getByTestId('todo-form')).toHaveCount(0);
 });
+
+async function machineDraft(page: Page): Promise<unknown> {
+  return page.evaluate(async () => ((await (await fetch('/api/drafts')).json()) as SessionDraft[]).find((draft) => draft.field === 'new-session')?.value ?? null);
+}
+
+test('ruling 2026-10-09: the New-session form is kept per machine; Cancel keeps it, another device sees it, Clear and Start clear it', async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  await page.goto(`${world.baseUrl}/`);
+  await page.getByTestId('new-session').click();
+  const modal = page.getByTestId('modal-new-session');
+  await expect(modal).toHaveAttribute('data-mode', 'simple');
+  const message = modal.getByTestId('ns-message');
+  await message.click();
+  await message.pressSequentially('Half a plan for the onboarding screen');
+  await expect.poll(() => machineDraft(page)).toMatchObject({ form: { task: 'Half a plan for the onboarding screen' }, simpleBranch: null });
+  await expect(modal.getByTestId('ns-clear-draft')).toBeVisible();
+
+  // Cancel keeps it (a mail draft); the dialog opens with it again, also after a reload.
+  await modal.getByTestId('ns-cancel').click();
+  await expect(modal).toHaveCount(0);
+  await page.getByTestId('new-session').click();
+  await expect(message).toHaveValue('Half a plan for the onboarding screen');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await page.getByTestId('new-session').click();
+  await expect(message).toHaveValue('Half a plan for the onboarding screen');
+  // Full shares the form state (and so the draft).
+  await modal.getByTestId('ns-mode-full').click();
+  await expect(modal.getByTestId('ns-task')).toHaveValue('Half a plan for the onboarding screen');
+  await expect(modal.getByTestId('ns-clear-draft')).toHaveText('Clear draft');
+  await page.screenshot({ path: 'test-results/d88-new-session-clear-draft.png' });
+  await modal.getByTestId('ns-mode-simple').click();
+
+  // Another device opens the dialog with it.
+  const other = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  try {
+    const phone = await other.newPage();
+    await phone.goto(`${world.baseUrl}/`);
+    await phone.getByTestId('new-session').click();
+    const phoneMessage = phone.getByTestId('modal-new-session').getByTestId('ns-message');
+    await expect(phoneMessage).toHaveValue('Half a plan for the onboarding screen');
+
+    // Clear: the text and the draft go here; the other device, its field focused, keeps its text until it leaves it (the focus rule).
+    await phoneMessage.focus();
+    await modal.getByTestId('ns-clear-draft').click();
+    await expect(message).toHaveValue('');
+    await expect(modal.getByTestId('ns-clear-draft')).toHaveCount(0);
+    await expect.poll(() => machineDraft(page)).toBeNull();
+    await phone.waitForTimeout(700);
+    await expect(phoneMessage).toHaveValue('Half a plan for the onboarding screen');
+    await phoneMessage.blur();
+    await expect(phoneMessage).toHaveValue('');
+  } finally {
+    await other.close();
+  }
+
+  // Typed again, then started: the draft is done with.
+  await message.click();
+  await message.pressSequentially('Say hi.');
+  await expect.poll(() => machineDraft(page)).toMatchObject({ form: { task: 'Say hi.' } });
+  await modal.getByTestId('ns-start').click();
+  await expect(page.getByTestId('view-session')).toBeVisible();
+  await expect.poll(() => machineDraft(page)).toBeNull();
+  await page.getByTestId('new-session').click();
+  await expect(message).toHaveValue('');
+});
+
+test('ruling 2026-10-09: the Commit message as edited comes back; a review resolved elsewhere and a deleted todo take their drafts with them', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto(`${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'drafts-commit', '[fake:write microfrontends/acme-app-front/commit-notes.md]');
+  await expect
+    .poll(async () => (await page.evaluate(async () => (await fetch('/api/reviews')).json() as Promise<Review[]>)).filter((r) => r.sessionId === id && r.state === 'pending').length, { timeout: 30_000 })
+    .toBe(1);
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  await page.getByTestId('session-review-badge').click();
+  const card = page.getByTestId('session-review-panel').getByTestId('review-card');
+  const reviewId = (await card.getAttribute('data-review-id')) ?? '';
+  await card.locator('[data-action="commit"]').click();
+  const box = card.getByTestId('review-commit-message');
+  const drafted = await box.inputValue();
+  await box.fill('docs: commit notes, reworded');
+  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toEqual({ message: 'docs: commit notes, reworded' });
+
+  // A reload: the Commit form opens with the edited message.
+  await openWithHub(page, `${world.baseUrl}/sessions/${id}`);
+  await page.getByTestId('session-review-badge').click();
+  await expect(card.getByTestId('review-commit-form')).toBeVisible();
+  await expect(box).toHaveValue('docs: commit notes, reworded');
+  // Back to the drafted message: no draft.
+  await box.fill(drafted);
+  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toBeNull();
+  await box.fill('docs: reworded again');
+  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toEqual({ message: 'docs: reworded again' });
+  await box.blur();
+
+  // A todo with an open Edit form, then deleted from another device (a direct API call).
+  const added = await page.evaluate(async (sid) => {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sid)}/todos`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Edit me', text: 'Edit me' }) });
+    return (await response.json()) as { todos: Array<{ id: string }> };
+  }, id);
+  const todoId = added.todos[0]?.id ?? '';
+  await page.evaluate(
+    async ({ sid, field }) =>
+      fetch(`/api/sessions/${encodeURIComponent(sid)}/drafts/${encodeURIComponent(field)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: { title: 'Edit me more', description: '', plan: 'No plan', priority: 'medium', estimate: '' } }) }),
+    { sid: id, field: `todo-edit:${todoId}` },
+  );
+  await expect.poll(() => draftValue(page, id, `todo-edit:${todoId}`)).not.toBeNull();
+  await page.evaluate(async ({ sid, tid }) => fetch(`/api/sessions/${encodeURIComponent(sid)}/todos/${encodeURIComponent(tid)}`, { method: 'DELETE' }), { sid: id, tid: todoId });
+  await expect.poll(() => draftValue(page, id, `todo-edit:${todoId}`)).toBeNull();
+
+  // The review is resolved elsewhere (Dismiss from another device): its drafts go at once, and the card's text with them.
+  await page.evaluate(async (rid) => fetch(`/api/reviews/${encodeURIComponent(rid)}/dismiss`, { method: 'POST' }), reviewId);
+  await expect.poll(() => draftValue(page, id, `commit:${reviewId}`)).toBeNull();
+  await expect.poll(() => drafts(page, id)).toEqual([]);
+});

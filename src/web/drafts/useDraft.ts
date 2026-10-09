@@ -4,11 +4,12 @@ import { api } from '../api/client.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { pageClientId } from '../pwa/presence.ts';
 import { DraftField } from './draft-field.ts';
-import { knownDraft, readDrafts, rememberDraft } from './session-drafts.ts';
+import { type DraftScope, knownDraft, readDrafts, rememberDraft } from './session-drafts.ts';
 
 /** What a field gives {@link useDraft}. */
 export interface UseDraftOptions<T> {
-  readonly sessionId: string;
+  /** The session; `null` for this machine's own drafts (the New-session form, ruling 2026-10-09). */
+  readonly sessionId: DraftScope;
   /** The field key (`src/core/drafts.ts` → `draftField`); `null` = no draft (read-only, answered, offline). */
   readonly field: string | null;
   /** The field's current value (the hook reads it when it saves; keep the component's own state). */
@@ -28,7 +29,7 @@ export interface DraftControl {
 }
 
 /** The draft known to this page for a field, parsed (for a `useState` initializer); `null` when there is none. */
-export function initialDraft<T>(sessionId: string, field: string | null): T | null {
+export function initialDraft<T>(sessionId: DraftScope, field: string | null): T | null {
   if (field === null) return null;
   const known = knownDraft(sessionId, field);
   return known === undefined ? null : (parseDraftValue(field, known) as T | null);
@@ -68,7 +69,10 @@ export function useDraft<T>({ sessionId, field, value, apply, root, initial = nu
         focused,
         write: async (next, keepalive) => {
           rememberDraft(sessionId, field_, next);
-          if (next === null) await api.deleteDraft(sessionId, field_, pageClientId(), keepalive);
+          if (sessionId === null) {
+            if (next === null) await api.deleteMachineDraft(field_, pageClientId(), keepalive);
+            else await api.putMachineDraft(field_, { value: next, client: pageClientId() }, keepalive);
+          } else if (next === null) await api.deleteDraft(sessionId, field_, pageClientId(), keepalive);
           else await api.putDraft(sessionId, field_, { value: next, client: pageClientId() }, keepalive);
         },
         read: async () => (await readDrafts(sessionId)).get(field_) ?? null,

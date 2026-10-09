@@ -14,7 +14,7 @@
  *   reads the server again and applies what is there. What the developer is typing
  *   on this device is never overwritten.
  */
-import { DRAFT_SAVE_MS, draftIsEmpty } from '../../core/drafts.ts';
+import { DRAFT_SAVE_MS, draftIsEmpty, parseDraftValue } from '../../core/drafts.ts';
 
 /** What a {@link DraftField} reads from and does to its page (passed in: tests use fakes). */
 export interface DraftFieldHost {
@@ -34,9 +34,14 @@ export interface DraftFieldHost {
   readonly delayMs?: number;
 }
 
-/** The value as stored: its JSON, or `null` for an empty one (no draft). */
+/**
+ * The value as stored: the JSON of its normalized shape (`parseDraftValue`: the
+ * server's key order, so a local value and the server's compare equal), or `null`
+ * for an empty one (no draft).
+ */
 export function draftKey(field: string, value: unknown): string | null {
-  return value === null || value === undefined || draftIsEmpty(field, value) ? null : JSON.stringify(value);
+  if (value === null || value === undefined || draftIsEmpty(field, value)) return null;
+  return JSON.stringify(parseDraftValue(field, value) ?? value);
 }
 
 /** One field's draft sync (see the module comment). */

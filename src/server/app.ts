@@ -469,7 +469,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D85: the tutorial's state on this machine (the main tour once, What's-new mini-tours after updates).
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
   // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
+  // Ruling 2026-10-09: it also cleans up drafts whose batch / review / todo is gone (listening to the bus).
   const drafts = new DraftService({ store: options.store, bus });
+  app.addHook('onClose', async () => {
+    drafts.dispose();
+    await drafts.idle();
+  });
   await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;

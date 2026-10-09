@@ -394,9 +394,30 @@
 }
 
 .sb-ns-actions {
+  position: relative;
   padding: var(--space-16);
   display: flex;
   gap: var(--space-8);
+}
+
+/* D88 ruling 2026-10-09: "Clear draft" while the form keeps a draft: a small link in the actions' top padding, right end (out of the flow). */
+.sb-ns-clear-link {
+  position: absolute;
+  top: 1px;
+  right: var(--space-16);
+  padding: 0;
+  line-height: 14px;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  color: var(--muted-3);
+  cursor: pointer;
+}
+
+.sb-ns-clear-link:hover,
+.sb-ns-clear-link:focus-visible {
+  color: var(--text-2);
+  text-decoration: underline;
 }
 
 .sb-ns-cancel {

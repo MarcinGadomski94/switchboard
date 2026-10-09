@@ -426,6 +426,40 @@ export function formFromPrefill(prefill: NewSessionPrefill | null | undefined): 
 }
 
 /**
+ * D88 ruling (2026-10-09): the form a New-session draft restores (`new-session`,
+ * this machine's draft; `src/core/drafts.ts` → `NewSessionDraft.form`): the
+ * defaults with every field the draft holds on top, each checked again (a value
+ * this version does not know keeps the default). The folder resolves like any
+ * form's once the saved folders are known ({@link resolveFormFolder}).
+ */
+export function formFromDraft(saved: Readonly<Record<string, unknown>>): NewSessionForm {
+  const form: { -readonly [K in keyof NewSessionForm]: NewSessionForm[K] } = { ...DEFAULT_FORM };
+  const text = (key: string): string | null => (typeof saved[key] === 'string' ? (saved[key] as string) : null);
+  form.name = text('name') ?? form.name;
+  form.task = text('task') ?? form.task;
+  form.confluenceUrl = text('confluenceUrl') ?? form.confluenceUrl;
+  form.figmaUrls = text('figmaUrls') ?? form.figmaUrls;
+  if (isOneOf(WORK_TYPES, saved['workType'])) form.workType = saved['workType'];
+  if (isOneOf(SESSION_MODES, saved['mode'])) form.mode = saved['mode'];
+  if (isOneOf(PHASES, saved['phase'])) form.phase = saved['phase'];
+  if (isOneOf(COORDINATIONS, saved['coordination'])) form.coordination = saved['coordination'];
+  if (isOneOf(QA_STACKS, saved['stack'])) form.stack = saved['stack'];
+  if (Array.isArray(saved['solutions'])) form.solutions = [...new Set((saved['solutions'] as unknown[]).filter((item): item is string => typeof item === 'string' && item.trim() !== ''))];
+  if (typeof saved['worktrees'] === 'boolean') form.worktrees = saved['worktrees'];
+  if (typeof saved['ultracode'] === 'boolean') form.ultracode = saved['ultracode'];
+  if (typeof saved['folder'] === 'string' && saved['folder'] !== '') form.folder = saved['folder'];
+  if (typeof saved['branch'] === 'string') form.branch = saved['branch'];
+  if (isCliProviderId(saved['provider'])) form.provider = saved['provider'];
+  if (typeof saved['profileId'] === 'string' && saved['profileId'] !== '') form.profileId = saved['profileId'];
+  const model = saved['model'];
+  if (model !== null && typeof model === 'object') {
+    const choice = readModelChoice(model);
+    if (choice) form.model = choice;
+  }
+  return form;
+}
+
+/**
  * The folder a form opens with once the saved folders are known (D14): its own
  * (a prefill's, e.g. a schedule's Edit or "Open fix session") while it is saved,
  * else the default folder, else none.

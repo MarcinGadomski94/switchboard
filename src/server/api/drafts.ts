@@ -24,6 +24,12 @@ function originOf(request: FastifyRequest): string {
  * - `DELETE /api/sessions/{id}/drafts/{field}[?client=<page>]` → 204 (also when there was none).
  * A paired machine's session (`r~<machine>~<id>`) is forwarded to its machine like
  * every session route, so its drafts live there and follow the session.
+ *
+ * Ruling 2026-10-09, this machine's own drafts (no session: the New-session form;
+ * paired devices yes, the peer API no):
+ * - `GET /api/drafts` → `SessionDraft[]`;
+ * - `PUT /api/drafts/{field}` `{ value, client? }` → the `SessionDraft`, 204 when empty;
+ * - `DELETE /api/drafts/{field}[?client=<page>]` → 204.
  */
 export async function registerDraftRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
   const { drafts } = context;
@@ -48,6 +54,26 @@ export async function registerDraftRoutes(app: FastifyInstance, context: ApiCont
   app.delete<{ Params: { id: string; field: string }; Querystring: { client?: string } }>('/api/sessions/:id/drafts/:field', async (request, reply) => {
     try {
       await drafts.delete(request.params.id, request.params.field, request.query.client);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendDraftError(reply, error);
+    }
+  });
+
+  app.get('/api/drafts', async () => drafts.listMachine());
+
+  app.put<{ Params: { field: string } }>('/api/drafts/:field', async (request, reply) => {
+    try {
+      const saved = await drafts.putMachine(request.params.field, request.body, originOf(request));
+      return saved === null ? reply.code(204).send() : saved;
+    } catch (error) {
+      return sendDraftError(reply, error);
+    }
+  });
+
+  app.delete<{ Params: { field: string }; Querystring: { client?: string } }>('/api/drafts/:field', async (request, reply) => {
+    try {
+      await drafts.deleteMachine(request.params.field, request.query.client);
       return reply.code(204).send();
     } catch (error) {
       return sendDraftError(reply, error);

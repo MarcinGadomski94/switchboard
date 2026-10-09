@@ -10,6 +10,11 @@
  * - `review:<reviewId>`: a review card's Send-back comment (D79).
  * - `todo-add`: the todo strip's + Add form (D69–D70).
  * - `todo-edit:<todoId>`: an item's open Edit form.
+ * - `commit:<reviewId>`: a review card's Commit message as edited (ruling 2026-10-09).
+ *
+ * D88 ruling (2026-10-09): the **New-session** form (Simple and Full share one form
+ * state) is no session's: it is kept **per machine** (`new-session`, this machine's
+ * drafts, `GET /api/drafts`), restored when the dialog opens again.
  *
  * Ids in a key are always the session's machine's own ids (a paired machine's
  * `r~<machine>~<id>` is made raw with {@link rawDraftId}), so every device of
@@ -33,15 +38,26 @@ export const DRAFT_SAVE_MS = 400;
 export const DRAFT_TEXT_MAX = 50_000;
 
 /** The field kinds; the ones with `:` take an id. */
-export type DraftKind = 'composer' | 'question' | 'review' | 'todo-add' | 'todo-edit';
+export type DraftKind = 'composer' | 'question' | 'review' | 'todo-add' | 'todo-edit' | 'commit' | 'new-session';
 
-/** A field key: `composer`, `todo-add`, or `<kind>:<raw id>` (see the module comment). */
-const FIELD_PATTERN = /^(?:composer|todo-add|(?:question|review|todo-edit):[A-Za-z0-9._-]{1,128})$/;
+/** A session's field key: `composer`, `todo-add`, or `<kind>:<raw id>` (see the module comment). */
+const FIELD_PATTERN = /^(?:composer|todo-add|(?:question|review|todo-edit|commit):[A-Za-z0-9._-]{1,128})$/;
 
-/** `true` for a valid field key. */
+/** A machine's field key (no session): `new-session`. */
+const MACHINE_FIELD_PATTERN = /^new-session$/;
+
+/** `true` for a valid field key of a session's draft. */
 export function isDraftField(value: unknown): value is string {
   return typeof value === 'string' && FIELD_PATTERN.test(value);
 }
+
+/** `true` for a valid field key of this machine's own drafts (`GET /api/drafts`). */
+export function isMachineDraftField(value: unknown): value is string {
+  return typeof value === 'string' && MACHINE_FIELD_PATTERN.test(value);
+}
+
+/** At most this many machine drafts (409 `too-many` for one more). */
+export const MACHINE_DRAFTS_MAX = 20;
 
 /** The kind of a valid field key. */
 export function draftKind(field: string): DraftKind {
@@ -61,6 +77,9 @@ export const draftField = {
   question: (batchId: string): string => `question:${rawDraftId(batchId)}`,
   review: (reviewId: string): string => `review:${rawDraftId(reviewId)}`,
   todoEdit: (todoId: string): string => `todo-edit:${rawDraftId(todoId)}`,
+  commit: (reviewId: string): string => `commit:${rawDraftId(reviewId)}`,
+  /** A machine draft (no session): the New-session form. */
+  newSession: 'new-session',
 } as const;
 
 /** An attachment chip kept with the composer's draft (the upload exists on the session's machine). */
@@ -102,6 +121,21 @@ export interface TodoFormDraft {
   readonly estimate: string;
 }
 
+/** `commit:<reviewId>`: the Commit message as edited (the card sends `''` while it is the drafted one). */
+export interface CommitDraft {
+  readonly message: string;
+}
+
+/**
+ * `new-session` (a machine draft): the New-session form's fields as typed (the web's
+ * `NewSessionForm`, unknown keys dropped; the dialog checks each value again when it
+ * restores them) and the Simple form's edited branch.
+ */
+export interface NewSessionDraft {
+  readonly form: Readonly<Record<string, unknown>>;
+  readonly simpleBranch: string | null;
+}
+
 /** What a field's value is, by kind. */
 export interface DraftValues {
   readonly composer: ComposerDraft;
@@ -109,6 +143,8 @@ export interface DraftValues {
   readonly review: ReviewDraft;
   readonly 'todo-add': TodoFormDraft;
   readonly 'todo-edit': TodoFormDraft;
+  readonly commit: CommitDraft;
+  readonly 'new-session': NewSessionDraft;
 }
 
 /** One stored draft (`GET /api/sessions/{id}/drafts` lists them). */
@@ -127,9 +163,10 @@ export interface DraftPutInput {
   readonly client?: string;
 }
 
-/** The `/hub` `draftChanged` payload: a session's draft was saved or cleared (any device). */
+/** The `/hub` `draftChanged` payload: a session's draft (or a machine draft) was saved or cleared (any device, or the server's clean-up). */
 export interface DraftChanged {
-  readonly sessionId: string;
+  /** The session; `null` for this machine's own drafts (`new-session`; never forwarded to peers). */
+  readonly sessionId: string | null;
   readonly field: string;
   /** The writing page's id, `null` when it sent none. */
   readonly client: string | null;
@@ -156,6 +193,55 @@ function attachmentRef(value: unknown): DraftAttachmentRef | null {
   return { id, name, size, kind: kind as AttachmentKind, mediaType: typeof mediaType === 'string' ? mediaType : '' };
 }
 
+/** The New-session form's keys and what each may hold (`NewSessionForm` in `src/web/modals/new-session.ts`). */
+const NEW_SESSION_TEXT: Readonly<Record<string, number>> = { name: 200, task: DRAFT_TEXT_MAX, confluenceUrl: 2000, figmaUrls: 4000 };
+const NEW_SESSION_NULLABLE: Readonly<Record<string, number>> = { branch: 200, folder: 128, stack: 32, provider: 32, profileId: 128 };
+const NEW_SESSION_PICKS: Readonly<Record<string, number>> = { workType: 32, mode: 32, phase: 32, coordination: 32 };
+const NEW_SESSION_FLAGS: readonly string[] = ['worktrees', 'ultracode'];
+
+function newSessionForm(value: Record<string, unknown>): Record<string, unknown> | null {
+  const form: Record<string, unknown> = {};
+  for (const [key, max] of Object.entries(NEW_SESSION_TEXT)) {
+    if (value[key] === undefined) continue;
+    const body = text(value[key], max);
+    if (body === null) return null;
+    form[key] = body;
+  }
+  for (const [key, max] of Object.entries(NEW_SESSION_NULLABLE)) {
+    if (value[key] === undefined) continue;
+    if (value[key] !== null && text(value[key], max) === null) return null;
+    form[key] = value[key];
+  }
+  for (const [key, max] of Object.entries(NEW_SESSION_PICKS)) {
+    if (value[key] === undefined) continue;
+    if (text(value[key], max) === null) return null;
+    form[key] = value[key];
+  }
+  for (const key of NEW_SESSION_FLAGS) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== 'boolean') return null;
+    form[key] = value[key];
+  }
+  if (value['solutions'] !== undefined) {
+    const list = value['solutions'];
+    if (!Array.isArray(list) || list.length > 200 || list.some((item) => text(item, 200) === null)) return null;
+    form['solutions'] = [...(list as string[])];
+  }
+  if (value['model'] !== undefined) {
+    const model = value['model'];
+    if (model !== null) {
+      if (!isRecord(model)) return null;
+      const name = model['model'] ?? null;
+      const effort = model['effort'] ?? null;
+      if ((name !== null && text(name, 128) === null) || (effort !== null && text(effort, 64) === null)) return null;
+      form['model'] = { model: name, effort };
+    } else {
+      form['model'] = null;
+    }
+  }
+  return form;
+}
+
 function todoForm(value: Record<string, unknown>): TodoFormDraft | null {
   const title = text(value['title'] ?? '', TODO_TITLE_MAX);
   const description = text(value['description'] ?? '', TODO_DESCRIPTION_MAX);
@@ -172,7 +258,7 @@ function todoForm(value: Record<string, unknown>): TodoFormDraft | null {
  */
 export function parseDraftValue<K extends DraftKind>(field: string, value: unknown): DraftValues[K] | null;
 export function parseDraftValue(field: string, value: unknown): DraftValues[DraftKind] | null {
-  if (!isDraftField(field) || !isRecord(value)) return null;
+  if (!(isDraftField(field) || isMachineDraftField(field)) || !isRecord(value)) return null;
   switch (draftKind(field)) {
     case 'composer': {
       const body = text(value['text'] ?? '', DRAFT_TEXT_MAX);
@@ -205,13 +291,24 @@ export function parseDraftValue(field: string, value: unknown): DraftValues[Draf
     case 'todo-add':
     case 'todo-edit':
       return todoForm(value);
+    case 'commit': {
+      const message = text(value['message'] ?? '', 4000);
+      return message === null ? null : { message };
+    }
+    case 'new-session': {
+      const raw = value['form'] ?? {};
+      const branch = value['simpleBranch'] ?? null;
+      if (!isRecord(raw) || (branch !== null && text(branch, 200) === null)) return null;
+      const form = newSessionForm(raw);
+      return form === null ? null : { form, simpleBranch: branch as string | null };
+    }
   }
 }
 
 /**
  * `true` when the value holds nothing worth keeping: an empty composer (no text,
- * no chips), no picks, an empty comment, a + Add form as it opens (D70: plan
- * `No plan`, medium). Saving an empty value clears the draft. An Edit form is
+ * no chips), no picks, an empty comment or commit message, a + Add form as it opens
+ * (D70: plan `No plan`, medium), a New-session form without typed text. Saving an empty value clears the draft. An Edit form is
  * kept while it is open, so it is never empty here (Save or Cancel clears it).
  */
 export function draftIsEmpty(field: string, value: unknown): boolean {
@@ -232,6 +329,14 @@ export function draftIsEmpty(field: string, value: unknown): boolean {
     }
     case 'todo-edit':
       return false;
+    case 'commit':
+      return (parsed as CommitDraft).message.trim() === '';
+    case 'new-session': {
+      // Only typed text is worth keeping (the picks alone are not: they reopen as they were set).
+      const draft = parsed as NewSessionDraft;
+      const typed = (key: string): boolean => typeof draft.form[key] === 'string' && (draft.form[key] as string).trim() !== '';
+      return !['name', 'task', 'confluenceUrl', 'figmaUrls', 'branch'].some(typed) && (draft.simpleBranch ?? '').trim() === '';
+    }
   }
 }
 

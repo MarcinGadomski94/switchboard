@@ -422,7 +422,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       {
         id: 'composer',
         title: 'Your drafts follow you',
-        what: 'What you type and have not sent yet stays with the session: the message box, a question\'s own answer, a Send-back comment and the todo forms. Switch sessions, reload, or pick it up on your phone.',
+        what: 'What you type and have not sent yet stays with the session: the message box, a question\'s own answer, a Send-back comment or Commit message and the todo forms, and a New session you cancelled. Switch sessions, reload, or pick it up on your phone.',
         todo: ['Type a message and switch to another session.', 'Come back (here or on a paired device): the text is still there.'],
         anchors: ['composer'],
         route: SESSION,

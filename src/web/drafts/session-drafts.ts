@@ -3,6 +3,9 @@
  * (`GET /api/sessions/{id}/drafts`), kept for the page's life so returning to a
  * session shows its drafts at once, and read again on `/hub` `draftChanged`. No
  * React here (the hook is `useDraft.ts`).
+ *
+ * A **scope** is a session id, or `null` for this machine's own drafts (ruling
+ * 2026-10-09: the New-session form, `GET /api/drafts`).
  */
 import type { SessionDraft } from '../../core/drafts.ts';
 import { api } from '../api/client.ts';
@@ -16,29 +19,38 @@ interface Entry {
   again: boolean;
 }
 
+/** A draft scope: a session id, or `null` for this machine's own drafts. */
+export type DraftScope = string | null;
+
 const sessions = new Map<string, Entry>();
 
-function entry(sessionId: string): Entry {
-  let found = sessions.get(sessionId);
+/** The cache key of a scope (no session id is empty). */
+function keyOf(scope: DraftScope): string {
+  return scope ?? '';
+}
+
+function entry(scope: DraftScope): Entry {
+  const key = keyOf(scope);
+  let found = sessions.get(key);
   if (!found) {
     found = { values: new Map(), loaded: false, reading: null, again: false };
-    sessions.set(sessionId, found);
+    sessions.set(key, found);
   }
   return found;
 }
 
 /** The value this page last knew for the field (`undefined` = none known yet, `null` never). */
-export function knownDraft(sessionId: string, field: string): unknown {
-  return sessions.get(sessionId)?.values.get(field);
+export function knownDraft(sessionId: DraftScope, field: string): unknown {
+  return sessions.get(keyOf(sessionId))?.values.get(field);
 }
 
 /** `true` once the session's drafts were read at least once on this page. */
-export function draftsLoaded(sessionId: string): boolean {
-  return sessions.get(sessionId)?.loaded === true;
+export function draftsLoaded(sessionId: DraftScope): boolean {
+  return sessions.get(keyOf(sessionId))?.loaded === true;
 }
 
 /** Records what this page saved (`null` = cleared), so a revisit starts from it. */
-export function rememberDraft(sessionId: string, field: string, value: unknown | null): void {
+export function rememberDraft(sessionId: DraftScope, field: string, value: unknown | null): void {
   const values = entry(sessionId).values;
   if (value === null) values.delete(field);
   else values.set(field, value);
@@ -56,7 +68,7 @@ function store(target: Entry, drafts: readonly SessionDraft[]): ReadonlyMap<stri
  * request during a read runs one more read after it). Never rejects: a failed read
  * answers what was known.
  */
-export function readDrafts(sessionId: string): Promise<ReadonlyMap<string, unknown>> {
+export function readDrafts(sessionId: DraftScope): Promise<ReadonlyMap<string, unknown>> {
   const target = entry(sessionId);
   if (target.reading) {
     target.again = true;
@@ -67,7 +79,7 @@ export function readDrafts(sessionId: string): Promise<ReadonlyMap<string, unkno
       do {
         target.again = false;
         try {
-          store(target, await api.sessionDrafts(sessionId));
+          store(target, await (sessionId === null ? api.machineDrafts() : api.sessionDrafts(sessionId)));
         } catch {
           // Offline peer, an older machine without the route: keep what is known.
         }
@@ -82,8 +94,8 @@ export function readDrafts(sessionId: string): Promise<ReadonlyMap<string, unkno
 }
 
 /** The session's drafts as this page knows them, read from the server only when it never was. */
-export function draftsOnce(sessionId: string): Promise<ReadonlyMap<string, unknown>> {
-  const known = sessions.get(sessionId);
+export function draftsOnce(sessionId: DraftScope): Promise<ReadonlyMap<string, unknown>> {
+  const known = sessions.get(keyOf(sessionId));
   if (known?.loaded) return Promise.resolve(known.values);
   return known?.reading ?? readDrafts(sessionId);
 }

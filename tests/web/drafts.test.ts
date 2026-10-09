@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { draftField, draftIsEmpty, isDraftField, parseDraftValue, rawDraftId } from '../../src/core/drafts.ts';
+import { draftField, draftIsEmpty, isDraftField, isMachineDraftField, parseDraftValue, rawDraftId } from '../../src/core/drafts.ts';
+import { DEFAULT_FORM, formFromDraft } from '../../src/web/modals/new-session.ts';
 import { DraftField, type DraftFieldHost } from '../../src/web/drafts/draft-field.ts';
 
 /**
@@ -84,6 +85,33 @@ describe('field keys and values (src/core/drafts.ts)', () => {
     expect(draftIsEmpty('todo-add', { title: '', description: '', plan: 'No plan', priority: 'medium', estimate: '' })).toBe(true);
     expect(draftIsEmpty('todo-add', { title: '', description: '', plan: 'No plan', priority: 'high', estimate: '' })).toBe(false);
     expect(draftIsEmpty('todo-edit:t', { title: '', description: '', plan: '', priority: 'medium', estimate: '' })).toBe(false);
+  });
+});
+
+describe('the ruling of 2026-10-09: Commit message and New-session drafts', () => {
+  it('commit:<reviewId> holds the edited message; empty when blank', () => {
+    expect(draftField.commit('r~abcdefghijkl~rev-1')).toBe('commit:rev-1');
+    expect(isDraftField('commit:rev-1')).toBe(true);
+    expect(parseDraftValue('commit:r', { message: 'feat: x', other: 1 })).toEqual({ message: 'feat: x' });
+    expect(parseDraftValue('commit:r', { message: 1 })).toBeNull();
+    expect(draftIsEmpty('commit:r', { message: ' \n' })).toBe(true);
+    expect(draftIsEmpty('commit:r', { message: 'feat: x' })).toBe(false);
+  });
+
+  it('new-session is a machine field (never a session\'s); kept only with typed text; restored with every value checked again', () => {
+    expect(draftField.newSession).toBe('new-session');
+    expect(isMachineDraftField('new-session')).toBe(true);
+    expect(isDraftField('new-session')).toBe(false);
+    expect(isMachineDraftField('composer')).toBe(false);
+    const form = { ...DEFAULT_FORM, task: 'Free talk at 640', solutions: ['acme-app-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } };
+    const parsed = parseDraftValue('new-session', { form: { ...form, extra: 'dropped' }, simpleBranch: null });
+    expect(parsed).toEqual({ form, simpleBranch: null });
+    expect(draftIsEmpty('new-session', { form: { ...DEFAULT_FORM, workType: 'qa', ultracode: true }, simpleBranch: null })).toBe(true);
+    expect(draftIsEmpty('new-session', { form: DEFAULT_FORM, simpleBranch: 'PROJ-1-x' })).toBe(false);
+    expect(draftIsEmpty('new-session', { form: { ...DEFAULT_FORM, name: 'free-talk' }, simpleBranch: null })).toBe(false);
+    // The dialog's restore: the typed values back, an unknown pick keeps the default.
+    expect(formFromDraft({ ...form, mode: 'nonsense', provider: 'not-a-cli' })).toEqual({ ...DEFAULT_FORM, task: 'Free talk at 640', solutions: ['acme-app-front'], workType: 'qa', stack: 'web', folder: 'f1', model: { model: 'opus', effort: 'high' } });
+    expect(formFromDraft({})).toEqual(DEFAULT_FORM);
   });
 });
 

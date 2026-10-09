@@ -211,6 +211,10 @@ export const api = {
   /** D88: clears a draft (sent, saved, cancelled). */
   deleteDraft: (id: string, field: string, client?: string, keepalive = false) =>
     request<null>('DELETE', `/api/sessions/${enc(id)}/drafts/${enc(field)}${query({ client })}`, undefined, { keepalive }),
+  /** D88 ruling 2026-10-09: this machine's own drafts (no session: the New-session form). */
+  machineDrafts: () => request<SessionDraft[]>('GET', '/api/drafts'),
+  putMachineDraft: (field: string, body: DraftPutInput, keepalive = false) => request<SessionDraft | null>('PUT', `/api/drafts/${enc(field)}`, body, { keepalive }),
+  deleteMachineDraft: (field: string, client?: string, keepalive = false) => request<null>('DELETE', `/api/drafts/${enc(field)}${query({ client })}`, undefined, { keepalive }),
   /** D68, additive: the session's todo list (`docs/todos.md`); every write answers the whole list. A peer's session id is forwarded. */
   sessionTodos: (id: string) => request<SessionTodoList>('GET', `/api/sessions/${enc(id)}/todos`),
   // D69: title, description, plan; `text` (= title) too, so a paired machine still on 1.7.0 adds the item (without the notes).

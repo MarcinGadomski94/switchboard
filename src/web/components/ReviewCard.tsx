@@ -15,7 +15,7 @@ import {
   shownActions,
   statsLine,
 } from './review-card.ts';
-import { type ReviewDraft, draftField } from '../../core/drafts.ts';
+import { type CommitDraft, type ReviewDraft, draftField } from '../../core/drafts.ts';
 import { initialDraft, useDraft } from '../drafts/useDraft.ts';
 import './review-card.css';
 
@@ -42,8 +42,11 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
   // D88: the Send-back comment not yet sent is the session's draft (`review:<id>`); with one, its form opens.
   const field = review.actions.includes('send-back') ? draftField.review(review.id) : null;
   const [restored] = useState(() => initialDraft<ReviewDraft>(review.sessionId, field)?.comment ?? '');
-  const [form, setForm] = useState<ReviewForm | null>(restored !== '' ? 'send-back' : null);
-  const [message, setMessage] = useState(review.commitMessage);
+  // D88 ruling 2026-10-09: the Commit message as edited is a draft too (`commit:<id>`); with one, the Commit form opens.
+  const commitField = review.actions.includes('commit') ? draftField.commit(review.id) : null;
+  const [restoredMessage] = useState(() => initialDraft<CommitDraft>(review.sessionId, commitField)?.message ?? '');
+  const [form, setForm] = useState<ReviewForm | null>(restored !== '' ? 'send-back' : restoredMessage !== '' ? 'commit' : null);
+  const [message, setMessage] = useState(restoredMessage !== '' ? restoredMessage : review.commitMessage);
   const [comment, setComment] = useState(restored);
   const [busy, setBusy] = useState<ReviewActionId | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +58,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
     shownId.current = review.id;
     setForm(null);
     setComment('');
+    setMessage(review.commitMessage);
     setError(null);
   }, [review.id]);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -70,7 +74,30 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
       if (value && value.comment.trim() !== '') setForm('send-back');
     },
   });
-  useEffect(() => setMessage(review.commitMessage), [review.id, review.commitMessage]);
+  // The drafted message follows the card (another card, a new summary) unless the developer edited it.
+  const draftedMessage = useRef(review.commitMessage);
+  useEffect(() => {
+    const before = draftedMessage.current;
+    draftedMessage.current = review.commitMessage;
+    setMessage((current) => (current === before ? review.commitMessage : current));
+  }, [review.commitMessage]);
+  // Kept only while it differs from the drafted message (an unchanged one is no draft).
+  const commitValue = useMemo<CommitDraft>(() => ({ message: message === review.commitMessage ? '' : message }), [message, review.commitMessage]);
+  const keptMessage = useDraft<CommitDraft>({
+    sessionId: review.sessionId,
+    field: commitField,
+    value: commitValue,
+    root: cardRef,
+    initial: restoredMessage !== '' ? { message: restoredMessage } : null,
+    apply: (value) => {
+      if (value && value.message.trim() !== '') {
+        setMessage(value.message);
+        setForm((current) => current ?? 'commit');
+      } else {
+        setMessage(review.commitMessage);
+      }
+    },
+  });
   useEffect(() => setConflicts(review.conflicts), [review.id, review.conflicts]);
 
   const actions = shownActions(review.actions, onDeviceOrigin());
@@ -79,8 +106,9 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
     setError(null);
     try {
       const answer = await api.reviewAction(review.id, action, body);
-      // D88: the comment was sent back: its draft goes.
+      // D88: the comment was sent back / the commit made: its draft goes.
       if (action === 'send-back') kept.clear();
+      if (action === 'commit') keptMessage.clear();
       setForm(null);
       setComment('');
       onChanged?.(answer);
@@ -93,6 +121,12 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
     } finally {
       setBusy(null);
     }
+  };
+  // D88 ruling: Cancel drops the edited message (back to the drafted one) and its draft, like Send back's.
+  const cancelCommit = (): void => {
+    keptMessage.clear();
+    setMessage(review.commitMessage);
+    setForm(null);
   };
   // D88: Cancel drops the comment and its draft.
   const cancelSendBack = (): void => {
@@ -207,7 +241,7 @@ export function ReviewCard({ review, variant, onChanged }: ReviewCardProps) {
             onChange={(event) => setMessage(event.target.value)}
           />
           <div className="sb-review__hint">{commitHint(review)}</div>
-          <FormButtons confirm="Commit" testId="review-commit-confirm" busy={busy !== null} disabled={message.trim() === ''} onConfirm={() => void run('commit', { message })} onCancel={() => setForm(null)} />
+          <FormButtons confirm="Commit" testId="review-commit-confirm" busy={busy !== null} disabled={message.trim() === ''} onConfirm={() => void run('commit', { message })} onCancel={cancelCommit} />
         </div>
       ) : null}
       {form === 'send-back' ? (

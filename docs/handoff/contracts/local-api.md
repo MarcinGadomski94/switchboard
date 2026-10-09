@@ -1287,10 +1287,23 @@ Developer ruling D88 (`docs/decisions.md`, `docs/chat.md` → *Drafts*): the uns
 | GET | /api/sessions/{id}/drafts | — | 200 SessionDraft[] (by field; a composer draft's chips only while their upload exists in the session) · 404 `not-found` |
 | PUT | /api/sessions/{id}/drafts/{field} | `{ value, client? }` | 200 SessionDraft · 204 when `value` is empty (the draft is cleared) · 404 `not-found` · 409 `too-many` (200 drafts) · 413 `too-large` (the value's JSON over 64 KB) · 422 `invalid` (unknown field, a value not of the field's shape) |
 | DELETE | /api/sessions/{id}/drafts/{field}[?client=] | — | 204 (also when there was none) · 404 `not-found` · 422 `invalid` |
+| GET | /api/drafts | — | 200 SessionDraft[] (this machine's own drafts, ruling 2026-10-09) |
+| PUT | /api/drafts/{field} | `{ value, client? }` | 200 SessionDraft · 204 when `value` is empty · 409 `too-many` (20 drafts) · 413 `too-large` · 422 `invalid` |
+| DELETE | /api/drafts/{field}[?client=] | — | 204 (also when there was none) · 422 `invalid` |
 
-`field`: `composer` · `todo-add` · `question:<batchId>` · `review:<reviewId>` · `todo-edit:<todoId>` (ids `[A-Za-z0-9._-]`, the session machine's own). `value` by field: composer `{ text, attachments: [{ id, name, size, kind, mediaType }] }`; question `{ picks: { <questionId>: <option index> | { text, editing } } }`; review `{ comment }`; todo-add / todo-edit `{ title, description, plan, priority, estimate }` (the estimate as typed). `SessionDraft` = `{ field, value, updatedAt, updatedBy }`, `updatedBy` = `local` / `device:<id>` / `peer`, then `/<client>` when the page sent one. `client` = the page's id (`[A-Za-z0-9_-]{1,64}`), echoed in `draftChanged`. Each save or clear that changed something publishes `draftChanged`.
+`field`: `composer` · `todo-add` · `question:<batchId>` · `review:<reviewId>` · `todo-edit:<todoId>` · `commit:<reviewId>` (ruling 2026-10-09) (ids `[A-Za-z0-9._-]`, the session machine's own). `value` by field: composer `{ text, attachments: [{ id, name, size, kind, mediaType }] }`; question `{ picks: { <questionId>: <option index> | { text, editing } } }`; review `{ comment }`; todo-add / todo-edit `{ title, description, plan, priority, estimate }` (the estimate as typed); commit `{ message }` (the Commit message as edited; empty = the drafted one). `SessionDraft` = `{ field, value, updatedAt, updatedBy }`, `updatedBy` = `local` / `device:<id>` / `peer`, then `/<client>` when the page sent one. `client` = the page's id (`[A-Za-z0-9_-]{1,64}`), echoed in `draftChanged`. Each save or clear that changed something publishes `draftChanged`.
+
+**Ruling 2026-10-09 (additive):**
+- **Machine drafts** (`/api/drafts`, migration 0040): fields that belong to no session, kept on this machine only (not on `PEER_API_ALLOW`; allowed to paired devices). `field`: `new-session`, the New-session dialog's form, `value` = `{ form: { name, task, workType, mode, solutions, phase, coordination, stack, confluenceUrl, figmaUrls, worktrees, ultracode, folder, branch, model: { model, effort } | null, provider, profileId }, simpleBranch: string | null }` (unknown keys dropped); empty (204, cleared) while no text is typed (name, task, the QA links, branch, simpleBranch). A session field on `/api/drafts`, or `new-session` on a session's route, is 422 `invalid`. `draftChanged` then carries `sessionId: null`.
+- **Orphan clean-up:** the server deletes a session's draft once its target is gone and publishes `draftChanged` with `client: null`: `question:<batchId>` when the batch is answered or closed (not one closed by the session's close), `review:` / `commit:<reviewId>` when the review is no longer `pending`, `todo-edit:<todoId>` when the item is deleted, done or in another session. Closing a session removes no draft.
 
 ```json
+PUT /api/drafts/new-session
+{ "value": { "form": { "task": "Free talk screen at 640", "name": "", "solutions": [], "worktrees": true }, "simpleBranch": null }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
+→ 200
+{ "field": "new-session", "value": { "form": { "name": "", "task": "Free talk screen at 640", "worktrees": true, "solutions": [] }, "simpleBranch": null },
+  "updatedAt": "2026-10-09T10:12:40.501Z", "updatedBy": "local/9f2c41aa07d3e5b1c8a0f6d2" }
+
 PUT /api/sessions/5b0c…/drafts/composer
 { "value": { "text": "Half a thought about the upload", "attachments": [] }, "client": "9f2c41aa07d3e5b1c8a0f6d2" }
 → 200
@@ -1367,5 +1380,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | todosChanged | { sessionId, openCount, doneCount } (additive, D68: a session's todo list changed, by the developer, the agent or the hour's removal; forwarded between peers; D75: `openCount` includes the items in progress) |
 | reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape (`ReviewResolvedEvent`, `src/core/reviews.ts`); D76: the todos whose run session it is leave `review`; this machine's only, never forwarded between peers) |
 | reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |
-| draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null`; other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id) |
+| draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null` (also the server's orphan clean-up, ruling 2026-10-09); other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id; `sessionId: null` = this machine's own draft (`/api/drafts`), not forwarded) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox \| review, title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
