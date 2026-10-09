@@ -118,6 +118,9 @@ const SESSION_KEYS = keys<Session>()([
   'continuedTo',
   'continuedFrom',
   'freshContinue',
+  // D91
+  'instructionOutdated',
+  'instructionPending',
 ]).filter((key) => key !== 'hookStatus');
 const AGENT_KEYS = keys<Agent>()([
   'id',

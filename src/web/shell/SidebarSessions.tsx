@@ -35,6 +35,7 @@ import { formatAge, modeLine, statusColor } from './format.ts';
 import { MENU_GAP, MENU_MARGIN, dragScrollStep, menuTop } from './sidebar-menu.ts';
 import { openTakeover } from '../takeover/store.ts';
 import { FRESH_ACTION_LABEL } from '../../core/fresh-session.ts';
+import { RELOAD_INSTRUCTION_LABEL, RELOAD_PENDING_TITLE, offersInstructionReload } from '../../core/standing-instruction.ts';
 import { freshActionState, markFreshAsked, takeFreshAsked } from '../views/session/fresh-offer.ts';
 import { refusalText } from '../views/inbox.ts';
 import { useToasts } from '../toast/ToastHost.tsx';
@@ -608,6 +609,21 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     });
   };
 
+  /** D91: the ⋯ menu's Reload instruction (idle: restarted now; busy: after its turn; a refusal shows as a toast). */
+  const reloadInstruction = (session: Session): void => {
+    setMenu(null);
+    api.reloadInstruction(session.id).catch((error: unknown) => {
+      showToast({
+        id: `reload-instruction-${session.id}`,
+        title: 'Could not reload the instruction',
+        sub: session.displayTitle ?? session.title ?? session.name,
+        branch: '',
+        text: error instanceof ApiError ? refusalText(error.status, error.body) : refusalText(0, null),
+        sessionId: null,
+      });
+    });
+  };
+
   const sessionMenu = (session: Session, visible: readonly string[], group: RowGroup): MenuItem[] => {
     const where = placeOf(layout, session.id);
     const items: MenuItem[] = [];
@@ -654,6 +670,16 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
         disabled: fresh.disabledReason !== null,
         ...(fresh.disabledReason ? { title: fresh.disabledReason } : {}),
         run: () => continueFresh(session),
+      });
+    }
+    // D91: the session's process runs an older standing instruction (disabled while a reload waits for the turn).
+    if (offersInstructionReload(session)) {
+      items.push({
+        label: RELOAD_INSTRUCTION_LABEL,
+        testId: 'sidebar-menu-reload-instruction',
+        disabled: session.instructionPending === true,
+        ...(session.instructionPending === true ? { title: RELOAD_PENDING_TITLE } : {}),
+        run: () => reloadInstruction(session),
       });
     }
     // D65: take a peer's session over to this machine, or move this machine's session to a paired machine.

@@ -1333,6 +1333,30 @@ GET /api/sessions/0b7c3e0a-…/diff?scope=all
 → 422 { "error": "invalid", "errors": [{ "field": "scope", "message": "scope must be one of head, branch, repo" }] }
 ```
 
+## Apply the standing instruction (D91, 2026-10-09, additive)
+Developer ruling D91 (`docs/decisions.md`; details `docs/settings.md` → *Apply to open sessions*): the D64 standing instruction can be given to the sessions already running. Types: `src/core/standing-instruction.ts` (`InstructionApplyResult`, `InstructionReloadResult`, `InstructionReloadOutcome`); `Session.instructionOutdated` / `instructionPending` in `src/core/api.ts`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/settings/standing-instruction/apply | `{}` | 200 InstructionApplyResult |
+| POST | /api/sessions/{id}/reload-instruction | `{}` | 200 `{ outcome, session }` · 404 `not-found` · 409 `not-available` (hooked), `detached`, `switching`, `closed`, `folder-missing`, `cli-unavailable` · 502 `reload-failed` · 503 `closing` |
+
+- **`outcome`:** `restarted` (idle: the process was restarted with `--resume`, no message; the chat gets the lifecycle event `instruction-updated`, label "Standing instruction updated", a divider), `pending` (a turn runs or the session waits on the developer: restarted once idle), `current` (already on it), `not-running` (no process: its next start gets it).
+- **`InstructionApplyResult`:** `{ restarted: string[], notRunning: number, pending: string[], current: number, skipped: number, failed: [{ sessionId, title, reason }] }` over this machine's open sessions; `skipped` = hooked terminal sessions and sessions continued in a terminal. A failed session is left as it was.
+- **`Session.instructionOutdated`** (additive): the session's running process was started with another standing instruction than the current setting; `false` without a process. **`instructionPending`**: a reload waits for the turn's end. A `PUT /api/settings` that changes `agents.standingInstruction` or `.enabled` publishes `sessionUpdated` for the live sessions.
+- **Devices (D73):** `…/reload-instruction` is allowed; `…/standing-instruction/apply` is refused (`local-only`). **Peers (D48):** neither is on `PEER_API_ALLOW`; a paired machine's sessions are applied there.
+
+```json
+POST /api/settings/standing-instruction/apply
+→ 200
+{ "restarted": ["0b7c3e0a-…"], "notRunning": 1, "pending": ["5f1d…"], "current": 0, "skipped": 1,
+  "failed": [{ "sessionId": "9a2e…", "title": "fix-login", "reason": "the session's folder does not exist: /work/gone" }] }
+
+POST /api/sessions/0b7c3e0a-…/reload-instruction
+→ 200
+{ "outcome": "restarted", "session": { "id": "0b7c3e0a-…", "instructionOutdated": false, "instructionPending": false } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as

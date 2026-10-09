@@ -348,6 +348,16 @@ describe('settings helpers (M8.2)', () => {
     }
   });
 
+  it('D91 · Apply to open sessions: answers the summary (nothing open: all zero); a session reload of an unknown id is 404', async () => {
+    await setup();
+    const applied = await call('POST', '/api/settings/standing-instruction/apply', {});
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toEqual({ restarted: [], notRunning: 0, pending: [], current: 0, skipped: 0, failed: [] });
+    const missing = await call('POST', '/api/sessions/nope/reload-instruction', {});
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: 'not-found' });
+  });
+
   it('D64 · effectiveStandingInstruction and readKnownSettings (UI side)', () => {
     const on = { 'agents.standingInstruction': ' text ', 'agents.standingInstruction.enabled': true } as const;
     expect(effectiveStandingInstruction(on)).toBe('text');

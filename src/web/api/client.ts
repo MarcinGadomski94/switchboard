@@ -2,6 +2,7 @@ import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { Review, ReviewActionId } from '../../core/reviews.ts';
+import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   DiffScope,
@@ -199,6 +200,10 @@ export const api = {
   stopBackground: (id: string, body: StopBackgroundRequest = {}) => request<StopBackgroundResult>('POST', `/api/sessions/${enc(id)}/background/stop`, body),
   /** D83: continue the session in a fresh one (202 once the handover turn started; a peer's session id is forwarded). */
   freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
+  /** D91: give the session's process the current standing instruction (idle → restarted, busy → after its turn). */
+  reloadInstruction: (id: string) => request<InstructionReloadResult<Session>>('POST', `/api/sessions/${enc(id)}/reload-instruction`, {}),
+  /** D91: Settings → Apply to open sessions (this machine's). */
+  applyInstruction: () => request<InstructionApplyResult>('POST', '/api/settings/standing-instruction/apply', {}),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),

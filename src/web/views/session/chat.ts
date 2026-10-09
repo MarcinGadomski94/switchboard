@@ -361,7 +361,8 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: lifecycle.action === 'taken-over' ? (lifecycle.machine ?? null) : null, to: lifecycle.action === 'moved-away' ? (lifecycle.machine ?? null) : null });
       }
       // D72: a hooked terminal session continued in Switchboard: "Continued in Switchboard (was a terminal session)".
-      if (lifecycle.action === 'continued' && event.kind === 'text') {
+      // D91: a process restarted for the current standing instruction: "Standing instruction updated".
+      if ((lifecycle.action === 'continued' || lifecycle.action === 'instruction-updated') && event.kind === 'text') {
         out.push({ kind: 'divider', key: `d:${event.id}`, id: event.id, text: event.label, from: null, to: null });
       }
       // D80: "Reverted to before turn N" (the newest one carries Redo) and "Undid the revert to before turn N".

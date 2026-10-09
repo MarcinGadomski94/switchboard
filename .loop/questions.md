@@ -1785,6 +1785,16 @@ Developer request: drag and drop remote sessions into folders / subfolders and r
 - ASSUMED D90-tab-count · the session tab's "Diff · n" count still reads `SessionDetail.files` (the whole branch), so it can differ from the default view's count. See the question below.
 - OPEN D90-q1 · Should the "Diff · n" tab count follow the view shown in the tab (Since last commit by default) instead of the whole branch?
 
+## D91 · Apply the standing instruction (2026-10-09)
+- ASSUMED D91-tracking · the instruction a process runs is kept in memory on the supervisor's live record (the exact string D64 passed, `null` = none), not persisted: a process never outlives the Switchboard that started it (restart recovery spawns again with the current setting), so no migration (0041 not used).
+- ASSUMED D91-not-running · an open, supervised session without a running process (paused, ended, idle between runs) counts as applied ("not running: on their next start"), whatever its status, not only `paused`.
+- ASSUMED D91-busy · "busy" = a turn runs, a message is queued, or a question / permission waits (`turnBusy`); the restart runs right after the session goes idle; a message sent while a restart runs waits for it and goes to the new process.
+- ASSUMED D91-status · the restarted process keeps the status the session had (`done` / `idle`); the D7 stop records a "Paused" lifecycle line on the timeline (not shown in the chat), as an account switch does.
+- ASSUMED D91-failure · the checks that can run before the stop run first (the session's folder exists, its CLI has an adapter): a refusal leaves the process running untouched; the reason goes to the result and as an error line in the session's chat. A spawn that fails after the stop leaves the session paused with the error (as a failed resume would).
+- ASSUMED D91-devices · Apply (settings) is desktop-only; a session's Reload instruction is allowed on devices like Pause / Resume.
+- ASSUMED D91-peers · not proxied: a paired machine's sessions are left out of the count, the apply and the ⋯ item ("also on <machine>" not added).
+- OPEN D91-q1 · Should Apply also offer "also on <machine>" for paired machines (through the proxy, which would need the route on `PEER_API_ALLOW`)?
+
 ## Stabilize 1.4.0 (2026-10-01)
 - VERIFIED stabilize-stale-tests · stale tests, code as decided: `tests/core/stop-turn.test.ts` (D57: withdrawn entries carry `attachments`), `tests/server/inbox/inbox-list.test.ts` (D55: `update-available` label), `tests/web/model-picker.test.ts` (long messages: chat items carry `cut`), `tests/e2e/shell.spec.ts` (D62: `/api/clis` is a real route, no longer 501), `tests/e2e/visual/tools.spec.ts` (D61: the TOOLS rows compared with y relative to the TOOLS label, as visual/shell does)
 - VERIFIED stabilize-peer-listener · regression (since D62 P5): `tests/e2e/peer-reconnect.spec.ts` failed every run (bisected: green at 2b625d6, red from ad836bb). Stopping the peer listener waited for open connections; a proxied read in flight (the session header's peer `/api/clis`) kept its keep-alive socket and the peer's hellos reused it and got 503 for ~20 s, past the grace. Fix: the peer app force-closes connections on close; regression test in tests/server/peers/reconnect-world.test.ts (fails without the fix)

@@ -68,7 +68,7 @@ export const PRE_TUTORIAL_VERSION = '1.12.0';
 /** The version the D76–D84 features ship in. */
 const V1_13 = '1.13.0';
 
-/** The version D88 and D90 ship in. */
+/** The version D88, D90 and D91 ship in. */
 const V1_14 = '1.14.0';
 
 const SESSION: TourRoute = { view: 'session' };
@@ -444,6 +444,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['diff-scope', 'diff-scope-bar'],
         route: { view: 'session', tab: 'diff' },
         missing: `${NO_SESSION}Its Diff tab shows the changes since the last commit.`,
+      },
+    ],
+  },
+  {
+    id: 'apply-instruction',
+    decision: 'D91',
+    version: V1_14,
+    title: 'Apply the standing instruction to open sessions',
+    steps: [
+      {
+        id: 'button',
+        title: 'Apply the standing instruction to open sessions',
+        what: 'A changed standing instruction used to reach only sessions started or resumed afterwards. Apply to open sessions gives it to the ones already running: an idle session restarts its CLI with the same conversation (no message is sent), a busy one right after its turn.',
+        todo: ['Edit the standing instruction in Settings → Sessions & worktrees and Save.', 'Press Apply to open sessions next to it; read the result line.', "Or one session at a time: its ⋯ menu → Reload instruction."],
+        anchors: ['standing-apply', 'standing-instruction'],
+        route: { view: 'settings', section: 'sessions' },
+        missing: 'Apply to open sessions is under the standing instruction in Settings → Sessions & worktrees (on this computer).',
       },
     ],
   },

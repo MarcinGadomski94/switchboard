@@ -738,6 +738,15 @@ export interface Session {
   readonly continuedFrom?: SessionLink | null;
   /** Additive (D83): a continuation in a fresh session in progress (the offer bar's progress); `null` / absent when none runs. */
   readonly freshContinue?: SessionFreshContinue | null;
+  /**
+   * Additive (D91, `docs/settings.md` → *Apply to open sessions*): the session's running
+   * process was started with another standing instruction than the current setting
+   * (Settings' count, the ⋯ menu's Reload instruction). `false` / absent without a
+   * running process (its next start gets the current one).
+   */
+  readonly instructionOutdated?: boolean;
+  /** Additive (D91): a reload waits for the running turn (or the developer's answer) to end. */
+  readonly instructionPending?: boolean;
 }
 
 /** Additive (D83): the other session of a continuation. */
