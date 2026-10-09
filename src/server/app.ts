@@ -317,7 +317,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D57: attachments live in the data folder (`<dataDir>/attachments/<session>/`).
   const attachments = options.attachments ?? new AttachmentService({ dataDir: config.dataDir, store: options.store });
   // D89: artifacts saved on purpose (texts in the database, images in `<dataDir>/artifacts/<id>/`).
-  const artifacts = new ArtifactService({ store: options.store, bus, dataDir: config.dataDir, announce: (sessionId) => supervisor.announce(sessionId) });
+  const artifacts = new ArtifactService({ store: options.store, bus, dataDir: config.dataDir, webRoot: options.webRoot, announce: (sessionId) => supervisor.announce(sessionId) });
   // D61: its helper processes end with the app (a sign-in in progress is cancelled).
   let mcp = options.mcp;
   if (!mcp) {

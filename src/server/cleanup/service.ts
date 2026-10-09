@@ -24,6 +24,7 @@ import {
 import { type Leftover, redactUrl } from '../../core/takeover.ts';
 import { parseWorktreeList } from '../../core/worktrees.ts';
 import { ATTACHMENTS_DIR, STAGED_DIR } from '../attachments/service.ts';
+import { ARTIFACTS_DIR } from '../artifacts/service.ts';
 import type { AttachmentRecord } from '../db/repos/attachments.ts';
 import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { WorktreeRecord } from '../db/repos/worktrees.ts';
@@ -79,7 +80,9 @@ type Action =
   | { readonly kind: 'leftover'; readonly leftoverId: string }
   | { readonly kind: 'session'; readonly sessionId: string; readonly paths: readonly string[] }
   | { readonly kind: 'attachments'; readonly rows: readonly AttachmentRecord[]; readonly paths: readonly string[] }
-  | { readonly kind: 'paths'; readonly paths: readonly string[] };
+  | { readonly kind: 'paths'; readonly paths: readonly string[] }
+  /** D89 ruling 2026-10-09: a saved artifact whose session was deleted, with its versions and image files. */
+  | { readonly kind: 'artifact'; readonly artifactId: string; readonly paths: readonly string[]; readonly bytes: number };
 
 interface Planned {
   readonly item: CleanupItem;
@@ -599,6 +602,33 @@ export class CleanupService {
         action: { kind: 'attachments', rows, paths },
       });
     }
+    // D89 ruling 2026-10-09: saved artifacts whose session was deleted (never ticked for you).
+    for (const artifact of await this.#store.artifacts.list()) {
+      if (artifact.sessionId !== null) continue;
+      const versions = await this.#store.artifacts.versions(artifact.id);
+      const bytes = versions.reduce((sum, version) => sum + version.size, 0);
+      const folder = path.join(this.#dataDir, ARTIFACTS_DIR, artifact.id);
+      const images = versions.some((version) => version.file !== null);
+      out.push({
+        item: this.#item({
+          id: `art:${artifact.id}`,
+          group: 'data',
+          title: `Artifact “${artifact.title}”`,
+          subtitle: `${artifact.kind} · ${plural(versions.length, 'version')} · its session was deleted`,
+          reasons: ['session-gone'],
+          sizeBytes: bytes,
+          sizeCapped: false,
+          lastChangeAt: artifact.updatedAt,
+          removes: [`the artifact “${artifact.title}” and its ${plural(versions.length, 'version')}`, ...(images ? [folder] : [])],
+          keeps: [],
+          warnings: [],
+          confirm: null,
+          selected: false,
+          extra: [String(artifact.versions)],
+        }),
+        action: { kind: 'artifact', artifactId: artifact.id, paths: images ? [folder] : [], bytes },
+      });
+    }
     // Files no row owns and folders of sessions that no longer exist.
     const owned = new Map<string, Set<string>>();
     for (const record of await this.#store.attachments.list()) {
@@ -787,6 +817,8 @@ export class CleanupService {
       }
       case 'attachments':
         return action.rows.reduce((sum, record) => sum + record.size, 0);
+      case 'artifact':
+        return action.bytes;
       case 'paths': {
         let bytes = 0;
         for (const file of action.paths) bytes += (await this.#size(file)).bytes;
@@ -821,6 +853,11 @@ export class CleanupService {
         return;
       case 'paths':
         for (const file of action.paths) this.#assertInData(file);
+        for (const file of action.paths) await rm(file, { recursive: true, force: true });
+        return;
+      case 'artifact':
+        for (const file of action.paths) this.#assertInData(file);
+        await this.#store.artifacts.delete(action.artifactId);
         for (const file of action.paths) await rm(file, { recursive: true, force: true });
         return;
     }
@@ -895,7 +932,7 @@ export class CleanupService {
 
   #assertInData(file: string): void {
     const resolved = path.resolve(file);
-    const inside = ['attachments', 'handovers', 'takeover'].some((dir) => resolved.startsWith(path.join(this.#dataDir, dir) + path.sep));
+    const inside = ['attachments', 'handovers', 'takeover', ARTIFACTS_DIR].some((dir) => resolved.startsWith(path.join(this.#dataDir, dir) + path.sep));
     if (!inside) throw new Error(`refusing to remove ${file}: not in Switchboard's data folder`);
   }
 

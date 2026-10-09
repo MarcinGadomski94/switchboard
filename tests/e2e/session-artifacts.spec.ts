@@ -127,6 +127,31 @@ test('an HTML artifact runs sandboxed: its script runs, the app\'s cookie and AP
   expect(raw.headers()['content-security-policy']).toMatch(/^sandbox allow-scripts;/);
 });
 
+test('a Mermaid diagram is drawn inside its sandboxed frame; one Mermaid cannot parse shows its source', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'mermaid-run', 'Hi.');
+  await waitDone(page, id);
+  const good = await agentSaves(id, { title: 'Flow', kind: 'mermaid', content: 'flowchart LR\n  A[Lobby] --> B{Partner?}\n  B -- yes --> C[Talk]\n' });
+  const bad = await agentSaves(id, { title: 'Broken', kind: 'mermaid', content: 'flowchart LR\n  A --> --> {{\n' });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${good.artifact.id}`);
+  const frame = page.getByTestId('artifact-mermaid');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+  const inner = page.frameLocator('[data-testid="artifact-mermaid"]');
+  await expect(inner.locator('body')).toHaveAttribute('data-state', 'drawn', { timeout: 15_000 });
+  await expect(inner.locator('#d svg')).toBeVisible();
+  await expect(inner.locator('#d svg')).toContainText('Lobby');
+  await expect(page.getByTestId('artifact-download')).toHaveAttribute('href', `/api/sessions/${id}/artifacts/${good.artifact.id}/versions/1/raw?download`);
+  await page.getByTestId('artifact-mode-source').click();
+  await expect(page.getByTestId('artifact-source')).toContainText('A[Lobby] --> B{Partner?}');
+
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${bad.artifact.id}`);
+  const broken = page.frameLocator('[data-testid="artifact-mermaid"]');
+  await expect(broken.locator('body')).toHaveAttribute('data-state', 'failed', { timeout: 15_000 });
+  await expect(broken.locator('#src')).toBeVisible();
+  await expect(broken.locator('#src')).toContainText('A --> --> {{');
+  await expect(broken.locator('#err')).toContainText('could not be drawn');
+});
+
 test('CSV as a table, a file copied from the session\'s folder, Full screen and Delete', async ({ page }) => {
   await writeFile(path.join(world.workspace, 'plan.md'), '# Plan from a file\n');
   await openWithHub(page, `${world.baseUrl}/`);

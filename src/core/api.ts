@@ -1425,6 +1425,8 @@ export interface SolutionArtifact {
   readonly meta: string;
   /** The session that produced it, `null` for a file found in the solution. */
   readonly sessionId: string | null;
+  /** Additive (D89): a saved artifact's id (the row opens the session's Artifacts tab on it); absent for a follow-up file. */
+  readonly artifactId?: string;
 }
 
 /**

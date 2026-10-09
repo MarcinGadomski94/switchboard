@@ -7,16 +7,7 @@
 import type { Artifact, ArtifactAuthor, ArtifactKind } from '../../../core/api.ts';
 import { artifactSizeLabel, codeFence, isTextKind, messageArtifactTitle } from '../../../core/artifacts.ts';
 
-/** The kind tag a row shows (short, mono). */
-export const KIND_TAGS: Readonly<Record<ArtifactKind, string>> = {
-  markdown: 'DOC',
-  code: 'CODE',
-  html: 'HTML',
-  mermaid: 'DIAGRAM',
-  svg: 'SVG',
-  image: 'IMAGE',
-  csv: 'TABLE',
-};
+export { KIND_TAGS, kindTag } from '../../../core/artifacts.ts';
 
 /** A kind in words (the viewer's head, the save dialog's picker). */
 export const KIND_LABELS: Readonly<Record<ArtifactKind, string>> = {
@@ -28,11 +19,6 @@ export const KIND_LABELS: Readonly<Record<ArtifactKind, string>> = {
   image: 'Image',
   csv: 'CSV',
 };
-
-/** The tag of an artifact's row: `CODE · ts` for code with a language. */
-export function kindTag(artifact: Pick<Artifact, 'kind' | 'language'>): string {
-  return artifact.kind === 'code' && artifact.language ? `${KIND_TAGS.code} · ${artifact.language}` : KIND_TAGS[artifact.kind];
-}
 
 /** Who saved it, as the rows say. */
 export function authorLabel(author: ArtifactAuthor): string {
@@ -53,18 +39,10 @@ export function viewerModes(kind: ArtifactKind, versions: number): ViewerMode[] 
   return versions > 1 ? ['rendered', 'source', 'diff'] : ['rendered', 'source'];
 }
 
-/**
- * D89 ruling (`docs/decisions.md` → D89, *Mermaid*): a Mermaid diagram is shown as
- * its source (highlighted), with this note: rendering it would need the Mermaid
- * library, a large runtime dependency the app does not carry.
- */
-export const MERMAID_NOTE = 'Mermaid source: Switchboard does not draw Mermaid diagrams (that needs the Mermaid library). Copy it into a Mermaid viewer, or Download the .mmd.';
-
-/** The Markdown the viewer renders for a text kind's "rendered" view where that is Markdown: markdown as is, code and mermaid as one highlighted block. */
+/** The Markdown the viewer renders for a text kind's "rendered" view where that is Markdown: markdown as is, code as one highlighted block (Mermaid draws in its sandboxed frame). */
 export function renderedMarkdown(kind: ArtifactKind, language: string | null, content: string): string | null {
   if (kind === 'markdown') return content;
   if (kind === 'code') return codeFence(content, language);
-  if (kind === 'mermaid') return codeFence(content, 'mermaid');
   return null;
 }
 

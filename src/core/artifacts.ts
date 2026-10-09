@@ -328,6 +328,23 @@ export function lineDiff(before: string, after: string, maxEdits = 4_000): DiffL
   return out.reverse();
 }
 
+/** The kind tag a row shows (short, mono). */
+/** (D89) */
+export const KIND_TAGS: Readonly<Record<ArtifactKind, string>> = {
+  markdown: 'DOC',
+  code: 'CODE',
+  html: 'HTML',
+  mermaid: 'DIAGRAM',
+  svg: 'SVG',
+  image: 'IMAGE',
+  csv: 'TABLE',
+};
+
+/** The tag of an artifact's row: `CODE · ts` for code with a language. */
+export function kindTag(artifact: Pick<Artifact, 'kind' | 'language'>): string {
+  return artifact.kind === 'code' && artifact.language ? `${KIND_TAGS.code} · ${artifact.language}` : KIND_TAGS[artifact.kind];
+}
+
 /** D89: a size as the UI and the tools show it (`812 B`, `14.2 KB`, `1.3 MB`). */
 export function artifactSizeLabel(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

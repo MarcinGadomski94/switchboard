@@ -104,7 +104,8 @@ export function filterArtifacts(items: readonly ArtifactListItem[], query: { rea
  * - `GET /api/sessions/{id}/artifacts/{artifactId}[?version=n]` → `ArtifactDetail`;
  *   `DELETE` → 204.
  * - `GET …/{artifactId}/versions/{n}/raw[?download]` → the version's bytes
- *   ({@link artifactHeaders}).
+ *   ({@link artifactHeaders}); D89 ruling: `?render` on a Mermaid version → the
+ *   sandboxed page that draws it (`mermaidPage`), under {@link HTML_ARTIFACT_CSP}.
  * - The agent's (`artifact_*` tools): `GET /agent/v1/artifacts`, `POST
  *   /agent/v1/artifacts` (`path` allowed), `GET /agent/v1/artifacts/{artifactId}[?version=n]`:
  *   the session is the one the agent token belongs to.
@@ -153,9 +154,15 @@ export async function registerArtifactRoutes(app: FastifyInstance, context: ApiC
     }
   });
 
-  app.get<{ Params: { id: string; artifactId: string; n: string }; Querystring: { download?: unknown } }>(ARTIFACT_RAW_ROUTE, async (request, reply) => {
+  app.get<{ Params: { id: string; artifactId: string; n: string }; Querystring: { download?: unknown; render?: unknown } }>(ARTIFACT_RAW_ROUTE, async (request, reply) => {
     try {
       const raw = await artifacts.raw(request.params.id, request.params.artifactId, request.params.n);
+      // D89 ruling: `?render` on a Mermaid version: the page that draws it, sandboxed like an HTML artifact.
+      const page = request.query.render !== undefined && request.query.download === undefined ? await artifacts.mermaidView(raw) : null;
+      if (page !== null) {
+        for (const [name, value] of Object.entries(artifactHeaders({ ...raw.artifact, kind: 'html' }, null, false))) reply.header(name, value);
+        return reply.send(page);
+      }
       for (const [name, value] of Object.entries(artifactHeaders(raw.artifact, raw.version.mediaType, request.query.download !== undefined))) reply.header(name, value);
       return reply.send(raw.bytes);
     } catch (error) {

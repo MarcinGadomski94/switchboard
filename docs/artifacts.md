@@ -73,7 +73,7 @@ characters (the new default is 731).
 | `markdown` | text | with the chat's Markdown renderer (D20: GFM, no raw HTML, no images loaded) |
 | `code` (+ `language`) | text | one highlighted code block (the chat's highlighter) |
 | `html` | text | in a sandboxed frame (below) |
-| `mermaid` | text | as highlighted source, with a note (*Mermaid*, below) |
+| `mermaid` | text | drawn by Mermaid inside a sandboxed frame; source if it cannot be parsed (*Mermaid*, below) |
 | `svg` | text | as an `<img>` of the served file, never inline in the page |
 | `image` | file | as an `<img>` of the served file |
 | `csv` | text | as a table, the first 500 rows (the header row included) |
@@ -89,6 +89,7 @@ characters (the new default is 731).
   `agent` or `developer` (the UI says "agent" / "you").
 - An artifact outlives its session (its session id becomes `null`); deleting it
   (developer only, with a confirmation) removes every version and its files.
+  Clean-up offers the ones whose session is gone (below).
 
 ## Storage
 Migration **0039** (`docs/database.md`): `artifacts_saved` (id, session id, title,
@@ -116,12 +117,12 @@ named after the title with the kind's extension: `.md`, `.html`, `.mmd`,
 **Delete** (asks first).
 
 ### Mermaid
-**Decision (D89):** Mermaid diagrams are shown as their highlighted source with a
-note, not drawn. Drawing them needs the Mermaid library: a large runtime
-dependency (several MB with its own dependency tree) for one kind, and it would
-have to run in the page or in yet another sandboxed frame. The ruling allowed it
-only if unavoidable; it is avoidable, so the app carries none. Download gives
-the `.mmd` for any Mermaid viewer. Revisit if diagrams turn out to be common.
+**Developer ruling (2026-10-09): draw Mermaid**, never in the app's own origin.
+- The pinned **`mermaid@12.1.0`** (exact version, a **devDependency**) is copied by the build into `dist/web/vendor/mermaid.min.js` (`vite.config.ts` → `mermaidVendor`). The app's bundle never imports it.
+- Rendered, a Mermaid artifact is `<iframe sandbox="allow-scripts">` of the version's raw route with `?render`: a small page that inlines the library and draws the source with `securityLevel: 'strict'`, served under the same sandbox CSP as an HTML artifact (opaque origin, nothing loads or connects). The library is inlined, not linked: the sandboxed page's own requests carry no cookie or device credential, so it could not fetch it from the app. The page is loaded only when a Mermaid artifact is shown rendered (lazily, cached by the browser per version).
+- A source Mermaid cannot parse shows as its source with the error's first line, inside the same frame; Source shows the text; Download stays the `.mmd`.
+- **Release size:** `dist/web` grows by 5.49 MB (`mermaid.min.js`), about **+1.57 MB** in the `.tar.gz` (gzip -6); nothing is added to the installed `node_modules` (the updater installs with `npm ci --omit=dev`).
+- A build without the bundle (tests that run without `dist/web`) shows the source with "this build has no Mermaid renderer".
 
 ### HTML
 An `html` version runs in `<iframe sandbox="allow-scripts">` (never
@@ -159,7 +160,15 @@ everything. A row opens its session's Artifacts tab on that artifact. Live on
   `diffArtifactName`, `locateSessionFile`), the worktree manager's PR-state
   update of PR rows, `src/core/artifacts-view.ts` (the type filters), the old tab
   model (DIFF rows from the session's diff).
-- The Solutions detail's *Artifacts & follow-ups* keeps the solution's
-  `mobile-followups/*.md` files; the sessions' derived rows are gone from it.
+- The Solutions detail's *Artifacts & follow-ups* lists, instead of the sessions'
+  derived rows, the saved artifacts of the sessions working on the solution
+  (D89 ruling 2026-10-09; a row opens the session's tab on it), then its
+  `mobile-followups/*.md` files.
+
+## Clean-up
+Clean-up (D84) lists saved artifacts whose session was deleted (one item each,
+with its versions' size and an image's folder), never ticked for you; the run
+removes exactly what the preview listed (`docs/cleanup.md`). Desktop only, like
+the rest of Clean-up.
 - The visual oracle of the session's Artifacts tab (`docs/visual/README.md` →
   *Deliberate deviations*, D89).

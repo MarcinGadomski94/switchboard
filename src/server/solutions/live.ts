@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileDiff, Solution, SolutionArtifact, SolutionBranch, SolutionGroup } from '../../core/api.ts';
 import type { Phase, SessionStatus } from '../../core/model.ts';
+import { kindTag } from '../../core/artifacts.ts';
 import { solutionFreshness } from '../../core/codebase-memory.ts';
 import { NO_CONFLICT, type RepoWriter, repoConflict } from '../../core/conflicts.ts';
 import { branchFromHead, branchOwnerTitle, changesText, parsePhaseLedger, solutionPhase, solutionStatus } from '../../core/solutions-live.ts';
@@ -77,9 +78,9 @@ function isGone(error: unknown): boolean {
  * - **status**: the most urgent status of those sessions; **phase**: the phase
  *   ledger's, else the sessions'; **changes**: lines added by those sessions'
  *   diffs (gap #10);
- * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: its
- *   `mobile-followups/*.md` (D89: the sessions' derived artifacts are gone;
- *   saved artifacts belong to sessions, not solutions);
+ * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: D89: the saved
+ *   artifacts of the sessions whose solutions include it (newest first), then
+ *   its `mobile-followups/*.md`;
  * - **codebaseMemory**: a workspace's `.claude/.codebase-memory-dirty` (M6.4,
  *   `src/core/codebase-memory.ts`); `unknown` in a repo folder, which has no
  *   dirty list;
@@ -146,9 +147,10 @@ export class LiveSolutions implements SolutionsProvider {
       ),
     );
 
-    const [sessions, worktrees, dirty] = await Promise.all([
+    const [sessions, worktrees, saved, dirty] = await Promise.all([
       this.#store.sessions.list(),
       this.#store.worktrees.list(),
+      this.#store.artifacts.list(),
       folder.kind === 'workspace' ? readDirtyList(scan.root) : Promise.resolve(null),
     ]);
     if (dirty?.state === 'unreadable') this.#onError(dirty.error);
@@ -156,6 +158,20 @@ export class LiveSolutions implements SolutionsProvider {
     const writable = rows.filter((row) => !row.readOnly);
     const shownRoots = new Set([folder.root, folder.path]);
     const rowOf = this.#rowResolver(folder, scan, writable, shownRoots, worktrees);
+
+    // D89 ruling 2026-10-09: the saved artifacts of every session whose solutions include the row (newest first).
+    const savedByRow = new Map<Row, SolutionArtifact[]>();
+    for (const artifact of saved) {
+      const session = artifact.sessionId ? sessionsById.get(artifact.sessionId) : undefined;
+      if (!session) continue;
+      const seen = new Set<Row>();
+      for (const name of session.solutions) {
+        const row = await rowOf(session, name);
+        if (!row || seen.has(row)) continue;
+        seen.add(row);
+        savedByRow.set(row, [...(savedByRow.get(row) ?? []), { type: kindTag(artifact), name: artifact.title, meta: `v${artifact.versions}`, sessionId: session.id, artifactId: artifact.id }]);
+      }
+    }
 
     // Worktrees per row (by canonical repo path), in-place sessions per row.
     const worktreesByRow = new Map<Row, WorktreeRecord[]>();
@@ -244,7 +260,7 @@ export class LiveSolutions implements SolutionsProvider {
           conflictSessions: conflict.sessions,
           branches,
           ledger,
-          artifacts: await this.#followups(row),
+          artifacts: [...(savedByRow.get(row) ?? []), ...(await this.#followups(row))],
           codebaseMemory: dirty ? solutionFreshness(dirty.projects, dirty.roots, row.solution.relativePath) : 'unknown',
         });
       }),

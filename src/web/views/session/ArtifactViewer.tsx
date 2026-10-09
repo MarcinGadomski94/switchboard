@@ -5,7 +5,7 @@ import { ARTIFACT_CSV_ROWS_MAX, artifactSizeLabel, lineDiff, parseCsv } from '..
 import { ApiError, api, artifactRawUrl } from '../../api/client.ts';
 import { formatAge } from '../../shell/format.ts';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
-import { KIND_LABELS, MERMAID_NOTE, type ViewerMode, authorLabel, renderedMarkdown, viewerModes } from './artifacts.ts';
+import { KIND_LABELS, type ViewerMode, authorLabel, renderedMarkdown, viewerModes } from './artifacts.ts';
 import { actionErrorText } from './session-header.ts';
 import '../../components/close-session.css';
 
@@ -30,7 +30,7 @@ function errorText(caught: unknown): string {
  * saved it and when; the version picker (the newest followed live until another
  * is picked); Rendered / Source / Compare; Copy, Download, Full screen, Delete
  * (with a confirmation). Rendered: Markdown with the chat's renderer, code and
- * Mermaid highlighted (Mermaid as source, {@link MERMAID_NOTE}), HTML in a
+ * Mermaid drawn in a sandboxed frame (D89 ruling), HTML in a
  * sandboxed frame (`allow-scripts`, never `allow-same-origin`; the served page
  * carries its own sandbox CSP), SVG and images as `<img>` of the served file
  * (never inline in the page), CSV as a table (the first rows).
@@ -243,6 +243,10 @@ function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, load
     // D89: scripts run, but in an opaque origin: no cookie, no storage, no API, no navigation of the app.
     return <iframe className="sb-artv-frame" data-testid="artifact-frame" sandbox="allow-scripts" src={src} title={artifact.title} referrerPolicy="no-referrer" />;
   }
+  if (artifact.kind === 'mermaid' && mode === 'rendered') {
+    // D89 ruling: Mermaid draws inside the same kind of sandboxed frame (the raw route's `?render` page), never in the app.
+    return <iframe className="sb-artv-frame" data-testid="artifact-mermaid" sandbox="allow-scripts" src={`${src}?render`} title={artifact.title} referrerPolicy="no-referrer" />;
+  }
   if (loading || content === null) return <div className="sb-artv-loading" data-testid="artifact-loading" aria-busy="true" />;
   if (mode === 'source') {
     return (
@@ -254,16 +258,7 @@ function ArtifactBody({ sessionId, artifact, n, mode, content, older, from, load
   if (mode === 'diff') return older === null ? <div className="sb-artv-loading" aria-busy="true" /> : <VersionDiff before={older} after={content} from={from} to={n} />;
   if (artifact.kind === 'csv') return <CsvTable text={content} />;
   const markdown = renderedMarkdown(artifact.kind, artifact.language, content);
-  return (
-    <>
-      {artifact.kind === 'mermaid' ? (
-        <div className="sb-artv-note" data-testid="artifact-mermaid-note">
-          {MERMAID_NOTE}
-        </div>
-      ) : null}
-      <ChatMarkdown text={markdown ?? content} testId="artifact-markdown" />
-    </>
-  );
+  return <ChatMarkdown text={markdown ?? content} testId="artifact-markdown" />;
 }
 
 /** D89: a CSV as a table (the first row is the header), at most {@link ARTIFACT_CSV_ROWS_MAX} rows. */

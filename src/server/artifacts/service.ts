@@ -54,6 +54,57 @@ export interface ArtifactServiceOptions {
   readonly announce?: (sessionId: string) => Promise<void>;
   /** A new artifact id (tests pin it). */
   readonly newId?: () => string;
+  /** D89 ruling: the built UI's folder, whose `vendor/mermaid.min.js` draws Mermaid artifacts (absent: Mermaid shows as source). */
+  readonly webRoot?: string;
+}
+
+/** D89 ruling: where the build puts the pinned Mermaid bundle (vite.config.ts → `mermaidVendor`). */
+export const MERMAID_BUNDLE = path.join('vendor', 'mermaid.min.js');
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * D89 ruling 2026-10-09: the page that draws a Mermaid version, served by the raw
+ * route (`?render`) under the HTML sandbox CSP and framed sandboxed, so Mermaid
+ * runs in an opaque origin, never in the app's. The library is inlined (a
+ * sandboxed page's own requests carry no cookie, so it could not load it from the
+ * app). `securityLevel: 'strict'`; a source Mermaid cannot parse shows as source
+ * with the error's first line. `library` `null` (a build without the bundle): the
+ * source with a note.
+ */
+export function mermaidPage(title: string, source: string, library: string | null): string {
+  const script = library
+    ? `<script>${library.replace(/<\/script/gi, '<\\/script')}</script>
+<script>
+(async () => {
+  const src = document.getElementById('src').textContent;
+  try {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
+    const { svg } = await mermaid.render('sb-mermaid', src);
+    document.getElementById('d').innerHTML = svg;
+    document.body.dataset.state = 'drawn';
+  } catch (error) {
+    document.getElementById('msg').textContent = String((error && error.message) || error).split('\\n')[0];
+    document.body.dataset.state = 'failed';
+  }
+})();
+</script>`
+    : '<script>document.getElementById("msg").textContent = "this build has no Mermaid renderer"; document.body.dataset.state = "failed";</script>';
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+html,body{margin:0;background:#fff;color:#1b1c1f;font:14px system-ui,sans-serif}
+#d{padding:16px;display:flex;justify-content:center}#d svg{max-width:100%;height:auto}
+#err,#src{display:none}#err{color:#b42318;padding:16px 16px 0}
+#src{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;padding:12px 16px;margin:0}
+body[data-state=failed] #err,body[data-state=failed] #src{display:block}
+</style></head><body data-state="drawing">
+<div id="err">This diagram could not be drawn (<span id="msg"></span>). Its source:</div>
+<div id="d"></div><pre id="src">${escapeHtml(source)}</pre>
+${script}
+</body></html>
+`;
 }
 
 /** A version's bytes as the `raw` route serves them. */
@@ -84,6 +135,8 @@ export class ArtifactService {
   readonly #dataDir: string;
   readonly #announce: ((sessionId: string) => Promise<void>) | null;
   readonly #newId: () => string;
+  readonly #webRoot: string | null;
+  #mermaid: Promise<string | null> | null = null;
 
   constructor(options: ArtifactServiceOptions) {
     this.#store = options.store;
@@ -92,6 +145,19 @@ export class ArtifactService {
     this.#root = path.join(options.dataDir, ARTIFACTS_DIR);
     this.#announce = options.announce ?? null;
     this.#newId = options.newId ?? (() => randomBytes(5).toString('hex'));
+    this.#webRoot = options.webRoot ?? null;
+  }
+
+  /** D89 ruling: the pinned Mermaid bundle of the build, read once (`null` when the build has none). */
+  #mermaidLibrary(): Promise<string | null> {
+    this.#mermaid ??= this.#webRoot ? readFile(path.join(this.#webRoot, MERMAID_BUNDLE), 'utf8').catch(() => null) : Promise.resolve(null);
+    return this.#mermaid;
+  }
+
+  /** D89 ruling: the sandboxed page that draws a Mermaid version (the raw route's `?render`); `null` for any other kind. */
+  async mermaidView(raw: ArtifactRaw): Promise<string | null> {
+    if (raw.artifact.kind !== 'mermaid' || raw.version.content === null) return null;
+    return mermaidPage(raw.artifact.title, raw.version.content, await this.#mermaidLibrary());
   }
 
   async #session(sessionId: string): Promise<SessionRecord> {

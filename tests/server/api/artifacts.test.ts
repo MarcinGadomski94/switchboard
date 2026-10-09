@@ -190,6 +190,26 @@ describe('D89 · saving', () => {
     expect((await ui('GET', `/api/sessions/${session}/artifacts/${plan.id}/versions/3/raw`)).status).toBe(404);
   });
 
+  it('D89 ruling: `?render` on a Mermaid version is a sandboxed page with the inlined bundle; other kinds ignore it', async () => {
+    await mkdir(path.join(tmp, 'vendor'), { recursive: true });
+    await writeFile(path.join(tmp, 'vendor', 'mermaid.min.js'), 'globalThis.mermaid = { stub: "</script>" };');
+    const diagram = (await agent('POST', '/agent/v1/artifacts', { title: 'Flow <1>', kind: 'mermaid', content: 'graph TD; A-->B<script>' })).body as ArtifactSaveResult;
+    const page = await ui('GET', `/api/sessions/${session}/artifacts/${diagram.artifact.id}/versions/1/raw?render`);
+    expect(page.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(page.headers['content-security-policy']).toBe(HTML_ARTIFACT_CSP);
+    const html = String(page.body);
+    expect(html).toContain('<title>Flow &lt;1&gt;</title>');
+    expect(html).toContain('<pre id="src">graph TD; A--&gt;B&lt;script&gt;</pre>');
+    expect(html).toContain('globalThis.mermaid = { stub: "<\\/script>" };');
+    expect(html).toContain("securityLevel: 'strict'");
+    // Download stays the source (.mmd), plain text.
+    const source = await ui('GET', `/api/sessions/${session}/artifacts/${diagram.artifact.id}/versions/1/raw?download&render`);
+    expect(source.headers['content-type']).toBe('text/plain; charset=utf-8');
+    expect(source.headers['content-disposition']).toContain('.mmd');
+    const md = ((await ui('GET', `/api/sessions/${session}/artifacts`)).body as Artifact[]).find((a) => a.kind === 'markdown')!;
+    expect((await ui('GET', `/api/sessions/${session}/artifacts/${md.id}/versions/1/raw?render`)).headers['content-type']).toBe('text/plain; charset=utf-8');
+  });
+
   it('the agent lists and reads; the routes need the session\'s own token', async () => {
     const list = await agent('GET', '/agent/v1/artifacts');
     expect(list.status).toBe(200);

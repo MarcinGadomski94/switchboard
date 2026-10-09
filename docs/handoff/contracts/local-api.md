@@ -1287,7 +1287,7 @@ Developer request D89 (`docs/decisions.md`, `docs/artifacts.md`): artifacts are 
 | POST | /api/sessions/{id}/artifacts | ArtifactSaveInput without `path` (body up to ~6 MB) | 201 ArtifactSaveResult (saved by the developer) · 404 · 409 `too-many` · 413 `too-large` · 422 `invalid` |
 | GET | /api/sessions/{id}/artifacts/{artifactId} | `?version=n` (default: the latest) | 200 ArtifactDetail · 404 `not-found` · 422 `invalid` |
 | DELETE | /api/sessions/{id}/artifacts/{artifactId} | — | 204 · 404 `not-found` |
-| GET | /api/sessions/{id}/artifacts/{artifactId}/versions/{n}/raw | `?download` | 200 the version's bytes: `html` as `text/html` under the sandbox CSP, `svg` as `image/svg+xml` and images as their type under a CSP that runs nothing, other text as `text/plain`; `nosniff`; `?download` = attachment named after the title (`docs/security.md` → *Artifacts*) · 404 |
+| GET | /api/sessions/{id}/artifacts/{artifactId}/versions/{n}/raw | `?download` | 200 the version's bytes: `html` as `text/html` under the sandbox CSP, `svg` as `image/svg+xml` and images as their type under a CSP that runs nothing, other text as `text/plain`; `nosniff`; `?download` = attachment named after the title (`docs/security.md` → *Artifacts*); ruling 2026-10-09: `?render` on a Mermaid version = an HTML page (the HTML CSP) that draws it with the inlined Mermaid bundle · 404 |
 | GET | /agent/v1/artifacts | — (agent token) | 200 Artifact[] of the token's session (`artifact_list`) |
 | POST | /agent/v1/artifacts | ArtifactSaveInput (`path` allowed: a file inside the session's folders, copied now) | 201 ArtifactSaveResult (saved by the agent; `artifact_save`) · the refusals above |
 | GET | /agent/v1/artifacts/{artifactId} | `?version=n` | 200 ArtifactDetail (`artifact_get`) |

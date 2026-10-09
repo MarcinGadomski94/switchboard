@@ -15,10 +15,10 @@ describe('D89 · artifact rows and the viewer', () => {
     expect(viewerModes('image', 4)).toEqual(['rendered']);
   });
 
-  it('renders code and Mermaid as one highlighted block, Markdown as it is', () => {
+  it('renders code as one highlighted block, Markdown as it is (Mermaid draws in its frame)', () => {
     expect(renderedMarkdown('markdown', null, '# a')).toBe('# a');
     expect(renderedMarkdown('code', 'ts', 'const a = 1;')).toBe('```ts\nconst a = 1;\n```');
-    expect(renderedMarkdown('mermaid', null, 'graph TD')).toBe('```mermaid\ngraph TD\n```');
+    expect(renderedMarkdown('mermaid', null, 'graph TD')).toBeNull();
     expect(renderedMarkdown('csv', null, 'a,b')).toBeNull();
   });
 

@@ -349,8 +349,8 @@ When a session's context reaches 80 % (Settings → Sessions, 50–95 %, on by d
 Artifacts work like Claude's artifacts on claude.ai: deliverables are **saved on purpose**, never collected automatically.
 - **The agent saves them** with the `artifact_save` tool of the built-in `switchboard` MCP server (reports, plans, docs, diagrams, mockups, tables): Markdown, code, HTML, Mermaid, SVG, images and CSV. Saving again with an artifact's id adds a **version**.
 - **You save them** from the chat: an agent message's **⋯ → Save as artifact**, or **Save as artifact** on a code block (title and kind prefilled, editable).
-- **The session's Artifacts tab** lists them and shows one: rendered or source, the version picker and **Compare** between versions, Copy, Download, Full screen, Delete. HTML runs in a sandboxed frame that cannot reach Switchboard's cookie or API; SVG and images are shown as images; CSV as a table; Mermaid as source.
-- **The Artifacts page** lists every session's artifacts (paired machines' too), filtered by kind or session and searchable; a row opens it in its session.
+- **The session's Artifacts tab** lists them and shows one: rendered or source, the version picker and **Compare** between versions, Copy, Download, Full screen, Delete. HTML runs in a sandboxed frame that cannot reach Switchboard's cookie or API; Mermaid diagrams are drawn in the same kind of frame; SVG and images are shown as images; CSV as a table.
+- **The Artifacts page** lists every session's artifacts (paired machines' too), filtered by kind or session and searchable; a row opens it in its session. The Solutions detail lists the artifacts of the sessions working on each solution, and Clean-up offers the ones whose session was deleted.
 
 [`docs/artifacts.md`](docs/artifacts.md)
 

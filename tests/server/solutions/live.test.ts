@@ -176,6 +176,8 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     const inPlace = inPlaceSession.json() as Session;
     await waitForStatus(s.store, wt.id, ['done']);
     await waitForStatus(s.store, inPlace.id, ['done']);
+    // D89: a saved artifact of the worktree session (its solutions include web-front).
+    await s.store.artifacts.create({ id: 'a0000000aa', sessionId: wt.id, title: 'Contract notes', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
 
     const rows = await solutionsByName();
     const web = rows.get('web-front');
@@ -195,8 +197,8 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(web?.phase).toBe('mixed');
     // One written line in the worktree (gap #10 diff against the merge-base).
     expect(web?.changes).toBe('+1');
-    // D89: a session's written files are no longer artifacts; a solution lists its follow-up files only.
-    expect(web?.artifacts).toEqual([]);
+    // D89: a session's written files are no longer artifacts; its saved artifacts are listed (then the follow-up files).
+    expect(web?.artifacts).toEqual([{ type: 'DOC', name: 'Contract notes', meta: 'v1', sessionId: wt.id, artifactId: 'a0000000aa' }]);
 
     const mobile = rows.get('mobile');
     // An untitled session: its owner title is its name.
