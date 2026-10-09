@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.1 (2026-10-09)
+
+### Fixed
+- **Schedules & loops showed loops that no longer exist.** A cron job cancelled with `CronDelete` ("Cancelled job <id>") now disappears; recurring jobs past their 7-day auto-expiry and jobs that died with an earlier process of the session (e.g. after continuing a terminal session in Switchboard, a resume or a restart) are no longer listed; a one-shot disappears once it fired. Events are read in time order, so a cancel is never applied before the job it cancels. A "No scheduled job" answer no longer ends an unrelated job. Stale cards are removed on the first start after the update (update every paired machine: each derives its own sessions' loops).
+
 ## 1.14.0 (2026-10-09)
 
 ### Drafts follow you
