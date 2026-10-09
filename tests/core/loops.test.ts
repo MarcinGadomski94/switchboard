@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CRON_EXPIRY_MS, type LoopEventInput, SESSION_ONLY_NOTE, deriveLoops, isLoopCommand, loopCommandLabel } from '../../src/core/derive/loops.ts';
+import {
+  CRON_EXPIRY_MS,
+  type LoopEventInput,
+  PROCESS_CHANGED,
+  SESSION_ONLY_NOTE,
+  cronDeleteId,
+  cronJobId,
+  deriveLoops,
+  isLoopCommand,
+  loopCommandLabel,
+  loopNotExpired,
+} from '../../src/core/derive/loops.ts';
+import { nextCronMatch } from '../../src/core/derive/cron-next.ts';
 
 const T0 = Date.parse('2026-09-28T10:00:00.000Z');
 const MAIN = 'agent-main';
@@ -24,6 +36,14 @@ function log() {
     result: (label = 'Done', isError = false, taskNotification = false) =>
       add({ type: 'result', subtype: isError ? 'error_during_execution' : 'success', isError, text: label, terminalReason: null, errors: [], taskNotification }, label, null),
     lifecycle: (action: string) => add({ type: 'lifecycle', action }, action, null),
+    /** Moves the clock: the next event comes `ms` later (plus the usual second). */
+    advance: (ms: number) => {
+      t += ms;
+    },
+    /** Moves the clock to just before `iso` (the next event is at `iso`). */
+    until: (iso: string) => {
+      t = Date.parse(iso) - 1000;
+    },
     /** Now = this many ms after the last event. */
     now: (ms = 0) => new Date(t + ms),
   };
@@ -114,21 +134,18 @@ describe('loops · deriveLoops', () => {
     expect(loop?.iterations.map((it) => it.result)).toEqual(['ok']);
   });
 
-  it('the process ending stops the session-only schedule: no next firing, no expiry, a stop note; a later CronCreate revives it', () => {
+  it('D93: the process ending ends the session-only schedule (its card goes); a later CronCreate revives the /loop', () => {
     const l = log();
     l.user('/loop 1h sweep');
     l.tool('CronCreate', { cron: '7 * * * *', prompt: 'sweep' });
     l.result('Swept.');
     l.lifecycle('paused');
-    let [loop] = deriveLoops(l.events, { now: l.now(), status: 'paused', mainAgentId: MAIN });
-    expect(loop).toMatchObject({ iteration: 1, nextFireAt: null, expiresAt: null });
-    expect(loop?.note).toBe("Stopped: the session's claude process ended. Last iteration: Swept.");
+    expect(deriveLoops(l.events, { now: l.now(), status: 'paused', mainAgentId: MAIN })).toEqual([]);
     // A turn after the stop is not a firing of the dead schedule.
     l.lifecycle('resumed');
     l.user('Continue.');
     l.result('Continued.');
-    [loop] = deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN });
-    expect(loop?.iteration).toBe(1);
+    expect(deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN })).toEqual([]);
     // The model schedules again after the resume: the same /loop card lives on.
     l.user('Schedule the sweep again');
     l.tool('CronCreate', { cron: '7 * * * *', prompt: 'sweep' });
@@ -141,23 +158,32 @@ describe('loops · deriveLoops', () => {
     expect(loops[0]?.note).toBe(`${SESSION_ONLY_NOTE} Last iteration: Swept after resume.`);
   });
 
-  it('an interrupted /loop turn is a `none` cell', () => {
+  it('D93: an interrupted /loop turn that scheduled nothing ends with its process', () => {
     const l = log();
     l.user('/loop 1h sweep');
     l.lifecycle('paused');
-    const [loop] = deriveLoops(l.events, { now: l.now(), status: 'paused', mainAgentId: MAIN });
-    expect(loop?.iterations.map((it) => it.result)).toEqual(['none']);
-    expect(loop?.note).toBe("Stopped: the session's claude process ended.");
+    expect(deriveLoops(l.events, { now: l.now(), status: 'paused', mainAgentId: MAIN })).toEqual([]);
   });
 
-  it('a recurring cron past its 7 days is expired; a one-shot cron fires once', () => {
+  it('D93: a new process starting ends the schedules of the one before, also without a recorded end', () => {
+    for (const action of ['continued', 'recovered', 'instruction-updated', 'taken-over', PROCESS_CHANGED]) {
+      const l = log();
+      l.user('Watch prod');
+      l.tool('CronCreate', { cron: '10,40 * * * *', prompt: 'watch' }, 'Scheduled recurring job 1a2b3c4d (Every 30 minutes).');
+      l.result('Scheduled.');
+      expect(deriveLoops(l.events, { now: l.now(), status: 'idle', mainAgentId: MAIN })).toHaveLength(1);
+      l.lifecycle(action);
+      expect(deriveLoops(l.events, { now: l.now(), status: 'idle', mainAgentId: MAIN }), action).toEqual([]);
+    }
+  });
+
+  it('D93: a recurring cron past its 7 days is gone; a one-shot cron fires once, at its time, then is gone', () => {
     const l = log();
     l.user('/loop 1h sweep');
     l.tool('CronCreate', { cron: '7 * * * *', prompt: 'sweep' });
     l.result('Swept.');
-    const [expired] = deriveLoops(l.events, { now: l.now(CRON_EXPIRY_MS + 60_000), status: 'done', mainAgentId: MAIN });
-    expect(expired).toMatchObject({ nextFireAt: null, expiresAt: null });
-    expect(expired?.note).toBe('Expired 7 days after the cron job was created. Last iteration: Swept.');
+    expect(deriveLoops(l.events, { now: l.now(CRON_EXPIRY_MS - 60 * 60_000), status: 'done', mainAgentId: MAIN })).toHaveLength(1);
+    expect(deriveLoops(l.events, { now: l.now(CRON_EXPIRY_MS + 60_000), status: 'done', mainAgentId: MAIN })).toEqual([]);
 
     const o = log();
     o.user('Remind me at 14:30');
@@ -167,10 +193,14 @@ describe('loops · deriveLoops', () => {
     expect(oneShot).toMatchObject({ kind: 'CronCreate', label: 'cron 30 14 28 9 *', iteration: 0, expiresAt: null, note: null });
     const expectedNext = new Date(Date.parse(created.ts));
     expect(new Date(oneShot?.nextFireAt ?? '').getTime()).toBeGreaterThan(expectedNext.getTime());
-    o.result('Deploy checked.');
+    // A self-started turn before its minute is something else's firing: the one-shot stays.
+    o.result('Something else fired.');
     [oneShot] = deriveLoops(o.events, { now: o.now(), status: 'done', mainAgentId: MAIN });
-    expect(oneShot).toMatchObject({ iteration: 1, nextFireAt: null });
-    expect(oneShot?.iterations.map((it) => it.result)).toEqual(['ok']);
+    expect(oneShot).toMatchObject({ iteration: 0, nextFireAt: oneShot?.nextFireAt });
+    // Its own firing: then nothing is left to fire and the card goes.
+    o.until(oneShot?.nextFireAt ?? '');
+    o.result('Deploy checked.');
+    expect(deriveLoops(o.events, { now: o.now(), status: 'done', mainAgentId: MAIN })).toEqual([]);
   });
 
   it('ScheduleWakeup: next firing = call time + delaySeconds until it fires; standalone wake-ups get their own card', () => {
@@ -189,12 +219,10 @@ describe('loops · deriveLoops', () => {
     // The firing turn scheduled the next wake-up itself: that one is the next firing.
     expect(loop?.iteration).toBe(2);
     expect(loop?.nextFireAt).toBe(new Date(Date.parse(wake2.ts) + 600_000).toISOString());
-    // A firing whose turn schedules nothing new leaves no next firing.
+    // D93: a firing whose turn schedules nothing new ends the loop: nothing is left to fire.
     l.text('Last check.');
     l.result('Queue drained.');
-    [loop] = deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN });
-    expect(loop?.iteration).toBe(3);
-    expect(loop?.nextFireAt).toBeNull();
+    expect(deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN })).toEqual([]);
 
     const s = log();
     s.user('Check back in a minute');
@@ -210,7 +238,7 @@ describe('loops · deriveLoops', () => {
     expect(deriveLoops(n.events, { now: n.now(), status: 'done', mainAgentId: MAIN })).toEqual([]);
   });
 
-  it('CronDelete stops the named cron; failed CronCreate calls and bad expressions are ignored', () => {
+  it('D93: CronDelete ends the named cron (its card goes); failed CronCreate calls and bad expressions are ignored', () => {
     const l = log();
     l.user('/loop 1h sweep');
     l.tool('CronCreate', { cron: 'every hour', prompt: 'sweep' });
@@ -222,9 +250,7 @@ describe('loops · deriveLoops', () => {
     l.user('Stop the sweep');
     l.tool('CronDelete', { id: 'job-42' }, 'Deleted');
     l.result('Stopped.');
-    [loop] = deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN });
-    expect(loop).toMatchObject({ nextFireAt: null, expiresAt: null, iteration: 1 });
-    expect(loop?.note).toBe('Stopped: the cron job was deleted. Last iteration: Swept.');
+    expect(deriveLoops(l.events, { now: l.now(), status: 'done', mainAgentId: MAIN })).toEqual([]);
   });
 
   it('Workflow: one card per session, every call one run, ok / failed by its tool result, open while it has none', () => {
@@ -252,5 +278,119 @@ describe('loops · deriveLoops', () => {
     expect(loop?.iteration).toBe(121);
     expect(loop?.iterations).toHaveLength(100);
     expect(loop?.iterations.at(-1)?.label).toBe('pong 119');
+  });
+});
+
+/**
+ * D93: the bug report of 2026-10-09, replayed with made-up ids. A terminal session
+ * (hooked) created recurring crons on 27 Sep, 29 Sep (`7,37`) and 3 Oct (`10,40`),
+ * cancelled the 3 Oct one on 5 Oct and created a new `10,40` one a minute later;
+ * at 08:44 it continued in Switchboard (a new `sdk-cli` process), where half-hourly
+ * prompts kept arriving as self-started turns; on 9 Oct it created a one-shot.
+ * Only the one-shot is alive.
+ */
+describe('loops · D93 bug report replay', () => {
+  const MONITOR = 'Production monitoring shift: sweep the logs.';
+  const created = (id: string, what = 'Every 30 minutes') =>
+    `Scheduled recurring job ${id} (${what}). Session-only (not written to disk, dies when Claude exits). Auto-expires after 7 days. Use CronDelete to cancel sooner.`;
+
+  function replay(options: { continued: boolean }) {
+    const l = log();
+    const cron = (id: string, expression: string, at: string) => {
+      l.until(at);
+      l.user('Set up the monitoring loop');
+      l.tool('CronCreate', { cron: expression, prompt: MONITOR, recurring: true }, created(id));
+      l.result('Scheduled.');
+    };
+    cron('e1111111', '7,37 * * * *', '2026-09-27T18:52:41.000Z');
+    cron('e2222222', '7,37 * * * *', '2026-09-29T18:24:57.000Z');
+    cron('a3333333', '10,40 * * * *', '2026-10-03T19:35:02.000Z');
+    l.until('2026-10-05T07:07:25.000Z');
+    l.user('Cancel the old monitoring job');
+    l.tool('CronDelete', { id: 'a3333333' }, 'Cancelled job a3333333');
+    l.tool('CronCreate', { cron: '10,40 * * * *', prompt: MONITOR, recurring: true }, created('b4444444'));
+    l.result('Replaced.');
+    // Two firings in that process (the CLI's own).
+    for (const at of ['2026-10-05T07:14:00.000Z', '2026-10-05T07:17:00.000Z']) {
+      l.until(at);
+      l.text('Sweeping…');
+      l.result('Nothing new.');
+    }
+    if (options.continued) {
+      l.until('2026-10-05T08:44:26.000Z');
+      l.lifecycle('continued');
+    }
+    // Half-hourly self-started turns in the new process (hh:15:07 / hh:45:07).
+    for (let at = Date.parse('2026-10-05T09:15:07.000Z'); at <= Date.parse('2026-10-09T19:15:07.000Z'); at += 30 * 60_000) {
+      l.until(new Date(at).toISOString());
+      l.text('Sweeping…');
+      l.result('Nothing new.');
+    }
+    l.until('2026-10-09T19:20:53.000Z');
+    l.user('Remind me on Tuesday');
+    const oneShot = l.tool('CronCreate', { cron: '22 18 13 10 *', prompt: 'Check the release.', recurring: false }, 'Scheduled one-shot job c5555555 (Tue 13 Oct 18:22). Session-only.');
+    l.result('Scheduled.');
+    // The agent tries to cancel the old ones: this process has none of them.
+    for (const id of ['e2222222', 'a3333333', 'b4444444']) l.tool('CronDelete', { id }, `No scheduled job with id '${id}'`, true);
+    l.result('None of them exist here.');
+    // A half-hourly firing after the one-shot was made: not the one-shot's (it fires on 13 Oct).
+    l.until('2026-10-09T19:45:07.000Z');
+    l.text('Sweeping…');
+    l.result('Nothing new.');
+    return { l, oneShot };
+  }
+
+  it('after the update only the one-shot is listed, with its own firing time; the cancelled, expired and earlier-process jobs are gone', () => {
+    const { l, oneShot } = replay({ continued: true });
+    const loops = deriveLoops(l.events, { now: new Date('2026-10-09T20:00:00.000Z'), status: 'idle', mainAgentId: MAIN });
+    expect(loops).toHaveLength(1);
+    expect(loops[0]).toMatchObject({ kind: 'CronCreate', label: 'cron 22 18 13 10 *', iteration: 0, expiresAt: null, startedAt: oneShot.ts });
+    expect(loops[0]?.nextFireAt).toBe(nextCronMatch('22 18 13 10 *', new Date(oneShot.ts))?.toISOString());
+  });
+
+  it('without a recorded process change the cancelled job is still matched by its id, the 7,37 jobs are past their 7 days, and the missing jobs are ended by "No scheduled job"', () => {
+    const { l } = replay({ continued: false });
+    const loops = deriveLoops(l.events, { now: new Date('2026-10-09T20:00:00.000Z'), status: 'idle', mainAgentId: MAIN });
+    expect(loops.map((loop) => loop.label)).toEqual(['cron 22 18 13 10 *']);
+  });
+
+  it('on 7 Oct the 10,40 job of the earlier process is not live: the process change ended it (without one it would be)', () => {
+    const at = (continued: boolean) => {
+      const { l } = replay({ continued });
+      const cut = l.events.findLastIndex((event) => event.ts <= '2026-10-07T12:15:07.000Z');
+      return deriveLoops(l.events.slice(0, cut + 1), { now: new Date('2026-10-07T12:20:00.000Z'), status: 'idle', mainAgentId: MAIN });
+    };
+    expect(at(true)).toEqual([]);
+    expect(at(false).map((loop) => [loop.label, loop.expiresAt])).toEqual([['cron 10,40 * * * *', '2026-10-12T07:07:27.000Z']]);
+  });
+
+  it('job ids: from CronCreate results and from CronDelete inputs or results', () => {
+    expect(cronJobId(created('94ab12cd'))).toBe('94ab12cd');
+    expect(cronJobId('Scheduled one-shot job x9')).toBe('x9');
+    expect(cronJobId('Scheduled job job-42 (7 * * * *)')).toBe('job-42');
+    expect(cronJobId('ok')).toBeNull();
+    expect(cronDeleteId({ id: '94ab12cd' }, 'Cancelled job 94ab12cd')).toBe('94ab12cd');
+    expect(cronDeleteId({}, 'Cancelled job 94ab12cd')).toBe('94ab12cd');
+    expect(cronDeleteId({}, "No scheduled job with id '31aa22bb'")).toBe('31aa22bb');
+    expect(cronDeleteId({ job_id: 'z1' }, undefined)).toBe('z1');
+    expect(cronDeleteId({}, 'Done')).toBeNull();
+  });
+
+  it('a CronDelete naming an unknown id never ends a different (the only) live cron', () => {
+    const l = log();
+    l.tool('CronCreate', { cron: '22 18 13 10 *', recurring: false }, 'Scheduled one-shot job c5555555.');
+    l.tool('CronDelete', { id: 'a3333333' }, "No scheduled job with id 'a3333333'", true);
+    l.tool('CronDelete', { id: 'b4444444' }, 'Cancelled job b4444444');
+    expect(deriveLoops(l.events, { now: l.now(), status: 'idle', mainAgentId: MAIN })).toHaveLength(1);
+    // A CronDelete with no id at all still ends the only live cron.
+    l.tool('CronDelete', {}, 'Cancelled.');
+    expect(deriveLoops(l.events, { now: l.now(), status: 'idle', mainAgentId: MAIN })).toEqual([]);
+  });
+
+  it('a stored loop past its expiry is not shown', () => {
+    const now = new Date('2026-10-09T20:00:00.000Z');
+    expect(loopNotExpired({ expiresAt: null }, now)).toBe(true);
+    expect(loopNotExpired({ expiresAt: '2026-10-12T07:08:22.000Z' }, now)).toBe(true);
+    expect(loopNotExpired({ expiresAt: '2026-10-06T18:24:57.000Z' }, now)).toBe(false);
   });
 });

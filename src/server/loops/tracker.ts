@@ -63,8 +63,11 @@ export function loopRowId(sessionId: string, key: string): string {
  * session (folded per session, one at a time): all of its events
  * go through `deriveLoops`, cap + breaker are read from the newest
  * `.loop/progress.md` in its working folders (in its own folder, D14), the rows are created or updated
- * (never invented, never deleted), and a changed session is published as
+ * (never invented), and a changed session is published as
  * `sessionUpdated` so the Schedules & loops view and the session header follow.
+ * D93: the derivation lists live loops only, so a tracker-owned row whose loop
+ * ended (cancelled, expired, died with an earlier process, nothing left to fire)
+ * is deleted.
  */
 export class LoopTracker {
   readonly #store: Store;
@@ -166,16 +169,16 @@ export class LoopTracker {
   }
 
   /**
-   * Refreshes every session whose tracker-owned loop still shows a next firing or
-   * an expiry. Run once at start: a service stop ends every process (session-only
-   * schedules die with it) after this tracker stopped listening, so those rows are
-   * re-derived from the stored events. Rows the tracker does not own (the demo
-   * seed's) are left alone.
+   * Refreshes every session with a tracker-owned loop row. Run once at start: a
+   * service stop ends every process (session-only schedules die with it) after this
+   * tracker stopped listening, and rows stored before D93 may belong to loops that
+   * ended long ago, so they are re-derived from the stored events (ended ones are
+   * deleted). Rows the tracker does not own (the demo seed's) are left alone.
    */
   async sweep(): Promise<void> {
     const sessions = new Set<string>();
     for (const row of await this.#store.loops.list()) {
-      if (row.id.startsWith(ROW_PREFIX) && (row.nextFireAt !== null || row.expiresAt !== null)) sessions.add(row.sessionId);
+      if (row.id.startsWith(ROW_PREFIX)) sessions.add(row.sessionId);
     }
     await Promise.all([...sessions].map((sessionId) => this.refresh(sessionId)));
   }
@@ -206,15 +209,23 @@ export class LoopTracker {
     if (own) {
       observed = deriveLoops(own, { now: this.#now(), status: session.status, mainAgentId: null });
     } else {
-      const events = (await this.#store.events.list(sessionId)).sort((a, b) => a.id - b.id);
+      // D93: in time order (insert order on ties): imported terminal turns may be stored after later events.
+      const events = (await this.#store.events.list(sessionId)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || a.id - b.id);
       const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
       observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
     }
-    if (observed.length === 0) return (await this.#store.loops.list(sessionId)).map(toLoop);
-    this.#tracked.set(sessionId, true);
-    // D14: the session's own folders; the shown path is relative to its folder.
-    const progress = await findLoopProgress(await sessionWorkingFolders(this.#store, session), folderOfSession(session)?.root ?? null);
     let changed = false;
+    // D93: rows of loops that ended (the derivation lists live ones only) go; rows it does not own stay.
+    const live = new Set(observed.map((loop) => loopRowId(sessionId, loop.key)));
+    for (const row of await this.#store.loops.list(sessionId)) {
+      if (row.id.startsWith(`${ROW_PREFIX}${sessionId}:`) && !live.has(row.id)) {
+        await this.#store.loops.delete(row.id);
+        changed = true;
+      }
+    }
+    if (observed.length > 0) this.#tracked.set(sessionId, true);
+    // D14: the session's own folders; the shown path is relative to its folder.
+    const progress = observed.length > 0 ? await findLoopProgress(await sessionWorkingFolders(this.#store, session), folderOfSession(session)?.root ?? null) : null;
     for (const loop of observed) {
       const fields = rowFields(loop, progress);
       const id = loopRowId(sessionId, loop.key);

@@ -19,13 +19,22 @@
  *   firing = the call's time + `delaySeconds`, until a firing happens.
  * - **`Workflow`**: one card per session; every call is one run (iteration); a run is
  *   ok / failed by its tool result.
- * - **`CronDelete`** stops the cron it names (by the id appearing in the
- *   `CronCreate` result), or the only active cron.
+ * - **`CronDelete`** ends the cron it names: the id in its input (`id`), else the
+ *   one in its result (`Cancelled job <id>`), matched to the id in the `CronCreate`
+ *   result (`Scheduled recurring job <id> …`); "No scheduled job with id …" ends it
+ *   too (the process does not have it). Without any id: the only live cron.
  *
- * Session-only schedules die with the process: when the process ends (pause,
- * terminal handoff, exit, failure, service stop), active scheduled loops stop and
- * lose their next firing and expiry. Cap + breaker come from a `.loop/progress.md`
- * and are added by the tracker, not here.
+ * Session-only schedules die with the process (D93): a process ending (pause,
+ * terminal handoff, exit, failure, service stop) or a new process starting (resume,
+ * recovery, continue, take-over, …; in a transcript a change of `entrypoint` /
+ * `version`, {@link PROCESS_CHANGED}) ends every scheduled loop made before it.
+ *
+ * Only loops that are still alive are returned (D93): a loop that was cancelled,
+ * expired (a recurring cron 7 days after it was created), died with an earlier
+ * process, or has nothing left to fire (a one-shot cron or a wake-up that fired) is
+ * left out, so its stored card goes. Workflow cards stay (they are runs, not
+ * schedules). Cap + breaker come from a `.loop/progress.md` and are added by the
+ * tracker, not here.
  */
 import type { LoopIteration, LoopIterationResult } from '../api.ts';
 import type { SessionStatus } from '../model.ts';
@@ -89,6 +98,62 @@ export const SESSION_ONLY_NOTE = 'Session-only schedule. It stops when the sessi
 
 const PROCESS_END_ACTIONS = new Set(['paused', 'detached', 'exited', 'failed', 'stopped', 'leftover-stopped', 'not-resumed']);
 
+/**
+ * D93: lifecycle actions of a process start (every `#spawn` of the supervisor): the
+ * session's previous process is gone, and its session-only schedules with it, also
+ * when no end was recorded (a hooked terminal's process, D72 `continued`).
+ */
+const PROCESS_START_ACTIONS = new Set([
+  'started',
+  'resumed',
+  'attached',
+  'recovered',
+  'moved',
+  'teleported',
+  'switched',
+  'account-switched',
+  'taken-over',
+  'continued',
+  'continued-from',
+  'instruction-updated',
+]);
+
+/**
+ * D93: the lifecycle action a transcript's events carry where the CLI process
+ * changed (`entrypoint` or `version` differs from the line before,
+ * `terminal-loops.ts`). Never stored.
+ */
+export const PROCESS_CHANGED = 'process-changed';
+
+/** A one-shot cron may fire this much before its minute (the CLI's documented early firing is up to 90 s). */
+const ONE_SHOT_EARLY_MS = 2 * 60_000;
+
+/** The job id in a `CronCreate` result (`Scheduled recurring job 94da9cf2 (…)`), `null` when none. */
+export function cronJobId(result: string): string | null {
+  const match = /\bjob\s+["'`]?([A-Za-z0-9][\w-]*)/i.exec(result);
+  return match?.[1] ?? null;
+}
+
+/** The job a `CronDelete` names: its input's id, else its result's (`Cancelled job <id>`, `No scheduled job with id '<id>'`). */
+export function cronDeleteId(input: Readonly<Record<string, unknown>>, result: string | undefined): string | null {
+  for (const key of ['id', 'jobId', 'job_id']) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  }
+  if (result === undefined) return null;
+  const match = /\bwith id\s+["'`]?([A-Za-z0-9][\w-]*)/i.exec(result) ?? /\bjob\s+["'`]?([A-Za-z0-9][\w-]*)/i.exec(result);
+  return match?.[1] ?? null;
+}
+
+/**
+ * D93: `false` for a stored loop whose expiry has passed (a recurring cron's 7 days
+ * ran out while nothing in its session made the tracker refresh it): it is not
+ * shown, and the next refresh or start sweep deletes its row.
+ */
+export function loopNotExpired(loop: { readonly expiresAt: string | null }, now: Date): boolean {
+  return loop.expiresAt === null || !(Date.parse(loop.expiresAt) <= now.getTime());
+}
+
 /** `true` for a message that starts a `/loop`. */
 export function isLoopCommand(text: string): boolean {
   return /^\/loop(\s|$)/.test(text.trim());
@@ -101,7 +166,7 @@ export function loopCommandLabel(text: string): string {
 }
 
 interface Schedule {
-  cron: { expression: string; recurring: boolean; createdAt: string; jobText: string } | null;
+  cron: { expression: string; recurring: boolean; createdAt: string; jobText: string; jobId: string | null } | null;
   wakeup: { at: string } | null;
   /** Time of the call that set the schedule (firings go to the most recently scheduled loop). */
   scheduledAt: string;
@@ -117,6 +182,20 @@ interface LoopState {
   iterations: Array<{ result: LoopIterationResult | 'open'; ts: string | null; label: string | null; toolUseId?: string }>;
   schedule: Schedule | null;
   stop: 'process-ended' | 'cron-deleted' | null;
+}
+
+/** `true` when the loop's schedule can be what fired a self-started turn that began at `turnStart` (D93). */
+function canFire(loop: LoopState, turnStart: string): boolean {
+  const schedule = loop.schedule;
+  if (!schedule) return false;
+  if (schedule.wakeup) return true;
+  const cron = schedule.cron;
+  if (!cron) return false;
+  const start = Date.parse(turnStart);
+  if (cron.recurring) return start < Date.parse(cron.createdAt) + CRON_EXPIRY_MS;
+  // A one-shot fires at its minute: a turn before it is something else's.
+  const at = nextCronMatch(cron.expression, new Date(Date.parse(cron.createdAt)));
+  return at !== null && start >= at.getTime() - ONE_SHOT_EARLY_MS;
 }
 
 interface ToolPayloadLike {
@@ -222,7 +301,8 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
     }
 
     if (type === 'lifecycle') {
-      if (!PROCESS_END_ACTIONS.has(String(payload['action']))) continue;
+      const action = String(payload['action']);
+      if (!PROCESS_END_ACTIONS.has(action) && !PROCESS_START_ACTIONS.has(action) && action !== PROCESS_CHANGED) continue;
       pending = [];
       selfTurn = null;
       for (const loop of loops.values()) {
@@ -252,7 +332,10 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       // A turn the CLI ran on its own: a firing of the most recently scheduled loop.
       const turnStart = selfTurn?.ts ?? event.ts;
       selfTurn = null;
-      const target = scheduled().sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? '')).at(-1);
+      const target = scheduled()
+        .filter((loop) => canFire(loop, turnStart))
+        .sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? ''))
+        .at(-1);
       if (!target || !target.schedule) continue;
       target.iteration += 1;
       target.iterations.push({ result, ts: event.ts, label });
@@ -298,11 +381,33 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
         loops.set('workflow', loop);
         continue;
       }
+      if (tool.name === 'CronDelete') {
+        if (tool.result === undefined) continue;
+        // D93: the job it names (input, else "Cancelled job <id>"); "No scheduled job …" means the process has none by that id either.
+        const id = cronDeleteId(tool.input, tool.result);
+        const missing = /no scheduled job/i.test(tool.result);
+        if (tool.isError === true && !missing) continue;
+        const crons = scheduled().filter((loop) => loop.schedule?.cron);
+        const hits = id
+          ? crons.filter((loop) => {
+              const cron = loop.schedule?.cron;
+              return cron !== null && cron !== undefined && (cron.jobId !== null ? cron.jobId === id : cron.jobText.includes(id));
+            })
+          : missing || crons.length !== 1
+            ? []
+            : crons;
+        for (const loop of hits) {
+          if (loop.schedule) loop.schedule.cron = null;
+          if (!loop.schedule?.wakeup) loop.stop = 'cron-deleted';
+        }
+        continue;
+      }
       if (!succeeded(tool)) continue;
       if (tool.name === 'CronCreate') {
         const expression = typeof tool.input['cron'] === 'string' ? tool.input['cron'].trim() : '';
         if (!parseCron(expression)) continue;
-        const cron = { expression, recurring: tool.input['recurring'] !== false, createdAt: event.ts, jobText: tool.result ?? '' };
+        const jobText = tool.result ?? '';
+        const cron = { expression, recurring: tool.input['recurring'] !== false, createdAt: event.ts, jobText, jobId: cronJobId(jobText) };
         const owner = loopCommand();
         if (owner) {
           setSchedule(owner, { cron, wakeup: null }, event.ts);
@@ -344,16 +449,6 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
         loops.set(loop.key, loop);
         continue;
       }
-      if (tool.name === 'CronDelete') {
-        const id = typeof tool.input['id'] === 'string' ? tool.input['id'].trim() : '';
-        const crons = scheduled().filter((loop) => loop.schedule?.cron);
-        const named = id ? crons.filter((loop) => loop.schedule?.cron?.jobText.includes(id)) : [];
-        const hits = named.length > 0 ? named : crons.length === 1 ? crons : [];
-        for (const loop of hits) {
-          if (loop.schedule) loop.schedule.cron = null;
-          if (!loop.schedule?.wakeup) loop.stop = 'cron-deleted';
-        }
-      }
       continue;
     }
 
@@ -392,15 +487,23 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
     if (wakeup && !nextFireAt) nextFireAt = wakeup.at;
     // A self-started turn in progress belongs to the loop it would count for.
     if (selfTurn && loop.kind !== 'Workflow' && loop.stop === null && loop.schedule) {
-      const newest = scheduled().sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? '')).at(-1);
+      const turn = selfTurn.ts;
+      const newest = scheduled()
+        .filter((candidate) => canFire(candidate, turn))
+        .sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? ''))
+        .at(-1);
       if (newest === loop) iterations.push({ result: openResult(options.status), ts: selfTurn.ts, label: null });
+    }
+
+    // D93: only live loops are listed. Ended = cancelled, died with its process, expired, or nothing left to fire
+    // (a fired one-shot / wake-up); a `/loop` whose first turn still runs has not scheduled yet.
+    if (loop.kind !== 'Workflow') {
+      const firstTurnOpen = loop.kind === '/loop' && loop.stop === null && loop.iterations[0]?.result === 'open';
+      if (loop.stop !== null || (nextFireAt === null && !firstTurnOpen)) continue;
     }
 
     const notes: string[] = [];
     if (cron?.recurring && !expired) notes.push(SESSION_ONLY_NOTE);
-    if (expired) notes.push('Expired 7 days after the cron job was created.');
-    if (loop.stop === 'process-ended') notes.push("Stopped: the session's claude process ended.");
-    if (loop.stop === 'cron-deleted') notes.push('Stopped: the cron job was deleted.');
     const last = [...iterations].reverse().find((it) => it.label && (it.result === 'ok' || it.result === 'fail'));
     if (last?.label) notes.push(`Last iteration: ${sentence(last.label)}`);
 

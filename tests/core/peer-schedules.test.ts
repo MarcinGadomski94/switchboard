@@ -100,6 +100,25 @@ describe('D52 terminal transcript → loop events', () => {
     expect(loops[1]?.iterations.map((it) => it.result)).toEqual(['fail']);
   });
 
+  it('D93: the CLI process changing (entrypoint cli → sdk-cli) ends the crons made before it; one made after lives', () => {
+    const lines = [terminalUserLine({ sessionId: 'cs4', cwd, content: 'Watch prod.', parentUuid: null, timestamp: '2026-10-05T07:08:00.000Z' })];
+    lines.push(assistantToolLine({ sessionId: 'cs4', cwd, toolUseId: 'c1', name: 'CronCreate', input: { cron: '10,40 * * * *', prompt: 'watch' }, parentUuid: lastUuid(lines), timestamp: '2026-10-05T07:08:20.000Z' }));
+    lines.push(toolResultLine({ sessionId: 'cs4', cwd, toolUseId: 'c1', text: 'Scheduled recurring job b4444444 (Every 30 minutes).', parentUuid: lastUuid(lines), timestamp: '2026-10-05T07:08:22.000Z' }));
+    lines.push(assistantTextLine({ sessionId: 'cs4', cwd, text: 'Scheduled.', parentUuid: lastUuid(lines), timestamp: '2026-10-05T07:08:30.000Z' }));
+    const before = transcriptLoopEvents(parseTranscript(ndjson(lines)));
+    expect(deriveLoops(before, { now: new Date('2026-10-05T08:00:00.000Z'), status: 'idle', mainAgentId: null })).toHaveLength(1);
+    // The same conversation resumed by Switchboard (`sdk-cli`).
+    const sdk = (line: Record<string, unknown>) => ({ ...line, entrypoint: 'sdk-cli' });
+    lines.push(sdk(terminalUserLine({ sessionId: 'cs4', cwd, content: 'Remind me on Tuesday.', parentUuid: lastUuid(lines), timestamp: '2026-10-09T19:20:40.000Z' })));
+    lines.push(sdk(assistantToolLine({ sessionId: 'cs4', cwd, toolUseId: 'c2', name: 'CronCreate', input: { cron: '22 18 13 10 *', prompt: 'check', recurring: false }, parentUuid: lastUuid(lines), timestamp: '2026-10-09T19:20:50.000Z' })));
+    lines.push(sdk(toolResultLine({ sessionId: 'cs4', cwd, toolUseId: 'c2', text: 'Scheduled one-shot job c5555555.', parentUuid: lastUuid(lines), timestamp: '2026-10-09T19:20:53.000Z' })));
+    lines.push(sdk(assistantTextLine({ sessionId: 'cs4', cwd, text: 'Scheduled.', parentUuid: lastUuid(lines), timestamp: '2026-10-09T19:21:00.000Z' })));
+    const events = transcriptLoopEvents(parseTranscript(ndjson(lines)));
+    expect(events.filter((event) => (event.payload as { type: string }).type === 'lifecycle').map((event) => event.ts)).toEqual(['2026-10-09T19:20:40.000Z']);
+    const loops = deriveLoops(events, { now: new Date('2026-10-09T20:00:00.000Z'), status: 'idle', mainAgentId: null });
+    expect(loops.map((loop) => loop.label)).toEqual(['cron 22 18 13 10 *']);
+  });
+
   it('a plain conversation has no loops; lines off the newest chain are ignored', () => {
     const lines = [terminalUserLine({ sessionId: 'cs3', cwd, content: 'Refactor the parser.', parentUuid: null, timestamp: '2026-09-29T10:00:00.000Z' })];
     lines.push(assistantTextLine({ sessionId: 'cs3', cwd, text: 'Done.', parentUuid: lastUuid(lines), timestamp: '2026-09-29T10:00:30.000Z' }));

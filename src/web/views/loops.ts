@@ -7,6 +7,7 @@
  */
 import type { Loop, LoopIterationResult, Session, TerminalLoop } from '../../core/api.ts';
 import { terminalStatus } from '../../core/terminal-status.ts';
+import { loopNotExpired } from '../../core/derive/loops.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { type SessionMachine, offlineReason } from '../../core/peers.ts';
 import { displayTitle } from '../../core/session-title.ts';
@@ -149,6 +150,8 @@ export function loopCards(sessions: readonly Session[], now: Date, terminalLoops
   const cards: Array<LoopCardModel & { readonly createdAt: string; readonly sessionCreatedAt: string; readonly index: number }> = [];
   for (const session of sessions) {
     for (const loop of session.loops ?? []) {
+      // D93: a page left open past a loop's expiry drops its card (the row goes at the next refresh).
+      if (!loopNotExpired(loop, now)) continue;
       cards.push({
         index: cards.length,
         sessionCreatedAt: session.createdAt,
@@ -173,6 +176,7 @@ export function loopCards(sessions: readonly Session[], now: Date, terminalLoops
   // D52: loops of terminal sessions Switchboard does not follow (this machine's and the paired machines').
   for (const entry of terminalLoops) {
     const loop = entry.loop;
+    if (!loopNotExpired(loop, now)) continue;
     const status = terminalStatus(entry.terminal.status);
     cards.push({
       index: cards.length,

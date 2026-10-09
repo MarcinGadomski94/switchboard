@@ -185,16 +185,13 @@ test('Loop cards: /loop + CronCreate + firings live, progress-file cap + breaker
   await expect(card(page, id)).toHaveCount(1);
   await expect.poll(() => cells(card(page, id))).toEqual(['ok', 'ok', 'ok', 'none', 'none']);
 
-  // Pause ends the process: the session-only schedule is gone.
+  // D93: pause ends the process: the session-only schedule is gone, and so is its card (live, through sessionUpdated).
   expect((await api(page, 'POST', `/api/sessions/${encodeURIComponent(id)}/pause`)).status).toBe(200);
-  await expect(card(page, id)).toHaveAttribute('data-status', 'paused', { timeout: 20_000 });
-  await expect.poll(async () => (await facts(card(page, id)))[1], { timeout: 20_000 }).toBe('Next / expires: — / —');
-  await expect(card(page, id).getByTestId('loop-note')).toHaveText(
-    "Stopped: the session's claude process ended. Last iteration: OK. Cap and breaker from other/loopy/.loop/progress.md.",
-  );
-  expect(await style(card(page, id).getByTestId('loop-dot'), 'background-color')).toBe(await computed(page, '#5a5955'));
+  await expect(card(page, id)).toHaveCount(0, { timeout: 20_000 });
 
-  // Open session.
+  // Open session (a live loop's card).
+  await send(page, id, '/loop 5m check the build [fake:tool CronCreate {"cron":"*/5 * * * *","prompt":"check the build","recurring":true}]');
+  await expect(card(page, id)).toHaveCount(1, { timeout: 20_000 });
   await card(page, id).getByTestId('loop-open').click();
   await expect(page).toHaveURL(`${server.baseUrl}/sessions/${id}`);
 });

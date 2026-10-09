@@ -158,6 +158,12 @@ describe('loops view · cards', () => {
     expect(loopCards([newer, older], NOW).map((c) => c.id)).toEqual(['y', 'a', 'z']);
   });
 
+  it('D93: a loop whose expiry has passed has no card (a page left open past it, or a row not refreshed yet)', () => {
+    const live = loop({ id: 'loop:s1:cron-a', expiresAt: new Date(NOW.getTime() + 3_600_000).toISOString() });
+    const gone = loop({ id: 'loop:s1:cron-b', expiresAt: new Date(NOW.getTime() - 1).toISOString() });
+    expect(loopCards([session({ loops: [live, gone] })], NOW).map((card) => card.id)).toEqual(['loop:s1:cron-a']);
+  });
+
   it('reads a session without the additive field (older server) as no loops', () => {
     const { loops: _loops, ...old } = session();
     expect(loopCards([old as unknown as Session], NOW)).toEqual([]);

@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HubEventName, HubEvents } from '../../../src/core/api.ts';
@@ -8,6 +9,7 @@ import { toLoop } from '../../../src/server/loops/wire.ts';
 import { findLoopProgress, sessionWorkingFolders } from '../../../src/server/loops/progress.ts';
 import { LoopTracker, loopRowId } from '../../../src/server/loops/tracker.ts';
 import { toSession } from '../../../src/server/sessions/wire.ts';
+import { openTempStore } from '../../helpers/store.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
 
 /**
@@ -85,15 +87,14 @@ describe('LoopTracker', () => {
     const updates = seen.filter((e) => e.name === 'sessionUpdated').map((e) => e.payload as HubEvents['sessionUpdated']);
     expect(updates.at(-1)?.loops[0]).toMatchObject({ iteration: 3, cap: 5 });
 
-    // Pausing ends the process: the session-only schedule is gone.
+    // D93: pausing ends the process: the session-only schedule is gone, and so is its card (row deleted, published).
     await w.supervisor.pause(session.id);
-    const stopped = await until(async () => {
+    await until(async () => {
       await tracker?.idle();
-      const [row] = await loopsOf(w, session.id);
-      return row?.nextFireAt === null ? row : undefined;
+      return (await loopsOf(w, session.id)).length === 0 ? true : undefined;
     }, 'the stop');
-    expect(stopped).toMatchObject({ iteration: 3, expiresAt: null, cap: 5 });
-    expect(stopped.note).toBe("Stopped: the session's claude process ended. Last iteration: OK. Cap and breaker from other/loopy/.loop/progress.md.");
+    const after = seen.filter((e) => e.name === 'sessionUpdated').map((e) => e.payload as HubEvents['sessionUpdated']);
+    expect(after.at(-1)?.loops).toEqual([]);
   });
 
   it('ScheduleWakeup and Workflow sessions; no progress file → cap and breaker stay null; other sessions get no rows', async () => {
@@ -127,7 +128,7 @@ describe('LoopTracker', () => {
     expect(await w.store.loops.list(plain.id)).toEqual([]);
   });
 
-  it('sweep() re-derives tracker rows whose process ended while no tracker listened; demo-seeded rows are left alone', async () => {
+  it('sweep() re-derives tracker rows whose process ended while no tracker listened (D93: they are deleted); demo-seeded rows are left alone', async () => {
     world = await makeSupervisorWorld({ extraArgs: ['--replay-user-messages'] });
     const w = world;
     tracker = new LoopTracker({ store: w.store, events: w.supervisor, debounceMs: 20 });
@@ -149,9 +150,52 @@ describe('LoopTracker', () => {
 
     tracker = new LoopTracker({ store: w.store, events: w.supervisor, debounceMs: 20 });
     await tracker.sweep();
-    const row = await w.store.loops.get(loopRowId(session.id, 'loop'));
-    expect(row).toMatchObject({ nextFireAt: null, expiresAt: null });
+    expect(await w.store.loops.get(loopRowId(session.id, 'loop'))).toBeNull();
     expect(await w.store.loops.get(seeded.id)).toEqual(seeded);
+  });
+});
+
+describe('LoopTracker · D93 stale rows', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('the start sweep deletes the rows of loops that ended (cancelled, expired, an earlier process), in time order even when imported turns were stored late, and keeps the live one-shot', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'sb-loops-d93-'));
+    const store = await openTempStore(dir);
+    const silent = { on: () => () => undefined };
+    try {
+      const session = await store.sessions.create({ name: 'monitor', claudeSessionId: 'c-monitor', solutions: [], root: dir, rootKind: 'repo', cwd: dir });
+      const tool = (ts: string, toolUseId: string, name: string, input: Record<string, unknown>, result: string, isError = false) =>
+        store.events.append({ sessionId: session.id, kind: 'tool', ts, label: name, toolUseId, payload: { type: 'tool', name, toolUseId, input, result, isError } });
+      const created = (id: string) => `Scheduled recurring job ${id} (Every 30 minutes). Session-only. Auto-expires after 7 days.`;
+      // The process change and the current process's one-shot were stored first; the earlier (imported) turns after them.
+      await store.events.append({ sessionId: session.id, kind: 'text', ts: '2026-10-05T08:44:26.000Z', label: 'Continued in Switchboard', payload: { type: 'lifecycle', action: 'continued' } });
+      await tool('2026-10-09T19:20:53.000Z', 'tu-5', 'CronCreate', { cron: '22 18 13 10 *', recurring: false }, 'Scheduled one-shot job c5555555.');
+      await tool('2026-09-29T18:24:57.000Z', 'tu-2', 'CronCreate', { cron: '7,37 * * * *' }, created('e2222222'));
+      await tool('2026-10-03T19:35:02.000Z', 'tu-3', 'CronCreate', { cron: '10,40 * * * *' }, created('a3333333'));
+      await tool('2026-10-05T07:07:25.000Z', 'tu-d', 'CronDelete', { id: 'a3333333' }, 'Cancelled job a3333333');
+      await tool('2026-10-05T07:08:22.000Z', 'tu-4', 'CronCreate', { cron: '10,40 * * * *' }, created('b4444444'));
+      // Rows a pre-D93 build left behind for those jobs.
+      for (const key of ['cron-tu-2', 'cron-tu-3', 'cron-tu-4']) {
+        await store.loops.create({ id: loopRowId(session.id, key), sessionId: session.id, kind: 'CronCreate', label: 'cron stale', nextFireAt: null, expiresAt: null });
+      }
+      const seeded = await store.loops.create({ sessionId: session.id, kind: '/loop', label: 'seeded' });
+
+      tracker = new LoopTracker({ store, events: silent, now: () => new Date('2026-10-09T20:00:00.000Z'), debounceMs: 20 });
+      await tracker.sweep();
+      const rows = await store.loops.list(session.id);
+      expect(rows.map((row) => [row.id, row.label])).toEqual([
+        [seeded.id, 'seeded'],
+        [loopRowId(session.id, 'cron-tu-5'), 'cron 22 18 13 10 *'],
+      ]);
+    } finally {
+      await tracker?.close();
+      tracker = undefined;
+      await store.close();
+    }
   });
 });
 

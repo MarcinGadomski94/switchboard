@@ -15,9 +15,15 @@
  * their results paired in (`isError` from the result); assistant text becomes
  * `assistant` events. Everything else in the file is skipped, as for the chat
  * (`transcriptItems`).
+ * D93: where the CLI process changed (a line's `entrypoint` differs from the
+ * previous line's: a terminal `cli` session continued as `sdk-cli`, or back) a
+ * `lifecycle` event with the action {@link PROCESS_CHANGED} goes in, so the earlier
+ * process's session-only schedules end there. A restart with the same entrypoint is
+ * not visible here (the `version` field is not used: conservative, a false process
+ * change would drop a live loop).
  */
 import { type TranscriptEntry, newestChain, transcriptItems } from '../transcript-sync.ts';
-import type { LoopEventInput } from './loops.ts';
+import { type LoopEventInput, PROCESS_CHANGED } from './loops.ts';
 
 function firstLine(text: string, limit = 120): string {
   const line = (text.split(/\r?\n/).find((l) => l.trim() !== '') ?? '').trim();
@@ -48,6 +54,8 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
   const out: Draft[] = [];
   const tools = new Map<string, Draft>();
   let lastTs = new Date(0).toISOString();
+  /** D93: the entrypoint of the previous line that had one. */
+  let seenEntrypoint: string | null = null;
   /**
    * The turn-ending message seen last, not written yet: the CLI writes one line per
    * content block (thinking, text, tool use), each with the message's `stop_reason`
@@ -63,6 +71,14 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
   for (const entry of newestChain(entries)) {
     const id = messageId(entry);
     if (ending && !(entry['type'] === 'assistant' && id !== null && id === ending.id)) flush();
+    const entrypoint = typeof entry['entrypoint'] === 'string' && entry['entrypoint'] !== '' ? entry['entrypoint'] : null;
+    if (entrypoint !== null) {
+      if (seenEntrypoint !== null && entrypoint !== seenEntrypoint) {
+        const ts = typeof entry['timestamp'] === 'string' && !Number.isNaN(Date.parse(entry['timestamp'])) ? new Date(entry['timestamp']).toISOString() : lastTs;
+        out.push({ ts, agentId: null, label: PROCESS_CHANGED, payload: { type: 'lifecycle', action: PROCESS_CHANGED } });
+      }
+      seenEntrypoint = entrypoint;
+    }
     const items = transcriptItems([entry]);
     let lastText: string | null = null;
     for (const item of items) {

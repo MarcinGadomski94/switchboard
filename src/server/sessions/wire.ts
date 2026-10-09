@@ -10,6 +10,7 @@ import type { SessionRecord } from '../db/repos/sessions.ts';
 import type { Store } from '../db/store.ts';
 import { isBatchWaiting, toQuestion } from '../inbox/wire.ts';
 import { toLoop } from '../loops/wire.ts';
+import { loopNotExpired } from '../../core/derive/loops.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
@@ -161,7 +162,9 @@ async function openQuestionCount(store: Store, sessionId: string): Promise<numbe
  */
 export async function toSession(store: Store, record: SessionRecord, activity: SessionActivity | null = null): Promise<Session> {
   const agents = await store.agents.listBySession(record.id);
-  const loops = await store.loops.list(record.id);
+  // D93: a loop whose expiry passed is not shown (its row goes at the next refresh / start sweep).
+  const now = new Date();
+  const loops = (await store.loops.list(record.id)).filter((loop) => loopNotExpired(loop, now));
   // D51: the session's Workflow runs and their agents (after the stored agents, in run order).
   const workflows = (await workflowSources.get(store)?.forSession(record)) ?? { runs: [], agents: [] };
   // D53: a hooked session's activity comes from its transcript and hooks (it has no process), with its delivery state.
