@@ -15,6 +15,8 @@ import { ANSWERS_WRITTEN, type ChatItem, type ChatStep, QUEUED_TOOLTIPS, answere
 import { OPEN_SUBAGENT_CHAT } from './subagent-chat.ts';
 import type { TurnRevert } from './checkpoints.ts';
 import { RedoButton, TurnRevertButton } from './RevertTurn.tsx';
+import { type ArtifactDraft, MessageMenu } from './SaveArtifact.tsx';
+import { codeDraft, messageDraft } from './artifacts.ts';
 
 /**
  * The chat's items as the main chat (M4.2) and, D36, a subagent's own chat show
@@ -128,10 +130,12 @@ export interface ChatItemViewProps {
   readonly revert?: TurnRevert | null;
   /** D80: this divider is the newest revert's and can be undone (Redo). */
   readonly redo?: boolean;
+  /** D89: an agent message's ⋯ → Save as artifact, and each of its code blocks' Save as artifact (the main chat only; absent = none). */
+  readonly onSaveArtifact?: ((draft: ArtifactDraft) => void) | null;
 }
 
 /** One chat item (a user bubble, an agent block with its step lines, a question batch); shared by the main and subagent chats. */
-export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText, revert = null, redo = false }: ChatItemViewProps) {
+export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNote, queuedNote = null, fullText, revert = null, redo = false, onSaveArtifact = null }: ChatItemViewProps) {
   if (item.kind === 'user') {
     return (
       <div
@@ -166,11 +170,12 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
     );
   }
   if (item.kind === 'agent') {
+    const text = item.text;
     return (
       <div className="sb-chat-message" data-testid="chat-message" data-role="agent">
-        {item.text ? (
+        {text ? (
           <div className="sb-chat-bubble" data-testid="chat-text">
-            <ChatMarkdown text={item.text} />
+            <ChatMarkdown text={text} onSaveCode={onSaveArtifact ? (code, language) => onSaveArtifact(codeDraft(code, language, text)) : null} />
           </div>
         ) : null}
         {item.cut ? <CutNote cut={item.cut} control={fullText} /> : null}
@@ -181,6 +186,8 @@ export function ChatItemView({ sessionId, item, answering, onAnswer, readOnlyNot
             ))}
           </div>
         ) : null}
+        {/* D89: ⋯ → Save as artifact (a cut message saves what it shows): beside the bubble (absolutely placed), outside its text, the message's last child. */}
+        {text && onSaveArtifact ? <MessageMenu onSave={() => onSaveArtifact(messageDraft(text))} /> : null}
       </div>
     );
   }

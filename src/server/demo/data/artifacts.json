@@ -1,113 +1,138 @@
 {
+  "note": "D89: artifacts saved on purpose (docs/artifacts.md), not the prototype's ART rows (derived from tool results, replaced by D89). versions: oldest first; age: of the latest version.",
   "artifacts": [
     {
-      "type": "CONTRACT",
-      "name": "contracts/free-talk.md",
-      "solution": "root",
+      "title": "Free talk · implementation plan",
+      "kind": "markdown",
       "session": "free-talk-feature",
-      "meta": "locked",
-      "age": "1m"
+      "by": "agent",
+      "age": "1m",
+      "versions": [
+        "# Free talk · implementation plan\n\n1. Lock the contract (`contracts/free-talk.md`).\n2. Web at 360, then mobile at 360.\n",
+        "# Free talk · implementation plan\n\nScope: the Free talk screen at **360** on web and mobile, UI-first (mock-DI).\n\n## Steps\n1. Lock the contract (`contracts/free-talk.md`): done.\n2. Web: `Pages/FreeTalk` (6 files) against Figma `2231:884`.\n3. Mobile: `Views/FreeTalkView` (5 files), same frame.\n4. Reconcile both against the contract by requirement ID.\n\n## Open points\n| Point | Owner | State |\n|---|---|---|\n| Empty-state copy | design | waiting |\n| Timer rounding | web + mobile | agreed: whole seconds |\n\n> Phase stays UI-first: no Gateway wiring in this round.\n"
+      ]
     },
     {
-      "type": "DIFF",
-      "name": "Pages/FreeTalk · 6 files",
-      "solution": "acme-app-front",
-      "branch": "feature/free-talk-360",
+      "title": "Free talk flow",
+      "kind": "mermaid",
       "session": "free-talk-feature",
-      "meta": "+284 −12",
-      "age": "4m"
+      "by": "agent",
+      "age": "3m",
+      "versions": [
+        "flowchart LR\n  A[Lobby] --> B{Partner found?}\n  B -- yes --> C[Talk 10 min]\n  B -- no --> D[Empty state]\n  C --> E[Wrap-up]\n"
+      ]
     },
     {
-      "type": "DIFF",
-      "name": "Views/FreeTalkView · 5 files",
-      "solution": "mobile",
-      "branch": "feature/free-talk-360",
+      "title": "Free talk card · mockup",
+      "kind": "html",
       "session": "free-talk-feature",
-      "meta": "+231 −4",
-      "age": "5m"
+      "by": "agent",
+      "age": "4m",
+      "versions": [
+        "<!doctype html>\n<html><head><meta charset=\"utf-8\"><style>\nbody{margin:0;font:14px system-ui,sans-serif;background:#f4f3ef;color:#1b1c1f;display:grid;place-items:center;min-height:100vh}\n.card{width:300px;border-radius:14px;background:#fff;box-shadow:0 2px 12px #0002;padding:18px}\n.card h1{font-size:17px;margin:0 0 6px}.muted{color:#6b6a66}\nbutton{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;background:#1b1c1f;color:#fff;font-weight:600}\n</style></head><body>\n<div class=\"card\"><h1>Free talk</h1><div class=\"muted\">Talk about anything for 10 minutes.</div><button id=\"go\">Find a partner</button><div id=\"state\" class=\"muted\"></div></div>\n<script>document.getElementById('go').onclick=()=>{document.getElementById('state').textContent='Looking for a partner…'};</script>\n</body></html>\n"
+      ]
     },
     {
-      "type": "FOLLOWUP",
-      "name": "mobile-followups/from-acme-app-front.md",
-      "solution": "mobile",
+      "title": "FreeTalkTimer.cs",
+      "kind": "code",
+      "language": "csharp",
       "session": "free-talk-feature",
-      "meta": "1 new",
-      "age": "5m"
+      "by": "developer",
+      "age": "5m",
+      "versions": [
+        "public sealed class FreeTalkTimer\n{\n    public TimeSpan Remaining { get; private set; } = TimeSpan.FromMinutes(10);\n\n    public void Tick(TimeSpan elapsed)\n    {\n        Remaining = Remaining - elapsed;\n        if (Remaining < TimeSpan.Zero) Remaining = TimeSpan.Zero;\n    }\n}\n"
+      ]
     },
     {
-      "type": "CONTRACT",
-      "name": "contracts/push-preferences.md",
-      "solution": "root",
+      "title": "Push preferences contract",
+      "kind": "markdown",
       "session": "notifications-integration",
-      "meta": "locked",
-      "age": "22m"
+      "by": "agent",
+      "age": "22m",
+      "versions": [
+        "# Push preferences\n\n`GET /notifications/preferences` → `{ push: boolean, quietHours: { from, to } | null }`\n\n`PUT /notifications/preferences` with the same body → 204.\n"
+      ]
     },
     {
-      "type": "PR",
-      "name": "notifications-microservice #88 · push preferences",
-      "solution": "notifications-microservice",
-      "branch": "feature/push-prefs",
-      "session": "notifications-integration",
-      "meta": "open",
-      "age": "20m"
-    },
-    {
-      "type": "QA",
-      "name": "coverage-matrix.md · Free talk",
-      "solution": "root",
+      "title": "Free talk coverage matrix",
+      "kind": "csv",
       "session": "qa-free-talk",
-      "meta": "14/18",
-      "age": "9m"
+      "by": "agent",
+      "age": "9m",
+      "versions": [
+        "Requirement,Web 360,Mobile 360,State\nFT-1 Lobby shows the timer,yes,yes,covered\nFT-2 Empty state copy,yes,no,partial\nFT-3 Wrap-up opens after 10 min,yes,yes,covered\nFT-4 Leave ends the talk,no,no,open\n"
+      ]
     },
     {
-      "type": "BRANCH",
-      "name": "feature/acm-button-sizes",
-      "solution": "components-library-nuget",
+      "title": "Button sizes",
+      "kind": "svg",
       "session": "button-rollout",
-      "meta": "7 commits",
-      "age": "12m"
+      "by": "agent",
+      "age": "12m",
+      "versions": [
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"120\" viewBox=\"0 0 320 120\"><rect width=\"320\" height=\"120\" fill=\"#f4f3ef\"/><rect x=\"16\" y=\"40\" width=\"72\" height=\"28\" rx=\"6\" fill=\"#1b1c1f\"/><rect x=\"104\" y=\"34\" width=\"88\" height=\"36\" rx=\"7\" fill=\"#1b1c1f\"/><rect x=\"208\" y=\"28\" width=\"96\" height=\"44\" rx=\"8\" fill=\"#1b1c1f\"/><text x=\"52\" y=\"94\" font-family=\"sans-serif\" font-size=\"11\" text-anchor=\"middle\" fill=\"#6b6a66\">S</text><text x=\"148\" y=\"94\" font-family=\"sans-serif\" font-size=\"11\" text-anchor=\"middle\" fill=\"#6b6a66\">M</text><text x=\"256\" y=\"94\" font-family=\"sans-serif\" font-size=\"11\" text-anchor=\"middle\" fill=\"#6b6a66\">L</text></svg>\n"
+      ]
     },
     {
-      "type": "DOC",
-      "name": "rollout-checklist.md",
-      "solution": "root",
+      "title": "Monitoring notes",
+      "kind": "markdown",
+      "session": "prod-monitoring",
+      "by": "agent",
+      "age": "41m",
+      "versions": [
+        "# Monitoring notes\n\n- `NullReferenceException` in notifications: fixed in PR #412.\n- 2 escalations: billing timeouts, calendar sync lag.\n"
+      ]
+    },
+    {
+      "title": "Push preferences · PR summary",
+      "kind": "markdown",
+      "session": "notifications-integration",
+      "by": "agent",
+      "age": "20m",
+      "versions": [
+        "# PR #88 · push preferences\n\n- Adds `GET` / `PUT /notifications/preferences`.\n- Quiet hours stored per user.\n- Contract: `contracts/push-preferences.md`.\n"
+      ]
+    },
+    {
+      "title": "Empty-state reply draft",
+      "kind": "markdown",
+      "session": "qa-free-talk",
+      "by": "developer",
+      "age": "9m",
+      "versions": [
+        "Hi! The Free talk empty state reads \"No partner yet\" on web and \"Nobody here\" on mobile. Which copy is right?\n"
+      ]
+    },
+    {
+      "title": "Rollout checklist",
+      "kind": "markdown",
       "session": "button-rollout",
-      "meta": "7/12",
-      "age": "12m"
+      "by": "agent",
+      "age": "12m",
+      "versions": [
+        "# Button sizes rollout\n\n- [x] S\n- [x] M\n- [ ] L\n"
+      ]
     },
     {
-      "type": "DIFF",
-      "name": "Services/ReminderScheduler.cs",
-      "solution": "calendar-func",
-      "branch": "fix/timezone-dst",
+      "title": "ReminderScheduler.cs · DST fix",
+      "kind": "code",
+      "language": "csharp",
       "session": "calendar-func-fix",
-      "meta": "+14 −6",
-      "age": "20m"
+      "by": "agent",
+      "age": "20m",
+      "versions": [
+        "var local = TimeZoneInfo.ConvertTimeFromUtc(utc, zone);\nif (zone.IsInvalidTime(local)) local = local.AddHours(1);\n"
+      ]
     },
     {
-      "type": "PR",
-      "name": "notifications-microservice #412 · null-ref fix",
-      "solution": "notifications-microservice",
-      "branch": "fix/notif-nullref",
+      "title": "Escalations",
+      "kind": "csv",
       "session": "prod-monitoring",
-      "meta": "open",
-      "age": "41m"
-    },
-    {
-      "type": "DOC",
-      "name": "monitoring-notes.md",
-      "solution": "root",
-      "session": "prod-monitoring",
-      "meta": "2 escalations",
-      "age": "41m"
-    },
-    {
-      "type": "TICKET",
-      "name": "Reply draft: Free talk empty-state copy",
-      "solution": "root",
-      "session": "qa-free-talk",
-      "meta": "draft",
-      "age": "9m"
+      "by": "agent",
+      "age": "41m",
+      "versions": [
+        "Signature,Service,Owner\nTimeoutException,billing,developer\nSync lag,calendar,developer\n"
+      ]
     }
   ]
 }

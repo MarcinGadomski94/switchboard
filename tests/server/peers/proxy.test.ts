@@ -104,7 +104,8 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
       });
       const allowed = await b.call('POST', `/api/inbox/${encodeURIComponent(permission.id)}/actions/allow-once`);
       expect(allowed.status, JSON.stringify(allowed.body)).toBe(204);
-      await waitFor('A\'s permission decided', async () => ((await a.call('GET', '/api/inbox')).body as InboxItem[]).length === 0);
+      // D79: a Review card may join A's Inbox once the turn ends; only the permission item must be gone.
+      await waitFor('A\'s permission decided', async () => !((await a.call('GET', '/api/inbox')).body as InboxItem[]).some((entry) => entry.kind === 'permission'));
       await waitFor('the turn ended', async () => ['idle', 'done'].includes(((await b.call('GET', `/api/sessions/${encodeURIComponent(id)}`)).body as SessionDetail).status));
 
       // Events of the remote session reached B's /hub namespaced.

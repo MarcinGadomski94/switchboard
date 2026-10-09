@@ -28,7 +28,7 @@ Nothing outside Switchboard's own records is ever listed:
 - **Local branches:** merged into its base (or PR merged and every commit on a remote), or all its worktrees are gone, or all its sessions are closed / deleted. An older task branch (above) only when merged. Never one checked out in the main checkout, or in a worktree that is not itself listed (a branch held by a listed worktree is removed after it: "tick that too").
 - **Remote branches:** the same conditions, read from the remote-tracking refs of the last fetch (a scan makes no network call).
 - **Closed sessions:** closed longer ago than **Closed sessions … days** (1–3650, default 30, saved as `cleanup.closedSessionDays`). Never a running one.
-- **Data:** attachments past their 30 days (D57; normally already removed at start), files in `attachments/` no row owns and folders of sessions that no longer exist, chat exports in `handovers/` untouched for 30 days, take-over staging folders (`takeover/<op>`) of no running operation untouched for a day.
+- **Data:** attachments past their 30 days (D57; normally already removed at start), files in `attachments/` no row owns and folders of sessions that no longer exist, chat exports in `handovers/` untouched for 30 days, take-over staging folders (`takeover/<op>`) of no running operation untouched for a day. D89 ruling (2026-10-09): **saved artifacts whose session was deleted** (`session_id` NULL), one item each (`art:<id>`): the artifact with all its versions and, for an image, its folder `artifacts/<id>/`; the size is its versions' bytes. Not old ones with a session.
 
 ## What each item shows
 
@@ -39,6 +39,7 @@ Title (path, branch, session), its repo / session, reason chips, size (folders w
 - Ticked when the page opens: items that need no confirmation (a merged branch only when every worktree holding it is ticked too).
 - **Uncommitted changes** (a worktree): never ticked for you; the warning lists the files (up to 200). Removing it needs the dialog's extra confirmation listing them; only then is `git worktree remove --force` used. A change that appears after the preview stops that item.
 - **Unmerged local branches:** never ticked for you; the warning says how many commits are not in the base and how many are on no remote; extra confirmation.
+- **Orphaned artifacts (D89):** never ticked for you; no extra confirmation once ticked.
 - **Remote branches:** never ticked for you, and the group's checkbox never ticks them; each is ticked by hand and needs its own confirmation ("Delete these branches on their remotes").
 - **Clean up selected** opens the confirmation: the full list of what goes, then one block per needed confirmation with its items; **Clean up** stays disabled until each is ticked.
 

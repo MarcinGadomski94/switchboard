@@ -490,6 +490,37 @@ describe('Clean-up · sessions and data (D84)', () => {
   });
 });
 
+describe('Clean-up · orphaned artifacts (D89 ruling)', () => {
+  it('lists saved artifacts whose session was deleted, with their image files and sizes, unticked; the run removes exactly them', async () => {
+    const { w, dataDir, service } = await setup();
+    const gone = await session(w, 'gone', null);
+    const kept = await session(w, 'kept', null);
+    const text = (content: string) => ({ content, file: null, mediaType: null, size: Buffer.byteLength(content), createdBy: 'agent' as const });
+    await w.store.artifacts.create({ id: 'a000000001', sessionId: gone, title: 'Plan', kind: 'markdown', language: null, version: text('# Plan') });
+    await w.store.artifacts.addVersion('a000000001', { title: 'Plan', language: null, version: text('# Plan v2') });
+    const imageDir = path.join(dataDir, 'artifacts', 'a000000002');
+    await mkdir(imageDir, { recursive: true });
+    await writeFile(path.join(imageDir, '1.png'), 'pngbytes');
+    await w.store.artifacts.create({ id: 'a000000002', sessionId: gone, title: 'Screen', kind: 'image', language: null, version: { content: null, file: 'artifacts/a000000002/1.png', mediaType: 'image/png', size: 8, createdBy: 'agent' } });
+    await w.store.artifacts.create({ id: 'a000000003', sessionId: kept, title: 'Kept', kind: 'markdown', language: null, version: text('# Kept') });
+    await w.store.sessions.delete(gone);
+
+    const svc = service();
+    const scan = await svc.scan();
+    const orphans = byGroup(scan, 'data').filter((item) => item.id.startsWith('art:'));
+    expect(orphans.map((item) => [item.id, item.title, item.sizeBytes, item.selected, item.reasons, item.removes])).toEqual([
+      ['art:a000000002', 'Artifact “Screen”', 8, false, ['session-gone'], ['the artifact “Screen” and its 1 version', imageDir]],
+      ['art:a000000001', 'Artifact “Plan”', 15, false, ['session-gone'], ['the artifact “Plan” and its 2 versions']],
+    ]);
+    const done = await run(svc, scan, orphans.map((item) => item.id));
+    expect(done.summary).toMatchObject({ done: 2, failed: 0 });
+    expect(await w.store.artifacts.get('a000000001')).toBeNull();
+    expect(await w.store.artifacts.get('a000000002')).toBeNull();
+    expect(await exists(imageDir)).toBe(false);
+    expect(await w.store.artifacts.get('a000000003')).not.toBeNull();
+  });
+});
+
 describe('Clean-up · units', () => {
   it('statusPaths reads -z output with renames', () => {
     expect(statusPaths(' M a.txt\0?? dir/b c.txt\0R  new.txt\0old.txt\0')).toEqual(['a.txt', 'dir/b c.txt', 'new.txt']);

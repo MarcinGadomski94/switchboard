@@ -220,7 +220,6 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     const events: Worktree[] = [];
     m.on('worktreeRemovable', (worktree) => events.push(worktree));
     const url = 'https://github.com/acme/web-front/pull/231';
-    await w.store.artifacts.upsert({ id: 'pr-artifact', type: 'PR', name: 'web-front #231', url, sessionId });
 
     expect(await m.checkPullRequests()).toEqual([{ worktreeId: record.id, prState: null, removable: false, error: null }]);
     const checked = await w.store.worktrees.get(record.id);
@@ -232,13 +231,11 @@ describe('WorktreeManager · pull requests (gh pr view)', () => {
     await w.setPullRequests({ 'session/pr-flow': { number: 231, state: 'OPEN', url, headRefOid: await w.git(record.path, 'rev-parse', 'HEAD') } });
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'OPEN', removable: false });
     expect(await w.store.worktrees.get(record.id)).toMatchObject({ prNumber: 231, prUrl: url, prState: 'OPEN', removable: false });
-    expect((await w.store.artifacts.get('pr-artifact'))?.meta).toBe('open');
 
     await w.setPullRequests({ 'session/pr-flow': { number: 231, state: 'MERGED', url } });
     await writeFile(path.join(record.path, 'leftover.txt'), 'not committed\n');
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'MERGED', removable: false });
     expect(events).toEqual([]);
-    expect((await w.store.artifacts.get('pr-artifact'))?.meta).toBe('merged');
 
     await rm(path.join(record.path, 'leftover.txt'));
     expect((await m.checkPullRequests())[0]).toMatchObject({ prState: 'MERGED', removable: true });

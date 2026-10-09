@@ -15,7 +15,7 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' }
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -68,7 +68,7 @@ export const PRE_TUTORIAL_VERSION = '1.12.0';
 /** The version the D76–D84 features ship in. */
 const V1_13 = '1.13.0';
 
-/** The version D88, D90 and D91 ship in. */
+/** The version D88, D89, D90 and D91 ship in. */
 const V1_14 = '1.14.0';
 
 const SESSION: TourRoute = { view: 'session' };
@@ -427,6 +427,32 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['composer'],
         route: SESSION,
         missing: `${NO_SESSION}Its message box keeps what you type until you send it.`,
+      },
+    ],
+  },
+  {
+    id: 'saved-artifacts',
+    decision: 'D89',
+    version: V1_14,
+    title: 'Artifacts are saved on purpose',
+    steps: [
+      {
+        id: 'save',
+        title: 'Artifacts are saved on purpose',
+        what: "Agents save the deliverables you should see (reports, plans, docs, diagrams, mockups) as artifacts, with versions; nothing is collected automatically any more.",
+        todo: ['Ask the agent for a report or a plan: it saves it with its artifact_save tool.', "Or open an agent message's ⋯ and choose Save as artifact (code blocks have their own button)."],
+        anchors: ['message-menu', 'composer'],
+        route: SESSION,
+        missing: `${NO_SESSION}Its agent's messages get ⋯ → Save as artifact.`,
+      },
+      {
+        id: 'page',
+        title: 'Every artifact in one place',
+        what: "The Artifacts page lists every session's artifacts; one opens in its session's Artifacts tab with its versions, Compare, Download and Full screen.",
+        todo: ['Open Artifacts in the sidebar.', 'Filter by kind or session, then open one.'],
+        anchors: ['artifacts-filters', 'artifacts'],
+        route: { view: 'artifacts' },
+        missing: 'Artifacts sits in the sidebar.',
       },
     ],
   },

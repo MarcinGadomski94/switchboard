@@ -236,18 +236,12 @@ describe('SessionSupervisor · stream-json → typed events (gap #7, #8)', () =>
     expect(stored?.observedPermissionMode).toBe('acceptEdits');
   });
 
-  it('written files become artifacts (CONTRACT at the root; DOC + DIFF inside a solution)', async () => {
+  it('D89: written files no longer become artifacts (artifacts are saved on purpose)', async () => {
     const { w, session } = await start({}, { task: 'Write the contract. [fake:write contracts/free-talk.md]' });
     await waitForStatus(w.store, session.id, ['done']);
     await w.supervisor.sendMessage(session.id, 'And the notes. [fake:write microfrontends/acme-app-front/docs/notes.md]');
-    await until(async () => (await w.store.artifacts.list({ sessionId: session.id })).length === 3, 'three artifacts');
-    const artifacts = await w.store.artifacts.list({ sessionId: session.id });
-    const summary = artifacts.map((a) => [a.type, a.name, a.solution]).sort();
-    expect(summary).toEqual([
-      ['CONTRACT', 'contracts/free-talk.md', null],
-      ['DIFF', 'docs · 1 file', 'acme-app-front'],
-      ['DOC', 'docs/notes.md', 'acme-app-front'],
-    ]);
+    await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('acme-app-front') || undefined, 'the notes written');
+    expect(await w.store.artifacts.list({ sessionId: session.id })).toEqual([]);
     expect(await readFile(path.join(w.workspace, 'contracts', 'free-talk.md'), 'utf8')).toContain('fake-claude');
   });
 });

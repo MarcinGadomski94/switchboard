@@ -16,6 +16,7 @@ import { SystemItemService } from './inbox/system-items.ts';
 import { LoopTracker } from './loops/tracker.ts';
 import { registerPeerForwarding } from './api/machines.ts';
 import { AttachmentService } from './attachments/service.ts';
+import { ArtifactService } from './artifacts/service.ts';
 import { PeerService } from './peers/service.ts';
 import { HookService } from './hooks/service.ts';
 import { TakeoverRunner } from './takeover/runner.ts';
@@ -316,6 +317,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerPeerForwarding(app, peers);
   // D57: attachments live in the data folder (`<dataDir>/attachments/<session>/`).
   const attachments = options.attachments ?? new AttachmentService({ dataDir: config.dataDir, store: options.store });
+  // D89: artifacts saved on purpose (texts in the database, images in `<dataDir>/artifacts/<id>/`).
+  const artifacts = new ArtifactService({ store: options.store, bus, dataDir: config.dataDir, webRoot: options.webRoot, announce: (sessionId) => supervisor.announce(sessionId) });
   // D61: its helper processes end with the app (a sign-in in progress is cancelled).
   let mcp = options.mcp;
   if (!mcp) {
@@ -470,7 +473,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const tutorial = options.tutorial ?? new TutorialService({ store: options.store, appVersion: await appVersion(), autoOpen: !config.demo && tutorialAutoOpen() });
   // D88: the sessions' drafts (kept on this machine; a paired machine's session's on that machine).
   const drafts = new DraftService({ store: options.store, bus });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

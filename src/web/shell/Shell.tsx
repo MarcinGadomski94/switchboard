@@ -29,7 +29,7 @@ function View({ route }: { readonly route: Route }) {
     case 'inbox':
       return <InboxView />;
     case 'session':
-      return <SessionView key={route.id} sessionId={route.id} tab={route.tab} agentId={route.agentId ?? null} />;
+      return <SessionView key={route.id} sessionId={route.id} tab={route.tab} agentId={route.agentId ?? null} artifactId={route.artifactId ?? null} />;
     case 'solutions':
       return <SolutionsView />;
     case 'schedules':

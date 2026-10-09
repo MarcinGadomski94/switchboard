@@ -139,23 +139,24 @@ describe('seedDemo (gap #21)', () => {
       ]),
     );
 
+    // D89: the saved artifacts (texts, versions oldest first; the latest version's age).
     const artifacts = await store.artifacts.list();
     expect(artifacts).toHaveLength(13);
-    expect(artifacts.find((a) => a.name === 'Pages/FreeTalk · 6 files')).toMatchObject({
-      type: 'DIFF',
-      solution: 'acme-app-front',
-      branch: 'feature/free-talk-360',
+    expect(artifacts.find((a) => a.title === 'Free talk · implementation plan')).toMatchObject({
+      kind: 'markdown',
       sessionId: 'free-talk-feature',
-      meta: '+284 −12',
-      createdAt: minutesAgo(4),
+      createdBy: 'agent',
+      versions: 2,
+      updatedAt: minutesAgo(1),
     });
-    // Same-age rows keep the prototype's order (M4.6: the session tab lists them newest first).
-    expect((await store.artifacts.list({ sessionId: 'free-talk-feature' })).map((a) => a.name)).toEqual([
-      'contracts/free-talk.md',
-      'Pages/FreeTalk · 6 files',
-      'Views/FreeTalkView · 5 files',
-      'mobile-followups/from-acme-app-front.md',
+    expect((await store.artifacts.list({ sessionId: 'free-talk-feature' })).map((a) => [a.title, a.kind])).toEqual([
+      ['Free talk · implementation plan', 'markdown'],
+      ['Free talk flow', 'mermaid'],
+      ['Free talk card · mockup', 'html'],
+      ['FreeTalkTimer.cs', 'code'],
     ]);
+    const plan = artifacts.find((a) => a.title === 'Free talk · implementation plan')!;
+    expect((await store.artifacts.version(plan.id, 1))?.createdAt).toBe(minutesAgo(2));
 
     expect((await store.tools.list()).map((t) => [t.id, t.name, t.url, t.position])).toEqual([
       ['cm', 'Codebase Memory', 'http://localhost:13000', 0],
@@ -182,7 +183,7 @@ describe('seedDemo (gap #21)', () => {
 
   it('rolls back everything when a row fails', async () => {
     const data = await loadDemoData();
-    const broken = { ...data, artifacts: [...data.artifacts, { ...data.artifacts[0]!, type: 'NOPE' as never }] };
+    const broken = { ...data, artifacts: [...data.artifacts, { ...data.artifacts[0]!, kind: 'NOPE' as never }] };
     await expect(seedDemo(store, broken, { now: NOW })).rejects.toThrow();
     expect(await store.sessions.list()).toEqual([]);
     expect(await store.settings.get(DEMO_SEED_KEY)).toBeUndefined();

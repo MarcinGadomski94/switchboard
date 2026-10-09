@@ -307,7 +307,7 @@
 @media (max-width: 1279px) {
   .sb-art-cols,
   .sb-art-row {
-    grid-template-columns: 80px minmax(0, 1fr) 220px 140px 70px 44px;
+    grid-template-columns: 100px minmax(0, 1fr) 200px 56px 64px 44px;
   }
 }
 
@@ -327,12 +327,13 @@
     scrollbar-width: none;
   }
 
-  .sb-art-filter {
+  .sb-art-filter,
+  .sb-art-session-filter {
     flex: none;
     white-space: nowrap;
   }
 
-  /* The column heads go; each artifact is a card: type · name · age, then where, then its session and note. */
+  /* The column heads go; each artifact is a card: kind · title · age, then its session, then its versions and who saved it. */
   .sb-art-cols {
     display: none;
   }

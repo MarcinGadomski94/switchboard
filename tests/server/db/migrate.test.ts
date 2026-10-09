@@ -817,7 +817,7 @@ describe('0022 plain folders (D59)', () => {
     const file = path.join(tmp, 'realistic', 'switchboard.db');
     const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 22) });
     try {
-      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      await seedDemo(earlier, { ...(await loadDemoData()), artifacts: [] }, { now: new Date('2026-09-28T12:00:00.000Z') });
       const repo = await earlier.folders.create({ path: '/Users/dev/tool', canonicalPath: '/real/tool', kind: 'repo', label: 'Tools' });
       await earlier.folders.markUsed(repo.id);
       const made = await earlier.sessions.create({ name: 'tool-work', claudeSessionId: 'c-tool', cwd: '/real/tool', root: '/real/tool', rootKind: 'repo', folderId: repo.id });
@@ -894,7 +894,7 @@ describe('0023 session provider (D62)', () => {
     const file = path.join(tmp, 'd62', 'switchboard.db');
     const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 23) });
     try {
-      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      await seedDemo(earlier, { ...(await loadDemoData()), artifacts: [] }, { now: new Date('2026-09-28T12:00:00.000Z') });
       await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older' });
     } finally {
       await earlier.close();
@@ -943,7 +943,7 @@ describe('0024 CLI accounts (D63)', () => {
     const file = path.join(tmp, 'd63', 'switchboard.db');
     const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 24) });
     try {
-      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-09-28T12:00:00.000Z') });
+      await seedDemo(earlier, { ...(await loadDemoData()), artifacts: [] }, { now: new Date('2026-09-28T12:00:00.000Z') });
       await earlier.sessions.create({ name: 'older-claude', claudeSessionId: 'c-older' });
       await earlier.sessions.create({ name: 'older-codex', claudeSessionId: 'c-codex', provider: 'codex' });
       await earlier.usage.add({ source: 'get_usage', sessionId: null, fiveHourPct: 12, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, raw: {} });
@@ -1063,7 +1063,7 @@ describe('0025 session take-over (D65)', () => {
     const file = path.join(tmp, 'd65', 'switchboard.db');
     const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 25) });
     try {
-      await seedDemo(earlier, await loadDemoData(), { now: new Date('2026-10-04T12:00:00.000Z') });
+      await seedDemo(earlier, { ...(await loadDemoData()), artifacts: [] }, { now: new Date('2026-10-04T12:00:00.000Z') });
       await earlier.sessions.create({ name: 'older', claudeSessionId: 'c-older-65' });
     } finally {
       await earlier.close();
@@ -1146,6 +1146,33 @@ describe('0029 sidebar shared layout (D71)', () => {
         ],
         loose: [],
       });
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe('0039 saved artifacts (D89)', () => {
+  it('adds artifacts_saved and artifact_versions, empty; the derived rows of 0001 stay where they are, unread', async () => {
+    const shipped = await loadMigrations();
+    const file = path.join(tmp, 'd89', 'switchboard.db');
+    const earlier = await openStore(file, { migrations: shipped.filter((m) => m.version < 39) });
+    try {
+      const session = await earlier.sessions.create({ name: 'older-89', claudeSessionId: 'c-older-89' });
+      earlier.db
+        .prepare("INSERT INTO artifacts (id, type, name, session_id, created_at, updated_at) VALUES ('old-1', 'DOC', 'notes.md', ?, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')")
+        .run(session.id);
+    } finally {
+      await earlier.close();
+    }
+    const store = await openStore(file);
+    try {
+      expect(store.migrations.applied).toContain(39);
+      expect(Number(store.db.prepare('SELECT count(*) AS n FROM artifacts').get()?.['n'])).toBe(1);
+      expect(await store.artifacts.list()).toEqual([]);
+      const [older] = await store.sessions.list();
+      const saved = await store.artifacts.create({ id: 'a000000039', sessionId: older?.id ?? null, title: 'Plan', kind: 'markdown', language: null, version: { content: '# Plan', file: null, mediaType: null, size: 6, createdBy: 'agent' } });
+      expect(saved).toMatchObject({ versions: 1, kind: 'markdown', sessionId: older?.id });
     } finally {
       await store.close();
     }

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { ArtifactAuthor, ArtifactKind } from '../../core/api.ts';
 import type { ArtifactType, ScheduleRunResult, SessionStatus } from '../../core/model.ts';
 
 /**
@@ -204,15 +205,15 @@ export interface DemoLoop {
   readonly expiresInDays: number | null;
 }
 
-/** A global artifact row (ART). `solution` is `root` for workspace-root files. */
+/** D89: a saved artifact (`data/artifacts.json`): its versions' texts, oldest first; `age` is the latest version's. */
 export interface DemoArtifact {
-  readonly type: ArtifactType;
-  readonly name: string;
-  readonly solution: string;
-  readonly branch?: string;
+  readonly title: string;
+  readonly kind: Exclude<ArtifactKind, 'image'>;
+  readonly language?: string;
   readonly session: string;
-  readonly meta: string;
+  readonly by: ArtifactAuthor;
   readonly age: string;
+  readonly versions: readonly string[];
 }
 
 /** A History row (HIST). `branches` is `sol ⎇ branch · sol ⎇ branch` or `various`. */

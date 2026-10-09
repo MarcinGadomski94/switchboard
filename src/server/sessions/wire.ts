@@ -115,17 +115,19 @@ export function toEvent(record: EventRecord): SessionEvent {
   };
 }
 
-/** An artifact row as the API returns it. */
+/** D89: a saved artifact as the API returns it (no content). */
 export function toArtifact(record: ArtifactRecord): Artifact {
   return {
     id: record.id,
-    type: record.type,
-    name: record.name,
-    solution: record.solution,
-    branch: record.branch,
     sessionId: record.sessionId,
-    meta: record.meta,
+    title: record.title,
+    kind: record.kind,
+    language: record.language,
+    createdBy: record.createdBy,
+    versions: record.versions,
+    size: record.size,
     createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   };
 }
 

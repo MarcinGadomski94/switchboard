@@ -1,111 +1,55 @@
-import { describe, expect, it } from 'vitest';
-import type { Artifact, FileDiff } from '../../src/core/api.ts';
-import { NO_ARTIFACTS, artifactRows, diffFilesOf, fileCount, locationTitle, storedCount } from '../../src/web/views/session/artifacts.ts';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { artifactRawUrl } from '../../src/web/api/client.ts';
+import { KIND_FILTERS, artifactMeta, codeDraft, codeLanguage, kindTag, messageDraft, renderedMarkdown, viewerModes } from '../../src/web/views/session/artifacts.ts';
 
-function artifact(patch: Partial<Artifact> & Pick<Artifact, 'id' | 'type' | 'name'>): Artifact {
-  return { solution: null, branch: null, sessionId: 's1', meta: null, createdAt: '2026-09-28T10:00:00.000Z', ...patch };
-}
+/** D89: the artifact views' pure model (`src/web/views/session/artifacts.ts`) and their addresses. */
 
-function file(patch: Partial<FileDiff> & Pick<FileDiff, 'path'>): FileDiff {
-  return { solution: 'web-front', branch: 'session/s1', added: 1, removed: 0, lines: ['+x'], uncommitted: true, ...patch };
-}
-
-describe('Artifacts tab model (M4.6)', () => {
-  it('shows the INFO row without artifacts (the Solutions detail form)', () => {
-    expect(artifactRows([], [])).toEqual([NO_ARTIFACTS]);
-    expect(NO_ARTIFACTS).toMatchObject({ tag: 'INFO', name: 'No artifacts', meta: '' });
+describe('D89 · artifact rows and the viewer', () => {
+  it('tags, meta and modes', () => {
+    expect(kindTag({ kind: 'code', language: 'ts' })).toBe('CODE · ts');
+    expect(kindTag({ kind: 'mermaid', language: null })).toBe('DIAGRAM');
+    expect(artifactMeta({ versions: 3, size: 1536, createdBy: 'agent' })).toBe('v3 · 1.5 KB · agent');
+    expect(artifactMeta({ versions: 1, size: 10, createdBy: 'developer' })).toBe('v1 · 10 B · you');
+    expect(viewerModes('markdown', 1)).toEqual(['rendered', 'source']);
+    expect(viewerModes('html', 2)).toEqual(['rendered', 'source', 'diff']);
+    expect(viewerModes('image', 4)).toEqual(['rendered']);
   });
 
-  it('renders the prototype’s free-talk-feature rows from the demo artifacts (stored meta kept)', () => {
-    const rows = artifactRows(
-      [
-        artifact({ id: 'a', type: 'CONTRACT', name: 'contracts/free-talk.md', solution: 'root', meta: 'locked' }),
-        artifact({ id: 'b', type: 'DIFF', name: 'Pages/FreeTalk · 6 files', solution: 'acme-app-front', branch: 'feature/free-talk-360', meta: '+284 −12' }),
-        artifact({ id: 'c', type: 'DIFF', name: 'Views/FreeTalkView · 5 files', solution: 'mobile', branch: 'feature/free-talk-360', meta: '+231 −4' }),
-        artifact({ id: 'd', type: 'FOLLOWUP', name: 'mobile-followups/from-acme-app-front.md', solution: 'mobile', meta: '1 new' }),
-      ],
-      // The demo diff provider has fewer files than the mock counts: a stored meta wins over git.
-      [file({ solution: 'acme-app-front', branch: 'feature/free-talk-360', path: 'Pages/FreeTalk/FreeTalk.razor', added: 118 })],
-    );
-    expect(rows.map((r) => [r.tag, r.name, r.meta])).toEqual([
-      ['CONTRACT', 'contracts/free-talk.md', 'locked'],
-      ['DIFF', 'acme-app-front · 6 files', '+284 −12'],
-      ['DIFF', 'mobile · 5 files', '+231 −4'],
-      ['FOLLOWUP', 'mobile-followups/from-acme-app-front.md', '1 new'],
-    ]);
-    expect(rows.map((r) => r.key)).toEqual(['a', 'b', 'c', 'd']);
-    expect(rows[1]?.title).toBe('acme-app-front ⎇ feature/free-talk-360');
+  it('renders code as one highlighted block, Markdown as it is (Mermaid draws in its frame)', () => {
+    expect(renderedMarkdown('markdown', null, '# a')).toBe('# a');
+    expect(renderedMarkdown('code', 'ts', 'const a = 1;')).toBe('```ts\nconst a = 1;\n```');
+    expect(renderedMarkdown('mermaid', null, 'graph TD')).toBeNull();
+    expect(renderedMarkdown('csv', null, 'a,b')).toBeNull();
   });
 
-  it('counts a DIFF without stored meta from the session’s git diff (solution + branch)', () => {
-    const arts = [
-      artifact({ id: 'diff:web', type: 'DIFF', name: 'src · 2 files', solution: 'web-front', branch: 'session/s1' }),
-      artifact({ id: 'diff:mobile', type: 'DIFF', name: 'docs/in-place.md', solution: 'mobile' }),
-    ];
-    const files = [
-      file({ path: 'README.md', added: 1, removed: 1 }),
-      file({ path: 'src/a.txt', added: 3 }),
-      file({ path: 'src/b.txt', added: 0, removed: 2 }),
-      file({ path: 'src/other-branch.txt', branch: 'feature/x', added: 9 }),
-      file({ solution: 'mobile', branch: 'main', path: 'docs/in-place.md', added: 1 }),
-    ];
-    const rows = artifactRows(arts, files);
-    // Git has 3 files on session/s1 (a Bash-made README change included), not the 2 the recorder saw written.
-    expect(rows.map((r) => [r.name, r.meta])).toEqual([
-      ['web-front · 3 files', '+4 −3'],
-      ['mobile · 1 file', '+1'],
-    ]);
-    expect(rows[1]?.title).toBe('mobile');
+  it('drafts: a message (markdown, its heading) and a code block (code, its language)', () => {
+    expect(messageDraft('## Weekly report\n\nAll good.')).toEqual({ title: 'Weekly report', kind: 'markdown', language: null, content: '## Weekly report\n\nAll good.' });
+    expect(codeDraft('x = 1', 'python', 'Here is the fix:\n```python\nx = 1\n```')).toMatchObject({ title: 'Here is the fix:', kind: 'code', language: 'python', content: 'x = 1' });
+    expect(codeDraft('x', null, null).title).toBe('Snippet');
+    expect(codeLanguage(['hljs', 'language-ts'])).toBe('ts');
+    expect(codeLanguage('language-sql')).toBe('sql');
+    expect(codeLanguage(undefined)).toBeNull();
   });
 
-  it('keeps the stored count and an empty meta when git has nothing for the DIFF', () => {
-    const rows = artifactRows([artifact({ id: 'd', type: 'DIFF', name: 'Pages/FreeTalk · 6 files', solution: 'web-front', branch: 'session/s1' })], []);
-    expect(rows.map((r) => [r.name, r.meta])).toEqual([['web-front · 6 files', '']]);
-    const single = artifactRows([artifact({ id: 'e', type: 'DIFF', name: 'Services/ReminderScheduler.cs', solution: 'calendar-func', meta: '+14 −6' })], []);
-    expect(single.map((r) => [r.name, r.meta])).toEqual([['calendar-func · Services/ReminderScheduler.cs', '+14 −6']]);
+  it('the page\'s kind filters cover every kind once', () => {
+    const covered = KIND_FILTERS.flatMap((filter) => filter.kinds ?? []);
+    expect([...covered].sort()).toEqual(['code', 'csv', 'html', 'image', 'markdown', 'mermaid', 'svg']);
   });
 
-  it('shows binary-only git changes as —', () => {
-    const rows = artifactRows([artifact({ id: 'd', type: 'DIFF', name: '1 file', solution: 'web-front', branch: 'session/s1' })], [file({ path: 'logo.png', added: 0, removed: 0, lines: [] })]);
-    expect(rows[0]).toMatchObject({ name: 'web-front · 1 file', meta: '—' });
+  /** The router module, imported at run time (the server tsconfig has no JSX; Vitest transforms it). */
+  const ROUTER = '../../src/web/router.tsx';
+  type RouteLike = { readonly view: string; readonly id?: string; readonly tab?: string; readonly artifactId?: string };
+  let parseRoute: (pathname: string) => RouteLike;
+  let routePath: (route: RouteLike) => string;
+  beforeAll(async () => {
+    ({ parseRoute, routePath } = (await import(/* @vite-ignore */ ROUTER)) as { parseRoute: typeof parseRoute; routePath: typeof routePath });
   });
 
-  it('a DIFF without a branch takes the solution’s files on branches no other DIFF of it names', () => {
-    const worktree = artifact({ id: 'w', type: 'DIFF', name: '1 file', solution: 'web-front', branch: 'session/s1' });
-    const inPlace = artifact({ id: 'p', type: 'DIFF', name: '1 file', solution: 'web-front' });
-    const files = [file({ path: 'a.txt' }), file({ path: 'b.txt', branch: 'main', added: 5 }), file({ path: 'c.txt', branch: null, added: 2 })];
-    expect(diffFilesOf(worktree, [worktree, inPlace], files).map((f) => f.path)).toEqual(['a.txt']);
-    expect(diffFilesOf(inPlace, [worktree, inPlace], files).map((f) => f.path)).toEqual(['b.txt', 'c.txt']);
-    expect(diffFilesOf(artifact({ id: 'x', type: 'DIFF', name: '1 file' }), [], files)).toEqual([]);
-  });
-
-  it('shows every other type’s stored name and meta verbatim, empty meta when none is known', () => {
-    const rows = artifactRows(
-      [
-        artifact({ id: 'pr', type: 'PR', name: 'web-front #231', solution: 'web-front', meta: 'merged' }),
-        artifact({ id: 'br', type: 'BRANCH', name: 'feature/x', solution: 'web-front', branch: 'feature/x' }),
-        artifact({ id: 'qa', type: 'QA', name: 'coverage-matrix.md' }),
-        artifact({ id: 'doc', type: 'DOC', name: 'docs/notes.md', solution: 'web-front', branch: 'session/s1', meta: '' }),
-        artifact({ id: 'tk', type: 'TICKET', name: 'Reply draft', meta: 'draft' }),
-      ],
-      [],
-    );
-    expect(rows.map((r) => [r.tag, r.name, r.meta, r.title])).toEqual([
-      ['PR', 'web-front #231', 'merged', 'web-front'],
-      ['BRANCH', 'feature/x', '', 'web-front ⎇ feature/x'],
-      ['QA', 'coverage-matrix.md', '', 'workspace root'],
-      ['DOC', 'docs/notes.md', '', 'web-front ⎇ session/s1'],
-      ['TICKET', 'Reply draft', 'draft', 'workspace root'],
-    ]);
-  });
-
-  it('helpers', () => {
-    expect(fileCount(1)).toBe('1 file');
-    expect(fileCount(6)).toBe('6 files');
-    expect(storedCount('Pages/FreeTalk · 6 files')).toBe('6 files');
-    expect(storedCount('1 file')).toBe('1 file');
-    expect(storedCount('Services/ReminderScheduler.cs')).toBeNull();
-    expect(storedCount('notes · 12 filesystem')).toBeNull();
-    expect(locationTitle({ solution: null, branch: null })).toBe('workspace root');
+  it('addresses: the tab on an artifact, the raw bytes', () => {
+    expect(parseRoute('/sessions/s1/artifacts/a1b2c3d4e5')).toEqual({ view: 'session', id: 's1', tab: 'artifacts', artifactId: 'a1b2c3d4e5' });
+    expect(routePath({ view: 'session', id: 'r~m~s1', tab: 'artifacts', artifactId: 'a1' })).toBe('/sessions/r~m~s1/artifacts/a1');
+    expect(routePath({ view: 'session', id: 's1', tab: 'artifacts' })).toBe('/sessions/s1/artifacts');
+    expect(artifactRawUrl('s 1', 'a1', 2)).toBe('/api/sessions/s%201/artifacts/a1/versions/2/raw');
+    expect(artifactRawUrl('s1', 'a1', 2, true)).toBe('/api/sessions/s1/artifacts/a1/versions/2/raw?download');
   });
 });

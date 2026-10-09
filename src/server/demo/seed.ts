@@ -402,18 +402,20 @@ async function insertAll(store: Store, data: DemoData, now: Date, base: Date): P
     });
   }
 
-  // Inserted last-to-first: rows of the same age tie on `updated_at`, and the list's
-  // `rowid DESC` tie-break then keeps the prototype's order (M4.6, docs/demo.md).
-  for (const a of [...data.artifacts].reverse()) {
-    const repos = at(store, minutesBefore(now, ageMinutes(a.age)));
-    await repos.artifacts.create({
-      type: a.type,
-      name: a.name,
-      solution: a.solution,
-      branch: a.branch ?? null,
-      sessionId: sessionIds.get(a.session) ?? null,
-      meta: a.meta,
-    });
+  // D89: the saved artifacts, oldest first (the list shows the newest first), each version a minute apart.
+  const artifacts = [...data.artifacts].sort((x, y) => ageMinutes(y.age) - ageMinutes(x.age));
+  for (const [index, a] of artifacts.entries()) {
+    const id = `de${index.toString(16).padStart(8, '0')}`;
+    const latest = ageMinutes(a.age);
+    for (const [n, content] of a.versions.entries()) {
+      const repos = at(store, minutesBefore(now, latest + (a.versions.length - 1 - n)));
+      const version = { content, file: null, mediaType: null, size: Buffer.byteLength(content, 'utf8'), createdBy: a.by };
+      if (n === 0) {
+        await repos.artifacts.create({ id, sessionId: sessionIds.get(a.session) ?? null, title: a.title, kind: a.kind, language: a.language ?? null, version });
+      } else {
+        await repos.artifacts.addVersion(id, { title: a.title, language: a.language ?? null, version });
+      }
+    }
   }
 
   for (const loop of data.loops) {

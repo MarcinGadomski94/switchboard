@@ -584,3 +584,14 @@
   line-height: 1.45;
   color: var(--status-fail);
 }
+
+/* D89: a saved artifact's row opens its session's Artifacts tab. */
+.sb-sol-art--link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sb-sol-art--link:hover .sb-sol-art-name {
+  text-decoration: underline;
+}
