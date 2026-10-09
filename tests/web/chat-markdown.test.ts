@@ -16,13 +16,19 @@ const COMPONENT = '../../src/web/views/session/ChatMarkdown.tsx';
 
 let render: (text: string) => string;
 
+/** D92: a fenced block as rendered: the wrapper, the `<pre>`, the Copy tool (no Save without a handler), the status line. */
+const CODE_BLOCK =
+  /<div class="sb-md-code">(<pre>[\s\S]*?<\/pre>)<div class="sb-md-code-tools"><button type="button" class="sb-button sb-md-code-copy" data-testid="chat-code-copy" data-state="idle" aria-label="Copy code" title="Copy code"><\/button><\/div><span class="sb-visually-hidden" role="status" aria-live="polite"><\/span><\/div>/g;
+
 beforeAll(async () => {
   const { ChatMarkdown } = (await import(/* @vite-ignore */ COMPONENT)) as { ChatMarkdown: (props: object) => unknown };
   render = (text) => {
     const html = renderToStaticMarkup(createElement(ChatMarkdown as never, { text }));
     const open = '<div class="sb-md" data-testid="chat-markdown">';
     expect(html.startsWith(open) && html.endsWith('</div>')).toBe(true);
-    return html.slice(open.length, -'</div>'.length);
+    // D92: each fenced block sits in `.sb-md-code` with its tools (Copy) and a status line; the content checks below
+    // read the block itself, so the wrapper is checked once here and taken off.
+    return html.slice(open.length, -'</div>'.length).replace(CODE_BLOCK, (_all, pre: string) => pre);
   };
 });
 
