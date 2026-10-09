@@ -21,8 +21,8 @@ describe('copy and defaults', () => {
     expect(readKnownSettings({})).toMatchObject({ 'agents.standingInstruction': DEFAULT_STANDING_INSTRUCTION, 'agents.standingInstruction.enabled': true });
     expect(SETTING_DEFAULTS['agents.standingInstruction.enabled']).toBe(true);
     // D68: the todo-list sentence made it longer (still short: it costs tokens in every session); D70: priority and estimate (502); D75: in progress when started, done when finished, always (550).
-    // D89: the artifact sentence added; the bound moved up by that much only.
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(740);
+    // D89: the artifact sentence added; the bound moved up by that much only. D94: the loop sentence (826), likewise.
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(830);
   });
 });
 
