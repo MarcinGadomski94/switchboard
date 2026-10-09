@@ -140,7 +140,7 @@ export const PROCESS_CHANGED = 'process-changed';
 /** A one-shot cron may fire this much before its minute (the CLI's documented early firing is up to 90 s). */
 const ONE_SHOT_EARLY_MS = 2 * 60_000;
 
-/** The job id in a `CronCreate` result (`Scheduled recurring job 94da9cf2 (…)`), `null` when none. */
+/** The job id in a `CronCreate` result (`Scheduled recurring job 1a2b3c4d (…)`), `null` when none. */
 export function cronJobId(result: string): string | null {
   const match = /\bjob\s+["'`]?([A-Za-z0-9][\w-]*)/i.exec(result);
   return match?.[1] ?? null;
