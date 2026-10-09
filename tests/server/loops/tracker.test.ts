@@ -219,3 +219,61 @@ describe('loop progress in the session\'s own folder (D14)', () => {
     expect(await sessionWorkingFolders(w.store, ws)).toEqual([path.join(w.workspace, 'other', 'loopy'), w.workspace]);
   });
 });
+
+describe('LoopTracker · unlisted schedules', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('a supervised session: the CLI-written prompts come from its transcript, the turns and the process from its stored events; the row goes with the process', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'sb-loops-unlisted-'));
+    const store = await openTempStore(dir);
+    const transcript = path.join(dir, 'c-watch.jsonl');
+    const prompt = 'Production monitoring shift: sweep the error logs.';
+    // Relative to the wall clock: `toSession` hides a series that stopped by the real time.
+    const base = Date.now() - 100 * 60_000;
+    const times = [0, 30, 60, 90].map((m) => new Date(base + m * 60_000).toISOString());
+    const lines = times.map((timestamp, i) => ({
+      parentUuid: i === 0 ? null : `u${i - 1}`,
+      isSidechain: false,
+      type: 'user',
+      message: { role: 'user', content: prompt },
+      promptSource: 'system',
+      uuid: `u${i}`,
+      timestamp,
+      entrypoint: 'sdk-cli',
+      cwd: dir,
+      sessionId: 'c-watch',
+    }));
+    await writeFile(transcript, `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`);
+    let clock = new Date(base + 95 * 60_000);
+    try {
+      const session = await store.sessions.create({ name: 'watch', claudeSessionId: 'c-watch', solutions: [], root: dir, rootKind: 'repo', cwd: dir });
+      await store.events.append({ sessionId: session.id, kind: 'text', ts: new Date(base - 10 * 60_000).toISOString(), label: 'Continued in Switchboard', payload: { type: 'lifecycle', action: 'continued' } });
+      for (const ts of times) {
+        const end = new Date(Date.parse(ts) + 40_000).toISOString();
+        await store.events.append({ sessionId: session.id, kind: 'ok', ts: end, label: 'Nothing new.', payload: { type: 'result', isError: false, taskNotification: false } });
+      }
+      tracker = new LoopTracker({ store, events: { on: () => () => undefined }, now: () => clock, debounceMs: 20 });
+      tracker.useTranscripts(async (record) => (record.claudeSessionId === 'c-watch' ? transcript : null));
+      const [row] = await tracker.refresh(session.id);
+      expect(row).toMatchObject({ kind: 'Unlisted', label: 'Unlisted schedule in the CLI', iteration: 4, nextFireAt: null, expiresAt: null });
+      expect(row?.iterations.map((it) => it.label)).toEqual(['Nothing new.', 'Nothing new.', 'Nothing new.', 'Nothing new.']);
+      expect(row?.note).toMatch(/^Prompt: "Production monitoring shift: sweep the error logs\."\. Started by the CLI itself about every 30 min;/);
+      // The API shape carries it while the series runs, not after it stopped.
+      const record = await store.sessions.get(session.id);
+      expect((await toSession(store, record!)).loops.map((loop) => loop.kind)).toEqual(['Unlisted']);
+
+      // Pause: the process ended, the row goes.
+      await store.events.append({ sessionId: session.id, kind: 'text', ts: new Date(base + 96 * 60_000).toISOString(), label: 'Paused', payload: { type: 'lifecycle', action: 'paused' } });
+      clock = new Date(base + 97 * 60_000);
+      expect(await tracker.refresh(session.id)).toEqual([]);
+    } finally {
+      await tracker?.close();
+      tracker = undefined;
+      await store.close();
+    }
+  });
+});

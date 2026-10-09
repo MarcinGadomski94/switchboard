@@ -21,9 +21,35 @@
  * process's session-only schedules end there. A restart with the same entrypoint is
  * not visible here (the `version` field is not used: conservative, a false process
  * change would drop a live loop).
+ * Unlisted schedules: a prompt the CLI wrote itself with no visible job
+ * ({@link cliPromptText}) also becomes a `cli-prompt` event (`unlisted-loops.ts`).
  */
 import { type TranscriptEntry, newestChain, transcriptItems } from '../transcript-sync.ts';
 import { type LoopEventInput, PROCESS_CHANGED } from './loops.ts';
+import { CLI_PROMPT } from './unlisted-loops.ts';
+
+/**
+ * The text of a prompt the CLI wrote itself with no visible job (`promptSource:
+ * "system"`, no `scheduledTaskId`, not a task notification, main chain), else `null`.
+ */
+export function cliPromptText(entry: TranscriptEntry): string | null {
+  if (entry['type'] !== 'user' || entry['promptSource'] !== 'system' || entry['isSidechain'] === true) return null;
+  if (entry['turnOrigin'] === 'task_notification') return null;
+  if (entry['scheduledTaskId'] !== undefined && entry['scheduledTaskId'] !== null) return null;
+  const message = entry['message'];
+  const content = message && typeof message === 'object' && !Array.isArray(message) ? (message as Record<string, unknown>)['content'] : undefined;
+  let text = '';
+  if (typeof content === 'string') text = content;
+  else if (Array.isArray(content)) {
+    if (content.some((block) => block && typeof block === 'object' && (block as Record<string, unknown>)['type'] === 'tool_result')) return null;
+    text = content
+      .map((block) => (block && typeof block === 'object' && (block as Record<string, unknown>)['type'] === 'text' ? String((block as Record<string, unknown>)['text'] ?? '') : ''))
+      .join('\n');
+  }
+  text = text.trim();
+  if (text === '' || text.startsWith('<task-notification>')) return null;
+  return text;
+}
 
 function firstLine(text: string, limit = 120): string {
   const line = (text.split(/\r?\n/).find((l) => l.trim() !== '') ?? '').trim();
@@ -78,6 +104,12 @@ export function transcriptLoopEvents(entries: readonly TranscriptEntry[]): LoopE
         out.push({ ts, agentId: null, label: PROCESS_CHANGED, payload: { type: 'lifecycle', action: PROCESS_CHANGED } });
       }
       seenEntrypoint = entrypoint;
+    }
+    // A prompt the CLI wrote itself with no visible job: a possible unlisted schedule (`unlisted-loops.ts`).
+    const cliPrompt = cliPromptText(entry);
+    if (cliPrompt !== null) {
+      const ts = typeof entry['timestamp'] === 'string' && !Number.isNaN(Date.parse(entry['timestamp'])) ? new Date(entry['timestamp']).toISOString() : lastTs;
+      out.push({ ts, agentId: null, label: firstLine(cliPrompt), payload: { type: CLI_PROMPT, text: cliPrompt } });
     }
     const items = transcriptItems([entry]);
     let lastText: string | null = null;

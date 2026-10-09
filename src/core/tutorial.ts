@@ -70,6 +70,7 @@ const V1_13 = '1.13.0';
 
 /** The version D88, D89, D90 and D91 ship in. */
 const V1_14 = '1.14.0';
+const V1_15 = '1.15.0';
 
 const SESSION: TourRoute = { view: 'session' };
 const NO_SESSION = 'Start a session with + New session to see this. ';
@@ -503,6 +504,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Hover a code block in a chat (on a touch screen the buttons are always shown).', 'Press Copy; it reads "Copied ✓" for a moment.'],
         anchors: ['code-copy', 'composer'],
         missing: 'Open a session whose agent wrote a code block: Copy sits at the top right of the block.',
+      },
+    ],
+  },
+  {
+    id: 'unlisted-schedules',
+    decision: 'D93',
+    version: V1_15,
+    title: 'Schedules the CLI keeps to itself',
+    steps: [
+      {
+        id: 'card',
+        title: 'Schedules the CLI keeps to itself',
+        what: 'When a session\'s CLI keeps starting the same prompt on its own, about every so often, and no job for it is visible (CronList does not list it), Schedules & loops shows it as "Unlisted schedule in the CLI": how many times it ran, about how often, when it last ran, and an estimate of the next time. It goes when the prompts stop or the session\'s process ends.',
+        todo: ['Open Schedules & loops.', 'An "Unlisted schedule in the CLI" card shows the prompt in its note; Open session goes to the session.'],
+        anchors: ['loop-cards', 'schedules'],
+        route: { view: 'schedules' },
+        missing: 'Shown on Schedules & loops once a session\'s CLI has started the same prompt by itself at least three times at a regular interval.',
       },
     ],
   },

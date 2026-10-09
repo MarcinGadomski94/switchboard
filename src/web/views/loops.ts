@@ -7,7 +7,8 @@
  */
 import type { Loop, LoopIterationResult, Session, TerminalLoop } from '../../core/api.ts';
 import { terminalStatus } from '../../core/terminal-status.ts';
-import { loopNotExpired } from '../../core/derive/loops.ts';
+import { loopShown } from '../../core/derive/loops.ts';
+import { UNLISTED_KIND, formatInterval, seriesInterval } from '../../core/derive/unlisted-loops.ts';
 import type { SessionStatus } from '../../core/model.ts';
 import { type SessionMachine, offlineReason } from '../../core/peers.ts';
 import { displayTitle } from '../../core/session-title.ts';
@@ -134,10 +135,31 @@ export function formatBreaker(loop: Pick<Loop, 'breakerCount' | 'breakerState'>)
 /** The three facts: Iteration / cap · Next / expires · Breaker. */
 export function loopFacts(loop: Loop, now: Date): readonly [LoopFact, LoopFact, LoopFact] {
   const value = (n: number | null): string => (n === null ? UNKNOWN : String(n));
+  if (loop.kind === UNLISTED_KIND) return unlistedFacts(loop, now);
   return [
     { k: 'Iteration / cap', v: `${value(loop.iteration)} / ${value(loop.cap)}` },
     { k: 'Next / expires', v: `${formatNextFire(loop.nextFireAt, now)} / ${formatExpiry(loop.expiresAt, now)}` },
     { k: 'Breaker', v: formatBreaker(loop) },
+  ];
+}
+
+/**
+ * The facts of an unlisted schedule (a series the CLI starts itself): no job is
+ * visible, so no cap, next firing, expiry or breaker. **Iteration** = the prompts
+ * seen in the current process; **Every / last** = the interval estimated from them
+ * (`~30 min`) and the last prompt's time; **Expected next** = last + interval,
+ * marked as an estimate, "—" when it cannot be estimated or is already past.
+ */
+export function unlistedFacts(loop: Loop, now: Date): readonly [LoopFact, LoopFact, LoopFact] {
+  const times = loop.iterations.map((it) => (it.ts ? Date.parse(it.ts) : Number.NaN)).filter((t) => !Number.isNaN(t));
+  const interval = seriesInterval(times);
+  const last = times.at(-1);
+  const lastText = last === undefined ? UNKNOWN : formatNextFire(new Date(last).toISOString(), now);
+  const next = interval !== null && last !== undefined && last + interval > now.getTime() ? `~${formatNextFire(new Date(last + interval).toISOString(), now)} (estimate)` : UNKNOWN;
+  return [
+    { k: 'Iteration', v: loop.iteration === null ? UNKNOWN : String(loop.iteration) },
+    { k: 'Every / last', v: `${interval === null ? UNKNOWN : formatInterval(interval)} / ${lastText}` },
+    { k: 'Expected next', v: next },
   ];
 }
 
@@ -151,7 +173,7 @@ export function loopCards(sessions: readonly Session[], now: Date, terminalLoops
   for (const session of sessions) {
     for (const loop of session.loops ?? []) {
       // D93: a page left open past a loop's expiry drops its card (the row goes at the next refresh).
-      if (!loopNotExpired(loop, now)) continue;
+      if (!loopShown(loop, now)) continue;
       cards.push({
         index: cards.length,
         sessionCreatedAt: session.createdAt,
@@ -176,7 +198,7 @@ export function loopCards(sessions: readonly Session[], now: Date, terminalLoops
   // D52: loops of terminal sessions Switchboard does not follow (this machine's and the paired machines').
   for (const entry of terminalLoops) {
     const loop = entry.loop;
-    if (!loopNotExpired(loop, now)) continue;
+    if (!loopShown(loop, now)) continue;
     const status = terminalStatus(entry.terminal.status);
     cards.push({
       index: cards.length,
