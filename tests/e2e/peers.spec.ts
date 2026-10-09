@@ -137,7 +137,11 @@ test('P2: a peer\'s session in the sidebar with its tag; the full view drives it
   expect((await answered).status()).toBe(204);
   await expect(view.getByTestId('question-card')).toHaveCount(0);
   await expect(view.getByTestId('chat-answer')).toHaveCount(2);
-  expect(((await a.call('GET', '/api/inbox')).body as unknown[]).length).toBe(0);
+  // The batch leaves A's Inbox (polled: the answer reaches A's Inbox read asynchronously, and A may add other
+  // kinds of items as the turn goes on, e.g. its review card, so only the question items are counted).
+  await expect
+    .poll(async () => ((await a.call('GET', '/api/inbox')).body as Array<{ kind: string }>).filter((item) => item.kind === 'questions').length)
+    .toBe(0);
 
   // A message from B; its permission request is answered in B's Inbox.
   const input = page.getByTestId('chat-input');
