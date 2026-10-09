@@ -8,6 +8,15 @@ import { toSession } from '../sessions/wire.ts';
 import type { SupervisorEvents } from '../supervisor/supervisor.ts';
 import { type FoundProgress, findLoopProgress, sessionWorkingFolders } from './progress.ts';
 import { toLoop } from './wire.ts';
+import { TranscriptLoopEvents } from './terminal.ts';
+import { CLI_PROMPT } from '../../core/derive/unlisted-loops.ts';
+import type { SessionRecord } from '../db/repos/sessions.ts';
+
+/** A turn end of a session with no loop rows looks for unlisted schedules at most this often (it reads the transcript). */
+const UNTRACKED_CHECK_MS = 60_000;
+
+/** At most this many transcripts' prompt events are kept in memory. */
+const MAX_CACHED_TRANSCRIPTS = 32;
 
 /** Where the tracker hears about session events (the SessionSupervisor). */
 export interface LoopEventSource {
@@ -84,6 +93,12 @@ export class LoopTracker {
   #closed = false;
   /** D52: where a session's loop events come from instead of its stored events (a hooked session's transcript); `null` = the stored events. */
   #eventsOf: ((sessionId: string) => Promise<readonly LoopEventInput[] | null>) | null = null;
+  /** Unlisted schedules: where a supervised Claude Code session's transcript is (`null` = not read). */
+  #transcriptOf: ((session: SessionRecord) => Promise<string | null>) | null = null;
+  readonly #transcripts = new TranscriptLoopEvents();
+  readonly #recentFiles = new Set<string>();
+  /** Sessions with no loop rows whose turn end asked for an unlisted-schedule check (one timer each). */
+  readonly #slowTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(options: LoopTrackerOptions) {
     this.#store = options.store;
@@ -109,6 +124,15 @@ export class LoopTracker {
     this.#eventsOf = source;
   }
 
+  /**
+   * Unlisted schedules (`docs/derivations.md` → *Loop cards*): a supervised Claude
+   * Code session's prompts the CLI wrote itself are read from its transcript (the
+   * stream has no such prompt text), merged into its stored events.
+   */
+  useTranscripts(find: (session: SessionRecord) => Promise<string | null>): void {
+    this.#transcriptOf = find;
+  }
+
   listen(source: Pick<LoopEventSource, 'on'>): void {
     if (this.#closed) return;
     this.#off.push(
@@ -131,6 +155,20 @@ export class LoopTracker {
       if (!this.#tracked.has(sessionId)) this.#tracked.set(sessionId, tracked);
     }
     if (tracked) this.schedule(sessionId);
+    // Unlisted schedules: a session with no loop rows is looked at again within a minute of its activity
+    // (a supervised turn's result, a hooked session's imported text; neither names a loop tool).
+    else if ((this.#transcriptOf || this.#eventsOf) && ['result', 'assistant'].includes(String(asRecord(event.payload)?.['type']))) this.#scheduleSlow(sessionId);
+  }
+
+  /** A session with no loop rows was active: look for an unlisted schedule within {@link UNTRACKED_CHECK_MS}. */
+  #scheduleSlow(sessionId: string): void {
+    if (this.#closed || this.#slowTimers.has(sessionId)) return;
+    const timer = setTimeout(() => {
+      this.#slowTimers.delete(sessionId);
+      void this.refresh(sessionId).catch(this.#onError);
+    }, UNTRACKED_CHECK_MS);
+    timer.unref?.();
+    this.#slowTimers.set(sessionId, timer);
   }
 
   /**
@@ -198,7 +236,25 @@ export class LoopTracker {
     for (const off of this.#off.splice(0)) off();
     for (const timer of this.#timers.values()) clearTimeout(timer);
     this.#timers.clear();
+    for (const timer of this.#slowTimers.values()) clearTimeout(timer);
+    this.#slowTimers.clear();
     await Promise.allSettled([...this.#running.values()]);
+  }
+
+  /** The prompts the CLI wrote itself in the session's transcript (Claude Code, supervised); `[]` when not read. */
+  async #cliPrompts(session: SessionRecord): Promise<LoopEventInput[]> {
+    if (!this.#transcriptOf || session.provider !== 'claude') return [];
+    const file = await this.#transcriptOf(session).catch(() => null);
+    if (!file) return [];
+    // Bounded cache: the newest files read stay.
+    this.#recentFiles.delete(file);
+    this.#recentFiles.add(file);
+    if (this.#recentFiles.size > MAX_CACHED_TRANSCRIPTS) {
+      const oldest = this.#recentFiles.values().next().value;
+      if (oldest !== undefined) this.#recentFiles.delete(oldest);
+      this.#transcripts.retain(this.#recentFiles);
+    }
+    return (await this.#transcripts.events(file)).filter((event) => asRecord(event.payload)?.['type'] === CLI_PROMPT);
   }
 
   async #refreshNow(sessionId: string): Promise<Loop[]> {
@@ -210,7 +266,8 @@ export class LoopTracker {
       observed = deriveLoops(own, { now: this.#now(), status: session.status, mainAgentId: null });
     } else {
       // D93: in time order (insert order on ties): imported terminal turns may be stored after later events.
-      const events = (await this.#store.events.list(sessionId)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || a.id - b.id);
+      const stored: LoopEventInput[] = await this.#store.events.list(sessionId);
+      const events = [...stored, ...(await this.#cliPrompts(session))].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || order(a) - order(b));
       const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
       observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
     }
@@ -244,6 +301,12 @@ export class LoopTracker {
     }
     return (await this.#store.loops.list(sessionId)).map(toLoop);
   }
+}
+
+/** Insert order of a stored event; a transcript prompt goes before stored events of the same moment. */
+function order(event: LoopEventInput): number {
+  const id = (event as { id?: unknown }).id;
+  return typeof id === 'number' ? id : -1;
 }
 
 function rowFields(loop: ObservedLoop, progress: FoundProgress | null): LoopFields {

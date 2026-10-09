@@ -39,9 +39,21 @@
 import type { LoopIteration, LoopIterationResult } from '../api.ts';
 import type { SessionStatus } from '../model.ts';
 import { nextCronMatch, parseCron } from './cron-next.ts';
+import {
+  CLI_PROMPT,
+  UNLISTED_KIND,
+  UNLISTED_LABEL,
+  type UnlistedSeries,
+  promptKey,
+  samePrompt,
+  seriesHash,
+  seriesInterval,
+  seriesRunning,
+  unlistedNote,
+} from './unlisted-loops.ts';
 
 /** Observed source of a loop (the `loops.kind` column). */
-export type LoopSource = '/loop' | 'CronCreate' | 'ScheduleWakeup' | 'Workflow';
+export type LoopSource = '/loop' | 'CronCreate' | 'ScheduleWakeup' | 'Workflow' | typeof UNLISTED_KIND;
 
 /**
  * One iteration of a loop (a strip cell): `ts` = when it finished (its `result`
@@ -154,6 +166,21 @@ export function loopNotExpired(loop: { readonly expiresAt: string | null }, now:
   return loop.expiresAt === null || !(Date.parse(loop.expiresAt) <= now.getTime());
 }
 
+/**
+ * `false` for a stored loop that is no longer shown: past its expiry
+ * ({@link loopNotExpired}), or an unlisted schedule whose series stopped (no prompt
+ * for more than twice its interval, `unlisted-loops.ts`).
+ */
+export function loopShown(
+  loop: { readonly kind: string; readonly expiresAt: string | null; readonly iterations: ReadonlyArray<{ readonly ts: string | null }> },
+  now: Date,
+): boolean {
+  if (!loopNotExpired(loop, now)) return false;
+  if (loop.kind !== UNLISTED_KIND) return true;
+  const times = loop.iterations.map((it) => (it.ts ? Date.parse(it.ts) : Number.NaN)).filter((t) => !Number.isNaN(t));
+  return seriesRunning(times, now.getTime());
+}
+
 /** `true` for a message that starts a `/loop`. */
 export function isLoopCommand(text: string): boolean {
   return /^\/loop(\s|$)/.test(text.trim());
@@ -182,6 +209,18 @@ interface LoopState {
   iterations: Array<{ result: LoopIterationResult | 'open'; ts: string | null; label: string | null; toolUseId?: string }>;
   schedule: Schedule | null;
   stop: 'process-ended' | 'cron-deleted' | null;
+  /** The prompts its schedules fire (the `/loop` text, `CronCreate` / `ScheduleWakeup` `prompt`): a CLI-started series with one of them is this loop's. */
+  prompts?: string[];
+}
+
+function addPrompt(loop: LoopState, prompt: unknown): void {
+  if (typeof prompt !== 'string' || prompt.trim() === '') return;
+  (loop.prompts ??= []).push(prompt);
+}
+
+/** The prompt of `/loop [interval] <prompt>`. */
+function loopCommandPrompt(text: string): string {
+  return text.trim().replace(/^\/loop\s*/, '').replace(/^\d+\s*[smhd](\s|$)/i, '').trim();
 }
 
 /** `true` when the loop's schedule can be what fired a self-started turn that began at `turnStart` (D93). */
@@ -263,6 +302,12 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
   let pending: Array<LoopState | null> = [];
   let selfTurn: { ts: string } | null = null;
   const main = options.mainAgentId ?? null;
+  /** CLI-started prompt series of the current process, by {@link promptKey}. */
+  const series = new Map<string, UnlistedSeries>();
+  /** The last process boundary was an end: no process, so no series. */
+  let processEnded = false;
+  /** The prompt the CLI wrote for the turn now running (until its `result`). */
+  let turnPrompt: string | null = null;
 
   const scheduled = (): LoopState[] =>
     [...loops.values()].filter((loop) => loop.kind !== 'Workflow' && loop.stop === null && loop.schedule !== null);
@@ -292,6 +337,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
           schedule: null,
           stop: null,
         };
+        addPrompt(loop, loopCommandPrompt(text));
         loops.set('loop', loop);
         pending.push(loop);
       } else {
@@ -305,6 +351,10 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       if (!PROCESS_END_ACTIONS.has(action) && !PROCESS_START_ACTIONS.has(action) && action !== PROCESS_CHANGED) continue;
       pending = [];
       selfTurn = null;
+      // A CLI-started series belongs to its process.
+      series.clear();
+      turnPrompt = null;
+      processEnded = PROCESS_END_ACTIONS.has(action);
       for (const loop of loops.values()) {
         for (const it of loop.iterations) if (it.result === 'open') it.result = 'none';
         if (loop.kind !== 'Workflow' && loop.stop === null && (loop.schedule !== null || loop.kind === '/loop')) loop.stop = 'process-ended';
@@ -312,13 +362,42 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       continue;
     }
 
+    if (type === CLI_PROMPT) {
+      const text = typeof payload['text'] === 'string' ? payload['text'] : '';
+      const key = promptKey(text);
+      if (key === '') continue;
+      processEnded = false;
+      const entry = series.get(key) ?? { key, text, occurrences: [] };
+      for (const it of entry.occurrences) if (it.result === 'open') it.result = 'none';
+      entry.text = text;
+      entry.occurrences.push({ ts: event.ts, result: 'open', label: null });
+      series.set(key, entry);
+      turnPrompt = text;
+      continue;
+    }
+
     if (type === 'result') {
       const label = event.label || null;
       const result: LoopIterationResult = payload['isError'] === true ? 'fail' : 'ok';
+      if (payload['taskNotification'] !== true) {
+        // The turn of the newest CLI-started prompt still open ends here.
+        let open: { result: LoopIterationResult | 'open'; ts: string; label: string | null } | null = null;
+        for (const entry of series.values()) {
+          const last = entry.occurrences.at(-1);
+          if (last && last.result === 'open' && last.ts <= event.ts && (!open || last.ts > open.ts)) open = last;
+        }
+        if (open) {
+          open.result = result;
+          open.label = label;
+        }
+      }
       if (payload['taskNotification'] === true) {
         selfTurn = null;
         continue;
       }
+      // A turn whose CLI-written prompt is known counts only for a loop that fires that prompt (or one whose prompt is unknown).
+      const prompt = turnPrompt;
+      turnPrompt = null;
       if (pending.length > 0) {
         const loop = pending.shift() ?? null;
         const first = loop?.iterations[0];
@@ -334,6 +413,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       selfTurn = null;
       const target = scheduled()
         .filter((loop) => canFire(loop, turnStart))
+        .filter((loop) => prompt === null || !loop.prompts?.length || loop.prompts.some((p) => samePrompt(p, prompt)))
         .sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? ''))
         .at(-1);
       if (!target || !target.schedule) continue;
@@ -411,6 +491,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
         const owner = loopCommand();
         if (owner) {
           setSchedule(owner, { cron, wakeup: null }, event.ts);
+          addPrompt(owner, tool.input['prompt']);
         } else {
           const key = `cron-${tool.toolUseId || event.ts}`;
           const loop: LoopState = loops.get(key) ?? {
@@ -424,6 +505,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
             stop: null,
           };
           setSchedule(loop, { cron, wakeup: null }, event.ts);
+          addPrompt(loop, tool.input['prompt']);
           loops.set(key, loop);
         }
         continue;
@@ -446,6 +528,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
             stop: null,
           };
         setSchedule(loop, { wakeup: { at }, cron: loop.schedule?.cron ?? null }, event.ts);
+        addPrompt(loop, tool.input['prompt']);
         loops.set(loop.key, loop);
         continue;
       }
@@ -460,6 +543,8 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
 
   const now = options.now.getTime();
   const out: ObservedLoop[] = [];
+  /** Prompts of the live scheduled loops listed: they explain a CLI-started series with the same prompt. */
+  const livePrompts: string[] = [];
   for (const loop of loops.values()) {
     const iterations: LoopIterationEntry[] = loop.iterations.map((it) => ({
       result: it.result === 'open' ? openResult(options.status) : it.result,
@@ -490,6 +575,7 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       const turn = selfTurn.ts;
       const newest = scheduled()
         .filter((candidate) => canFire(candidate, turn))
+        .filter((candidate) => turnPrompt === null || !candidate.prompts?.length || candidate.prompts.some((p) => samePrompt(p, turnPrompt ?? '')))
         .sort((a, b) => (a.schedule?.scheduledAt ?? '').localeCompare(b.schedule?.scheduledAt ?? ''))
         .at(-1);
       if (newest === loop) iterations.push({ result: openResult(options.status), ts: selfTurn.ts, label: null });
@@ -501,6 +587,8 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       const firstTurnOpen = loop.kind === '/loop' && loop.stop === null && loop.iterations[0]?.result === 'open';
       if (loop.stop !== null || (nextFireAt === null && !firstTurnOpen)) continue;
     }
+
+    if (loop.kind !== 'Workflow') livePrompts.push(...(loop.prompts ?? []));
 
     const notes: string[] = [];
     if (cron?.recurring && !expired) notes.push(SESSION_ONLY_NOTE);
@@ -518,6 +606,33 @@ export function deriveLoops(events: readonly LoopEventInput[], options: LoopDeri
       expiresAt,
       note: notes.length > 0 ? notes.join(' ') : null,
     });
+  }
+
+  // Recurring turns the CLI starts itself with no job Switchboard saw (`unlisted-loops.ts`).
+  if (!processEnded) {
+    for (const entry of series.values()) {
+      const times = entry.occurrences.map((it) => Date.parse(it.ts));
+      if (!seriesRunning(times, now)) continue;
+      if (livePrompts.some((prompt) => samePrompt(prompt, entry.text))) continue;
+      const interval = seriesInterval(times) ?? 0;
+      const firstLine = (entry.text.split(/\r?\n/).find((l) => l.trim() !== '') ?? '').trim();
+      const iterations: LoopIterationEntry[] = entry.occurrences.map((it) => ({
+        result: it.result === 'open' ? openResult(options.status) : it.result,
+        ts: it.ts,
+        label: it.label,
+      }));
+      out.push({
+        key: `unlisted-${seriesHash(entry.key)}`,
+        kind: UNLISTED_KIND,
+        label: UNLISTED_LABEL,
+        startedAt: entry.occurrences[0]?.ts ?? options.now.toISOString(),
+        iteration: entry.occurrences.length,
+        iterations: iterations.slice(-MAX_STORED_ITERATIONS),
+        nextFireAt: null,
+        expiresAt: null,
+        note: unlistedNote(firstLine.length > 120 ? `${firstLine.slice(0, 119)}…` : firstLine, interval),
+      });
+    }
   }
   return out;
 }

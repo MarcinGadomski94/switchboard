@@ -313,6 +313,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // D52: a hooked terminal session's loops are derived from its imported events, like a supervised session's.
   loops.listen(hooks);
   loops.useEventsOf((sessionId) => hooks.loopEvents(sessionId));
+  // Unlisted schedules: a supervised Claude Code session's CLI-written prompts come from its transcript.
+  loops.useTranscripts((session) => (session.hooked ? Promise.resolve(null) : supervisor.findTranscript(session.claudeSessionId)));
   // D48: a request that names a peer's id goes to that peer (before any route handler reads the local store).
   registerPeerForwarding(app, peers);
   // D57: attachments live in the data folder (`<dataDir>/attachments/<session>/`).

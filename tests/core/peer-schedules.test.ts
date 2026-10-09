@@ -64,7 +64,8 @@ describe('D52 terminal transcript → loop events', () => {
 
   it('a typed /loop with CronCreate and one firing of its own: iteration 2, the cron\'s next firing and expiry', () => {
     const events = transcriptLoopEvents(parseTranscript(ndjson(terminalLoopLines({ sessionId: 'cs1', cwd, start }))));
-    expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'assistant', 'result']);
+    expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'cli-prompt', 'assistant', 'result']);
+    // The scheduled firing's prompt (`promptSource: "system"`, no job id in this probe shape) is a `cli-prompt`; the live /loop with that prompt explains it.
     expect(events[0]?.payload).toEqual({ type: 'user', text: '/loop 5m check the build' });
     expect(events[1]?.payload).toMatchObject({ type: 'tool', name: 'CronCreate', result: expect.stringMatching(/^Scheduled recurring job a5207d74/), isError: false });
     const [loop] = deriveLoops(events, { now: new Date('2026-09-29T10:06:00.000Z'), status: 'idle', mainAgentId: null });
@@ -75,7 +76,7 @@ describe('D52 terminal transcript → loop events', () => {
 
   it('D52 probe shapes: one result per message (a thinking line and a text line share its id), after its last line; two scheduled firings (isMeta prompts) are iterations 2 and 3', () => {
     const events = transcriptLoopEvents(parseTranscript(ndjson(terminalLoopLines({ sessionId: 'cs1', cwd, start, fires: 2 }))));
-    expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'assistant', 'result', 'assistant', 'result']);
+    expect(events.map((event) => (event.payload as { type: string }).type)).toEqual(['user', 'tool', 'assistant', 'result', 'cli-prompt', 'assistant', 'result', 'cli-prompt', 'assistant', 'result']);
     expect(events.filter((event) => (event.payload as { type: string }).type === 'result').map((event) => event.label)).toEqual(['Build is green.', 'Still green.', 'Green again.']);
     // The skill's body and the scheduled prompts are meta lines: not user messages.
     expect(events.filter((event) => (event.payload as { type: string }).type === 'user')).toHaveLength(1);

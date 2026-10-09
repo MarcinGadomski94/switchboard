@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Loop, Session } from '../../src/core/api.ts';
 import { NEED_BORDER, formatBreaker, formatExpiry, formatNextFire, loopCards, loopFacts, stripCells } from '../../src/web/views/loops.ts';
+import { UNLISTED_KIND, UNLISTED_LABEL } from '../../src/core/derive/unlisted-loops.ts';
 
 // Monday 2026-09-28 14:03 local.
 const NOW = new Date(2026, 8, 28, 14, 3, 0);
@@ -162,6 +163,29 @@ describe('loops view · cards', () => {
     const live = loop({ id: 'loop:s1:cron-a', expiresAt: new Date(NOW.getTime() + 3_600_000).toISOString() });
     const gone = loop({ id: 'loop:s1:cron-b', expiresAt: new Date(NOW.getTime() - 1).toISOString() });
     expect(loopCards([session({ loops: [live, gone] })], NOW).map((card) => card.id)).toEqual(['loop:s1:cron-a']);
+  });
+
+  it('an unlisted schedule: iteration count, the estimated interval and last prompt, an expected next marked as an estimate; gone once the series stops', () => {
+    const at = (minutesAgo: number) => new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
+    const unlisted = loop({
+      id: 'loop:s1:unlisted-abc',
+      kind: UNLISTED_KIND,
+      label: UNLISTED_LABEL,
+      iteration: 3,
+      iterations: [70, 40, 10].map((m) => ({ result: 'ok' as const, ts: at(m), label: null })),
+      note: 'Prompt: "Sweep the logs.". Started by the CLI itself about every 30 min.',
+    });
+    const [card] = loopCards([session({ loops: [unlisted] })], NOW);
+    expect(card?.kind).toBe(UNLISTED_LABEL);
+    expect(card?.facts).toEqual([
+      { k: 'Iteration', v: '3' },
+      { k: 'Every / last', v: '~30 min / 13:53' },
+      { k: 'Expected next', v: '~14:23 (estimate)' },
+    ]);
+    // Late (past the estimate, within two intervals): no expected time is claimed.
+    expect(loopFacts(unlisted, new Date(NOW.getTime() + 25 * 60_000))[2]).toEqual({ k: 'Expected next', v: '—' });
+    // Stopped (no prompt for more than two intervals): no card.
+    expect(loopCards([session({ loops: [unlisted] })], new Date(NOW.getTime() + 51 * 60_000))).toEqual([]);
   });
 
   it('reads a session without the additive field (older server) as no loops', () => {

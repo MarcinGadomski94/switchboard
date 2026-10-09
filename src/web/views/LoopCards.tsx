@@ -95,7 +95,7 @@ export function LoopCards() {
   const state = sessions === null ? (fetched.error ? 'error' : 'loading') : 'ready';
 
   return (
-    <div className="sb-loops" data-testid="loop-cards" data-state={state} data-count={cards.length}>
+    <div className="sb-loops" data-testid="loop-cards" data-tour="loop-cards" data-state={state} data-count={cards.length}>
       {state === 'ready' && cards.length === 0 ? (
         <div className="sb-loops__empty" data-testid="loop-cards-empty">
           No loops yet. A card appears when a session runs /loop, ScheduleWakeup, CronCreate or Workflow.
