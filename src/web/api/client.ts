@@ -2,6 +2,7 @@ import type { CheckpointPlan, SessionCheckpoints } from '../../core/checkpoints.
 import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TakeoverPreview, TakeoverRun } from '../../core/takeover.ts';
 import type { Review, ReviewActionId } from '../../core/reviews.ts';
+import type { InstructionApplyResult, InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { AccountProfile, AccountSettings } from '../../core/accounts.ts';
 import type {
   DiffScope,
@@ -25,7 +26,10 @@ import type {
   AnswerBatch,
   AttachRequest,
   Artifact,
+  ArtifactDetail,
   ArtifactListItem,
+  ArtifactSaveInput,
+  ArtifactSaveResult,
   CodebaseMemoryStatus,
   ContinueConversation,
   FileDiff,
@@ -200,6 +204,10 @@ export const api = {
   stopBackground: (id: string, body: StopBackgroundRequest = {}) => request<StopBackgroundResult>('POST', `/api/sessions/${enc(id)}/background/stop`, body),
   /** D83: continue the session in a fresh one (202 once the handover turn started; a peer's session id is forwarded). */
   freshSession: (id: string) => request<FreshContinueResult>('POST', `/api/sessions/${enc(id)}/fresh`, {}),
+  /** D91: give the session's process the current standing instruction (idle → restarted, busy → after its turn). */
+  reloadInstruction: (id: string) => request<InstructionReloadResult<Session>>('POST', `/api/sessions/${enc(id)}/reload-instruction`, {}),
+  /** D91: Settings → Apply to open sessions (this machine's). */
+  applyInstruction: () => request<InstructionApplyResult>('POST', '/api/settings/standing-instruction/apply', {}),
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
@@ -321,7 +329,17 @@ export const api = {
   /** D52: the loops of terminal sessions Switchboard does not follow, this machine's and the paired machines' (last known). */
   terminalLoops: () => request<TerminalLoop[]>('GET', '/api/terminal-loops'),
 
-  artifacts: (params: { readonly type?: string; readonly q?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
+  /** D89: every saved artifact (this machine's and the paired machines'), newest first; `kind` = kinds separated by commas. */
+  artifacts: (params: { readonly kind?: string; readonly q?: string; readonly session?: string } = {}) => request<ArtifactListItem[]>('GET', `/api/artifacts${query(params)}`),
+  /** D89: a session's saved artifacts, newest first. */
+  sessionArtifacts: (sessionId: string) => request<Artifact[]>('GET', `/api/sessions/${enc(sessionId)}/artifacts`),
+  /** D89: one artifact with its versions and one version's text (the latest unless `version`). */
+  artifact: (sessionId: string, artifactId: string, version?: number) =>
+    request<ArtifactDetail>('GET', `/api/sessions/${enc(sessionId)}/artifacts/${enc(artifactId)}${query({ version: version === undefined ? undefined : String(version) })}`),
+  /** D89: Save as artifact (201); with `id`, a new version of that artifact. */
+  saveArtifact: (sessionId: string, body: ArtifactSaveInput) => request<ArtifactSaveResult>('POST', `/api/sessions/${enc(sessionId)}/artifacts`, body),
+  /** D89: 204. */
+  deleteArtifact: (sessionId: string, artifactId: string) => request<void>('DELETE', `/api/sessions/${enc(sessionId)}/artifacts/${enc(artifactId)}`),
   /** D62 P7: `cli` adds the Codex / OpenCode terminal conversations. */
   history: (q?: string, cli = false) => request<HistoryItem[]>('GET', `/api/history${query({ q, cli: cli ? '1' : undefined })}`),
   /** D16, additive: a terminal conversation continues in Switchboard as the same conversation (201 Session; 409 `ContinueRefusal`s, docs/derivations.md → History). */
@@ -544,4 +562,9 @@ export interface AccountSignIn {
   readonly canPasteBack: boolean;
   readonly startedAt: string;
   readonly expiresAt: string;
+}
+
+/** D89: the URL of an artifact version's bytes (an html one is framed sandboxed, an svg / image is an `<img>`; `download` makes it a download). */
+export function artifactRawUrl(sessionId: string, artifactId: string, n: number, download = false): string {
+  return `/api/sessions/${enc(sessionId)}/artifacts/${enc(artifactId)}/versions/${n}/raw${download ? '?download' : ''}`;
 }

@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { ATTACHMENT_UPLOAD_BODY_MAX } from '../../core/attachments.ts';
+import { ARTIFACT_SAVE_BODY_MAX } from '../../core/artifacts.ts';
 import { isTailscaleIPv4, parseIPv4 } from '../../core/peers.ts';
 import { LOOPBACK_HOST } from '../config.ts';
 import type { MachineRecord } from '../db/repos/machines.ts';
@@ -140,6 +141,8 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
   // D57: uploads carry a file (base64) and get the attachments' own body limit; everything else keeps 1 MiB.
   app.post('/peer/v1/api/sessions/:id/attachments', { bodyLimit: ATTACHMENT_UPLOAD_BODY_MAX }, api);
   app.post('/peer/v1/api/attachments', { bodyLimit: ATTACHMENT_UPLOAD_BODY_MAX }, api);
+  // D89: Save as artifact into that machine's session carries up to 2 MB of text.
+  app.post('/peer/v1/api/sessions/:id/artifacts', { bodyLimit: ARTIFACT_SAVE_BODY_MAX }, api);
   app.route({
     method: ['GET', 'POST', 'PUT', 'DELETE'],
     url: '/peer/v1/api/*',

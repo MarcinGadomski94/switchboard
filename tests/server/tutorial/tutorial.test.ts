@@ -76,8 +76,8 @@ describe('core tutorial rules', () => {
     }
   });
 
-  it("seeds a 1–3 step mini-tour for each of D76–D84, unique ids, after the pre-tutorial version", () => {
-    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D79', 'D80', 'D81', 'D82', 'D83', 'D84', 'D88', 'D90']);
+  it("seeds a 1–3 step mini-tour for each of D76–D84, D88, D89, D90 and D91, unique ids, after the pre-tutorial version", () => {
+    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D79', 'D80', 'D81', 'D82', 'D83', 'D84', 'D88', 'D89', 'D90', 'D91']);
     expect(new Set(WHATS_NEW.map((f) => f.id)).size).toBe(WHATS_NEW.length);
     for (const feature of WHATS_NEW) {
       expect(feature.steps.length, feature.id).toBeGreaterThanOrEqual(1);

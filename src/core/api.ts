@@ -28,7 +28,6 @@ import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
 import type {
   AgentKind,
-  ArtifactType,
   Coordination,
   EventKind,
   FolderKind,
@@ -738,6 +737,15 @@ export interface Session {
   readonly continuedFrom?: SessionLink | null;
   /** Additive (D83): a continuation in a fresh session in progress (the offer bar's progress); `null` / absent when none runs. */
   readonly freshContinue?: SessionFreshContinue | null;
+  /**
+   * Additive (D91, `docs/settings.md` → *Apply to open sessions*): the session's running
+   * process was started with another standing instruction than the current setting
+   * (Settings' count, the ⋯ menu's Reload instruction). `false` / absent without a
+   * running process (its next start gets the current one).
+   */
+  readonly instructionOutdated?: boolean;
+  /** Additive (D91): a reload waits for the running turn (or the developer's answer) to end. */
+  readonly instructionPending?: boolean;
 }
 
 /** Additive (D83): the other session of a continuation. */
@@ -1042,32 +1050,98 @@ export function offeredDiffScope(scope: DiffScope, targets: { readonly worktrees
   return 'head';
 }
 
-/** A stored artifact (data model; gap #9). Provisional: M4.6 / M7.3. */
+/** D89: what an artifact is (`docs/artifacts.md`). */
+export type ArtifactKind = 'markdown' | 'code' | 'html' | 'mermaid' | 'svg' | 'image' | 'csv';
+
+/** D89: who saved an artifact (or one of its versions): the session's agent (`artifact_save`) or the developer (Save as artifact). */
+export type ArtifactAuthor = 'agent' | 'developer';
+
+/**
+ * D89 (replaces gap #9's derived rows): an artifact saved on purpose, as lists
+ * show it: its latest version's number and size, no content.
+ */
 export interface Artifact {
+  /** Short and stable; the agent passes it to `artifact_save` to add a version. */
   readonly id: string;
-  readonly type: ArtifactType;
-  readonly name: string;
-  readonly solution: string | null;
-  readonly branch: string | null;
+  /** The session it was saved in (`null` once that session is gone). */
   readonly sessionId: string | null;
-  readonly meta: string | null;
+  readonly title: string;
+  readonly kind: ArtifactKind;
+  /** For `code`: its language (`ts`, `python`); else `null`. */
+  readonly language: string | null;
+  /** Who created it (its first version). */
+  readonly createdBy: ArtifactAuthor;
+  /** How many versions it has (the latest is number `versions`). */
+  readonly versions: number;
+  /** The latest version's size in bytes. */
+  readonly size: number;
+  readonly createdAt: string;
+  /** When its latest version was saved. */
+  readonly updatedAt: string;
+}
+
+/** D89: one version of an artifact (`n` from 1). */
+export interface ArtifactVersionInfo {
+  readonly n: number;
+  readonly size: number;
+  readonly createdBy: ArtifactAuthor;
   readonly createdAt: string;
 }
 
 /**
- * A row of `GET /api/artifacts` (M7.3, global Artifacts view): an {@link Artifact}
- * plus the source session's name (`null` without a session) and the last update,
- * which the view's Age column reads (a DIFF grows with every write).
+ * D89: `GET /api/sessions/{id}/artifacts/{artifactId}[?version=n]`: the artifact,
+ * its versions (oldest first) and one version (the latest unless `version` is
+ * given) with its text; `content` is `null` for an image (its bytes come from the
+ * `raw` route).
+ */
+export interface ArtifactDetail extends Artifact {
+  readonly versionList: readonly ArtifactVersionInfo[];
+  readonly version: ArtifactVersionInfo & { readonly content: string | null };
+}
+
+/**
+ * D89: a row of `GET /api/artifacts` (the global Artifacts page): an
+ * {@link Artifact} plus its session's name and display title and its folder (D14);
+ * a paired machine's (D48) carries `machine` and remote ids.
  */
 export interface ArtifactListItem extends Artifact {
   readonly sessionName: string | null;
-  /** Additive (D22): the source session's display title (its title, else its name); `null` without a session. */
-  readonly sessionTitle?: string | null;
-  readonly updatedAt: string;
-  /** Additive (D14): the source session's saved folder (`null` without a session, or once the folder left the list). */
+  readonly sessionTitle: string | null;
+  /** The session's saved folder (`null` without a session, or once the folder left the list). */
   readonly folder: string | null;
-  /** Additive (D14): the source session's folder path (`null` without a session); tags the row with its folder. */
+  /** The session's folder path (`null` without a session); tags the row with its folder. */
   readonly folderPath: string | null;
+  /** D48: a paired machine's artifact (its session lives there). */
+  readonly machine?: SessionMachine;
+}
+
+/**
+ * D89: body of `POST /api/sessions/{id}/artifacts` (the developer's Save as
+ * artifact) and the agent's `POST /agent/v1/artifacts` (`artifact_save`). `id`
+ * names an existing artifact of the session: the save adds a version to it.
+ * `content` or (agent only) `path`, a file in the session's working folders.
+ */
+export interface ArtifactSaveInput {
+  readonly title: string;
+  readonly kind: ArtifactKind;
+  readonly content?: string;
+  readonly path?: string;
+  readonly language?: string | null;
+  readonly id?: string;
+}
+
+/** D89: the answer of a save: the artifact, the version just saved, and whether the save created it. */
+export interface ArtifactSaveResult {
+  readonly artifact: Artifact;
+  readonly version: number;
+  readonly created: boolean;
+}
+
+/** D89: the `artifactsChanged` payload (an artifact saved, a version added, or one deleted). */
+export interface ArtifactsChanged {
+  readonly sessionId: string;
+  readonly artifactId: string;
+  readonly change: 'saved' | 'deleted';
 }
 
 /** `GET /api/sessions/{id}`. Provisional: M4.1. */
@@ -1075,6 +1149,7 @@ export interface SessionDetail extends Session {
   readonly task: string;
   readonly events: readonly SessionEvent[];
   readonly files: readonly FileDiff[];
+  /** D89: the session's saved artifacts, newest first (no content). */
   readonly artifacts: readonly Artifact[];
   /**
    * Additive (M4.2): the questions of every batch the session asked, batches oldest
@@ -1427,6 +1502,8 @@ export interface SolutionArtifact {
   readonly meta: string;
   /** The session that produced it, `null` for a file found in the solution. */
   readonly sessionId: string | null;
+  /** Additive (D89): a saved artifact's id (the row opens the session's Artifacts tab on it); absent for a follow-up file. */
+  readonly artifactId?: string;
 }
 
 /**
@@ -2203,6 +2280,13 @@ export interface HubEvents {
    */
   readonly todosChanged: TodosChanged;
   /**
+   * Additive (D89): a session's artifact was saved (created or a new version) or
+   * deleted, by its agent or the developer. The Artifacts tab, the Artifacts page
+   * and the sidebar count reload. Forwarded between peers (a peer's with its remote
+   * session id).
+   */
+  readonly artifactsChanged: ArtifactsChanged;
+  /**
    * Additive (D79, `docs/reviews.md`; D76 subscribes): a review was resolved (Merge, Commit, Discard,
    * Send back, Dismiss). The shared contract with the todo lane: exactly
    * `{ sessionId, outcome }`. This machine's only: never forwarded between peers.
@@ -2260,6 +2344,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'updateChanged',
   'machineState',
   'todosChanged',
+  'artifactsChanged',
   'reviewResolved',
   'reviewsChanged',
   'notice',

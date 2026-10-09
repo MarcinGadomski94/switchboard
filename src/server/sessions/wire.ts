@@ -13,6 +13,7 @@ import { toLoop } from '../loops/wire.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
+import { standingInstructionFor } from '../settings/settings.ts';
 import type { WorkflowSource } from '../workflows/service.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
@@ -60,6 +61,8 @@ export interface SwitchSource {
   accountSwitching?(sessionId: string): boolean;
   /** D83: a continuation in a fresh session runs (its step), `null` when none. */
   fresh?(sessionId: string): SessionFreshContinue | null;
+  /** D91: the standing instruction the live process was started with and whether a reload waits; `null` without a running process. */
+  instruction?(sessionId: string): { readonly text: string | null; readonly pending: boolean } | null;
 }
 
 const switchSources = new WeakMap<Store, SwitchSource>();
@@ -112,17 +115,19 @@ export function toEvent(record: EventRecord): SessionEvent {
   };
 }
 
-/** An artifact row as the API returns it. */
+/** D89: a saved artifact as the API returns it (no content). */
 export function toArtifact(record: ArtifactRecord): Artifact {
   return {
     id: record.id,
-    type: record.type,
-    name: record.name,
-    solution: record.solution,
-    branch: record.branch,
     sessionId: record.sessionId,
-    meta: record.meta,
+    title: record.title,
+    kind: record.kind,
+    language: record.language,
+    createdBy: record.createdBy,
+    versions: record.versions,
+    size: record.size,
     createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   };
 }
 
@@ -224,7 +229,16 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     continuedTo: await sessionLink(store, record.continuedTo),
     continuedFrom: await sessionLink(store, record.continuedFrom),
     freshContinue: switchSources.get(store)?.fresh?.(record.id) ?? null,
+    // D91: its running process uses an older standing instruction; a reload waits for the turn's end.
+    ...(await instructionState(store, record.id)),
   };
+}
+
+/** D91: `Session.instructionOutdated` / `instructionPending` (both `false` without a running process). */
+async function instructionState(store: Store, sessionId: string): Promise<{ instructionOutdated: boolean; instructionPending: boolean }> {
+  const live = switchSources.get(store)?.instruction?.(sessionId) ?? null;
+  if (live === null) return { instructionOutdated: false, instructionPending: false };
+  return { instructionOutdated: live.text !== (await standingInstructionFor(store.settings)), instructionPending: live.pending };
 }
 
 /** D83: the other session of a continuation, with its display title now (`null` when it is gone); `null` without a link. */

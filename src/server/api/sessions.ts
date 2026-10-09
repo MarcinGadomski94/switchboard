@@ -5,6 +5,7 @@ import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
 import { FRESH_HOOKED_REASON } from '../../core/fresh-session.ts';
+import type { InstructionReloadResult } from '../../core/standing-instruction.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
 import { HookError } from '../hooks/service.ts';
@@ -50,6 +51,8 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'switch-failed': 502,
   // D83: a fresh session is offered once the running turn ends.
   'turn-running': 409,
+  // D91: the restart with the current standing instruction failed.
+  'reload-failed': 502,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,
@@ -320,6 +323,20 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     try {
       const record = await supervisor.resume(request.params.id);
       return await toSession(store, record, supervisor.activity(record.id));
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // D91 (additive): give the session's process the current standing instruction → `{ outcome, session }`
+  // (`restarted` idle → `--resume`, no message; `pending` after the turn; `current`; `not-running`). 409 `not-available`
+  // (hooked), `detached`, `switching`, `closed`, `folder-missing`, `cli-unavailable`; 502 `reload-failed`.
+  app.post<{ Params: IdParams }>('/api/sessions/:id/reload-instruction', async (request, reply): Promise<InstructionReloadResult<Session> | FastifyReply> => {
+    try {
+      const outcome = await supervisor.reloadInstruction(request.params.id);
+      const record = await store.sessions.get(request.params.id);
+      if (!record) return notFound(reply, request.params.id);
+      return { outcome, session: await toSession(store, record, supervisor.activity(record.id)) };
     } catch (error) {
       return sendError(reply, error);
     }

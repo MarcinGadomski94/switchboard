@@ -26,3 +26,25 @@
   display: flex;
   gap: 8px;
 }
+
+/* D91: Apply to open sessions: the button, the count, the result line. */
+.sb-standing-apply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sb-standing-apply .sb-standing-buttons {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sb-standing-note,
+.sb-standing-result {
+  font: 400 12px/1.5 var(--font-ui);
+  color: var(--text-2);
+}
+
+.sb-standing-failure {
+  color: var(--status-fail);
+}

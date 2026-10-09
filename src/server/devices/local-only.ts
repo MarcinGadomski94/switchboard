@@ -16,7 +16,8 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen), and (D88) the sessions' drafts and this machine's own (the New-session form).
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), and (D91) a
+ * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -45,6 +46,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['GET', /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/],
   ['GET', /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/],
   ['POST', /^\/api\/sessions\/[^/]+\/(?:messages|attachments|pause|resume|close|reopen|interrupt|account|provider|continue-in-switchboard|fresh)$/],
+  // D91: a session's ⋯ → Reload instruction (restarts its idle process like Pause / Resume; normal use).
+  ['POST', /^\/api\/sessions\/[^/]+\/reload-instruction$/],
   ['POST', /^\/api\/sessions\/[^/]+\/background\/stop$/],
   ['POST', /^\/api\/sessions\/[^/]+\/events\/[^/]+\/resend$/],
   ['PUT', /^\/api\/sessions\/[^/]+\/(?:title|remote|model|profile-pin)$/],
@@ -60,6 +63,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D79: review cards: the list, Merge (local only), Open PR, Commit, Send back, Dismiss (normal use from the phone).
   ['GET', /^\/api\/reviews$/],
   ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|dismiss)$/],
+  // D89: saved artifacts: read them (list, one artifact, a version's bytes), Save as artifact from a message, Delete (normal use).
+  ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
   // D81: quick capture (the palette, a chat selection, the share sheet's page).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   // Inbox and answers.
@@ -154,6 +161,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   ['*', /^\/api\/cleanup(?:\/.*)?$/],
   // Test hooks.
   ['*', /^\/api\/test(?:\/.*)?$/],
+  // D91: Settings → Apply the standing instruction to open sessions (a settings action: desktop only).
+  ['POST', /^\/api\/settings\/standing-instruction\/apply$/],
   // D79: a review's Discard (drops the changes) and Clean up (removes the worktree and its branch): desktop only.
   ['POST', /^\/api\/reviews\/[^/]+\/(?:discard|cleanup)$/],
 ];

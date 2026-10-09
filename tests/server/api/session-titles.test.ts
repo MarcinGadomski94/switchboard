@@ -215,13 +215,13 @@ describe('where a session is named (D22)', () => {
     await w.store.questions.createBatch({ id: 'batch-1', sessionId: session.id, input: { questions: [] } }, [
       { source: 'web · microfrontends/acme-app-front', text: 'Which one?', options: [{ label: 'a' }, { label: 'b' }] },
     ]);
-    await w.store.artifacts.create({ type: 'DOC', name: 'notes.md', sessionId: session.id });
+    await w.store.artifacts.create({ id: 'a000000001', sessionId: session.id, title: 'notes.md', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
 
     const inbox = (await call('GET', '/api/inbox')).json() as InboxItem[];
     expect(inbox.find((item) => item.id === 'batch-1')).toMatchObject({ source: 'jira-ticket-handling', sourceTitle: 'JIRA Ticket handling' });
     const artifacts = (await call('GET', '/api/artifacts')).json() as ArtifactListItem[];
-    expect(artifacts.find((a) => a.name === 'notes.md')).toMatchObject({ sessionName: 'jira-ticket-handling', sessionTitle: 'JIRA Ticket handling' });
-    expect(((await call('GET', '/api/artifacts?q=ticket%20handl')).json() as ArtifactListItem[]).map((a) => a.name)).toEqual(['notes.md']);
+    expect(artifacts.find((a) => a.title === 'notes.md')).toMatchObject({ sessionName: 'jira-ticket-handling', sessionTitle: 'JIRA Ticket handling' });
+    expect(((await call('GET', '/api/artifacts?q=ticket%20handl')).json() as ArtifactListItem[]).map((a) => a.title)).toEqual(['notes.md']);
     const history = (await call('GET', '/api/history')).json() as HistoryItem[];
     expect(history.find((row) => row.sessionId === session.id)).toMatchObject({ name: 'jira-ticket-handling', displayTitle: 'JIRA Ticket handling' });
     // History searches the title too.

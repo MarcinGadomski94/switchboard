@@ -58,6 +58,7 @@ import { LiveRemote, RemoteControlError } from './remote.ts';
 import type { AnsweredOn } from '../../core/remote-control.ts';
 import { closeNeedsConfirm } from '../../core/session-close.ts';
 import { CONTINUED_DIVIDER } from '../../core/hooked-continue.ts';
+import { INSTRUCTION_UPDATED_DIVIDER, type InstructionReloadOutcome } from '../../core/standing-instruction.ts';
 import { withSolutions } from '../../core/session-solutions.ts';
 
 /** How long each step of a D7 stop may take before the next escalation (ms). */
@@ -365,7 +366,9 @@ export type SupervisorErrorCode =
   | 'switching'
   | 'switch-failed'
   /** D83: a turn runs: a fresh session is offered once it ends. */
-  | 'turn-running';
+  | 'turn-running'
+  /** D91: the process could not be restarted with the current standing instruction. */
+  | 'reload-failed';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -538,6 +541,8 @@ interface Live {
   interrupting: Promise<InterruptOutcome> | null;
   /** D50: the interrupt is written and the Stop not finished: requests the CLI withdraws now are the Stop's. */
   stopInFlight: boolean;
+  /** D91: the standing instruction this process was started with (`null` = none): compared with the current one. */
+  readonly instruction: string | null;
 }
 
 type Listener<K extends keyof SupervisorEvents> = (payload: SupervisorEvents[K]) => void;
@@ -608,6 +613,10 @@ export class SessionSupervisor {
   #agentMcp: ((session: SessionRecord) => Promise<AgentMcpLaunch | null>) | null = null;
   /** D80: the checkpoint taken before each turn (`checkpoints/service.ts`); `null` = none. */
   #checkpoints: TurnCheckpoints | null = null;
+  /** D91: sessions whose instruction reload waits for the running turn (or the developer's answer) to end. */
+  readonly #instructionPending = new Set<string>();
+  /** D91: instruction reloads in progress, by session (a message or Resume meanwhile waits for it). */
+  readonly #instructionReloads = new Map<string, Promise<unknown>>();
 
   /** D57: how an import stores a prompt's image (none without an attachment service). */
   #saveImage(): { readonly saveImage?: (sessionId: string, base64: string, index: number) => Promise<Attachment | null> } {
@@ -643,6 +652,8 @@ export class SessionSupervisor {
       accountSwitching: (sessionId) => this.#accountSwitches.has(sessionId),
       // D83: a continuation in a fresh session.
       fresh: (sessionId) => this.currentFresh(sessionId),
+      // D91: the standing instruction the live process runs (`Session.instructionOutdated` / `instructionPending`).
+      instruction: (sessionId) => this.liveInstruction(sessionId),
     });
   }
 
@@ -833,6 +844,8 @@ export class SessionSupervisor {
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     this.#assertNotSwitching(session);
+    // D91: a message sent while the instruction reload restarts the process goes to the new process.
+    await this.#instructionReloads.get(sessionId)?.catch(() => undefined);
     let live = this.#live.get(sessionId);
     // D50: a message sent while a Stop waits for the CLI goes out after it (the Stop never takes it back).
     if (live?.interrupting) await live.interrupting;
@@ -1046,6 +1059,7 @@ export class SessionSupervisor {
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     this.#assertNotSwitching(session);
+    await this.#instructionReloads.get(sessionId)?.catch(() => undefined);
     if (this.#live.has(sessionId)) throw new SupervisorError('already-running', 'the session already has a live process');
     const live = await this.#spawn(session, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'resumed');
     await this.#send(live, RESUME_MESSAGE, 'resume');
@@ -1414,6 +1428,114 @@ export class SessionSupervisor {
       out.push({ id: live.sessionId, provider: live.provider, profileId: this.#profileOfLive.get(live.sessionId) ?? `default-${live.provider}`, idle: !live.recorder.turnBusy() });
     }
     return out;
+  }
+
+  // ── D91: apply the standing instruction to open sessions (docs/settings.md → Apply to open sessions) ──
+
+  /**
+   * D91: the standing instruction the session's running process was started with
+   * (`text`, `null` = none) and whether a reload waits for its turn to end;
+   * `null` when no process runs (its next start gets the current instruction).
+   */
+  liveInstruction(sessionId: string): { readonly text: string | null; readonly pending: boolean } | null {
+    const live = this.#live.get(sessionId);
+    if (!live || live.stopping || !live.proc.running) return null;
+    return { text: live.instruction, pending: this.#instructionPending.has(sessionId) };
+  }
+
+  /** D91: the instruction setting changed: the live sessions are published again (their `instructionOutdated` may differ now). */
+  async instructionSettingChanged(): Promise<void> {
+    for (const sessionId of [...this.#live.keys()]) await this.#emitSession(sessionId).catch((error: unknown) => this.#onError(error));
+  }
+
+  /**
+   * D91: gives the session's process the current standing instruction. An idle
+   * process is restarted with `--resume` (same conversation id, model, effort,
+   * account, cwd and injections; no message), the chat's divider
+   * {@link INSTRUCTION_UPDATED_DIVIDER} recorded with the spawn; a process whose
+   * turn runs, or that waits on the developer, is marked and restarted once it is
+   * idle (never interrupted); no process: nothing to do (its next start gets it).
+   * A restart that cannot run (folder gone, CLI missing) leaves the session as it
+   * was; the reason is recorded in its chat and thrown. One reload at a time per
+   * session; a message or Resume meanwhile waits for it.
+   * @throws {SupervisorError} `not-found`, `closed`, `closing`, `not-available` (hooked),
+   * `detached`, `switching`, `folder-missing`, `cli-unavailable`, `reload-failed`.
+   */
+  async reloadInstruction(sessionId: string): Promise<InstructionReloadOutcome> {
+    await this.#gate;
+    this.#assertOpen();
+    const prior = this.#instructionReloads.get(sessionId) ?? Promise.resolve();
+    const run = prior.catch(() => undefined).then(() => this.#reloadInstructionNow(sessionId));
+    this.#instructionReloads.set(sessionId, run);
+    try {
+      return await run;
+    } finally {
+      if (this.#instructionReloads.get(sessionId) === run) this.#instructionReloads.delete(sessionId);
+    }
+  }
+
+  async #reloadInstructionNow(sessionId: string): Promise<InstructionReloadOutcome> {
+    this.#assertOpen();
+    const session = await this.#get(sessionId);
+    this.#assertNotClosed(session);
+    if (session.hooked) throw new SupervisorError('not-available', 'a hooked terminal session runs its own CLI in its terminal: its instruction is set there');
+    if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
+    this.#assertNotSwitching(session);
+    const live = this.#live.get(sessionId);
+    const wasPending = this.#instructionPending.delete(sessionId);
+    if (!live || live.stopping || !live.proc.running) {
+      if (wasPending) await this.#emitSession(sessionId);
+      return 'not-running';
+    }
+    if (live.instruction === (await standingInstructionFor(this.#store.settings))) {
+      if (wasPending) await this.#emitSession(sessionId);
+      return 'current';
+    }
+    if (live.recorder.turnBusy()) {
+      this.#instructionPending.add(sessionId);
+      await this.#emitSession(sessionId);
+      return 'pending';
+    }
+    try {
+      await this.#restartForInstruction(session, live);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await this.recordServiceEvent(sessionId, 'error', `Could not reload the standing instruction: ${reason}`, { type: 'lifecycle', action: 'instruction-updated', message: reason }).catch(() => undefined);
+      await this.#emitSession(sessionId).catch(() => undefined);
+      if (error instanceof SupervisorError) throw error;
+      throw new SupervisorError('reload-failed', `could not reload the standing instruction: ${reason}`);
+    }
+    return 'restarted';
+  }
+
+  /** D91: the restart itself; the checks that can run before the stop run first (a refusal leaves the process running as it was). */
+  async #restartForInstruction(session: SessionRecord, live: Live): Promise<void> {
+    if (!session.cwd) throw new SupervisorError('folder-missing', `the session ${session.name} has no working folder`);
+    await canonicalFolder(session.cwd);
+    if (!this.#providers.hasAdapter(session.provider)) {
+      throw new SupervisorError('cli-unavailable', `${CLI_LABELS[session.provider]} is not supported by this Switchboard`);
+    }
+    const status = live.status;
+    await this.#stop(live, 'pause');
+    this.#assertOpen();
+    // A message sent meanwhile may have started a process already: it runs the current instruction.
+    if (this.#live.has(session.id)) return;
+    const stopped = await this.#get(session.id);
+    if (stopped.closedAt !== null) return;
+    // Between turns before, between turns again (not `paused`): the conversation goes on as it was.
+    const restored = (await this.#store.sessions.update(session.id, { status })) ?? stopped;
+    await this.#setMainAgentStatus(session.id, status);
+    const next = await this.#spawn(restored, { kind: 'resume', claudeSessionId: session.claudeSessionId }, 'instruction-updated');
+    await this.#enqueue(next, () => this.#refreshStatus(next));
+  }
+
+  /** D91: the reload that waited for the turn's end (its refusal is recorded in the chat by the reload). */
+  async #reloadPending(sessionId: string): Promise<void> {
+    try {
+      await this.reloadInstruction(sessionId);
+    } catch (error) {
+      if (!(error instanceof SupervisorError)) this.#onError(error);
+    }
   }
 
   /** D63: an account switch of the session is running. */
@@ -2601,6 +2723,8 @@ export class SessionSupervisor {
     } catch (error) {
       this.#onError(error);
     }
+    // D91: kept on the live process, so a later change of the setting shows it runs an older one.
+    const instruction = await standingInstructionFor(this.#store.settings);
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,
@@ -2611,7 +2735,7 @@ export class SessionSupervisor {
       command: provider === 'claude' ? this.#command : await this.#providers.command(provider),
       extraArgs: provider === 'claude' ? this.#extraArgs : [],
       // D64: read now, so a change applies to every session started or resumed afterwards.
-      standingInstruction: await standingInstructionFor(this.#store.settings),
+      standingInstruction: instruction,
       agentMcp,
       onLine: (line) => {
         const live = holder.live;
@@ -2648,6 +2772,7 @@ export class SessionSupervisor {
       status: prepared.status,
       interrupting: null,
       stopInFlight: false,
+      instruction,
       remote: new LiveRemote({
         request: (line, timeoutMs) => (holder.live ? this.#controlOn(holder.live, line, timeoutMs) : Promise.resolve(null)),
         session: () => this.#store.sessions.get(session.id),
@@ -2777,6 +2902,11 @@ export class SessionSupervisor {
       }
     }
     await this.#refreshStatus(live);
+    // D91: a reload that waited for this turn (or the developer's answer) runs once the session is idle (outside this queue: the restart stops this process).
+    if (this.#instructionPending.has(live.sessionId) && !live.stopping && live.proc.running && !live.recorder.turnBusy()) {
+      this.#instructionPending.delete(live.sessionId);
+      setImmediate(() => void this.#reloadPending(live.sessionId));
+    }
   }
 
   /** Resolves `true` when a matching message is processed, `false` on timeout or exit. */
@@ -2893,7 +3023,11 @@ export class SessionSupervisor {
     await this.#store.sessions.update(live.sessionId, patch);
     if (patch.status) await this.#setMainAgentStatus(live.sessionId, patch.status);
     live.status = patch.status ?? live.status;
-    if (this.#live.get(live.sessionId) === live) this.#live.delete(live.sessionId);
+    if (this.#live.get(live.sessionId) === live) {
+      this.#live.delete(live.sessionId);
+      // D91: no process left to reload: the next start gets the current instruction.
+      this.#instructionPending.delete(live.sessionId);
+    }
     await this.#emitSession(live.sessionId);
   }
 
@@ -3060,4 +3194,5 @@ const LIFECYCLE_LABELS: Record<LifecycleAction, string> = {
   'revert-undone': 'Undid a revert',
   'continued-from': 'Continued from another session',
   'continued-in': 'Continued in a fresh session',
+  'instruction-updated': INSTRUCTION_UPDATED_DIVIDER,
 };

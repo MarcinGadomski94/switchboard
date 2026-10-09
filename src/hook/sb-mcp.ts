@@ -8,15 +8,18 @@
  * `npm ci --omit=dev` brings them).
  *
  * It is built on the SDK's high-level API: one `McpServer` over a
- * `StdioServerTransport`, each of the seven tools registered with `registerTool`
+ * `StdioServerTransport`, each of the ten tools registered with `registerTool`
  * next to its own handler: `todo_list`, `todo_get` (D69), `todo_add`,
  * `todo_update` (D70: with priority and estimate), `todo_start` (D75), `todo_done`, `todo_remove`,
- * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only).
+ * each one call to the local Switchboard's `/agent/v1/todos` (127.0.0.1 only), and
+ * D89's `artifact_save`, `artifact_list`, `artifact_get` (`/agent/v1/artifacts`).
  * Names, descriptions, annotations and the instructions come from
- * `src/core/todos.ts` ({@link TODO_TOOLS}); the zod input schemas here carry the
+ * `src/core/todos.ts` ({@link TODO_TOOLS}) and `src/core/artifacts.ts`
+ * ({@link ARTIFACT_TOOLS}); the zod input schemas here carry the
  * same types and take their descriptions from there. The token authorizes that one
- * session's list and nothing else; the helper never reads any other file or
- * variable. A failing call answers a tool error the agent can read (Switchboard
+ * session's list and artifacts and nothing else; the helper never reads any other
+ * file or variable (an `artifact_save` `path` is read by Switchboard, which checks
+ * it is inside the session's working folders). A failing call answers a tool error the agent can read (Switchboard
  * not running, an unknown id, a missing field), never a crash.
  */
 import http from 'node:http';
@@ -24,7 +27,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import type { SessionTodo, SessionTodoList } from '../core/api.ts';
+import type { Artifact, ArtifactDetail, ArtifactSaveResult, SessionTodo, SessionTodoList } from '../core/api.ts';
+import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
 import {
   AGENT_MCP_INSTRUCTIONS,
   AGENT_MCP_MARKER,
@@ -105,7 +109,7 @@ function record(value: unknown): Record<string, unknown> {
 /** The refusal's message (`{ message }` of the API), else the status. */
 function failure(answer: ApiAnswer): CallToolResult {
   const message = record(answer.body)['message'];
-  if (answer.status === 401) return textResult('Switchboard refused the todo tools for this session (the session token does not match).', true);
+  if (answer.status === 401) return textResult('Switchboard refused the switchboard tools for this session (the session token does not match).', true);
   return textResult(typeof message === 'string' ? message : `Switchboard answered HTTP ${answer.status}.`, true);
 }
 
@@ -269,10 +273,62 @@ export async function todoRemove(api: AgentApi, input: ToolInput): Promise<CallT
   return request(api, 'DELETE', itemRoute(id), undefined, (body) => textResult(`Removed.\n\n${summaryOf(body)}`));
 }
 
-/** Tool `name`'s definition in {@link TODO_TOOLS}. */
+// ── D89: artifacts ──────────────────────────────────────────────────────
+
+const NEED_ARTIFACT_ID = 'Give the artifact id (artifact_list shows it in brackets).';
+
+/** The artifact id a call gives (`[abc]` is fine), `''` when none. */
+function artifactIdOf(input: ToolInput): string {
+  return typeof input['id'] === 'string' ? input['id'].trim().replace(/^\[|\]$/g, '') : '';
+}
+
+/** D89 · `artifact_save`: a new artifact, or with `id` a new version of one. */
+export async function artifactSave(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  if (typeof input['title'] !== 'string' || input['title'].trim() === '') return textResult('Give the artifact a title (one short line).', true);
+  if (typeof input['kind'] !== 'string' || !(ARTIFACT_KINDS as readonly string[]).includes(input['kind'])) return textResult(`Give a kind: ${ARTIFACT_KINDS.join(', ')}.`, true);
+  const hasContent = typeof input['content'] === 'string';
+  const hasPath = typeof input['path'] === 'string' && input['path'].trim() !== '';
+  if (!hasContent && !hasPath) return textResult('Give content (the text) or path (a file in the session\'s working folders to copy in).', true);
+  const id = artifactIdOf(input);
+  const body = {
+    title: input['title'],
+    kind: input['kind'],
+    ...(hasContent ? { content: input['content'] } : {}),
+    ...(hasPath ? { path: input['path'] } : {}),
+    ...(typeof input['language'] === 'string' ? { language: input['language'] } : {}),
+    ...(id !== '' ? { id } : {}),
+  };
+  return request(api, 'POST', '/agent/v1/artifacts', body, (answer) => {
+    const saved = record(answer) as unknown as Partial<ArtifactSaveResult>;
+    if (!saved.artifact) return textResult('Switchboard did not answer with the artifact.', true);
+    const what = saved.created ? 'Saved a new artifact' : `Saved version ${saved.version} of`;
+    return textResult(`${what}: ${artifactLine(saved.artifact)}\nid: ${saved.artifact.id} · version: ${saved.version}\nTo revise it, call artifact_save again with id ${saved.artifact.id}.`);
+  });
+}
+
+/** D89 · `artifact_list`: this session's artifacts, compact. */
+export function artifactList(api: AgentApi): Promise<CallToolResult> {
+  return request(api, 'GET', '/agent/v1/artifacts', undefined, (answer) => textResult(artifactListText(Array.isArray(answer) ? (answer as Artifact[]) : [])));
+}
+
+/** D89 · `artifact_get`: one artifact's latest (or named) version, with its text. */
+export async function artifactGet(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = artifactIdOf(input);
+  if (id === '') return textResult(NEED_ARTIFACT_ID, true);
+  const version = input['version'];
+  const query = typeof version === 'number' && Number.isInteger(version) ? `?version=${version}` : '';
+  return request(api, 'GET', `/agent/v1/artifacts/${encodeURIComponent(id)}${query}`, undefined, (answer) => {
+    const detail = record(answer) as unknown as Partial<ArtifactDetail>;
+    if (!detail.version || typeof detail.id !== 'string') return textResult('Switchboard did not answer with the artifact.', true);
+    const head = `${artifactLine(detail as ArtifactDetail)}\nShowing version ${detail.version.n} of ${detail.versions} (${artifactSizeLabel(detail.version.size)}).`;
+    return textResult(detail.version.content === null ? `${head}\nAn image: no text (the developer sees it in the Artifacts tab).` : `${head}\n\n${detail.version.content}`);
+  });
+}
+
+/** Tool `name`'s definition in {@link TODO_TOOLS} or (D89) {@link ARTIFACT_TOOLS}. */
 function tool(name: string): TodoToolDefinition {
-  const found = TODO_TOOLS.find((candidate) => candidate.name === name);
-  if (!found) throw new Error(`no tool ${name} in TODO_TOOLS`);
+  const found = [...TODO_TOOLS, ...ARTIFACT_TOOLS].find((candidate) => candidate.name === name);
+  if (!found) throw new Error(`no tool ${name} in TODO_TOOLS / ARTIFACT_TOOLS`);
   return found;
 }
 
@@ -304,6 +360,10 @@ const field = {
   priority: (name: string) => z.enum(TODO_PRIORITIES as [string, ...string[]]).describe(about(name, 'priority')).optional(),
   estimate: (name: string) => z.int().min(1).max(TODO_ESTIMATE_MAX).describe(about(name, 'estimate_minutes')).optional(),
   done: (name: string) => z.boolean().describe(about(name, 'done')).optional(),
+  // D89: the artifact tools' fields.
+  text: (name: string, key: string) => z.string().describe(about(name, key)).optional(),
+  kind: (name: string) => z.enum(ARTIFACT_KINDS as unknown as [string, ...string[]]).describe(about(name, 'kind')).optional(),
+  version: (name: string) => z.int().min(1).max(ARTIFACT_VERSIONS_MAX).describe(about(name, 'version')).optional(),
 };
 
 /** Runs the calls one at a time, in the order they came (a list after an add sees the add, as before the SDK). */
@@ -318,7 +378,7 @@ function inOrder(): <T>(work: () => Promise<T>) => Promise<T> {
 
 /**
  * The `switchboard` MCP server ({@link AGENT_MCP_SERVER}, with
- * {@link AGENT_MCP_INSTRUCTIONS}) and its seven tools (D75: `todo_start`), calling `api`. Connect it to a
+ * {@link AGENT_MCP_INSTRUCTIONS}) and its ten tools (D75: `todo_start`; D89: the three artifact tools), calling `api`. Connect it to a
  * transport (a `StdioServerTransport` in the helper process).
  */
 export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
@@ -400,6 +460,45 @@ export function createTodoServer(api: AgentApi, version = '0.0.0'): McpServer {
     'todo_remove',
     { title: remove.annotations.title, description: remove.description, inputSchema: inputSchema('todo_remove', { id: field.id('todo_remove') }), annotations: remove.annotations },
     (input) => serial(() => todoRemove(api, input)),
+  );
+
+  // D89: the artifact tools.
+  const save = tool('artifact_save');
+  server.registerTool(
+    'artifact_save',
+    {
+      title: save.annotations.title,
+      description: save.description,
+      inputSchema: inputSchema('artifact_save', {
+        title: field.text('artifact_save', 'title'),
+        kind: field.kind('artifact_save'),
+        content: field.text('artifact_save', 'content'),
+        path: field.text('artifact_save', 'path'),
+        language: field.text('artifact_save', 'language'),
+        id: field.text('artifact_save', 'id'),
+      }),
+      annotations: save.annotations,
+    },
+    (input) => serial(() => artifactSave(api, input)),
+  );
+
+  const artifacts = tool('artifact_list');
+  server.registerTool(
+    'artifact_list',
+    { title: artifacts.annotations.title, description: artifacts.description, inputSchema: inputSchema('artifact_list', {}), annotations: artifacts.annotations },
+    () => serial(() => artifactList(api)),
+  );
+
+  const read = tool('artifact_get');
+  server.registerTool(
+    'artifact_get',
+    {
+      title: read.annotations.title,
+      description: read.description,
+      inputSchema: inputSchema('artifact_get', { id: field.text('artifact_get', 'id'), version: field.version('artifact_get') }),
+      annotations: read.annotations,
+    },
+    (input) => serial(() => artifactGet(api, input)),
   );
 
   return server;

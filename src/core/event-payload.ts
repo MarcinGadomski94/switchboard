@@ -248,7 +248,9 @@ export type LifecycleAction =
   /** D83: the new session of a continuation started (the chat's divider "Continued from <old session>"; `linkedSessionId`, `linkedTitle`). */
   | 'continued-from'
   /** D83: the session was continued in a fresh one and closed (the divider "Continued in <new session>"; `linkedSessionId`, `linkedTitle`). */
-  | 'continued-in';
+  | 'continued-in'
+  /** D91: the process was restarted (`--resume`, no message) to pick up the current standing instruction (the chat's divider "Standing instruction updated"). */
+  | 'instruction-updated';
 
 /** A process lifecycle step. */
 export interface LifecyclePayload {

@@ -1,16 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { agentStatusFromTask, mainAgentName, subagentFromToolUse } from '../../src/core/derive/agents.ts';
-import {
-  createdBranches,
-  diffArtifactName,
-  fileArtifactType,
-  findPullRequests,
-  locateFile,
-  locateSessionFile,
-  runsGh,
-  sessionSolutionFolder,
-} from '../../src/core/derive/artifacts.ts';
+import { locateFile, sessionSolutionFolder } from '../../src/core/derive/artifacts.ts';
 import { toolEventKind, toolLabel, userMessageKind } from '../../src/core/derive/event-kind.ts';
 import { deriveSessionStatus } from '../../src/core/derive/status.ts';
 import { clip, clipInput } from '../../src/core/event-payload.ts';
@@ -82,7 +73,7 @@ describe('agents (gap #8)', () => {
   });
 });
 
-describe('artifacts (gap #9)', () => {
+describe('files and solutions (the gap #9 layout)', () => {
   const root = path.join(path.sep, 'ws');
   const at = (...parts: string[]) => path.join(root, ...parts);
 
@@ -113,46 +104,6 @@ describe('artifacts (gap #9)', () => {
       worktree: true,
     });
     expect(locateFile(root, at('mobile-wt-free-talk', 'x'), 'other-session')).toMatchObject({ solution: null });
-  });
-
-  it.each([
-    ['coverage-matrix.md', 'QA'],
-    ['qa/coverage-matrix.md', 'QA'],
-    ['mobile-followups/from-acme-app-front.md', 'FOLLOWUP'],
-    ['contracts/free-talk.md', 'CONTRACT'],
-    ['docs/contracts/push.md', 'CONTRACT'],
-    ['docs/derivations.md', 'DOC'],
-    ['README.MD', 'DOC'],
-    ['src/a.ts', null],
-    ['contracts/schema.json', null],
-  ])('%s → %s', (file, type) => {
-    expect(fileArtifactType(file)).toBe(type);
-  });
-
-  it('finds PR URLs in gh output', () => {
-    const out = 'Creating pull request\nhttps://github.com/acme/notifications-microservice/pull/88\nhttps://github.com/acme/notifications-microservice/pull/88';
-    expect(findPullRequests(out)).toEqual([
-      { url: 'https://github.com/acme/notifications-microservice/pull/88', owner: 'acme', repo: 'notifications-microservice', number: 88 },
-    ]);
-    expect(runsGh('cd microservices/x && gh pr create --fill')).toBe(true);
-    expect(runsGh('echo gh pr create')).toBe(false);
-  });
-
-  it('finds branches a command creates, with the folder it ran in', () => {
-    expect(createdBranches('cd microfrontends/acme-app-front && git checkout -b feature/free-talk-360')).toEqual([
-      { branch: 'feature/free-talk-360', dir: 'microfrontends/acme-app-front' },
-    ]);
-    expect(createdBranches('git -C mobile switch -c feature/x; git branch -d old')).toEqual([{ branch: 'feature/x', dir: 'mobile' }]);
-    expect(createdBranches('git worktree add ../repo-wt-s -b session/s HEAD')).toEqual([{ branch: 'session/s', dir: null }]);
-    expect(createdBranches('git branch topic')).toEqual([{ branch: 'topic', dir: null }]);
-    expect(createdBranches('git checkout main && git status')).toEqual([]);
-    expect(createdBranches('echo "git checkout -b fake"')).toEqual([]);
-  });
-
-  it('names a DIFF by the common folder and the file count', () => {
-    expect(diffArtifactName(['Pages/FreeTalk/A.razor', 'Pages/FreeTalk/B.cs'])).toBe('Pages/FreeTalk · 2 files');
-    expect(diffArtifactName(['a.cs'])).toBe('1 file');
-    expect(diffArtifactName(['Views/A.xaml', 'Models/B.cs'])).toBe('2 files');
   });
 });
 
@@ -197,37 +148,33 @@ describe('payload clipping and the child env', () => {
   });
 });
 
-describe('artifacts in a repo folder (D14)', () => {
+describe('files in a repo folder (D14)', () => {
   const repo = path.join('/w', 'solo');
   const worktree = path.join('/w', 'solo-wt-demo');
 
   it('every file of a repo session belongs to its one solution, in its worktree or in the main checkout', () => {
     const inWorktree = { root: repo, kind: 'repo' as const, cwd: worktree };
-    expect(locateSessionFile(inWorktree, 'docs/x.md', 'demo')).toEqual({ solution: 'solo', relative: 'docs/x.md', worktree: true, outside: false });
-    expect(locateSessionFile(inWorktree, path.join(repo, 'contracts', 'a.md'), 'demo')).toEqual({ solution: 'solo', relative: 'contracts/a.md', worktree: false, outside: false });
-    expect(locateSessionFile(inWorktree, path.join('/w', 'elsewhere', 'a.md'), 'demo')).toMatchObject({ solution: null, outside: true });
     expect(sessionSolutionFolder(inWorktree, 'src/app.ts', 'demo')).toBe('solo/');
+    expect(sessionSolutionFolder(inWorktree, path.join(repo, 'contracts', 'a.md'), 'demo')).toBe('solo/');
+    expect(sessionSolutionFolder(inWorktree, path.join('/w', 'elsewhere', 'a.md'), 'demo')).toBeNull();
     // In place (cwd = the repo); a worktree made later by "Move … to worktree" still maps to the repo.
     const inPlace = { root: repo, kind: 'repo' as const, cwd: repo };
-    expect(locateSessionFile(inPlace, 'README.md', 'demo')).toEqual({ solution: 'solo', relative: 'README.md', worktree: false, outside: false });
-    expect(locateSessionFile(inPlace, path.join(worktree, 'README.md'), 'demo')).toEqual({ solution: 'solo', relative: 'README.md', worktree: true, outside: false });
+    expect(sessionSolutionFolder(inPlace, 'README.md', 'demo')).toBe('solo/');
+    expect(sessionSolutionFolder(inPlace, path.join(worktree, 'README.md'), 'demo')).toBe('solo/');
     expect(sessionSolutionFolder(inPlace, path.join('/w', 'other', 'x'), 'demo')).toBeNull();
   });
 
   it('a workspace session keeps the router layout', () => {
     const place = { root: '/ws', kind: 'workspace' as const, cwd: '/ws' };
-    expect(locateSessionFile(place, '/ws/microfrontends/web-front/src/a.ts', 'demo')).toMatchObject({ solution: 'web-front', relative: 'src/a.ts' });
     expect(sessionSolutionFolder(place, '/ws/microfrontends/web-front/src/a.ts', 'demo')).toBe('microfrontends/web-front');
   });
 });
 
 describe('D59 · a plain folder session\'s files', () => {
-  it('belong to no solution: inside the folder by their path, else outside; no solution folder', () => {
+  it('belong to no solution: no solution folder', () => {
     const root = path.join('/w', 'notes');
     const place = { root, kind: 'plain' as const, cwd: root };
-    expect(locateSessionFile(place, 'microfrontends/x-front/a.md', 'demo')).toEqual({ solution: null, relative: 'microfrontends/x-front/a.md', worktree: false, outside: false });
-    expect(locateSessionFile(place, path.join(root, 'todo.txt'))).toEqual({ solution: null, relative: 'todo.txt', worktree: false, outside: false });
-    expect(locateSessionFile(place, path.join('/w', 'elsewhere', 'a.md'))).toMatchObject({ solution: null, outside: true });
+    expect(sessionSolutionFolder(place, 'microfrontends/x-front/a.md', 'demo')).toBeNull();
     expect(sessionSolutionFolder(place, 'mobile/a.md', 'demo')).toBeNull();
   });
 });

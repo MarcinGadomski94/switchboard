@@ -80,6 +80,8 @@ describe('D73 local-only routes', () => {
       ['POST', '/api/sessions/a/attach'],
       ['POST', '/api/solutions/web/isolate'],
       ['GET', '/api/some-route-added-later'],
+      // D91: Apply the standing instruction to open sessions is a settings action (desktop only).
+      ['POST', '/api/settings/standing-instruction/apply'],
       ['POST', '/api/machines/r1/api/machines/r2/api/sessions'],
     ];
     for (const [method, url] of refused) expect(isLocalOnly(method, url), `${method} ${url}`).toBe(true);
@@ -98,6 +100,8 @@ describe('D73 local-only routes', () => {
       ['POST', '/api/machines/r1/api/sessions'],
       ['GET', '/api/mcp'],
       ['POST', '/api/sessions/a/account'],
+      // D91: a session's Reload instruction (like Pause / Resume).
+      ['POST', '/api/sessions/a/reload-instruction'],
       ['PUT', '/api/settings'],
       ['GET', '/api/device'],
       ['PUT', '/api/device/push'],

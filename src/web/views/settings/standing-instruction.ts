@@ -9,7 +9,7 @@ export const STANDING_INSTRUCTION_LABEL = 'Standing instruction for agents';
 
 /** Under the field: when a change applies. */
 export const STANDING_INSTRUCTION_DESCRIPTION =
-  'Given to the agent of every session (Claude Code, Codex, OpenCode). A change applies to sessions started or resumed afterwards, not to running ones. Empty passes nothing.';
+  'Given to the agent of every session (Claude Code, Codex, OpenCode). A change applies to sessions started or resumed afterwards; Apply to open sessions gives it to the running ones too. Empty passes nothing.';
 
 /** What the field's buttons may do. */
 export interface StandingDraftState {

@@ -21,7 +21,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 | GET | /api/solutions | — | SolutionGroup[] |
 | POST | /api/solutions/{repo}/isolate | { sessionId } | Worktree |
 | GET/POST | /api/schedules, /api/schedules/{id}/run, /pause, /resume | — | Schedule |
-| GET | /api/artifacts | ?type=&q= | Artifact[] |
+| GET | /api/artifacts | ?kind=&q=&session= | ArtifactListItem[] (D89: the artifacts saved on purpose; until 1.13.0 `?type=&q=` over derived rows, see *Artifacts saved on purpose (D89)*) |
 | GET | /api/history | ?q= | HistoryItem[] |
 | GET/PUT | /api/settings | Settings | Settings |
 | GET/PUT | /api/tools | Tool[] | Tool[] |
@@ -1319,6 +1319,38 @@ DELETE /api/sessions/5b0c…/drafts/composer?client=9f2c41aa07d3e5b1c8a0f6d2
 → 204
 ```
 
+## Artifacts saved on purpose (D89, 2026-10-09, changed)
+Developer request D89 (`docs/decisions.md`, `docs/artifacts.md`): artifacts are only what is **saved on purpose**: by the session's agent (the `switchboard` MCP tool `artifact_save`) or by the developer (Save as artifact on a chat message). This **replaces** the derived artifacts (gap #9): `Artifact` changes shape, `GET /api/artifacts` changes its filters, and the recorder no longer derives rows. Migration 0039. Types: `src/core/api.ts`, rules: `src/core/artifacts.ts`. A paired machine's session goes through the proxy like every session route (`PEER_API_ALLOW`; a version's bytes pass through as bytes with their headers); a paired device may call every route below (`DEVICE_ALLOWED`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/artifacts | `?kind=` (kinds separated by commas), `?session=` (a session id), `?q=` (title, kind, language, session name / title, machine) | 200 ArtifactListItem[], newest first: this machine's and the paired machines' (as last known) |
+| GET | /api/sessions/{id}/artifacts | — | 200 Artifact[] (newest first) · 404 `not-found` |
+| POST | /api/sessions/{id}/artifacts | ArtifactSaveInput without `path` (body up to ~6 MB) | 201 ArtifactSaveResult (saved by the developer) · 404 · 409 `too-many` · 413 `too-large` · 422 `invalid` |
+| GET | /api/sessions/{id}/artifacts/{artifactId} | `?version=n` (default: the latest) | 200 ArtifactDetail · 404 `not-found` · 422 `invalid` |
+| DELETE | /api/sessions/{id}/artifacts/{artifactId} | — | 204 · 404 `not-found` |
+| GET | /api/sessions/{id}/artifacts/{artifactId}/versions/{n}/raw | `?download` | 200 the version's bytes: `html` as `text/html` under the sandbox CSP, `svg` as `image/svg+xml` and images as their type under a CSP that runs nothing, other text as `text/plain`; `nosniff`; `?download` = attachment named after the title (`docs/security.md` → *Artifacts*); ruling 2026-10-09: `?render` on a Mermaid version = an HTML page (the HTML CSP) that draws it with the inlined Mermaid bundle · 404 |
+| GET | /agent/v1/artifacts | — (agent token) | 200 Artifact[] of the token's session (`artifact_list`) |
+| POST | /agent/v1/artifacts | ArtifactSaveInput (`path` allowed: a file inside the session's folders, copied now) | 201 ArtifactSaveResult (saved by the agent; `artifact_save`) · the refusals above |
+| GET | /agent/v1/artifacts/{artifactId} | `?version=n` | 200 ArtifactDetail (`artifact_get`) |
+
+- `ArtifactKind`: `markdown` · `code` · `html` · `mermaid` · `svg` · `image` · `csv`.
+- `Artifact`: `{ id, sessionId: string | null, title, kind, language: string | null, createdBy: "agent" | "developer", versions, size, createdAt, updatedAt }` (`versions` = the latest version's number, `size` its bytes). `SessionDetail.artifacts` is `Artifact[]` (its length is the header's tab count).
+- `ArtifactVersionInfo`: `{ n, size, createdBy, createdAt }`. `ArtifactDetail` = `Artifact` + `versionList: ArtifactVersionInfo[]` (oldest first) + `version: ArtifactVersionInfo & { content: string | null }` (`null` for an image).
+- `ArtifactListItem` = `Artifact` + `sessionName`, `sessionTitle`, `folder`, `folderPath` (`null` without a session) + `machine?` (a paired machine's).
+- `ArtifactSaveInput`: `{ title, kind, content?, path?, language?, id? }`: `content` or `path` (not both; an `image` needs `path`), `id` = one of the session's artifacts (the save adds a version; the kind must stay). Limits: title one line ≤ 120 characters; text ≤ 2 MB; image ≤ 10 MB (png / jpg / gif / webp by its bytes); ≤ 100 versions per artifact; ≤ 200 artifacts per session.
+- `ArtifactSaveResult`: `{ artifact: Artifact, version, created }`.
+- `/hub` gains `artifactsChanged` (table below).
+
+```json
+POST /agent/v1/artifacts
+{ "title": "Release plan", "kind": "markdown", "content": "# Release plan\n\n1. Ship\n", "id": "a1b2c3d4e5" }
+→ 201
+{ "artifact": { "id": "a1b2c3d4e5", "sessionId": "free-talk-feature", "title": "Release plan", "kind": "markdown", "language": null,
+    "createdBy": "agent", "versions": 2, "size": 24, "createdAt": "2026-10-09T10:00:00.000Z", "updatedAt": "2026-10-09T10:05:00.000Z" },
+  "version": 2, "created": false }
+```
+
 ## Diff views (D90, 2026-10-09, additive)
 Developer ruling D90 (`docs/decisions.md`; details `docs/worktrees.md` → *Diff*): the Diff tab opens on the work since the last commit. Types: `src/core/api.ts` (`DiffScope`, `DiffTargets`).
 
@@ -1353,6 +1385,30 @@ GET /api/sessions/0b7c3e0a-…/diff?scope=all
 → 422 { "error": "invalid", "errors": [{ "field": "scope", "message": "scope must be one of head, branch, repo" }] }
 ```
 
+## Apply the standing instruction (D91, 2026-10-09, additive)
+Developer ruling D91 (`docs/decisions.md`; details `docs/settings.md` → *Apply to open sessions*): the D64 standing instruction can be given to the sessions already running. Types: `src/core/standing-instruction.ts` (`InstructionApplyResult`, `InstructionReloadResult`, `InstructionReloadOutcome`); `Session.instructionOutdated` / `instructionPending` in `src/core/api.ts`.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| POST | /api/settings/standing-instruction/apply | `{}` | 200 InstructionApplyResult |
+| POST | /api/sessions/{id}/reload-instruction | `{}` | 200 `{ outcome, session }` · 404 `not-found` · 409 `not-available` (hooked), `detached`, `switching`, `closed`, `folder-missing`, `cli-unavailable` · 502 `reload-failed` · 503 `closing` |
+
+- **`outcome`:** `restarted` (idle: the process was restarted with `--resume`, no message; the chat gets the lifecycle event `instruction-updated`, label "Standing instruction updated", a divider), `pending` (a turn runs or the session waits on the developer: restarted once idle), `current` (already on it), `not-running` (no process: its next start gets it).
+- **`InstructionApplyResult`:** `{ restarted: string[], notRunning: number, pending: string[], current: number, skipped: number, failed: [{ sessionId, title, reason }] }` over this machine's open sessions; `skipped` = hooked terminal sessions and sessions continued in a terminal. A failed session is left as it was.
+- **`Session.instructionOutdated`** (additive): the session's running process was started with another standing instruction than the current setting; `false` without a process. **`instructionPending`**: a reload waits for the turn's end. A `PUT /api/settings` that changes `agents.standingInstruction` or `.enabled` publishes `sessionUpdated` for the live sessions.
+- **Devices (D73):** `…/reload-instruction` is allowed; `…/standing-instruction/apply` is refused (`local-only`). **Peers (D48):** neither is on `PEER_API_ALLOW`; a paired machine's sessions are applied there.
+
+```json
+POST /api/settings/standing-instruction/apply
+→ 200
+{ "restarted": ["0b7c3e0a-…"], "notRunning": 1, "pending": ["5f1d…"], "current": 0, "skipped": 1,
+  "failed": [{ "sessionId": "9a2e…", "title": "fix-login", "reason": "the session's folder does not exist: /work/gone" }] }
+
+POST /api/sessions/0b7c3e0a-…/reload-instruction
+→ 200
+{ "outcome": "restarted", "session": { "id": "0b7c3e0a-…", "instructionOutdated": false, "instructionPending": false } }
+```
+
 ## Event hub `/hub` (Server-Sent Events)
 Transport changed from SignalR to **Server-Sent Events** on 2026-09-27 (developer ruling, Node stack). Event names and payloads are unchanged and remain locked.
 `GET /hub` → `Content-Type: text/event-stream`, cookie-authenticated like every API call. Each event is sent as
@@ -1381,4 +1437,5 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | reviewResolved | { sessionId, outcome: merged \| committed \| discarded \| sent-back \| dismissed } (additive, D79: a review card was resolved; exactly this shape (`ReviewResolvedEvent`, `src/core/reviews.ts`); D76: the todos whose run session it is leave `review`; this machine's only, never forwarded between peers) |
 | reviewsChanged | { sessionId } (additive, D79: a session's review card was raised, refreshed or acted on; forwarded between peers) |
 | draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null` (also the server's orphan clean-up, ruling 2026-10-09); other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id; `sessionId: null` = this machine's own draft (`/api/drafts`), not forwarded) |
+| artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox \| review, title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |

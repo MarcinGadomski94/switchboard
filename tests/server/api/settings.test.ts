@@ -328,7 +328,8 @@ describe('settings helpers (M8.2)', () => {
   it('D64 · the standing instruction: on by default with the default text; edit, toggle and reset are stored; bad values 422', async () => {
     await setup();
     // D68: the todo-list sentence made it longer (still short: it costs tokens in every session); D70: priority and estimate (502); D75: in progress when started, done when finished, always (550).
-    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(560);
+    // D89: the artifact sentence added; the bound moved up by that much only.
+    expect(DEFAULT_STANDING_INSTRUCTION.length).toBeLessThan(740);
     expect(await standingInstructionFor(store!.settings)).toBe(DEFAULT_STANDING_INSTRUCTION);
     const edited = await call('PUT', '/api/settings', { 'agents.standingInstruction': 'Be brief.' });
     expect(edited.json()).toMatchObject({ 'agents.standingInstruction': 'Be brief.', 'agents.standingInstruction.enabled': true });
@@ -346,6 +347,16 @@ describe('settings helpers (M8.2)', () => {
       const refused = await call('PUT', '/api/settings', body);
       expect(refused.statusCode, JSON.stringify(Object.keys(body))).toBe(422);
     }
+  });
+
+  it('D91 · Apply to open sessions: answers the summary (nothing open: all zero); a session reload of an unknown id is 404', async () => {
+    await setup();
+    const applied = await call('POST', '/api/settings/standing-instruction/apply', {});
+    expect(applied.statusCode).toBe(200);
+    expect(applied.json()).toEqual({ restarted: [], notRunning: 0, pending: [], current: 0, skipped: 0, failed: [] });
+    const missing = await call('POST', '/api/sessions/nope/reload-instruction', {});
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: 'not-found' });
   });
 
   it('D64 · effectiveStandingInstruction and readKnownSettings (UI side)', () => {

@@ -18,15 +18,15 @@ import {
 
 /**
  * Visual oracle for the global Artifacts view (M7.3, D10), against the
- * prototype's `vArtifacts` at 1440×900 (screenshot 07): the header (title,
- * "13 of 13", search), the five filter pills, the column headers and the 13
- * rows of `ART.slice(1)` (the demo seed), plus one filtered state (Diffs).
- *
- * The app lists artifacts newest first (the API's order); the prototype's array
- * order follows no rule. So every row position is compared by index (all rows
- * share one height), each row's copy is compared by content (the sorted set of
- * row lines), and the first row's cells by style. Documented in
- * `docs/visual/artifacts.md`.
+ * prototype's `vArtifacts` at 1440×900 (screenshot 07). D89 (developer request
+ * 2026-10-09; `docs/visual/README.md` → *Deliberate deviations*): the page lists
+ * the artifacts saved on purpose, with its own kind filters and columns, so the
+ * filter pills, the column labels and widths and the row copy are no longer the
+ * prototype's. What D89 keeps is still compared: the header (title, "13 of 13"
+ * with the demo's 13 saved artifacts, search), the filter row's and the column
+ * header's boxes, the rows' area and the 13 row boxes (by index, equal heights),
+ * the styles of the head, search, pills, column header, rows and kind tag, and
+ * the new grid. Documented in `docs/visual/artifacts.md`.
  */
 
 /** Child-index paths from the shell grid (harness.measure): `[1]` = main, `[1, 0]` = the view. */
@@ -38,27 +38,10 @@ const PARTS: Readonly<Record<string, { readonly path: readonly number[]; readonl
   count: { path: [1, 0, 0, 0, 1], geometry: 'box', copy: true },
   search: { path: [1, 0, 0, 0, 2], geometry: 'box', copy: false },
   filters: { path: [1, 0, 0, 1], geometry: 'box', copy: false },
-  filterAll: { path: [1, 0, 0, 1, 0], geometry: 'box', copy: true },
-  filterDiffs: { path: [1, 0, 0, 1, 1], geometry: 'box', copy: true },
-  filterPrs: { path: [1, 0, 0, 1, 2], geometry: 'box', copy: true },
-  filterDocs: { path: [1, 0, 0, 1, 3], geometry: 'box', copy: true },
-  filterTickets: { path: [1, 0, 0, 1, 4], geometry: 'box', copy: true },
-  cols: { path: [1, 0, 1], geometry: 'box', copy: true },
-  colType: { path: [1, 0, 1, 0], geometry: 'box', copy: true },
-  colName: { path: [1, 0, 1, 1], geometry: 'box', copy: true },
-  colLocation: { path: [1, 0, 1, 2], geometry: 'box', copy: true },
-  colSession: { path: [1, 0, 1, 3], geometry: 'box', copy: true },
-  colStatus: { path: [1, 0, 1, 4], geometry: 'box', copy: true },
-  colAge: { path: [1, 0, 1, 5], geometry: 'box', copy: true },
+  // D89: the column labels changed (kind · title · session · versions · saved by · age): the box only.
+  cols: { path: [1, 0, 1], geometry: 'box', copy: false },
   rows: { path: [1, 0, 2], geometry: 'box', copy: false },
-  // Row cells: geometry only (x / width / height; y too, rows are equal height), the copy is compared as a set below.
   row0: { path: [1, 0, 2, 0], geometry: 'box', copy: false },
-  row0Type: { path: [1, 0, 2, 0, 0], geometry: 'size', copy: false },
-  row0Name: { path: [1, 0, 2, 0, 1], geometry: 'none', copy: false },
-  row0Location: { path: [1, 0, 2, 0, 2], geometry: 'none', copy: false },
-  row0Session: { path: [1, 0, 2, 0, 3], geometry: 'none', copy: false },
-  row0Meta: { path: [1, 0, 2, 0, 4], geometry: 'none', copy: false },
-  row0Age: { path: [1, 0, 2, 0, 5], geometry: 'none', copy: false },
   ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`row${i}Box`, { path: [1, 0, 2, i], geometry: 'box' as Geometry, copy: false }])),
   // D61: the app's nav has MCP after Schedules & loops: this item is one further on and one row lower (compared by size).
   sideArtifacts: { path: [0, 2, 3], geometry: 'size', copy: false },
@@ -93,18 +76,6 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.stop();
 });
-
-/** Every row's six cells as one line, sorted (copy compared by content, not order). */
-async function rowLines(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const grid = [...document.querySelectorAll<HTMLElement>('body *')].find((el) => {
-      const style = getComputedStyle(el);
-      return style.display === 'grid' && style.gridTemplateColumns.startsWith('256px');
-    });
-    const rows = grid?.children[1]?.children[0]?.children[2];
-    return [...(rows?.children ?? [])].map((row) => [...row.children].map((cell) => (cell.textContent ?? '').trim()).join(' | ')).sort();
-  });
-}
 
 async function compare(protoPage: Page, appPage: Page, parts: typeof PARTS, failures: string[], rows: string[]): Promise<void> {
   const paths = Object.fromEntries(Object.entries(parts).map(([name, part]) => [name, part.path]));
@@ -148,17 +119,6 @@ test('Artifacts view matches the prototype (tokens, boxes ±2 px, copy)', async 
   const rows: string[] = [];
   await compare(protoPage, appPage, PARTS, failures, rows);
 
-  // Copy of the 13 rows, by content.
-  const protoLines = await rowLines(protoPage);
-  const appLines = await rowLines(appPage);
-  const lineRows: string[] = [];
-  for (let i = 0; i < Math.max(protoLines.length, appLines.length); i++) {
-    const p = protoLines[i] ?? '(none)';
-    const a = appLines[i] ?? '(none)';
-    if (p !== a) failures.push(`row copy: prototype ${JSON.stringify(p)} vs app ${JSON.stringify(a)}`);
-    lineRows.push(`| ${p} | ${p === a ? 'ok' : `FAIL: ${a}`} |`);
-  }
-
   // SPEC token checks on the app.
   const computed = await appPage.evaluate(() => {
     const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
@@ -185,8 +145,9 @@ test('Artifacts view matches the prototype (tokens, boxes ±2 px, copy)', async 
     pillSelected: `${hexToRgb('#e8e7e3')} ${hexToRgb('#111214')}`,
     pill: `${hexToRgb('#1f2024')} ${hexToRgb('#c9c8c3')}`,
     colsLabel: `500 10.5px "Geist Mono", monospace uppercase ${hexToRgb('#6d6c67')}`,
-    colsGrid: '80px 350px 320px 180px 90px 50px',
-    rowGrid: '80px 350px 320px 180px 90px 50px',
+    // D89: kind · title · session · versions · saved by · age.
+    colsGrid: '110px 480px 280px 70px 80px 50px',
+    rowGrid: '110px 480px 280px 70px 80px 50px',
     rowBorder: hexToRgb('#1f2024'),
     typeTag: `${hexToRgb('#26272c')} ${hexToRgb('#c9c8c3')} 4px`,
     rowIsLink: true,
@@ -206,28 +167,10 @@ test('Artifacts view matches the prototype (tokens, boxes ±2 px, copy)', async 
   const full = await pixelDiff(appPage, protoShot, appShot);
   const main = await pixelDiff(appPage, protoMain, appMain);
 
-  // One filtered state: Diffs (3 of 13), selected pill and the rows.
-  await protoPage.getByText('Diffs', { exact: true }).click();
-  await protoPage.getByText('3 of 13', { exact: true }).waitFor();
-  await appPage.getByTestId('artifacts-filter').filter({ hasText: /^Diffs$/ }).click();
-  await appPage.getByText('3 of 13', { exact: true }).waitFor();
-  const filteredRows: string[] = [];
-  const filteredParts = Object.fromEntries(
-    ['count', 'filterAll', 'filterDiffs', 'row0', 'row0Type', ...[0, 1, 2].map((i) => `row${i}Box`)].map((name) => [name, PARTS[name]!]),
-  );
-  await compare(protoPage, appPage, filteredParts, failures, filteredRows);
-  const protoDiffs = await rowLines(protoPage);
-  const appDiffs = await rowLines(appPage);
-  if (JSON.stringify(protoDiffs) !== JSON.stringify(appDiffs)) failures.push(`Diffs rows: prototype ${JSON.stringify(protoDiffs)} vs app ${JSON.stringify(appDiffs)}`);
-  const protoFiltered = await protoPage.screenshot({ clip });
-  const appFiltered = await appPage.screenshot({ clip });
-  const filtered = await pixelDiff(appPage, protoFiltered, appFiltered);
-
   await writeReport({
-    'artifacts.md': report({ rows, lineRows, computedRows, filteredRows, failures, full: full.percent, main: main.percent, filtered: filtered.percent }),
+    'artifacts.md': report({ rows, computedRows, failures, full: full.percent, main: main.percent }),
     'artifacts-side-by-side.png': await sideBySide(appPage, protoShot, appShot),
     'artifacts-main-side-by-side.png': await sideBySide(appPage, protoMain, appMain),
-    'artifacts-diffs-side-by-side.png': await sideBySide(appPage, protoFiltered, appFiltered),
   });
 
   expect(failures).toEqual([]);
@@ -238,43 +181,24 @@ function fmtBox(part: Part): string {
   return `${round(x)},${round(y)} ${round(width)}×${round(height)}`;
 }
 
-function report(input: {
-  rows: string[];
-  lineRows: string[];
-  computedRows: string[];
-  filteredRows: string[];
-  failures: string[];
-  full: number;
-  main: number;
-  filtered: number;
-}): string {
-  return `# Visual oracle · Artifacts (M7.3)
+function report(input: { rows: string[]; computedRows: string[]; failures: string[]; full: number; main: number }): string {
+  return `# Visual oracle · Artifacts (M7.3; D89)
 
 Generated by \`tests/e2e/visual/artifacts.spec.ts\` (D10). App: demo seed (\`SWITCHBOARD_DEMO=1\`), 1440×900, \`/artifacts\`.
 Prototype: \`docs/handoff/prototype/Switchboard App.dc.html\` offline, \`simulateIncoming\` off, sidebar → Artifacts.
 
 **Gate:** ${input.failures.length === 0 ? 'green' : `red (${input.failures.length} findings)`}
 
-Pixel diff (advisory, channel threshold 24): full page **${input.full.toFixed(2)}%**, main area (256,0 1184×900) **${input.main.toFixed(2)}%**, main area with Diffs selected **${input.filtered.toFixed(2)}%**.
+Pixel diff (advisory, channel threshold 24): full page **${input.full.toFixed(2)}%**, main area (256,0 1184×900) **${input.main.toFixed(2)}%**.
 
-Side by side (prototype left, app right): \`artifacts-side-by-side.png\`, \`artifacts-main-side-by-side.png\`, \`artifacts-diffs-side-by-side.png\`.
+Side by side (prototype left, app right): \`artifacts-side-by-side.png\`, \`artifacts-main-side-by-side.png\`.
 
-Row order: the app lists artifacts newest first (the API's order, \`updated_at\` descending); the prototype's \`ART\` array has no order rule. Row boxes are compared by index (equal heights), row copy by content (sorted lines below), the first row's cells by style. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
+D89 (developer request 2026-10-09, \`docs/visual/README.md\` → *Deliberate deviations*): the page lists the artifacts saved on purpose (the demo seeds 13, as many per session as the prototype's tabs count). Its kind filters (All · Docs · Code · HTML · Diagrams · Images · Tables + a session filter), its columns (kind · title · session · versions · saved by · age, \`110px 1fr 280px 70px 80px 50px\`) and its rows' copy are its own and are not compared; the header, the filter row's and the column header's boxes, the rows' area and the 13 row boxes, and the styles of the chrome are. The sidebar's Artifacts badge counts the API's rows (13; the prototype hard-codes "14" while showing 13 rows), so its box is compared and its copy is not.
 
 ## Boxes (±2 px), styles and copy
 | Part | Geometry | Prototype | App | Result | Copy (exact) |
 |---|---|---|---|---|---|
 ${input.rows.join('\n')}
-
-## Row copy (sorted: type | name | solution · branch | session | status | age)
-| Prototype | App |
-|---|---|
-${input.lineRows.join('\n')}
-
-## Diffs selected
-| Part | Geometry | Prototype | App | Result | Copy (exact) |
-|---|---|---|---|---|---|
-${input.filteredRows.join('\n')}
 
 ## Computed styles (SPEC tokens)
 | Check | Expected | App | Result |

@@ -4,6 +4,8 @@ import { checkRuleTargets } from '../../core/model-routing.ts';
 import type { ApiContext } from '../routes.ts';
 import { readModelOptionsSetting } from '../settings/models.ts';
 import { readSettings, validateSettingsPatch } from '../settings/settings.ts';
+import { applyInstructionToOpenSessions } from '../settings/apply-instruction.ts';
+import type { InstructionApplyResult } from '../../core/standing-instruction.ts';
 import type { PendingRoute } from './not-implemented.ts';
 
 /** Settings routes (contract → REST) not implemented yet: none since M8.2. */
@@ -43,8 +45,15 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
       if (problems.length > 0) return reply.code(422).send({ error: 'invalid', errors: problems });
     }
     await store.settings.setMany(result.value);
+    // D91: a changed standing instruction makes running sessions' processes "older" (their `instructionOutdated`).
+    if ('agents.standingInstruction' in result.value || 'agents.standingInstruction.enabled' in result.value) await context.supervisor.instructionSettingChanged();
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
+
+  // D91 (`docs/settings.md` → *Apply to open sessions*): gives this machine's open sessions the current standing
+  // instruction (idle → restarted with `--resume`, busy / waiting → after the turn, no process → next start). Desktop
+  // only (a settings action, DEVICE_REFUSED); not on the peer API (a paired machine's sessions are applied there).
+  app.post('/api/settings/standing-instruction/apply', async (): Promise<InstructionApplyResult> => applyInstructionToOpenSessions(store, context.supervisor));
 
   // D62: `GET /api/models` (D42) moved to api/clis.ts, where it takes `?provider=`.
 }

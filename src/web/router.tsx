@@ -10,6 +10,7 @@ import { type AnchorHTMLAttributes, type MouseEvent, type ReactNode, createConte
  * | `/`, `/inbox` | Inbox |
  * | `/sessions/:id[/:tab]` | Session (tab: chat · timeline · diff · artifacts) |
  * | `/sessions/:id/agents/:agentId` | Session, chat tab: that subagent's own chat (D36) |
+ * | `/sessions/:id/artifacts/:artifactId` | Session, Artifacts tab with that artifact open (D89) |
  * | `/solutions` | Solutions |
  * | `/schedules` | Schedules & loops |
  * | `/mcp` | MCP servers (D61) |
@@ -40,6 +41,8 @@ export type Route =
       readonly tab: SessionTab;
       /** D36: a subagent's id: the chat tab shows that subagent's own chat (`/sessions/{id}/agents/{agentId}`). */
       readonly agentId?: string;
+      /** D89: the Artifacts tab opens this artifact (`/sessions/{id}/artifacts/{artifactId}`). */
+      readonly artifactId?: string;
     }
   | { readonly view: 'tool'; readonly id: string }
   | { readonly view: 'settings'; readonly section: string | null };
@@ -65,6 +68,8 @@ export function parseRoute(pathname: string): Route {
   if (head === 'sessions' && a) {
     // D36: `/sessions/{id}/agents/{agentId}` is the chat tab in subagent mode.
     if (b === 'agents' && c) return { view: 'session', id: a, tab: 'chat', agentId: c };
+    // D89: `/sessions/{id}/artifacts/{artifactId}` opens that artifact in the Artifacts tab.
+    if (b === 'artifacts' && c) return { view: 'session', id: a, tab: 'artifacts', artifactId: c };
     const tab = (SESSION_TABS as readonly string[]).includes(b ?? '') ? (b as SessionTab) : 'chat';
     return { view: 'session', id: a, tab };
   }
@@ -78,6 +83,7 @@ export function routePath(route: Route): string {
   switch (route.view) {
     case 'session':
       if (route.agentId) return `/sessions/${encodeURIComponent(route.id)}/agents/${encodeURIComponent(route.agentId)}`;
+      if (route.tab === 'artifacts' && route.artifactId) return `/sessions/${encodeURIComponent(route.id)}/artifacts/${encodeURIComponent(route.artifactId)}`;
       return `/sessions/${encodeURIComponent(route.id)}${route.tab === 'chat' ? '' : `/${route.tab}`}`;
     case 'tool':
       return `/tools/${encodeURIComponent(route.id)}`;

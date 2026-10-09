@@ -126,7 +126,11 @@ describe('D48 peer wire mapping', () => {
       task: 't',
       events: [{ id: 1, sessionId: 's1', agentId: null, ts: 't', endTs: null, kind: 'ask', label: 'q', payload: { type: 'tool', requestId: 'b1' } }],
       files: [],
-      artifacts: [{ id: 'a1', type: 'DOC', name: 'x', solution: null, branch: null, sessionId: 's1', meta: null, createdAt: 't' }],
+      // D89: a saved artifact is namespaced; a peer before D89 sends its derived rows (`type`, `name`): those are left out.
+      artifacts: [
+        { id: 'a1', sessionId: 's1', title: 'Plan', kind: 'markdown', language: null, createdBy: 'agent', versions: 1, size: 1, createdAt: 't', updatedAt: 't' },
+        { id: 'old', type: 'DOC', name: 'x', solution: null, branch: null, sessionId: 's1', meta: null, createdAt: 't' },
+      ],
       questions: [{ id: 'q1', batchId: 'b1', sessionId: 's1' }],
       reportedTable: null,
     } as unknown as SessionDetail;
@@ -135,7 +139,7 @@ describe('D48 peer wire mapping', () => {
     expect(mapped.events[0]?.sessionId).toBe('r~abcdefghijkl~s1');
     expect((mapped.events[0]?.payload as { requestId: string }).requestId).toBe('r~abcdefghijkl~b1');
     expect(mapped.questions[0]).toMatchObject({ id: 'q1', batchId: 'r~abcdefghijkl~b1', sessionId: 'r~abcdefghijkl~s1' });
-    expect(mapped.artifacts[0]?.sessionId).toBe('r~abcdefghijkl~s1');
+    expect(mapped.artifacts.map((artifact) => [artifact.id, artifact.sessionId])).toEqual([['a1', 'r~abcdefghijkl~s1']]);
   });
 
   it('namespaces an Inbox item (its id, session and questions) and keeps its actions', () => {

@@ -52,7 +52,9 @@ describe('agent placement · real path (fake-claude Write turns)', () => {
 
     await waitForStatus(w.store, session.id, ['done']);
     await w.supervisor.sendMessage(session.id, 'And a mobile note. [fake:write mobile/notes.md]');
-    await until(async () => (await w.store.artifacts.list({ sessionId: session.id })).some((a) => a.solution === 'mobile') || undefined, 'the mobile write');
+    // D38: the recorder took the write in (the solution joins the session's); D89: it makes no artifact.
+    await until(async () => (await w.store.sessions.get(session.id))?.solutions.includes('mobile') || undefined, 'the mobile write');
+    expect(await w.store.artifacts.list({ sessionId: session.id })).toEqual([]);
     expect(await main()).toMatchObject({ solutionPath: 'microfrontends/acme-app-front', branch: 'session/demo-session' });
   });
 });

@@ -28,7 +28,7 @@ export const CLEANUP_GROUP_HINTS: Readonly<Record<CleanupGroup, string>> = {
   localBranches: 'Branches Switchboard made that are merged, or whose worktree or session is gone. Unmerged ones need an extra confirmation. Other branches a Switchboard worktree used are listed only when merged, never ticked for you.',
   remoteBranches: 'Branches Switchboard pushed. Never ticked for you: each one is deleted on its remote only when you tick it, after a separate confirmation.',
   sessions: 'Closed sessions older than the limit below: the session record with its events, todos and attachments.',
-  data: 'Attachments past their 30 days, files nothing refers to any more, old chat exports and take-over staging folders.',
+  data: 'Attachments past their 30 days, files nothing refers to any more, old chat exports, take-over staging folders, and (never ticked for you) saved artifacts whose session was deleted.',
 };
 
 /** D84: a worktree whose session is closed or gone counts as stale after this many days without a change. */

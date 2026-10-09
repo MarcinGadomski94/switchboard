@@ -129,13 +129,32 @@ function SolutionDetail({ solution, toolId, onMoved, back }: { readonly solution
       </div>
       <div className="sb-sol-section">
         <div className="sb-sol-label">Artifacts &amp; follow-ups</div>
-        {artifactRows(solution.artifacts).map((artifact, index) => (
-          <div className="sb-sol-art" key={`${artifact.type}\u0000${artifact.name}\u0000${index}`} data-testid="solution-artifact">
-            <span className="sb-sol-art-tag">{artifact.type}</span>
-            <span className="sb-sol-art-name">{artifact.name}</span>
-            <span className="sb-sol-art-meta">{artifact.meta}</span>
-          </div>
-        ))}
+        {artifactRows(solution.artifacts).map((artifact, index) => {
+          const cells = (
+            <>
+              <span className="sb-sol-art-tag">{artifact.type}</span>
+              <span className="sb-sol-art-name">{artifact.name}</span>
+              <span className="sb-sol-art-meta">{artifact.meta}</span>
+            </>
+          );
+          const key = `${artifact.type}\u0000${artifact.name}\u0000${index}`;
+          // D89: a saved artifact opens its session's Artifacts tab on it.
+          return artifact.artifactId && artifact.sessionId ? (
+            <Link
+              className="sb-sol-art sb-sol-art--link"
+              key={key}
+              data-testid="solution-artifact"
+              data-artifact-id={artifact.artifactId}
+              to={{ view: 'session', id: artifact.sessionId, tab: 'artifacts', artifactId: artifact.artifactId }}
+            >
+              {cells}
+            </Link>
+          ) : (
+            <div className="sb-sol-art" key={key} data-testid="solution-artifact">
+              {cells}
+            </div>
+          );
+        })}
       </div>
       <div className="sb-sol-fresh" data-testid="codebase-memory" data-state={solution.codebaseMemory}>
         <span className="sb-sol-fresh-dot" style={{ background: fresh.color }} />
