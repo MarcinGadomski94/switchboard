@@ -490,6 +490,22 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  {
+    id: 'copy-code',
+    decision: 'D92',
+    version: V1_14,
+    title: 'Copy code with one click',
+    steps: [
+      {
+        id: 'copy',
+        title: 'Copy code with one click',
+        what: 'Every code block an agent writes in the chat has a Copy button at its top right, next to Save as artifact. It copies just the code.',
+        todo: ['Hover a code block in a chat (on a touch screen the buttons are always shown).', 'Press Copy; it reads "Copied ✓" for a moment.'],
+        anchors: ['code-copy', 'composer'],
+        missing: 'Open a session whose agent wrote a code block: Copy sits at the top right of the block.',
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

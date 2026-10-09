@@ -894,6 +894,10 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **What's new (1.14.0):** "Apply the standing instruction to open sessions", one step on the button.
   - Details: `docs/settings.md` → *Apply to open sessions*, contract → *Apply the standing instruction (D91)*; ASSUMED items: `.loop/questions.md` → *D91 · Apply the standing instruction*.
 
+## Copy code (added 2026-10-09)
+
+- **D92 Every code block in the chat has a Copy button.** Developer request 2026-10-09: "When the agent returns code snippets, it would be nice if I could copy them with the click of a button." Every fenced code block rendered by `ChatMarkdown` (main chat, subagent chats, todo cards) gets **Copy** at its top right, beside D89's **Save as artifact** where the chat offers it: shown on hover / keyboard focus, always on touch screens. It copies the block's code (the async Clipboard API, else a hidden textarea), then reads "Copied ✓" (or "Copy failed") for 1.5 s, announced through a polite live region. The labels are drawn by CSS, so selecting or copying the message text never includes them. What's-new entry `copy-code` (1.14.0). Details: `docs/chat.md` → *Markdown*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

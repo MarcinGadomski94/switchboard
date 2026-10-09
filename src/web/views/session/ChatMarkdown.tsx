@@ -91,7 +91,7 @@ function CodeBlock({ node, children, onSaveCode }: { readonly node: unknown; rea
     <div className="sb-md-code">
       <pre>{children}</pre>
       {/* The labels are drawn by CSS (markdown.css / save-artifact.css): the message's text (copy, selection) never picks them up. */}
-      <div className="sb-md-code-tools">
+      <div className="sb-md-code-tools" data-tour="code-copy">
         <button type="button" className="sb-button sb-md-code-copy" data-testid="chat-code-copy" data-state={copied} aria-label={copied === 'copied' ? 'Copied' : 'Copy code'} title="Copy code" onClick={copy} />
         {onSaveCode ? <button type="button" className="sb-button sb-md-code-save" data-testid="chat-code-save" aria-label="Save as artifact" title="Save as artifact" onClick={() => onSaveCode(code(), hastLanguage(node))} /> : null}
       </div>

@@ -75,6 +75,8 @@ The text of every user bubble and agent block renders as GitHub-flavored Markdow
 - **Performance:** the chat re-renders on every event, so `ChatMarkdown` is memoized on the text; a streamed message re-parses only itself.
 - **Status tables (D21):** the newest status table an agent message holds (a box-drawing or pipe table with an Agent and a Status column) is also repeated in the right panel's agent overview under "As reported by the agent" (D27: drawn as a readable table, the original behind an "as printed" popover) (`docs/session-panel.md` → *Agent overview*); the chat itself shows it unchanged.
 
+- **Copy (D92).** Every fenced code block has a **Copy** button at its top right (beside D89's Save as artifact): on hover / focus, always on touch screens; it copies the block's code and reads "Copied ✓" for a moment. The labels are CSS-drawn, so they never end up in copied message text.
+
 ## Live activity line (D19)
 While a turn runs (D30: or, after it, background work the agent started is pending), one line sits between the conversation and the composer, Claude-Code style; it is not rendered at all otherwise, so an idle chat is unchanged. Source: `Session.activity` from the session detail, replaced by each `/hub` `activity` event for the session until the next reload (`useLiveActivity`, `src/web/activity/useActivity.ts`; server side `docs/derivations.md` → *Live activity*). Code: `src/web/activity/activity.ts` (pure copy and formats), `ActivityViews.tsx` (`ChatActivityLine`), `activity.css`. The times are the server's timestamps; the line ticks locally once a second.
 

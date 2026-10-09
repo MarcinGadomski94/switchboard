@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.14.0 (2026-10-09)
+
+### Drafts follow you
+- Unsent text is kept per session on the server: the message box (with uploaded attachments), question cards' picks and "Other…" answers, the review card's Send-back comment and Commit message, the todo + Add and Edit forms, and (per machine) the New-session form. It survives switching sessions and reloads, and shows on your other devices; a field you're typing in is never overwritten by another device. Sending, saving or Clear removes a draft, and drafts whose question, review or todo is resolved elsewhere are cleaned up at once.
+
+### Artifacts are saved on purpose
+- Like artifacts in claude.ai: agents save deliverables with the new `artifact_save` tool (Markdown, code, HTML, Mermaid, SVG, images, CSV), with versions; `artifact_list` / `artifact_get` read them. You can save an agent message or a code block yourself (⋯ → Save as artifact).
+- The session's Artifacts tab and the Artifacts page show only these: rendered or source, a diff between versions, Copy, Download, Full screen, Delete. HTML and Mermaid diagrams render in a sandboxed frame that can't reach your login. A solution's page lists its sessions' artifacts, and Clean-up offers artifacts whose session is gone.
+- The automatic rows (every diff, branch, PR and written file) are gone.
+
+### Diff since the last commit
+- The Diff tab shows the session's uncommitted changes since the last commit by default; for a session working directly in a folder, only the files that session touched (someone else's edits are left out). **Whole branch** and **All uncommitted changes in this repo** are a click away, remembered per session; the tab count follows the view, and hunks are separated.
+
+### More
+- **Apply to open sessions** (Settings → Sessions & worktrees → Standing instruction): a changed standing instruction reaches the sessions already open — idle ones restart their CLI with the same conversation, busy ones right after their turn. Per session: ⋯ → Reload instruction.
+- **Copy** on every code block in the chat.
+
+### Database
+- Migrations 0038–0040 run by themselves on first start.
+
 ## 1.13.0 (2026-10-09)
 
 ### Work queue: run todos, review, undo

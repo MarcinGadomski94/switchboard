@@ -18,7 +18,7 @@ let render: (text: string) => string;
 
 /** D92: a fenced block as rendered: the wrapper, the `<pre>`, the Copy tool (no Save without a handler), the status line. */
 const CODE_BLOCK =
-  /<div class="sb-md-code">(<pre>[\s\S]*?<\/pre>)<div class="sb-md-code-tools"><button type="button" class="sb-button sb-md-code-copy" data-testid="chat-code-copy" data-state="idle" aria-label="Copy code" title="Copy code"><\/button><\/div><span class="sb-visually-hidden" role="status" aria-live="polite"><\/span><\/div>/g;
+  /<div class="sb-md-code">(<pre>[\s\S]*?<\/pre>)<div class="sb-md-code-tools" data-tour="code-copy"><button type="button" class="sb-button sb-md-code-copy" data-testid="chat-code-copy" data-state="idle" aria-label="Copy code" title="Copy code"><\/button><\/div><span class="sb-visually-hidden" role="status" aria-live="polite"><\/span><\/div>/g;
 
 beforeAll(async () => {
   const { ChatMarkdown } = (await import(/* @vite-ignore */ COMPONENT)) as { ChatMarkdown: (props: object) => unknown };
