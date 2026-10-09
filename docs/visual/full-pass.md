@@ -17,16 +17,16 @@ State: **gated** = implemented on this branch and compared · **chrome only** = 
 
 | Surface | SPEC | Items | State | Sidebar | Content | Pixel diff page | Pixel diff area | Detail spec | Side by side | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Inbox | Inbox | M3.2, M3.3 | gated | green (74) | green (3) | 1.72% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
+| Inbox | Inbox | M3.2, M3.3 | gated | green (74) | green (3) | 1.73% | 0.12% | inbox.spec.ts | `full-pass-inbox-side-by-side.png` | — |
 | Session · Chat | Session → Chat, Right panel | M4.1, M4.2, M4.3 | gated | green (74) | green (5) | 11.14% | 11.56% | session-header.spec.ts, session-chat.spec.ts, session-panel.spec.ts | `full-pass-session-chat-side-by-side.png` | D86 (developer request 2026-10-08): the quick-replies row above the composer is gone (the 📎 moved into the field's row, next to Send); session-chat.spec.ts re-anchors the composer and the chat area on the prototype's boxes and checks the 📎 on its own · D37 (developer ruling 2026-09-28): the done figma-extractor left the right panel (card + overview row) for "✓ 1 finished" under the cards; session-panel.spec.ts compares the remaining parts at the prototype's boxes and the ruled layout on its own |
 | Session · Timeline | Session → Timeline | M4.4 | gated | green (74) | green (3) | 10.92% | 11.29% | timeline.spec.ts (lane) | `full-pass-session-timeline-side-by-side.png` | — |
 | Session · Diff | Session → Diff | M4.5 | gated | green (74) | green (3) | 8.15% | 7.93% | diff.spec.ts (lane) | `full-pass-session-diff-side-by-side.png` | — |
-| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (74) | green (3) | 5.71% | 4.96% | session-artifacts.spec.ts | `full-pass-session-artifacts-side-by-side.png` | — |
+| Session · Artifacts | Session → Artifacts | M4.6 | gated | green (74) | green (5) | 5.73% | 4.99% | session-artifacts.spec.ts (e2e; D89 retired its visual oracle) | `full-pass-session-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent's artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md) · D89: the demo session's saved artifacts (the same count per session as the prototype's tab) |
 | Solutions | Solutions | M6.2, M6.3, M6.4 | gated | green (74) | green (3) | 1.63% | 0.01% | solutions.spec.ts, solutions-conflict.spec.ts | `full-pass-solutions-side-by-side.png` | — |
-| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (74) | green (3) | 1.92% | 0.36% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
-| Artifacts | Artifacts | M7.3 | gated | green (74) | green (3) | 3.34% | 2.08% | artifacts.spec.ts (lane w1-tools) | `full-pass-artifacts-side-by-side.png` | — |
+| Schedules & loops | Schedules & loops | M7.1, M7.2 | gated | green (74) | green (3) | 1.92% | 0.35% | schedules.spec.ts (lane w2-newsession), loops.spec.ts (lane w2-tabs) | `full-pass-schedules-side-by-side.png` | — |
+| Artifacts | Artifacts | M7.3 | gated | green (74) | green (5) | 4.79% | 3.85% | artifacts.spec.ts (lane w1-tools); D89: visual/artifacts.spec.ts compares the page chrome only | `full-pass-artifacts-side-by-side.png` | D89 (developer request 2026-10-09): the page lists the artifacts saved on purpose: kind · title · session · versions · saved by · age, filtered by kind and session (docs/artifacts.md) · D89: the Artifacts page's columns |
 | History | History | M7.4 | gated | green (74) | green (3) | 1.74% | 0.14% | history.spec.ts (lane) | `full-pass-history-side-by-side.png` | — |
-| Tool · Codebase Memory | Tools | M8.1 | gated | green (74) | green (3) | 1.64% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
+| Tool · Codebase Memory | Tools | M8.1 | gated | green (74) | green (3) | 1.65% | 0.00% | tools.spec.ts (lane) | `full-pass-tool-side-by-side.png` | — |
 | Settings | Settings | M8.2 (M9.1 row) | gated | green (74) | green (3) | 1.89% | 0.32% | settings.spec.ts (lane), start-at-login.spec.ts | `full-pass-settings-side-by-side.png` | — |
 | New session | Modals → New session | M5.1 (M7.1 section 7) | gated | green (74) | green (3) | 7.02% | 8.88% | new-session.spec.ts (lane) | `full-pass-new-session-side-by-side.png` | — |
 | Setup wizard | Modals → Setup wizard | M5.3 | gated | green (74) | green (3) | 1.28% | 0.39% | setup-wizard.spec.ts (lane) | `full-pass-setup-wizard-side-by-side.png` | — |
@@ -55,7 +55,7 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | inbox | nav:Schedules & loops:badge | box | 170.2,164.5 66.8×16 | 170.2,164.5 66.8×16 | ok | copy "1 failed" |
 | inbox | nav:Artifacts | box | 10,190 235×31 | 10,190 235×31 | ok |  |
 | inbox | nav:Artifacts:label | box | 18,197 50.3×17 | 18,197 50.3×17 | ok | copy "Artifacts" |
-| inbox | nav:Artifacts:badge | box | 209.8,197.5 27.2×16 | 209.8,197.5 27.2×16 | ok | copy listed: prototype "14" · app "13" (the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13)) |
+| inbox | nav:Artifacts:badge | box | 209.8,197.5 27.2×16 | 209.8,197.5 27.2×16 | ok | copy listed: prototype "14" · app "13" (the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13; D89: the 13 saved demo artifacts)) |
 | inbox | nav:History | box | 10,223 235×31 | 10,223 235×31 | ok |  |
 | inbox | nav:History:label | box | 18,230 42.2×17 | 18,230 42.2×17 | ok | copy "History" |
 | inbox | nav:History:badge | box | 223,237.5 14×2 | 223,237.5 14×2 | ok | copy "" |
@@ -132,7 +132,9 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | session-diff | landmarks | none | present | present | ok | "Not committed. Commit only when you approve." |
 | session-diff | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-diff | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
-| session-artifacts | landmarks | none | present | present | ok | "mobile-followups/from-acme-app-front.md" |
+| session-artifacts | landmarks | none | present | present | ok |  |
+| session-artifacts | D89 ruling (removed in the app) | none | "mobile-followups/from-acme-app-front.md" | absent | ok | D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent's artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md) |
+| session-artifacts | D89 ruling (app only) | none | — | "Free talk · implementation plan" | ok | D89: the demo session's saved artifacts (the same count per session as the prototype's tab) |
 | session-artifacts | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | session-artifacts | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | solutions | landmarks | none | present | present | ok | "Branches & worktrees", "Phase ledger", "Move button-rollout to worktree" |
@@ -141,7 +143,9 @@ Geometry: `box` = x, y, width, height · `size` = x, width, height · `bottom` =
 | schedules | landmarks | none | present | present | ok | "scheduled Claude Code runs + long-running loops", "+ New scheduled run", "Last 14 runs" |
 | schedules | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | schedules | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
-| artifacts | landmarks | none | present | present | ok | "Solution · branch" |
+| artifacts | landmarks | none | present | present | ok |  |
+| artifacts | D89 ruling (removed in the app) | none | "Solution · branch" | absent | ok | D89 (developer request 2026-10-09): the page lists the artifacts saved on purpose: kind · title · session · versions · saved by · age, filtered by kind and session (docs/artifacts.md) |
+| artifacts | D89 ruling (app only) | none | — | "Saved by" | ok | D89: the Artifacts page's columns |
 | artifacts | main | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | artifacts | view | box | 256,0 1184×900 | 256,0 1184×900 | ok |  |
 | history | landmarks | none | present | present | ok | "past sessions · searchable transcripts" |

@@ -77,8 +77,9 @@ function isGone(error: unknown): boolean {
  * - **status**: the most urgent status of those sessions; **phase**: the phase
  *   ledger's, else the sessions'; **changes**: lines added by those sessions'
  *   diffs (gap #10);
- * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: the sessions'
- *   artifacts for the solution + its `mobile-followups/*.md`;
+ * - **ledger**: `phase-ledger.md` (gap #12); **artifacts**: its
+ *   `mobile-followups/*.md` (D89: the sessions' derived artifacts are gone;
+ *   saved artifacts belong to sessions, not solutions);
  * - **codebaseMemory**: a workspace's `.claude/.codebase-memory-dirty` (M6.4,
  *   `src/core/codebase-memory.ts`); `unknown` in a repo folder, which has no
  *   dirty list;
@@ -145,10 +146,9 @@ export class LiveSolutions implements SolutionsProvider {
       ),
     );
 
-    const [sessions, worktrees, artifacts, dirty] = await Promise.all([
+    const [sessions, worktrees, dirty] = await Promise.all([
       this.#store.sessions.list(),
       this.#store.worktrees.list(),
-      this.#store.artifacts.list(),
       folder.kind === 'workspace' ? readDirtyList(scan.root) : Promise.resolve(null),
     ]);
     if (dirty?.state === 'unreadable') this.#onError(dirty.error);
@@ -244,7 +244,7 @@ export class LiveSolutions implements SolutionsProvider {
           conflictSessions: conflict.sessions,
           branches,
           ledger,
-          artifacts: await this.#artifacts(row, artifacts),
+          artifacts: await this.#followups(row),
           codebaseMemory: dirty ? solutionFreshness(dirty.projects, dirty.roots, row.solution.relativePath) : 'unknown',
         });
       }),
@@ -343,21 +343,8 @@ export class LiveSolutions implements SolutionsProvider {
     }
   }
 
-  /**
-   * The row's artifacts: the sessions' artifacts whose solution is the row's name
-   * (one per type + name, newest first), then its `mobile-followups/*.md` files not
-   * already listed (FOLLOWUP, no meta).
-   */
-  async #artifacts(row: Row, all: Awaited<ReturnType<Store['artifacts']['list']>>): Promise<SolutionArtifact[]> {
-    const out: SolutionArtifact[] = [];
-    const seen = new Set<string>();
-    for (const artifact of all) {
-      if (artifact.solution !== row.solution.name) continue;
-      const key = `${artifact.type}\u0000${artifact.name}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ type: artifact.type, name: artifact.name, meta: artifact.meta ?? '', sessionId: artifact.sessionId });
-    }
+  /** The row's "Artifacts & follow-ups": its `mobile-followups/*.md` files (FOLLOWUP, no meta), by name. */
+  async #followups(row: Row): Promise<SolutionArtifact[]> {
     let entries: Dirent[] = [];
     try {
       entries = await readdir(path.join(row.repo, FOLLOWUPS_FOLDER), { withFileTypes: true });
@@ -368,12 +355,7 @@ export class LiveSolutions implements SolutionsProvider {
       .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && entry.name.toLowerCase().endsWith('.md'))
       .map((entry) => `${FOLLOWUPS_FOLDER}/${entry.name}`)
       .sort();
-    for (const name of files) {
-      if (seen.has(`FOLLOWUP\u0000${name}`)) continue;
-      seen.add(`FOLLOWUP\u0000${name}`);
-      out.push({ type: 'FOLLOWUP', name, meta: '', sessionId: null });
-    }
-    return out;
+    return files.map((name) => ({ type: 'FOLLOWUP', name, meta: '', sessionId: null }));
   }
 }
 

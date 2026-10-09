@@ -191,8 +191,8 @@ export function registerPeerForwarding(app: FastifyInstance, peers: PeerService)
     for (const [name, value] of Object.entries(params)) {
       if (typeof value === 'string') path = path.replace(`:${name}`, encodeURIComponent(value));
     }
-    // D57: an attachment is bytes: passed on with its serving headers (never parsed as JSON).
-    if (request.method === 'GET' && route === ATTACHMENT_ROUTE) {
+    // D57: an attachment is bytes: passed on with its serving headers (never parsed as JSON). D89: an artifact version's too.
+    if (request.method === 'GET' && (route === ATTACHMENT_ROUTE || route === ARTIFACT_RAW_ROUTE)) {
       const raw = await peers.forwardRaw(machineId, `${path}${queryOf(request.url)}`);
       if (raw.bytes === null) return reply.code(raw.status).send(raw.body ?? undefined);
       reply.code(raw.status).header('cache-control', 'private, no-cache');
@@ -206,6 +206,9 @@ export function registerPeerForwarding(app: FastifyInstance, peers: PeerService)
 
 /** D57: the attachment download route (its peer answer is bytes). */
 const ATTACHMENT_ROUTE = '/api/sessions/:id/attachments/:attachmentId';
+
+/** D89: an artifact version's bytes (`api/artifacts.ts` → `ARTIFACT_RAW_ROUTE`; its peer answer is bytes too). */
+const ARTIFACT_RAW_ROUTE = '/api/sessions/:id/artifacts/:artifactId/versions/:n/raw';
 
 /** `true` when the request came in through the peer API (answer this machine's own data only). */
 export function isPeerRequest(request: FastifyRequest): boolean {

@@ -18,6 +18,11 @@ Developer rulings that change a compared surface on purpose. The oracle is chang
   - `context-bar.spec.ts`: the bar is placed against the field's row (8 px above it, its x and width) instead of the quick replies; the field's row, field, 📎 and Send keep their boxes when the bar shows.
   - `full-pass.spec.ts`: "Quick replies" is no longer a landmark of Session · Chat; a `removed` ruling checks it is in the prototype and not in the app.
 
+- **D89 · artifacts saved on purpose (2026-10-09).** The prototype's Artifacts page and session tab show rows derived from tool results (diffs, PRs, branches, docs); the app lists only artifacts saved on purpose, with its own filters, columns and a list + viewer in the tab (`docs/artifacts.md`, `docs/decisions.md` → D89). The demo seeds 13 saved artifacts, as many per session as the prototype's tabs count, so counts and badges keep the prototype's numbers.
+  - `artifacts.spec.ts`: the filter pills, the column labels and widths and the rows' copy are no longer compared (nor the Diffs state); the header (title, `13 of 13`, search), the filter row's and column header's boxes, the rows' area, the 13 row boxes and the chrome's styles still are, and the new grid (`110px 1fr 280px 70px 80px 50px`) is checked as a computed style.
+  - `session-artifacts.spec.ts` (the tab's oracle) is **retired** with its report and side-by-side PNG: the tab is a list plus a viewer, not the prototype's rows; `tests/e2e/session-artifacts.spec.ts` covers it on the real path.
+  - `full-pass.spec.ts`: Session · Artifacts and Artifacts lose their landmarks ("mobile-followups/from-acme-app-front.md", "Solution · branch") as `removed` rulings and gain the app's copy as D89 rulings.
+
 ## Reviews
 ### Shell (M1.4, 2026-09-28)
 `shell.md`, `shell-side-by-side.png`, `shell-sidebar-side-by-side.png`. Gate green: every chrome box within ±2 px (all measured equal), copy exact, SPEC tokens defined, computed styles as specified, Geist and Geist Mono loaded. Pixel diff 5.32% (page) / 5.42% (sidebar), advisory.

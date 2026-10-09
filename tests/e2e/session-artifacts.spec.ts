@@ -1,242 +1,191 @@
-import { mkdir } from 'node:fs/promises';
+import { createHmac } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
-import { type Locator, type Page, expect, test } from '@playwright/test';
-import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
-import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
-import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
-import { type ServerProcess, startServer } from '../helpers/server-process.ts';
-import { openWithHub } from './question-world.ts';
-import { seedFolderInDataDir } from '../helpers/folders.ts';
+import { type Page, expect, test } from '@playwright/test';
+import type { ArtifactSaveResult } from '../../src/core/api.ts';
+import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-world.ts';
 
 /**
- * The Artifacts tab (M4.6) on the real code path (D13, no demo seed): `node
- * src/server/main.ts` with fake-claude as the CLI, a fake gh and temp git repos.
- * A session with a `web-front` worktree (gap #1) has fake-claude write real
- * files; the recorder turns them into artifacts (gap #9: CONTRACT, DIFF per
- * solution + branch, DOC, QA, FOLLOWUP) and the tab lists them as type tag +
- * name + meta rows, newest first, following each write through `/hub` without a
- * reload. DIFF rows read `<solution> · <n files>` with `+/−` from the session's
- * git diff (a change the developer committed counts too); a session without
- * artifacts shows the INFO row.
+ * D89 on the real path (D13, fake-claude; `docs/artifacts.md`): the session's
+ * Artifacts tab lists only artifacts saved on purpose. The agent saves through
+ * the route its `switchboard` MCP tool `artifact_save` calls (with the session's
+ * own token): a Markdown report rendered with the chat's renderer, a second
+ * version (the version picker, Compare), an HTML mockup in a sandboxed frame whose
+ * scripts run but cannot read the app's cookie or reach its API, a CSV table, a
+ * file copied from the session's folder. Live over `/hub`; Delete asks first.
+ * The developer saves an agent's message (⋯ → Save as artifact) and a code block.
+ * A written file no longer becomes an artifact.
  */
-let world: GitWorld;
-let server: ServerProcess;
+let world: QuestionWorld;
 
 test.beforeAll(async () => {
-  world = await makeGitWorld();
-  const claudeConfig = path.join(world.root, 'claude-config');
-  await mkdir(claudeConfig, { recursive: true });
-  // D14: the workspace is a saved folder (the default) in the server's database.
-  await seedFolderInDataDir(path.join(world.root, 'data'), world.workspace);
-  server = await startServer({
-    SWITCHBOARD_DATA_DIR: path.join(world.root, 'data'),
-    SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
-    SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
-    CLAUDE_CONFIG_DIR: claudeConfig,
-    FAKE_CLAUDE_SCENARIO: 'handoff-start',
-    FAKE_GH_PRS: world.prsFile,
-    GIT_CONFIG_GLOBAL: String(world.env['GIT_CONFIG_GLOBAL']),
-    GIT_CONFIG_NOSYSTEM: '1',
-  });
+  world = await startQuestionWorld('artifacts-tab');
 });
 
 test.afterAll(async () => {
-  if (server) expect(await server.stop()).toBe(0);
-  await world?.cleanup();
+  await world?.stop();
 });
 
-/** Starts a session through the API from the page (same origin, the sb_token cookie). */
-async function startSession(page: Page, body: Record<string, unknown>): Promise<string> {
-  const result = await page.evaluate(async (payload) => {
-    const response = await fetch('/api/sessions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ workType: 'feature', mode: 'single', phase: 'ui-first', coordination: 'none', qa: null, ultracode: false, ...payload }),
-    });
-    return { status: response.status, body: (await response.json()) as { id: string } };
-  }, body);
-  expect(result.status).toBe(201);
-  return result.body.id;
-}
-
-async function sessionStatus(page: Page, id: string): Promise<string> {
-  return page.evaluate(async (sid) => {
-    const response = await fetch(`/api/sessions/${encodeURIComponent(sid)}`);
-    return ((await response.json()) as { status: string }).status;
-  }, id);
-}
-
-async function sendMessage(page: Page, id: string, text: string): Promise<void> {
-  const status = await page.evaluate(
-    async ({ sid, body }) => {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sid)}/messages`, {
+/** What the agent's `artifact_save` does: `POST /agent/v1/artifacts` with the session's agent token. */
+async function agentSaves(sessionId: string, fields: Record<string, unknown>): Promise<ArtifactSaveResult> {
+  const secret = (await readFile(path.join(world.dataDir, 'sb_token'), 'utf8')).trim();
+  const token = createHmac('sha256', secret).update(`switchboard-agent-todos:${sessionId}`).digest('base64url');
+  const url = new URL(world.baseUrl);
+  const body = JSON.stringify(fields);
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port: Number(url.port),
+        path: '/agent/v1/artifacts',
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: body }),
-      });
-      return response.status;
-    },
-    { sid: id, body: text },
-  );
-  expect(status).toBe(202);
-}
-
-/** The color `value` computes to in this page (Chromium keeps oklch as `oklch(…)`). */
-async function computed(page: Page, value: string): Promise<string> {
-  return page.evaluate((v) => {
-    const probe = document.createElement('div');
-    probe.style.color = v;
-    document.body.append(probe);
-    const out = getComputedStyle(probe).color;
-    probe.remove();
-    return out;
-  }, value);
-}
-
-async function style(locator: Locator, prop: string): Promise<string> {
-  return locator.evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
-}
-
-/** The tab's rows as `TAG | name | meta`, in screen order. */
-async function rowTexts(page: Page): Promise<string[]> {
-  return page.getByTestId('artifact-row').evaluateAll((rows) =>
-    rows.map((row) => [...row.children].map((child) => child.textContent ?? '').join(' | ')),
-  );
-}
-
-async function sortedRows(page: Page): Promise<string[]> {
-  return (await rowTexts(page)).sort();
-}
-
-test('Artifacts: type tag + name + meta rows from real writes, live through /hub, git-based DIFF counts, empty', async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.goto(`${server.baseUrl}/inbox`);
-
-  // A worktree session writes a contract at the workspace root (cwd = the workspace root).
-  const id = await startSession(page, {
-    name: 'arts-e2e',
-    task: '[fake:write contracts/arts-e2e.md]',
-    solutions: ['web-front'],
-    worktrees: true,
-    // D32: the worktree's branch is named after its ticket.
-    branch: 'PROJ-21-arts-e2e',
+        headers: { host: url.host, authorization: `Bearer ${token}`, 'x-switchboard-session': sessionId, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          if (res.statusCode !== 201) reject(new Error(`artifact_save answered ${res.statusCode}: ${Buffer.concat(chunks).toString()}`));
+          else resolve(JSON.parse(Buffer.concat(chunks).toString()) as ArtifactSaveResult);
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end(body);
   });
-  await expect.poll(() => sessionStatus(page, id), { timeout: 20_000 }).toBe('done');
+}
 
-  await openWithHub(page, `${server.baseUrl}/sessions/${id}/artifacts`);
-  const tab = page.getByTestId('session-artifacts');
-  await expect(tab).toHaveAttribute('data-session-id', id);
-  await expect(tab).toHaveAttribute('data-state', 'ready');
-  const rows = page.getByTestId('artifact-row');
-  await expect(rows).toHaveCount(1);
-  expect(await rowTexts(page)).toEqual(['CONTRACT | contracts/arts-e2e.md | ']);
-  await expect(rows.nth(0)).toHaveAttribute('title', 'workspace root');
-
-  // Live: a write into the worktree arrives through /hub (no reload) as a DIFF of web-front, newest first.
-  await sendMessage(page, id, 'Build the page [fake:write microfrontends/web-front-wt-arts-e2e/src/page.txt]');
-  await expect(rows).toHaveCount(2, { timeout: 20_000 });
-  await expect.poll(() => rowTexts(page), { timeout: 20_000 }).toEqual(['DIFF | web-front · 1 file | +1', 'CONTRACT | contracts/arts-e2e.md | ']);
-  await expect(rows.nth(0)).toHaveAttribute('data-type', 'DIFF');
-  await expect(rows.nth(0)).toHaveAttribute('title', 'web-front ⎇ PROJ-21-arts-e2e');
-
-  // A doc in the worktree: DOC + the DIFF grows to two files.
-  await sendMessage(page, id, 'Write notes [fake:write microfrontends/web-front-wt-arts-e2e/docs/notes.md]');
+async function waitDone(page: Page, id: string): Promise<void> {
   await expect
-    .poll(() => sortedRows(page), { timeout: 20_000 })
-    .toEqual(['CONTRACT | contracts/arts-e2e.md | ', 'DIFF | web-front · 2 files | +2', 'DOC | docs/notes.md | ']);
-  await expect(rows.filter({ hasText: 'docs/notes.md' })).toHaveAttribute('title', 'web-front ⎇ PROJ-21-arts-e2e');
+    .poll(async () => page.evaluate(async (sessionId) => ((await (await fetch(`/api/sessions/${sessionId}`)).json()) as { status: string }).status, id), { timeout: 20_000 })
+    .toBe('done');
+}
 
-  // A QA matrix at the root, then a follow-up in the mobile main checkout. D38: the write puts mobile in the
-  // session's solutions (it was outside its scope before), so its in-place diff against HEAD counts: +1.
-  await sendMessage(page, id, 'Coverage [fake:write coverage-matrix.md]');
-  await expect(rows).toHaveCount(4, { timeout: 20_000 });
-  await expect(rows.nth(0)).toHaveAttribute('data-type', 'QA');
-  await sendMessage(page, id, 'Follow-up [fake:write mobile/mobile-followups/from-web-front.md]');
-  await expect
-    .poll(() => sortedRows(page), { timeout: 20_000 })
-    .toEqual([
-      'CONTRACT | contracts/arts-e2e.md | ',
-      'DIFF | mobile · 1 file | +1',
-      'DIFF | web-front · 2 files | +2',
-      'DOC | docs/notes.md | ',
-      'FOLLOWUP | mobile-followups/from-web-front.md | ',
-      'QA | coverage-matrix.md | ',
-    ]);
-  // Newest first: the follow-up's pair, then QA, then the web-front pair, then the contract.
-  const order = await rowTexts(page);
-  expect(order.slice(0, 2).sort()).toEqual(['DIFF | mobile · 1 file | +1', 'FOLLOWUP | mobile-followups/from-web-front.md | ']);
-  expect(order[2]).toBe('QA | coverage-matrix.md | ');
-  expect(order.slice(3, 5).sort()).toEqual(['DIFF | web-front · 2 files | +2', 'DOC | docs/notes.md | ']);
-  expect(order[5]).toBe('CONTRACT | contracts/arts-e2e.md | ');
-  await expect(rows.filter({ hasText: 'mobile · 1 file' })).toHaveAttribute('title', 'mobile');
-
-  // The DIFF counts come from git: a change the developer committed on the session branch counts too.
-  const worktree = path.join(world.workspace, 'microfrontends', 'web-front-wt-arts-e2e');
-  await world.commit(worktree, 'src/app.txt', 'one\nTWO\nthree\n', 'approved: TWO');
-  await openWithHub(page, `${server.baseUrl}/sessions/${id}/artifacts`);
-  await expect.poll(() => sortedRows(page), { timeout: 20_000 }).toContain('DIFF | web-front · 3 files | +3 −1');
-
-  // The contract route carries the stored artifacts (names as the recorder derived them).
-  const detail = (await page.evaluate(async (sid) => (await fetch(`/api/sessions/${sid}`)).json(), id)) as {
-    artifacts: Array<{ type: string; name: string; solution: string | null; branch: string | null; meta: string | null }>;
-  };
-  const stored = detail.artifacts.map((a) => JSON.stringify([a.type, a.name, a.solution, a.branch, a.meta])).sort();
-  expect(stored).toEqual(
-    [
-      ['CONTRACT', 'contracts/arts-e2e.md', null, null, null],
-      ['DIFF', 'mobile-followups · 1 file', 'mobile', null, null],
-      ['DIFF', '2 files', 'web-front', 'PROJ-21-arts-e2e', null],
-      ['DOC', 'docs/notes.md', 'web-front', 'PROJ-21-arts-e2e', null],
-      ['FOLLOWUP', 'mobile-followups/from-web-front.md', 'mobile', null, null],
-      ['QA', 'coverage-matrix.md', null, null, null],
-    ]
-      .map((row) => JSON.stringify(row))
-      .sort(),
-  );
-
-  // SPEC tokens + the prototype's inline styles.
-  const first = rows.nth(0);
-  expect(await style(tab, 'padding-top')).toBe('18px');
-  expect(await style(tab, 'padding-left')).toBe('22px');
-  expect(await style(tab, 'row-gap')).toBe('6px');
-  expect(await style(first, 'background-color')).toBe(await computed(page, '#17181b'));
-  expect(await style(first, 'border-top-color')).toBe(await computed(page, '#26272c'));
-  expect(await style(first, 'border-top-width')).toBe('1px');
-  expect(await style(first, 'border-top-left-radius')).toBe('9px');
-  expect(await style(first, 'padding-top')).toBe('11px');
-  expect(await style(first, 'padding-left')).toBe('14px');
-  expect(await style(first, 'column-gap')).toBe('12px');
-  const tag = first.getByTestId('artifact-tag');
-  expect(await style(tag, 'font-family')).toContain('Geist Mono');
-  expect(await style(tag, 'font-size')).toBe('10px');
-  expect(await style(tag, 'font-weight')).toBe('500');
-  expect(await style(tag, 'background-color')).toBe(await computed(page, '#26272c'));
-  expect(await style(tag, 'color')).toBe(await computed(page, '#c9c8c3'));
-  expect(await style(tag, 'border-top-left-radius')).toBe('4px');
-  const name = first.getByTestId('artifact-name');
-  expect(await style(name, 'font-size')).toBe('13px');
-  expect(await style(name, 'font-family')).toContain('Geist');
-  expect(await style(name, 'font-family')).not.toContain('Mono');
-  const meta = rows.filter({ hasText: 'web-front · 3 files' }).getByTestId('artifact-meta');
-  expect(await style(meta, 'font-family')).toContain('Geist Mono');
-  expect(await style(meta, 'font-size')).toBe('11.5px');
-  expect(await style(meta, 'color')).toBe(await computed(page, '#8d8c87'));
-  // The name takes the row's free width; the meta sits at the right edge (14 px padding + 1 px border).
-  const rowBox = (await first.boundingBox())!;
-  const metaBox = (await rows.filter({ hasText: 'web-front · 3 files' }).getByTestId('artifact-meta').boundingBox())!;
-  const metaRow = (await rows.filter({ hasText: 'web-front · 3 files' }).boundingBox())!;
-  expect(Math.abs(metaBox.x + metaBox.width - (metaRow.x + metaRow.width - 15))).toBeLessThanOrEqual(1);
-  expect(rowBox.width).toBeGreaterThan(600);
-
-  // A session without artifacts: the INFO row.
-  const clean = await startSession(page, { name: 'arts-clean', task: 'Nothing to write.', solutions: ['web-front'], worktrees: true, branch: 'PROJ-22-arts-clean' });
-  await expect.poll(() => sessionStatus(page, clean), { timeout: 20_000 }).toBe('done');
-  await openWithHub(page, `${server.baseUrl}/sessions/${clean}/artifacts`);
-  await expect(page.getByTestId('session-artifacts')).toHaveAttribute('data-session-id', clean);
+test('the agent saves artifacts; the tab lists them live and shows each kind', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'report-run', 'Write the notes. [fake:write notes.md]');
+  await waitDone(page, id);
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts`);
+  // D89: the written notes.md made no artifact.
   await expect(page.getByTestId('session-artifacts')).toHaveAttribute('data-state', 'empty');
-  await expect(rows).toHaveCount(1);
-  expect(await rowTexts(page)).toEqual(['INFO | No artifacts | ']);
+  await expect(page.getByTestId('artifacts-empty')).toContainText('No artifacts yet');
+  await expect(page.getByTestId('session-tab-artifacts')).toHaveText('Artifacts · 0');
 
-  // The developer's main checkout of web-front was never touched.
-  expect(await world.git(world.web, 'status', '--porcelain')).toBe('');
+  // Live: the agent saves while the tab is open.
+  const report = await agentSaves(id, { title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\n- **Green**: all builds\n- Red: none\n' });
+  await expect(page.getByTestId('artifact-row')).toHaveCount(1);
+  await expect(page.getByTestId('artifact-name')).toHaveText(['Weekly report']);
+  await expect(page.getByTestId('artifact-tag')).toHaveText(['DOC']);
+  await expect(page.getByTestId('artifact-meta')).toHaveText([/^v1 · \d+ B · agent$/]);
+  await expect(page.getByTestId('session-tab-artifacts')).toHaveText('Artifacts · 1');
+
+  await page.getByTestId('artifact-row').first().click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts/${report.artifact.id}$`));
+  const viewer = page.getByTestId('artifact-viewer');
+  await expect(viewer.getByTestId('artifact-markdown').locator('h1')).toHaveText('Weekly report');
+  await expect(viewer.getByTestId('artifact-markdown').locator('strong')).toHaveText('Green');
+  await viewer.getByTestId('artifact-mode-source').click();
+  await expect(viewer.getByTestId('artifact-source')).toHaveText('# Weekly report\n\n- **Green**: all builds\n- Red: none\n');
+
+  // A new version: the viewer follows the newest; Compare shows the change; the picker goes back.
+  await agentSaves(id, { id: report.artifact.id, title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\n- **Green**: all builds\n- Red: one flaky test\n' });
+  await expect(page.getByTestId('artifact-meta')).toHaveText([/^v2 · /]);
+  await expect(viewer).toHaveAttribute('data-version', '2');
+  await viewer.getByTestId('artifact-mode-diff').click();
+  await expect(viewer.getByTestId('artifact-diff-summary')).toHaveText('v1 → v2: +1 −1');
+  await expect(viewer.locator('.sb-artv-diff-line[data-op="del"]')).toHaveText(['- - Red: none']);
+  await expect(viewer.locator('.sb-artv-diff-line[data-op="add"]')).toHaveText(['+ - Red: one flaky test']);
+  await viewer.getByTestId('artifact-mode-rendered').click();
+  await viewer.getByTestId('artifact-version').selectOption('1');
+  await expect(viewer).toHaveAttribute('data-version', '1');
+  await expect(viewer.getByTestId('artifact-markdown')).toContainText('Red: none');
+  await expect(viewer.getByTestId('artifact-download')).toHaveAttribute('href', `/api/sessions/${id}/artifacts/${report.artifact.id}/versions/1/raw?download`);
+});
+
+test('an HTML artifact runs sandboxed: its script runs, the app\'s cookie and API stay out of reach', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'mockup-run', 'Hi.');
+  await waitDone(page, id);
+  const html = await agentSaves(id, {
+    title: 'Mockup',
+    kind: 'html',
+    content: `<!doctype html><body><p id="out">waiting</p><script>
+      let cookie; try { cookie = document.cookie; } catch (e) { cookie = 'blocked: ' + e.name; }
+      document.getElementById('out').textContent = 'ran · ' + cookie + ' · ' + self.origin;
+      fetch('/api/sessions').then(() => { document.body.dataset.api = 'reached'; }, () => { document.body.dataset.api = 'refused'; });
+    </script></body>`,
+  });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${html.artifact.id}`);
+  const frame = page.getByTestId('artifact-frame');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+  const inner = page.frameLocator('[data-testid="artifact-frame"]');
+  await expect(inner.locator('#out')).toHaveText(/^ran · blocked: SecurityError · null$/);
+  await expect(inner.locator('body')).toHaveAttribute('data-api', 'refused');
+  // Served under the sandbox CSP, also when opened on its own.
+  const raw = await page.request.get(`${world.baseUrl}/api/sessions/${id}/artifacts/${html.artifact.id}/versions/1/raw`);
+  expect(raw.headers()['content-security-policy']).toMatch(/^sandbox allow-scripts;/);
+});
+
+test('CSV as a table, a file copied from the session\'s folder, Full screen and Delete', async ({ page }) => {
+  await writeFile(path.join(world.workspace, 'plan.md'), '# Plan from a file\n');
+  await openWithHub(page, `${world.baseUrl}/`);
+  const { id } = await world.startSession(page, 'table-run', 'Hi.');
+  await waitDone(page, id);
+  const csv = await agentSaves(id, { title: 'Coverage', kind: 'csv', content: 'Requirement,State\n"FT-1, lobby",covered\nFT-2,open\n' });
+  const file = await agentSaves(id, { title: 'Plan', kind: 'markdown', path: 'plan.md' });
+  await page.goto(`${world.baseUrl}/sessions/${id}/artifacts/${csv.artifact.id}`);
+  const table = page.getByTestId('artifact-table');
+  await expect(table.locator('th')).toHaveText(['Requirement', 'State']);
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await expect(table.locator('tbody tr').first().locator('td')).toHaveText(['FT-1, lobby', 'covered']);
+  await page.getByTestId('artifact-fullscreen').click();
+  await expect(page.getByTestId('artifact-fullscreen-view').getByTestId('artifact-table')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('artifact-fullscreen-view')).toHaveCount(0);
+
+  await page.getByTestId('artifact-row').filter({ hasText: 'Plan' }).click();
+  await expect(page).toHaveURL(new RegExp(`/artifacts/${file.artifact.id}$`));
+  await expect(page.getByTestId('artifact-markdown').locator('h1')).toHaveText('Plan from a file');
+  await page.getByTestId('artifact-delete').click();
+  await expect(page.getByTestId('artifact-delete-confirm')).toContainText('Delete “Plan” and all its versions?');
+  await page.getByTestId('artifact-delete-cancel').click();
+  await expect(page.getByTestId('artifact-row')).toHaveCount(2);
+  await page.getByTestId('artifact-delete').click();
+  await page.getByTestId('artifact-delete-yes').click();
+  await expect(page.getByTestId('artifact-row')).toHaveCount(1);
+  await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts$`));
+});
+
+test('the developer saves an agent message (⋯) and a code block from the chat', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/`);
+  const reply = '## Release plan\n\nShip it on Friday.\n\n```ts\nexport const day = "Friday";\n```\n';
+  const { id } = await world.startSession(page, 'chat-save', `Plan. [fake:say ${JSON.stringify(reply)}]`);
+  await waitDone(page, id);
+  await page.goto(`${world.baseUrl}/sessions/${id}`);
+  const message = page.getByTestId('chat-message').filter({ has: page.locator('h2', { hasText: 'Release plan' }) });
+  // The ⋯ and the code block's button stay out of the message's text.
+  await expect(message.getByTestId('chat-text')).not.toContainText('Save as artifact');
+  await message.hover();
+  await message.getByTestId('chat-message-menu').click();
+  await page.getByTestId('chat-save-artifact').click();
+  const dialog = page.getByTestId('save-artifact');
+  await expect(dialog.getByTestId('save-artifact-title')).toHaveValue('Release plan');
+  await expect(dialog.getByTestId('save-artifact-kind')).toHaveValue('markdown');
+  await dialog.getByTestId('save-artifact-title').fill('Friday release plan');
+  await dialog.getByTestId('save-artifact-save').click();
+  await expect(dialog.getByTestId('save-artifact-done')).toHaveText('Saved “Friday release plan” to this session\'s Artifacts.');
+  await dialog.getByTestId('save-artifact-close').click();
+
+  await message.locator('.sb-md-code').hover();
+  await message.getByTestId('chat-code-save').click();
+  await expect(dialog.getByTestId('save-artifact-kind')).toHaveValue('code');
+  await expect(dialog.getByTestId('save-artifact-language')).toHaveValue('ts');
+  await expect(dialog.getByTestId('save-artifact-content')).toHaveValue('export const day = "Friday";');
+  await dialog.getByTestId('save-artifact-save').click();
+  await dialog.getByTestId('save-artifact-open').click();
+  await expect(page).toHaveURL(new RegExp(`/sessions/${id}/artifacts/[a-f0-9]{10}$`));
+  await expect(page.getByTestId('artifact-tag')).toHaveText(['CODE · ts', 'DOC']);
+  await expect(page.getByTestId('artifact-meta')).toHaveText([/ · you$/, / · you$/]);
+  await expect(page.getByTestId('artifact-viewer').getByTestId('artifact-markdown').locator('code')).toContainText('export const day');
 });

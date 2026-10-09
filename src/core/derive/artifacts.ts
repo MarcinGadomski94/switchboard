@@ -1,15 +1,16 @@
 /**
- * Artifacts a session produces (decisions gap #9; `docs/derivations.md` →
- * *Artifacts*): PR (gh output / PR URLs), BRANCH, DIFF per solution + branch,
- * CONTRACT `contracts/*.md`, QA `coverage-matrix.md`, FOLLOWUP `mobile-followups/*`,
- * DOC any other written `.md`. TICKET is not auto-detected in v1.
+ * Where a session's files are (`docs/derivations.md`): which solution a written
+ * file belongs to (the agent cards' path line, the session's solutions, D38) and
+ * how a Bash command reads (`splitStatements`, `addsWorktree`). Until D89 this
+ * module also derived the session's artifacts (gap #9); artifacts are now saved
+ * on purpose (`src/core/artifacts.ts`, `docs/artifacts.md`).
  *
  * Paths are mapped to solutions with the workspace router's folder layout
  * (`docs/handoff/ARCHITECTURE.md` → *Workspace rules*); worktrees follow gap #1
  * (`../{repo}-wt-{session}`, a sibling of the repo).
  */
 import path from 'node:path';
-import type { ArtifactType, FolderKind } from '../model.ts';
+import type { FolderKind } from '../model.ts';
 
 /** Grouping folders whose children are solutions (`microfrontends/<repo>-front`, …). */
 export const GROUP_FOLDERS: readonly string[] = ['microfrontends', 'nugets', 'microservices', 'functions', 'other'];
@@ -115,65 +116,12 @@ function locateRepoFile(place: SessionPlace, file: string, sessionName: string |
   return { solution: null, relative: absolute, worktree: false, outside: true };
 }
 
-/** D59: a plain folder's file: no solution (the folder has none), its path inside the folder, else outside. */
-function locatePlainFile(place: SessionPlace, file: string): FileLocation {
-  const absolute = path.resolve(place.cwd, file);
-  const rel = path.relative(place.root, absolute);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return { solution: null, relative: absolute, worktree: false, outside: true };
-  return { solution: null, relative: rel.split(path.sep).filter(Boolean).join('/'), worktree: false, outside: false };
-}
-
-/** {@link locateFile} for a session's place (D14): the router layout in a workspace, the repo's one solution in a repo folder, D59: no solution in a plain folder. */
-export function locateSessionFile(place: SessionPlace, file: string, sessionName: string | null = null): FileLocation {
-  if (place.kind === 'plain') return locatePlainFile(place, file);
-  return place.kind === 'repo' ? locateRepoFile(place, file, sessionName) : locateFile(place.root, file, sessionName);
-}
-
 /** {@link solutionFolder} for a session's place (D14): a repo folder's files are all in `<repo>/`. */
 export function sessionSolutionFolder(place: SessionPlace, file: string, sessionName: string | null = null): string | null {
   if (place.kind === 'workspace') return solutionFolder(place.root, file, sessionName);
   if (place.kind === 'plain') return null;
   const where = locateRepoFile(place, file, sessionName);
   return where.solution === null ? null : `${where.solution}/`;
-}
-
-/** The artifact type of a written file (by its path inside the solution), or `null` for none. */
-export function fileArtifactType(relative: string): ArtifactType | null {
-  const parts = relative.split('/').filter(Boolean);
-  const base = parts.at(-1) ?? '';
-  if (base === 'coverage-matrix.md') return 'QA';
-  if (parts.slice(0, -1).includes('mobile-followups')) return 'FOLLOWUP';
-  if (base.toLowerCase().endsWith('.md') && parts.at(-2) === 'contracts') return 'CONTRACT';
-  if (base.toLowerCase().endsWith('.md')) return 'DOC';
-  return null;
-}
-
-/** A GitHub pull request URL found in text. */
-export interface PullRequestRef {
-  readonly url: string;
-  readonly owner: string;
-  readonly repo: string;
-  readonly number: number;
-}
-
-const PR_URL = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
-
-/** Every distinct GitHub PR URL in `text`, in order. */
-export function findPullRequests(text: string): PullRequestRef[] {
-  const seen = new Set<string>();
-  const found: PullRequestRef[] = [];
-  for (const match of text.matchAll(PR_URL)) {
-    const [url, owner, repo, number] = match;
-    if (!url || !owner || !repo || !number || seen.has(url)) continue;
-    seen.add(url);
-    found.push({ url, owner, repo, number: Number(number) });
-  }
-  return found;
-}
-
-/** `true` if a Bash command runs the GitHub CLI (`gh …`), whose output may carry PR URLs. */
-export function runsGh(command: string): boolean {
-  return splitStatements(command).some((words) => words[0] === 'gh');
 }
 
 /** Splits a command line into statements of words (`&&`, `||`, `;`, `|` and newlines separate; quotes respected). */
@@ -223,50 +171,6 @@ export function splitStatements(command: string): string[][] {
   return statements;
 }
 
-/** A branch a command creates, and the folder it ran in when the command says so. */
-export interface CreatedBranch {
-  readonly branch: string;
-  /** From a preceding `cd <dir>` or `git -C <dir>`; `null` when the command does not say. */
-  readonly dir: string | null;
-}
-
-/**
- * Branches a Bash command creates: `git checkout -b|-B <name>`, `git switch -c|-C|--create <name>`,
- * `git worktree add … -b|-B <name> …` and `git branch <name>` (no options).
- */
-export function createdBranches(command: string): CreatedBranch[] {
-  const found: CreatedBranch[] = [];
-  let cwd: string | null = null;
-  for (const words of splitStatements(command)) {
-    if (words[0] === 'cd' && words[1]) {
-      cwd = cwd && !path.isAbsolute(words[1]) ? path.join(cwd, words[1]) : words[1];
-      continue;
-    }
-    if (words[0] !== 'git') continue;
-    let i = 1;
-    let dir = cwd;
-    while (words[i] === '-C' && words[i + 1]) {
-      const target = words[i + 1] as string;
-      dir = dir && !path.isAbsolute(target) ? path.join(dir, target) : target;
-      i += 2;
-    }
-    const sub = words[i];
-    const args = words.slice(i + 1);
-    const after = (flags: readonly string[]): string | null => {
-      const at = args.findIndex((arg) => flags.includes(arg));
-      const value = at >= 0 ? args[at + 1] : undefined;
-      return value && !value.startsWith('-') ? value : null;
-    };
-    let branch: string | null = null;
-    if (sub === 'checkout') branch = after(['-b', '-B']);
-    else if (sub === 'switch') branch = after(['-c', '-C', '--create', '--force-create']);
-    else if (sub === 'worktree' && args[0] === 'add') branch = after(['-b', '-B']);
-    else if (sub === 'branch' && args.length >= 1 && args.every((arg) => !arg.startsWith('-')) && args.length <= 2) branch = args[0] ?? null;
-    if (branch) found.push({ branch, dir });
-  }
-  return found;
-}
-
 /**
  * D38: `true` when a Bash command adds a git worktree: it contains `git worktree
  * add`, or one of its statements is `git [-C <dir>] [-c <k=v>] [--opt] worktree add …`.
@@ -279,17 +183,4 @@ export function addsWorktree(command: string): boolean {
     while (i < words.length && (words[i] ?? '').startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
     return words[i] === 'worktree' && words[i + 1] === 'add';
   });
-}
-
-/** DIFF artifact name: the changed files' common folder inside the solution, then the file count ("Pages/FreeTalk · 6 files"). */
-export function diffArtifactName(files: readonly string[]): string {
-  const count = `${files.length} ${files.length === 1 ? 'file' : 'files'}`;
-  const dirs = files.map((file) => file.split('/').filter(Boolean).slice(0, -1));
-  let common = dirs[0] ?? [];
-  for (const dir of dirs.slice(1)) {
-    let n = 0;
-    while (n < common.length && n < dir.length && common[n] === dir[n]) n++;
-    common = common.slice(0, n);
-  }
-  return common.length > 0 ? `${common.join('/')} · ${count}` : count;
 }

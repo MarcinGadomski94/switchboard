@@ -25,6 +25,7 @@ import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
 import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
 import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 import { FreshOffer } from './FreshOffer.tsx';
+import { type ArtifactDraft, SaveArtifactDialog } from './SaveArtifact.tsx';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -109,6 +110,8 @@ interface MainChatProps {
  */
 function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
+  // D89: the Save as artifact dialog's draft while it is open.
+  const [saving, setSaving] = useState<ArtifactDraft | null>(null);
   // D57: the composer's attachments upload to this session as soon as they are added (paste, drop, 📎).
   // Fix · peer reconnects: the machine's live state; `reconnecting` blocks nothing (actions are held until it is back).
   const machine = useLiveMachine(session?.machine);
@@ -207,9 +210,12 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
             // D80: revert to before a turn (none while the machine is offline); Redo on the newest revert's divider.
             revert={item.kind === 'user' && blocked === null ? turnRevertFor(checkpoints, item.id) : null}
             redo={item.kind === 'divider' && blocked === null && checkpoints?.redo?.eventId === item.id}
+            // D89: Save as artifact (not for an unreachable machine's session).
+            onSaveArtifact={blocked === null ? setSaving : null}
           />
         ))}
       </div>
+      {saving ? <SaveArtifactDialog sessionId={sessionId} draft={saving} onClose={() => setSaving(null)} /> : null}
       {/* D81: a selection in the conversation offers "Add to todo". */}
       <SelectionCapture container={scroller} sessionId={sessionId} disabled={blocked !== null} />
       {/* D53: an offline machine's session has no live line (the offline note says why). */}

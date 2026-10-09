@@ -8,7 +8,7 @@
  * matter inside one answer (question ids, agent ids, event ids) stay as they are.
  * Pure: no I/O.
  */
-import type { Artifact, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
+import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 import type { Review } from './reviews.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
@@ -64,8 +64,22 @@ export function peerQuestion(machine: PeerMachineRef, question: Question): Quest
   return { ...question, batchId: ns(machine, question.batchId), sessionId: ns(machine, question.sessionId) };
 }
 
-function peerArtifact(machine: PeerMachineRef, artifact: Artifact): Artifact {
+/** D89: a peer's saved artifact: its session id namespaced (the artifact id stays: the routes name it under its session). */
+function peerArtifact<T extends Artifact>(machine: PeerMachineRef, artifact: T): T {
   return { ...artifact, sessionId: nsMaybe(machine, artifact.sessionId) };
+}
+
+/**
+ * D89: `true` for an artifact saved on purpose; a peer before D89 sends its
+ * derived rows (`type`, `name`) in the same places: those are left out.
+ */
+export function isSavedArtifact(value: unknown): value is Artifact {
+  return isRecord(value) && typeof value['id'] === 'string' && typeof value['title'] === 'string' && typeof value['kind'] === 'string';
+}
+
+/** D89: a peer's Artifacts page row: its session id namespaced, `machine` added. */
+export function peerArtifactItem(machine: PeerMachineRef, item: ArtifactListItem): ArtifactListItem {
+  return { ...peerArtifact(machine, item), machine: { id: machine.id, name: machine.name, state: machine.state } };
 }
 
 /** A peer's {@link SessionDetail}. */
@@ -74,7 +88,7 @@ export function peerSessionDetail(machine: PeerMachineRef, detail: SessionDetail
     ...detail,
     ...peerSession(machine, detail),
     events: (detail.events ?? []).map((event) => peerEvent(machine, event)),
-    artifacts: (detail.artifacts ?? []).map((artifact) => peerArtifact(machine, artifact)),
+    artifacts: (detail.artifacts ?? []).filter(isSavedArtifact).map((artifact) => peerArtifact(machine, artifact)),
     questions: (detail.questions ?? []).map((question) => peerQuestion(machine, question)),
   };
 }
@@ -163,7 +177,7 @@ export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGr
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
  */
-export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged']);
+export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'artifactsChanged']);
 
 /**
  * A peer's `/hub` event as the local bus publishes it, or `null` for one that is
@@ -200,6 +214,11 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
       const changed = value as unknown as HubEvents['reviewsChanged'];
       return typeof changed.sessionId === 'string' ? ({ sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
     }
+    case 'artifactsChanged': {
+      // D89: a peer's artifact was saved or deleted: its session id namespaced.
+      const changed = value as unknown as HubEvents['artifactsChanged'];
+      return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
+    }
     case 'todosChanged': {
       const changed = value as unknown as HubEvents['todosChanged'];
       return typeof changed.sessionId === 'string' ? ({ ...changed, sessionId: ns(machine, changed.sessionId) } as HubEvents[K]) : null;
@@ -220,7 +239,8 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** Fix · long messages: `full-event` (a cut event's whole text, `FullEventAnswer`). */
 /** D68: `todo-list` (a session's todo list), `todo-groups` (the Todos page). */
 /** D76: `todo-run` (a todo run's answer). D79: `review` (a review action's answer), `reviews` (`GET /api/reviews`). */
-export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'review' | 'reviews' | 'none';
+/** D89: `artifacts` (a session's artifacts), `artifact` (one with its versions), `artifact-save` (a save's answer). */
+export type PeerAnswerKind = 'session' | 'sessions' | 'detail' | 'events' | 'workflow-chat' | 'full-event' | 'inbox' | 'wrapped' | 'schedule' | 'schedules' | 'terminal-loops' | 'todo-list' | 'todo-run' | 'todo-groups' | 'review' | 'reviews' | 'artifacts' | 'artifact' | 'artifact-save' | 'none';
 
 /**
  * The mapping of a forwarded API answer (`docs/peers.md` → *Proxy*): the answer
@@ -245,6 +265,9 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   if (pathname === '/api/reviews') return upper === 'GET' ? 'reviews' : 'none';
   if (upper === 'POST' && /^\/api\/reviews\/[^/]+\/[a-z-]+$/.test(pathname)) return 'review';
   if (/^\/api\/terminal-sessions\/[^/]+\/hook$/.test(pathname)) return 'session';
+  // D89: a session's saved artifacts (the list, one artifact, a save).
+  if (/^\/api\/sessions\/[^/]+\/artifacts$/.test(pathname)) return upper === 'GET' ? 'artifacts' : upper === 'POST' ? 'artifact-save' : 'none';
+  if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/.test(pathname)) return 'artifact';
   // D51: a Workflow agent's chat: its events carry the session id.
   if (upper === 'GET' && /^\/api\/sessions\/[^/]+\/workflow-agents\/[^/]+\/chat$/.test(pathname)) return 'workflow-chat';
   // Fix · long messages: a cut event's whole text carries the event under `event`.
@@ -306,6 +329,12 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return isRecord(body) && typeof body['id'] === 'string' && typeof body['sessionId'] === 'string' ? peerReview(machine, body as unknown as Review) : body;
     case 'reviews':
       return Array.isArray(body) ? body.filter((entry) => isRecord(entry) && typeof entry['id'] === 'string').map((review) => peerReview(machine, review as unknown as Review)) : body;
+    case 'artifacts':
+      return Array.isArray(body) ? body.filter(isSavedArtifact).map((artifact) => peerArtifact(machine, artifact)) : body;
+    case 'artifact':
+      return isRecord(body) && typeof body['id'] === 'string' ? peerArtifact(machine, body as unknown as ArtifactDetail) : body;
+    case 'artifact-save':
+      return isRecord(body) && isRecord(body['artifact']) ? { ...(body as unknown as ArtifactSaveResult), artifact: peerArtifact(machine, body['artifact'] as unknown as Artifact) } : body;
     case 'none':
       return body;
   }

@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { registerArtifactRoutes } from './api/artifacts.ts';
 import { registerAttachmentRoutes } from './api/attachments.ts';
 import type { AttachmentService } from './attachments/service.ts';
+import type { ArtifactService } from './artifacts/service.ts';
 import { registerBranchingRoutes } from './api/branching.ts';
 import { registerFolderRoutes } from './api/folders.ts';
 import { registerFrameHelperRoutes } from './api/frame-helper.ts';
@@ -93,6 +94,8 @@ export interface ApiContext {
   readonly hooks: HookService;
   /** Chat attachments: uploads, storage, serving, a message's inline blocks and paths (D57, docs/chat.md → Attachments). */
   readonly attachments: AttachmentService;
+  /** D89: artifacts saved on purpose by the agent or the developer (docs/artifacts.md). */
+  readonly artifacts: ArtifactService;
   /** D61: the MCP servers page: list, check, reconnect, sign in, enable / disable, add / edit / remove (docs/mcp.md). */
   readonly mcp: McpService;
   /** D65: this machine's side of taking a session over to / from a paired machine (docs/peers.md). */

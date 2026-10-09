@@ -1189,8 +1189,7 @@ export class WorktreeManager implements DiffProvider {
    * Checks every live worktree's pull request with `gh pr view <branch> --json
    * number,state,url,headRefOid` and stores number, URL and state (verbatim). A
    * worktree becomes `removable` when its PR is `MERGED` and removal would be
-   * allowed (gap #3); `worktreeRemovable` fires once, when that flag turns on. PR
-   * artifacts with the same URL get the state as their meta (`open`, `merged`, …).
+   * allowed (gap #3); `worktreeRemovable` fires once, when that flag turns on.
    * D47: a stacked worktree's parent PR is checked too ({@link #checkParent}).
    * Concurrent calls share one run.
    */
@@ -1281,7 +1280,6 @@ export class WorktreeManager implements DiffProvider {
     }
     patch.removable = removable;
     const updated = await this.#store.worktrees.update(record.id, patch);
-    if (pr.info?.url) await this.#updatePullRequestArtifacts(pr.info);
     if (updated && removable && !record.removable) this.#emit(toWorktree(updated));
     return { worktreeId: record.id, prState, removable, error };
   }
@@ -1357,13 +1355,6 @@ export class WorktreeManager implements DiffProvider {
     const ancestor = await this.#runGit(repoPath, ['merge-base', '--is-ancestor', head, `refs/remotes/origin/${base}`]);
     if (ancestor.error !== null) return 'unknown';
     return ancestor.code === 0 ? 'merge' : ancestor.code === 1 ? 'squash' : 'unknown';
-  }
-
-  async #updatePullRequestArtifacts(info: PullRequestInfo): Promise<void> {
-    const meta = info.state.toLowerCase();
-    for (const artifact of await this.#store.artifacts.list({ types: ['PR'] })) {
-      if (artifact.url === info.url && artifact.meta !== meta) await this.#store.artifacts.update(artifact.id, { meta });
-    }
   }
 
   #emit(worktree: Worktree): void {

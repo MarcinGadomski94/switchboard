@@ -195,7 +195,8 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(web?.phase).toBe('mixed');
     // One written line in the worktree (gap #10 diff against the merge-base).
     expect(web?.changes).toBe('+1');
-    expect(web?.artifacts).toContainEqual({ type: 'CONTRACT', name: 'contracts/free-talk.md', meta: '', sessionId: wt.id });
+    // D89: a session's written files are no longer artifacts; a solution lists its follow-up files only.
+    expect(web?.artifacts).toEqual([]);
 
     const mobile = rows.get('mobile');
     // An untitled session: its owner title is its name.
@@ -205,8 +206,8 @@ describe('GET /api/solutions · live fields (M6.2)', () => {
     expect(mobile?.changes).toBe('+3');
     const followups = mobile?.artifacts.filter((a) => a.type === 'FOLLOWUP');
     expect(followups).toEqual([
-      { type: 'FOLLOWUP', name: 'mobile-followups/from-web-front.md', meta: '', sessionId: inPlace.id },
       { type: 'FOLLOWUP', name: 'mobile-followups/from-other-front.md', meta: '', sessionId: null },
+      { type: 'FOLLOWUP', name: 'mobile-followups/from-web-front.md', meta: '', sessionId: null },
     ]);
 
     // Without a ledger the open sessions' phase shows.

@@ -12,7 +12,7 @@ M5.2: `first-turn.ts` (the first stdin message of a new session: the task + the 
 
 M6.1: `workspace-rules.ts` (router `AGENTS.md` folder rules, the baseline layout, the read-only check of a NewSession solution, `GET /api/solutions` grouping), documented in `docs/solutions.md`; the file-system walk is `src/server/solutions/scanner.ts`.
 
-D14: `model.ts` `FOLDER_KINDS` (workspace / repo), `workspace-rules.ts` `repoFolderScan` (a repo folder as one solution), `first-turn.ts` `repoWorktreeNote` (a repo session's only appended text), `derive/artifacts.ts` `locateSessionFile` (files mapped in the session's own folder), `history.ts` `HistoryRoot` (History under every folder); documented in `docs/folders.md`.
+D14: `model.ts` `FOLDER_KINDS` (workspace / repo), `workspace-rules.ts` `repoFolderScan` (a repo folder as one solution), `first-turn.ts` `repoWorktreeNote` (a repo session's only appended text), `derive/artifacts.ts` `sessionSolutionFolder` (files mapped in the session's own folder), `history.ts` `HistoryRoot` (History under every folder); documented in `docs/folders.md`.
 
 M6.3: `conflicts.ts` (two or more open sessions writing one repo while one has no worktree of its own: the row flag, the card copy and its "Move … to worktree" actions), documented in `docs/solutions.md` → *Conflicts*.
 
@@ -26,7 +26,7 @@ M9.2: `usage.ts` (the Max usage meter's rules: `get_usage` / `rate_limit_event` 
 
 M8.2: `settings.ts` (the keys of `GET/PUT /api/settings`, defaults, which are editable; `docs/settings.md`) and `cron-label.ts` (readable cron labels in the prototype's wording).
 
-M7.3: `artifacts-view.ts` (the global Artifacts view: type filters, `type=` parsing, the "Solution · branch" label and the search match, shared by `GET /api/artifacts` and the UI; `docs/derivations.md` → *Artifacts view*).
+M7.3: the global Artifacts view's filters and search (`artifacts-view.ts`, removed by D89).
 
 M7.4: `transcript.ts` (streaming parser of a Claude Code transcript into the facts History needs: prompts, commands, titles, the newest leaf's last text, slugs) and `history.ts` (which sessions History lists and what each row shows, the search match, the date format; shared by `GET /api/history` and the UI; `docs/derivations.md` → *History*).
 
@@ -43,3 +43,5 @@ D40: `branching.ts` (the epic/task branching model: `epicBranchName`, branch-nam
 D47: `stacking.ts` (stacked task branches: the typed parent, a key or a branch name; its per-repo matches, resolved base and PR target; the parent's PR from gh; the pre-fill from the task text; the stacked Branching lines; the parent-merged message), documented in `docs/worktrees.md` → *Stacked task branches (D47)* and `docs/new-session.md` → *Parent (D47)*.
 
 D49: `context-meter.ts` (the context window meter: the CLI's context-token formula, the reported / derived window, percent and color band, compaction state, the transcript replay), documented in `docs/chat.md` → *Context bar*.
+
+D89: `artifacts.ts` (artifacts saved on purpose: kinds, limits, title / language checks, the message title, the code fence, CSV parsing, the version line diff, the `artifact_*` MCP tool definitions and instructions), documented in `docs/artifacts.md`.

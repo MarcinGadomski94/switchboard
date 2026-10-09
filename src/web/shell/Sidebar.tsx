@@ -189,6 +189,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   // D52: a schedule saved, paused, resumed or deleted (here or on a paired machine).
   useHubEvent('schedulesChanged', () => schedules.reload());
   useHubEvent('system', (payload) => setLiveSystem(payload));
+  // D89: the Artifacts badge counts the artifacts saved on purpose (here and on the paired machines).
+  useHubEvent('artifactsChanged', useThrottled(artifacts.reload, SOLUTIONS_RELOAD_MS));
   useToolsChanged(() => tools.reload()); // Settings → Embedded tools saved (M8.2)
 
   const info = liveSystem ?? system.data;

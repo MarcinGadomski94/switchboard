@@ -36,7 +36,7 @@ Decided once, in the database, by migration 0037:
 - The database **had data** when 0037 ran (a session, a schedule, a saved folder or
   a finished setup): it is an install from before the tutorial. 0037 writes
   `tutorial.lastVersion = "1.12.0"` (`PRE_TUTORIAL_VERSION`). It gets the **What's-new**
-  mini-tours of every feature after 1.12.0 (D76–D84) and **not** the main tour (still
+  mini-tours of every feature after 1.12.0 (D76–D84; D89's *Artifacts are saved on purpose* in 1.14.0) and **not** the main tour (still
   replayable).
 - The database was **empty** (a brand-new install): 0037 writes nothing. On the first
   `GET /api/tutorial` the service queues the **main tour** and no What's-new (the main
@@ -118,5 +118,7 @@ cycles inside the card; the main button has focus on every step.
    ```
 
    1–3 steps; the first always has a `missing` text; later optional ones may use `null`.
+   A step's `route` may be `{ view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' }`
+   (D89 added `artifacts`), `{ view: 'settings', section }` or `{ view: 'session' }`.
 3. That's all: installs updating to that version see it once; new installs see the
    main tour instead (add a main-tour step too if the feature is central).

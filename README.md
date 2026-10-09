@@ -346,7 +346,13 @@ When a session's context reaches 80 % (Settings → Sessions, 50–95 %, on by d
 [`docs/solutions.md`](docs/solutions.md)
 
 ### Artifacts
-The **Artifacts** page lists what the sessions produced, derived from their successful tool results (nothing is typed in by hand): diffs per solution and branch, pull requests and branches, docs, contracts, QA matrices, follow-ups and ticket replies. It shows `n of m`, has a search box (artifacts, solutions, branches, session titles) and type filters (**All**, **Diffs**, **PRs / branches**, **Docs & contracts**, **Ticket replies**). Each row shows the type, name, solution and branch, source session, status and age; a row opens its session, and the list refreshes while sessions work. [`docs/derivations.md`](docs/derivations.md) → *Artifacts view*
+Artifacts work like Claude's artifacts on claude.ai: deliverables are **saved on purpose**, never collected automatically.
+- **The agent saves them** with the `artifact_save` tool of the built-in `switchboard` MCP server (reports, plans, docs, diagrams, mockups, tables): Markdown, code, HTML, Mermaid, SVG, images and CSV. Saving again with an artifact's id adds a **version**.
+- **You save them** from the chat: an agent message's **⋯ → Save as artifact**, or **Save as artifact** on a code block (title and kind prefilled, editable).
+- **The session's Artifacts tab** lists them and shows one: rendered or source, the version picker and **Compare** between versions, Copy, Download, Full screen, Delete. HTML runs in a sandboxed frame that cannot reach Switchboard's cookie or API; SVG and images are shown as images; CSV as a table; Mermaid as source.
+- **The Artifacts page** lists every session's artifacts (paired machines' too), filtered by kind or session and searchable; a row opens it in its session.
+
+[`docs/artifacts.md`](docs/artifacts.md)
 
 ### Schedules and loops
 - **Cron schedules:** start sessions from templates.

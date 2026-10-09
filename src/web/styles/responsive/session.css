@@ -311,18 +311,34 @@
     overflow-wrap: anywhere;
   }
 
+  /* D89: the list or the open artifact, one at a time (‹ goes back to the list). */
   .sb-arts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sb-arts[data-open='true'] .sb-arts-list,
+  .sb-arts:not([data-open='true']) .sb-arts-pick {
+    display: none;
+  }
+
+  .sb-arts-list {
+    border-right: 0;
     padding: 14px max(14px, env(safe-area-inset-right)) 16px max(14px, env(safe-area-inset-left));
   }
 
-  .sb-arts__row {
-    flex-wrap: wrap;
-    row-gap: 4px;
+  .sb-artv-back {
+    display: block;
   }
 
-  .sb-arts__name {
-    min-width: 0;
-    overflow-wrap: anywhere;
+  .sb-artv-head,
+  .sb-artv-bar,
+  .sb-artv-body {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .sb-artv-actions {
+    margin-left: 0;
   }
 }
 

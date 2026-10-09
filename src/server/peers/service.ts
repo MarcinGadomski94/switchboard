@@ -1,8 +1,8 @@
 import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
-import type { HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
-import { PEER_HUB_EVENTS, type PeerMachineRef, mapPeerAnswer, peerAnswerKind, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
+import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
 import type { Review } from '../../core/reviews.ts';
 import {
   type AddMachineInput,
@@ -83,7 +83,7 @@ export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
 /** D79: its review cards (`GET /api/reviews`). */
-const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews' } as const;
+const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews', artifacts: '/api/artifacts' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
 export type PeerListKind = keyof typeof PEER_LISTS;
@@ -182,10 +182,15 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   // D79: the review cards (list) and their actions, run on the machine whose session it is.
   ['GET', /^\/api\/reviews$/],
   ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|discard|cleanup|dismiss)$/],
+  // D89: that machine's saved artifacts (the Artifacts page's list; a session's list, one artifact, a version's bytes, Save as artifact, Delete).
+  ['GET', /^\/api\/artifacts$/],
+  ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
 ];
 
-/** D57: the peer API's attachment download (its answer is bytes, not JSON). */
-export const PEER_ATTACHMENT_GET = /^\/api\/sessions\/[^/]+\/attachments\/[^/]+$/;
+/** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */
+export const PEER_ATTACHMENT_GET = /^\/api\/sessions\/[^/]+\/(?:attachments\/[^/]+|artifacts\/[^/]+\/versions\/\d+\/raw)$/;
 
 /** `true` when the peer API may serve `method path` (`url` may carry a query). */
 export function peerApiAllowed(method: string, url: string): boolean {
@@ -782,6 +787,15 @@ export class PeerService implements PeerHandlers {
       });
       return;
     }
+    if (name === 'artifactsChanged') {
+      // D89: the peer's artifacts are fetched again first, so the Artifacts page that reloads on the event sees the change.
+      void this.refreshList(id, 'artifacts').then(() => {
+        const current = this.#ref(id);
+        const mapped = current ? peerHubEvent(current, name, payload) : null;
+        if (mapped !== null) this.#publishFromPeer(name, mapped);
+      });
+      return;
+    }
     if (name === 'todosChanged') {
       // D68: the peer's todo groups are fetched again first, so the Todos page that reloads on the event sees the change.
       void this.refreshList(id, 'todos').then(() => {
@@ -862,6 +876,11 @@ export class PeerService implements PeerHandlers {
   /** D79: the paired machines' review cards (`GET /api/reviews` there) as last known; see {@link remoteSchedules}. */
   remoteReviews(): Review[] {
     return this.#remoteList('reviews', (ref, item) => peerReview(ref, item as Review));
+  }
+
+  /** D89: the paired machines' saved artifacts (`GET /api/artifacts` there) as last known, namespaced and tagged; see {@link remoteSchedules}. */
+  remoteArtifacts(): ArtifactListItem[] {
+    return this.#remoteList('artifacts', (ref, item) => (isSavedArtifact(item) ? peerArtifactItem(ref, item as ArtifactListItem) : null)).filter((item): item is ArtifactListItem => item !== null);
   }
 
   /** D52: the paired machines' terminal loops (`GET /api/terminal-loops` there) as last known; see {@link remoteSchedules}. */
@@ -980,6 +999,8 @@ export class PeerService implements PeerHandlers {
       if (method.toUpperCase() !== 'GET' && /\/todos(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'todos');
       // D79: a review card was acted on there: the review list is fetched again too.
       if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/reviews/')) await this.refreshList(machineId, 'reviews');
+      // D89: an artifact was saved or deleted there: the Artifacts page's list is fetched again too.
+      if (method.toUpperCase() !== 'GET' && /\/artifacts(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'artifacts');
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }
     return answer;

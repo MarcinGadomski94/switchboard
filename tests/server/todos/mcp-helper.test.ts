@@ -5,6 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ARTIFACT_TOOLS } from '../../../src/core/artifacts.ts';
 import { AGENT_MCP_INSTRUCTIONS, AGENT_TOKEN_ENV, TODO_TOOLS } from '../../../src/core/todos.ts';
 import { type AgentApi, type ApiAnswer, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -50,8 +51,8 @@ async function connect(api: AgentApi, version?: string) {
   return { rpc, call, notify: (method: string) => client.send({ jsonrpc: '2.0', method } as JSONRPCMessage) };
 }
 
-/** `tools/list` as the SDK renders TODO_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
-const LISTED_TOOLS = TODO_TOOLS.map((tool) => ({
+/** `tools/list` as the SDK renders TODO_TOOLS and (D89) ARTIFACT_TOOLS: the display title also on the tool, a JSON Schema draft-07 `$schema`, and `execution`. */
+const LISTED_TOOLS = [...TODO_TOOLS, ...ARTIFACT_TOOLS].map((tool) => ({
   name: tool.name,
   title: tool.annotations.title,
   description: tool.description,
@@ -187,6 +188,34 @@ describe('MCP messages', () => {
       ['PUT', '/agent/v1/todos/aaa111', { title: 'Fix both login tests', plan: '' }],
       ['PUT', '/agent/v1/todos/aaa111', { priority: 'urgent', estimateMinutes: 90 }],
       ['DELETE', '/agent/v1/todos/aaa111', undefined],
+    ]);
+  });
+
+  it('D89: artifact_save (new, then a version by id), artifact_list and artifact_get call the artifact routes', async () => {
+    const calls: Array<[string, string, unknown]> = [];
+    const artifact = { id: 'a1b2c3d4e5', sessionId: 's1', title: 'Plan', kind: 'markdown', language: null, createdBy: 'agent', versions: 1, size: 7, createdAt: 't', updatedAt: 't' };
+    const api = stubApi(
+      {
+        'POST /agent/v1/artifacts': { status: 201, body: { artifact, version: 1, created: true } },
+        'GET /agent/v1/artifacts': { status: 200, body: [artifact] },
+        'GET /agent/v1/artifacts/a1b2c3d4e5?version=1': { status: 200, body: { ...artifact, versionList: [], version: { n: 1, size: 7, createdBy: 'agent', createdAt: 't', content: '# Plan\n' } } },
+      },
+      calls,
+    );
+    const { call } = await connect(api);
+    const saved = await call('artifact_save', { title: 'Plan', kind: 'markdown', content: '# Plan\n' });
+    expect(saved.content[0]?.text).toBe('Saved a new artifact: [a1b2c3d4e5] Plan · markdown · v1 · 7 B\nid: a1b2c3d4e5 · version: 1\nTo revise it, call artifact_save again with id a1b2c3d4e5.');
+    await call('artifact_save', { id: '[a1b2c3d4e5]', title: 'Plan', kind: 'code', language: 'ts', path: 'src/a.ts' });
+    expect((await call('artifact_list', {})).content[0]?.text).toBe("This session's artifacts (1), newest first:\n[a1b2c3d4e5] Plan · markdown · v1 · 7 B");
+    expect((await call('artifact_get', { id: 'a1b2c3d4e5', version: 1 })).content[0]?.text).toBe('[a1b2c3d4e5] Plan · markdown · v1 · 7 B\nShowing version 1 of 1 (7 B).\n\n# Plan\n');
+    // What is missing is said and nothing is sent.
+    for (const args of [{ kind: 'markdown', content: 'x' }, { title: 'x', kind: 'pdf', content: 'x' }, { title: 'x', kind: 'markdown' }]) expect((await call('artifact_save', args)).isError, JSON.stringify(args)).toBe(true);
+    expect((await call('artifact_get', {})).isError).toBe(true);
+    expect(calls).toEqual([
+      ['POST', '/agent/v1/artifacts', { title: 'Plan', kind: 'markdown', content: '# Plan\n' }],
+      ['POST', '/agent/v1/artifacts', { title: 'Plan', kind: 'code', path: 'src/a.ts', language: 'ts', id: 'a1b2c3d4e5' }],
+      ['GET', '/agent/v1/artifacts', undefined],
+      ['GET', '/agent/v1/artifacts/a1b2c3d4e5?version=1', undefined],
     ]);
   });
 

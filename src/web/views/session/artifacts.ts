@@ -1,103 +1,98 @@
 /**
- * Pure model of the Artifacts tab (SPEC → Session → Artifacts; M4.6): one row
- * per artifact of the session (type tag + name + meta), from `GET
- * /api/sessions/{id}` (`artifacts` + `files`). Copy and row form are the
- * prototype's (`docs/handoff/prototype/Switchboard App.dc.html`, `ss.arts`);
- * the artifacts themselves are derived by the recorder (gap #9). The rules are
- * in `docs/derivations.md` → *Artifacts tab*.
+ * D89 · the pure model of the artifact views (`docs/artifacts.md`): the session's
+ * Artifacts tab (list + viewer), the global Artifacts page and Save as artifact.
+ * Artifacts are saved on purpose (by the agent's `artifact_save` or the
+ * developer); nothing here is derived from tool results any more.
  */
-import type { Artifact, FileDiff } from '../../../core/api.ts';
-import { deltaText } from './diff.ts';
+import type { Artifact, ArtifactAuthor, ArtifactKind } from '../../../core/api.ts';
+import { artifactSizeLabel, codeFence, isTextKind, messageArtifactTitle } from '../../../core/artifacts.ts';
 
-/** One row of the tab. */
-export interface ArtifactRow {
-  /** Stable identity across refreshes: the artifact id (`info` for the empty row). */
-  readonly key: string;
-  /** The type tag (`CONTRACT`, `DIFF`, `PR`, …; `INFO` for the empty row). */
-  readonly tag: string;
-  readonly name: string;
-  /** Short state (`locked`, `+284 −12`, `open`); empty when none is known. */
-  readonly meta: string;
-  /** Where the artifact lives (`web-front ⎇ session/x`, `workspace root`), for the row's tooltip; empty for the empty row. */
-  readonly title: string;
+/** The kind tag a row shows (short, mono). */
+export const KIND_TAGS: Readonly<Record<ArtifactKind, string>> = {
+  markdown: 'DOC',
+  code: 'CODE',
+  html: 'HTML',
+  mermaid: 'DIAGRAM',
+  svg: 'SVG',
+  image: 'IMAGE',
+  csv: 'TABLE',
+};
+
+/** A kind in words (the viewer's head, the save dialog's picker). */
+export const KIND_LABELS: Readonly<Record<ArtifactKind, string>> = {
+  markdown: 'Markdown',
+  code: 'Code',
+  html: 'HTML',
+  mermaid: 'Mermaid',
+  svg: 'SVG',
+  image: 'Image',
+  csv: 'CSV',
+};
+
+/** The tag of an artifact's row: `CODE · ts` for code with a language. */
+export function kindTag(artifact: Pick<Artifact, 'kind' | 'language'>): string {
+  return artifact.kind === 'code' && artifact.language ? `${KIND_TAGS.code} · ${artifact.language}` : KIND_TAGS[artifact.kind];
 }
 
-/** The single row shown when the session has no artifacts (the Solutions detail's form, M6.2). */
-export const NO_ARTIFACTS: ArtifactRow = { key: 'info', tag: 'INFO', name: 'No artifacts', meta: '', title: '' };
-
-/** The file count at the end of a stored DIFF name (`Pages/FreeTalk · 6 files`, `1 file`). */
-const COUNT = /(?:^|\s·\s)(\d+ files?)$/;
-
-/** `1 file`, `6 files`. */
-export function fileCount(n: number): string {
-  return `${n} ${n === 1 ? 'file' : 'files'}`;
+/** Who saved it, as the rows say. */
+export function authorLabel(author: ArtifactAuthor): string {
+  return author === 'agent' ? 'agent' : 'you';
 }
 
-/** The file count segment of a stored DIFF name, or `null` when it has none. */
-export function storedCount(name: string): string | null {
-  return COUNT.exec(name)?.[1] ?? null;
+/** A row's meta: `v3 · 14.2 KB · agent`. */
+export function artifactMeta(artifact: Pick<Artifact, 'versions' | 'size' | 'createdBy'>): string {
+  return `v${artifact.versions} · ${artifactSizeLabel(artifact.size)} · ${authorLabel(artifact.createdBy)}`;
+}
+
+/** The viewer's modes: `rendered` (each kind as it is meant to be seen), `source` (the text), `diff` (two versions, text kinds). */
+export type ViewerMode = 'rendered' | 'source' | 'diff';
+
+/** The modes a kind offers: text kinds all three (diff once there are two versions); an image only rendered. */
+export function viewerModes(kind: ArtifactKind, versions: number): ViewerMode[] {
+  if (!isTextKind(kind)) return ['rendered'];
+  return versions > 1 ? ['rendered', 'source', 'diff'] : ['rendered', 'source'];
 }
 
 /**
- * The session's changed files (`SessionDetail.files`, the git diff, gap #10)
- * that belong to a DIFF artifact: same solution, and the artifact's branch when
- * it has one. A DIFF without a branch (files written outside the session's
- * worktrees, e.g. in place) takes the solution's files on any branch that no
- * other DIFF of that solution in the session names.
+ * D89 ruling (`docs/decisions.md` → D89, *Mermaid*): a Mermaid diagram is shown as
+ * its source (highlighted), with this note: rendering it would need the Mermaid
+ * library, a large runtime dependency the app does not carry.
  */
-export function diffFilesOf(artifact: Artifact, artifacts: readonly Artifact[], files: readonly FileDiff[]): FileDiff[] {
-  const solution = artifact.solution;
-  if (solution === null) return [];
-  if (artifact.branch !== null) return files.filter((file) => file.solution === solution && file.branch === artifact.branch);
-  const claimed = new Set(
-    artifacts.filter((other) => other.type === 'DIFF' && other.solution === solution && other.branch !== null).map((other) => other.branch),
-  );
-  return files.filter((file) => file.solution === solution && !claimed.has(file.branch));
+export const MERMAID_NOTE = 'Mermaid source: Switchboard does not draw Mermaid diagrams (that needs the Mermaid library). Copy it into a Mermaid viewer, or Download the .mmd.';
+
+/** The Markdown the viewer renders for a text kind's "rendered" view where that is Markdown: markdown as is, code and mermaid as one highlighted block. */
+export function renderedMarkdown(kind: ArtifactKind, language: string | null, content: string): string | null {
+  if (kind === 'markdown') return content;
+  if (kind === 'code') return codeFence(content, language);
+  if (kind === 'mermaid') return codeFence(content, 'mermaid');
+  return null;
 }
 
-/** Tooltip: `<solution> ⎇ <branch>`, `<solution>`, or `workspace root` (+ branch). */
-export function locationTitle(artifact: Pick<Artifact, 'solution' | 'branch'>): string {
-  const where = artifact.solution ?? 'workspace root';
-  return artifact.branch ? `${where} ⎇ ${artifact.branch}` : where;
+/** The global page's kind filters (`kind=` values; `null` = all). */
+export const KIND_FILTERS: readonly { readonly label: string; readonly kinds: readonly ArtifactKind[] | null }[] = [
+  { label: 'All', kinds: null },
+  { label: 'Docs', kinds: ['markdown'] },
+  { label: 'Code', kinds: ['code'] },
+  { label: 'HTML', kinds: ['html'] },
+  { label: 'Diagrams', kinds: ['mermaid', 'svg'] },
+  { label: 'Images', kinds: ['image'] },
+  { label: 'Tables', kinds: ['csv'] },
+];
+
+/** What Save as artifact proposes for a whole message: its title (first heading or line), kind markdown. */
+export function messageDraft(text: string): { readonly title: string; readonly kind: ArtifactKind; readonly language: string | null; readonly content: string } {
+  return { title: messageArtifactTitle(text), kind: 'markdown', language: null, content: text };
 }
 
-/**
- * A DIFF row in the session tab's form `<solution> · <n files>` (the tab has no
- * solution column, unlike the global list). A stored `meta` is kept together
- * with the count in the stored name; otherwise the count and `+added −removed`
- * come from the session's git diff for that solution + branch (the recorder
- * leaves DIFF meta empty, `docs/derivations.md` → *Artifacts*). Without git
- * data (changes gone, solution outside the session's scope) the stored count
- * stays and the meta is empty.
- */
-function diffRow(artifact: Artifact, artifacts: readonly Artifact[], files: readonly FileDiff[]): { name: string; meta: string } {
-  const solution = artifact.solution;
-  if (solution === null) return { name: artifact.name, meta: artifact.meta ?? '' };
-  const stored = artifact.meta?.trim() ?? '';
-  const count = storedCount(artifact.name);
-  if (stored !== '') return { name: `${solution} · ${count ?? artifact.name}`, meta: stored };
-  const matched = diffFilesOf(artifact, artifacts, files);
-  if (matched.length > 0) {
-    let added = 0;
-    let removed = 0;
-    for (const file of matched) {
-      added += file.added;
-      removed += file.removed;
-    }
-    return { name: `${solution} · ${fileCount(matched.length)}`, meta: deltaText(added, removed) };
-  }
-  return { name: `${solution} · ${count ?? artifact.name}`, meta: '' };
+/** What Save as artifact proposes for a code block: kind code with its language, titled after the message (`Snippet` when it has nothing to go by). */
+export function codeDraft(code: string, language: string | null, messageText: string | null): { readonly title: string; readonly kind: ArtifactKind; readonly language: string | null; readonly content: string } {
+  const title = messageText ? messageArtifactTitle(messageText) : 'Untitled';
+  return { title: title === 'Untitled' ? `Snippet${language ? ` (${language})` : ''}` : title, kind: 'code', language, content: code };
 }
 
-/**
- * The tab's rows, in the server's order (most recently updated first). Every
- * type but DIFF shows its stored name and meta verbatim (empty meta when none
- * is known: nothing is invented); no artifacts → {@link NO_ARTIFACTS}.
- */
-export function artifactRows(artifacts: readonly Artifact[], files: readonly FileDiff[]): ArtifactRow[] {
-  if (artifacts.length === 0) return [NO_ARTIFACTS];
-  return artifacts.map((artifact) => {
-    const shown = artifact.type === 'DIFF' ? diffRow(artifact, artifacts, files) : { name: artifact.name, meta: artifact.meta ?? '' };
-    return { key: artifact.id, tag: artifact.type, name: shown.name, meta: shown.meta, title: locationTitle(artifact) };
-  });
+/** A fenced code block's language from its `className` (`language-ts`, `hljs language-ts`), `null` without one. */
+export function codeLanguage(className: unknown): string | null {
+  const names = Array.isArray(className) ? className.map(String) : typeof className === 'string' ? className.split(/\s+/) : [];
+  const hit = names.find((name) => name.startsWith('language-'));
+  return hit ? hit.slice('language-'.length) || null : null;
 }

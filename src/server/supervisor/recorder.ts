@@ -2,7 +2,7 @@ import path from 'node:path';
 import { resultTurnTokens } from '../../core/todo-actuals.ts';
 import type { BackgroundTask, SessionActivity } from '../../core/api.ts';
 import { type Attachment, attachmentsLabel } from '../../core/attachments.ts';
-import type { ArtifactType, EventKind, SessionStatus } from '../../core/model.ts';
+import type { EventKind, SessionStatus } from '../../core/model.ts';
 import {
   type EventPayload,
   type RequestPayload,
@@ -20,16 +20,7 @@ import { QueueTracker, type Withdrawn, queuedReason, withoutQueued } from '../..
 import { STOPPED_LABEL, isInterruptedResult, stopTimeoutText } from '../../core/stop-turn.ts';
 import { BackgroundTracker, endsTask, parseTaskNotification } from '../../core/derive/background.ts';
 import { AGENT_TASK_TYPE, agentStatusFromTask, isTaskFinished, subagentFromToolUse } from '../../core/derive/agents.ts';
-import {
-  type SessionPlace,
-  createdBranches,
-  diffArtifactName,
-  fileArtifactType,
-  findPullRequests,
-  locateSessionFile,
-  runsGh,
-  sessionSolutionFolder,
-} from '../../core/derive/artifacts.ts';
+import { type SessionPlace, sessionSolutionFolder } from '../../core/derive/artifacts.ts';
 import {
   AGENT_TOOLS,
   WRITE_TOOLS,
@@ -126,7 +117,7 @@ interface OpenRequest {
 /**
  * Turns one process's stream-json messages into stored state
  * (`docs/derivations.md`): events (chat, timeline, terminal tail), agents,
- * artifacts, usage readings and the session's CLI fields. It also keeps the
+ * usage readings and the session's CLI fields. It also keeps the
  * bookkeeping the session status is derived from: pending turns, open
  * `can_use_tool` requests, running subagents and the last turn's outcome.
  *
@@ -808,7 +799,7 @@ export class StreamRecorder {
         isError: result.isError,
       }), { endTs: new Date().toISOString() });
       if (entry.command !== null && result.isError) this.#failedCommands.add(entry.command);
-      if (!result.isError) await this.#deriveArtifacts(entry, result.text);
+      if (!result.isError) await this.#onWrite(entry);
       if (AGENT_TOOLS.includes(entry.name)) await this.#onAgentToolResult(result.toolUseId, result.isError);
     }
     await this.#setTranscriptUuid(message.uuid, message.parentToolUseId);
@@ -997,7 +988,8 @@ export class StreamRecorder {
     this.#runningAgents.delete(taskId);
   }
 
-  // ── artifacts (gap #9) ─────────────────────────────────────────────────
+  // ── written files: the writing agent's place, the session's solutions ─────
+  // (D89: the files no longer become artifacts; artifacts are saved on purpose.)
 
   async #branchFor(file: string): Promise<string | null> {
     const worktrees = await this.#store.worktrees.list({ sessionId: this.#sessionId });
@@ -1005,64 +997,20 @@ export class StreamRecorder {
     return hit?.branch ?? null;
   }
 
-  async #deriveArtifacts(entry: ToolEntry, output: string): Promise<void> {
+  /** A successful write (Write / Edit / NotebookEdit …): places its agent (M4.3) and adds the solution to the session's (D38). */
+  async #onWrite(entry: ToolEntry): Promise<void> {
     const place = this.#place;
-    if (!place) return;
-    if (WRITE_TOOLS.includes(entry.name)) {
-      const file = typeof entry.input['file_path'] === 'string'
-        ? (entry.input['file_path'] as string)
-        : typeof entry.input['notebook_path'] === 'string'
-          ? (entry.input['notebook_path'] as string)
-          : null;
-      if (file) {
-        await this.#fileArtifacts(path.resolve(place.cwd, file));
-        await this.#placeAgent(entry.agentId, path.resolve(place.cwd, file));
-        // D38: the solution joins the session's solutions (fill-in from what its agents touch).
-        const solution = writtenSolution(place, path.resolve(place.cwd, file), this.#sessionName);
-        if (solution !== null && this.#onSolutionWritten) await this.#onSolutionWritten(solution);
-      }
-      return;
-    }
-    if (entry.name === 'Bash' && entry.command) {
-      for (const created of createdBranches(entry.command)) {
-        const solution = created.dir ? locateSessionFile(place, path.join(created.dir, '_'), this.#sessionName).solution : null;
-        await this.#upsertArtifact(`branch:${this.#sessionId}:${solution ?? ''}:${created.branch}`, 'BRANCH', created.branch, {
-          solution,
-          branch: created.branch,
-        });
-      }
-      if (runsGh(entry.command)) {
-        for (const pr of findPullRequests(output)) {
-          await this.#upsertArtifact(`pr:${this.#sessionId}:${pr.owner}/${pr.repo}#${pr.number}`, 'PR', `${pr.repo} #${pr.number}`, {
-            solution: pr.repo,
-            url: pr.url,
-          });
-        }
-      }
-    }
-  }
-
-  async #fileArtifacts(file: string): Promise<void> {
-    if (!this.#place) return;
-    const where = locateSessionFile(this.#place, file, this.#sessionName);
-    if (where.outside) return;
-    const branch = await this.#branchFor(file);
-    const type = fileArtifactType(where.relative);
-    if (type) {
-      await this.#upsertArtifact(`file:${this.#sessionId}:${where.solution ?? ''}:${where.relative}`, type, where.relative, {
-        solution: where.solution,
-        branch,
-        path: file,
-      });
-    }
-    if (where.solution) {
-      const id = `diff:${this.#sessionId}:${where.solution}:${branch ?? ''}`;
-      const existing = await this.#store.artifacts.get(id);
-      const data = existing?.data as { files?: unknown } | null | undefined;
-      const files = Array.isArray(data?.files) ? (data.files as string[]) : [];
-      if (!files.includes(where.relative)) files.push(where.relative);
-      await this.#upsertArtifact(id, 'DIFF', diffArtifactName(files), { solution: where.solution, branch, data: { files } });
-    }
+    if (!place || !WRITE_TOOLS.includes(entry.name)) return;
+    const file = typeof entry.input['file_path'] === 'string'
+      ? (entry.input['file_path'] as string)
+      : typeof entry.input['notebook_path'] === 'string'
+        ? (entry.input['notebook_path'] as string)
+        : null;
+    if (!file) return;
+    await this.#placeAgent(entry.agentId, path.resolve(place.cwd, file));
+    // D38: the solution joins the session's solutions (fill-in from what its agents touch).
+    const solution = writtenSolution(place, path.resolve(place.cwd, file), this.#sessionName);
+    if (solution !== null && this.#onSolutionWritten) await this.#onSolutionWritten(solution);
   }
 
   /**
@@ -1085,15 +1033,5 @@ export class StreamRecorder {
     } else if (agent.solutionPath === folder && agent.branch === null && branch !== null) {
       await this.#store.agents.update(agent.id, { branch });
     }
-  }
-
-  async #upsertArtifact(id: string, type: ArtifactType, name: string, fields: {
-    solution?: string | null;
-    branch?: string | null;
-    path?: string | null;
-    url?: string | null;
-    data?: unknown;
-  }): Promise<void> {
-    await this.#store.artifacts.upsert({ id, type, name, sessionId: this.#sessionId, ...fields });
   }
 }

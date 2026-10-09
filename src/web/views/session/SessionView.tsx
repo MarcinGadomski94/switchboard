@@ -1,3 +1,4 @@
+import { offlineReason } from '../../../core/peers.ts';
 import { useHubEvent } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import type { SessionTab } from '../../router.tsx';
@@ -41,7 +42,7 @@ const RELOAD_MS = 500;
  * prototype's children keep their places), and the header and tab take the
  * freed width (`docs/panes.md`).
  */
-export function SessionView({ sessionId, tab, agentId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null }) {
+export function SessionView({ sessionId, tab, agentId = null, artifactId = null }: { readonly sessionId: string; readonly tab: SessionTab; readonly agentId?: string | null; readonly artifactId?: string | null }) {
   const data = useSessionData(sessionId, tab === 'chat');
   const reload = useThrottled(data.reload, RELOAD_MS);
   useHubEvent('sessionUpdated', (session) => {
@@ -52,6 +53,10 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
   });
   // M4.2: a new batch reaches the chat's inline card (the detail carries the questions).
   useHubEvent('questionBatch', (payload) => {
+    if (payload.sessionId === sessionId) reload();
+  });
+  // D89: an artifact saved or deleted (the header's Artifacts count).
+  useHubEvent('artifactsChanged', (payload) => {
     if (payload.sessionId === sessionId) reload();
   });
 
@@ -98,7 +103,7 @@ export function SessionView({ sessionId, tab, agentId = null }: { readonly sessi
         ) : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}
         {tab === 'diff' ? <DiffTab sessionId={sessionId} /> : null}
-        {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} /> : null}
+        {tab === 'artifacts' ? <ArtifactsTab sessionId={sessionId} artifactId={artifactId} blocked={session ? offlineReason(session.machine) : null} /> : null}
       </div>
       <RightPanel sessionId={sessionId} session={session} hidden={panelHidden} placeholder={placeholders.panel} />
       {/* D74: on tablets and phones the panel is a drawer / bottom sheet over the view (no rail), closed by its scrim. */}

@@ -189,7 +189,7 @@ describe('sessions', () => {
     await store.loops.create({ sessionId: s.id, kind: '/loop' });
     await store.pendingMessages.enqueue({ sessionId: s.id, kind: 'restart-note', text: 'Switchboard restarted.' });
     const worktree = await store.worktrees.create({ repo: 'mobile', repoPath: '/w/mobile', branch: 'session/free-talk', path: '/w/mobile-wt-free-talk', sessionId: s.id });
-    const artifact = await store.artifacts.create({ type: 'DOC', name: 'notes.md', sessionId: s.id });
+    const artifact = await store.artifacts.create({ id: 'a000000001', sessionId: s.id, title: 'Notes', kind: 'markdown', language: null, version: { content: '# Notes', file: null, mediaType: null, size: 7, createdBy: 'agent' } });
     const item = await store.systemItems.create({ kind: 'worktree-removable', source: 'worktrees', title: 't', sessionId: s.id });
     const reading = await store.usage.add({ source: 'get_usage', sessionId: s.id, fiveHourPct: 8 });
 
@@ -559,30 +559,31 @@ describe('worktrees', () => {
   });
 });
 
-describe('artifacts', () => {
-  it('create / upsert / list with filters and search / delete', async () => {
-    const s = await session();
-    const contract = await store.artifacts.create({ type: 'CONTRACT', name: 'contracts/free-talk.md', meta: 'locked', sessionId: s.id, path: 'contracts/free-talk.md' });
-    tick();
-    const pr = await store.artifacts.upsert({ id: 'pr-88', type: 'PR', name: 'notifications-microservice #88', solution: 'notifications-microservice', branch: 'feature/push-prefs', meta: 'open', url: 'https://github.com/o/r/pull/88' });
-    const later = tick();
-    const prMerged = await store.artifacts.upsert({ id: 'pr-88', type: 'PR', name: 'notifications-microservice #88', meta: 'merged', data: { number: 88 } });
-    expect(prMerged).toEqual({ ...pr, meta: 'merged', data: { number: 88 }, updatedAt: later });
-    tick();
-    const diff = await store.artifacts.create({ type: 'DIFF', name: '100%_done · 6 files', solution: 'acme-app-front', branch: 'feature/free-talk-360', meta: '+284 −12', sessionId: s.id });
+describe('artifacts (D89, 0039)', () => {
+  const text = (content: string, createdBy: 'agent' | 'developer' = 'agent') => ({ content, file: null, mediaType: null, size: Buffer.byteLength(content), createdBy });
 
-    expect((await store.artifacts.list()).map((a) => a.id)).toEqual([diff.id, 'pr-88', contract.id]);
-    expect((await store.artifacts.list({ types: ['PR', 'BRANCH'] })).map((a) => a.id)).toEqual(['pr-88']);
-    expect(await store.artifacts.list({ types: [] })).toEqual([]);
-    expect((await store.artifacts.list({ sessionId: s.id })).map((a) => a.id)).toEqual([diff.id, contract.id]);
-    expect((await store.artifacts.list({ q: 'FREE-TALK' })).map((a) => a.id)).toEqual([diff.id, contract.id]);
-    expect((await store.artifacts.list({ q: 'push-prefs' })).map((a) => a.id)).toEqual(['pr-88']);
-    expect((await store.artifacts.list({ q: '100%' })).map((a) => a.id)).toEqual([diff.id]);
-    expect(await store.artifacts.list({ q: '_x%' })).toEqual([]);
-    expect((await store.artifacts.update(contract.id, { meta: 'changed' }))?.meta).toBe('changed');
-    expect(await store.artifacts.delete(contract.id)).toBe(true);
-    expect(await store.artifacts.get(contract.id)).toBeNull();
-    await expect(store.artifacts.create({ type: 'NOTE' as never, name: 'x' })).rejects.toThrow(/CHECK/);
+  it('create / add versions / list newest first / one version / delete cascades the versions', async () => {
+    const s = await session();
+    const plan = await store.artifacts.create({ id: 'a000000010', sessionId: s.id, title: 'Plan', kind: 'markdown', language: null, version: text('v1') });
+    expect(plan).toMatchObject({ id: 'a000000010', versions: 1, size: 2, createdBy: 'agent', sessionId: s.id });
+    tick();
+    const code = await store.artifacts.create({ id: 'a000000011', sessionId: s.id, title: 'A', kind: 'code', language: 'ts', version: text('const a = 1;', 'developer') });
+    const later = tick();
+    const v2 = await store.artifacts.addVersion(plan.id, { title: 'Plan 2', language: null, version: text('v2 longer', 'developer') });
+    expect(v2).toMatchObject({ title: 'Plan 2', versions: 2, size: 9, createdBy: 'agent', updatedAt: later, createdAt: plan.createdAt });
+    expect(await store.artifacts.addVersion('a0000000ff', { title: 'x', language: null, version: text('x') })).toBeNull();
+    expect((await store.artifacts.list()).map((a) => a.id)).toEqual([plan.id, code.id]);
+    expect((await store.artifacts.list({ sessionId: s.id })).map((a) => a.id)).toEqual([plan.id, code.id]);
+    expect(await store.artifacts.count(s.id)).toBe(2);
+    expect((await store.artifacts.versions(plan.id)).map((v) => [v.n, v.content, v.createdBy])).toEqual([[1, null, 'agent'], [2, null, 'developer']]);
+    expect((await store.artifacts.version(plan.id, 1))?.content).toBe('v1');
+    expect(await store.artifacts.version(plan.id, 3)).toBeNull();
+    expect(await store.artifacts.delete(plan.id)).toBe(true);
+    expect(await store.artifacts.get(plan.id)).toBeNull();
+    expect(Number(store.db.prepare('SELECT count(*) AS n FROM artifact_versions WHERE artifact_id = ?').get(plan.id)?.['n'])).toBe(0);
+    await expect(store.artifacts.create({ id: 'a000000012', sessionId: s.id, title: 'x', kind: 'pdf' as never, language: null, version: text('x') })).rejects.toThrow(/CHECK/);
+    // A version is text or a file, never both or neither.
+    await expect(store.artifacts.create({ id: 'a000000013', sessionId: s.id, title: 'x', kind: 'image', language: null, version: { content: null, file: null, mediaType: null, size: 0, createdBy: 'agent' } })).rejects.toThrow(/CHECK/);
   });
 });
 

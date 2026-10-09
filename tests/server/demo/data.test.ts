@@ -30,7 +30,8 @@ describe('demo seed data files (gap #21)', () => {
   it('holds only strings that appear verbatim in the prototype (apart from the added keys)', async () => {
     const haystack = await prototypeText();
     const missing: string[] = [];
-    for (const file of DEMO_DATA_FILES) {
+    // D89: the artifacts are saved on purpose now, not the prototype's derived ART rows: not prototype copy.
+    for (const file of DEMO_DATA_FILES.filter((name) => name !== 'artifacts.json')) {
       const data = JSON.parse(await readFile(path.join(DEMO_DATA_DIR, file), 'utf8')) as unknown;
       const found: Array<[string, string]> = [];
       strings(data, '', found);
@@ -71,7 +72,7 @@ describe('demo seed data files (gap #21)', () => {
       ['prod-monitoring', 17],
       ['button-rollout', 12],
     ]);
-    expect(data.artifacts).toHaveLength(13); // ART.slice(1), as the prototype shows it
+    expect(data.artifacts).toHaveLength(13); // D89: saved artifacts (not the prototype's ART rows), as many per session as its tabs count
     expect(data.history).toHaveLength(8);
     expect(data.tools.map((t) => [t.id, t.url])).toEqual([
       ['cm', 'http://localhost:13000'],

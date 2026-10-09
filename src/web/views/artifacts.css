@@ -1,4 +1,8 @@
-/* Global artifacts (SPEC → Artifacts, M7.3). Values are the prototype's (vArtifacts markup). */
+/*
+ * Global artifacts (SPEC → Artifacts, M7.3; D89: the artifacts saved on purpose). Values are the
+ * prototype's (vArtifacts markup); D89 changed the columns (kind · title · session · versions ·
+ * saved by · age) and added the session filter.
+ */
 .sb-art-view {
   flex: 1;
   min-height: 0;
@@ -61,9 +65,20 @@
   color: var(--primary-fg);
 }
 
+.sb-art-session-filter {
+  margin-left: auto;
+  background: var(--bg-sidebar);
+  color: var(--text-2);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-button);
+  padding: 3px 6px;
+  font-size: 12px;
+  max-width: 260px;
+}
+
 .sb-art-cols {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) 320px 180px 90px 50px;
+  grid-template-columns: 110px minmax(0, 1fr) 280px 70px 80px 50px;
   gap: 14px;
   padding: 8px 22px;
   font: 500 var(--fs-section-label) var(--font-mono);
@@ -86,7 +101,7 @@
 
 .sb-art-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) 320px 180px 90px 50px;
+  grid-template-columns: 110px minmax(0, 1fr) 280px 70px 80px 50px;
   gap: 14px;
   align-items: center;
   padding: 10px 0;
@@ -107,6 +122,10 @@
 
 .sb-art-type {
   font: 500 10px var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: var(--radius-chip);
   background: var(--border-card);
@@ -128,10 +147,16 @@
 }
 
 .sb-art-location {
-  color: var(--muted-2);
+  color: var(--muted-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sb-art-location {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .sb-art-session {

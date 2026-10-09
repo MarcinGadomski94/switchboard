@@ -252,11 +252,20 @@ const SURFACES: readonly Surface[] = [
     spec: 'Session → Artifacts',
     items: 'M4.6',
     lane: LANE_TABS,
-    detail: 'session-artifacts.spec.ts',
+    detail: 'session-artifacts.spec.ts (e2e; D89 retired its visual oracle)',
     kind: 'view',
     testId: 'session-artifacts',
     placeholder: 'empty',
-    landmarks: ['mobile-followups/from-acme-app-front.md'],
+    // D89: the derived rows are gone; the tab lists the artifacts saved on purpose (see `removed` / `rulings`).
+    landmarks: [],
+    removed: [
+      {
+        id: 'D89',
+        protoCopy: 'mobile-followups/from-acme-app-front.md',
+        note: 'D89 (developer request 2026-10-09): artifacts are saved on purpose (the agent\'s artifact_save, Save as artifact); the derived rows (files written, diffs, branches, PRs) are gone, and the tab is a list plus a viewer (docs/artifacts.md)',
+      },
+    ],
+    rulings: [{ id: 'D89', appCopy: 'Free talk · implementation plan', note: 'D89: the demo session\'s saved artifacts (the same count per session as the prototype\'s tab)' }],
     openProto: (page) => protoTab(page, /^Artifacts · \d+$/),
     openApp: (page, base) => appRoute(page, base, '/sessions/free-talk-feature/artifacts'),
   },
@@ -299,11 +308,19 @@ const SURFACES: readonly Surface[] = [
     spec: 'Artifacts',
     items: 'M7.3',
     lane: LANE_TOOLS,
-    detail: 'artifacts.spec.ts (lane w1-tools)',
+    detail: 'artifacts.spec.ts (lane w1-tools); D89: visual/artifacts.spec.ts compares the page chrome only',
     kind: 'view',
     testId: 'view-artifacts',
     placeholder: 'empty',
-    landmarks: ['Solution · branch'],
+    landmarks: [],
+    removed: [
+      {
+        id: 'D89',
+        protoCopy: 'Solution · branch',
+        note: 'D89 (developer request 2026-10-09): the page lists the artifacts saved on purpose: kind · title · session · versions · saved by · age, filtered by kind and session (docs/artifacts.md)',
+      },
+    ],
+    rulings: [{ id: 'D89', appCopy: 'Saved by', note: 'D89: the Artifacts page\'s columns' }],
     openProto: (page) => clickPath(page, [...NAV, 3]),
     openApp: (page, base) => appRoute(page, base, '/artifacts'),
   },
@@ -526,8 +543,8 @@ function sidebarChecks(served: Served): PartCheck[] {
     out.push({ name: `nav:${label}:label`, path: [...NAV, i, 0], geometry: 'box', copy: true, styles: text });
     const area = NAV_BADGE_AREA[i];
     const pending = area && !served[area] ? `${AREAS[area].url} answers 501 (${AREAS[area].item})` : undefined;
-    // The prototype hard-codes the Artifacts badge "14" over its 13 `ART.slice(1)` rows; the app counts the API (D13).
-    const copyNote = label === 'Artifacts' ? 'the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13)' : undefined;
+    // The prototype hard-codes the Artifacts badge "14" over its 13 `ART.slice(1)` rows; the app counts the API (D13; D89: the saved artifacts).
+    const copyNote = label === 'Artifacts' ? 'the prototype hard-codes "14" over 13 rows; the app counts GET /api/artifacts (D13; D89: the 13 saved demo artifacts)' : undefined;
     out.push({ name: `nav:${label}:badge`, path: [...NAV, i, 1], geometry: 'box', copy: copyNote === undefined, styles: text, pending, copyNote });
   });
   out.push({ name: 'toolsLabel', path: [...SIDEBAR, 3], geometry: 'box', copy: true, styles: text });

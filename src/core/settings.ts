@@ -103,10 +103,11 @@ export function isNewSessionMode(value: unknown): value is NewSessionMode {
  * session's todo list goes through the built-in `switchboard` MCP tools; D69: the
  * agent fills a title, a short description and a handover plan; D70: also a priority
  * and an estimate (minutes), a plan is always given (`No plan: reason` allowed); D75:
- * an item is always marked in progress when started and done when finished.
+ * an item is always marked in progress when started and done when finished. D89 added
+ * one more: deliverables go to the `artifact_save` tool, updating the same artifact.
  */
 export const DEFAULT_STANDING_INSTRUCTION =
-  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left.";
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left. Save deliverables the developer should see (reports, plans, docs, diagrams, mockups) with the switchboard artifact_save tool; update the same artifact instead of creating new ones.";
 
 /**
  * D68: earlier defaults. A stored text equal to one of them (saved unchanged, or
@@ -122,6 +123,8 @@ export const PREVIOUS_DEFAULT_STANDING_INSTRUCTIONS: readonly string[] = [
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools and fill a title, a short description and a handover plan from the conversation; mark items done when finished; check it when asked what's left.",
   // D70 (1.9.0 – 1.11.0): before D75's in progress.
   "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; mark items done when finished; check it when asked what's left.",
+  // D75 (1.12.0 – 1.13.0): before D89's artifacts.
+  "Before you ask the user a question that refers to a proposal, table, list, plan or comparison, write that content out in a message first, then ask. Never refer to content 'above' that you have not actually written in this conversation. Todo list: when asked to add to it, use the switchboard todo tools with a title, short description, handover plan (or 'No plan: reason'), priority and estimate (minutes); revise those as you learn more; always mark an item in progress when you start it and done when you finish it; check it when asked what's left.",
 ];
 
 /** D68: the stored instruction as it applies now (an earlier default is the current default). */

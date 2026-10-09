@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen).
+ * tutorial's state (read it, mark a tour seen), and (D89) the saved artifacts (read, Save as artifact, Delete).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
  * explicitly so every registered route is classified (a test enumerates the
@@ -56,6 +56,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // D79: review cards: the list, Merge (local only), Open PR, Commit, Send back, Dismiss (normal use from the phone).
   ['GET', /^\/api\/reviews$/],
   ['POST', /^\/api\/reviews\/[^/]+\/(?:merge|open-pr|commit|send-back|dismiss)$/],
+  // D89: saved artifacts: read them (list, one artifact, a version's bytes), Save as artifact from a message, Delete (normal use).
+  ['GET', /^\/api\/sessions\/[^/]+\/artifacts(?:\/[^/]+(?:\/versions\/[^/]+\/raw)?)?$/],
+  ['POST', /^\/api\/sessions\/[^/]+\/artifacts$/],
+  ['DELETE', /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/],
   // D81: quick capture (the palette, a chat selection, the share sheet's page).
   ['POST', /^\/api\/sessions\/[^/]+\/todos\/capture$/],
   // Inbox and answers.
