@@ -855,6 +855,17 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - What's new (1.14.0): "Diff shows the work since the last commit", one step on the Diff tab's toggle.
   - Details: `docs/worktrees.md` → *Diff*, `docs/derivations.md` → *Diff tab*, `docs/handoff/contracts/local-api.md` → *Diff views (D90)*; ASSUMED items: `.loop/questions.md` → *D90 · Diff since the last commit*.
 
+## Drafts follow you (added 2026-10-09)
+- **D88 What is typed and not sent stays with the session, kept on the server.** Developer request 2026-10-09 ("The text fields for inputting my feedback — when I switch from session to session, it shouldn't clear"). Ruling: drafts are kept **on the server**, so they follow the developer between this machine and its paired devices (D73) and paired machines (D48).
+  - **Kept per session:** the composer's text and its chips already uploaded (restored only while the upload still exists in the session; else the text only), a question batch's picks and **Other…** own answers (D39; the chat's and the Inbox's card share them), a review card's **Send back** comment (D79), the todo strip's **+ Add** form and an open **Edit** form (D69–D70: title, description, plan, priority, estimate). Restored when returning to the session, after a reload and on another device.
+  - **Save / clear:** debounced ~400 ms, and at once on blur, `visibilitychange` (hidden) and `pagehide` (`keepalive`) and when the field goes away; cleared when sent, saved or cancelled, or when the field is emptied.
+  - **Conflict rule (recorded):** last write wins on the server, but a field that has focus is never overwritten by another device's change: the change waits, and on blur the field saves its own text if it changed since (so it wins), else shows what the server holds then. A field without focus follows at once.
+  - **Live:** `/hub` `draftChanged { sessionId, field, client }` (forwarded between peers); the writing page skips its own.
+  - **Storage:** migration 0038 `session_drafts` (session, field key, value JSON, `updated_at`, `updated_by` device / page), removed with the session; at most 64 KB per value, 200 drafts per session. Routes `GET /api/sessions/{id}/drafts`, `PUT` / `DELETE …/drafts/{field}`; a paired machine's session's drafts live on that machine (proxied); allowed to paired devices.
+  - **Performance:** the text stays the field's own state; saving never re-renders the message list (the D86 typing guard stays green).
+  - **What's new (1.14.0):** "Your drafts follow you", one step on the composer.
+  - Details: `docs/chat.md` → *Drafts*, contract → *Drafts (D88)*; ASSUMED items: `.loop/questions.md` → *D88 · Drafts*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.

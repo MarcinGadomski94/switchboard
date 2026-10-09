@@ -77,7 +77,7 @@ describe('core tutorial rules', () => {
   });
 
   it("seeds a 1–3 step mini-tour for each of D76–D84, unique ids, after the pre-tutorial version", () => {
-    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D79', 'D80', 'D81', 'D82', 'D83', 'D84', 'D90']);
+    expect(WHATS_NEW.map((f) => f.decision)).toEqual(['D76', 'D77', 'D78', 'D79', 'D80', 'D81', 'D82', 'D83', 'D84', 'D88', 'D90']);
     expect(new Set(WHATS_NEW.map((f) => f.id)).size).toBe(WHATS_NEW.length);
     for (const feature of WHATS_NEW) {
       expect(feature.steps.length, feature.id).toBeGreaterThanOrEqual(1);
@@ -138,7 +138,8 @@ describe('TutorialService', () => {
     expect(first.install).toBe('new');
     expect(first.main.status).toBe('pending');
     expect(first.whatsNew.every((entry) => entry.status === null)).toBe(true);
-    expect(first.lastVersion).toBe('1.14.0'); // the newest What's-new entry (D90) is newer than the app
+    // The newest of the app's version and the registry's (D88's 1.14.0 entry ships before the version bump).
+    expect(first.lastVersion).toBe(tutorialVersion('1.13.0'));
     expect(pendingTours(first)).toEqual(['main']);
     const service = new TutorialService({ store, appVersion: '1.13.0' });
     expect((await service.record('main', { status: 'skipped' })).main.status).toBe('skipped');
@@ -159,7 +160,7 @@ describe('TutorialService', () => {
     expect(state.main.status).toBeNull();
     expect(state.whatsNew.map((entry) => entry.status)).toEqual(WHATS_NEW.map(() => 'pending'));
     expect(pendingTours(state)).toEqual(WHATS_NEW.map((f) => f.id));
-    expect(state.lastVersion).toBe('1.14.0');
+    expect(state.lastVersion).toBe(tutorialVersion('1.13.0'));
     await service.record('todo-board', { status: 'completed' });
     await service.record('cleanup', { status: 'skipped' });
     const again = await new TutorialService({ store, appVersion: '1.13.0' }).state();

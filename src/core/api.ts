@@ -25,6 +25,7 @@ import type { MachineStateEvent, SessionMachine } from './peers.ts';
 import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
+import type { DraftChanged } from './drafts.ts';
 import type {
   AgentKind,
   ArtifactType,
@@ -2203,6 +2204,13 @@ export interface HubEvents {
    * machine's only: never forwarded between peers.
    */
   readonly notice: DeviceNotice;
+  /**
+   * Additive (D88, `docs/chat.md` → *Drafts*): a session's draft was saved or
+   * cleared (any device, any page); other pages showing that field read the
+   * session's drafts again (a field being typed in waits until it loses focus).
+   * Forwarded between peers (a peer's with its remote session id).
+   */
+  readonly draftChanged: DraftChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2236,6 +2244,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'reviewResolved',
   'reviewsChanged',
   'notice',
+  'draftChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

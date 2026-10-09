@@ -79,6 +79,7 @@ import type { UpdateStatus, UpdateVersionInput } from '../../core/updates.ts';
 import type { McpActionResult, McpAuthState, McpServerDefinition, McpServerInput, McpView } from '../../core/mcp.ts';
 import type { CleanupRun, CleanupRunRequest, CleanupScan, CleanupSettings } from '../../core/cleanup.ts';
 import type { TourOutcome, TutorialState } from '../../core/tutorial.ts';
+import type { DraftPutInput, SessionDraft } from '../../core/drafts.ts';
 import type { Device, DeviceAccessInput, DeviceAccessState, DevicePairingCode, DevicePushInput, DeviceSelfView, DevicesView } from '../../core/devices.ts';
 import type { AddMachineInput, Machine, MachinesView, PairingCode, PeerListenerInput, PeerListenerState, ReconnectResult } from '../../core/peers.ts';
 
@@ -129,12 +130,14 @@ function pageLocation(): { readonly hostname: string; replace(url: string): void
   return (globalThis as { location?: { readonly hostname: string; replace(url: string): void } }).location ?? null;
 }
 
-async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: Method, path: string, body?: unknown, options: { readonly keepalive?: boolean } = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method,
       credentials: 'same-origin',
+      // D88: a draft saved while the page hides or unloads still goes out.
+      ...(options.keepalive ? { keepalive: true } : {}),
       headers: body === undefined ? { accept: 'application/json' } : { accept: 'application/json', 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -199,6 +202,14 @@ export const api = {
   /** D33: close; `confirm` is needed for a live, running or waiting session (409 `close-needs-confirm` otherwise). */
   closeSession: (id: string, confirm = false) =>
     request<Session>('POST', `/api/sessions/${enc(id)}/close`, confirm ? ({ confirm: true } satisfies SessionCloseInput) : undefined),
+  /** D88: the session's drafts (`docs/chat.md` → *Drafts*); a peer's session id is forwarded (its drafts live there). */
+  sessionDrafts: (id: string) => request<SessionDraft[]>('GET', `/api/sessions/${enc(id)}/drafts`),
+  /** D88: saves a draft (an empty value clears it: 204 → `null`); `keepalive` while the page hides or unloads. */
+  putDraft: (id: string, field: string, body: DraftPutInput, keepalive = false) =>
+    request<SessionDraft | null>('PUT', `/api/sessions/${enc(id)}/drafts/${enc(field)}`, body, { keepalive }),
+  /** D88: clears a draft (sent, saved, cancelled). */
+  deleteDraft: (id: string, field: string, client?: string, keepalive = false) =>
+    request<null>('DELETE', `/api/sessions/${enc(id)}/drafts/${enc(field)}${query({ client })}`, undefined, { keepalive }),
   /** D68, additive: the session's todo list (`docs/todos.md`); every write answers the whole list. A peer's session id is forwarded. */
   sessionTodos: (id: string) => request<SessionTodoList>('GET', `/api/sessions/${enc(id)}/todos`),
   // D69: title, description, plan; `text` (= title) too, so a paired machine still on 1.7.0 adds the item (without the notes).

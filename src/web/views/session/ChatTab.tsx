@@ -1,4 +1,4 @@
-import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
@@ -25,6 +25,9 @@ import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
 import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
 import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 import { FreshOffer } from './FreshOffer.tsx';
+import { type ComposerDraft, draftField } from '../../../core/drafts.ts';
+import { initialDraft, useDraft } from '../../drafts/useDraft.ts';
+import { draftsOnce, knownDraft } from '../../drafts/session-drafts.ts';
 
 /** How close to the bottom (px) still counts as "at the bottom", so new items keep it scrolled down. */
 const STICK_PX = 32;
@@ -122,8 +125,17 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   }, [sessionId, clearAttachments]);
   // D68: the session's todo list (the strip above the composer; the composer's + Todo while it is empty).
   const todos = useSessionTodos(sessionId);
-  const [addingTodo, setAddingTodo] = useState(false);
-  useEffect(() => setAddingTodo(false), [sessionId]);
+  // D88: a + Add form left with text in it (here or on another device) opens again.
+  const [addingTodo, setAddingTodo] = useState(() => knownDraft(sessionId, draftField.todoAdd) !== undefined);
+  useEffect(() => {
+    let live = true;
+    void draftsOnce(sessionId).then((values) => {
+      if (live && values.has(draftField.todoAdd)) setAddingTodo(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [sessionId]);
   const scroller = useRef<HTMLDivElement | null>(null);
   const stick = useRef(true);
   const restored = useRef(false);
@@ -319,8 +331,35 @@ function Composer({
   readonly onSent: () => void;
   readonly onStopped: () => void;
 }) {
-  const [draft, setDraft] = useState('');
+  // D88: the draft is kept on the server per session (it follows the developer to another session, a reload, a phone);
+  // the text stays this component's own state, so typing renders nothing above it (the typing-lag guard).
+  const [draft, setDraft] = useState(() => initialDraft<ComposerDraft>(sessionId, draftField.composer)?.text ?? '');
   const [sending, setSending] = useState(false);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const draftValue = useMemo<ComposerDraft>(
+    () => ({
+      text: draft,
+      attachments: attachments.items.flatMap((item) => (item.id !== null && item.state === 'ready' ? [{ id: item.id, name: item.name, size: item.size, kind: item.kind, mediaType: '' }] : [])),
+    }),
+    [draft, attachments.items],
+  );
+  const restoreAttachments = attachments.restore;
+  const clearDraftAttachments = attachments.clear;
+  const kept = useDraft<ComposerDraft>({
+    sessionId,
+    field: blocked === null ? draftField.composer : null,
+    value: draftValue,
+    root: composerRef,
+    initial: draft === '' ? null : { text: draft, attachments: [] },
+    apply: (value) => {
+      setDraft(value?.text ?? '');
+      // The chips whose upload still exists in the session (the server left out the others).
+      clearDraftAttachments();
+      if (value && value.attachments.length > 0) restoreAttachments(value.attachments, sessionId);
+    },
+  });
+  const latestDraft = useRef(draftValue);
+  latestDraft.current = draftValue;
   // D57: files dropped on the composer join the draft too (the chat above has its own drop zone).
   const drop = useFileDrop(attachments.add, blocked === null);
   const attaching = attachmentsBlocker(attachments.items);
@@ -471,6 +510,8 @@ function Composer({
       // The message shows once the service records it (`/hub` event); the draft clears unless it was edited meanwhile.
       setDraft((current) => (current === sent ? '' : current));
       for (const key of sentKeys) attachments.remove(key);
+      // D88: sent: the draft goes (unless more was typed or attached meanwhile; that is saved as usual).
+      if (latestDraft.current.text === sent && latestDraft.current.attachments.every((item) => message.attachments.includes(item.id))) kept.clear();
       onSent();
     } catch (caught) {
       setError(refusal(caught));
@@ -487,7 +528,7 @@ function Composer({
   };
 
   return (
-    <div className="sb-chat-composer" data-testid="chat-composer" data-tour="composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
+    <div ref={composerRef} className="sb-chat-composer" data-testid="chat-composer" data-tour="composer" data-dragging={drop.dragging ? 'true' : undefined} {...drop.handlers}>
       {context ? <ContextBar context={context} /> : null}
       <AttachmentChips items={attachments.items} notice={attachments.notice} onRemove={attachments.remove} />
       <div className="sb-chat-compose" data-multiline={multiline ? 'true' : undefined}>

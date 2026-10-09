@@ -30,6 +30,7 @@ import { ToolRepository } from './repos/tools.ts';
 import { UsageRepository } from './repos/usage.ts';
 import { WorktreeRepository } from './repos/worktrees.ts';
 import { TutorialRepository } from './repos/tutorial.ts';
+import { DraftRepository } from './repos/drafts.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -80,6 +81,8 @@ export interface Store {
   readonly checkpoints: CheckpointRepository;
   /** D85 (0037): the tours this machine has seen (`docs/tutorial.md`). */
   readonly tutorial: TutorialRepository;
+  /** D88 (0038): the sessions' drafts (`docs/chat.md` → *Drafts*). */
+  readonly drafts: DraftRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -147,6 +150,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     devices: new DeviceRepository(ctx),
     checkpoints: new CheckpointRepository(ctx),
     tutorial: new TutorialRepository(ctx),
+    drafts: new DraftRepository(ctx),
     db,
     async close(): Promise<void> {
       if (closed) return;
