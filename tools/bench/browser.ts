@@ -199,6 +199,8 @@ async function main(): Promise<void> {
     let switches = 0;
     let fired = 0;
     const firstHeap = round(await heapAfterGc(cdp));
+    // The soak's first minute is profiled too (`browser-soak.cpuprofile`).
+    if (values.profile) await cdp.send('Profiler.start');
     soak.push({ minute: 0, heapMb: firstHeap, nodes: (await metrics(cdp)).nodes });
     let minuteStart = Date.now();
     let busyStart = (await metrics(cdp)).taskMs;
@@ -215,6 +217,10 @@ async function main(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 4_000));
       if (Date.now() - minuteStart >= 60_000) {
         minute += 1;
+        if (values.profile && minute === 1) {
+          const { profile } = (await cdp.send('Profiler.stop')) as { profile: unknown };
+          await writeFile(path.join(values.profile, 'browser-soak.cpuprofile'), JSON.stringify(profile));
+        }
         const busy = (await metrics(cdp)).taskMs - busyStart;
         const heap = round(await heapAfterGc(cdp));
         const nodes = (await metrics(cdp)).nodes;
