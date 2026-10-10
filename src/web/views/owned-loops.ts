@@ -3,7 +3,7 @@
  * session's loop strip) and the New loop… / Edit form. Pure: the cards come from
  * `Session.ownedLoops` (`GET /api/sessions` + `sessionUpdated`).
  */
-import type { OwnedLoop, OwnedLoopInput, Session } from '../../core/api.ts';
+import type { OwnedLoop, OwnedLoopInput, Session, SessionListItem } from '../../core/api.ts';
 import { parseCron } from '../../core/cron.ts';
 import { LOOP_EVERY_MAX, LOOP_LABEL_MAX, LOOP_MAX_RUNS_MAX, LOOP_PROMPT_MAX, loopStateText } from '../../core/owned-loops.ts';
 import type { SessionStatus } from '../../core/model.ts';
@@ -82,7 +82,7 @@ export function ownedLoopFacts(loop: OwnedLoop, now: Date): OwnedLoopFact[] {
 }
 
 /** One card per Switchboard loop of every session that has not ended, oldest first. */
-export function ownedLoopCards(sessions: readonly Session[], now: Date, options: { readonly includeEnded?: boolean } = {}): OwnedLoopCardModel[] {
+export function ownedLoopCards(sessions: readonly SessionListItem[], now: Date, options: { readonly includeEnded?: boolean } = {}): OwnedLoopCardModel[] {
   const cards: OwnedLoopCardModel[] = [];
   for (const session of sessions) {
     for (const loop of session.ownedLoops ?? []) {
@@ -94,7 +94,7 @@ export function ownedLoopCards(sessions: readonly Session[], now: Date, options:
 }
 
 /** One Switchboard loop's card. */
-export function ownedLoopCard(session: Session, loop: OwnedLoop, now: Date): OwnedLoopCardModel {
+export function ownedLoopCard(session: SessionListItem, loop: OwnedLoop, now: Date): OwnedLoopCardModel {
   return {
     id: loop.id,
     sessionId: session.id,

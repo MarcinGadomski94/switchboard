@@ -3,6 +3,7 @@ import type { Session } from '../../../core/api.ts';
 import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { useHubEvent } from '../../api/useHub.ts';
+import { useThrottled } from '../../api/useThrottled.ts';
 import { FolderSwitcher } from '../../folders/FolderSwitcher.tsx';
 import { useFolderSwitch } from '../../folders/useFolders.ts';
 import { Link } from '../../router.tsx';
@@ -37,7 +38,8 @@ export function CodebaseMemoryStrip() {
   const [busy, setBusy] = useState(false);
   const [started, setStarted] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useHubEvent('sessionUpdated', () => status.reload());
+  // D95 follow-up 2: a burst of sessionUpdated is one read (at most one a second).
+  useHubEvent('sessionUpdated', useThrottled(status.reload, 1_000));
 
   // A switch never shows the last folder's projects while the new ones load.
   const current = status.data && status.data.folder === folderParam ? status.data.result : null;

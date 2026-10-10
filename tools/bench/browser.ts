@@ -4,6 +4,9 @@
  * Chromium (Playwright) against a test server on the synthetic world
  * (`world.ts`), measured through the Chrome DevTools Protocol:
  *
+ * 0. **list**: the Inbox open while a live session fires 100 short turns: the page's
+ *    `/api` requests and bytes (`GET /api/sessions` apart) and main-thread time
+ *    (`--list-only` stops after it);
  * 1. **open**: the big session's chat (≈13k events): time until its newest message
  *    shows and the page is quiet, main-thread time, DOM nodes, JS heap;
  * 2. **typing**: 20 keys in the composer: main-thread time per key;
@@ -110,8 +113,60 @@ async function openSession(page: Page, cdp: CDPSession, baseUrl: string, id: str
   };
 }
 
+/**
+ * D95 follow-up 2: the HTTP requests (count, bytes) the page makes while a live
+ * session fires 100 short turns with the Inbox on screen, `GET /api/sessions` apart,
+ * and the main-thread time meanwhile (the sidebar's list and what follows it).
+ */
+async function listWhileStreaming(page: Page, cdp: CDPSession, client: Awaited<ReturnType<typeof clientFor>>, live: string): Promise<Record<string, unknown>> {
+  const requests = new Map<string, { count: number; bytes: number }>();
+  const onResponse = (response: import('@playwright/test').Response): void => {
+    const url = new URL(response.url());
+    if (!url.pathname.startsWith('/api/')) return;
+    const key = url.pathname === '/api/sessions' ? `/api/sessions${url.search}` : url.pathname.replace(/\/api\/sessions\/[^/]+/, '/api/sessions/{id}');
+    void response.body().then(
+      (body) => {
+        const entry = requests.get(key) ?? { count: 0, bytes: 0 };
+        entry.count += 1;
+        entry.bytes += body.length;
+        requests.set(key, entry);
+      },
+      () => undefined,
+    );
+  };
+  await quiet(cdp);
+  const before = await metrics(cdp);
+  const start = Date.now();
+  page.on('response', onResponse);
+  const sent = await client.post(`/api/sessions/${live}/messages`, { text: '[fake:fire 100 20] keep going' });
+  if (sent.status >= 300) throw new Error(`POST messages: ${sent.status}`);
+  // Until the turns are over and the page is quiet.
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const status = ((await client.get(`/api/sessions/${live}`)).body as { status?: string }).status;
+    if (status !== 'run' || Date.now() - start > 120_000) break;
+  }
+  await quiet(cdp, 1_500);
+  page.off('response', onResponse);
+  const after = await metrics(cdp);
+  const all = [...requests.values()].reduce((sum, entry) => ({ count: sum.count + entry.count, bytes: sum.bytes + entry.bytes }), { count: 0, bytes: 0 });
+  const list = [...requests.entries()].filter(([key]) => key.startsWith('/api/sessions?') || key === '/api/sessions').reduce((sum, [, entry]) => ({ count: sum.count + entry.count, bytes: sum.bytes + entry.bytes }), { count: 0, bytes: 0 });
+  return {
+    wallMs: Date.now() - start,
+    mainThreadMs: round(after.taskMs - before.taskMs),
+    scriptMs: round(after.scriptMs - before.scriptMs),
+    apiRequests: all.count,
+    apiBytes: all.bytes,
+    listRequests: list.count,
+    listBytes: list.bytes,
+    byRoute: Object.fromEntries([...requests.entries()].sort((a, b) => b[1].bytes - a[1].bytes)),
+  };
+}
+
 async function main(): Promise<void> {
-  const { values } = parseArgs({ options: { minutes: { type: 'string', default: '3' }, 'no-build': { type: 'boolean', default: false }, out: { type: 'string' }, profile: { type: 'string' } } });
+  const { values } = parseArgs({
+    options: { minutes: { type: 'string', default: '3' }, 'no-build': { type: 'boolean', default: false }, out: { type: 'string' }, profile: { type: 'string' }, 'list-only': { type: 'boolean', default: false } },
+  });
   if (!values['no-build']) await globalSetup();
   const report: Record<string, unknown> = {};
   const world = await makeBenchWorld('bench-browser');
@@ -136,6 +191,11 @@ async function main(): Promise<void> {
     await page.goto(`${server.baseUrl}/inbox`);
     await quiet(cdp);
     report['baselineHeapMb'] = round(await heapAfterGc(cdp));
+
+    // 0. The session list while a live session streams 100 short turns (the Inbox open, the sidebar listing every session).
+    report['listStream'] = await listWhileStreaming(page, cdp, client, live);
+    console.log('list while streaming:', JSON.stringify(report['listStream']));
+    if (values['list-only']) return;
     if (values.profile) {
       await mkdir(values.profile, { recursive: true });
       await cdp.send('Profiler.enable');

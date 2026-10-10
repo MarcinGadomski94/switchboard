@@ -8,8 +8,7 @@ import { formatHistoryDate } from '../../core/history.ts';
 import { TICKET_BRANCH_EXAMPLE, tidyTicketBranch } from '../../core/ticket-branch.ts';
 import { ApiError, api, machineApi } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
-import { useHubEvent } from '../api/useHub.ts';
-import { useThrottled } from '../api/useThrottled.ts';
+import { useSessionListOf } from '../api/session-list.ts';
 import { AddFolderPanel } from '../folders/AddFolderPanel.tsx';
 import { defaultFolder, folderById, folderCheckLine } from '../folders/folders.ts';
 import { useSavedFolders } from '../folders/useFolders.ts';
@@ -99,9 +98,6 @@ import { attachmentsBlocker } from '../components/attachments.ts';
 import { offersModeToggle, openingMode, toSimpleBody } from './simple-session.ts';
 import { initialDraft, useDraft } from '../drafts/useDraft.ts';
 import './new-session.css';
-
-/** `sessionUpdated` comes in bursts; the name check's session list reloads at most this often. */
-const SESSIONS_RELOAD_MS = 1_000;
 
 /** The message of a failed `GET /api/solutions` (as in the Solutions view). */
 function solutionsErrorText(error: ApiError): string {
@@ -240,8 +236,8 @@ export function NewSessionModal({
     ? { data: peerFolders.data?.machine === peer ? peerFolders.data.list : null, error: peerFolders.error }
     : localFolders;
   // D33: closed sessions keep their short names, so the name check lists them too.
-  const sessions = useApi(() => api.listSessions({ closed: 'include' }));
-  useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
+  // D95 follow-up 2: the shared list with the closed ones, patched from /hub.
+  const sessions = useSessionListOf('all');
 
   const schedules = useApi((): Promise<Schedule[]> => (scheduling ? api.schedules() : Promise.resolve([])), [scheduling]);
   const [cron, setCron] = useState(() => schedule?.cron ?? '');

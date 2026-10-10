@@ -576,6 +576,13 @@ export interface AgentsDelta {
   readonly order?: readonly string[];
 }
 
+/**
+ * D95 follow-up 2: a `GET /api/sessions` item: a {@link Session} without its agents
+ * (the list leaves them out; `?include=agents` asks for them, and a paired machine
+ * reading this one's list always gets them). `GET /api/sessions/{id}` keeps them.
+ */
+export type SessionListItem = Omit<Session, 'agents' | 'agentsDelta' | 'unchanged'> & { readonly agents?: readonly Agent[] };
+
 /** D95-q3: a heavy session field a delta stream sends only when it changed (`Session.unchanged`). */
 export type UnchangedSessionField = 'loops' | 'model';
 

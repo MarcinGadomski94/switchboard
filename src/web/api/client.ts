@@ -50,6 +50,7 @@ import type {
   Schedule,
   TerminalLoop,
   Session,
+  SessionListItem,
   SessionTitleInput,
   SessionCloseInput,
   SessionDetail,
@@ -180,7 +181,8 @@ const enc = encodeURIComponent;
 /** The contract's REST calls. */
 export const api = {
   /** D33: open sessions only (the sidebar, the palette); `{ closed: 'include' }` lists closed ones too. */
-  listSessions: (options: { readonly closed?: 'include' } = {}) => request<Session[]>('GET', `/api/sessions${query({ closed: options.closed })}`),
+  /** D95 follow-up 2: the items carry no agents (`docs/performance.md` → *Session list in memory*). */
+  listSessions: (options: { readonly closed?: 'include' } = {}) => request<SessionListItem[]>('GET', `/api/sessions${query({ closed: options.closed })}`),
   /** D14: `folder` picks the saved folder (the default when omitted); a repo folder takes a `NewRepoSession`; D56: the simple form a `NewSimpleSession`. */
   createSession: (body: NewSession | NewRepoSession | NewSimpleSession) => request<Session>('POST', '/api/sessions', body),
   /** D25, additive: continue a remote session locally (201 Session; 422 / 409, or 502 `teleport-failed` / 504 `teleport-timeout` with the CLI's text). */

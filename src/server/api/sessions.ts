@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { withoutAgents } from '../../core/session-list.ts';
 import { DIFF_SCOPES, type DiffCount, type DiffScope, type DiffTargets, offeredDiffScope } from '../../core/api.ts';
-import type { AttachRequest, AttachWarning, FileDiff, FreshContinueResult, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
+import type { AttachRequest, AttachWarning, FileDiff, FreshContinueResult, FullEventAnswer, InterruptResult, StopBackgroundResult, ResumeCommand, Session, SessionCloseInput, SessionListItem, SessionDetail, SessionEvent, SessionModelInput, WorkflowAgentChat } from '../../core/api.ts';
 import { MODEL_VALUE_MAX } from '../../core/model-choice.ts';
 import { CLOSED_FILTERS, parseClosedFilter } from '../../core/session-close.ts';
 import { checkTitle } from '../../core/session-title.ts';
@@ -132,16 +133,23 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
   const { store, supervisor, providers } = context;
 
   // D33: closed sessions are left out unless `?closed=include` (History and the New-session name check list them).
-  app.get<{ Querystring: { closed?: unknown } }>('/api/sessions', async (request, reply): Promise<Session[] | FastifyReply> => {
+  app.get<{ Querystring: { closed?: unknown; include?: unknown } }>('/api/sessions', async (request, reply): Promise<Array<Session | SessionListItem> | FastifyReply> => {
     const closed = parseClosedFilter(request.query.closed);
     if (closed === null) {
       return reply.code(422).send({ error: 'invalid', errors: [{ field: 'closed', message: `closed must be one of ${CLOSED_FILTERS.join(', ')}` }] });
+    }
+    const include = request.query.include;
+    if (include !== undefined && include !== 'agents') {
+      return reply.code(422).send({ error: 'invalid', errors: [{ field: 'include', message: 'include must be agents' }] });
     }
     // D25: a teleport that has not reported its local session yet is not listed (a refusal deletes it again).
     const records = (await store.sessions.list(closed === 'include' ? {} : { closed: false })).filter((record) => !supervisor.isStarting(record.id));
     const local = await Promise.all(records.map((record) => toSession(store, record, supervisor.activity(record.id))));
     // D48: the paired machines' open sessions follow (tagged, namespaced); a peer asking gets this machine's only.
-    return isPeerRequest(request) ? local : [...local, ...context.peers.remoteSessions()];
+    // D95 follow-up 2: a peer always gets the agents (a machine before it reads them from this list); the UI only with `?include=agents`.
+    if (isPeerRequest(request)) return local;
+    const all = [...local, ...context.peers.remoteSessions()];
+    return include === 'agents' ? all : all.map(withoutAgents);
   });
 
   app.post('/api/sessions', async (request, reply) => {

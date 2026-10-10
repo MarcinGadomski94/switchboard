@@ -4,6 +4,7 @@ import { openSessions } from '../../core/session-close.ts';
 import { useLiveActivities } from '../activity/useActivity.ts';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
+import { useSessionListOf } from '../api/session-list.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
 import { useCloseSession } from '../components/CloseSession.tsx';
@@ -164,7 +165,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   };
   const now = useNow(30_000);
 
-  const sessions = useApi(api.listSessions);
+  // D95 follow-up 2: the page's shared list, patched from /hub (no read per sessionUpdated).
+  const sessions = useSessionListOf();
   const tools = useApi(api.tools);
   const inbox = useApi(api.inbox);
   const solutions = useApi(api.solutions);
@@ -175,12 +177,11 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   const { tagOf } = useFolderTags();
   const activityOf = useLiveActivities(sessions.data);
   const closer = useCloseSession((closed) => {
-    sessions.reload();
+    // (The list follows the close's sessionUpdated.)
     // D33: the session on screen was closed: its view goes, the Inbox comes.
     if (route.view === 'session' && route.id === closed.id) navigate({ view: 'inbox' });
   });
 
-  useHubEvent('sessionUpdated', () => sessions.reload());
   useHubEvent('inboxChanged', () => inbox.reload());
   useHubEvent('worktreeRemovable', () => solutions.reload());
   // The conflict badge (M6.3) follows sessions starting, ending and moving to worktrees.

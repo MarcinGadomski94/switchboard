@@ -2,7 +2,7 @@ import { UNDO_LAST_TURN_LABEL } from '../../core/checkpoints.ts';
 import { lastTurnRevert, openRevert, useCheckpoints } from '../views/session/checkpoints.ts';
 import { type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Session, SessionActivity } from '../../core/api.ts';
+import type { SessionActivity, SessionListItem } from '../../core/api.ts';
 import { CLOSE_TOOLTIP } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import {
@@ -104,7 +104,7 @@ function useSidebarLayout(): SidebarLayoutControl {
  * so the row keeps the prototype's geometry. A click closes the session and never
  * follows the row's link. The glyph is drawn, so the row's text is unchanged.
  */
-function SessionCloseButton({ session, busy, onClose }: { readonly session: Session; readonly busy: boolean; readonly onClose: () => void }) {
+function SessionCloseButton({ session, busy, onClose }: { readonly session: SessionListItem; readonly busy: boolean; readonly onClose: () => void }) {
   const click = (event: MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault();
     event.stopPropagation();
@@ -285,15 +285,15 @@ const LEVEL_INDENT = 10;
 /** Props of {@link SidebarSessions}. */
 export interface SidebarSessionsProps {
   /** The open sessions, in the service's order (newest first). */
-  readonly sessions: readonly Session[];
+  readonly sessions: readonly SessionListItem[];
   /** `false` until the list has loaded (the count stays empty). */
   readonly loaded: boolean;
   readonly activityOf: (sessionId: string) => SessionActivity | null;
   readonly closer: CloseSessionControl;
   readonly isCurrent: (sessionId: string) => boolean;
-  readonly tagOf: (session: Session) => string | null;
+  readonly tagOf: (session: SessionListItem) => string | null;
   /** D62 P6: the row's CLI badge (`codex`), `null` = none (a list of Claude Code sessions only). */
-  readonly cliBadge?: (session: Session) => string | null;
+  readonly cliBadge?: (session: SessionListItem) => string | null;
   readonly now: number;
 }
 
@@ -595,7 +595,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   const tree = arranged.folders.map(({ folder, level }) => ({ folder, level }));
 
   /** D83: the ⋯ menu's Continue in a fresh session: the session's chat opens (its bar shows the progress), then the fresh session. */
-  const continueFresh = (session: Session): void => {
+  const continueFresh = (session: SessionListItem): void => {
     setMenu(null);
     markFreshAsked(session.id);
     navigate({ view: 'session', id: session.id, tab: 'chat' });
@@ -613,7 +613,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   };
 
   /** D91: the ⋯ menu's Reload instruction (idle: restarted now; busy: after its turn; a refusal shows as a toast). */
-  const reloadInstruction = (session: Session): void => {
+  const reloadInstruction = (session: SessionListItem): void => {
     setMenu(null);
     api.reloadInstruction(session.id).catch((error: unknown) => {
       showToast({
@@ -627,7 +627,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     });
   };
 
-  const sessionMenu = (session: Session, visible: readonly string[], group: RowGroup): MenuItem[] => {
+  const sessionMenu = (session: SessionListItem, visible: readonly string[], group: RowGroup): MenuItem[] => {
     const where = placeOf(layout, session.id);
     const items: MenuItem[] = [];
     if (where === 'pinned') items.push({ label: 'Unpin', testId: 'sidebar-menu-unpin', run: () => place({ sessionId: session.id, place: 'loose' }) });
@@ -705,7 +705,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
   };
 
   /** A session's "Move to folder ▸": the folder tree, indented (D58); its own folder is shown, not offered. */
-  const folderTargets = (session: Session): MenuItem[] => {
+  const folderTargets = (session: SessionListItem): MenuItem[] => {
     const where = placeOf(layout, session.id);
     const current = where !== null && where !== 'pinned' ? where.folderId : null;
     const items: MenuItem[] = tree.map(({ folder: f, level }) =>
@@ -780,7 +780,7 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     ];
   };
 
-  const row = (session: Session, group: RowGroup, visible: readonly string[], level = 0): ReactNode => {
+  const row = (session: SessionListItem, group: RowGroup, visible: readonly string[], level = 0): ReactNode => {
     const activity = activityOf(session.id);
     // D71: a loose row is a drop target of its own too (before / after it: the loose sessions' manual order).
     const at = (event: DragEvent<HTMLElement>): DropOver => ({ zone: 'row', group, sessionId: session.id, side: sideAt(event) });
@@ -913,14 +913,14 @@ export function SidebarSessions({ sessions, loaded, activityOf, closer, isCurren
     </div>
   );
 
-  const byParent = new Map<string | null, Array<ArrangedFolder<Session>>>();
+  const byParent = new Map<string | null, Array<ArrangedFolder<SessionListItem>>>();
   for (const entry of arranged.folders) {
     const parent = parentOf(entry.folder);
     byParent.set(parent, [...(byParent.get(parent) ?? []), entry]);
   }
 
   /** One folder: its head, then (open) its subfolders, a new subfolder's field, and its sessions (D58). */
-  const renderFolder = ({ folder, sessions: inside, level, total }: ArrangedFolder<Session>): ReactNode[] => {
+  const renderFolder = ({ folder, sessions: inside, level, total }: ArrangedFolder<SessionListItem>): ReactNode[] => {
     const headAt = (event: DragEvent<HTMLElement>): DropOver => ({ zone: 'folder-head', folderId: folder.id, side: folderSideOf(event.clientY, event.currentTarget.getBoundingClientRect()) });
     const shown = over && over.zone === 'folder-head' && over.folderId === folder.id ? over : null;
     const visible = inside.map((s) => s.id);

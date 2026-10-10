@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Session } from '../../core/api.ts';
+import type { SessionListItem } from '../../core/api.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { captureTargets, sharedCapture } from '../../core/todo-capture.ts';
 import { checkTodoTitle } from '../../core/todos.ts';
@@ -33,11 +33,11 @@ export function SharePage() {
   const [title, setTitle] = useState(shared.title);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<Session | null>(null);
+  const [saved, setSaved] = useState<SessionListItem | null>(null);
   const targets = useMemo(() => captureTargets(sessions.data ?? []), [sessions.data]);
   const checked = checkTodoTitle(title.replace(/[\r\n]+/g, ' '));
 
-  const pick = async (session: Session): Promise<void> => {
+  const pick = async (session: SessionListItem): Promise<void> => {
     if (!checked.ok || saving) return;
     setSaving(session.id);
     setError(null);

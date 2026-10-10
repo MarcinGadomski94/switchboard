@@ -1,4 +1,4 @@
-import type { Folder, FolderCheck, Session } from '../../core/api.ts';
+import type { Folder, FolderCheck, Session, SessionListItem } from '../../core/api.ts';
 import type { FolderKind } from '../../core/model.ts';
 
 /**
@@ -215,7 +215,7 @@ export interface FolderOption {
  * (a folder that is not saved: its path's last segment), a name two options share
  * gets its path ({@link distinctFolderNames}); the path is the option's tooltip.
  */
-export function switcherOptions(folders: readonly Folder[] | null, sessions: readonly Session[] | null): FolderOption[] {
+export function switcherOptions(folders: readonly Folder[] | null, sessions: readonly SessionListItem[] | null): FolderOption[] {
   const saved = [...(folders ?? [])].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const entries: Array<Omit<FolderOption, 'label'> & { readonly name: string }> = saved.map((folder) => ({
     value: folder.id,

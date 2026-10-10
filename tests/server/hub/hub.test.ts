@@ -344,7 +344,7 @@ describe('/hub · events (contract, field by field)', () => {
       expect(keysOf(update)).toEqual(SESSION_KEYS);
       for (const agent of update.agents) expect(keysOf(agent)).toEqual(AGENT_KEYS);
     }
-    const listed = (await requestJson(port, 'GET', '/api/sessions', cookie)).body as Session[];
+    const listed = (await requestJson(port, 'GET', '/api/sessions?include=agents', cookie)).body as Session[];
     expect(updates.at(-1)).toEqual(listed.find((s) => s.id === session.id));
     // D49: the context meter arrives with sessionUpdated as the usage comes (the recorded turn: 47 780 of a reported 200 000).
     expect(updates.some((s) => s.context?.tokens === null)).toBe(true);

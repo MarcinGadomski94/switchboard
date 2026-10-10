@@ -1,4 +1,4 @@
-import type { Session, SolutionGroup, Tool } from '../../core/api.ts';
+import type { Session, SolutionGroup, Tool, SessionListItem } from '../../core/api.ts';
 import { openSessions } from '../../core/session-close.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { captureTargets, captureTitle, paletteTodoText } from '../../core/todo-capture.ts';
@@ -74,7 +74,7 @@ export const PALETTE_VIEWS: ReadonlyArray<readonly [route: PaletteRoute, label: 
 
 /** What the palette lists besides the fixed views and action: the API's lists (`null` = not loaded / not available). */
 export interface PaletteData {
-  readonly sessions: readonly Session[] | null;
+  readonly sessions: readonly SessionListItem[] | null;
   readonly tools: readonly Tool[] | null;
   readonly solutions: readonly SolutionGroup[] | null;
 }
@@ -162,7 +162,7 @@ export const ADD_TODO_QUERY = 'todo ';
  * recently active first, as targets to pick. The title is the text (cut at a word to 120
  * characters, the whole text then kept as the note). `todo ` alone: one row asking for the title.
  */
-export function paletteTodoEntries(query: string, sessions: readonly Session[] | null, currentSessionId: string | null): PaletteEntry[] | null {
+export function paletteTodoEntries(query: string, sessions: readonly SessionListItem[] | null, currentSessionId: string | null): PaletteEntry[] | null {
   const text = paletteTodoText(query);
   if (text === null) return null;
   if (text === '') return [{ key: 'todo:empty', kind: 'todo', label: ADD_TODO_LABEL, hint: 'type the title', target: { type: 'none' } }];

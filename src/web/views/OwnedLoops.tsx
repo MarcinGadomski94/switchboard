@@ -1,5 +1,5 @@
 import { type MouseEvent, useEffect, useId, useMemo, useState } from 'react';
-import type { OwnedLoop, Session } from '../../core/api.ts';
+import type { OwnedLoop, Session, SessionListItem } from '../../core/api.ts';
 import { LOOP_SYMBOL } from '../../core/owned-loops.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { ApiError, api } from '../api/client.ts';
@@ -191,7 +191,7 @@ export function LoopDialog({ target, onClose }: { readonly target: LoopDialogTar
   const editing = target.edit ?? null;
   const [draft, setDraft] = useState<LoopDraft>(() => (editing ? draftFromLoop(editing) : EMPTY_LOOP_DRAFT));
   const [sessionId, setSessionId] = useState<string>(editing?.sessionId ?? target.sessionId ?? '');
-  const [sessions, setSessions] = useState<readonly Session[] | null>(null);
+  const [sessions, setSessions] = useState<readonly SessionListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const id = useId();

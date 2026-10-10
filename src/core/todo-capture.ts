@@ -103,6 +103,6 @@ export function todoEnrichMessage(items: readonly Pick<SessionTodo, 'id' | 'titl
 export const ENRICH_WAITING_LABEL = '✎ waiting for the agent to fill in';
 
 /** D81: sessions to capture into, most recently active first (closed sessions left out). */
-export function captureTargets(sessions: readonly Session[]): Session[] {
+export function captureTargets<T extends Pick<Session, 'closedAt' | 'lastActivityAt' | 'createdAt'>>(sessions: readonly T[]): T[] {
   return openSessions(sessions).sort((a, b) => (b.lastActivityAt ?? b.createdAt).localeCompare(a.lastActivityAt ?? a.createdAt));
 }

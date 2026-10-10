@@ -1,8 +1,7 @@
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
-import { useHubEvent } from '../api/useHub.ts';
-import { useThrottled } from '../api/useThrottled.ts';
+import { useSessionListOf } from '../api/session-list.ts';
 import { displayTitle } from '../../core/session-title.ts';
 import { useRouter } from '../router.tsx';
 import { captureTodo } from '../capture/capture.ts';
@@ -14,9 +13,6 @@ import { startTours } from '../tutorial/tour.ts';
 import { MAIN_TOUR_ID } from '../../core/tutorial.ts';
 import { ADD_TODO_QUERY, PALETTE_PLACEHOLDER, type PaletteEntry, clampIndex, filterPalette, moveIndex, paletteEntries, paletteTodoEntries } from './palette.ts';
 import './palette.css';
-
-/** `sessionUpdated` comes in bursts; the session results reload at most this often. */
-const SESSIONS_RELOAD_MS = 1_000;
 
 /** Id of the results list (the input's `aria-controls`). */
 const RESULTS_ID = 'sb-palette-results';
@@ -40,10 +36,9 @@ export function Palette({ onClose }: { readonly onClose: () => void }) {
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const { open } = useModals();
-  const sessions = useApi(api.listSessions);
+  const sessions = useSessionListOf();
   const tools = useApi(api.tools);
   const solutions = useApi(api.solutions);
-  useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
 
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);

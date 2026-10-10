@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
 import { BackButton, useListDetail } from '../components/ListDetail.tsx';
-import type { AnswerBatch, InboxAction, InboxItem, Session } from '../../core/api.ts';
+import type { AnswerBatch, InboxAction, InboxItem, Session, SessionListItem } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { useApi } from '../api/useApi.ts';
 import { useHubEvent } from '../api/useHub.ts';
@@ -239,7 +239,7 @@ export function InboxView() {
   // D14: the selected item's session (for its folder tag), read when the selection names another session.
   const currentSessionId = current?.sessionId ?? null;
   // D33: a system item may belong to a closed session; its folder tag is found all the same.
-  const sessions = useApi((): Promise<Session[]> => (currentSessionId ? api.listSessions({ closed: 'include' }) : Promise.resolve([])), [currentSessionId]);
+  const sessions = useApi((): Promise<SessionListItem[]> => (currentSessionId ? api.listSessions({ closed: 'include' }) : Promise.resolve([])), [currentSessionId]);
   const currentSession = currentSessionId ? ((sessions.data ?? []).find((session) => session.id === currentSessionId) ?? null) : null;
   // D79: a picked review card is read from git again (the server refreshes it; a change reloads the list through inboxChanged).
   const reviewPicked = current?.kind === 'review' ? current.id : null;

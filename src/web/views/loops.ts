@@ -5,7 +5,7 @@
  * the server derives from observed events (`docs/derivations.md` → *Loop cards*).
  * Unknown values show "—"; nothing is made up.
  */
-import type { Loop, LoopIterationResult, Session, TerminalLoop } from '../../core/api.ts';
+import type { Loop, LoopIterationResult, Session, TerminalLoop, SessionListItem } from '../../core/api.ts';
 import { terminalStatus } from '../../core/terminal-status.ts';
 import { loopShown } from '../../core/derive/loops.ts';
 import { UNLISTED_KIND, formatInterval, seriesInterval } from '../../core/derive/unlisted-loops.ts';
@@ -168,7 +168,7 @@ export function unlistedFacts(loop: Loop, now: Date): readonly [LoopFact, LoopFa
  * first); loops that started at the same moment follow their sessions' start,
  * then the server's order.
  */
-export function loopCards(sessions: readonly Session[], now: Date, terminalLoops: readonly TerminalLoop[] = []): LoopCardModel[] {
+export function loopCards(sessions: readonly SessionListItem[], now: Date, terminalLoops: readonly TerminalLoop[] = []): LoopCardModel[] {
   const cards: Array<LoopCardModel & { readonly createdAt: string; readonly sessionCreatedAt: string; readonly index: number }> = [];
   for (const session of sessions) {
     for (const loop of session.loops ?? []) {

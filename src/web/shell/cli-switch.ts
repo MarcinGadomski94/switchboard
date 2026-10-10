@@ -1,4 +1,4 @@
-import type { Session } from '../../core/api.ts';
+import type { Session, SessionListItem } from '../../core/api.ts';
 import { CLI_LABELS, CLI_SHORT_LABELS, type CliProviderId, readCliProvider } from '../../core/cli-providers.ts';
 
 /**
@@ -22,7 +22,7 @@ export function cliBadgeOf(sessions: readonly Pick<Session, 'provider'>[]): (ses
 }
 
 /** The live sessions a bulk switch offers: open, attached, a process running, not hooked. */
-export function switchableSessions(sessions: readonly Session[]): Session[] {
+export function switchableSessions(sessions: readonly SessionListItem[]): SessionListItem[] {
   return sessions.filter((session) => session.live && session.attached && session.hooked !== true && (session.closedAt ?? null) === null);
 }
 

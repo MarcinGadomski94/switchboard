@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Session } from '../../core/api.ts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, api, machineApi } from '../api/client.ts';
 import { MachineTag } from '../components/MachineTag.tsx';
 import { useApi } from '../api/useApi.ts';
-import { useHubEvent, useHubStatus } from '../api/useHub.ts';
+import { useSessionListOf } from '../api/session-list.ts';
 import { useMachineStateChange } from '../api/useMachines.ts';
 import { useRouter } from '../router.tsx';
 import { CELL_COLOR, TERMINAL_LOOP_NOTE, type LoopCardModel, loopCards } from './loops.ts';
@@ -21,49 +20,25 @@ const TERMINAL_LOOPS_MS = 15_000;
  * one card per loop observed in a session, two per row, with the session's status
  * dot, the loop's label, the iteration strip, three facts, the note and "Open
  * session". Data: `GET /api/sessions` (`Session.loops`), kept live with the
- * `sessionUpdated` hub event and fetched again when the hub stream reopens. D52:
+ * `sessionUpdated` hub event and fetched again when the hub stream reopens (D95 follow-up 2: the shared list, `api/session-list.ts`). D52:
  * plus `GET /api/terminal-loops` (terminal sessions not followed here, read from
  * their transcripts; polled), whose cards offer "Hook into…"; a paired machine's
  * loops carry its tag.
  */
 export function LoopCards() {
   const { navigate } = useRouter();
-  const fetched = useApi(api.listSessions);
+  // D95 follow-up 2: the page's shared list, patched from /hub (each update carries the session's loops) and read again after a drop.
+  const fetched = useSessionListOf();
   // D52: loops of terminal sessions Switchboard does not follow (this machine's and the paired machines'); none on a failed read.
   const terminal = useApi(api.terminalLoops);
   const [hooking, setHooking] = useState<string | null>(null);
   const [hookError, setHookError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<readonly Session[] | null>(null);
   const [now, setNow] = useState(() => new Date());
 
-  useEffect(() => {
-    if (fetched.data) setSessions(fetched.data);
-  }, [fetched.data]);
+  const sessions = fetched.data;
 
   // Fix · peer reconnects: a paired machine's state changed: its terminal loops' blocks follow at once.
   useMachineStateChange(terminal.reload);
-  useHubEvent('sessionUpdated', (session) => {
-    setSessions((current) => {
-      if (current === null) return current;
-      const at = current.findIndex((s) => s.id === session.id);
-      if (at < 0) return [...current, session];
-      const next = [...current];
-      next[at] = session;
-      return next;
-    });
-  });
-
-  const hub = useHubStatus();
-  const wasOpen = useRef<boolean | null>(null);
-  const reload = fetched.reload;
-  useEffect(() => {
-    if (hub === 'open') {
-      if (wasOpen.current === false) reload();
-      wasOpen.current = true;
-    } else if (wasOpen.current === true) {
-      wasOpen.current = false;
-    }
-  }, [hub, reload]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), CLOCK_MS);

@@ -134,3 +134,38 @@ export function useHubStatus(): HubStatus {
     () => status,
   );
 }
+
+/**
+ * D95 follow-up 2: {@link useHubEvent} outside React (a store shared by views,
+ * `session-list.ts`): calls `handler` for every `name` event and keeps the stream
+ * open until the returned function is called.
+ */
+export function onHubEvent<K extends HubEventName>(name: K, handler: Handler<K>): () => void {
+  const listener = (payload: unknown): void => handler(payload as HubEvents[K]);
+  let set = handlers.get(name);
+  if (!set) {
+    set = new Set();
+    handlers.set(name, set);
+  }
+  set.add(listener);
+  const release = retain();
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    set.delete(listener);
+    release();
+  };
+}
+
+/** D95 follow-up 2: calls `listener` with each new hub status until the returned function is called (not at once). */
+export function onHubStatus(listener: (status: HubStatus) => void): () => void {
+  const wrapped = (): void => listener(status);
+  statusListeners.add(wrapped);
+  return () => statusListeners.delete(wrapped);
+}
+
+/** D95 follow-up 2: the hub status now. */
+export function currentHubStatus(): HubStatus {
+  return status;
+}

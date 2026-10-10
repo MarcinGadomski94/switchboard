@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CliOverview, Session } from '../../core/api.ts';
+import type { CliOverview, Session, SessionListItem } from '../../core/api.ts';
 import { CLI_LABELS, type CliProviderId, readCliProvider } from '../../core/cli-providers.ts';
 import { ApiError, api } from '../api/client.ts';
 import { CliPicker } from '../components/CliPicker.tsx';
@@ -23,7 +23,7 @@ function errorText(caught: unknown): string {
  * each handed over with D62's switch; progress per session, failures shown, the
  * others go on).
  */
-export function CliSwitcher({ sessions }: { readonly sessions: readonly Session[] }) {
+export function CliSwitcher({ sessions }: { readonly sessions: readonly SessionListItem[] }) {
   const [overview, setOverview] = useState<CliOverview | null>(null);
   const [open, setOpen] = useState(false);
   const [bulk, setBulk] = useState(false);
@@ -124,7 +124,7 @@ export function CliSwitcher({ sessions }: { readonly sessions: readonly Session[
 }
 
 /** D62 P6: "Switch running sessions…": the live sessions, all ticked; each switched with a handover. */
-function BulkSwitchDialog({ sessions, overview, initial, onClose }: { readonly sessions: readonly Session[]; readonly overview: CliOverview | null; readonly initial: CliProviderId; readonly onClose: () => void }) {
+function BulkSwitchDialog({ sessions, overview, initial, onClose }: { readonly sessions: readonly SessionListItem[]; readonly overview: CliOverview | null; readonly initial: CliProviderId; readonly onClose: () => void }) {
   const [target, setTarget] = useState<CliProviderId>(initial);
   // The rows are fixed when the dialog opens (a session stays listed while it switches).
   const [ids] = useState(() => switchableSessions(sessions).map((session) => session.id));

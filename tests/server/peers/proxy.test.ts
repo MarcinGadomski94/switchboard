@@ -71,6 +71,11 @@ describe('D48 P2: a peer\'s sessions and Inbox through the local API', () => {
       });
       expect(listed.machine).toEqual({ id: aId, name: expect.any(String), state: 'online' });
       expect(((await a.call('GET', '/api/sessions')).body as Session[]).map((session) => session.id)).toEqual([local.id]);
+      // D95 follow-up 2: B's UI list leaves the agents out, a peer's included; with `?include=agents` B has them,
+      // because A's list answers a peer (as a machine before the change reads it) with its agents.
+      expect('agents' in listed).toBe(false);
+      const full = ((await b.call('GET', '/api/sessions?include=agents')).body as Session[]).find((session) => session.id === id);
+      expect(full?.agents.some((agent) => agent.kind === 'main')).toBe(true);
 
       // The question batch reaches B's Inbox, namespaced and tagged.
       const item = await waitFor('the remote question batch in B\'s Inbox', async () => {

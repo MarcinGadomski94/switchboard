@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Folder, FolderCheck, FolderListing, Session } from '../../core/api.ts';
+import type { Folder, FolderCheck, FolderListing, SessionListItem } from '../../core/api.ts';
 import { ApiError, api } from '../api/client.ts';
 import { type ApiState, useApi } from '../api/useApi.ts';
-import { useHubEvent } from '../api/useHub.ts';
-import { useThrottled } from '../api/useThrottled.ts';
+import { useSessionListOf } from '../api/session-list.ts';
 import { type CheckLine, type FolderOption, type FolderOwned, folderCheckLine, folderRefusal, folderTag, folderTagTitle, selectedOption, switcherOptions } from './folders.ts';
 
 /**
@@ -54,9 +53,6 @@ export function useFolderTags(): FolderTags {
   return { tagOf, titleOf };
 }
 
-/** `sessionUpdated` comes in bursts; the session list behind the switcher reloads at most this often. */
-const SESSIONS_RELOAD_MS = 1_000;
-
 /** The `?folder=` of the current URL (`null` without one). */
 function readFolderParam(): string | null {
   try {
@@ -75,11 +71,9 @@ function writeFolderParam(value: string | null): void {
   window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
 }
 
-/** The sessions of the page (`GET /api/sessions`), reloaded on `sessionUpdated` at most once a second. */
-export function useSessionList(): ApiState<Session[]> {
-  const sessions = useApi(api.listSessions);
-  useHubEvent('sessionUpdated', useThrottled(sessions.reload, SESSIONS_RELOAD_MS));
-  return sessions;
+/** The sessions of the page (`GET /api/sessions`): D95 follow-up 2, the page's shared list (`api/session-list.ts`), patched from `/hub`. */
+export function useSessionList(): ApiState<SessionListItem[]> {
+  return useSessionListOf();
 }
 
 /** State of {@link useFolderSwitch}. */

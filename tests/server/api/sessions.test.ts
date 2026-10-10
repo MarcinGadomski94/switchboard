@@ -122,6 +122,12 @@ describe('session routes over the real supervisor + fake-claude', () => {
 
     const list = (await call('GET', '/api/sessions')).json() as Session[];
     expect(list.map((s) => [s.id, s.status])).toEqual([[session.id, 'done']]);
+    // D95 follow-up 2: the list leaves the agents out; `?include=agents` asks for them; anything else is refused.
+    expect(list[0] && 'agents' in list[0]).toBe(false);
+    const withAgents = (await call('GET', '/api/sessions?include=agents')).json() as Session[];
+    expect(withAgents[0]?.agents.map((a) => a.kind)).toEqual(['main']);
+    expect({ ...withAgents[0], agents: undefined }).toEqual({ ...list[0], agents: undefined });
+    expect((await call('GET', '/api/sessions?include=everything')).statusCode).toBe(422);
 
     const detail = (await call('GET', `/api/sessions/${session.id}`)).json() as SessionDetail;
     expect(detail.task).toBe(newSession().task);
