@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.15.2 (2026-10-10)
+
+### Faster while sessions are working
+- **Live updates send only what changed:** a session update carries only the agents that changed, and the session's loops and model list only when they change. On a session with ~430 subagents: 27 MB of live-update traffic per 100 short turns is now 0.8 MB.
+- **The session list is no longer reloaded on every update:** the sidebar, ⌘K and the other views share one copy that live updates patch, and the list leaves out each session's agents (10.9 KB instead of ~280 KB). While a session worked through 100 turns, the Inbox page went from 194 requests and 62 MB to 3 requests and 2 KB.
+- **The Timeline shows the last 50 turns,** with "Show earlier", and lanes only for agents active in them: on a long session it opens in 0.8 s instead of up to 1.8 s.
+- Paired machines on an older version keep working (they get and send full updates).
+
 ## 1.15.1 (2026-10-10)
 
 ### Faster with long sessions and long use
