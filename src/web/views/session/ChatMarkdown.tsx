@@ -125,25 +125,36 @@ export interface ChatMarkdownProps {
  * loaded (they show as links). Text without Markdown looks exactly as it did as
  * plain text. Memoized on `text`: the chat re-renders on every event. D89: with
  * `onSaveCode`, each fenced code block has a **Save as artifact** button.
+ *
+ * Performance (D95): the memo compares `onSaveCode` by presence, not identity (the
+ * chat passes a new closure on every render, which made every message parse its
+ * Markdown and highlight its code again on every `/hub` event); the newest
+ * callback is read through a ref when a button is pressed.
  */
-export const ChatMarkdown = memo(function ChatMarkdown({ text, testId = 'chat-markdown', onSaveCode = null }: ChatMarkdownProps) {
-  const components = useMemo<Components>(
-    () => ({
-      ...COMPONENTS,
-      // D92: every fenced code block has Copy; D89 adds Save as artifact where the chat offers it.
-      pre: ({ node, children }) => (
-        <CodeBlock node={node} onSaveCode={onSaveCode}>
-          {children}
-        </CodeBlock>
-      ),
-    }),
-    [onSaveCode],
-  );
-  return (
-    <div className="sb-md" data-testid={testId}>
-      <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components} urlTransform={chatUrlTransform}>
-        {text}
-      </Markdown>
-    </div>
-  );
-});
+export const ChatMarkdown = memo(
+  function ChatMarkdown({ text, testId = 'chat-markdown', onSaveCode = null }: ChatMarkdownProps) {
+    const latest = useRef(onSaveCode);
+    latest.current = onSaveCode;
+    const offersSave = onSaveCode !== null;
+    const components = useMemo<Components>(() => {
+      const save = offersSave ? (code: string, language: string | null): void => latest.current?.(code, language) : null;
+      return {
+        ...COMPONENTS,
+        // D92: every fenced code block has Copy; D89 adds Save as artifact where the chat offers it.
+        pre: ({ node, children }) => (
+          <CodeBlock node={node} onSaveCode={save}>
+            {children}
+          </CodeBlock>
+        ),
+      };
+    }, [offersSave]);
+    return (
+      <div className="sb-md" data-testid={testId}>
+        <Markdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={components} urlTransform={chatUrlTransform}>
+          {text}
+        </Markdown>
+      </div>
+    );
+  },
+  (before, after) => before.text === after.text && before.testId === after.testId && (before.onSaveCode == null) === (after.onSaveCode == null),
+);
