@@ -5,6 +5,7 @@ import { buildApp, createCliStatus, createSessionServices, createWorktreeManager
 import { ConfigError, type ServerConfig, loadConfig } from './config.ts';
 import { MigrationError } from './db/migrate.ts';
 import { type Store, openStore, storeFile } from './db/store.ts';
+import { DatabaseMaintenance } from './db/maintenance.ts';
 import { DemoSeedError, assertDemoDataDir, startDemo } from './demo/index.ts';
 import { AttachmentService } from './attachments/service.ts';
 import { FolderService } from './folders/service.ts';
@@ -51,6 +52,8 @@ async function main(): Promise<void> {
   if (config.demo) assertDemoDataDir(config.dataDir);
   const token = await loadOrCreateToken(config.dataDir);
   const store = await openStore(storeFile(config.dataDir));
+  // D95: WAL checkpoint + optimize while the database is idle (docs/performance.md).
+  const maintenance = new DatabaseMaintenance(store);
   let app: FastifyInstance;
   try {
     // D14 (docs/folders.md): no workspace root. The saved folders (reconciled with the disk
@@ -162,6 +165,7 @@ async function main(): Promise<void> {
       await usage?.stop();
       await toolProxies?.close();
       await supervisor.shutdown();
+      maintenance.stop();
       await store.close();
     });
     // The saved tools' framing proxies, before the first request can ask for a `frameUrl`.
@@ -197,6 +201,7 @@ async function main(): Promise<void> {
         if (removed > 0) app.log.info({ removed }, 'attachments cleaned up');
       });
   } catch (error) {
+    maintenance.stop();
     await store.close();
     throw error;
   }

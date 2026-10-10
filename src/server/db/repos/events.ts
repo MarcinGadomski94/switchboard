@@ -114,7 +114,15 @@ export class EventRepository {
     return this.#table.select('session_id = ? AND id IN (SELECT value FROM json_each(?))', [sessionId, JSON.stringify(ids)], 'id');
   }
 
+  /** D95: when this process last wrote an event (ms since the epoch), `null` before the first write. */
+  get lastWriteAt(): number | null {
+    return this.#lastWriteAt;
+  }
+
+  #lastWriteAt: number | null = null;
+
   #changed(record: Pick<EventRecord, 'sessionId' | 'id'>): void {
+    this.#lastWriteAt = Date.now();
     let entry = this.#changes.get(record.sessionId);
     if (!entry) {
       entry = { revision: 0, log: [] };
