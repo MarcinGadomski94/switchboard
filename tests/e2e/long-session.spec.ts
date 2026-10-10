@@ -14,7 +14,9 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  * 2. **Switching sessions does not grow the page.** The JS heap (after a forced
  *    GC) and the renderer's node count after five rounds of switching between the
  *    two sessions stay where they were after the first round, and the heap stays
- *    under 30 MB (≈15 MB measured; ≈50 MB when every visit kept a whole history).
+ *    under 30 MB (≈15 MB measured; ≈50 MB when every visit kept a whole history);
+ *    back on the Inbox no node of the sessions' views stays alive, also when the
+ *    view was left with a draft in the focused composer.
  */
 test.use({ trace: 'off' });
 
@@ -121,10 +123,15 @@ test('switching between long sessions does not grow the heap or the node count',
     return { heapMb: get('JSHeapUsedSize') / 1e6, nodes: get('Nodes') };
   };
   await openWithHub(page, `${world.baseUrl}/inbox`);
+  await expect(page.getByTestId('view-inbox')).toBeVisible();
+  const inbox = await measure();
   const round = async (): Promise<void> => {
     for (const id of [big, medium]) {
       await show(page, id);
       await page.waitForTimeout(500);
+      // A draft typed and left in the composer: the view is left with the field focused.
+      await page.getByTestId('chat-input').focus();
+      await page.keyboard.type('x');
     }
     await page.evaluate(() => {
       history.pushState({}, '', '/inbox');
@@ -139,6 +146,8 @@ test('switching between long sessions does not grow the heap or the node count',
   const last = await measure();
   expect(last.heapMb, `heap after 5 rounds ${last.heapMb.toFixed(1)} MB vs ${first.heapMb.toFixed(1)} MB after 1`).toBeLessThanOrEqual(first.heapMb + 8);
   expect(last.nodes, `renderer nodes after 5 rounds ${last.nodes} vs ${first.nodes} after 1`).toBeLessThanOrEqual(first.nodes + 2_000);
+  // Nothing of the sessions' views stays alive on the Inbox (a focused composer kept the whole chat: ≈44k nodes).
+  expect(last.nodes, `renderer nodes on the Inbox: ${last.nodes} after the rounds, ${inbox.nodes} before`).toBeLessThanOrEqual(inbox.nodes + 2_000);
   // Back on the Inbox the cache holds two pages a session at most: ≈15 MB here (≈50 MB with whole histories before D95).
   expect(last.heapMb, 'heap on the Inbox after visiting the long sessions').toBeLessThanOrEqual(30);
 });

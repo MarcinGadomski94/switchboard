@@ -1,5 +1,6 @@
 import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { OlderEvents } from './useSessionData.ts';
+import { useReleaseFocus } from '../../components/release-focus.ts';
 import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
@@ -455,6 +456,8 @@ function Composer({
   const attaching = attachmentsBlocker(attachments.items);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement | null>(null);
+  // D95: a focused composer must not keep the chat in memory after the view is left.
+  useReleaseFocus(input);
   // D50: a Stop waits for the CLI; the note (with Pause) when it did not stop in time.
   const [stopping, setStopping] = useState(false);
   const [stopTimedOut, setStopTimedOut] = useState(false);
