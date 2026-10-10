@@ -63,12 +63,12 @@ export class BenchClient {
     return { status: response.status, body: text === '' ? null : (JSON.parse(text) as unknown) };
   }
 
-  /** Opens `/hub` and counts the bytes and events it sends until `close()`. */
-  hub(): { readonly stats: { bytes: number; events: Map<string, { count: number; bytes: number }> }; close(): void } {
+  /** Opens `/hub` (or `route`, e.g. `/hub?agents=delta`) and counts the bytes and events it sends until `close()`. */
+  hub(route = '/hub', onFrame?: (name: string, data: string) => void): { readonly stats: { bytes: number; events: Map<string, { count: number; bytes: number }> }; close(): void } {
     const stats = { bytes: 0, events: new Map<string, { count: number; bytes: number }>() };
-    const url = new URL(`${this.baseUrl}/hub`);
+    const url = new URL(`${this.baseUrl}${route}`);
     let buffer = '';
-    const request = http.get({ host: url.hostname, port: url.port, path: '/hub', headers: { cookie: this.#cookie, accept: 'text/event-stream' } }, (response) => {
+    const request = http.get({ host: url.hostname, port: url.port, path: `${url.pathname}${url.search}`, headers: { cookie: this.#cookie, accept: 'text/event-stream' } }, (response) => {
       response.setEncoding('utf8');
       response.on('data', (chunk: string) => {
         stats.bytes += Buffer.byteLength(chunk);
@@ -82,6 +82,7 @@ export class BenchClient {
           entry.count += 1;
           entry.bytes += Buffer.byteLength(frame);
           stats.events.set(name, entry);
+          onFrame?.(name, /^data: (.*)$/m.exec(frame)?.[1] ?? '');
         }
       });
     });
@@ -213,7 +214,9 @@ async function eventCount(dataDir: string, sessionId: string): Promise<number> {
 
 /**
  * Fires `turns` turns into the live session (`[fake:fire]`) and measures until the
- * server is quiet (no new event for 2 s): CPU seconds, events, `/hub` bytes.
+ * server is quiet (no new event for 2 s): CPU seconds, events, `/hub` bytes (a
+ * whole-list stream as older tabs and peers get it, and an agent-delta stream as the
+ * page asks for it since D95's follow-up).
  */
 export async function streamInto(
   world: BenchWorld,
@@ -222,10 +225,11 @@ export async function streamInto(
   sessionId: string,
   turns: number,
   everyMs: number,
-): Promise<{ events: number; wallMs: number; cpuMs: number; cpuMsPerEvent: number; hubBytes: number; hubEvents: Record<string, { count: number; bytes: number }> }> {
+): Promise<{ events: number; wallMs: number; cpuMs: number; cpuMsPerEvent: number; hubBytes: number; hubEvents: Record<string, { count: number; bytes: number }>; hubDeltaBytes: number; hubDeltaEvents: Record<string, { count: number; bytes: number }> }> {
   const pid = server.child.pid ?? 0;
   const before = await eventCount(world.dataDir, sessionId);
   const hub = client.hub();
+  const hubDelta = client.hub('/hub?agents=delta');
   await new Promise((resolve) => setTimeout(resolve, 500));
   const cpu0 = await cpuSeconds(pid);
   const start = performance.now();
@@ -245,8 +249,18 @@ export async function streamInto(
   const wallMs = lastChange - start;
   const cpuMs = ((await cpuSeconds(pid)) - cpu0) * 1000;
   hub.close();
+  hubDelta.close();
   const events = last - before;
-  return { events, wallMs: Math.round(wallMs), cpuMs: Math.round(cpuMs), cpuMsPerEvent: Number((cpuMs / Math.max(1, events)).toFixed(2)), hubBytes: hub.stats.bytes, hubEvents: Object.fromEntries(hub.stats.events) };
+  return {
+    events,
+    wallMs: Math.round(wallMs),
+    cpuMs: Math.round(cpuMs),
+    cpuMsPerEvent: Number((cpuMs / Math.max(1, events)).toFixed(2)),
+    hubBytes: hub.stats.bytes,
+    hubEvents: Object.fromEntries(hub.stats.events),
+    hubDeltaBytes: hubDelta.stats.bytes,
+    hubDeltaEvents: Object.fromEntries(hubDelta.stats.events),
+  };
 }
 
 /** Waits until the session's status is not `run` (its turn ended). */

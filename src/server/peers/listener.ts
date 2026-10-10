@@ -44,8 +44,8 @@ export interface PeerHandlers {
   hello(machine: MachineRecord, body: unknown): Promise<unknown>;
   /** `DELETE /peer/v1/pair`: the caller removed us; forget it too. */
   unpair(machine: MachineRecord): Promise<void>;
-  /** `GET /peer/v1/events`: take over the raw response as an event stream. */
-  events(machine: MachineRecord, res: ServerResponse): void;
+  /** `GET /peer/v1/events`: take over the raw response as an event stream (D95 follow-up: `?agents=delta` = agent deltas). */
+  events(machine: MachineRecord, res: ServerResponse, options?: { readonly agentDeltas?: boolean }): void;
   /** `/peer/v1/api/*`: the allow-listed local API, answered as the local UI would get it. */
   api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer>;
   /** D71 · `POST /peer/v1/sidebar`: the caller's sidebar layout records (the shared layout, when switched on here for it). */
@@ -126,9 +126,9 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
     const answer = await handlers.sidebar(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
-  app.get('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
+  app.get<{ Querystring: { agents?: string } }>('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();
-    handlers.events(request.peerMachine as MachineRecord, reply.raw);
+    handlers.events(request.peerMachine as MachineRecord, reply.raw, { agentDeltas: request.query.agents === 'delta' });
   });
   const api = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     const url = request.url.slice('/peer/v1'.length);

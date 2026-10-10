@@ -568,6 +568,14 @@ export interface SessionActivity {
   readonly quietSince?: string | null;
 }
 
+/** D95: what a `sessionUpdated` with only the changed agents adds (`Session.agentsDelta`). */
+export interface AgentsDelta {
+  /** Ids of agents that are gone since the stream's previous update of the session. */
+  readonly removed: readonly string[];
+  /** Every agent id in the list's order, sent only when the ids or their order changed (an agent added or removed). */
+  readonly order?: readonly string[];
+}
+
 /** `GET /api/sessions` item: a session with its agents and open question count. Provisional: M4.1. */
 export interface Session {
   readonly id: string;
@@ -586,7 +594,16 @@ export interface Session {
   readonly createdAt: string;
   /** Last activity (drives the sidebar age); `null` before the first event. */
   readonly lastActivityAt: string | null;
+  /** The session's agents; D95: in a `sessionUpdated` with {@link agentsDelta}, only the ones added or changed. */
   readonly agents: readonly Agent[];
+  /**
+   * Additive (D95, `docs/performance.md` → *Agent deltas*): present only on a
+   * `sessionUpdated` sent to a stream that asked for deltas (`/hub?agents=delta`,
+   * `/peer/v1/events?agents=delta`), after that stream already had the session's
+   * whole list: then {@link agents} holds only the agents added or changed since the
+   * stream's previous update of the session. Absent = `agents` is the whole list.
+   */
+  readonly agentsDelta?: AgentsDelta;
   /**
    * Additive (D51): the session's Workflow runs, oldest first; their agents are in
    * {@link agents} (`kind: 'workflow'`, `Agent.workflow.runId`). Empty when none.

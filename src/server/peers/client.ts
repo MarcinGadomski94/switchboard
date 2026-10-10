@@ -1,5 +1,6 @@
 import type { HubEventName, HubEvents, InboxItem, Session } from '../../core/api.ts';
 import { HUB_EVENT_NAMES } from '../../core/api.ts';
+import { AGENT_DELTA_QUERY, AGENT_DELTA_VALUE, AgentDeltaDecoder } from '../../core/agent-delta.ts';
 import { type MachineState, PEER_GRACE_MS, PEER_STALL_MS, type PeerFailureKind, peerFailureText } from '../../core/peers.ts';
 import { readSse } from './sse.ts';
 
@@ -476,7 +477,8 @@ export class PeerConnection {
       }, connectTimeoutMs);
       let response: Response;
       try {
-        response = await this.#fetch(`http://${target.address}/peer/v1/events`, {
+        // D95 follow-up: agent deltas (a machine before it ignores the query and sends whole lists).
+        response = await this.#fetch(`http://${target.address}/peer/v1/events?${AGENT_DELTA_QUERY}=${AGENT_DELTA_VALUE}`, {
           headers: { authorization: `Bearer ${target.token}`, accept: 'text/event-stream' },
           signal: abort.signal,
         });
@@ -521,6 +523,8 @@ export class PeerConnection {
       this.#emitStatus();
       void this.refreshInbox();
       let readError: unknown = null;
+      // One decoder per stream: the stream starts with whole lists.
+      const agents = new AgentDeltaDecoder();
       try {
         await readSse(
           response.body,
@@ -533,6 +537,7 @@ export class PeerConnection {
             } catch {
               return;
             }
+            if (name === 'sessionUpdated') payload = agents.decode(payload as Session);
             this.#apply(name, payload as HubEvents[typeof name]);
           },
           abort.signal,

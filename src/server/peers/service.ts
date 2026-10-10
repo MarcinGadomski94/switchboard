@@ -1,5 +1,6 @@
 import type { ServerResponse } from 'node:http';
 import os from 'node:os';
+import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 import type { FastifyInstance } from 'fastify';
 import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
@@ -1126,7 +1127,7 @@ export class PeerService implements PeerHandlers {
     await this.#forget(machine.id);
   }
 
-  events(machine: MachineRecord, res: ServerResponse): void {
+  events(machine: MachineRecord, res: ServerResponse, options: { readonly agentDeltas?: boolean } = {}): void {
     if (this.#closed) {
       res.writeHead(503, { 'content-type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: 'closing' }));
@@ -1140,6 +1141,8 @@ export class PeerService implements PeerHandlers {
       // A peer that stopped reading is dropped (it reconnects and refetches).
       if (res.writableLength > 8 * 1024 * 1024) stream.close();
     };
+    // D95 follow-up: a caller that asked for agent deltas (a machine with D95's follow-up; an older one does not ask).
+    const deltas = options.agentDeltas ? new AgentDeltaEncoder() : null;
     const unsubscribe = this.#bus.subscribe((message) => {
       // Only this machine's own events: never one that came from a peer (no echo, no chains).
       if (this.#republishing || !PEER_HUB_EVENTS.has(message.name) || isAboutRemote(message)) return;
@@ -1151,7 +1154,8 @@ export class PeerService implements PeerHandlers {
         );
         return;
       }
-      write(formatEvent(message.name, message.payload));
+      if (deltas && message.name === 'sessionUpdated') write(formatEvent('sessionUpdated', deltas.encode(message.payload)));
+      else write(formatEvent(message.name, message.payload));
     });
     const keepalive = setInterval(() => write(KEEPALIVE_FRAME), 10_000);
     keepalive.unref();

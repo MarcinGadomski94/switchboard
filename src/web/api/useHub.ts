@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { HUB_EVENT_NAMES, type HubEventName, type HubEvents } from '../../core/api.ts';
+import { HUB_EVENT_NAMES, type HubEventName, type HubEvents, type Session } from '../../core/api.ts';
+import { AGENT_DELTA_QUERY, AGENT_DELTA_VALUE, AgentDeltaDecoder } from '../../core/agent-delta.ts';
 import { pageClientId } from '../pwa/presence.ts';
 import { presenceHubOpened } from '../pwa/presence-page.ts';
 
@@ -11,7 +12,9 @@ import { presenceHubOpened } from '../pwa/presence-page.ts';
  * refuses the stream (non-200, e.g. before M2.3 lands), the client retries with a
  * backoff of 2 s doubling up to 60 s. D87: the stream names the page
  * (`/hub?client=<id>`, `pwa/presence.ts`): on a paired device the server knows the
- * page is gone once its stream drops.
+ * page is gone once its stream drops. D95 follow-up: the stream asks for agent deltas
+ * (`&agents=delta`, `core/agent-delta.ts`); `sessionUpdated` is expanded here to the
+ * session's whole agent list before any handler sees it, so handlers are unchanged.
  */
 
 type Handler<K extends HubEventName> = (payload: HubEvents[K]) => void;
@@ -29,6 +32,8 @@ let status: HubStatus = 'closed';
 let retryMs = RETRY_MIN_MS;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let subscribers = 0;
+/** D95 follow-up: the open stream's agent lists (a new stream starts with whole lists). */
+const agentLists = new AgentDeltaDecoder();
 
 function setStatus(next: HubStatus): void {
   if (status === next) return;
@@ -43,15 +48,18 @@ function dispatch(name: HubEventName, raw: string): void {
   } catch {
     return;
   }
+  if (name === 'sessionUpdated' && payload && typeof payload === 'object') payload = agentLists.decode(payload as Session);
   for (const handler of handlers.get(name) ?? []) handler(payload);
 }
 
 function open(): void {
   if (source || subscribers === 0) return;
   setStatus('connecting');
-  const es = new EventSource(`/hub?client=${encodeURIComponent(pageClientId())}`, { withCredentials: true });
+  const es = new EventSource(`/hub?client=${encodeURIComponent(pageClientId())}&${AGENT_DELTA_QUERY}=${AGENT_DELTA_VALUE}`, { withCredentials: true });
   source = es;
   es.onopen = () => {
+    // Also after the browser reconnected by itself: the server's side of the new stream starts with whole lists.
+    agentLists.reset();
     retryMs = RETRY_MIN_MS;
     setStatus('open');
     presenceHubOpened();

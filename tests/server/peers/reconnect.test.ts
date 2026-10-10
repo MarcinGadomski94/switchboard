@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Agent, HubEventName, Session } from '../../../src/core/api.ts';
 import type { MachineState } from '../../../src/core/peers.ts';
 import { PeerConnection, type PeerConnectionOptions, RECONNECT_MAX_MS, classifyFailure, reconnectDelay } from '../../../src/server/peers/client.ts';
 
@@ -21,6 +22,8 @@ class FakePeer {
   mode: Mode = 'up';
   readonly hellos: number[] = [];
   readonly streams: FakeStream[] = [];
+  /** The query of each `/peer/v1/events` request. */
+  readonly streamQueries: string[] = [];
   #hung: Array<() => void> = [];
 
   readonly fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -38,6 +41,7 @@ class FakePeer {
       return Response.json({ id: 'abcdefghijkl', name: 'studio-pc', version: 'test' });
     }
     if (url.pathname === '/peer/v1/events') {
+      this.streamQueries.push(url.search);
       let controller!: ReadableStreamDefaultController<Uint8Array>;
       const body = new ReadableStream<Uint8Array>({
         start(c) {
@@ -302,5 +306,42 @@ describe('PeerConnection: wake and Reconnect now', () => {
     expect(await held).toBe('online');
     // Settled states answer at once; a hold never outlasts its limit.
     expect(await connection.whenSettled(10)).toBe('online');
+  });
+});
+
+describe('PeerConnection: agent deltas (D95 follow-up, docs/performance.md → Agent deltas)', () => {
+  const agent = (id: string, status: Agent['status']): Agent => ({ id, kind: id === 'main' ? 'main' : 'subagent', name: id, description: null, solutionPath: null, branch: null, status, statusText: null, toolUseId: null, workflow: null });
+  const frame = (session: unknown): string => `event: sessionUpdated\ndata: ${JSON.stringify(session)}\n\n`;
+
+  it('asks for deltas and hands on whole lists; a new stream starts over; an older peer\'s whole lists pass as they are', async () => {
+    const peer = new FakePeer();
+    const seen: Session[] = [];
+    const { connection } = connect(peer, {
+      onEvent: (name: HubEventName, payload: unknown) => {
+        if (name === 'sessionUpdated') seen.push(payload as Session);
+      },
+    });
+    await until('online', () => connection.state === 'online');
+    expect(peer.streamQueries[0]).toBe('?agents=delta');
+    const base = { id: 's1', name: 's1', status: 'run' };
+    peer.lastStream.send(frame({ ...base, agents: [agent('main', 'run'), agent('a', 'run'), agent('b', 'done')] }));
+    peer.lastStream.send(frame({ ...base, agents: [agent('a', 'done')], agentsDelta: { removed: [] } }));
+    peer.lastStream.send(frame({ ...base, agents: [agent('c', 'run')], agentsDelta: { removed: ['b'], order: ['main', 'a', 'c'] } }));
+    await until('three updates', () => seen.length === 3);
+    expect(seen.map((s) => s.agents.map((a) => `${a.id}:${a.status}`))).toEqual([
+      ['main:run', 'a:run', 'b:done'],
+      ['main:run', 'a:done', 'b:done'],
+      ['main:run', 'a:done', 'c:run'],
+    ]);
+    expect(seen.every((s) => s.agentsDelta === undefined)).toBe(true);
+    // The cache behind the peer's session list holds the whole list too.
+    expect(connection.sessions.find((s) => s.id === 's1')?.agents.map((a) => a.id)).toEqual(['main', 'a', 'c']);
+    // A new stream: its first update is whole again (an older peer sends only whole ones).
+    peer.lastStream.close();
+    await until('a second stream', () => peer.streams.length === 2 && connection.state === 'online');
+    peer.lastStream.send(frame({ ...base, agents: [agent('main', 'done')] }));
+    peer.lastStream.send(frame({ ...base, agents: [agent('main', 'done'), agent('d', 'run')] }));
+    await until('five updates', () => seen.length === 5);
+    expect(seen.slice(3).map((s) => s.agents.map((a) => a.id))).toEqual([['main'], ['main', 'd']]);
   });
 });

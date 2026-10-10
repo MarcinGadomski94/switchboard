@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 import type { HubEventName } from '../../core/api.ts';
 import type { SystemProvider } from '../providers.ts';
 import type { HubBus, HubMessage } from './bus.ts';
+import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 
 /**
  * The `/hub` Server-Sent Events stream (M2.3, D5, `contracts/local-api.md` →
@@ -63,6 +64,8 @@ export type HubTimingOptions = Pick<SseHubOptions, 'keepaliveMs' | 'systemInterv
 interface Client {
   readonly res: ServerResponse;
   readonly detach: () => void;
+  /** D95 follow-up: the client asked for agent deltas (`/hub?agents=delta`); what it was sent. */
+  readonly deltas: AgentDeltaEncoder | null;
 }
 
 /** Fans the bus out to the connected SSE clients. */
@@ -104,7 +107,7 @@ export class SseHub {
    * writes the stream headers and keeps the response open until the client goes
    * away or the hub closes.
    */
-  attach(res: ServerResponse): void {
+  attach(res: ServerResponse, options: { readonly agentDeltas?: boolean } = {}): void {
     if (this.#closed) {
       res.writeHead(503, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ error: 'closing' }));
@@ -120,6 +123,7 @@ export class SseHub {
     const onError = (): void => this.#drop(client);
     const client: Client = {
       res,
+      deltas: options.agentDeltas ? new AgentDeltaEncoder() : null,
       detach: () => {
         res.off('close', onGone);
         res.off('error', onError);
@@ -173,6 +177,19 @@ export class SseHub {
   }
 
   #broadcast(message: HubMessage): void {
+    if (message.name === 'sessionUpdated' && [...this.#clients].some((client) => client.deltas)) {
+      // D95 follow-up: a delta client gets its own frame (only the agents that changed for it).
+      let whole: string | null = null;
+      for (const client of [...this.#clients]) {
+        try {
+          const frame = client.deltas ? formatEvent('sessionUpdated', client.deltas.encode(message.payload)) : (whole ??= formatEvent('sessionUpdated', message.payload));
+          this.#write(client, frame);
+        } catch (error) {
+          this.#onError(error);
+        }
+      }
+      return;
+    }
     let frame: string;
     try {
       frame = formatEvent(message.name, message.payload);
@@ -183,17 +200,19 @@ export class SseHub {
     this.#writeAll(frame);
   }
 
-  #writeAll(frame: string): void {
-    for (const client of [...this.#clients]) {
-      const { res } = client;
-      if (res.writableEnded || res.destroyed) {
-        this.#drop(client);
-        continue;
-      }
-      res.write(frame);
-      // A client that stopped reading would make the server buffer without bound.
-      if (res.writableLength > this.#maxBuffered) this.#drop(client);
+  #write(client: Client, frame: string): void {
+    const { res } = client;
+    if (res.writableEnded || res.destroyed) {
+      this.#drop(client);
+      return;
     }
+    res.write(frame);
+    if (res.writableLength > this.#maxBuffered) this.#drop(client);
+  }
+
+  #writeAll(frame: string): void {
+    // A client that stopped reading would make the server buffer without bound (#write drops it).
+    for (const client of [...this.#clients]) this.#write(client, frame);
   }
 
   async #tickSystem(): Promise<void> {

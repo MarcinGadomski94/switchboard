@@ -122,7 +122,9 @@ const SESSION_KEYS = keys<Session>()([
   // D91
   'instructionOutdated',
   'instructionPending',
-]).filter((key) => key !== 'hookStatus');
+  // additive, D95 follow-up (only on a delta stream's updates; not on this plain one)
+  'agentsDelta',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',
@@ -567,6 +569,30 @@ describe('/hub · events (contract, field by field)', () => {
       expect(gap).toBeLessThan(600);
     }
     expectWellFormed(stream.parser);
+  });
+});
+
+describe('/hub · agent deltas (D95 follow-up, docs/performance.md → Agent deltas)', () => {
+  it('?agents=delta: the first sessionUpdated of a session is whole, later ones carry only the changed agents; a plain stream gets every agent each time', async () => {
+    const plain = await connect();
+    const delta = await openHub({ port, cookie, path: '/hub?agents=delta' });
+    streams.push(delta);
+    expect(delta.status).toBe(200);
+    const agent = (id: string, status: Agent['status']): Agent => ({ id, kind: 'subagent', name: id, description: null, solutionPath: null, branch: null, status, statusText: null, toolUseId: null, workflow: null });
+    const base = { id: 'delta-s1', name: 'delta', status: 'run' } as unknown as Session;
+    const many = Array.from({ length: 50 }, (_, i) => agent(`a${i}`, 'done'));
+    bus.publish('sessionUpdated', { ...base, agents: [agent('main', 'run'), ...many] });
+    bus.publish('sessionUpdated', { ...base, status: 'done', agents: [agent('main', 'done'), ...many] });
+    for (const stream of [plain, delta]) await stream.waitFor((p) => p.messages.filter((m) => m.event === 'sessionUpdated').length >= 2, 'two updates');
+    const plainSent = plain.payloads<Session>('sessionUpdated').filter((s) => s.id === 'delta-s1');
+    expect(plainSent.map((s) => [s.agents.length, s.agentsDelta])).toEqual([[51, undefined], [51, undefined]]);
+    const deltaSent = delta.payloads<Session>('sessionUpdated').filter((s) => s.id === 'delta-s1');
+    expect(deltaSent.map((s) => [s.agents.map((a) => a.id), s.agentsDelta])).toEqual([
+      [['main', ...many.map((a) => a.id)], undefined],
+      [['main'], { removed: [] }],
+    ]);
+    expect(deltaSent[1]?.status).toBe('done');
+    expectWellFormed(delta.parser);
   });
 });
 
