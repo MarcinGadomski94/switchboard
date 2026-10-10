@@ -11,7 +11,7 @@ Base: `http://127.0.0.1:4870`. JSON, camelCase. Auth: the `sb_token` cookie.
 | POST | /api/sessions/{id}/messages | { text } | 202 |
 | POST | /api/sessions/{id}/pause · /resume | — | Session |
 | POST | /api/sessions/{id}/detach · /attach | — | { resumeCommand } |
-| GET | /api/sessions/{id}/events | ?since=ts | Event[] |
+| GET | /api/sessions/{id}/events | ?since=ts · D95 (additive): ?limit=n · ?before=eventId · ?agent=agentId | Event[] |
 | GET | /api/sessions/{id}/diff | ?file= · ?scope=head\|branch\|repo (D90, default head) | FileDiff[] |
 | GET | /api/sessions/{id}/diff/targets | — (D90) | DiffTargets |
 | GET | /api/sessions/{id}/diff/count | ?scope=head\|branch\|repo (D90 ruling, default head) | DiffCount |
@@ -311,7 +311,7 @@ FrameHelperOpenError { "error": "open-failed", "message": "open -a Google Chrome
 Developer ruling D36 (`docs/decisions.md` → *Subagent chats*): a subagent's own conversation opens from the chat. Additive; nothing above or below changes meaning. Details: `docs/chat.md` → *Subagent chats*.
 
 - **Agent** (in `Session.agents`, `SessionDetail.agents` and `sessionUpdated`) gains `toolUseId`: the id of the Agent / Task `tool_use` that started the subagent (the main agent's call event has it as `payload.toolUseId`; the subagent's own lines carry it as `parent_tool_use_id`); `null` for the main agent and for agents no call was seen for. Optional in `src/core/api.ts` so older fixtures type-check; the server always sends it.
-- **No events filter:** `GET /api/sessions/{id}/events` already returns every event of the session (it does not page), with each event's `agentId`, so the UI filters a subagent's events itself. No new route, query or `/hub` event.
+- **No events filter:** `GET /api/sessions/{id}/events` already returns every event of the session (it does not page), with each event's `agentId`, so the UI filters a subagent's events itself. No new route, query or `/hub` event. D95: it now pages on request, and `?agent=` reads one subagent's events (*Paged events (D95)*).
 - The UI address `/sessions/{id}/agents/{agentId}` is a page of the app (the server answers it with `index.html`, like every non-file GET), not an API route.
 
 ```json
@@ -1467,3 +1467,17 @@ A `: keepalive` comment is sent at least every 15 s. All client → server traff
 | draftChanged | { sessionId, field, client } (additive, D88: a session's draft was saved or cleared; `client` = the writing page's id or `null` (also the server's orphan clean-up, ruling 2026-10-09); other pages read the drafts again, never overwriting a field that has focus; forwarded between peers with the remote session id; `sessionId: null` = this machine's own draft (`/api/drafts`), not forwarded) |
 | artifactsChanged | { sessionId, artifactId, change: saved \| deleted } (additive, D89: an artifact was saved (created or a new version) or deleted, by the agent or the developer; forwarded between peers) |
 | notice | DeviceNotice { id, kind: permission \| questions \| turnFinished \| errors \| inbox \| review, title, body, url, tag } (additive, D87: a push-worthy happening, this machine's or a paired machine's, the same payload the devices' web push carries; a paired device's open page shows it as a toast; this machine's only, never forwarded between peers) |
+
+## Paged events (D95, 2026-10-10, additive)
+`docs/performance.md` → *Paged events*. `GET /api/sessions/{id}/events` takes three more queries, each optional and combinable with `since`; without them the answer is every event, as before.
+- `?limit=n` (1–999999): the newest n matching events in time order (`ts`, then id), answered oldest first. A full answer (n events) may have older ones; fewer means the start was reached.
+- `?before=<eventId>`: only events older than that event in time order (its `ts`, then id). 422 `invalid` (`field: "before"`) when it is not an event of this session.
+- `?agent=<agentId>`: only that agent's events plus the Agent / Task call that started it (the event whose `toolUseId` is the agent's). An unknown agent answers `[]`.
+- 422 `invalid` (`field: "limit"`) for a limit that is not a whole number from 1 to 999999.
+- Peers (D48): forwarded as they are; a machine before D95 ignores them and answers every event (the UI treats an answer without a new event as the start). Only a read without `since` / `before` / `agent` is kept as the session's offline snapshot.
+
+```
+GET /api/sessions/s1/events?limit=1000              → the newest 1,000
+GET /api/sessions/s1/events?limit=1000&before=4711  → the 1,000 before event 4711
+GET /api/sessions/s1/events?agent=a-42              → subagent a-42's events and its Agent call
+```

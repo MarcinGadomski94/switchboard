@@ -913,6 +913,17 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Peers / devices:** a paired machine's session's loops through the proxy (they fire there); devices may list, create, edit, pause / resume, run now and cancel.
   - **What's new (1.15.0):** "Loops run by Switchboard" (two steps). ASSUMED items: `.loop/questions.md` → *D94 · Switchboard-owned loops*.
 
+## Performance with long sessions (added 2026-10-10)
+
+- **D95 Long sessions stay fast: the chat loads its newest events, derivations read only what changed.** Developer report 2026-10-10: "When using Switchboard longer, it slows down. Investigate and optimize." Measured first with a harness on a synthetic world (`tools/bench/`, a 13k-event / 32 MB session like the developer's biggest); details, numbers and profiles: `docs/performance.md`.
+  - **Chat window:** the chat fetches the newest 1,000 events (additive `GET /api/sessions/{id}/events?limit=&before=&agent=`; without them every event, as before) and the page before them when scrolled near its top, or through a row above the messages, **Show earlier messages** (Loading… / Could not load · Retry); the message in view stays put while a page lands. A subagent's chat loads that subagent's events whole. `/hub` events older than the loaded window wait for their page; an answered question batch whose call is not loaded yet is not appended at the end. The per-tab cache keeps two pages a session and 6,000 events in all. Opening the big session: 8.7 s → 1.7 s until quiet, 371k → 44k DOM nodes, 143 → 24 MB heap.
+  - **Renders:** `ChatMarkdown` no longer parses every message again on each event (D89's closure defeated its memo); checkpoints are read again per turn instead of per event; the scroll anchor is measured only while scrolled up. A soak of streaming + switching: 92 % → 10 % main-thread busy.
+  - **Memory:** a focused composer no longer keeps the left view alive (React kept the field until a focusout it ignored during the commit); back on the Inbox: 367k → 283 renderer nodes, 149 → 26 MB heap.
+  - **Server:** the events repository keeps per-session write revisions and a log of the ids written; the loop tracker keeps slim events and reads only the changed rows (12.1 → 6.2 ms CPU per streamed event in a 13k-event session); the reported status table and the turn count are kept until an event that can change them (`EventMemo`); a session's agents come from memory; the main agent from one query. No migration (0042 not used).
+  - **Database:** at start a bounded `PRAGMA optimize`; every 10 minutes, once no event was written for a minute, `PRAGMA optimize` and `wal_checkpoint(TRUNCATE)`.
+  - **Behavior changes:** only the row above the loaded messages, and that the browser's find (⌘F) sees the loaded messages only until earlier ones are loaded. No What's-new entry (not a feature).
+  - Not done (questions): the `sessionUpdated` payload's size (every agent of the session on each update) and the Timeline tab (every event, a lane per agent). ASSUMED items and questions: `.loop/questions.md` → *D95 · Long sessions*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
