@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.15.1 (2026-10-10)
+
+### Faster with long sessions and long use
+- **Long chats load in pages:** a session opens with its newest messages; older ones load as you scroll up (or with "Show earlier messages"), and the message you're reading stays in place. On a 13,000-event session: opening went from 8.7 s to 1.7 s, the tab's memory from 143 MB to 24 MB.
+- **A memory leak is fixed:** leaving a session while its message box had focus kept the whole previous chat in memory, so a tab got slower the longer it was used. After hours of streaming and switching, the tab now returns to its baseline.
+- Messages are no longer re-rendered as Markdown on every live update; typing in a long chat costs less than half as much.
+- The server no longer re-reads a session's whole history for loop cards and other derived views on every event (half the work per event on a large session), caches hot results, and tidies its database when idle.
+- Note: the browser's ⌘F finds only messages that are loaded.
+
 ## 1.15.0 (2026-10-10)
 
 ### Loops run by Switchboard
