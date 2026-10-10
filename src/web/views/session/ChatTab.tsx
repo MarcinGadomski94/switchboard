@@ -191,7 +191,8 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
       const moved = kept.node.getBoundingClientRect().top - el.getBoundingClientRect().top - kept.top;
       if (moved !== 0) el.scrollTop += moved;
     }
-    anchor.current = anchorItem(el);
+    // Measured only while scrolled up (it lays the page out): at the bottom the view follows the newest item instead.
+    if (!stick.current) anchor.current = anchorItem(el);
     // D95: a window too short to scroll cannot be scrolled to its top: the next page loads by itself.
     if (items.length > 0 && older.available && !older.loading && !older.failed && el.scrollHeight <= el.clientHeight) older.load();
     if (!restored.current && loaded && session) {
@@ -218,7 +219,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     stick.current = atBottom(el);
     rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
     // D95: the item in view now is the one that stays put when older items come in front.
-    anchor.current = anchorItem(el);
+    anchor.current = stick.current ? null : anchorItem(el);
     // D95: near the top, the page before the loaded events.
     const more = olderRef.current;
     if (el.scrollTop < OLDER_PX && more.available && !more.loading && !more.failed) more.load();
