@@ -1481,3 +1481,19 @@ GET /api/sessions/s1/events?limit=1000              → the newest 1,000
 GET /api/sessions/s1/events?limit=1000&before=4711  → the 1,000 before event 4711
 GET /api/sessions/s1/events?agent=a-42              → subagent a-42's events and its Agent call
 ```
+
+## Agent deltas over `/hub` (D95 follow-up, 2026-10-10, additive)
+`docs/performance.md` → *Agent deltas*. A `sessionUpdated` carries every agent of the session (≈125 KB with ≈430 subagents), once per status or context change. A stream may now ask for deltas:
+- **`GET /hub?agents=delta`** (combinable with D87's `client`) and the peer stream **`GET /peer/v1/events?agents=delta`**. Without the query (an older tab, an older machine) every `sessionUpdated` carries the whole list, as before.
+- On such a stream the **first** `sessionUpdated` of a session is whole (no `agentsDelta`). Each later one carries in `agents` only the agents added or changed since the stream's previous update of that session (a finished agent once more, with its final state; none when only other fields changed) and **`agentsDelta`**: `{ removed: string[], order?: string[] }`: the ids gone since then, and every id in the list's order when ids were added, removed or reordered (absent = same ids, same order). Every other field of the session is whole, as before.
+- **Applying it:** start from the stream's previous whole list of the session, drop `removed`, put each sent agent in place of the one with its id, then order by `order` when present (new agents otherwise go last). A new stream (a reconnect) starts again with whole lists; the whole list is also always in `GET /api/sessions/{id}` and `GET /api/sessions`.
+- **Peers (D48):** a machine with this change asks its peers for deltas and expands them before namespacing (`peerSession`), so its own bus, cache and tabs see whole lists; a peer before it ignores the query and sends whole lists, which pass as they are; an older machine asking this one gets whole lists.
+
+```
+sessionUpdated { "id": "s1", …, "agents": [ main, a1, a2, … a429 ] }                          ← first on this stream
+sessionUpdated { "id": "s1", …, "agents": [ main ], "agentsDelta": { "removed": [] } }         ← main's status changed
+sessionUpdated { "id": "s1", …, "agents": [ a430 ], "agentsDelta": { "removed": [], "order": [ "main", "a1", …, "a430" ] } }
+```
+
+## Windowed Timeline (D95 follow-up, 2026-10-10, no contract change)
+The Timeline tab reads the session's events through *Paged events (D95)* (`?limit=1000`, then `&before=` until it holds the last 50 turns, or 50 more after **Show earlier**). No new route, query or field.

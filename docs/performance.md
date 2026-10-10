@@ -9,8 +9,8 @@ Everything runs on a test port (`SWITCHBOARD_TEST_PORTS`, e.g. `4900-4909`), a t
 | Script | What it does |
 |---|---|
 | `tools/bench/world.ts` | `seedWorld(dir)`: a synthetic world from a fixed seed: one **big** session (≈13,000 events, ≈32 MB: turns of a user message, Markdown answers with code blocks / tables / lists, 6–17 tool calls with long inputs and outputs cut at 4,000 characters as the recorder cuts them, subagents with their prompt and own calls, Workflow launches), four **medium** sessions (≈4,700 events, ≈11.6 MB each), 2,000 usage readings, 280 turn checkpoints. `appendHistory(store, sessionId, …)` adds such a history to any session, also one a running server has open (SQLite WAL). |
-| `tools/bench/server.ts` | One server run per phase, each with its own CPU profile (`--profile <dir>`). **open**: median of 5 for every route the session view calls (detail, events whole and paged, checkpoints, todos, loops, drafts, artifacts, diff count) for the big, a medium and a small session, plus the session list. **stream**: a live fake-claude session fires 100 turns of its own (`[fake:fire 100 20]`), once while its conversation is small and once after ≈13,000 events of history were added to it (with a live `CronCreate`, so the loop tracker follows it): server CPU (`ps`), events, `/hub` bytes per event name. `--out <file.json>` keeps the numbers. |
-| `tools/bench/browser.ts` | Headless Chromium (Playwright) over CDP (`Performance.getMetrics`, `HeapProfiler.collectGarbage`, `Profiler`). **open**: the big session's chat, cold: time to its first message, time until the main thread is quiet, main-thread time, DOM nodes, heap after a GC. **typing**: 21 keys in the composer, main-thread time per key. **scroll**: the conversation from the bottom to the top in 20 steps. **timeline**: the big session's Timeline tab. **soak**: `--minutes` (default 3) of a live session streaming turns while the tab switches between all sessions every 4 s: heap after a forced GC and nodes each minute, main-thread busy share; then back to the Inbox: heap, renderer nodes (attached or not) and document elements. `--profile <dir>` writes `browser-open-big.cpuprofile` and the soak's first minute. |
+| `tools/bench/server.ts` | One server run per phase, each with its own CPU profile (`--profile <dir>`). **open**: median of 5 for every route the session view calls (detail, events whole and paged, checkpoints, todos, loops, drafts, artifacts, diff count) for the big, a medium and a small session, plus the session list. **stream**: a live fake-claude session fires 100 turns of its own (`[fake:fire 100 20]`), once while its conversation is small and once after ≈13,000 events of history were added to it (with a live `CronCreate`, so the loop tracker follows it): server CPU (`ps`), events, `/hub` bytes per event name, on a whole-list stream (`/hub`, as older tabs and peers read it) and an agent-delta stream (`/hub?agents=delta`, as the page reads it since the follow-up) side by side. `--out <file.json>` keeps the numbers. |
+| `tools/bench/browser.ts` | Headless Chromium (Playwright) over CDP (`Performance.getMetrics`, `HeapProfiler.collectGarbage`, `Profiler`). **open**: the big session's chat, cold: time to its first message, time until the main thread is quiet, main-thread time, DOM nodes, heap after a GC. **typing**: 21 keys in the composer, main-thread time per key. **scroll**: the conversation from the bottom to the top in 20 steps. **timeline**: the big session's Timeline tab: time until quiet, main-thread time, lanes, the Timeline's elements and the document's (the renderer's node count still holds the chat's nodes until a GC, so it varies from run to run). **soak**: `--minutes` (default 3) of a live session streaming turns while the tab switches between all sessions every 4 s: heap after a forced GC and nodes each minute, main-thread busy share; then back to the Inbox: heap, renderer nodes (attached or not) and document elements. `--profile <dir>` writes `browser-open-big.cpuprofile` and the soak's first minute. |
 | `tools/bench/profile.ts` | Summarizes a `.cpuprofile` (V8 `--cpu-prof` or CDP): self and total time per function. |
 
 ```sh
@@ -41,7 +41,7 @@ node tools/bench/profile.ts .bench/prof/stream-big/*.cpuprofile --top 30
 | Same session with ≈13k events of history: CPU, per event | 2,450 ms, **12.1 ms** | 1,250 ms, **6.2 ms** |
 | … of which the loop tracker (profile, total) | 868 ms (13k events read and parsed per refresh) | 41 ms (+ one first read of 74 ms) |
 | … agents read for `sessionUpdated` (profile, total) | 318 ms | ≈0 (from memory) |
-| `/hub` bytes | 26.7 MB (`sessionUpdated` ≈125 KB each: ≈430 agents) | unchanged (see *Remaining*) |
+| `/hub` bytes | 26.7 MB (`sessionUpdated` ≈125 KB each: ≈430 agents) | whole-list stream unchanged (27.1 MB); agent-delta stream **4.2 MB** (follow-up, below) |
 
 ### Browser (big session, 1440×900)
 
@@ -56,6 +56,20 @@ node tools/bench/profile.ts .bench/prof/stream-big/*.cpuprofile --top 30
 | … heap after a GC, minute 1 / 2 | 198 / 197 MB | 36 / 37 MB |
 | Back on the Inbox after the soak: heap / renderer nodes (document elements: 203 both) | 149 MB / **367,404** | 26 MB / 283 |
 | Inbox before any visit (baseline) | 3.3 MB / ≈265 nodes | same |
+
+### Follow-up: agent deltas and the windowed Timeline
+
+Same machine and harness, before = `687218f` (D95), after = `perf/followups`.
+
+| | Before | After |
+|---|---|---|
+| `/hub` bytes per 100 short turns, session with ≈430 agents (216 `sessionUpdated`) | 27.1 MB (27.0 MB of `sessionUpdated`, ≈125 KB each) | **4.2 MB** (4.06 MB of `sessionUpdated`: one whole ≈122 KB, then ≈18.8 KB on average, growing with the loop's fires) |
+| … what a later `sessionUpdated` still carries | — | the changed agent(s) ≈0.3 KB; the live `CronCreate`'s `loops` ≈11.5–12.8 KB; `model` ≈1.6 KB (see *Remaining*) |
+| Same, small conversation (≈2 agents) | 0.89 MB | 0.89 MB (nothing to save) |
+| Timeline of the big session: time until quiet (includes the 600 ms quiet wait) | 1.27–1.79 s | **0.79 s** |
+| … main-thread time | 435–507 ms | **56–63 ms** |
+| … lanes / the Timeline's elements / the document's | 428 / 12,657 / 18,915 | **28 / 961 / 7,219** |
+| … events read / heap | every event (35.2 MB) / 81 MB | the newest page (1,000 events, 2.7 MB: ≥ 50 turns here) / 46 MB |
 
 Scrolling to the top cost 14 ms a step before (one 690,000 px conversation, everything already there) and 22 ms after (each step near the top now loads and draws the page before: that is the load, not a slower scroll).
 
@@ -90,17 +104,31 @@ Scrolling to the top cost 14 ms a step before (one 690,000 px conversation, ever
 - **`EventMemo`.** A value derived from a whole history is kept until an event that can change it is written: the reported status table (assistant messages), the session's turn count (user messages). After writes only the changed rows are read to decide.
 - **Agents.** `listBySession` answers from memory while a count / newest-row mark says nothing changed; an update replaces its row in the kept list. `mainOf` reads the main agent alone.
 
+### Agent deltas (`/hub`, peers)
+`sessionUpdated` used to carry every agent of the session on every status or context change. A stream may now ask for deltas (`/hub?agents=delta`, `/peer/v1/events?agents=delta`; `docs/handoff/contracts/local-api.md` → *Agent deltas over `/hub`*). `src/core/agent-delta.ts`:
+- **`AgentDeltaEncoder`**, one per stream (the SSE hub's client, the peer service's inbound stream): remembers, per session, the ids in order and each agent's JSON it last sent. The first update of a session is whole; later ones carry only the agents whose JSON changed (a finished agent once, with its final state), `agentsDelta.removed`, and `agentsDelta.order` only when the ids or their order changed. Each published session's agents are serialized once (a `WeakMap` per session object) whatever the number of streams; a plain stream still gets the one shared frame.
+- **`AgentDeltaDecoder`**, one per reading stream: the page's hub client (`useHub.ts`, reset whenever the `EventSource` opens, also after the browser reconnected by itself) and the peer client (`PeerConnection`, a new one per stream). It expands each update back to the whole list **before** any handler sees it, so the tabs' handlers, the peer cache and namespacing (`peerSession`) are unchanged: the tab patches its in-memory copy; the whole list stays in `GET /api/sessions/{id}` and `GET /api/sessions`. A malformed frame passes untouched.
+- **Compatibility:** without the query nothing changes (an older tab, an older machine asking this one). A machine with this change asks its peers for deltas; one before it ignores the query and sends whole lists, which the decoder passes as they are. A reconnect is a new stream: whole lists again, so nothing needs a resync protocol.
+
+### Windowed Timeline (browser)
+The Timeline tab (`TimelineTab.tsx`, `timeline.ts`) shows the session's **last 50 turns** (`TIMELINE_TURNS`; a turn starts at a user message, `payload.type` `user`, as D80's turn count reads it):
+- It reads the newest 1,000 events (`?limit=1000`, *Paged events*) and the pages before them (`&before=`) until it holds 50 turn starts or the session's first event. **Show earlier** (a row above the lanes, with *Last n turns*; Loading… / Could not load · Retry, as the chat's row) adds 50 turns and reads pages as needed. The row shows only while earlier events exist, so a short session looks as before.
+- `timelineWindow` cuts the loaded events at the start of the 50th newest turn (everything when the session has no more); the axis starts there. `windowAgents` keeps the lanes of the main agent, the agents with an event in the window and the agents still working (`run` / `need`, a subagent that just started may have none yet), in the session's order.
+- `/hub` events newer than the loaded pages (and updates of loaded ones) are added as before (`inWindow`); after the hub stream reopens the newest page is read again. A machine without paging answers every event: complete at once, still windowed by turns.
+
 ### Database maintenance
 `DatabaseMaintenance` (`src/server/db/maintenance.ts`): at start `PRAGMA analysis_limit=400; PRAGMA optimize=0x10002` (2 ms on the synthetic world); every 10 minutes, once no event was written for a minute, `PRAGMA optimize` and `PRAGMA wal_checkpoint(TRUNCATE)` (the WAL goes back to empty). No index was missing for the paths above: the hot queries use `(session_id, ts, id)`, `agents(session_id)`, and the remaining JSON scans are now memoized.
 
 ## Guards
 - `tests/e2e/long-session.spec.ts`: a real fake-claude session grown to ≈13k events opens with ≤ 400 messages (163 measured; 2,087 before) and the earlier-messages row; scrolling to the top loads the page before without moving the message in view (±2 px); the button loads the next page. Five rounds of switching between it and a 2k-event session, leaving each with a draft in the focused composer: heap and renderer nodes do not grow after the first round, the heap stays under 30 MB (≈15 measured, ≈50 before), and back on the Inbox no node of the left views is alive (31,664 before the focus fix, against 289).
+- Follow-up: `tests/core/agent-delta.test.ts` (encode / decode round trips: whole first, changed only, added / removed / reordered, separate sessions, a new stream starts whole; one changed agent of 430 is < 1/50 of the whole), `tests/server/hub/hub.test.ts` (*agent deltas*: a `?agents=delta` stream next to a plain one), `tests/server/peers/reconnect.test.ts` (*agent deltas*: the peer client asks for them, hands on and caches whole lists, starts over on a new stream, passes an older peer's whole lists), `tests/web/timeline.test.ts` (*windowed Timeline*: `timelineWindow`, `windowAgents`), `tests/e2e/long-session.spec.ts` (the big session's Timeline: *Last 50 turns*, fewer than half the lanes, **Show earlier** → *Last 100 turns*, more lanes, an earlier axis).
 - `tests/server/loops/tracker.test.ts` (*D95 incremental refresh*): after the first refresh, `events.list` is never called again; a refresh after two appends and an update reads exactly those two ids; nothing written, nothing read.
 - `tests/core/loops.test.ts` (*loopPayloadEssentials*), `tests/server/db/event-memo.test.ts` (revisions, the change log, `EventMemo`, the turn count, the agents cache), `tests/server/db/maintenance.test.ts`, `tests/server/api/sessions.test.ts` (*D95 pages*), `tests/web/session-loading.test.ts` (*the chat window*: cursor, `inWindow`, older pages, trimming, the cache budget), `tests/web/chat.test.ts` (trailing batches), `tests/web/undo.test.ts` (`checkpointsKey`).
 - Unchanged and still green: `typing-long-chat.spec.ts` (no message re-renders while typing), `session-loading.spec.ts`, `subagent-chat.spec.ts`, `session-chat.spec.ts`, `undo.spec.ts`, `drafts.spec.ts`.
 
 ## Remaining hotspots
-- **`sessionUpdated` size.** Each carries the session's whole `agents` list (≈125 KB for ≈430 subagents), sent for every status or context change while a turn runs (26.7 MB over `/hub` for 100 short turns; every open tab parses it). Shrinking it needs a contract change (e.g. finished subagents left out, or a delta) or coalescing per session, which drops intermediate states some listeners read: not done (`.loop/questions.md` → D95-q1).
-- **The Timeline tab** still loads every event (35 MB for the big session) and draws a lane per agent (428 lanes, ≈95,000 nodes, 1.3 s to settle). It was not in the chat path; windowing it needs a design decision (D95-q2).
+- ~~**`sessionUpdated` size.**~~ Done in the follow-up (*Agent deltas*): 27.1 → 4.2 MB per 100 turns. What a delta update still carries is mostly the session's `loops` (≈12 KB with a live `CronCreate`: every fire of the loop, growing) and `model` (≈1.6 KB, the model list): not agents, so outside the ruling (`.loop/questions.md` → D95-q3).
+- ~~**The Timeline tab**~~ Done in the follow-up (*Windowed Timeline*).
+- **Session-list reloads on `sessionUpdated`.** Several views (the sidebar unthrottled, others at most once a second) read `GET /api/sessions` again on each `sessionUpdated`, and that list carries every session's agents (next point): HTTP, not `/hub`, so the deltas do not shrink it.
 - **Git per turn.** The checkpoint snapshot, the review card's fingerprint and the touched-files snapshot spawn git several times per turn (the largest remaining share of the server's streaming CPU, ≈0.4 s per 100 turns here); not conversation-size dependent.
 - **The session list** (`GET /api/sessions`, 281 KB for six sessions) carries every session's agents too.
