@@ -1484,9 +1484,9 @@ GET /api/sessions/s1/events?agent=a-42              → subagent a-42's events a
 
 ## Agent deltas over `/hub` (D95 follow-up, 2026-10-10, additive)
 `docs/performance.md` → *Agent deltas*. A `sessionUpdated` carries every agent of the session (≈125 KB with ≈430 subagents), once per status or context change. A stream may now ask for deltas:
-- **`GET /hub?agents=delta`** (combinable with D87's `client`) and the peer stream **`GET /peer/v1/events?agents=delta`**. Without the query (an older tab, an older machine) every `sessionUpdated` carries the whole list, as before.
-- On such a stream the **first** `sessionUpdated` of a session is whole (no `agentsDelta`). Each later one carries in `agents` only the agents added or changed since the stream's previous update of that session (a finished agent once more, with its final state; none when only other fields changed) and **`agentsDelta`**: `{ removed: string[], order?: string[] }`: the ids gone since then, and every id in the list's order when ids were added, removed or reordered (absent = same ids, same order). Every other field of the session is whole, as before.
-- **Applying it:** start from the stream's previous whole list of the session, drop `removed`, put each sent agent in place of the one with its id, then order by `order` when present (new agents otherwise go last). A new stream (a reconnect) starts again with whole lists; the whole list is also always in `GET /api/sessions/{id}` and `GET /api/sessions`.
+- **`GET /hub?delta=1`** (combinable with D87's `client`; D95-q3 renamed it from `?agents=delta` before any release carried that) and the peer stream **`GET /peer/v1/events?delta=1`**. Without the query (an older tab, an older machine) every `sessionUpdated` carries the whole list, as before.
+- On such a stream the **first** `sessionUpdated` of a session is whole (no `agentsDelta`). Each later one carries in `agents` only the agents added or changed since the stream's previous update of that session (a finished agent once more, with its final state; none when only other fields changed) and **`agentsDelta`**: `{ removed: string[], order?: string[] }`: the ids gone since then, and every id in the list's order when ids were added, removed or reordered (absent = same ids, same order). Every other field of the session is whole, except the heavy ones below (D95-q3).
+- **Applying it:** start from the stream's previous whole list of the session, drop `removed`, put each sent agent in place of the one with its id, then order by `order` when present (new agents otherwise go last). A new stream (a reconnect) starts again with whole lists; the whole list is also always in `GET /api/sessions/{id}` (and `GET /api/sessions?include=agents`).
 - **Peers (D48):** a machine with this change asks its peers for deltas and expands them before namespacing (`peerSession`), so its own bus, cache and tabs see whole lists; a peer before it ignores the query and sends whole lists, which pass as they are; an older machine asking this one gets whole lists.
 
 ```
@@ -1494,6 +1494,19 @@ sessionUpdated { "id": "s1", …, "agents": [ main, a1, a2, … a429 ] }        
 sessionUpdated { "id": "s1", …, "agents": [ main ], "agentsDelta": { "removed": [] } }         ← main's status changed
 sessionUpdated { "id": "s1", …, "agents": [ a430 ], "agentsDelta": { "removed": [], "order": [ "main", "a1", …, "a430" ] } }
 ```
+
+### Heavy fields only when they change (D95-q3, 2026-10-10, additive)
+- On a delta stream, after the first update of a session, **`loops`** and **`model`** are left out of a `sessionUpdated` when they equal (as JSON) what the stream last sent for that session, and named in **`unchanged`**: `("loops" | "model")[]` (absent = every field present). The reader keeps its previous value for a named field. A field the session does not carry (an older shape) is never named. A plain stream is unchanged.
+- **`Session.loops[].iterations`** (REST and `/hub`, every stream) carries a loop's **newest 30** iterations (what a card's strip shows, `LOOP_WIRE_ITERATIONS`); the stored strip keeps up to 100, and `iteration` and the note are computed from all of them.
+
+```
+sessionUpdated { "id": "s1", "status": "done", …, "agents": [ main ], "agentsDelta": { "removed": [] }, "unchanged": [ "loops", "model" ] }
+```
+
+## Session list without agents (D95 follow-up 2, 2026-10-10)
+- **`GET /api/sessions`** answers its items **without `agents`** (`SessionListItem` = `Session` without `agents`). **`?include=agents`** (combinable with `closed`) answers them with their agents, as before; any other `include` → 422 `invalid` (`field: "include"`). `GET /api/sessions/{id}` keeps the agents.
+- **Peers (D48):** a paired machine reading this one's list (`/peer/v1/api/sessions`) always gets the agents (a machine before this change keeps and reads them); this machine lists a peer's sessions in its own UI list without them, and with them under `?include=agents`.
+- The UI keeps the list in memory and patches it from `sessionUpdated` (no read per update); it reads it again after the hub stream reopens, when a paired machine's state changes, and when an update names a session it does not hold (`docs/performance.md` → *Session list in memory*). No new `/hub` event.
 
 ## Windowed Timeline (D95 follow-up, 2026-10-10, no contract change)
 The Timeline tab reads the session's events through *Paged events (D95)* (`?limit=1000`, then `&before=` until it holds the last 50 turns, or 50 more after **Show earlier**). No new route, query or field.
