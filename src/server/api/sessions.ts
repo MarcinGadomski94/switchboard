@@ -432,16 +432,40 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
     }
   });
 
-  app.get<{ Params: IdParams; Querystring: { since?: string } }>(
+  // D95 (additive, `docs/performance.md` → *Paged events*): `?limit=` the newest n (oldest first), `?before=<eventId>` older
+  // than that event, `?agent=<agentId>` that agent's events and its starting call; without them every event, as before.
+  app.get<{ Params: IdParams; Querystring: { since?: string; limit?: string; before?: string; agent?: string } }>(
     '/api/sessions/:id/events',
     async (request, reply): Promise<SessionEvent[] | FastifyReply> => {
       const record = await store.sessions.get(request.params.id);
       if (!record) return notFound(reply, request.params.id);
-      const since = request.query.since;
+      const { since, limit, before, agent } = request.query;
       if (since !== undefined && Number.isNaN(Date.parse(since))) {
         return reply.code(422).send({ error: 'invalid', errors: [{ field: 'since', message: 'since must be an ISO timestamp' }] });
       }
-      const events = await store.events.list(record.id, since === undefined ? {} : { sinceTs: new Date(since).toISOString() });
+      if (limit !== undefined && !/^[1-9][0-9]{0,5}$/.test(limit)) {
+        return reply.code(422).send({ error: 'invalid', errors: [{ field: 'limit', message: 'limit must be a whole number from 1 to 999999' }] });
+      }
+      let cursor: { ts: string; id: number } | undefined;
+      if (before !== undefined) {
+        const anchor = /^[1-9][0-9]{0,15}$/.test(before) ? await store.events.get(Number(before)) : null;
+        if (!anchor || anchor.sessionId !== record.id) {
+          return reply.code(422).send({ error: 'invalid', errors: [{ field: 'before', message: 'before must be an event of this session' }] });
+        }
+        cursor = { ts: anchor.ts, id: anchor.id };
+      }
+      let owner: { id: string; toolUseId: string | null } | undefined;
+      if (agent !== undefined) {
+        const found = await store.agents.get(agent);
+        if (!found || found.sessionId !== record.id) return [];
+        owner = { id: found.id, toolUseId: found.toolUseId };
+      }
+      const events = await store.events.page(record.id, {
+        ...(since === undefined ? {} : { sinceTs: new Date(since).toISOString() }),
+        ...(limit === undefined ? {} : { limit: Number(limit) }),
+        ...(cursor ? { before: cursor } : {}),
+        ...(owner ? { agent: owner } : {}),
+      });
       return events.map(toEvent);
     },
   );

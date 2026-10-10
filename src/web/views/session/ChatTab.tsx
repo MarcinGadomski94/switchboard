@@ -1,4 +1,5 @@
 import { type KeyboardEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { OlderEvents } from './useSessionData.ts';
 import type { AnswerBatch, BackgroundTask, SessionActivity, SessionContext, SessionDetail, SessionEvent } from '../../../core/api.ts';
 import { displayTitle } from '../../../core/session-title.ts';
 import { ChatActivityLine } from '../../activity/ActivityViews.tsx';
@@ -53,7 +54,15 @@ export interface ChatTabProps {
   readonly onChanged: () => void;
   /** D36: a subagent's id (`/sessions/{id}/agents/{agentId}`): its own chat instead of the main conversation. */
   readonly agentId?: string | null;
+  /** D95: the earlier events not loaded yet (loaded when the conversation is scrolled to its top); absent = none. */
+  readonly older?: OlderEvents;
 }
+
+/** D95: no older events (a complete list). */
+const NO_OLDER: OlderEvents = { available: false, loading: false, failed: false, load: () => undefined };
+
+/** D95: within this many px of the top, the next older page loads. */
+const OLDER_PX = 600;
 
 /**
  * Chat tab (SPEC → Session → Chat, M4.2; `docs/chat.md`): the main conversation
@@ -70,7 +79,7 @@ export interface ChatTabProps {
  * events come from the session view (held per session, cached per tab); while
  * they or the detail are late, bubble placeholders stand in (`ChatSkeleton`).
  */
-export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null }: ChatTabProps) {
+export function ChatTab({ sessionId, session, events, eventsState, placeholder = false, onChanged, agentId = null, older = NO_OLDER }: ChatTabProps) {
   const activity = useLiveActivity(sessionId, session);
   if (agentId !== null) {
     return <SubagentChatView sessionId={sessionId} session={session} events={events} activity={activity} agentId={agentId} placeholder={placeholder} />;
@@ -84,6 +93,7 @@ export function ChatTab({ sessionId, session, events, eventsState, placeholder =
       placeholder={placeholder}
       activity={activity}
       onChanged={onChanged}
+      older={older}
     />
   );
 }
@@ -104,6 +114,8 @@ interface MainChatProps {
   readonly placeholder: boolean;
   readonly activity: SessionActivity | null;
   readonly onChanged: () => void;
+  /** D95: the earlier events not loaded yet. */
+  readonly older: OlderEvents;
 }
 
 /**
@@ -112,7 +124,7 @@ interface MainChatProps {
  * coming back from a subagent's chat shows it where it was left; a subagent's
  * question card can ask to bring its batch into view instead.
  */
-function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged }: MainChatProps) {
+function MainChat({ sessionId, session, events, eventsState, placeholder, activity, onChanged, older }: MainChatProps) {
   const [answering, setAnswering] = useState<Answering | null>(null);
   // D89: the Save as artifact dialog's draft while it is open.
   const [saving, setSaving] = useState<ArtifactDraft | null>(null);
@@ -149,7 +161,19 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   // Fix · long messages: messages stored cut, restored from the transcript ("Show full message").
   const fullText = useFullText(sessionId, events);
   // D45: nothing half-loaded shows while the events are on their way (a failed load shows what there is, as before).
-  const items = session && eventsState !== 'loading' ? chatItems(fullText.events, session.questions, mainAgentId, session.agents) : [];
+  // D95: computed only when the events or the detail change (not on every render); only the loaded window.
+  const questions = session?.questions;
+  const agents = session?.agents;
+  const ready = session !== null && eventsState !== 'loading';
+  const complete = !older.available;
+  const items = useMemo(
+    () => (ready && questions && agents ? chatItems(fullText.events, questions, mainAgentId, agents, { complete }) : []),
+    [ready, fullText.events, questions, mainAgentId, agents, complete],
+  );
+  // D95: the item at the top of the conversation and where it sat, to keep the view still when older items are put in front.
+  const anchor = useRef<{ readonly node: Element; readonly top: number } | null>(null);
+  const olderRef = useRef(older);
+  olderRef.current = older;
   // D80: the session's checkpoints (the turn actions, Redo), read again when an event arrives or the status changes.
   const checkpoints = useCheckpoints(sessionId, `${events.length}:${events.at(-1)?.id ?? 0}:${session?.status ?? ''}`);
 
@@ -157,6 +181,16 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    // D95: older items were put in front: the item the view was anchored to stays where it was on screen.
+    const kept = anchor.current;
+    anchor.current = null;
+    if (kept && !stick.current && kept.node.isConnected) {
+      const moved = kept.node.getBoundingClientRect().top - el.getBoundingClientRect().top - kept.top;
+      if (moved !== 0) el.scrollTop += moved;
+    }
+    anchor.current = anchorItem(el);
+    // D95: a window too short to scroll cannot be scrolled to its top: the next page loads by itself.
+    if (items.length > 0 && older.available && !older.loading && !older.failed && el.scrollHeight <= el.clientHeight) older.load();
     if (!restored.current && loaded && session) {
       restored.current = true;
       const place = mainChatPlace(sessionId);
@@ -180,6 +214,11 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     if (!el) return;
     stick.current = atBottom(el);
     rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
+    // D95: the item in view now is the one that stays put when older items come in front.
+    anchor.current = anchorItem(el);
+    // D95: near the top, the page before the loaded events.
+    const more = olderRef.current;
+    if (el.scrollTop < OLDER_PX && more.available && !more.loading && !more.failed) more.load();
   };
 
   // D48 ruling D48-cache-persist: an unreachable machine's session is readable (its last known state), nothing more.
@@ -208,6 +247,7 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         {...drop.handlers}
       >
         {placeholder ? <ChatSkeleton /> : null}
+        {loaded && older.available && !placeholder ? <OlderRow older={older} /> : null}
         {items.map((item) => (
           <ChatItemView
             key={item.key}
@@ -267,6 +307,45 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
         onStopped={onChanged}
       />
     </>
+  );
+}
+
+/**
+ * D95: the item the view is anchored to while older items load: the topmost item
+ * in view, but never the first one (an agent block at the top of the loaded page
+ * may merge with the text before it once that page arrives, and be drawn anew),
+ * nor the placeholders or the earlier-messages row. Its offset from the
+ * conversation's top edge is what stays.
+ */
+function anchorItem(el: HTMLElement): { readonly node: Element; readonly top: number } | null {
+  const edge = el.getBoundingClientRect().top;
+  let index = 0;
+  for (const child of el.children) {
+    if (child.matches('.sb-chat-older, .sb-skel-chat')) continue;
+    index += 1;
+    if (index === 1) continue;
+    const box = child.getBoundingClientRect();
+    if (box.bottom > edge) return { node: child, top: box.top - edge };
+  }
+  return null;
+}
+
+/**
+ * D95 (`docs/performance.md` → *Chat window*): the row above the loaded messages
+ * while earlier ones exist. Scrolling to the top loads them; the button does the
+ * same for the keyboard and when the scroll does not reach it.
+ */
+function OlderRow({ older }: { readonly older: OlderEvents }) {
+  return (
+    <div className="sb-chat-older" data-testid="chat-older" data-state={older.loading ? 'loading' : older.failed ? 'failed' : 'idle'}>
+      {older.loading ? (
+        <span role="status">Loading earlier messages…</span>
+      ) : (
+        <button type="button" className="sb-button sb-chat-older-button" data-testid="chat-older-load" onClick={older.load}>
+          {older.failed ? 'Could not load earlier messages · Retry' : 'Show earlier messages'}
+        </button>
+      )}
+    </div>
   );
 }
 

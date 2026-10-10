@@ -203,6 +203,12 @@ describe('answers bubble and composer', () => {
     expect(chatItems([], closed, null)).toEqual([expect.objectContaining({ kind: 'questions', batchId: 'x', waiting: false })]);
   });
 
+  it('D95: while older events are not loaded, only waiting batches without their call go last (an answered one waits for its page)', () => {
+    const questions = [question('a', 'old', 0), question('b', 'open')];
+    expect(chatItems([], questions, null).map((item) => (item.kind === 'questions' ? item.batchId : item.kind))).toEqual(['old', 'open']);
+    expect(chatItems([], questions, null, [], { complete: false }).map((item) => (item.kind === 'questions' ? item.batchId : item.kind))).toEqual(['open']);
+  });
+
   it('answer lines use the source name part (prototype ssAnswered)', () => {
     expect(answeredLines([question('a', 'x', 0, 'web · microfrontends/acme-app-front'), question('b', 'x', 1, '(orchestrator)'), question('c', 'x', null)])).toEqual([
       'web: Red',

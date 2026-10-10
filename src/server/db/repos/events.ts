@@ -90,6 +90,46 @@ export class EventRepository {
     return this.#table.select(where.join(' AND '), params, 'ts, id', query.limit);
   }
 
+  /**
+   * D95 (`docs/performance.md` → *Paged events*): a page of the session's events in
+   * time order (ts, then id): the newest `limit` of those matching, returned oldest
+   * first. `before` = only events older than that one (ts, then id: the oldest event
+   * of the page already loaded); `sinceTs` as in {@link list}; `agent` = only the
+   * events of that agent plus the call that started it (`toolUseId`). Without
+   * `limit`: every matching event.
+   */
+  async page(
+    sessionId: string,
+    query: {
+      readonly limit?: number;
+      readonly before?: Pick<EventRecord, 'ts' | 'id'>;
+      readonly sinceTs?: string;
+      readonly agent?: { readonly id: string; readonly toolUseId: string | null };
+    },
+  ): Promise<EventRecord[]> {
+    const where = ['session_id = ?'];
+    const params: Array<string | number> = [sessionId];
+    if (query.sinceTs !== undefined) {
+      where.push('ts > ?');
+      params.push(query.sinceTs);
+    }
+    if (query.before) {
+      where.push('(ts < ? OR (ts = ? AND id < ?))');
+      params.push(query.before.ts, query.before.ts, query.before.id);
+    }
+    if (query.agent) {
+      if (query.agent.toolUseId) {
+        where.push('(agent_id = ? OR tool_use_id = ?)');
+        params.push(query.agent.id, query.agent.toolUseId);
+      } else {
+        where.push('agent_id = ?');
+        params.push(query.agent.id);
+      }
+    }
+    if (query.limit === undefined) return this.#table.select(where.join(' AND '), params, 'ts, id');
+    return this.#table.select(where.join(' AND '), params, 'ts DESC, id DESC', query.limit).reverse();
+  }
+
   /** The newest `limit` events of the session, returned oldest first. */
   async latest(sessionId: string, limit: number): Promise<EventRecord[]> {
     return this.#table.select('session_id = ?', [sessionId], 'ts DESC, id DESC', limit).reverse();

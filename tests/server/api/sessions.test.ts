@@ -193,3 +193,33 @@ describe('session routes over the real supervisor + fake-claude', () => {
     expect((await call('POST', '/api/sessions/nope/messages', { text: 'x' })).statusCode).toBe(404);
   });
 });
+
+describe('D95 · GET /api/sessions/{id}/events pages (docs/performance.md → Paged events)', () => {
+  it('limit = the newest n (oldest first), before = older than an event (time order), agent = one subagent and its call', async () => {
+    const w = await setup('handoff-start');
+    const session = await w.store.sessions.create({ name: 'paged', claudeSessionId: 'c-paged', task: 't' });
+    const main = await w.store.agents.create({ sessionId: session.id, name: 'main', kind: 'main' });
+    const sub = await w.store.agents.create({ sessionId: session.id, name: 'helper', toolUseId: 'toolu_call' });
+    const ts = (minute: number): string => `2026-10-10T10:${String(minute).padStart(2, '0')}:00.000Z`;
+    const ids: number[] = [];
+    for (let minute = 1; minute <= 6; minute += 1) {
+      ids.push((await w.store.events.append({ sessionId: session.id, agentId: main.id, kind: 'text', label: `m${minute}`, ts: ts(minute), payload: { type: 'assistant', text: `m${minute}`, messageId: null } })).id);
+    }
+    // An imported terminal turn: stored last, with an older time (it sorts between m1 and m2).
+    await w.store.events.append({ sessionId: session.id, kind: 'text', label: 'imported', ts: '2026-10-10T10:01:30.000Z', payload: { type: 'user', text: 'imported', origin: 'terminal', delivered: true } });
+    await w.store.events.append({ sessionId: session.id, agentId: main.id, kind: 'impl', label: 'Agent', ts: ts(7), toolUseId: 'toolu_call', payload: { type: 'tool', name: 'Agent', toolUseId: 'toolu_call', input: {} } });
+    await w.store.events.append({ sessionId: session.id, agentId: sub.id, kind: 'text', label: 'sub', ts: ts(8), payload: { type: 'agent-prompt', text: 'go' } });
+    const labels = async (url: string): Promise<string[]> => ((await call('GET', url)).json() as SessionEvent[]).map((event) => event.label);
+
+    expect(await labels(`/api/sessions/${session.id}/events`)).toEqual(['m1', 'imported', 'm2', 'm3', 'm4', 'm5', 'm6', 'Agent', 'sub']);
+    expect(await labels(`/api/sessions/${session.id}/events?limit=3`)).toEqual(['m6', 'Agent', 'sub']);
+    const m3 = ids[2] ?? 0;
+    expect(await labels(`/api/sessions/${session.id}/events?limit=3&before=${m3}`)).toEqual(['m1', 'imported', 'm2']);
+    expect(await labels(`/api/sessions/${session.id}/events?limit=10&before=${m3}`)).toEqual(['m1', 'imported', 'm2']);
+    expect(await labels(`/api/sessions/${session.id}/events?agent=${sub.id}`)).toEqual(['Agent', 'sub']);
+    expect(await labels(`/api/sessions/${session.id}/events?agent=nobody`)).toEqual([]);
+    for (const bad of ['limit=0', 'limit=ten', 'before=999999', 'before=x']) {
+      expect((await call('GET', `/api/sessions/${session.id}/events?${bad}`)).statusCode, bad).toBe(422);
+    }
+  });
+});

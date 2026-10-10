@@ -248,8 +248,12 @@ function batches(questions: readonly Question[]): Map<string, Question[]> {
 interface ConversationOptions {
   /** D36: Agent / Task call ids → the subagent whose chat that call's step line opens. */
   readonly chats: ReadonlyMap<string, string>;
-  /** Batches with no AskUserQuestion call among the events: last (the main chat) or left out (a subagent's chat, D36). */
-  readonly trailingBatches: boolean;
+  /**
+   * Batches with no AskUserQuestion call among the events: last (`all`, the main chat), left out (`none`, a
+   * subagent's chat, D36), or D95 only those still waiting (`waiting`: the main chat while older events are not
+   * loaded, where an answered batch's call may sit in a page not loaded yet).
+   */
+  readonly trailingBatches: 'all' | 'waiting' | 'none';
   /** D36: a subagent's prompt lines (`agent-prompt`) are user bubbles (its chat); the main chat has none. */
   readonly prompts: boolean;
   /** Fix · long messages: cut texts can be restored from the transcript (stored events; not a Workflow agent's chat, read from its files). */
@@ -392,7 +396,9 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
       if (type === 'result') block = null;
     }
   }
-  if (options.trailingBatches) for (const [batchId, list] of grouped) if (!placed.has(batchId)) pushBatch(batchId, list);
+  if (options.trailingBatches !== 'none') {
+    for (const [batchId, list] of grouped) if (!placed.has(batchId) && (options.trailingBatches === 'all' || batchWaiting(list))) pushBatch(batchId, list);
+  }
   return out;
 }
 
@@ -411,16 +417,18 @@ function conversationItems(sorted: readonly SessionEvent[], questions: readonly 
  *   step line opens that chat;
  * - an AskUserQuestion call → its question batch (by `requestId` = batch id) at
  *   that place: the card while it waits, else the answers bubble; batches without
- *   a matching event in `events` go at the end, in batch order.
+ *   a matching event in `events` go at the end, in batch order; D95: with
+ *   `options.complete` `false` (older events not loaded) only the waiting ones.
  */
 export function chatItems(
   events: readonly SessionEvent[],
   questions: readonly Question[],
   mainAgentId: string | null,
   agents: readonly Pick<Agent, 'id' | 'kind' | 'toolUseId'>[] = [],
+  options: { readonly complete?: boolean } = {},
 ): ChatItem[] {
-  const main = [...events].filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);
-  return conversationItems(main, questions, { chats: subagentChats(agents), trailingBatches: true, prompts: false, restorable: true });
+  const main = events.filter((event) => mainAgentId === null || event.agentId === null || event.agentId === mainAgentId).sort(byTime);
+  return conversationItems(main, questions, { chats: subagentChats(agents), trailingBatches: options.complete === false ? 'waiting' : 'all', prompts: false, restorable: true });
 }
 
 /** D36: a subagent's result: the text its Agent / Task call returned to the main agent. */
@@ -490,7 +498,7 @@ export function subagentChat(
   const items = conversationItems(
     own.filter((event) => event !== firstPrompt),
     questions,
-    { chats: subagentChats(agents), trailingBatches: false, prompts: true, restorable },
+    { chats: subagentChats(agents), trailingBatches: 'none', prompts: true, restorable },
   );
   const result = call && call.result !== undefined && !isAsyncAgentLaunch(call.result) ? { text: call.result, isError: call.isError === true } : null;
   const resultCut = restorable && result && callEvent && call?.resultTruncated === true ? { eventId: callEvent.id, at: result.text.length, kind: 'output' as const } : null;

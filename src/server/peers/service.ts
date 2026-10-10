@@ -1245,11 +1245,12 @@ export function unreachableMessage(machine: { readonly name: string; readonly st
   return offlineMessage(machine.name);
 }
 
-/** The snapshot a forwarded read is kept as: a session's detail, or its whole event list (no `since`); `null` for anything else. */
+/** The snapshot a forwarded read is kept as: a session's detail, or its (latest) event list (no `since` / `before` / `agent`); `null` for anything else. */
 function snapshotOf(method: string, path: string, kind: ReturnType<typeof peerAnswerKind>): { readonly kind: 'detail' | 'events'; readonly key: string } | null {
   if (method.toUpperCase() !== 'GET' || (kind !== 'detail' && kind !== 'events')) return null;
   const [pathname, query] = path.split('?') as [string, string | undefined];
-  if (kind === 'events' && query && new URLSearchParams(query).has('since')) return null;
+  // D95: an older page (`before`) or one agent's events (`agent`) is not the latest list either.
+  if (kind === 'events' && query && ['since', 'before', 'agent'].some((name) => new URLSearchParams(query).has(name))) return null;
   const segment = pathname.split('/')[3];
   if (!segment) return null;
   try {

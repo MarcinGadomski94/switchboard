@@ -103,6 +103,7 @@ export function SessionView({ sessionId, tab, agentId = null, artifactId = null 
             placeholder={placeholders.chat}
             onChanged={data.reload}
             agentId={agentId}
+            older={data.older}
           />
         ) : null}
         {tab === 'timeline' ? <TimelineTab sessionId={sessionId} /> : null}

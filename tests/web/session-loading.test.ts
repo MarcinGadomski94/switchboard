@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionDetail, SessionEvent } from '../../src/core/api.ts';
 import {
+  CACHE_EVENT_BUDGET,
+  CHAT_EVENTS_PAGE,
   LOADING_SESSION,
   NOTHING_LOADING,
   PLACEHOLDER_DELAY_MS,
@@ -10,8 +12,12 @@ import {
   type Timers,
   anyLoading,
   loadingParts,
+  inWindow,
   mergeFetchedEvents,
+  pageCursor,
   sessionCache,
+  trimWindow,
+  withOlderPage,
 } from '../../src/web/views/session/session-loading.ts';
 
 /**
@@ -205,10 +211,10 @@ describe('D45 · the session cache (instant revisit)', () => {
     const cache = new SessionCache();
     expect(cache.get('a')).toBeNull();
     cache.putDetail('a', detail('a'));
-    expect(cache.get('a')).toEqual({ detail: detail('a'), events: null });
+    expect(cache.get('a')).toEqual({ detail: detail('a'), events: null, cursor: null });
     const events = [event(1), event(2)];
     cache.putEvents('a', events);
-    expect(cache.get('a')).toEqual({ detail: detail('a'), events });
+    expect(cache.get('a')).toEqual({ detail: detail('a'), events, cursor: null });
     cache.putDetail('a', detail('a', 'renamed'));
     expect(cache.get('a')?.detail?.name).toBe('renamed');
     expect(cache.get('a')?.events).toBe(events);
@@ -260,7 +266,7 @@ describe('D45 · the session cache (instant revisit)', () => {
     expect(cache.get('x')).toBeNull();
     cache.putDetail('a', detail('a'));
     cache.applyEvent('a', event(1));
-    expect(cache.get('a')).toEqual({ detail: detail('a'), events: null });
+    expect(cache.get('a')).toEqual({ detail: detail('a'), events: null, cursor: null });
     cache.putEvents('b', []);
     cache.putEvents('a', []);
     cache.applyEvent('b', event(1));
@@ -284,5 +290,69 @@ describe('D45 · a fetch merged with the events streamed meanwhile', () => {
     const merged = mergeFetchedEvents(fetched, []);
     expect(merged).toEqual(fetched);
     expect(merged).not.toBe(fetched);
+  });
+});
+
+describe('D95 · the chat window (newest page first, older pages on scroll)', () => {
+  const at = (id: number, minute: number): SessionEvent => ({ ...event(id), ts: `2026-10-10T10:${String(minute).padStart(2, '0')}:00.000Z` });
+
+  it('a full page leaves a cursor at its oldest event (in time order, not id order); a short page is complete', () => {
+    const page = [at(7, 1), at(3, 2), at(9, 3)];
+    expect(pageCursor(page, 3)?.id).toBe(7);
+    expect(pageCursor(page, 4)).toBeNull();
+    // A machine without paging answers every event: more than asked, complete.
+    expect(pageCursor([...page, at(10, 4)], 3)).toBeNull();
+  });
+
+  it('hub events older than the cursor wait for their page; known ones and newer ones apply', () => {
+    const window = { list: [at(5, 5), at(6, 6)], cursor: at(5, 5) };
+    expect(inWindow(window, at(4, 4))).toBe(false);
+    expect(inWindow(window, at(5, 5))).toBe(true);
+    expect(inWindow(window, at(8, 7))).toBe(true);
+    // An imported terminal turn: a new id with an older time.
+    expect(inWindow(window, at(99, 1))).toBe(false);
+    expect(inWindow({ list: window.list, cursor: null }, at(99, 1))).toBe(true);
+  });
+
+  it('an older page goes in front; a page with nothing new (a machine without paging) ends the window', () => {
+    const window = { list: [at(5, 5), at(6, 6)], cursor: at(5, 5) };
+    const older = withOlderPage(window, [at(3, 3), at(4, 4)], 2);
+    expect(older.list.map((e) => e.id)).toEqual([3, 4, 5, 6]);
+    expect(older.cursor?.id).toBe(3);
+    expect(withOlderPage(older, [at(1, 1)], 2).cursor).toBeNull();
+    expect(withOlderPage(window, [at(5, 5), at(6, 6)], 2)).toEqual({ list: window.list, cursor: null });
+  });
+
+  it('trimWindow keeps the newest events past the bound and moves the cursor', () => {
+    const list = [at(1, 1), at(4, 4), at(2, 2), at(3, 3)];
+    expect(trimWindow({ list, cursor: null }, 2, 5).list).toBe(list);
+    const cut = trimWindow({ list, cursor: null }, 2, 3);
+    expect(cut.list.map((e) => e.id)).toEqual([3, 4]);
+    expect(cut.cursor?.id).toBe(3);
+  });
+
+  it('the cache keeps two pages a session at most, and a budget across sessions (the least recent lose their events)', () => {
+    expect(CHAT_EVENTS_PAGE).toBe(1000);
+    const many = (from: number, n: number): SessionEvent[] => Array.from({ length: n }, (_, i) => at(from + i, 0));
+    const cache = new SessionCache(20, 2500);
+    cache.putEvents('a', many(1, CHAT_EVENTS_PAGE * 2 + 1), null);
+    expect(cache.get('a')?.events).toHaveLength(CHAT_EVENTS_PAGE);
+    expect(cache.get('a')?.cursor).not.toBeNull();
+    cache.putDetail('b', detail('b'));
+    cache.putEvents('b', many(5000, 1000), null);
+    cache.putEvents('c', many(9000, 1000), null);
+    expect(cache.get('a')?.events).toBeNull();
+    expect(cache.get('a')?.detail).toBeNull();
+    expect(cache.get('b')?.events).toHaveLength(1000);
+    expect(cache.eventCount).toBe(2000);
+    expect(CACHE_EVENT_BUDGET).toBe(6000);
+  });
+
+  it('a cached window takes hub events only inside it', () => {
+    const cache = new SessionCache();
+    cache.putEvents('a', [at(5, 5), at(6, 6)], at(5, 5));
+    cache.applyEvent('a', at(2, 2));
+    cache.applyEvent('a', at(7, 7));
+    expect(cache.get('a')?.events?.map((e) => e.id)).toEqual([5, 6, 7]);
   });
 });

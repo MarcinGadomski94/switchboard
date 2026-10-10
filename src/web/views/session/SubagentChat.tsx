@@ -8,6 +8,7 @@ import { ChatItemView } from './ChatItems.tsx';
 import { ChatMarkdown } from './ChatMarkdown.tsx';
 import { CutNote, useFullText } from './FullText.tsx';
 import { ChatSkeleton } from './SessionSkeletons.tsx';
+import { useAgentEvents } from './useSessionData.ts';
 import { hasSubagentChat, subagentChat } from './chat.ts';
 import { agentCards } from './right-panel.ts';
 import {
@@ -35,7 +36,7 @@ export interface SubagentChatViewProps {
   readonly sessionId: string;
   /** `GET /api/sessions/{id}` (the agents, the questions); `null` while it loads. */
   readonly session: SessionDetail | null;
-  /** Every event of the session (the chat tab loads them all and follows `/hub`); filtered here. */
+  /** The main chat's loaded events (D95: its newest pages); this subagent's own are loaded whole here and merged in. */
   readonly events: readonly SessionEvent[];
   readonly activity: SessionActivity | null;
   /** The subagent's id from the address (`/sessions/{id}/agents/{agentId}`). */
@@ -143,8 +144,11 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
   };
   // D51: a Workflow agent's chat comes from its transcript, not from the session's events.
   const workflowChat = useWorkflowChat(sessionId, session?.agents.find((candidate) => candidate.id === agentId) ?? null);
+  // D95: the main chat loads only its newest events: this subagent's own come whole (`?agent=`).
+  const agentRecord = session?.agents.find((candidate) => candidate.id === agentId) ?? null;
+  const ownEvents = useAgentEvents(sessionId, agentId, agentRecord?.toolUseId ?? null, events);
   // Fix · long messages: cut texts (the brief, messages, the result) restored from the transcript.
-  const fullText = useFullText(sessionId, events);
+  const fullText = useFullText(sessionId, ownEvents);
 
   if (!session) {
     return (

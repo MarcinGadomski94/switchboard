@@ -299,6 +299,15 @@ export const api = {
   attachSession: (id: string, confirm = false) =>
     request<ResumeCommand>('POST', `/api/sessions/${enc(id)}/attach`, confirm ? ({ confirm: true } satisfies AttachRequest) : undefined),
   sessionEvents: (id: string, since?: string) => request<SessionEvent[]>('GET', `/api/sessions/${enc(id)}/events${query({ since })}`),
+  /**
+   * D95: a page of the session's events, oldest first: the newest `limit` (older than event `before` when given), or
+   * (`agent`) every event of that subagent plus the call that started it. A machine without paging answers every event.
+   */
+  sessionEventsPage: (id: string, page: { readonly limit?: number; readonly before?: number; readonly agent?: string }) =>
+    request<SessionEvent[]>(
+      'GET',
+      `/api/sessions/${enc(id)}/events${query({ limit: page.limit === undefined ? undefined : String(page.limit), before: page.before === undefined ? undefined : String(page.before), agent: page.agent })}`,
+    ),
   /** Fix · long messages: a cut event's whole text from the session's CLI transcript (message text is written back). */
   fullEvent: (id: string, eventId: number) => request<FullEventAnswer>('GET', `/api/sessions/${enc(id)}/events/${eventId}/full`),
   /** D51: a Workflow agent's conversation (from its transcript). */

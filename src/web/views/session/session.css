@@ -765,6 +765,16 @@ a.sb-agent--link:focus-visible {
   color: var(--text-2b);
 }
 
+/* D95: the row above the loaded messages while earlier ones exist (docs/performance.md → Chat window). */
+.sb-chat-older {
+  align-self: center;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
 .sb-chat-message {
   display: flex;
   flex-direction: column;
