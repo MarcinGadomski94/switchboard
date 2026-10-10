@@ -15,3 +15,4 @@ coverage/
 .e2e-dist/
 .frame-helper-safari/
 tools/frame-helper/_metadata/
+.bench/

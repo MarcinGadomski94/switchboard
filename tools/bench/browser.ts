@@ -1,0 +1,244 @@
+/**
+ * `node tools/bench/browser.ts [--minutes 3] [--no-build] [--out <file.json>] [--profile <dir>]`:
+ * the browser half of the performance harness (`docs/performance.md`). Headless
+ * Chromium (Playwright) against a test server on the synthetic world
+ * (`world.ts`), measured through the Chrome DevTools Protocol:
+ *
+ * 1. **open**: the big session's chat (≈13k events): time until its newest message
+ *    shows and the page is quiet, main-thread time, DOM nodes, JS heap;
+ * 2. **typing**: 20 keys in the composer: main-thread time per key;
+ * 3. **scroll**: the conversation from the bottom to the top in steps: time per step;
+ * 4. **soak**: `--minutes` of a live session streaming turns (`[fake:fire]`) while the
+ *    tab switches between the sessions every few seconds: JS heap after a forced GC
+ *    each minute (leak = growth that a GC does not take back), DOM nodes, main-thread
+ *    busy share.
+ *
+ * Fake CLIs only, a throwaway data folder, a test port (`SWITCHBOARD_TEST_PORTS`).
+ */
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { type CDPSession, type Page, chromium } from '@playwright/test';
+import globalSetup from '../../tests/e2e/global-setup.ts';
+import { removeTempDir } from '../../tests/helpers/net.ts';
+import { startServer } from '../../tests/helpers/server-process.ts';
+import { openStore, storeFile } from '../../src/server/db/store.ts';
+import { clientFor, makeBenchWorld, startLiveSession } from './server.ts';
+import { appendHistory } from './world.ts';
+
+interface Metrics {
+  readonly taskMs: number;
+  readonly scriptMs: number;
+  readonly layoutMs: number;
+  readonly nodes: number;
+  readonly heapMb: number;
+  readonly listeners: number;
+}
+
+async function metrics(cdp: CDPSession): Promise<Metrics> {
+  const { metrics: list } = (await cdp.send('Performance.getMetrics')) as { metrics: Array<{ name: string; value: number }> };
+  const get = (name: string): number => list.find((m) => m.name === name)?.value ?? 0;
+  return {
+    taskMs: get('TaskDuration') * 1000,
+    scriptMs: get('ScriptDuration') * 1000,
+    layoutMs: (get('LayoutDuration') + get('RecalcStyleDuration')) * 1000,
+    nodes: get('Nodes'),
+    heapMb: get('JSHeapUsedSize') / 1e6,
+    listeners: get('JSEventListeners'),
+  };
+}
+
+/** JS heap after a full GC (MB). */
+async function heapAfterGc(cdp: CDPSession): Promise<number> {
+  await cdp.send('HeapProfiler.collectGarbage');
+  await cdp.send('HeapProfiler.collectGarbage');
+  return (await metrics(cdp)).heapMb;
+}
+
+/** Waits until no main-thread task ran for `quietMs` (sampled through TaskDuration), at most `timeoutMs`. */
+async function quiet(cdp: CDPSession, quietMs = 600, timeoutMs = 120_000): Promise<void> {
+  const start = Date.now();
+  let last = (await metrics(cdp)).taskMs;
+  let since = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const now = (await metrics(cdp)).taskMs;
+    // Under 2 ms of work per 100 ms counts as quiet (timers, the hub's keep-alive).
+    if (now - last > 2) since = Date.now();
+    last = now;
+    if (Date.now() - since >= quietMs) return;
+  }
+}
+
+function round(value: number, digits = 1): number {
+  const f = 10 ** digits;
+  return Math.round(value * f) / f;
+}
+
+async function openSession(page: Page, cdp: CDPSession, baseUrl: string, id: string, lastText: string | null): Promise<Record<string, number>> {
+  const before = await metrics(cdp);
+  const start = Date.now();
+  await page.evaluate((url) => {
+    // Through the app's router (a client-side navigation), as a click in the sidebar does.
+    history.pushState({}, '', url);
+    dispatchEvent(new PopStateEvent('popstate'));
+  }, `${baseUrl}/sessions/${id}`);
+  await page.waitForFunction(
+    (text) => {
+      const messages = document.querySelectorAll('[data-testid="session-chat"] [data-testid="chat-message"]');
+      if (messages.length === 0) return false;
+      return text === null || (messages[messages.length - 1]?.textContent ?? '').includes(text);
+    },
+    lastText,
+    { timeout: 120_000, polling: 50 },
+  );
+  const shownMs = Date.now() - start;
+  await quiet(cdp);
+  const after = await metrics(cdp);
+  return {
+    shownMs,
+    settledMs: Date.now() - start,
+    mainThreadMs: round(after.taskMs - before.taskMs),
+    scriptMs: round(after.scriptMs - before.scriptMs),
+    layoutMs: round(after.layoutMs - before.layoutMs),
+    nodes: after.nodes,
+    chatMessages: await page.locator('[data-testid="session-chat"] [data-testid="chat-message"]').count(),
+    heapMb: round(after.heapMb),
+  };
+}
+
+async function main(): Promise<void> {
+  const { values } = parseArgs({ options: { minutes: { type: 'string', default: '3' }, 'no-build': { type: 'boolean', default: false }, out: { type: 'string' }, profile: { type: 'string' } } });
+  if (!values['no-build']) await globalSetup();
+  const report: Record<string, unknown> = {};
+  const world = await makeBenchWorld('bench-browser');
+  const server = await startServer(world.env, 60_000);
+  const browser = await chromium.launch();
+  try {
+    const client = await clientFor(world, server);
+    const live = await startLiveSession(client, 'stream-session');
+    const store = await openStore(storeFile(world.dataDir));
+    try {
+      const main = (await store.agents.listBySession(live)).find((agent) => agent.kind === 'main');
+      if (!main) throw new Error('no main agent');
+      const now = Date.now();
+      appendHistory(store, live, main.id, 5_000, { seed: 9, startMs: now - 3 * 86_400_000, endMs: now - 10 * 60_000, liveCron: false });
+    } finally {
+      await store.close();
+    }
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Performance.enable');
+    await page.goto(`${server.baseUrl}/inbox`);
+    await quiet(cdp);
+    report['baselineHeapMb'] = round(await heapAfterGc(cdp));
+    if (values.profile) {
+      await mkdir(values.profile, { recursive: true });
+      await cdp.send('Profiler.enable');
+      await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+      await cdp.send('Profiler.start');
+    }
+
+    // 1. Open the big session (cold: never opened in this tab).
+    const lastBig = await client.get(`/api/sessions/${world.bigSessionId}`);
+    const bigTitle = (lastBig.body as { name: string }).name;
+    report['openBig'] = await openSession(page, cdp, server.baseUrl, world.bigSessionId, null);
+    console.log(`open big (${bigTitle}):`, JSON.stringify(report['openBig']));
+    if (values.profile) {
+      const { profile } = (await cdp.send('Profiler.stop')) as { profile: unknown };
+      await writeFile(path.join(values.profile, 'browser-open-big.cpuprofile'), JSON.stringify(profile));
+    }
+    report['heapAfterOpenBigMb'] = round(await heapAfterGc(cdp));
+
+    // 2. Typing 20 keys in the composer.
+    const input = page.getByTestId('chat-input');
+    await input.focus();
+    await quiet(cdp);
+    {
+      const before = await metrics(cdp);
+      const start = Date.now();
+      await page.keyboard.type('fix the upload please', { delay: 30 });
+      await quiet(cdp, 300);
+      const after = await metrics(cdp);
+      report['typing'] = { keys: 21, mainThreadMsPerKey: round((after.taskMs - before.taskMs) / 21, 2), wallMs: Date.now() - start };
+      await input.fill('');
+    }
+    console.log('typing:', JSON.stringify(report['typing']));
+
+    // 3. Scroll from the bottom to the top in 20 steps.
+    {
+      await quiet(cdp);
+      const before = await metrics(cdp);
+      const steps = 20;
+      const height = await page.evaluate(() => document.querySelector('[data-testid="session-chat"]')?.scrollHeight ?? 0);
+      for (let i = 1; i <= steps; i += 1) {
+        await page.evaluate(
+          ({ i, steps }) => {
+            const el = document.querySelector<HTMLElement>('[data-testid="session-chat"]');
+            if (el) el.scrollTop = el.scrollHeight * (1 - i / steps);
+          },
+          { i, steps },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      await quiet(cdp, 600);
+      const after = await metrics(cdp);
+      report['scroll'] = { steps, scrollHeightPx: height, mainThreadMsPerStep: round((after.taskMs - before.taskMs) / steps, 2), nodesAtTop: after.nodes };
+    }
+    console.log('scroll:', JSON.stringify(report['scroll']));
+
+    // 4. Soak: a live session streams while the tab switches sessions.
+    const sessions = [live, world.bigSessionId, ...world.mediumSessionIds];
+    const minutes = Number(values.minutes);
+    const soak: Array<Record<string, number>> = [];
+    const end = Date.now() + minutes * 60_000;
+    let minute = 0;
+    let switches = 0;
+    let fired = 0;
+    const firstHeap = round(await heapAfterGc(cdp));
+    soak.push({ minute: 0, heapMb: firstHeap, nodes: (await metrics(cdp)).nodes });
+    let minuteStart = Date.now();
+    let busyStart = (await metrics(cdp)).taskMs;
+    while (Date.now() < end) {
+      // A burst of turns into the live session, then a switch.
+      if (fired % 3 === 0) await client.post(`/api/sessions/${live}/messages`, { text: '[fake:fire 20 200] keep going' }).catch(() => undefined);
+      fired += 1;
+      const target = sessions[switches % sessions.length] ?? live;
+      switches += 1;
+      await page.evaluate((url) => {
+        history.pushState({}, '', url);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }, `${server.baseUrl}/sessions/${target}`);
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      if (Date.now() - minuteStart >= 60_000) {
+        minute += 1;
+        const busy = (await metrics(cdp)).taskMs - busyStart;
+        const heap = round(await heapAfterGc(cdp));
+        const nodes = (await metrics(cdp)).nodes;
+        soak.push({ minute, heapMb: heap, nodes, mainThreadBusyPct: round((busy / (Date.now() - minuteStart)) * 100) });
+        console.log(`soak minute ${minute}: heap ${heap} MB, nodes ${nodes}, busy ${round((busy / (Date.now() - minuteStart)) * 100)} %`);
+        minuteStart = Date.now();
+        busyStart = (await metrics(cdp)).taskMs;
+      }
+    }
+    // Back to a small view: what stays after the sessions are left.
+    await page.evaluate((url) => {
+      history.pushState({}, '', url);
+      dispatchEvent(new PopStateEvent('popstate'));
+    }, `${server.baseUrl}/inbox`);
+    await quiet(cdp, 1_000, 30_000);
+    report['soak'] = { minutes, switches, samples: soak, heapOnInboxAfterMb: round(await heapAfterGc(cdp)), nodesOnInboxAfter: (await metrics(cdp)).nodes };
+    console.log('soak:', JSON.stringify(report['soak']));
+  } finally {
+    await browser.close();
+    await server.stop();
+    if (values.out) await writeFile(values.out, `${JSON.stringify(report, null, 2)}\n`);
+    await removeTempDir(world.tmp);
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

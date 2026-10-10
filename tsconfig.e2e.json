@@ -6,6 +6,6 @@
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["tests/e2e/**/*.ts", "tests/helpers/**/*.ts", "tools/screenshots/**/*.ts", "playwright.config.ts"],
+  "include": ["tests/e2e/**/*.ts", "tests/helpers/**/*.ts", "tools/screenshots/**/*.ts", "tools/bench/browser.ts", "playwright.config.ts"],
   "exclude": [".worktrees", ".spike", "dist", "node_modules", "src/web"]
 }
