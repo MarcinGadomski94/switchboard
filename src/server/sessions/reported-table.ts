@@ -2,6 +2,7 @@ import type { ReportedTable } from '../../core/api.ts';
 import type { AssistantPayload } from '../../core/event-payload.ts';
 import { STATUS_TABLE_COLUMNS, newestStatusTable } from '../../core/derive/status-table.ts';
 import type { Store } from '../db/store.ts';
+import { EventMemo, payloadType } from '../db/event-memo.ts';
 
 /** How many candidate messages one query reads (newest first) before looking further back. */
 export const REPORTED_TABLE_PAGE = 50;
@@ -24,6 +25,23 @@ function assistantText(payload: unknown): string | null {
  * one replaces it.
  */
 export async function reportedTable(store: Store, sessionId: string, mainAgentId: string | null): Promise<ReportedTable | null> {
+  // D95: kept until an assistant message of the session is written (each detail read scanned the whole history).
+  return memoOf(store).get(store.events, sessionId, mainAgentId ?? '', () => readReportedTable(store, sessionId, mainAgentId));
+}
+
+/** D95: one memo per store (tests open many). */
+const memos = new WeakMap<Store, EventMemo<ReportedTable | null>>();
+
+function memoOf(store: Store): EventMemo<ReportedTable | null> {
+  let memo = memos.get(store);
+  if (!memo) {
+    memo = new EventMemo((event) => payloadType(event) === 'assistant');
+    memos.set(store, memo);
+  }
+  return memo;
+}
+
+async function readReportedTable(store: Store, sessionId: string, mainAgentId: string | null): Promise<ReportedTable | null> {
   let before: { ts: string; id: number } | undefined;
   for (;;) {
     const page = await store.events.assistantTextsNewestFirst(sessionId, {

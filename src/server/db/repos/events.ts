@@ -1,6 +1,7 @@
 import type { EventKind } from '../../../core/model.ts';
 import type { CreateInput, Patch, RepoContext } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
+import { EventMemo, payloadType } from '../event-memo.ts';
 
 /** One event of a session: drives the chat, the timeline and the terminal tail. */
 export interface EventRecord {
@@ -263,9 +264,17 @@ export class EventRepository {
 
   /** D80: how many user messages (`payload.type` `user`) the session has up to event `uptoId` (all when omitted): a turn's number. */
   async countUserMessages(sessionId: string, uptoId?: number): Promise<number> {
+    // D95: the whole session's count is kept until a user message is written (it scans every payload).
+    if (uptoId === undefined) return this.#userCounts.get(this, sessionId, '', () => this.#countUserMessages(sessionId, Number.MAX_SAFE_INTEGER));
+    return this.#countUserMessages(sessionId, uptoId);
+  }
+
+  readonly #userCounts = new EventMemo<number>((event) => payloadType(event) === 'user');
+
+  async #countUserMessages(sessionId: string, uptoId: number): Promise<number> {
     const row = this.#table
       .statement("SELECT COUNT(*) AS n FROM events WHERE session_id = ? AND id <= ? AND json_extract(payload, '$.type') = 'user'")
-      .get(sessionId, uptoId ?? Number.MAX_SAFE_INTEGER);
+      .get(sessionId, uptoId);
     return Number(row?.['n'] ?? 0);
   }
 }
