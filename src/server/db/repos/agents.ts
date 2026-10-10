@@ -86,8 +86,7 @@ export class AgentRepository {
   /** The session's agents in creation order (D95: a new array each call, from memory while nothing was written). */
   async listBySession(sessionId: string): Promise<AgentRecord[]> {
     // A cheap check that nothing changed behind the repository's back (a session's delete cascades to its agents).
-    const row = this.#table.statement('SELECT COUNT(*) AS n, MAX(rowid) AS r, MAX(updated_at) AS u FROM agents WHERE session_id = ?').get(sessionId);
-    const mark = `${String(row?.['n'])}:${String(row?.['r'])}:${String(row?.['u'])}`;
+    const mark = this.#mark(sessionId);
     let list = this.#bySession.get(sessionId)?.mark === mark ? this.#bySession.get(sessionId)?.list : undefined;
     if (!list) {
       list = this.#table.select('session_id = ?', [sessionId], 'created_at, rowid');
@@ -117,8 +116,20 @@ export class AgentRepository {
 
   async update(id: string, patch: AgentPatch): Promise<AgentRecord | null> {
     const record = this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
-    if (record) this.#bySession.delete(record.sessionId);
+    if (record) {
+      // The main agent's status flips with every turn: the kept list takes the new row instead of being read again.
+      const cached = this.#bySession.get(record.sessionId);
+      const at = cached ? cached.list.findIndex((agent) => agent.id === record.id) : -1;
+      if (cached && at >= 0) this.#bySession.set(record.sessionId, { mark: this.#mark(record.sessionId), list: cached.list.with(at, record) });
+      else this.#bySession.delete(record.sessionId);
+    }
     return record;
+  }
+
+  /** D95: what changes when the session's agent rows change (count, newest row, newest update). */
+  #mark(sessionId: string): string {
+    const row = this.#table.statement('SELECT COUNT(*) AS n, MAX(rowid) AS r, MAX(updated_at) AS u FROM agents WHERE session_id = ?').get(sessionId);
+    return `${String(row?.['n'])}:${String(row?.['r'])}:${String(row?.['u'])}`;
   }
 
   async delete(id: string): Promise<boolean> {
