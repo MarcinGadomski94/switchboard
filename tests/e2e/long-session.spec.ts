@@ -17,6 +17,9 @@ import { type QuestionWorld, openWithHub, startQuestionWorld } from './question-
  *    under 30 MB (≈15 MB measured; ≈50 MB when every visit kept a whole history);
  *    back on the Inbox no node of the sessions' views stays alive, also when the
  *    view was left with a draft in the focused composer.
+ * 3. **The Timeline is windowed** (D95 follow-up): the big session's Timeline shows
+ *    its last 50 turns, lanes only for the agents active in them, and **Show
+ *    earlier** adds 50 turns more (and their lanes).
  */
 test.use({ trace: 'off' });
 
@@ -109,6 +112,34 @@ test('a 13k-event session opens on its newest page; earlier messages load in fro
   const count = await messages.count();
   await page.getByTestId('chat-older-load').click();
   await expect.poll(async () => messages.count(), { timeout: 15_000 }).toBeGreaterThan(count);
+});
+
+test('the Timeline of a 13k-event session shows its last 50 turns with lanes for their agents; Show earlier adds 50 more', async ({ page }) => {
+  test.setTimeout(120_000);
+  const all = await (async () => {
+    await openWithHub(page, `${world.baseUrl}/inbox`);
+    return page.evaluate(async (sid) => {
+      const detail = (await (await fetch(`/api/sessions/${sid}`)).json()) as { agents: Array<{ kind: string }> };
+      return detail.agents.filter((agent) => agent.kind !== 'workflow').length;
+    }, big);
+  })();
+  expect(all).toBeGreaterThan(300);
+  await openWithHub(page, `${world.baseUrl}/sessions/${big}/timeline`);
+  const lanes = page.getByTestId('timeline-lane');
+  const note = page.getByTestId('timeline-window-note');
+  await expect(note).toHaveText('Last 50 turns', { timeout: 30_000 });
+  await expect(page.getByTestId('timeline-earlier-load')).toHaveText('Show earlier');
+  await expect.poll(async () => lanes.count(), { timeout: 15_000 }).toBeGreaterThan(1);
+  const first = await lanes.count();
+  // Only the agents of the shown turns: a fraction of the session's ≈430.
+  expect(first).toBeLessThan(all / 2);
+  const range = await page.getByTestId('timeline-range').textContent();
+  await page.getByTestId('timeline-earlier-load').click();
+  await expect(note).toHaveText('Last 100 turns');
+  await expect(page.getByTestId('timeline-earlier-load')).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => lanes.count(), { timeout: 15_000 }).toBeGreaterThan(first);
+  // The axis starts earlier.
+  await expect(page.getByTestId('timeline-range')).not.toHaveText(range ?? '');
 });
 
 test('switching between long sessions does not grow the heap or the node count', async ({ page }) => {

@@ -8,7 +8,7 @@
  *    shows and the page is quiet, main-thread time, DOM nodes, JS heap;
  * 2. **typing**: 20 keys in the composer: main-thread time per key;
  * 3. **scroll**: the conversation from the bottom to the top in steps: time per step;
- *    then the big session's Timeline tab (it loads every event): time, nodes;
+ *    then the big session's Timeline tab (D95 follow-up: its last 50 turns): time, nodes, lanes, elements;
  * 4. **soak**: `--minutes` of a live session streaming turns (`[fake:fire]`) while the
  *    tab switches between the sessions every few seconds: JS heap after a forced GC
  *    each minute (leak = growth that a GC does not take back), DOM nodes, main-thread
@@ -208,6 +208,9 @@ async function main(): Promise<void> {
         mainThreadMs: round(after.taskMs - before.taskMs),
         nodes: after.nodes,
         lanes: await page.locator('[data-testid="timeline-lane"]').count(),
+        // The renderer's node count above also holds the chat's nodes until a GC; these are the live elements.
+        timelineElements: await page.evaluate(() => document.querySelectorAll('[data-testid="session-timeline"] *').length),
+        documentElements: await page.evaluate(() => document.getElementsByTagName('*').length),
         heapMb: round(after.heapMb),
       };
     }

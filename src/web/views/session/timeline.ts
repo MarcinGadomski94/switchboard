@@ -327,3 +327,70 @@ export function sessionFetched(source: SessionSource): SessionSource {
 export function shownSession(source: SessionSource, fetched: Session | null): Session | null {
   return source.pushed?.session ?? fetched;
 }
+
+/**
+ * D95 follow-up (`docs/performance.md` → *Windowed Timeline*): the Timeline shows the
+ * session's last this-many turns (a turn starts at a user message), and **Show
+ * earlier** adds as many again.
+ */
+export const TIMELINE_TURNS = 50;
+
+/** D95 follow-up: the events the Timeline reads per request (`GET /api/sessions/{id}/events?limit=&before=`). */
+export const TIMELINE_EVENTS_PAGE = 1000;
+
+/** The "Show earlier" button's copy. */
+export const SHOW_EARLIER_LABEL = 'Show earlier';
+
+/** `true` for an event that starts a turn: a user message (`payload.type` `user`), as the turn count (D80) reads it. */
+export function isTurnStart(event: SessionEvent): boolean {
+  const payload = event.payload as { type?: unknown } | null;
+  return payload?.type === 'user';
+}
+
+/** Events in time order: `ts`, then id (the chat's order). */
+function byTime(a: SessionEvent, b: SessionEvent): number {
+  return a.ts === b.ts ? a.id - b.id : a.ts < b.ts ? -1 : 1;
+}
+
+/** What the Timeline draws of the events it loaded. */
+export interface TimelineWindow {
+  /** The shown events (time order): from the start of the `turns`-th newest turn on. */
+  readonly shown: readonly SessionEvent[];
+  /** Older events exist (loaded and left out, or not loaded yet): **Show earlier** is offered. */
+  readonly earlier: boolean;
+  /** Fewer than `turns` turns are loaded and older events exist: read the page before. */
+  readonly needMore: boolean;
+}
+
+/**
+ * D95 follow-up: the last `turns` turns of the loaded events. `complete` = the loaded
+ * events reach the session's first one (no page before them). Events before the
+ * first turn start belong to that first turn's window only when the history is
+ * complete and holds no more than `turns` turns (then everything shows).
+ */
+export function timelineWindow(events: readonly SessionEvent[], complete: boolean, turns: number): TimelineWindow {
+  const sorted = [...events].sort(byTime);
+  const starts: number[] = [];
+  sorted.forEach((event, index) => {
+    if (isTurnStart(event)) starts.push(index);
+  });
+  const want = Math.max(1, turns);
+  if (starts.length >= want) {
+    // Exactly `want` turns loaded and nothing before the first one: everything.
+    const from = starts.length === want && complete ? 0 : (starts[starts.length - want] as number);
+    return { shown: sorted.slice(from), earlier: from > 0 || !complete, needMore: false };
+  }
+  return { shown: sorted, earlier: !complete, needMore: !complete };
+}
+
+/**
+ * D95 follow-up: the lanes of the window: the main agent, the agents with an event
+ * among `shown`, and the ones still working (`run` / `need`: a subagent that just
+ * started may have no event yet), in the session's order.
+ */
+export function windowAgents(agents: readonly Agent[], shown: readonly SessionEvent[]): Agent[] {
+  const active = new Set<string>();
+  for (const event of shown) if (event.agentId !== null) active.add(event.agentId);
+  const main = agents.find((agent) => agent.kind === 'main') ?? agents[0] ?? null;
+  return agents.filter((agent) => agent === main || active.has(agent.id) || isLiveStatus(agent.status));
+}

@@ -253,3 +253,17 @@
 .sb-timeline__term-line[data-tone='err'] {
   color: oklch(0.72 0.16 25);
 }
+
+/* D95 follow-up (docs/performance.md → Windowed Timeline): the row above the lanes while earlier turns exist. */
+.sb-timeline__earlier {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+  font: 400 11.5px var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-timeline__earlier-note {
+  color: var(--muted-4);
+}

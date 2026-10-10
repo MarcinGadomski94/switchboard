@@ -13,7 +13,11 @@ import {
   sessionPushed,
   sessionRefetching,
   shownSession,
+  TIMELINE_TURNS,
+  isTurnStart,
   timelineModel,
+  timelineWindow,
+  windowAgents,
 } from '../../src/web/views/session/timeline.ts';
 
 /** 10:00 local time on the day of the test (the prototype's clock starts at 10:00 + t0). */
@@ -240,5 +244,58 @@ describe('session source (the /hub copy over the fetched detail)', () => {
     expect(shownSession(EMPTY_SESSION_SOURCE, fetched)).toBe(fetched);
     const pushed = sessionPushed(EMPTY_SESSION_SOURCE, session(main, sub));
     expect(sessionFetched(pushed)).toBe(pushed);
+  });
+});
+
+describe('D95 follow-up · the windowed Timeline (timelineWindow, windowAgents)', () => {
+  /** `turns` turns: a user message, then a block of `agentOf(turn)` a minute later. */
+  function history(turns: number, agentOf: (turn: number) => string | null = () => null): SessionEvent[] {
+    nextId = 1;
+    const events: SessionEvent[] = [event(null, 'text', 'session start', 0, null, { type: 'lifecycle' })];
+    for (let turn = 0; turn < turns; turn++) {
+      events.push(event(null, 'text', `turn ${turn}`, 1 + turn * 2, null, { type: 'user', text: `turn ${turn}` }));
+      events.push(event(agentOf(turn), 'impl', `work ${turn}`, 2 + turn * 2, 2.5 + turn * 2));
+    }
+    return events;
+  }
+
+  it('a turn starts at a user message', () => {
+    expect(isTurnStart(event(null, 'text', 'hi', 0, null, { type: 'user', text: 'hi' }))).toBe(true);
+    expect(isTurnStart(event(null, 'text', 'reply', 0, null, { type: 'assistant', text: 'reply' }))).toBe(false);
+    expect(TIMELINE_TURNS).toBe(50);
+  });
+
+  it('shows the last n turns of a complete history, from the n-th newest user message; all of a short one', () => {
+    const events = history(5);
+    const window = timelineWindow([...events].reverse(), true, 3);
+    expect(window.shown.map((e) => e.label)).toEqual(['turn 2', 'work 2', 'turn 3', 'work 3', 'turn 4', 'work 4']);
+    expect(window).toMatchObject({ earlier: true, needMore: false });
+    // As many turns as the history has (or more): everything, the session start included; nothing earlier.
+    expect(timelineWindow(events, true, 5)).toMatchObject({ earlier: false, needMore: false });
+    expect(timelineWindow(events, true, 5).shown).toHaveLength(events.length);
+    expect(timelineWindow(events, true, 50)).toMatchObject({ earlier: false, needMore: false });
+  });
+
+  it('an incomplete history with too few turns loaded asks for the page before; with enough, it does not', () => {
+    const events = history(5);
+    const page = events.slice(-6);
+    expect(timelineWindow(page, false, 5)).toMatchObject({ earlier: true, needMore: true });
+    const enough = timelineWindow(page, false, 2);
+    expect(enough).toMatchObject({ earlier: true, needMore: false });
+    expect(enough.shown.map((e) => e.label)).toEqual(['turn 3', 'work 3', 'turn 4', 'work 4']);
+  });
+
+  it('lanes: the main agent, the agents active in the window and the ones still working, in the session order', () => {
+    const agents = [agent('main', 'main', 'main'), agent('old', 'old'), agent('recent', 'recent'), agent('live', 'live'), agent('idle', 'idle')].map((a) =>
+      a.id === 'live' ? a : { ...a, status: 'done' as const },
+    );
+    const events = history(4, (turn) => (turn === 0 ? 'old' : turn === 3 ? 'recent' : null));
+    const window = timelineWindow(events, true, 2);
+    expect(windowAgents(agents, window.shown).map((a) => a.id)).toEqual(['main', 'recent', 'live']);
+    expect(windowAgents(agents, events).map((a) => a.id)).toEqual(['main', 'old', 'recent', 'live']);
+    const model = timelineModel({ events: window.shown, agents: windowAgents(agents, window.shown), status: 'done', now: BASE, play: PLAY_MAX });
+    expect(model.lanes.map((lane) => lane.id)).toEqual(['main', 'recent', 'live']);
+    // The axis starts at the window's first turn.
+    expect(model.range.startsWith(formatClock(BASE + 5 * 60_000, false))).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import { useApi } from '../../api/useApi.ts';
 import { useHubEvent, useHubStatus } from '../../api/useHub.ts';
 import { useThrottled } from '../../api/useThrottled.ts';
 import { rootPath } from './right-panel.ts';
+import { type EventWindow, inWindow, pageCursor, withOlderPage } from './session-loading.ts';
 import { terminalTail } from './terminal-tail.ts';
 import {
   LOG_HEADING,
@@ -13,6 +14,9 @@ import {
   PLAY_MAX,
   PLAY_TICK_MS,
   EMPTY_SESSION_SOURCE,
+  SHOW_EARLIER_LABEL,
+  TIMELINE_EVENTS_PAGE,
+  TIMELINE_TURNS,
   type SessionSource,
   playStep,
   sessionFetched,
@@ -20,6 +24,8 @@ import {
   sessionRefetching,
   shownSession,
   timelineModel,
+  timelineWindow,
+  windowAgents,
 } from './timeline.ts';
 import './timeline.css';
 
@@ -41,15 +47,90 @@ function useClock(ms: number | null): number {
   return now;
 }
 
+/** The loaded events of the session the hook is for (D95 follow-up: its newest pages). */
+interface Loaded {
+  readonly sessionId: string;
+  readonly window: EventWindow;
+}
+
+/** What {@link useTimelineEvents} gives the tab. */
+interface TimelineEvents {
+  /** The loaded events with the `/hub` copies over them; `null` before the first page landed. */
+  readonly events: readonly SessionEvent[] | null;
+  /** `true` once the loaded events reach the session's first one. */
+  readonly complete: boolean;
+  /** An older page is being read. */
+  readonly loadingOlder: boolean;
+  /** The last read of an older page failed (the button retries). */
+  readonly failed: boolean;
+  /** Reads the page before the loaded events. */
+  readonly loadOlder: () => void;
+  /** After a failed read: reads it again (the newest page when none landed yet). */
+  readonly retry: () => void;
+}
+
 /**
- * The session's events: `GET /api/sessions/{id}/events` plus every `/hub` `event`
- * for the session (new events and updates, e.g. a tool call's result), fetched
- * again when the hub stream reopens after a drop.
+ * D95 follow-up (`docs/performance.md` → *Windowed Timeline*): the session's newest
+ * events in pages of {@link TIMELINE_EVENTS_PAGE} (`GET /api/sessions/{id}/events?limit=&before=`),
+ * older pages on demand, plus every `/hub` `event` for the session that belongs in
+ * them (new events and updates, e.g. a tool call's result; `inWindow`). The newest
+ * page is read again when the hub stream reopens after a drop (older pages are then
+ * read again as the window needs them). A machine without paging answers every
+ * event: complete at once.
  */
-function useSessionEvents(sessionId: string, onUnknownAgent: (agentId: string) => void): SessionEvent[] {
-  const fetched = useApi(() => api.sessionEvents(sessionId), [sessionId]);
+function useTimelineEvents(sessionId: string, onUnknownAgent: (agentId: string) => void): TimelineEvents {
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [pushed, setPushed] = useState<ReadonlyMap<number, SessionEvent>>(() => new Map());
-  useEffect(() => setPushed(new Map()), [sessionId]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [failed, setFailed] = useState(false);
+  /** Bumped by every newest-page read: an older page asked for before it is dropped. */
+  const generation = useRef(0);
+
+  const loadNewest = useCallback(() => {
+    const gen = ++generation.current;
+    setLoadingOlder(false);
+    api.sessionEventsPage(sessionId, { limit: TIMELINE_EVENTS_PAGE }).then(
+      (page) => {
+        if (gen !== generation.current) return;
+        setLoaded({ sessionId, window: { list: page, cursor: pageCursor(page, TIMELINE_EVENTS_PAGE) } });
+        setFailed(false);
+      },
+      () => {
+        if (gen === generation.current) setFailed(true);
+      },
+    );
+  }, [sessionId]);
+
+  useEffect(() => {
+    setLoaded(null);
+    setPushed(new Map());
+    setFailed(false);
+    loadNewest();
+    return () => {
+      generation.current += 1;
+    };
+  }, [loadNewest]);
+
+  const current = loaded !== null && loaded.sessionId === sessionId ? loaded : null;
+  const cursor = current?.window.cursor ?? null;
+  const loadOlder = useCallback(() => {
+    if (cursor === null || loadingOlder) return;
+    const gen = generation.current;
+    setLoadingOlder(true);
+    setFailed(false);
+    api.sessionEventsPage(sessionId, { limit: TIMELINE_EVENTS_PAGE, before: cursor.id }).then(
+      (page) => {
+        if (gen !== generation.current) return;
+        setLoaded((prev) => (prev !== null && prev.sessionId === sessionId ? { sessionId, window: withOlderPage(prev.window, page, TIMELINE_EVENTS_PAGE) } : prev));
+        setLoadingOlder(false);
+      },
+      () => {
+        if (gen !== generation.current) return;
+        setLoadingOlder(false);
+        setFailed(true);
+      },
+    );
+  }, [sessionId, cursor, loadingOlder]);
 
   useHubEvent('event', (payload) => {
     if (payload.sessionId !== sessionId) return;
@@ -59,24 +140,28 @@ function useSessionEvents(sessionId: string, onUnknownAgent: (agentId: string) =
 
   const hub = useHubStatus();
   const wasOpen = useRef(false);
-  const reload = fetched.reload;
   useEffect(() => {
     if (hub === 'open' && wasOpen.current === false) {
-      if (fetched.data !== null) reload();
+      // Events missed while the stream was down: the newest page again (the first open needs nothing).
+      if (current !== null) loadNewest();
       wasOpen.current = true;
     } else if (hub !== 'open') {
       wasOpen.current = false;
     }
-    // Only the hub status decides; `fetched.data` is read, not watched.
-  }, [hub, reload]);
+    // Only the hub status decides; `current` is read, not watched.
+  }, [hub, loadNewest]);
 
-  return useMemo(() => {
+  const events = useMemo(() => {
+    if (current === null) return null;
     const byId = new Map<number, SessionEvent>();
-    for (const event of fetched.data ?? []) byId.set(event.id, event);
-    // Hub copies arrive in order, so the newest one of an event wins.
-    for (const [id, event] of pushed) byId.set(id, event);
+    for (const event of current.window.list) byId.set(event.id, event);
+    // Hub copies arrive in order, so the newest one of an event wins; one older than the loaded pages waits for its page.
+    for (const [id, event] of pushed) if (inWindow(current.window, event)) byId.set(id, event);
     return [...byId.values()];
-  }, [fetched.data, pushed]);
+  }, [current, pushed]);
+
+  const retry = current === null ? loadNewest : loadOlder;
+  return { events, complete: current !== null && cursor === null, loadingOlder, failed, loadOlder, retry };
 }
 
 /**
@@ -114,7 +199,23 @@ export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
     },
     [refetchAgents],
   );
-  const events = useSessionEvents(sessionId, onUnknownAgent);
+  const loaded = useTimelineEvents(sessionId, onUnknownAgent);
+
+  // D95 follow-up: the last `turns` turns, lanes only for the agents active in them.
+  const [turns, setTurns] = useState(TIMELINE_TURNS);
+  useEffect(() => setTurns(TIMELINE_TURNS), [sessionId]);
+  const range = useMemo(() => timelineWindow(loaded.events ?? [], loaded.complete, turns), [loaded.events, loaded.complete, turns]);
+  const events = range.shown;
+  const { loadOlder, loadingOlder, failed } = loaded;
+  useEffect(() => {
+    // Fewer turns loaded than shown: the page before (one at a time; a failed read waits for the button).
+    if (range.needMore && !loadingOlder && !failed) loadOlder();
+  }, [range.needMore, loadingOlder, failed, loadOlder]);
+  const showEarlier = (): void => {
+    if (failed) loaded.retry();
+    else setTurns((n) => n + TIMELINE_TURNS);
+  };
+  const laneAgents = useMemo(() => windowAgents(agents, events), [agents, events]);
 
   const [play, setPlay] = useState(PLAY_MAX);
   const [playing, setPlaying] = useState(false);
@@ -150,7 +251,7 @@ export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
   const [clockMs, setClockMs] = useState<number | null>(null);
   const now = useClock(clockMs);
   const root = session ? rootPath(session) : undefined;
-  const model = useMemo(() => timelineModel({ events, agents, status, now, play, root }), [events, agents, status, now, play, root]);
+  const model = useMemo(() => timelineModel({ events, agents: laneAgents, status, now, play, root }), [events, laneAgents, status, now, play, root]);
   useEffect(() => setClockMs(model.ticking ? 1_000 : null), [model.ticking]);
   const lines = useMemo(() => terminalTail(events, agents), [events, agents]);
 
@@ -165,6 +266,20 @@ export function TimelineTab({ sessionId }: { readonly sessionId: string }) {
           ))}
         </div>
       </div>
+      {range.earlier || failed ? (
+        <div className="sb-timeline__earlier" data-testid="timeline-earlier" data-state={loadingOlder || range.needMore ? 'loading' : failed ? 'failed' : 'idle'}>
+          {loadingOlder || (range.needMore && !failed) ? (
+            <span role="status">Loading earlier events…</span>
+          ) : (
+            <button type="button" className="sb-button sb-timeline__earlier-button" data-testid="timeline-earlier-load" onClick={showEarlier}>
+              {failed ? 'Could not load earlier events · Retry' : SHOW_EARLIER_LABEL}
+            </button>
+          )}
+          <span className="sb-timeline__earlier-note" data-testid="timeline-window-note">
+            Last {turns} turns
+          </span>
+        </div>
+      ) : null}
       {model.lanes.map((lane) => (
         <div className="sb-timeline__row" key={lane.id ?? 'session'} data-testid="timeline-lane" data-agent-id={lane.id ?? ''} data-agent={lane.name}>
           <div className="sb-timeline__label">
