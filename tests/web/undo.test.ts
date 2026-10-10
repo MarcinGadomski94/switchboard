@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionEvent } from '../../src/core/api.ts';
 import { type SessionCheckpoints, redoDivider, revertDivider } from '../../src/core/checkpoints.ts';
 import { chatItems } from '../../src/web/views/session/chat.ts';
-import { NO_CHECKPOINT, STOP_FIRST, lastTurnRevert, turnRevertFor } from '../../src/web/views/session/checkpoints.ts';
+import { NO_CHECKPOINT, STOP_FIRST, checkpointsKey, lastTurnRevert, turnRevertFor } from '../../src/web/views/session/checkpoints.ts';
 
 /** D80 (web): the chat's revert dividers, the turn action on each user bubble, *Undo last turn*. */
 
@@ -55,5 +55,21 @@ describe('D80: the chat', () => {
     expect(lastTurnRevert(checkpoints({ turns: [], unsupported: 'not a repo' }))).toEqual({ turn: null, reason: 'not a repo' });
     expect(lastTurnRevert(checkpoints({ turns: [], latestTurn: 0 }))).toBeNull();
     expect(lastTurnRevert(null)).toBeNull();
+  });
+});
+
+describe('D95 · when the chat reads the checkpoints again', () => {
+  const ev = (id: number, payload: unknown): SessionEvent => ({ id, sessionId: 's', agentId: null, ts: `2026-10-10T10:00:${String(id).padStart(2, '0')}.000Z`, endTs: null, kind: 'text', label: '', payload }) as SessionEvent;
+  const user = (id: number, extra: object = {}) => ev(id, { type: 'user', text: 'hi', origin: 'user', delivered: true, ...extra });
+  it('a new turn, a withdrawn or no longer queued message, a revert divider and the status change the key; other events do not', () => {
+    const base = [user(1), ev(2, { type: 'assistant', text: 'a', messageId: null })];
+    const key = checkpointsKey(base, 'run');
+    expect(checkpointsKey([...base, ev(3, { type: 'tool', name: 'Read', toolUseId: 't', input: {} })], 'run')).toBe(key);
+    expect(checkpointsKey([...base, ev(3, { type: 'result', isError: false })], 'run')).toBe(key);
+    expect(checkpointsKey(base, 'done')).not.toBe(key);
+    expect(checkpointsKey([...base, user(4)], 'run')).not.toBe(key);
+    expect(checkpointsKey([user(1, { withdrawn: true }), base[1] as SessionEvent], 'run')).not.toBe(key);
+    expect(checkpointsKey([user(1, { queued: 'turn' }), base[1] as SessionEvent], 'run')).not.toBe(key);
+    expect(checkpointsKey([...base, ev(5, { type: 'lifecycle', action: 'reverted' })], 'run')).not.toBe(key);
   });
 });

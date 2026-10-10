@@ -217,8 +217,9 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
   const pause = session && !hooked ? pauseButton(session) : null;
   const attached = session?.attached ?? true;
   const remote = session && !hooked ? remoteToggle(session) : null;
-  // D80: *Undo last turn* (the newest turn with a checkpoint; read again when the status changes).
-  const undo = lastTurnRevert(useCheckpoints(sessionId, `${session?.status ?? ''}:${session?.lastActivityAt ?? ''}`));
+  // D80: *Undo last turn* (the newest turn with a checkpoint; read again when the status changes, D95: and at most once a
+  // minute from activity: each read runs git, and the activity time moves with every event).
+  const undo = lastTurnRevert(useCheckpoints(sessionId, `${session?.status ?? ''}:${session?.lastActivityAt?.slice(0, 16) ?? ''}`));
 
   // D24: on → off (or on and back) never leaves the popover of an old link open.
   const remoteUrl = remote?.url ?? null;

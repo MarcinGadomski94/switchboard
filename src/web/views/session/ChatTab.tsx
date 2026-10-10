@@ -24,7 +24,7 @@ import { canStop, escStops, stoppableBackground } from './stop.ts';
 import { StopBackground } from './StopBackground.tsx';
 import { TodoStrip, useSessionTodos } from './TodoStrip.tsx';
 import { SessionLoopStrip } from '../OwnedLoops.tsx';
-import { turnRevertFor, useCheckpoints } from './checkpoints.ts';
+import { checkpointsKey, turnRevertFor, useCheckpoints } from './checkpoints.ts';
 import { SelectionCapture } from '../../capture/SelectionCapture.tsx';
 import { FreshOffer } from './FreshOffer.tsx';
 import { type ArtifactDraft, SaveArtifactDialog } from './SaveArtifact.tsx';
@@ -174,8 +174,10 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
   const anchor = useRef<{ readonly node: Element; readonly top: number } | null>(null);
   const olderRef = useRef(older);
   olderRef.current = older;
-  // D80: the session's checkpoints (the turn actions, Redo), read again when an event arrives or the status changes.
-  const checkpoints = useCheckpoints(sessionId, `${events.length}:${events.at(-1)?.id ?? 0}:${session?.status ?? ''}`);
+  // D80: the session's checkpoints (the turn actions, Redo), read again when a turn starts or the status changes (D95: not on every event).
+  const status = session?.status ?? '';
+  const checkpointsAt = useMemo(() => checkpointsKey(events, status), [events, status]);
+  const checkpoints = useCheckpoints(sessionId, checkpointsAt);
 
   // Keep the newest item in view while the developer is at the bottom; D36: first, go back to the remembered place.
   useLayoutEffect(() => {

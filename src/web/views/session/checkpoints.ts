@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import type { SessionEvent } from '../../../core/api.ts';
 import type { SessionCheckpoints } from '../../../core/checkpoints.ts';
 import { api } from '../../api/client.ts';
 
@@ -55,6 +56,28 @@ export function useCheckpoints(sessionId: string, refreshKey: string): SessionCh
     if (sessionId !== '') refreshCheckpoints(sessionId);
   }, [sessionId, refreshKey]);
   return useSyncExternalStore(subscribe, () => (sessionId === '' ? null : (cache.get(sessionId) ?? null)));
+}
+
+/**
+ * D95: the chat's `refreshKey` for {@link useCheckpoints}: what can change the
+ * checkpoints it shows, the session's user messages (a new turn; one withdrawn or
+ * no longer queued), its revert dividers and its status, not every event (each
+ * read runs git in the session's repos; a streaming turn sent one per event).
+ */
+export function checkpointsKey(events: readonly SessionEvent[], status: string): string {
+  let count = 0;
+  let last = 0;
+  let marks = '';
+  for (const event of events) {
+    const payload = event.payload as { type?: unknown; action?: unknown; withdrawn?: unknown; queued?: unknown } | null;
+    const type = payload?.type;
+    if (type === 'user' || (type === 'lifecycle' && (payload?.action === 'reverted' || payload?.action === 'revert-undone'))) {
+      count += 1;
+      if (event.id > last) last = event.id;
+      if (payload?.withdrawn === true || payload?.queued !== undefined) marks += `${event.id}${payload?.withdrawn === true ? 'w' : 'q'},`;
+    }
+  }
+  return `${count}:${last}:${marks}:${status}`;
 }
 
 /** What the turn action on a user bubble offers: the turn to revert to, or why it cannot. */
