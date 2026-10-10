@@ -64,19 +64,42 @@ export class AgentRepository {
     this.#table = new Table(ctx.db, SPEC);
   }
 
+  /**
+   * D95: each session's agents as last read (`toSession` reads them for every
+   * `sessionUpdated`, hundreds of rows in a long session); every write through this
+   * repository drops its session's entry.
+   */
+  readonly #bySession = new Map<string, { readonly mark: string; readonly list: readonly AgentRecord[] }>();
+
   /** Stores a new agent; a `toolUseId` is unique per session. */
   async create(input: AgentCreate): Promise<AgentRecord> {
     const ts = this.#ctx.now();
-    return this.#table.insert({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts });
+    const record = this.#table.insert({ ...defined(input), id: input.id ?? randomUUID(), createdAt: ts, updatedAt: ts });
+    this.#bySession.delete(record.sessionId);
+    return record;
   }
 
   async get(id: string): Promise<AgentRecord | null> {
     return this.#table.get(id);
   }
 
-  /** The session's agents in creation order. */
+  /** The session's agents in creation order (D95: a new array each call, from memory while nothing was written). */
   async listBySession(sessionId: string): Promise<AgentRecord[]> {
-    return this.#table.select('session_id = ?', [sessionId], 'created_at, rowid');
+    // A cheap check that nothing changed behind the repository's back (a session's delete cascades to its agents).
+    const row = this.#table.statement('SELECT COUNT(*) AS n, MAX(rowid) AS r, MAX(updated_at) AS u FROM agents WHERE session_id = ?').get(sessionId);
+    const mark = `${String(row?.['n'])}:${String(row?.['r'])}:${String(row?.['u'])}`;
+    let list = this.#bySession.get(sessionId)?.mark === mark ? this.#bySession.get(sessionId)?.list : undefined;
+    if (!list) {
+      list = this.#table.select('session_id = ?', [sessionId], 'created_at, rowid');
+      this.#bySession.delete(sessionId);
+      this.#bySession.set(sessionId, { mark, list });
+      // Bounded: the most recently read sessions.
+      for (const oldest of this.#bySession.keys()) {
+        if (this.#bySession.size <= 64) break;
+        this.#bySession.delete(oldest);
+      }
+    }
+    return [...list];
   }
 
   /** D95: the session's main agent (the first in creation order), without reading its subagents. */
@@ -93,10 +116,14 @@ export class AgentRepository {
   }
 
   async update(id: string, patch: AgentPatch): Promise<AgentRecord | null> {
-    return this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
+    const record = this.#table.update(id, { ...patch, updatedAt: this.#ctx.now() });
+    if (record) this.#bySession.delete(record.sessionId);
+    return record;
   }
 
   async delete(id: string): Promise<boolean> {
+    const record = this.#table.get(id);
+    if (record) this.#bySession.delete(record.sessionId);
     return this.#table.delete(id);
   }
 }

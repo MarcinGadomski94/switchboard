@@ -79,3 +79,20 @@ describe('D95 · EventMemo', () => {
     expect(await store.events.countUserMessages('s1', second.id - 1)).toBe(1);
   });
 });
+
+describe('D95 · AgentRepository.listBySession from memory', () => {
+  it('follows creates, updates and deletes, and a session delete (a cascade the repository does not see)', async () => {
+    const a = await store.agents.create({ sessionId: 's1', name: 'main', kind: 'main' });
+    expect((await store.agents.listBySession('s1')).map((agent) => agent.name)).toEqual(['main']);
+    await store.agents.create({ sessionId: 's1', name: 'helper' });
+    expect((await store.agents.listBySession('s1')).map((agent) => agent.name)).toEqual(['main', 'helper']);
+    await store.agents.update(a.id, { status: 'done' });
+    expect((await store.agents.listBySession('s1'))[0]?.status).toBe('done');
+    // Callers get their own array.
+    (await store.agents.listBySession('s1')).pop();
+    expect(await store.agents.listBySession('s1')).toHaveLength(2);
+    expect((await store.agents.mainOf('s1'))?.id).toBe(a.id);
+    await store.sessions.delete('s1');
+    expect(await store.agents.listBySession('s1')).toEqual([]);
+  });
+});
