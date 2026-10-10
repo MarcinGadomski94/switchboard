@@ -164,6 +164,8 @@ export function sessionRoutes(id: string): string[] {
   return [
     `/api/sessions/${id}`,
     `/api/sessions/${id}/events`,
+    // D95: what the chat asks for since the paging (the newest page).
+    `/api/sessions/${id}/events?limit=1000`,
     `/api/sessions/${id}/checkpoints`,
     `/api/sessions/${id}/todos`,
     `/api/sessions/${id}/loops`,
