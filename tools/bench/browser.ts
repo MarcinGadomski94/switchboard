@@ -83,7 +83,7 @@ async function openSession(page: Page, cdp: CDPSession, baseUrl: string, id: str
     history.pushState({}, '', url);
     dispatchEvent(new PopStateEvent('popstate'));
   }, `${baseUrl}/sessions/${id}`);
-  await page.waitForFunction(
+  const shown = await page.waitForFunction(
     (text) => {
       const messages = document.querySelectorAll('[data-testid="session-chat"] [data-testid="chat-message"]');
       if (messages.length === 0) return false;
@@ -93,6 +93,8 @@ async function openSession(page: Page, cdp: CDPSession, baseUrl: string, id: str
     { timeout: 120_000, polling: 50 },
   );
   const shownMs = Date.now() - start;
+  // A handle keeps what it points at alive (the heap numbers would count it).
+  await shown.dispose();
   await quiet(cdp);
   const after = await metrics(cdp);
   return {
@@ -228,7 +230,15 @@ async function main(): Promise<void> {
       dispatchEvent(new PopStateEvent('popstate'));
     }, `${server.baseUrl}/inbox`);
     await quiet(cdp, 1_000, 30_000);
-    report['soak'] = { minutes, switches, samples: soak, heapOnInboxAfterMb: round(await heapAfterGc(cdp)), nodesOnInboxAfter: (await metrics(cdp)).nodes };
+    report['soak'] = {
+      minutes,
+      switches,
+      samples: soak,
+      heapOnInboxAfterMb: round(await heapAfterGc(cdp)),
+      // Nodes alive in the renderer (attached or not) and the elements in the document.
+      nodesOnInboxAfter: (await metrics(cdp)).nodes,
+      elementsOnInboxAfter: await page.evaluate(() => document.getElementsByTagName('*').length),
+    };
     console.log('soak:', JSON.stringify(report['soak']));
   } finally {
     await browser.close();
