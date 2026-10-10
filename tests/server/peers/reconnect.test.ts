@@ -322,10 +322,10 @@ describe('PeerConnection: agent deltas (D95 follow-up, docs/performance.md → A
       },
     });
     await until('online', () => connection.state === 'online');
-    expect(peer.streamQueries[0]).toBe('?agents=delta');
+    expect(peer.streamQueries[0]).toBe('?delta=1');
     const base = { id: 's1', name: 's1', status: 'run' };
-    peer.lastStream.send(frame({ ...base, agents: [agent('main', 'run'), agent('a', 'run'), agent('b', 'done')] }));
-    peer.lastStream.send(frame({ ...base, agents: [agent('a', 'done')], agentsDelta: { removed: [] } }));
+    peer.lastStream.send(frame({ ...base, loops: [{ id: 'l1' }], agents: [agent('main', 'run'), agent('a', 'run'), agent('b', 'done')] }));
+    peer.lastStream.send(frame({ ...base, agents: [agent('a', 'done')], agentsDelta: { removed: [] }, unchanged: ['loops'] }));
     peer.lastStream.send(frame({ ...base, agents: [agent('c', 'run')], agentsDelta: { removed: ['b'], order: ['main', 'a', 'c'] } }));
     await until('three updates', () => seen.length === 3);
     expect(seen.map((s) => s.agents.map((a) => `${a.id}:${a.status}`))).toEqual([
@@ -333,7 +333,9 @@ describe('PeerConnection: agent deltas (D95 follow-up, docs/performance.md → A
       ['main:run', 'a:done', 'b:done'],
       ['main:run', 'a:done', 'c:run'],
     ]);
-    expect(seen.every((s) => s.agentsDelta === undefined)).toBe(true);
+    expect(seen.every((s) => s.agentsDelta === undefined && s.unchanged === undefined)).toBe(true);
+    // D95-q3: a field named unchanged keeps its previous value.
+    expect(seen[1]?.loops).toEqual([{ id: 'l1' }]);
     // The cache behind the peer's session list holds the whole list too.
     expect(connection.sessions.find((s) => s.id === 's1')?.agents.map((a) => a.id)).toEqual(['main', 'a', 'c']);
     // A new stream: its first update is whole again (an older peer sends only whole ones).

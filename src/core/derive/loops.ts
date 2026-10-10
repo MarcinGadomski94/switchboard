@@ -102,6 +102,19 @@ export const CRON_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 /** How many iterations a loop keeps (the strip shows fewer). */
 export const MAX_STORED_ITERATIONS = 100;
 
+/**
+ * D95-q3: how many of a loop's newest iterations the API sends (`Session.loops`):
+ * as many as a card's strip shows (`MAX_STRIP_CELLS`), which is more than an
+ * unlisted series' interval reads (its last 6 times). The `iteration` count and
+ * the "Last iteration" note are computed from all of them before the cut.
+ */
+export const LOOP_WIRE_ITERATIONS = 30;
+
+/** D95-q3: a loop as `Session.loops` carries it: its newest {@link LOOP_WIRE_ITERATIONS} iterations. */
+export function wireLoop<T extends { readonly iterations: readonly unknown[] }>(loop: T): T {
+  return loop.iterations.length <= LOOP_WIRE_ITERATIONS ? loop : { ...loop, iterations: loop.iterations.slice(-LOOP_WIRE_ITERATIONS) };
+}
+
 /** Tools that feed loop cards (D9). */
 export const LOOP_SOURCE_TOOLS: readonly string[] = ['CronCreate', 'CronDelete', 'ScheduleWakeup', 'Workflow'];
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Loop, Session } from '../../src/core/api.ts';
-import { NEED_BORDER, formatBreaker, formatExpiry, formatNextFire, loopCards, loopFacts, stripCells } from '../../src/web/views/loops.ts';
+import { MAX_STRIP_CELLS, NEED_BORDER, formatBreaker, formatExpiry, formatNextFire, loopCards, loopFacts, stripCells, unlistedFacts } from '../../src/web/views/loops.ts';
+import { LOOP_WIRE_ITERATIONS, loopShown, wireLoop } from '../../src/core/derive/loops.ts';
 import { UNLISTED_KIND, UNLISTED_LABEL } from '../../src/core/derive/unlisted-loops.ts';
 
 // Monday 2026-09-28 14:03 local.
@@ -123,6 +124,25 @@ describe('loops view · strip', () => {
     expect(cells).toHaveLength(30);
     expect(cells.at(-1)).toBe('run');
     expect(stripCells(loop({ iterations: [] }))).toEqual([]);
+  });
+});
+
+describe('D95-q3 · the wire carries the newest iterations only', () => {
+  it('a 100-iteration loop cut to the wire draws the same strip, facts and visibility', () => {
+    expect(LOOP_WIRE_ITERATIONS).toBeGreaterThanOrEqual(MAX_STRIP_CELLS);
+    const base = NOW.getTime() - 100 * 30 * 60_000;
+    const iterations = Array.from({ length: 100 }, (_, i) => ({ result: i % 7 === 0 ? ('fail' as const) : ('ok' as const), ts: new Date(base + i * 30 * 60_000).toISOString(), label: `run ${i}` }));
+    for (const whole of [loop({ iterations, iteration: 100, cap: 120 }), loop({ kind: UNLISTED_KIND, label: UNLISTED_LABEL, iterations, iteration: 100 })]) {
+      const cut = wireLoop(whole);
+      expect(cut.iterations).toHaveLength(LOOP_WIRE_ITERATIONS);
+      expect(cut.iterations.at(-1)).toEqual(whole.iterations.at(-1));
+      expect(stripCells(cut)).toEqual(stripCells(whole));
+      expect(loopFacts(cut, NOW)).toEqual(loopFacts(whole, NOW));
+      expect(unlistedFacts(cut, NOW)).toEqual(unlistedFacts(whole, NOW));
+      expect(loopShown(cut, NOW)).toBe(loopShown(whole, NOW));
+    }
+    const short = loop();
+    expect(wireLoop(short)).toBe(short);
   });
 });
 

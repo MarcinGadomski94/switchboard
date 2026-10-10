@@ -124,7 +124,9 @@ const SESSION_KEYS = keys<Session>()([
   'instructionPending',
   // additive, D95 follow-up (only on a delta stream's updates; not on this plain one)
   'agentsDelta',
-]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta');
+  // additive, D95-q3 (only on a delta stream's updates)
+  'unchanged',
+]).filter((key) => key !== 'hookStatus' && key !== 'agentsDelta' && key !== 'unchanged');
 const AGENT_KEYS = keys<Agent>()([
   'id',
   'kind',
@@ -573,13 +575,15 @@ describe('/hub · events (contract, field by field)', () => {
 });
 
 describe('/hub · agent deltas (D95 follow-up, docs/performance.md → Agent deltas)', () => {
-  it('?agents=delta: the first sessionUpdated of a session is whole, later ones carry only the changed agents; a plain stream gets every agent each time', async () => {
+  it('?delta=1: the first sessionUpdated of a session is whole, later ones carry only the changed agents; a plain stream gets every agent each time', async () => {
     const plain = await connect();
-    const delta = await openHub({ port, cookie, path: '/hub?agents=delta' });
+    const delta = await openHub({ port, cookie, path: '/hub?delta=1' });
     streams.push(delta);
     expect(delta.status).toBe(200);
     const agent = (id: string, status: Agent['status']): Agent => ({ id, kind: 'subagent', name: id, description: null, solutionPath: null, branch: null, status, statusText: null, toolUseId: null, workflow: null });
-    const base = { id: 'delta-s1', name: 'delta', status: 'run' } as unknown as Session;
+    const loops = [{ id: 'l1', kind: 'CronCreate', iterations: [{ result: 'ok', ts: null, label: 'x' }] }];
+    const model = { current: null, effort: null, available: [{ value: 'default', label: 'Default' }] };
+    const base = { id: 'delta-s1', name: 'delta', status: 'run', loops, model } as unknown as Session;
     const many = Array.from({ length: 50 }, (_, i) => agent(`a${i}`, 'done'));
     bus.publish('sessionUpdated', { ...base, agents: [agent('main', 'run'), ...many] });
     bus.publish('sessionUpdated', { ...base, status: 'done', agents: [agent('main', 'done'), ...many] });
@@ -592,6 +596,12 @@ describe('/hub · agent deltas (D95 follow-up, docs/performance.md → Agent del
       [['main'], { removed: [] }],
     ]);
     expect(deltaSent[1]?.status).toBe('done');
+    // D95-q3: loops and model unchanged: left out on the delta stream and named; the plain stream carries them.
+    expect(deltaSent[1]?.unchanged).toEqual(['loops', 'model']);
+    expect(deltaSent[1] && 'loops' in deltaSent[1]).toBe(false);
+    expect(deltaSent[1] && 'model' in deltaSent[1]).toBe(false);
+    expect(plainSent[1]?.loops).toEqual(loops);
+    expect(plainSent[1]?.unchanged).toBeUndefined();
     expectWellFormed(delta.parser);
   });
 });

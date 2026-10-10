@@ -61,3 +61,49 @@ describe('D95 · agent deltas', () => {
     expect(next.length).toBeLessThan(whole.length / 50);
   });
 });
+
+describe('D95-q3 · loops and model only when they change', () => {
+  const loopsA = [{ id: 'l1', iterations: [{ result: 'ok', ts: null, label: 'one' }] }] as unknown as Session['loops'];
+  const loopsB = [{ id: 'l1', iterations: [{ result: 'ok', ts: null, label: 'one' }, { result: 'run', ts: null, label: null }] }] as unknown as Session['loops'];
+  const model = { current: 'opus', effort: null, available: null } as Session['model'];
+  const with_ = (loops: Session['loops'], m: Session['model'] | undefined, status: Session['status'] = 'run'): Session =>
+    ({ ...session([agent('main')], 's1', status), loops, ...(m === undefined ? {} : { model: m }) }) as Session;
+
+  it('sent whole first, left out (and named) while equal, sent again when changed; the decoder puts the previous value back', () => {
+    const encoder = new AgentDeltaEncoder();
+    const decoder = new AgentDeltaDecoder();
+    const updates = [with_(loopsA, model), with_(loopsA, model, 'done'), with_(loopsB, model), with_(loopsB, { ...model, current: 'sonnet' } as Session['model']), with_(loopsB, undefined)];
+    const sent = updates.map((update) => JSON.parse(JSON.stringify(encoder.encode(update))) as Session);
+    expect(sent[0]?.unchanged).toBeUndefined();
+    expect(sent[0]?.loops).toEqual(loopsA);
+    expect(sent[1]?.unchanged).toEqual(['loops', 'model']);
+    expect('loops' in (sent[1] as object) || 'model' in (sent[1] as object)).toBe(false);
+    expect(sent[2]?.unchanged).toEqual(['model']);
+    expect(sent[2]?.loops).toEqual(loopsB);
+    expect(sent[3]?.unchanged).toEqual(['loops']);
+    // An absent field is never named (an older shape stays absent).
+    expect(sent[4]?.unchanged).toEqual(['loops']);
+    expect('model' in (sent[4] as object)).toBe(false);
+    for (const [index, message] of sent.entries()) {
+      const decoded = decoder.decode(message);
+      expect(decoded).toEqual(updates[index]);
+      expect(decoded.unchanged).toBeUndefined();
+    }
+  });
+
+  it('a new stream (a new encoder, a reset decoder) starts whole; a payload already carrying the markers is cleaned first', () => {
+    const encoder = new AgentDeltaEncoder();
+    encoder.encode(with_(loopsA, model));
+    expect(new AgentDeltaEncoder().encode(with_(loopsA, model)).unchanged).toBeUndefined();
+    const stray = { ...with_(loopsA, model), unchanged: ['loops'] } as Session;
+    expect(new AgentDeltaEncoder().encode(stray).unchanged).toBeUndefined();
+    const decoder = new AgentDeltaDecoder();
+    decoder.decode(with_(loopsA, model));
+    decoder.reset();
+    // Nothing remembered: the named field stays absent rather than invented.
+    const { loops: _l, ...rest } = with_(loopsA, model);
+    const decoded = decoder.decode({ ...rest, agentsDelta: { removed: [] }, unchanged: ['loops'] } as unknown as Session);
+    expect(decoded.loops).toBeUndefined();
+    expect(decoded.model).toEqual(model);
+  });
+});

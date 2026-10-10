@@ -13,7 +13,7 @@ import { presenceHubOpened } from '../pwa/presence-page.ts';
  * backoff of 2 s doubling up to 60 s. D87: the stream names the page
  * (`/hub?client=<id>`, `pwa/presence.ts`): on a paired device the server knows the
  * page is gone once its stream drops. D95 follow-up: the stream asks for agent deltas
- * (`&agents=delta`, `core/agent-delta.ts`); `sessionUpdated` is expanded here to the
+ * (`&delta=1`, `core/agent-delta.ts`); `sessionUpdated` is expanded here to the
  * session's whole agent list before any handler sees it, so handlers are unchanged.
  */
 

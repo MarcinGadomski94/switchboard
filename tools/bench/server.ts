@@ -63,7 +63,7 @@ export class BenchClient {
     return { status: response.status, body: text === '' ? null : (JSON.parse(text) as unknown) };
   }
 
-  /** Opens `/hub` (or `route`, e.g. `/hub?agents=delta`) and counts the bytes and events it sends until `close()`. */
+  /** Opens `/hub` (or `route`, e.g. `/hub?delta=1`) and counts the bytes and events it sends until `close()`. */
   hub(route = '/hub', onFrame?: (name: string, data: string) => void): { readonly stats: { bytes: number; events: Map<string, { count: number; bytes: number }> }; close(): void } {
     const stats = { bytes: 0, events: new Map<string, { count: number; bytes: number }>() };
     const url = new URL(`${this.baseUrl}${route}`);
@@ -229,7 +229,7 @@ export async function streamInto(
   const pid = server.child.pid ?? 0;
   const before = await eventCount(world.dataDir, sessionId);
   const hub = client.hub();
-  const hubDelta = client.hub('/hub?agents=delta');
+  const hubDelta = client.hub('/hub?delta=1');
   await new Promise((resolve) => setTimeout(resolve, 500));
   const cpu0 = await cpuSeconds(pid);
   const start = performance.now();

@@ -11,7 +11,7 @@ import type { Store } from '../db/store.ts';
 import { isBatchWaiting, toQuestion } from '../inbox/wire.ts';
 import { toLoop } from '../loops/wire.ts';
 import { toOwnedLoop } from '../loops/owned-wire.ts';
-import { loopShown } from '../../core/derive/loops.ts';
+import { loopShown, wireLoop } from '../../core/derive/loops.ts';
 import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
@@ -200,7 +200,8 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
     activity: live,
     resumeCommand: await sessionResumeCommand(store, record),
     chips: sessionChips(record, loops),
-    loops: loops.map(toLoop),
+    // D95-q3: the newest iterations only (what a card shows); the stored strip keeps up to 100.
+    loops: loops.map(toLoop).map(wireLoop),
     // D94: the loops Switchboard fires itself (ended ones included: the cards show the others).
     ownedLoops: (await store.sessionLoops.list(record.id)).map(toOwnedLoop),
     title: record.title,

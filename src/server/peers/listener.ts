@@ -2,6 +2,7 @@ import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { ATTACHMENT_UPLOAD_BODY_MAX } from '../../core/attachments.ts';
+import { wantsDeltas } from '../../core/agent-delta.ts';
 import { ARTIFACT_SAVE_BODY_MAX } from '../../core/artifacts.ts';
 import { isTailscaleIPv4, parseIPv4 } from '../../core/peers.ts';
 import { LOOPBACK_HOST } from '../config.ts';
@@ -44,7 +45,7 @@ export interface PeerHandlers {
   hello(machine: MachineRecord, body: unknown): Promise<unknown>;
   /** `DELETE /peer/v1/pair`: the caller removed us; forget it too. */
   unpair(machine: MachineRecord): Promise<void>;
-  /** `GET /peer/v1/events`: take over the raw response as an event stream (D95 follow-up: `?agents=delta` = agent deltas). */
+  /** `GET /peer/v1/events`: take over the raw response as an event stream (D95 follow-up: `?delta=1` = agent deltas). */
   events(machine: MachineRecord, res: ServerResponse, options?: { readonly agentDeltas?: boolean }): void;
   /** `/peer/v1/api/*`: the allow-listed local API, answered as the local UI would get it. */
   api(machine: MachineRecord, method: string, url: string, body: unknown): Promise<PeerApiAnswer>;
@@ -126,9 +127,9 @@ export function buildPeerApp(options: { readonly host: string; readonly port: nu
     const answer = await handlers.sidebar(request.peerMachine as MachineRecord, request.body);
     return reply.code(answer.status).header('cache-control', 'no-store').send(answer.body);
   });
-  app.get<{ Querystring: { agents?: string } }>('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
+  app.get<{ Querystring: { delta?: string } }>('/peer/v1/events', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();
-    handlers.events(request.peerMachine as MachineRecord, reply.raw, { agentDeltas: request.query.agents === 'delta' });
+    handlers.events(request.peerMachine as MachineRecord, reply.raw, { agentDeltas: wantsDeltas(request.query) });
   });
   const api = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     const url = request.url.slice('/peer/v1'.length);

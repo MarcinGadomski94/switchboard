@@ -64,7 +64,7 @@ export type HubTimingOptions = Pick<SseHubOptions, 'keepaliveMs' | 'systemInterv
 interface Client {
   readonly res: ServerResponse;
   readonly detach: () => void;
-  /** D95 follow-up: the client asked for agent deltas (`/hub?agents=delta`); what it was sent. */
+  /** D95 follow-up: the client asked for agent deltas (`/hub?delta=1`); what it was sent. */
   readonly deltas: AgentDeltaEncoder | null;
 }
 

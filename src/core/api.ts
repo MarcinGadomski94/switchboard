@@ -576,6 +576,9 @@ export interface AgentsDelta {
   readonly order?: readonly string[];
 }
 
+/** D95-q3: a heavy session field a delta stream sends only when it changed (`Session.unchanged`). */
+export type UnchangedSessionField = 'loops' | 'model';
+
 /** `GET /api/sessions` item: a session with its agents and open question count. Provisional: M4.1. */
 export interface Session {
   readonly id: string;
@@ -598,12 +601,18 @@ export interface Session {
   readonly agents: readonly Agent[];
   /**
    * Additive (D95, `docs/performance.md` → *Agent deltas*): present only on a
-   * `sessionUpdated` sent to a stream that asked for deltas (`/hub?agents=delta`,
-   * `/peer/v1/events?agents=delta`), after that stream already had the session's
+   * `sessionUpdated` sent to a stream that asked for deltas (`/hub?delta=1`,
+   * `/peer/v1/events?delta=1`), after that stream already had the session's
    * whole list: then {@link agents} holds only the agents added or changed since the
    * stream's previous update of the session. Absent = `agents` is the whole list.
    */
   readonly agentsDelta?: AgentsDelta;
+  /**
+   * Additive (D95-q3): on a delta stream's `sessionUpdated` only, the fields left out
+   * because they equal the stream's previous update of the session (the reader keeps
+   * its previous value). Absent = every field is present.
+   */
+  readonly unchanged?: readonly UnchangedSessionField[];
   /**
    * Additive (D51): the session's Workflow runs, oldest first; their agents are in
    * {@link agents} (`kind: 'workflow'`, `Agent.workflow.runId`). Empty when none.

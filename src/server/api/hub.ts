@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { wantsDeltas } from '../../core/agent-delta.ts';
 import type { ApiContext } from '../routes.ts';
 
 /**
@@ -8,16 +9,16 @@ import type { ApiContext } from '../routes.ts';
  * response to the SSE hub (`hub/hub.ts`, `docs/hub.md`). D87: `?client=<id>` (a
  * page's own id) ties the stream to that page's presence on a paired device
  * (`docs/devices.md`); without it, or on this machine's UI, nothing changes. D95 follow-up:
- * `?agents=delta` asks for agent deltas in `sessionUpdated` (`docs/performance.md` → *Agent deltas*). No HEAD route: a HEAD
+ * `?delta=1` asks for agent deltas in `sessionUpdated` (`docs/performance.md` → *Agent deltas*). No HEAD route: a HEAD
  * request would hold a stream open that can carry no body.
  */
 export async function registerHubRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  app.get<{ Querystring: { client?: string; agents?: string } }>('/hub', { exposeHeadRoute: false }, (request, reply) => {
+  app.get<{ Querystring: { client?: string; delta?: string } }>('/hub', { exposeHeadRoute: false }, (request, reply) => {
     reply.hijack();
     // D87: a paired device's page names itself (`/hub?client=<id>`): while this stream is open it may count as in front.
     const release = context.devices.hubConnected(request.device ?? null, request.query.client);
     if (release) reply.raw.once('close', release);
-    // D95 follow-up: `?agents=delta` = sessionUpdated carries only the agents that changed (`core/agent-delta.ts`).
-    context.hub.attach(reply.raw, { agentDeltas: request.query.agents === 'delta' });
+    // D95 follow-up: `?delta=1` = sessionUpdated carries only the agents that changed (`core/agent-delta.ts`).
+    context.hub.attach(reply.raw, { agentDeltas: wantsDeltas(request.query) });
   });
 }
