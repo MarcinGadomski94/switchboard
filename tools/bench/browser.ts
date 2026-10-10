@@ -8,6 +8,7 @@
  *    shows and the page is quiet, main-thread time, DOM nodes, JS heap;
  * 2. **typing**: 20 keys in the composer: main-thread time per key;
  * 3. **scroll**: the conversation from the bottom to the top in steps: time per step;
+ *    then the big session's Timeline tab (it loads every event): time, nodes;
  * 4. **soak**: `--minutes` of a live session streaming turns (`[fake:fire]`) while the
  *    tab switches between the sessions every few seconds: JS heap after a forced GC
  *    each minute (leak = growth that a GC does not take back), DOM nodes, main-thread
@@ -189,6 +190,28 @@ async function main(): Promise<void> {
       report['scroll'] = { steps, scrollHeightPx: height, mainThreadMsPerStep: round((after.taskMs - before.taskMs) / steps, 2), nodesAtTop: after.nodes };
     }
     console.log('scroll:', JSON.stringify(report['scroll']));
+
+    // 3b. The big session's Timeline tab (it loads every event and draws a lane per agent).
+    {
+      const before = await metrics(cdp);
+      const start = Date.now();
+      await page.evaluate((url) => {
+        history.pushState({}, '', url);
+        dispatchEvent(new PopStateEvent('popstate'));
+      }, `${server.baseUrl}/sessions/${world.bigSessionId}/timeline`);
+      const lanes = await page.waitForFunction(() => document.querySelectorAll('[data-testid="timeline-lane"]').length > 1, null, { timeout: 120_000, polling: 100 });
+      await lanes.dispose();
+      await quiet(cdp);
+      const after = await metrics(cdp);
+      report['timelineBig'] = {
+        settledMs: Date.now() - start,
+        mainThreadMs: round(after.taskMs - before.taskMs),
+        nodes: after.nodes,
+        lanes: await page.locator('[data-testid="timeline-lane"]').count(),
+        heapMb: round(after.heapMb),
+      };
+    }
+    console.log('timeline big:', JSON.stringify(report['timelineBig']));
 
     // 4. Soak: a live session streams while the tab switches sessions.
     const sessions = [live, world.bigSessionId, ...world.mediumSessionIds];
