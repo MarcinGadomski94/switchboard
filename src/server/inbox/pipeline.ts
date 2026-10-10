@@ -371,7 +371,7 @@ export class QuestionPipeline implements ControlRequestHandler {
   // ── internals ─────────────────────────────────────────────────────────
 
   async #mainAgent(session: SessionRecord): Promise<string> {
-    const main = (await this.#store.agents.listBySession(session.id)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(session.id);
     return main?.name ?? mainAgentName(session.mode, session.solutions);
   }
 

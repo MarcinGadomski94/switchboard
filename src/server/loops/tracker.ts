@@ -1,5 +1,6 @@
 import type { Loop, SessionActivity, SessionEvent } from '../../core/api.ts';
-import { LOOP_SOURCE_TOOLS, type LoopEventInput, type ObservedLoop, deriveLoops, isLoopCommand } from '../../core/derive/loops.ts';
+import { LOOP_SOURCE_TOOLS, type LoopEventInput, type ObservedLoop, deriveLoops, isLoopCommand, loopPayloadEssentials } from '../../core/derive/loops.ts';
+import type { EventRecord } from '../db/repos/events.ts';
 import type { LoopRecord } from '../db/repos/loops.ts';
 import type { Store } from '../db/store.ts';
 import { folderOfSession } from '../folders/ref.ts';
@@ -17,6 +18,19 @@ const UNTRACKED_CHECK_MS = 60_000;
 
 /** At most this many transcripts' prompt events are kept in memory. */
 const MAX_CACHED_TRANSCRIPTS = 32;
+
+/** D95: at most this many sessions' slim events are kept in memory (the most recently refreshed). */
+const MAX_CACHED_SESSIONS = 16;
+
+/** D95: a stored event as the tracker keeps it: its payload cut to what `deriveLoops` reads, its time parsed once. */
+interface SlimEvent extends LoopEventInput {
+  readonly id: number;
+  readonly time: number;
+}
+
+function slimEvent(event: EventRecord): SlimEvent {
+  return { id: event.id, ts: event.ts, time: Date.parse(event.ts), agentId: event.agentId, label: event.label, payload: loopPayloadEssentials(event.payload) };
+}
 
 /** Where the tracker hears about session events (the SessionSupervisor). */
 export interface LoopEventSource {
@@ -97,6 +111,13 @@ export class LoopTracker {
   #transcriptOf: ((session: SessionRecord) => Promise<string | null>) | null = null;
   readonly #transcripts = new TranscriptLoopEvents();
   readonly #recentFiles = new Set<string>();
+  /**
+   * D95 (`docs/performance.md` → *Incremental derivations*): per session, its stored
+   * events cut to what the derivation reads, at the store's write revision; a refresh
+   * reads only the events written since (`EventRepository.changedSince`), not the
+   * whole history again.
+   */
+  readonly #slim = new Map<string, { revision: number; readonly byId: Map<number, SlimEvent> }>();
   /** Sessions with no loop rows whose turn end asked for an unlisted-schedule check (one timer each). */
   readonly #slowTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -239,6 +260,7 @@ export class LoopTracker {
     for (const timer of this.#slowTimers.values()) clearTimeout(timer);
     this.#slowTimers.clear();
     await Promise.allSettled([...this.#running.values()]);
+    this.#slim.clear();
   }
 
   /** The prompts the CLI wrote itself in the session's transcript (Claude Code, supervised); `[]` when not read. */
@@ -257,6 +279,35 @@ export class LoopTracker {
     return (await this.#transcripts.events(file)).filter((event) => asRecord(event.payload)?.['type'] === CLI_PROMPT);
   }
 
+  /**
+   * D95: the session's stored events, slim (`loopPayloadEssentials`): from memory, with
+   * the events written since the last refresh read again; everything is read when
+   * the session is not in memory or the store's change log no longer reaches back.
+   */
+  async #storedEvents(sessionId: string): Promise<SlimEvent[]> {
+    // The revision first: a write that lands while the events are read is read again next time.
+    const revision = await this.#store.events.revision(sessionId);
+    let cached = this.#slim.get(sessionId);
+    if (cached && cached.revision !== revision) {
+      const ids = await this.#store.events.changedSince(sessionId, cached.revision);
+      if (ids === null) cached = undefined;
+      else {
+        for (const event of await this.#store.events.byIds(sessionId, ids)) cached.byId.set(event.id, slimEvent(event));
+        cached.revision = revision;
+      }
+    }
+    if (!cached) {
+      cached = { revision, byId: new Map((await this.#store.events.list(sessionId)).map((event) => [event.id, slimEvent(event)])) };
+    }
+    this.#slim.delete(sessionId);
+    this.#slim.set(sessionId, cached);
+    for (const oldest of this.#slim.keys()) {
+      if (this.#slim.size <= MAX_CACHED_SESSIONS) break;
+      this.#slim.delete(oldest);
+    }
+    return [...cached.byId.values()];
+  }
+
   async #refreshNow(sessionId: string): Promise<Loop[]> {
     const session = await this.#store.sessions.get(sessionId);
     if (!session) return [];
@@ -266,9 +317,10 @@ export class LoopTracker {
       observed = deriveLoops(own, { now: this.#now(), status: session.status, mainAgentId: null });
     } else {
       // D93: in time order (insert order on ties): imported terminal turns may be stored after later events.
-      const stored: LoopEventInput[] = await this.#store.events.list(sessionId);
-      const events = [...stored, ...(await this.#cliPrompts(session))].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || order(a) - order(b));
-      const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
+      const stored = await this.#storedEvents(sessionId);
+      const prompts = (await this.#cliPrompts(session)).map((event) => ({ ...event, time: Date.parse(event.ts) }));
+      const events = [...stored, ...prompts].sort((a, b) => a.time - b.time || order(a) - order(b));
+      const main = await this.#store.agents.mainOf(sessionId);
       observed = deriveLoops(events, { now: this.#now(), status: session.status, mainAgentId: main?.id ?? null });
     }
     let changed = false;

@@ -277,3 +277,59 @@ describe('LoopTracker · unlisted schedules', () => {
     }
   });
 });
+
+describe('LoopTracker · D95 incremental refresh', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('a refresh reads only the events written since the last one (the whole history once), and derives the same loops', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'sb-loops-d95-'));
+    const store = await openTempStore(dir);
+    const silent = { on: () => () => undefined };
+    try {
+      const session = await store.sessions.create({ name: 'long', claudeSessionId: 'c-long', solutions: [], root: dir, rootKind: 'repo', cwd: dir });
+      const base = Date.parse('2026-10-10T08:00:00.000Z');
+      let n = 0;
+      const ts = (): string => new Date(base + (n += 1) * 1000).toISOString();
+      for (let i = 0; i < 300; i += 1) {
+        await store.events.append({ sessionId: session.id, kind: 'plan', ts: ts(), label: 'Read', toolUseId: `tu-${i}`, payload: { type: 'tool', name: 'Read', toolUseId: `tu-${i}`, input: { file_path: '/a' }, result: 'x'.repeat(2000) } });
+      }
+      await store.events.append({ sessionId: session.id, kind: 'loop', ts: ts(), label: 'CronCreate', toolUseId: 'tu-cron', payload: { type: 'tool', name: 'CronCreate', toolUseId: 'tu-cron', input: { cron: '*/30 * * * *', prompt: 'check' }, result: 'Scheduled recurring job c0ffee00' } });
+      const reads = { list: 0, byIds: [] as number[][] };
+      const list = store.events.list.bind(store.events);
+      const byIds = store.events.byIds.bind(store.events);
+      store.events.list = async (...args) => {
+        reads.list += 1;
+        return list(...args);
+      };
+      store.events.byIds = async (sessionId, ids) => {
+        reads.byIds.push([...ids]);
+        return byIds(sessionId, ids);
+      };
+      tracker = new LoopTracker({ store, events: silent, now: () => new Date(base + 3_600_000), debounceMs: 20 });
+      const first = await tracker.refresh(session.id);
+      expect(first.map((loop) => loop.label)).toEqual(['cron */30 * * * *']);
+      expect(reads).toEqual({ list: 1, byIds: [] });
+
+      // Nothing written: nothing read.
+      await tracker.refresh(session.id);
+      expect(reads).toEqual({ list: 1, byIds: [] });
+
+      // Two new events and an update: only those three are read.
+      const result = await store.events.append({ sessionId: session.id, kind: 'ok', ts: ts(), label: 'fired', payload: { type: 'result', subtype: 'success', isError: false, text: 'ok', terminalReason: null, errors: [], taskNotification: false, numTurns: 1, durationMs: 1, costUsd: 0 } });
+      const text = await store.events.append({ sessionId: session.id, agentId: null, kind: 'text', ts: ts(), label: 'checking', payload: { type: 'assistant', text: 'checking', messageId: 'm1' } });
+      await store.events.update(text.id, { payload: { type: 'assistant', text: 'checking, more', messageId: 'm1' } });
+      const again = await tracker.refresh(session.id);
+      expect(reads.list).toBe(1);
+      expect(reads.byIds.map((ids) => [...ids].sort((a, b) => a - b))).toEqual([[result.id, text.id]]);
+      expect(again[0]?.iteration).toBe((first[0]?.iteration ?? 0) + 1);
+    } finally {
+      await tracker?.close();
+      tracker = undefined;
+      await store.close();
+    }
+  });
+});

@@ -225,7 +225,7 @@ export class ReviewService {
 
   /** The agent's last message (the main agent's, else any), cut. */
   async #summary(sessionId: string): Promise<string | null> {
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main') ?? null;
+    const main = await this.#store.agents.mainOf(sessionId);
     const [event] = await this.#store.events.assistantTextsNewestFirst(sessionId, { agentId: main?.id ?? null, words: [], limit: 1 });
     const payload = event?.payload as { text?: unknown } | undefined;
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';

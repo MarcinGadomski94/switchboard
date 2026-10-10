@@ -56,10 +56,15 @@ const SPEC: TableSpec<EventRecord> = {
   },
 };
 
+/** D95: how many writes per session {@link EventRepository.changedSince} can name. */
+export const EVENT_CHANGE_LOG_LIMIT = 4096;
+
 /** Events of sessions. */
 export class EventRepository {
   readonly #ctx: RepoContext;
   readonly #table: Table<EventRecord>;
+  /** D95: per session, its write revision in this process and the ids of its newest writes. */
+  readonly #changes = new Map<string, { revision: number; log: Array<{ readonly revision: number; readonly id: number }> }>();
 
   constructor(ctx: RepoContext) {
     this.#ctx = ctx;
@@ -68,7 +73,55 @@ export class EventRepository {
 
   /** Appends an event and returns it with its id. */
   async append(input: EventCreate): Promise<EventRecord> {
-    return this.#table.insert({ ...defined(input), ts: input.ts ?? this.#ctx.now() });
+    const record = this.#table.insert({ ...defined(input), ts: input.ts ?? this.#ctx.now() });
+    this.#changed(record);
+    return record;
+  }
+
+  /**
+   * D95 (`docs/performance.md` → *Incremental derivations*): the session's write
+   * revision: 0 until an event of it is appended or updated in this process, then one
+   * more per write. Every write to `events` goes through this repository, so a value
+   * derived from a session's events at revision r stays true while the revision is r.
+   */
+  async revision(sessionId: string): Promise<number> {
+    return this.#changes.get(sessionId)?.revision ?? 0;
+  }
+
+  /**
+   * D95: the ids of the session's events appended or updated after `revision`
+   * (each once, in write order); `null` when the log (the newest
+   * {@link EVENT_CHANGE_LOG_LIMIT} writes) no longer reaches back that far, or
+   * `revision` is from the future (read everything again then).
+   */
+  async changedSince(sessionId: string, revision: number): Promise<number[] | null> {
+    const entry = this.#changes.get(sessionId);
+    const current = entry?.revision ?? 0;
+    if (revision === current) return [];
+    if (!entry || revision > current) return null;
+    const first = entry.log[0];
+    if (!first || first.revision > revision + 1) return null;
+    const ids = new Set<number>();
+    for (const change of entry.log) if (change.revision > revision) ids.add(change.id);
+    return [...ids];
+  }
+
+  /** D95: the session's events with these ids (in no particular order; unknown ids are left out). */
+  async byIds(sessionId: string, ids: readonly number[]): Promise<EventRecord[]> {
+    if (ids.length === 0) return [];
+    // One prepared statement for any number of ids (the statement cache is keyed by SQL text).
+    return this.#table.select('session_id = ? AND id IN (SELECT value FROM json_each(?))', [sessionId, JSON.stringify(ids)], 'id');
+  }
+
+  #changed(record: Pick<EventRecord, 'sessionId' | 'id'>): void {
+    let entry = this.#changes.get(record.sessionId);
+    if (!entry) {
+      entry = { revision: 0, log: [] };
+      this.#changes.set(record.sessionId, entry);
+    }
+    entry.revision += 1;
+    entry.log.push({ revision: entry.revision, id: record.id });
+    if (entry.log.length > EVENT_CHANGE_LOG_LIMIT * 2) entry.log.splice(0, entry.log.length - EVENT_CHANGE_LOG_LIMIT);
   }
 
   async get(id: number): Promise<EventRecord | null> {
@@ -203,7 +256,9 @@ export class EventRepository {
   }
 
   async update(id: number, patch: EventPatch): Promise<EventRecord | null> {
-    return this.#table.update(id, patch);
+    const record = this.#table.update(id, patch);
+    if (record) this.#changed(record);
+    return record;
   }
 
   /** D80: how many user messages (`payload.type` `user`) the session has up to event `uptoId` (all when omitted): a turn's number. */

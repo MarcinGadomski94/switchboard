@@ -293,6 +293,38 @@ function sentence(text: string): string {
 }
 
 /**
+ * D95 (`docs/performance.md` → *Incremental derivations*): an event's payload cut
+ * to what {@link deriveLoops} reads, so a session's events can be kept in memory
+ * between refreshes without their tool outputs and message texts:
+ * `deriveLoops(events.map(slim))` equals `deriveLoops(events)`. The type stays; a
+ * user message keeps its text only when it is a `/loop`; a lifecycle event its
+ * action; a result its error and task-notification flags; a loop tool call
+ * (`LOOP_SOURCE_TOOLS`) everything, any other call only its name; everything
+ * else only its type. Not an object: `null`.
+ */
+export function loopPayloadEssentials(payload: unknown): unknown {
+  const record = asRecord(payload);
+  if (!record) return null;
+  const type = record['type'];
+  switch (type) {
+    case 'user': {
+      const text = typeof record['text'] === 'string' ? record['text'] : '';
+      return { type, text: isLoopCommand(text) ? text : '' };
+    }
+    case 'lifecycle':
+      return { type, action: record['action'] };
+    case 'result':
+      return { type, isError: record['isError'], taskNotification: record['taskNotification'] };
+    case 'tool':
+      return typeof record['name'] === 'string' && LOOP_SOURCE_TOOLS.includes(record['name']) ? record : { type, name: record['name'] };
+    case CLI_PROMPT:
+      return record;
+    default:
+      return { type };
+  }
+}
+
+/**
  * Derives the loops of one session from its events (oldest first). See the file
  * header for the rules; `docs/derivations.md` → *Loop cards*.
  */

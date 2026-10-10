@@ -79,6 +79,11 @@ export class AgentRepository {
     return this.#table.select('session_id = ?', [sessionId], 'created_at, rowid');
   }
 
+  /** D95: the session's main agent (the first in creation order), without reading its subagents. */
+  async mainOf(sessionId: string): Promise<AgentRecord | null> {
+    return this.#table.first("session_id = ? AND kind = 'main'", [sessionId], 'created_at, rowid');
+  }
+
   async findByToolUseId(sessionId: string, toolUseId: string): Promise<AgentRecord | null> {
     return this.#table.first('session_id = ? AND tool_use_id = ?', [sessionId, toolUseId]);
   }

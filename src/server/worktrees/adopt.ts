@@ -119,7 +119,7 @@ export class WorktreeAdoption {
   async #mainAgentId(sessionId: string): Promise<string | null> {
     const cached = this.#mainAgents.get(sessionId);
     if (cached) return cached;
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(sessionId);
     if (main) this.#mainAgents.set(sessionId, main.id);
     return main?.id ?? null;
   }

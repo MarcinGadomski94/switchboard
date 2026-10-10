@@ -10,6 +10,7 @@ import {
   isLoopCommand,
   loopCommandLabel,
   loopNotExpired,
+  loopPayloadEssentials,
 } from '../../src/core/derive/loops.ts';
 import { nextCronMatch } from '../../src/core/derive/cron-next.ts';
 
@@ -392,5 +393,46 @@ describe('loops · D93 bug report replay', () => {
     expect(loopNotExpired({ expiresAt: null }, now)).toBe(true);
     expect(loopNotExpired({ expiresAt: '2026-10-12T07:08:22.000Z' }, now)).toBe(true);
     expect(loopNotExpired({ expiresAt: '2026-10-06T18:24:57.000Z' }, now)).toBe(false);
+  });
+});
+
+describe('D95 · loopPayloadEssentials (the tracker keeps slim events between refreshes)', () => {
+  it('deriving from the slim events gives the same loops as from the whole events', () => {
+    const l = log();
+    l.user('Set up the workspace');
+    l.tool('Read', { file_path: '/a.ts' }, 'x'.repeat(4000));
+    l.text('Reading.');
+    l.result('Ready.');
+    l.user('/loop 5m check the build');
+    l.tool('CronCreate', { cron: '*/5 * * * *', prompt: 'check the build', recurring: true }, 'Scheduled recurring job ab12cd34');
+    l.text('Scheduled.');
+    l.result('Loop set.');
+    for (let i = 0; i < 3; i += 1) {
+      l.advance(5 * 60_000);
+      l.text('Checking the build.');
+      l.tool('Bash', { command: 'npm test' }, 'ok');
+      l.result(`Build ${i} green.`, i === 1);
+    }
+    l.user('Also run a workflow and wake me up');
+    l.tool('Workflow', { name: 'audit', script: 'x' }, 'Workflow launched in background.');
+    l.tool('ScheduleWakeup', { delaySeconds: 600, prompt: 'look again' }, 'ok');
+    l.tool('CronCreate', { cron: '0 9 * * *', prompt: 'morning check' }, 'Scheduled recurring job ffff0000');
+    l.tool('CronDelete', { id: 'ffff0000' }, 'Cancelled job ffff0000');
+    l.result('Done.', false, true);
+    l.result('Done.');
+    l.lifecycle('resumed');
+    l.text('Back.');
+    l.result('Still here.');
+    const options = { now: l.now(60_000), status: 'done' as const, mainAgentId: MAIN };
+    const whole = deriveLoops(l.events, options);
+    expect(whole.length).toBeGreaterThan(0);
+    const slim = l.events.map((event) => ({ ...event, payload: loopPayloadEssentials(event.payload) }));
+    expect(deriveLoops(slim, options)).toEqual(whole);
+    // Before the lifecycle event too (a process still running).
+    const cut = l.events.length - 3;
+    expect(deriveLoops(slim.slice(0, cut), options)).toEqual(deriveLoops(l.events.slice(0, cut), options));
+    expect(deriveLoops(l.events.slice(0, cut), options).length).toBeGreaterThan(0);
+    // Tool outputs and message texts are not kept.
+    expect(JSON.stringify(slim).length).toBeLessThan(JSON.stringify(l.events).length / 2);
   });
 });

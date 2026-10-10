@@ -3054,7 +3054,7 @@ export class SessionSupervisor {
   }
 
   async #setMainAgentStatus(sessionId: string, status: SessionStatus): Promise<void> {
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(sessionId);
     if (main && main.status !== status) await this.#store.agents.update(main.id, { status });
   }
 

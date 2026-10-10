@@ -736,7 +736,7 @@ export class HookService {
     // D57 (ASSUMED D57-hooked): hooks carry text only, so every attachment is a file on this machine, named by its path.
     const sent = messageWithFiles(trimmed, attachments.filesText);
     if (sent.length > HOOK_MESSAGE_MAX) throw new HookError(422, 'invalid', `a message to a terminal session is at most ${HOOK_MESSAGE_MAX} characters`);
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(sessionId);
     const payload: UserPayload = {
       type: 'user',
       text: trimmed,
@@ -1131,7 +1131,7 @@ export class HookService {
     } catch {
       return;
     }
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(sessionId);
     if (!main) return;
     const onEvent = (event: EventRecord): void => this.#publishEvent(event);
     let result = await importTerminalTurns({ store: this.#store, session: record, mainAgentId: main.id, transcript, onEvent, fromStart, ...this.#saveImage });
@@ -1246,7 +1246,7 @@ export class HookService {
     // D72: a session continued in Switchboard meanwhile is the supervisor's (a poll that started before must not mark it).
     if (!record || !record.hooked || record.status === status) return;
     await this.#store.sessions.update(sessionId, { status });
-    const main = (await this.#store.agents.listBySession(sessionId)).find((agent) => agent.kind === 'main');
+    const main = await this.#store.agents.mainOf(sessionId);
     if (main) await this.#store.agents.update(main.id, { status });
     await this.#publishSession(sessionId);
   }
