@@ -74,6 +74,17 @@ test('Settings: the CLI\'s models in a dropdown, effort only with levels; a pick
   await page.getByTestId('team-tab-settings').click();
   await expect(page.getByTestId('team-form-model-button')).toHaveText('Haiku 4.5▾');
   await page.screenshot({ path: test.info().outputPath('team-model-settings.png') });
+
+  // D100 follow-up: a model picked in the session's own header is the member's saved model too.
+  await page.goto(`${world.baseUrl}/sessions/${session.id}`);
+  await page.getByTestId('session-model-button').click();
+  await page.locator('[data-testid="model-option"][data-value="sonnet"]').click();
+  await expect(page.getByTestId('session-model-button')).toHaveText('Sonnet 5▾');
+  await expect.poll(async () => (await world.call(page, 'GET', `/api/team/members/${member.id}`)).body.model as string).toBe('sonnet');
+  await page.goto(`${world.baseUrl}/team`);
+  await page.getByTestId('team-card').filter({ hasText: 'Builder' }).click();
+  await page.getByTestId('team-tab-settings').click();
+  await expect(page.getByTestId('team-form-model-button')).toHaveText('Sonnet 5▾');
 });
 
 test('Create from a template: its suggested model and effort are pre-selected when the CLI offers them', async ({ page }) => {

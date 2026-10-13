@@ -20,6 +20,8 @@ export interface TeamHooks {
   roleOf(sessionId: string): string | null;
   /** Settings → Experimental → Team was switched (`PUT /api/settings`). */
   switchChanged(): Promise<void>;
+  /** D100 follow-up 2026-10-14: the developer chose a model / effort for a session (its header's picker): a member's saved choice follows. */
+  sessionModelChanged?(sessionId: string, model: string | null, effort: string | null): Promise<void>;
   /** D100-T2: the MCP servers of a member's ready access (no value in them). */
   accessServers?(sessionId: string): readonly AccessServerSpec[];
   /** D100-T2: the environment a member's spawn gets (its API keys) and the values to mask. */
@@ -73,6 +75,15 @@ export function labelSearchAnswer(store: object, answer: SearchAnswer): SearchAn
       }),
     })),
   };
+}
+
+/**
+ * D31 seam (D100 follow-up 2026-10-14): `PUT /api/sessions/{id}/model` changed a
+ * session's model / effort by the developer's choice; a member's saved model follows
+ * (and syncs). Never throws: a failure here does not undo the change.
+ */
+export async function teamSessionModelChanged(store: object, sessionId: string, model: string | null, effort: string | null): Promise<void> {
+  await registry.get(store)?.sessionModelChanged?.(sessionId, model, effort).catch(() => undefined);
 }
 
 /** Settings seam: the Team switch changed. */

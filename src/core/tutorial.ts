@@ -672,6 +672,42 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
       },
     ],
   },
+  // Team (D100) hook: the D100 follow-ups of 2026-10-14 (multiple teams, the members' order, the model dropdown; docs/team-removal.md).
+  {
+    id: 'team-update',
+    decision: 'D100',
+    version: V1_18,
+    title: 'Team update',
+    steps: [
+      {
+        id: 'teams',
+        title: 'More than one team',
+        what: 'The tabs above the Team page switch between your teams, each with its own members, hand-offs, activity and Needs you; All teams lists everything that waits for you. Drag a tab to reorder the teams; each team also has its own entry in the sidebar.',
+        todo: ['Press ＋ New team and name it.', 'Adopt or create members into it (the form has a Team picker), or move one there from its ⋯ menu → Move to team ▸.'],
+        anchors: ['team-new', 'team-switcher'],
+        route: { view: 'team' },
+        missing: TEAM_OFF,
+      },
+      {
+        id: 'order',
+        title: 'Put the members in your order',
+        what: 'The member cards sit in one row that scrolls sideways. Drag a card left or right (long-press it on a touch screen), or use Move left / Move right in its ⋯ menu; the order is saved and shows on your other machine too.',
+        todo: ['Drag a card to where you want it.', 'Or focus a card and press Alt+← / Alt+→.'],
+        anchors: ['team-cards'],
+        route: { view: 'team' },
+        missing: TEAM_NO_MEMBER,
+      },
+      {
+        id: 'model',
+        title: "Pick a member's model",
+        what: "A member's Settings tab (and the Adopt / Create form) chooses its model from the models its CLI offers, with the effort when the model has levels; its session runs on it from its next turn. A change made in the session's own header is kept for the member too.",
+        todo: ["Open a member's Settings tab.", 'Open Model · effort, pick a model, and Save.'],
+        anchors: ['team-model'],
+        route: { view: 'team' },
+        missing: "Model · effort sits in a member's Settings tab (open a member, then Settings) and in the Adopt / Create form. ",
+      },
+    ],
+  },
 ];
 
 /** A tour's id: {@link MAIN_TOUR_ID} or a {@link WhatsNewFeature.id}. */

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { InboxItem, OwnedLoop, Session, SessionModelInput, SessionTodo } from '../../core/api.ts';
 import { HybridClock } from '../../core/hlc.ts';
+import { DEFAULT_MODEL_VALUE, normalizeModel } from '../../core/model-choice.ts';
 import { remoteId, parseRemoteId } from '../../core/peers.ts';
 import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-layout.ts';
 import {
@@ -220,6 +221,7 @@ export class TeamService {
   async init(): Promise<void> {
     this.#offHooks = registerTeamHooks(this.#o.store, {
       charterFor: (sessionId) => this.#charterFor(sessionId),
+      sessionModelChanged: (sessionId, model, effort) => this.sessionModelChanged(sessionId, model, effort),
       roleOf: (sessionId) => this.#roles.get(sessionId) ?? null,
       switchChanged: () => this.switchChanged(),
       // D100-T2: a member's access at its spawn (servers, environment, masking).
@@ -350,7 +352,8 @@ export class TeamService {
 
   #ensureTeam(): void {
     const db = this.#db as TeamDb;
-    if (db.teams().some((team) => team.id === DEFAULT_TEAM_ID)) return;
+    // The first team on a fresh team.db only (D100 follow-up 2026-10-14: once deleted, it is not made again).
+    if (db.teams().length > 0) return;
     const now = this.#iso();
     db.putTeam({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: now, updatedAt: now });
   }
@@ -358,16 +361,27 @@ export class TeamService {
   /** The teams (not deleted) in their order (D100 follow-up 2026-10-14: multiple teams; the first one always exists). */
   #teams(): TeamRecord[] {
     const live = this.#need().teams().filter((team) => !team.deleted);
-    if (!live.some((team) => team.id === DEFAULT_TEAM_ID)) live.push({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: '', updatedAt: '' });
+    // Never none (a team.db whose teams are all tombstones, e.g. synced so): the first team as it was.
+    if (live.length === 0) live.push({ id: DEFAULT_TEAM_ID, name: DEFAULT_TEAM_NAME, clock: '', deleted: false, order: 0, createdAt: '', updatedAt: '' });
     return byOrder(live);
   }
 
-  /** A team by id (`undefined` / `''` = the first team, `team`). @throws {TeamError} 404 for an unknown or deleted team. */
+  /**
+   * A team by id; `undefined` / `''` = the first team: `team` while it exists, else
+   * (D100 follow-up 2026-10-14: it was deleted) the first remaining team in order.
+   * @throws {TeamError} 404 for an unknown or deleted team.
+   */
   #team(teamId?: string | null): TeamRecord {
-    const id = teamId === undefined || teamId === null || teamId === '' ? DEFAULT_TEAM_ID : teamId;
+    const id = teamId === undefined || teamId === null || teamId === '' ? this.#defaultTeamId() : teamId;
     const team = this.#teams().find((t) => t.id === id);
     if (!team) throw new TeamError(404, 'not-found', `no team ${id}`);
     return team;
+  }
+
+  /** The team the routes without a team id act on: `team` while it exists, else the first team in order. */
+  #defaultTeamId(): string {
+    const teams = this.#teams();
+    return (teams.find((team) => team.id === DEFAULT_TEAM_ID) ?? teams[0])?.id ?? DEFAULT_TEAM_ID;
   }
 
   /** A team's name for texts (a deleted or unknown team: the first team's). */
@@ -411,7 +425,7 @@ export class TeamService {
 
   /** An activity line in `teamId` (default: the member's team, else the first team). */
   #activity(kind: TeamActivityKind, memberId: string | null, text: string, teamId?: string): void {
-    const team = teamId ?? (memberId ? this.#need().members().find((member) => member.id === memberId)?.teamId : undefined) ?? DEFAULT_TEAM_ID;
+    const team = teamId ?? (memberId ? this.#need().members().find((member) => member.id === memberId)?.teamId : undefined) ?? this.#defaultTeamId();
     this.#need().addActivity([{ id: randomUUID(), teamId: team, at: this.#iso(), kind, memberId, text }]);
   }
 
@@ -570,12 +584,14 @@ export class TeamService {
    * `DELETE /api/team/teams/{id}` (D100 follow-up 2026-10-14): every member returns to
    * the sessions list as with ↩ Return to sessions (folder and position restored; a
    * paired machine's member on its machine), then the team is removed (a tombstone,
-   * synced). Never deletes a session. The first team cannot be deleted; a member whose
+   * synced). Never deletes a session. Any team can be deleted while another remains (409
+   * `last-team`; the first team too, ruling 2026-10-14); a member whose
    * machine is offline keeps the team until it is back (502, nothing changed).
    */
   async deleteTeam(id: string): Promise<{ readonly ok: true; readonly returned: number }> {
     const team = this.#team(id);
-    if (team.id === DEFAULT_TEAM_ID) throw new TeamError(409, 'default-team', 'the first team cannot be deleted: rename it, or return its members');
+    // Any team, the first one too, while another one remains (D100 follow-up 2026-10-14, the developer's ruling).
+    if (this.#teams().length <= 1) throw new TeamError(409, 'last-team', 'the last team cannot be deleted: create another team first, or return its members');
     const members = this.#teamMembers(team.id);
     const machines = await this.#machineNames();
     const away = members.filter((member) => member.machineId !== this.#selfId() && machines.get(member.machineId)?.online !== true);
@@ -940,7 +956,7 @@ export class TeamService {
     this.#need();
     // The team: the body's `teamId`, else the first listed member's, else the first team.
     const firstId = Array.isArray(body['memberIds']) ? body['memberIds'][0] : undefined;
-    const teamId = typeof body['teamId'] === 'string' && body['teamId'] !== '' ? this.#team(body['teamId']).id : (this.#liveMembers().find((m) => m.id === firstId)?.teamId ?? DEFAULT_TEAM_ID);
+    const teamId = typeof body['teamId'] === 'string' && body['teamId'] !== '' ? this.#team(body['teamId']).id : (this.#liveMembers().find((m) => m.id === firstId)?.teamId ?? this.#defaultTeamId());
     const changed = await this.#serial(async () => {
       const members = this.#teamMembers(teamId);
       const ids = reorderIds(
@@ -980,6 +996,23 @@ export class TeamService {
       if (error instanceof SupervisorError) throw new TeamError(409, error.code, error.message);
       throw error;
     }
+  }
+
+  /**
+   * The developer chose a model / effort in a member's session header (`PUT
+   * /api/sessions/{id}/model`, the `teamSessionModelChanged` hook; D100 follow-up
+   * 2026-10-14): the member's saved choice follows and syncs. D82's routing and D63's
+   * account switching do not come through here, so they never change it.
+   */
+  async sessionModelChanged(sessionId: string, model: string | null, effort: string | null): Promise<void> {
+    if (!this.memberOfSession(sessionId)) return;
+    const changed = await this.#serial(async () => {
+      const current = this.memberOfSession(sessionId);
+      if (!current || (normalizeModel(current.model) === model && current.effort === effort)) return null;
+      this.#need().putMember({ ...current, model: model ?? DEFAULT_MODEL_VALUE, effort, clock: this.#stamp(), updatedAt: this.#iso() });
+      return current;
+    });
+    if (changed) this.#changed(['members'], changed.teamId);
   }
 
   /** D64 / D91: the session's process picks the (new / withdrawn) charter up: idle → restarted now, busy → after its turn, not running → its next start. */
@@ -1174,7 +1207,7 @@ export class TeamService {
     this.#need();
     // Within the sender's team by default (the developer's: the body's `teamId`, else the first team).
     const sender = input.from ? (this.#liveMembers().find((member) => member.id === input.from) ?? null) : null;
-    const scope = sender?.teamId ?? (typeof input.teamId === 'string' && input.teamId !== '' ? input.teamId : DEFAULT_TEAM_ID);
+    const scope = sender?.teamId ?? (typeof input.teamId === 'string' && input.teamId !== '' ? input.teamId : this.#defaultTeamId());
     const to = this.#receiver(input.to, input.team, scope);
     const brief = typeof input.brief === 'string' ? input.brief.trim() : '';
     const expected = typeof input.expected === 'string' ? input.expected.trim() : '';
@@ -1395,7 +1428,7 @@ export class TeamService {
       const existing = this.#need().requests().find((r) => !r.deleted && r.state === 'open' && r.memberId === input.memberId && r.kind === input.kind && JSON.stringify(r.action) === JSON.stringify(input.action));
       if (existing) return existing;
       const now = this.#iso();
-      const created: TeamRequestRecord = { id: randomUUID(), teamId: this.#need().members().find((m) => m.id === input.memberId)?.teamId ?? DEFAULT_TEAM_ID, clock: this.#stamp(), deleted: false, memberId: input.memberId, kind: input.kind, gate: input.gate, title: input.title, detail: input.detail, state: 'open', action: input.action, note: null, createdAt: now, updatedAt: now };
+      const created: TeamRequestRecord = { id: randomUUID(), teamId: this.#need().members().find((m) => m.id === input.memberId)?.teamId ?? this.#defaultTeamId(), clock: this.#stamp(), deleted: false, memberId: input.memberId, kind: input.kind, gate: input.gate, title: input.title, detail: input.detail, state: 'open', action: input.action, note: null, createdAt: now, updatedAt: now };
       this.#need().putRequest(created);
       return created;
     });

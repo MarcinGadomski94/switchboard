@@ -71,7 +71,7 @@ export function memberModelPicker(form: Pick<MemberForm, 'model' | 'effort'>, op
 export function MemberModelField({ form, options, onChange, disabled }: { readonly form: MemberForm; readonly options: readonly SessionModelOption[] | null; readonly onChange: (next: MemberForm) => void; readonly disabled: boolean }) {
   const picker = memberModelPicker(form, options);
   return (
-    <div className="sb-team-field" data-section="model">
+    <div className="sb-team-field" data-section="model" data-tour="team-model">
       <span className="sb-team-field__label">Model · effort</span>
       <ModelChoicePicker
         testId="team-form-model"

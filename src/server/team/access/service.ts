@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DEFAULT_TEAM_ID, type TeamActivityKind, type TeamMemberRecord, type TeamRequest, type TeamRequestAction, type TeamRequestRecord } from '../../../core/team.ts';
+import { type TeamActivityKind, type TeamMemberRecord, type TeamRequest, type TeamRequestAction, type TeamRequestRecord } from '../../../core/team.ts';
 import {
   ACCESS_RATE_LIMIT,
   ACCESS_RATE_WINDOW_MS,
@@ -278,7 +278,7 @@ export class TeamAccess {
       const now = this.#iso();
       const record: TeamAccessRecord = {
         id: randomUUID(),
-        teamId: DEFAULT_TEAM_ID,
+        teamId: member.teamId,
         clock: this.#h.stamp(),
         deleted: false,
         memberId: member.id,
