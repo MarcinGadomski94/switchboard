@@ -42,7 +42,8 @@ import { useProviderSwitcher } from './ProviderSwitcher.tsx';
 import { useAccountSwitcher } from './AccountSwitcher.tsx';
 import { offersSwitcher } from './provider-switch.ts';
 import { RemotePopover } from './RemotePopover.tsx';
-import { ChipSkeletons, RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
+import { RootSkeleton, TitleSkeleton } from './SessionSkeletons.tsx';
+import { SessionChips } from './SessionChips.tsx';
 import { usePanes } from '../../shell/Panes.tsx';
 import { DrawerButton, useInboxCount } from '../../shell/AppBar.tsx';
 import { useHeaderMenu } from '../../shell/useLayout.ts';
@@ -538,16 +539,8 @@ export function SessionHeader({ sessionId, session, missing, loadError = null, p
         </div>
       ) : null}
       {closer.dialog}
-      <div className="sb-sv-chips" data-testid="session-chips">
-        {/* D45 (developer ruling): chip-shaped blocks hold the row while the session loads, so the tabs do not jump. */}
-        {placeholder ? <ChipSkeletons /> : null}
-        {(session?.chips ?? []).map((chip) => (
-          <span key={`${chip.k} ${chip.v}`} className="sb-sv-chip" data-testid="session-chip" data-loop={chip.loop ? 'true' : 'false'}>
-            <span className="sb-sv-chip-k">{chip.k} </span>
-            {chip.v}
-          </span>
-        ))}
-      </div>
+      {/* D104: the chips, status first, folded to one line ("+N more ▾") when they need more. */}
+      <SessionChips sessionId={sessionId} chips={session?.chips ?? []} solutions={session?.solutions ?? []} placeholder={placeholder} />
       <div className="sb-sv-tabs" role="tablist">
         {tabLabels(files, artifacts).map((entry) => (
           <Link

@@ -42,6 +42,12 @@
 .sb-sv-name {
   font-weight: 600;
   font-size: 15px;
+  /* D104 (developer request 2026-10-14): the title is one line, cut with …; the full title is its tooltip. It gives
+     way after the root path (below) and before the actions (useHeaderOverflow.ts counts it at TITLE_FLOOR at most). */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .sb-sv-root {
@@ -55,6 +61,8 @@
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
+  /* D104: the root path gives way first, the one-line title only once the path is gone. */
+  flex-shrink: 1000;
 }
 
 /* The line itself reads left to right inside the right-to-left box (only the cut side is swapped). */
@@ -102,6 +110,67 @@
   border-radius: 5px;
   padding: 2px 8px;
   color: var(--text-2);
+  /* D104: a chip is one line (a chip wider than the row is cut with …; the full chip is its tooltip). */
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * D104 · the chip row folds to one line (SessionChips.tsx, chip-row.ts). `data-fold` is set only when the chips need
+ * more than one line; otherwise the row is unchanged. Folded: one line, the chips past it hidden out of the flow (still
+ * measured), then "+N more ▾". Unfolded: the chips wrap, "▴ less" last. The doubled selectors win over the compact
+ * layouts' sideways-scrolling row (styles/responsive/session.css).
+ */
+.sb-sv-chips[data-fold] {
+  position: relative;
+}
+
+.sb-sv-chips[data-fold='collapsed'] {
+  flex-wrap: nowrap;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.sb-sv-chips[data-fold='collapsed'] > .sb-sv-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.sb-sv-chips[data-fold='expanded'] {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+
+.sb-sv-chips[data-fold] > .sb-sv-chip-more {
+  flex: none;
+}
+
+.sb-sv-chips > .sb-sv-chip[data-folded='true'] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.sb-sv-chip-more {
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.sb-sv-chip-more:hover {
+  color: var(--text-strong);
+  border-color: var(--muted-3);
+}
+
+.sb-sv-chip-more:focus-visible {
+  outline: 2px solid var(--muted-3);
+  outline-offset: 1px;
 }
 
 /* Loop / workflow chips are blue (SPEC; prototype chip flag 1). */
