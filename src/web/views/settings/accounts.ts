@@ -2,6 +2,7 @@ import type { AccountProfile, ProfileUsage } from '../../../core/accounts.ts';
 import { clock } from '../../../core/accounts.ts';
 import type { AccountSignIn } from '../../api/client.ts';
 import { type PeerOnlyAccount, machinesLabel } from '../../../core/shared-accounts.ts';
+import { creditsInUse, creditsMoneyText } from '../../../core/credits.ts';
 
 /**
  * D63 · Settings → Accounts (`docs/accounts.md`): the pure part. Nothing here is
@@ -23,6 +24,23 @@ export function usageText(usage: ProfileUsage | null, now: number = Date.now()):
   if (usage.fiveHourPct !== null && live(usage.fiveHourResetsAt)) parts.push(`5h ${Math.round(usage.fiveHourPct)}%`);
   if (usage.sevenDayPct !== null && live(usage.sevenDayResetsAt)) parts.push(`week ${Math.round(usage.sevenDayPct)}%`);
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * D103: an account's credits line: on credits, "On credits until 13:00 · €12.40
+ * left of €50 · credits reset 1 Nov"; credits on but not in use, "Credits: €12.40
+ * left of €50 · reset 1 Nov" ("credits enabled · balance unknown" without the
+ * amounts); `null` when its credits are off or unknown (nothing is shown).
+ */
+export function creditsText(usage: Pick<ProfileUsage, 'credits'> | null, now: number = Date.now()): { readonly onCredits: boolean; readonly text: string } | null {
+  const credits = usage?.credits;
+  if (!credits) return null;
+  const on = creditsInUse(credits, now);
+  if (!on && credits.enabled !== true) return null;
+  const money = creditsMoneyText(credits);
+  const reset = credits.resetsAt && Date.parse(credits.resetsAt) > now ? `credits reset ${clock(credits.resetsAt, new Date(now))}` : null;
+  if (on) return { onCredits: true, text: [`On credits until ${clock(credits.until as string, new Date(now))}`, money, reset].filter(Boolean).join(' · ') };
+  return { onCredits: false, text: [`Credits: ${money ?? 'enabled'}`, reset].filter(Boolean).join(' · ') };
 }
 
 /** "Out of usage until 14:05 (session limit)" while the profile is spent. */

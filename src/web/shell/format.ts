@@ -5,6 +5,7 @@ import { MOVED_MODE_LINE } from '../../core/history.ts';
 import { REMOTE_MODE_LINE } from '../../core/remote-session.ts';
 import { sessionPace, weeklyPace } from '../../core/usage.ts';
 import { machinesLabel } from '../../core/shared-accounts.ts';
+import { type AccountCredits, creditsInUse, creditsMoneyText, currencyGlyph } from '../../core/credits.ts';
 
 /** CSS variable of a status dot color (SPEC tokens). */
 export function statusColor(status: SessionStatus): string {
@@ -167,7 +168,14 @@ export interface UsageGridLine {
   readonly title: string;
   /** D98: the machines the account is on (`Mac + PC`), while a paired machine's accounts are shown; omitted otherwise. */
   readonly machines?: string;
+  /**
+   * D103: while the account pays from credits, the row under its line: the badge's
+   * glyph (the currency's symbol, `¤` while unknown) and `€12.40 left of €50` (or
+   * `balance unknown`); omitted otherwise (the grid is unchanged).
+   */
+  readonly credits?: { readonly glyph: string; readonly text: string };
 }
+
 
 /** A window as the grid reads it, from `usageWindows`, `accountUsage[].windows` or `cliUsage`. */
 type GridWindow = Pick<AccountUsageWindow, 'key' | 'label' | 'pct' | 'resetsAt' | 'model' | 'asOf'>;
@@ -193,6 +201,7 @@ function gridLine(
     readonly exhaustedUntil: string | null;
     readonly machines?: readonly string[] | undefined;
     readonly windowsFrom?: string | undefined;
+    readonly credits?: AccountCredits | undefined;
   },
   windows: readonly GridWindow[],
   now: number,
@@ -215,8 +224,14 @@ function gridLine(
     if (pace) title.push(`  ${pace.title}`);
   }
   for (const window of windows.filter((w) => w.key === 'model')) title.push(windowLine(window.model ? `${window.label} week` : window.label, window, now));
+  // D103: on credits (a badge row under the line), or what is known about its credits (the tooltip only).
+  const onCredits = !spent && creditsInUse(input.credits, now);
+  const money = creditsMoneyText(input.credits);
+  if (onCredits) title.push(`On credits until ${clockTime(new Date(input.credits?.until as string))}${money ? ` · ${money}` : ''}`);
+  else if (money) title.push(`Credits: ${money}`);
   title.push('Settings → Accounts');
-  return { key: input.key, cli: input.cli, label: input.label, active: input.active, spent, outUntil, ...cells, title: title.join('\n'), ...(machines ? { machines } : {}) };
+  const credits = onCredits ? { glyph: currencyGlyph(input.credits?.currency ?? null), text: money ?? 'balance unknown' } : null;
+  return { key: input.key, cli: input.cli, label: input.label, active: input.active, spent, outUntil, ...cells, title: title.join('\n'), ...(machines ? { machines } : {}), ...(credits ? { credits } : {}) };
 }
 
 /**
@@ -240,12 +255,13 @@ export function usageGridLines(system: SystemInfo | null, now: number = Date.now
     return { key: account.profileId, label: cli === 'claude' ? account.name : `${CLI_SHORT_LABELS[cli]} ${account.name}` };
   };
   if (claude.length === 0) {
-    lines.push(gridLine({ ...single('claude'), cli: 'claude', active: false, exhaustedUntil: null }, system?.usageWindows ?? [], now));
+    const credits = system?.activeAccounts?.find((a) => a.cli === 'claude')?.credits;
+    lines.push(gridLine({ ...single('claude'), cli: 'claude', active: false, exhaustedUntil: null, credits }, system?.usageWindows ?? [], now));
   }
   for (const row of claude) {
     // D98: a paired machine's newer reading of the active account is shown as it is (not this machine's meter).
     const windows = row.active && !row.windowsFrom ? (system?.usageWindows ?? row.windows ?? []) : (row.windows ?? []);
-    lines.push(gridLine({ key: row.profileId, cli: row.cli, label: row.name, active: row.active, exhaustedUntil: row.exhaustedUntil, machines: row.machines, windowsFrom: row.windowsFrom }, windows, now));
+    lines.push(gridLine({ key: row.profileId, cli: row.cli, label: row.name, active: row.active, exhaustedUntil: row.exhaustedUntil, machines: row.machines, windowsFrom: row.windowsFrom, credits: row.credits }, windows, now));
   }
   for (const cli of ['codex', 'opencode'] as const) {
     const own = rows.filter((row) => row.cli === cli);

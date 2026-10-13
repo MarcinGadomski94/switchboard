@@ -25,7 +25,7 @@ function fieldsOf(raw: unknown, source: 'event' | 'get_usage'): UsageReadingFiel
     if (parsed.kind !== 'rate-limit') throw new Error('not a rate_limit_event');
     return readingFromRateLimit(parsed);
   }
-  return readingFromGetUsage({ kind: 'response', message: { subtype: 'success', response: raw, error: null, raw } });
+  return readingFromGetUsage({ kind: 'response', message: { subtype: 'success', response: raw as Record<string, unknown>, error: null, raw: raw as Record<string, unknown> } });
 }
 
 // The fixtures' times: weekly resets 2026-10-15 13:00Z, 5-hour 2026-10-13 23:10Z, the credit period 2026-11-01.

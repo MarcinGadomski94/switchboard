@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AccountProfile } from '../../src/core/accounts.ts';
 import type { SessionEvent, SystemInfo } from '../../src/core/api.ts';
 import { usageGridLines } from '../../src/web/shell/format.ts';
-import { droppedOrder, exhaustedText, movedOrder, signInStatusText, signInText, usageText } from '../../src/web/views/settings/accounts.ts';
+import { creditsText, droppedOrder, exhaustedText, movedOrder, signInStatusText, signInText, usageText } from '../../src/web/views/settings/accounts.ts';
 import { SETTINGS_SECTIONS } from '../../src/web/views/settings/model.ts';
 import { providerFields } from '../../src/web/modals/new-session.ts';
 import { chatItems } from '../../src/web/views/session/chat.ts';
@@ -133,5 +133,56 @@ describe('D98 · accounts shared across paired machines (web)', () => {
     // Without a paired machine's accounts nothing changes: no machines, the meter's bars.
     const alone = usageGridLines({ usageWindows: windows(11) } as unknown as SystemInfo, NOW);
     expect(alone.map((l) => [l.label, l.machines, l.session.text])).toEqual([['Claude', undefined, '11%']]);
+  });
+});
+
+describe('D103 · credits (web)', () => {
+  const credits = (on: boolean, extra: Record<string, unknown> = {}) => ({
+    onCredits: on,
+    until: on ? soon(2 * 3_600_000) : null,
+    enabled: true,
+    currency: 'EUR',
+    limit: 50,
+    used: 37.6,
+    left: 12.4,
+    resetsAt: soon(20 * 86_400_000),
+    limitReached: false,
+    at: soon(-1000),
+    ...extra,
+  });
+  const usage = (c: ReturnType<typeof credits> | null) => ({ fiveHourPct: 20, fiveHourResetsAt: soon(3_600_000), sevenDayPct: 100, sevenDayResetsAt: soon(2 * 3_600_000), receivedAt: soon(-1000), credits: c });
+
+  it('the footer grid: an account on credits gets the badge row with what is left; the tooltip says so', () => {
+    const system = {
+      usageWindows: [{ key: 'week', label: 'Week', pct: 100, resetsAt: soon(2 * 3_600_000) }],
+      accountUsage: [
+        { profileId: 'default-claude', cli: 'claude', name: 'Work', active: true, pct: 100, exhaustedUntil: null, windows: [], credits: credits(true) },
+        { profileId: 'p2', cli: 'claude', name: 'Private', active: false, pct: 40, exhaustedUntil: null, windows: [], credits: credits(false) },
+        { profileId: 'p3', cli: 'claude', name: 'Lab', active: false, pct: 10, exhaustedUntil: null, windows: [] },
+      ],
+    } as unknown as SystemInfo;
+    const [work, priv, lab] = usageGridLines(system, NOW);
+    expect(work?.credits).toEqual({ glyph: '€', text: '€12.40 left of €50' });
+    expect(work?.title).toContain('On credits until');
+    expect(work?.title).toContain('€12.40 left of €50');
+    // Credits on but not in use: the tooltip only, no row.
+    expect(priv?.credits).toBeUndefined();
+    expect(priv?.title).toContain('Credits: €12.40 left of €50');
+    expect(lab?.credits).toBeUndefined();
+    expect(lab?.title).not.toContain('redits');
+    // The amounts unknown; a single account (activeAccounts); no currency: the coin glyph.
+    const unknown = credits(true, { limit: null, used: null, left: null, currency: null });
+    const single = usageGridLines({ usageWindows: [], activeAccounts: [{ cli: 'claude', profileId: 'default-claude', name: 'Work', credits: unknown }] } as unknown as SystemInfo, NOW);
+    expect(single[0]?.credits).toEqual({ glyph: '¤', text: 'credits enabled · balance unknown' });
+    // The window reset: no longer on credits.
+    expect(usageGridLines(system, NOW + 3 * 3_600_000)[0]?.credits).toBeUndefined();
+  });
+
+  it('Settings → Accounts: the credits line with the reset; nothing while credits are off or unknown', () => {
+    expect(creditsText(usage(credits(true)), NOW)).toMatchObject({ onCredits: true, text: expect.stringMatching(/^On credits until \d\d:\d\d · €12\.40 left of €50 · credits reset \d+ [a-z]{3} \d\d:\d\d$/) });
+    expect(creditsText(usage(credits(false)), NOW)?.text).toMatch(/^Credits: €12\.40 left of €50 · credits reset /);
+    expect(creditsText(usage(credits(false, { enabled: false })), NOW)).toBeNull();
+    expect(creditsText(usage(null), NOW)).toBeNull();
+    expect(creditsText(null, NOW)).toBeNull();
   });
 });

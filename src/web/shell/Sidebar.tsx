@@ -114,8 +114,27 @@ export function UsageCellView({ name, cell }: { readonly name: 'session' | 'week
   );
 }
 
-/** D66: one account's line of the usage grid; a click opens Settings → Accounts. */
+/** D66: one account's line of the usage grid; a click opens Settings → Accounts. D103: on credits, a badge row under it. */
 function UsageLine({ line }: { readonly line: UsageGridLine }) {
+  return (
+    <>
+      <UsageLineMain line={line} />
+      {line.credits ? (
+        <Link to={{ view: 'settings', section: 'accounts' }} className="sb-usage-credits" data-testid="usage-credits" data-account={line.key} title={line.title}>
+          <span className="sb-credit-badge" data-testid="credit-badge">
+            <span className="sb-credit-glyph" aria-hidden="true">
+              {line.credits.glyph}
+            </span>
+            on credits
+          </span>
+          <span className="sb-usage-credits-text">{line.credits.text}</span>
+        </Link>
+      ) : null}
+    </>
+  );
+}
+
+function UsageLineMain({ line }: { readonly line: UsageGridLine }) {
   return (
     <Link
       to={{ view: 'settings', section: 'accounts' }}
@@ -126,6 +145,7 @@ function UsageLine({ line }: { readonly line: UsageGridLine }) {
       data-active={String(line.active)}
       data-spent={String(line.spent)}
       data-machines={line.machines}
+      data-credits={line.credits ? 'true' : undefined}
       title={line.title}
     >
       <span className="sb-usage-dot">{line.active ? '●' : ''}</span>

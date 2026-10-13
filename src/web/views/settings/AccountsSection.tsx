@@ -5,8 +5,9 @@ import { CLI_LABELS, CLI_PROVIDERS, type CliProviderId } from '../../../core/cli
 import { type AccountSignIn, ApiError, accountsApi, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { Row, SectionTitle, ToggleValue } from './rows.tsx';
-import { TERMINAL_HINT, droppedOrder, exhaustedText, movedOrder, peerAccountText, sharedText, sharedUsageText, signInStatusText, signInText, usageText } from './accounts.ts';
+import { TERMINAL_HINT, creditsText, droppedOrder, exhaustedText, movedOrder, peerAccountText, sharedText, sharedUsageText, signInStatusText, signInText, usageText } from './accounts.ts';
 import type { PeerOnlyAccount } from '../../../core/shared-accounts.ts';
+import { currencyGlyph } from '../../../core/credits.ts';
 import './accounts.css';
 
 type Client = ReturnType<typeof accountsApi>;
@@ -261,6 +262,7 @@ function ProfileCard({
     }
   };
   const spent = exhaustedText(profile);
+  const credits = creditsText(profile.usage);
   const usage = sharedUsageText(profile);
   const shared = sharedText(profile, selfName);
   return (
@@ -318,6 +320,19 @@ function ProfileCard({
       {spent ? (
         <div className="sb-acc-spent" data-testid="account-spent">
           {spent}
+        </div>
+      ) : null}
+      {credits ? (
+        <div className="sb-acc-credits" data-testid="account-credits" data-on-credits={String(credits.onCredits)}>
+          {credits.onCredits ? (
+            <span className="sb-credit-badge" data-testid="credit-badge">
+              <span className="sb-credit-glyph" aria-hidden="true">
+                {currencyGlyph(profile.usage?.credits?.currency ?? null)}
+              </span>
+              on credits
+            </span>
+          ) : null}
+          <span>{credits.text}</span>
         </div>
       ) : null}
       {shared ? (
@@ -605,6 +620,16 @@ function Rules({ settings, profiles, save }: { readonly settings: AccountSetting
               })
             : null}
         </span>
+      </Row>
+      <Row
+        id="accounts-out-of-allowance"
+        label="When every account is out of allowance"
+        description="An account past its plan limit can keep working on credits (paid extra usage). Switchboard always prefers an account with allowance, and moves sessions back to one when it has allowance again."
+      >
+        <select className="sb-set-select" data-testid="accounts-out-of-allowance" aria-label="When every account is out of allowance" value={settings.outOfAllowance} onChange={(event) => save({ outOfAllowance: event.target.value })}>
+          <option value="use-credits">Use credits</option>
+          <option value="pause">Pause new turns until an account resets</option>
+        </select>
       </Row>
       <Row id="accounts-exhausted" label="When every account of a CLI is out of usage" description="Stop and tell you in the Inbox, or hand the session over to another CLI with a handover summary.">
         <span className="sb-acc-inline">

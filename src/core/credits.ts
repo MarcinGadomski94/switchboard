@@ -235,6 +235,17 @@ export function formatMoney(amount: number, currency: string | null): string {
   return amount.toFixed(whole ? 0 : 2);
 }
 
+/** D103: the symbol of a currency code (`€` for EUR), `¤` when the code is unknown or has none (the "on credits" badge's glyph). */
+export function currencyGlyph(currency: string | null): string {
+  if (!currency) return '¤';
+  try {
+    const part = new Intl.NumberFormat('en-GB', { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find((p) => p.type === 'currency');
+    return part && part.value.length <= 3 ? part.value : '¤';
+  } catch {
+    return '¤';
+  }
+}
+
 /**
  * The money line of an account's credits: `€12.40 left of €50`; `€29.36 used`
  * when only that is known; `credits enabled · balance unknown`; `credits off`;

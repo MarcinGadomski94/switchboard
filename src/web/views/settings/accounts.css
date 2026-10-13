@@ -120,6 +120,19 @@
   color: var(--status-need);
 }
 
+/* D103: an account's credits (an amber "on credits" badge while it pays from them; the badge's style is shell.css's). */
+.sb-acc-credits {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.sb-acc-credits[data-on-credits='true'] {
+  color: var(--text-2);
+}
+
 .sb-acc-controls {
   display: flex;
   flex-wrap: wrap;
