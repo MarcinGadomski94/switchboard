@@ -145,6 +145,13 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
   ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],
   ['GET', /^\/api\/team\/access\/catalog$/],
+  // Plans (D99) hook: Jira import (preview, import) and a plan's Jira sync (read, settings, refresh); a phone may (developer ruling 2026-10-13).
+  ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
+  ['GET|PUT', /^\/api\/plans\/[^/]+\/jira$/],
+  ['POST', /^\/api\/plans\/[^/]+\/jira\/refresh$/],
+  // Plans (D99) hook: proposed order (read, Propose order, accept / reject one or all); a phone may (developer ruling 2026-10-13).
+  ['GET', /^\/api\/plans\/[^/]+\/proposals$/],
+  ['POST', /^\/api\/plans\/[^/]+\/proposals\/(?:ask|accept-all|reject-all|[^/]+\/(?:accept|reject))$/],
 ];
 
 /**
@@ -201,6 +208,8 @@ export const DEVICE_REFUSED: readonly DeviceRule[] = [
   // Team (D100) hook, D100-T2: entering, testing, revoking or timing out an access's values: "set this up on a computer".
   ['POST', /^\/api\/team\/access\/[^/]+\/(?:setup|test|revoke)$/],
   ['PUT', /^\/api\/team\/access\/[^/]+$/],
+  // Plans (D99) hook: Settings → Integrations → Jira (the credentials) stay on this computer.
+  ['*', /^\/api\/integrations\/jira$/],
 ];
 
 /** The paired-machine proxy (`/api/machines/{id}/api/<rest>`): judged by its `<rest>`. */

@@ -79,7 +79,7 @@ export function RightPanel({
       inert={hidden}
       aria-hidden={hidden || undefined}
     >
-      {/* Plans (D99) hook: the Plan tab, only while Plans is on and this session created a plan (nothing otherwise). */}
+      {/* Plans (D99) hook: the Plan tab (its plans, Import from Jira…), only while Plans is on (nothing otherwise). */}
       <SessionPlanTab sessionId={sessionId} />
       {session && panel && capped ? (
         <>

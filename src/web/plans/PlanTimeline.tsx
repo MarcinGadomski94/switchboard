@@ -7,6 +7,7 @@ const SEGMENT_WORDS: Readonly<Record<SegmentKind, string>> = {
   you: 'waiting on you',
   dependency: 'waiting on a dependency',
   usage: 'paused for usage',
+  paused: 'plan paused',
   projected: 'projected',
 };
 
@@ -75,7 +76,7 @@ export function PlanTimeline({ plan, now, selectedId, onSelect }: { readonly pla
                         data-testid="plan-segment"
                         data-kind={segment.kind}
                         style={{ left: pct(segment.from), width: width(segment.from, segment.to) }}
-                        title={`${SEGMENT_WORDS[segment.kind]}${segment.on ? ` (${segment.on})` : ''} · ${clock(segment.from)}–${clock(segment.to)}`}
+                        title={`${segment.note ?? SEGMENT_WORDS[segment.kind]}${segment.on ? ` (${segment.on})` : ''} · ${clock(segment.from)}–${clock(segment.to)}`}
                       />
                     ))}
                   </span>

@@ -1598,7 +1598,8 @@ Developer decision D99 (`docs/decisions.md`; details `docs/plans.md`; removal `d
 | PUT | /api/plans/{id}/holds | `{ holds: { <itemId or key>: boolean } }` | 200 `Plan` · 409 `merged` |
 
 - **`Plan`**: `{ id, title, sourceSessionId, targetBranch, repos, baseBranch, mergeMode (null in a draft), maxConcurrency, usageThreshold, answers, state: draft | running | paused | done | cancelled, external, held (why new starts are held: usage, paused, "Plans was switched off"), pausedReason ("Plans was switched off" when Switchboard paused it, else null), items: PlanItem[], edges: [{ from, to }], criticalPath: { itemIds, minutes }, progress: { done, total, percent }, estimatedMinutesLeft, createdAt, updatedAt, startedAt, finishedAt, machine }`.
-- **`PlanItem`**: `{ id, todoId, key, title, hold, solutions, state: waiting | ready | running | question | review | done | blocked, reason, note, storedState, waitingOn: review | checks | question | conflict | null, dependsOn, runSessionId, branch, prUrl, checks: { state: pending | green | red | none, summary, sha } | null, developerMerges, estimateMinutes, actualMinutes, onCriticalPath, position, startedAt, waitingSince, mergedAt, doneAt }`.
+- **`PlanItem`**: `{ id, todoId, key, title, hold, solutions, state: waiting | ready | running | question | review | done | blocked, reason, note, storedState, waitingOn: review | checks | question | conflict | null, dependsOn, runSessionId, branch, prUrl, checks: { state: pending | green | red | none, summary, sha } | null, developerMerges, estimateMinutes, actualMinutes, onCriticalPath, position, startedAt, waitingSince, mergedAt, doneAt, spans }`.
+- **`PlanItem.spans`** (additive): the item's history for the Timeline, oldest first, at most the newest 200: `[{ kind: running | waiting-you | waiting-dependency | paused-usage | paused-plan, startedAt, endedAt (null = open) }]`. At most one span per item is open; none while the plan is a draft, and every one is closed when the plan is done or cancelled. Older machines omit it.
 - **Agent routes** (the `switchboard` MCP helper, agent token; only plans whose source is the agent's session; 404 `plans-off` while off): `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`, `POST /agent/v1/plans/{planId}/items | edges | start`. MCP tools, registered only while Plans is on: `plan_create`, `plan_add_item`, `plan_add_dependency`, `plan_status`, `plan_start` (`merge_mode` required; the description tells the agent to ask the developer).
 - **Additive fields:** settings key `experimental.plans` (boolean, default `false`); Inbox system items of `source: 'plans'` (`kind: plan-ready | plan-conflict`, dismiss-only).
 - **`/hub`:** `planChanged` `{ planId, state }` (`state: null` = deleted); forwarded between peers with the remote plan id.
@@ -1615,6 +1616,12 @@ POST /api/plans/3f2a9c01b7/start { "mergeMode": "agents-with-holds" }
 POST /api/plans/3f2a9c01b7/start {}
 → 422 { "error": "merge-mode-required", "message": "choose the merge mode: agents, agents-with-holds, developer (there is no default: ask the developer)",
         "errors": [ { "field": "mergeMode", "message": "…" } ] }
+
+GET /api/plans/3f2a9c01b7 (an item's history)
+→ 200 { …, "items": [ { "key": "PROJ-101", "state": "running", "spans": [
+          { "kind": "paused-usage", "startedAt": "2026-10-13T09:00:00.000Z", "endedAt": "2026-10-13T09:20:00.000Z" },
+          { "kind": "running", "startedAt": "2026-10-13T09:20:00.000Z", "endedAt": "2026-10-13T09:45:00.000Z" },
+          { "kind": "waiting-you", "startedAt": "2026-10-13T09:45:00.000Z", "endedAt": null } ], … } ] }
 
 GET /api/plans (Plans off)
 → 404 { "error": "plans-off", "message": "Plans is off: switch it on in Settings → Experimental" }
@@ -1704,4 +1711,46 @@ POST /agent/v1/team/access { "kind": "api-key", "service": "Acme Analytics", "ho
 POST /api/team/access/9c1e…/setup { "values": { "ACME_ANALYTICS_KEY": "…" } }
 → 200 { "id": "9c1e…", "status": "ready", "statusText": "Ready on Mac", "here": true, "setUpOn": ["m-mac-0001"],
         "secretRefs": [{ "field": "ACME_ANALYTICS_KEY", "service": "Switchboard Team", "account": "5f0c…/9c1e…/ACME_ANALYTICS_KEY" }], … }
+```
+
+## Plans · Jira (D99, 2026-10-13, additive, experimental)
+The Jira import and the optional status sync of Plans (`docs/plans.md` → *Jira import and status sync*; decision D99 → *Follow-up · Jira*). Types in `src/core/plans-jira.ts` (`JiraPreview`, `JiraPreviewItem`, `JiraPreviewEdge`, `JiraExternalLink`, `JiraCycleLink`, `PlanJiraState`, `PlanJiraItem`, `PlanJiraActivity`, `JiraConnectionStatus`, `JiraSyncMode`, `JiraTransitionNames`). Every route answers 404 `plans-off` while Plans is off (Settings → Experimental → Plans) or `plans.db` is unavailable.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/integrations/jira | | 200 `JiraConnectionStatus` `{ configured, source: settings \| env \| null, baseUrl, email, keychain }` (never the token) |
+| PUT | /api/integrations/jira | `{ baseUrl, email, token }` | 200 `JiraConnectionStatus` · 409 `keychain-unavailable` · 422 on `baseUrl` (https, or http on loopback) / `email` / `token` |
+| DELETE | /api/integrations/jira | | 200 `JiraConnectionStatus` (the Settings credentials removed; `ATL_*` stay) |
+| POST | /api/sessions/{id}/plans/jira/preview | `{ epic }` (a key or an issue link) | 200 `JiraPreview` (nothing created) · 404 (session, epic: `jira-not-found`) · 409 `jira-not-configured` · 422 on `epic` (`invalid`, `empty-epic`) · 502 `jira-auth` / `jira-unreachable` / `jira-failed` |
+| POST | /api/sessions/{id}/plans/jira/import | `{ epic, targetBranch, title?, baseBranch?, repos?, maxConcurrency?, sync?: off \| read-only \| write, transitions?: { inProgress?, inReview? } }` | 201 `{ plan: Plan, jira: PlanJiraState, preview: JiraPreview }` (a draft) · the preview's errors · the core's `PlanError`s (422 `targetBranch`, 409 `cycle`, `too-many`, …) |
+| GET | /api/plans/{id}/jira | | 200 `PlanJiraState` · 404 `not-jira` (not imported from Jira) / `not-found` |
+| PUT | /api/plans/{id}/jira | `{ sync?, transitions? }` | 200 `PlanJiraState` · 409 `finished` · 422 on `sync` / `transitions.*` |
+| POST | /api/plans/{id}/jira/refresh | | 200 `PlanJiraState` (tickets read again) · 409 `sync-off` · 502 `jira-auth` / `jira-unreachable` |
+| GET | /api/plans/{id}/proposals | | 200 `PlanEdgeProposal[]` (oldest first, every state) |
+| POST | /api/plans/{id}/proposals/ask | | 200 `{ asked: true, sessionId }` (the source session is sent the ask) · 409 `not-draft` / `not-sent` · 422 `too-few` |
+| POST | /api/plans/{id}/proposals/{proposalId}/accept | | 200 `{ proposals, refused: [] }` (the dependency added) · 404 · 409 `cycle` (stays pending, `note` = the reason) / `decided` |
+| POST | /api/plans/{id}/proposals/{proposalId}/reject | | 200 `{ proposals, refused: [] }` · 404 · 409 `decided` |
+| POST | /api/plans/{id}/proposals/accept-all · reject-all | | 200 `{ proposals, refused: [{ id, text, reason }] }` (every pending one; a refused one stays pending) |
+| POST | /agent/v1/plans/{planId}/proposals | `{ proposals: [{ from, to, reason }] }` (agent token; the plan's source session) | 201 `{ added: PlanEdgeProposal[], skipped: [{ from, to, why }] }` · 404 · 409 `finished` · 422 on `proposals` |
+
+- **`JiraPreview`**: `{ epic: { key, summary, url }, items: JiraPreviewItem[], edges: [{ from, to, text }], externalLinks: [{ key, other, relation: waits-on | blocks, text }], cycles: [{ from, to, cycle, text }], unlinked: key[], truncated, suggestedTitle, suggestedTargetBranch, proposeAvailable: false }`. Keys are the edges' ids; "`to` waits on `from`" = the plan's "`to` after `from`". `JiraPreviewItem`: `{ key, summary, description, acceptanceCriteria, acceptanceSource: field | description | null, components, status, assignee, estimateMinutes, url, unlinked }`.
+- **`PlanJiraState`**: `{ planId, epicKey, epicUrl, sync, transitions: { inProgress, inReview }, lastRefreshAt, items: [{ itemId, key, url, statusAtImport, status, statusCategory, summary, refreshedAt, drift, syncNote }], activity: [{ id, at, itemId, key, kind: import | refresh | transition | comment | soft-failure | error | settings, text }] }` (activity newest first, at most 200). `drift` is `null` while the sync is off.
+- **`PlanEdgeProposal`** (ruling D99-Jira-q1 (b)): `{ id, planId, fromItemId, toItemId, from, to, reason, state: pending | accepted | rejected, note, text: "PROJ-15 should wait on PROJ-14", createdAt, decidedAt }`. The import's answer carries `askedForOrder` (the source session was asked because items have no links). MCP tool `plan_propose_dependencies { plan_id, proposals }` (with the plan tools, only while Plans is on).
+- **Hub**: no new event. A Jira write, a refresh, a settings change, new proposals or a decision publishes `planChanged` for the plan; the page reloads `GET /api/plans/{id}/jira` with the plan.
+- **Peers (D48)**: on `PEER_API_ALLOW`: the preview, the import, `GET|PUT /api/plans/{id}/jira`, the refresh, the proposals' list, ask and decisions (a remote session or plan id is forwarded to its machine, which uses its own credentials). The credential routes are not (403 to a peer). A forwarded import's `plan` is namespaced like an added item's (`plan-item`); `PlanJiraState` and the proposals pass raw (their ids are the plan's raw item ids).
+- **Devices (D73)**: allowed: the preview, the import, `GET|PUT /api/plans/{id}/jira`, the refresh, the proposals' list, ask and decisions. Refused: `/api/integrations/jira` (all methods).
+- **Web (for the Plans page)**: `src/web/plans/jira/index.ts` exports `ImportJiraDialog { sourceSessionId, repos?, initialEpic?, onImported(plan), onClose() }`, `PlanJiraPanel { planId }`, `JiraCredentialsForm { onChanged? }` (mounted in Settings → Experimental → Plans while on), `PlanEdgeProposals { planId }` and `jiraApi`; the epic field carries `data-tour="plans-jira-epic"`; dev mount `/plans-jira-dev.html?session=<sessionId>` or `?plan=<planId>`.
+
+```
+POST /api/sessions/5f0c…/plans/jira/preview { "epic": "https://acme.atlassian.net/browse/PROJ-10" }
+→ 200 { "epic": { "key": "PROJ-10", "summary": "Acme checkout", "url": "https://acme.atlassian.net/browse/PROJ-10" },
+        "edges": [{ "from": "PROJ-11", "to": "PROJ-12", "text": "PROJ-12 waits on PROJ-11" }],
+        "cycles": [{ "from": "PROJ-13", "to": "PROJ-14", "cycle": ["PROJ-13", "PROJ-14", "PROJ-13"],
+                     "text": "PROJ-14 waits on PROJ-13 was left out: PROJ-13 → PROJ-14 → PROJ-13 would be a cycle (each waits on the next)" }],
+        "externalLinks": [{ "key": "PROJ-15", "other": "PROJ-99", "relation": "waits-on", "text": "PROJ-15 waits on PROJ-99 (outside the epic)" }],
+        "unlinked": ["PROJ-15"], "suggestedTargetBranch": "feature/PROJ-10-acme-checkout", "proposeAvailable": false, … }
+
+POST /api/sessions/5f0c…/plans/jira/import { "epic": "PROJ-10", "targetBranch": "feature/PROJ-10-acme-checkout", "sync": "write" }
+→ 201 { "plan": { "id": "a1b2c3d4e5", "state": "draft", "mergeMode": null, "external": { "system": "jira", "key": "PROJ-10" }, … },
+        "jira": { "sync": "write", "transitions": { "inProgress": "In Progress", "inReview": "In Review" }, … }, "preview": { … } }
 ```

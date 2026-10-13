@@ -146,7 +146,7 @@ export function apiRelease(version: string, extra: Record<string, unknown> = {})
     draft: false,
     prerelease: false,
     published_at: '2026-09-30T06:28:02Z',
-    html_url: `https://github.com/acme/switchboard/releases/tag/v${version}`,
+    html_url: `https://git.acme.example/acme/switchboard/releases/tag/v${version}`,
     ...extra,
   };
 }

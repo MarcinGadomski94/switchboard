@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { Plan } from '../../core/plans.ts';
 import { Link, useRouter } from '../router.tsx';
-import { NewPlanDialog } from './dialogs.tsx';
-import { IMPORT_COMING_SOON, planImporter } from './import-seam.tsx';
+import { JiraSourceDialog, NewPlanDialog } from './dialogs.tsx';
+import { ImportJiraDialog } from './jira/index.ts';
 import { mergeModeChip, planStateText, progressText, targetChip, timeLeftText } from './model.ts';
 import { putPlan, usePlans } from './store.ts';
 import './plans.css';
@@ -23,18 +23,18 @@ export function PlansOff() {
 /**
  * D99 · the Plans list (`/plans`, `docs/plans-ui.md` → *The Plans page*): a card per plan with
  * its state, progress and merge mode, newest first; **＋ New plan** (a session, title, target
- * branch, base, items from its todos) and **Import from Jira…** (the Jira lane's seam:
- * "coming soon" until it registers its importer).
+ * branch, base, items from its todos) and **Import from Jira…** (a session, then the Jira
+ * lane's `ImportJiraDialog`; the new draft opens).
  */
 export function PlansPage() {
   const { on, plans, loaded } = usePlans();
   const { navigate } = useRouter();
   const [open, setOpen] = useState<'new' | 'import' | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [jiraSource, setJiraSource] = useState<string | null>(null);
   if (!on) return loaded ? <PlansOff /> : <div className="sb-plan-page" />;
-  const importer = planImporter('jira');
   const opened = (plan: Plan): void => {
     setOpen(null);
+    setJiraSource(null);
     putPlan(plan);
     navigate({ view: 'plan', id: plan.id });
   };
@@ -52,10 +52,7 @@ export function PlansPage() {
             className="sb-button sb-plan-btn"
             data-testid="plans-import-jira"
             data-tour="plans-import"
-            onClick={() => {
-              if (importer) setOpen('import');
-              else setNote(IMPORT_COMING_SOON);
-            }}
+            onClick={() => setOpen('import')}
           >
             Import from Jira…
           </button>
@@ -64,14 +61,6 @@ export function PlansPage() {
           </button>
         </div>
       </header>
-      {note ? (
-        <div className="sb-plan-banner" data-testid="plans-note" role="status">
-          <span>{note}</span>
-          <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={() => setNote(null)}>
-            OK
-          </button>
-        </div>
-      ) : null}
       <div className="sb-plan-list" data-testid="plans-list">
         {sorted.length === 0 ? (
           <div className="sb-plan-empty" data-testid="plans-empty">
@@ -104,7 +93,17 @@ export function PlansPage() {
         ))}
       </div>
       {open === 'new' ? <NewPlanDialog initialSessionId={null} onCreated={opened} onClose={() => setOpen(null)} /> : null}
-      {open === 'import' && importer ? importer.render({ onImported: opened, onClose: () => setOpen(null) }) : null}
+      {open === 'import' && jiraSource === null ? <JiraSourceDialog onPick={setJiraSource} onClose={() => setOpen(null)} /> : null}
+      {open === 'import' && jiraSource !== null ? (
+        <ImportJiraDialog
+          sourceSessionId={jiraSource}
+          onImported={opened}
+          onClose={() => {
+            setOpen(null);
+            setJiraSource(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

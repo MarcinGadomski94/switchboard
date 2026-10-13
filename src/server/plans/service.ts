@@ -21,6 +21,8 @@ import {
   type PlanMergeMode,
   type PlanWaitingOn,
   type PlansState,
+  PLAN_ITEM_SPANS_MAX,
+  planItemSpanKind,
   PLANS_OFF_REASON,
   PLANS_SETTING,
   developerMerges,
@@ -230,7 +232,7 @@ export class PlanService {
    */
   async start(): Promise<void> {
     if (this.#closed) return;
-    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged() });
+    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged(), sessionContinued: (from, to) => this.sessionContinued(from, to) });
     await this.switchChanged();
   }
 
@@ -284,6 +286,7 @@ export class PlanService {
   async #activate(): Promise<void> {
     const repo = (this.#db as PlansDb).plans;
     await this.#prune();
+    for (const plan of await repo.list()) await this.#syncSpans(repo, plan);
     for (const plan of await repo.list({ states: ['running', 'paused'] })) {
       for (const item of await repo.items(plan.id)) {
         if (item.state !== 'running' || item.runSessionId === null) continue;
@@ -309,7 +312,9 @@ export class PlanService {
     const paused: string[] = [];
     try {
       for (const plan of await db.plans.list({ states: ['running'] })) {
-        await db.plans.update(plan.id, { state: 'paused', pausedReason: PLANS_OFF_REASON, heldReason: null });
+        const now = await db.plans.update(plan.id, { state: 'paused', pausedReason: PLANS_OFF_REASON, heldReason: null });
+        // The waiting items' spans become paused-plan; running items keep theirs (their turn finishes).
+        if (now) await this.#syncSpans(db.plans, now);
         paused.push(plan.id);
       }
     } finally {
@@ -318,10 +323,55 @@ export class PlanService {
     for (const planId of paused) this.#bus.publish('planChanged', { planId, state: 'paused' });
   }
 
-  /** Deletes the plans of a source session that is gone (the main database's cascade cannot reach `plans.db`); at activation and with each scheduling cycle. */
+  /**
+   * D83 (`docs/plans.md` → *Continue in a fresh session*): the plans whose source is `from` move to
+   * the fresh session `to` (their items keep their todo ids: the todos moved with their ids), and
+   * items run by `from` are run by `to`. Nothing while Plans is off or `plans.db` is broken: the
+   * sweep at activation makes the move from the sessions' links.
+   */
+  async sessionContinued(from: string, to: string): Promise<void> {
+    if (!this.#db || from === to) return;
+    await this.#move(from, to);
+    this.kick();
+  }
+
+  async #move(from: string, to: string): Promise<void> {
+    const repo = (this.#db as PlansDb).plans;
+    const plans = await repo.list({ sourceSessionId: from });
+    await repo.moveSource(from, to);
+    const run = this.#runs.get(from);
+    if (await repo.moveRunSession(from, to)) {
+      this.#runs.delete(from);
+      if (run) this.#runs.set(to, { ...run, status: (await this.#store.sessions.get(to))?.status ?? null });
+    }
+    for (const plan of plans) this.#bus.publish('planChanged', { planId: plan.id, state: plan.state });
+    for (const item of await repo.itemsByRunSession(to)) if (!plans.some((plan) => plan.id === item.planId)) this.#bus.publish('planChanged', { planId: item.planId, state: (await repo.get(item.planId))?.state ?? null });
+  }
+
+  /** The session `sessionId` was continued into, following the chain (`null` = not continued, or the fresh one is gone). */
+  async #successor(sessionId: string): Promise<string | null> {
+    let at = sessionId;
+    const seen = new Set<string>([at]);
+    for (;;) {
+      const record = await this.#store.sessions.get(at);
+      let next = record?.continuedTo ?? null;
+      // The old session may have been deleted (Clean-up): the fresh one still names it.
+      if (!record) next = (await this.#store.sessions.list()).find((candidate) => candidate.continuedFrom === at)?.id ?? null;
+      if (next === null || seen.has(next) || !(await this.#store.sessions.get(next))) return at === sessionId ? null : at;
+      seen.add(next);
+      at = next;
+    }
+  }
+
+  /** Follows continued sessions, then deletes the plans of a source session that is gone (the main database's cascade cannot reach `plans.db`); at activation and with each scheduling cycle. */
   async #prune(): Promise<void> {
     const repo = this.#db?.plans;
     if (!repo) return;
+    // D83: a source or run session continued in a fresh one (also while Plans was off) is followed first.
+    for (const sessionId of new Set([...(await repo.sourceSessionIds()), ...(await repo.runSessionIds())])) {
+      const to = await this.#successor(sessionId);
+      if (to !== null) await this.#move(sessionId, to);
+    }
     for (const sessionId of await repo.sourceSessionIds()) {
       if (await this.#store.sessions.get(sessionId)) continue;
       for (const plan of await repo.list({ sourceSessionId: sessionId })) {
@@ -485,9 +535,10 @@ export class PlanService {
     return plan;
   }
 
-  async #view(plan: PlanRecord): Promise<Plan> {
-    const items = await this.#repo().items(plan.id);
-    const edges = await this.#repo().edges(plan.id);
+  async #view(plan: PlanRecord, repo: PlanRepository = this.#repo()): Promise<Plan> {
+    const items = await repo.items(plan.id);
+    const edges = await repo.edges(plan.id);
+    const spans = await repo.spans(plan.id, PLAN_ITEM_SPANS_MAX);
     const facts: PlanItemFacts[] = [];
     for (const item of items) {
       const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
@@ -517,7 +568,7 @@ export class PlanService {
       external: plan.external,
       held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
       pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
-      items: model.items,
+      items: model.items.map((item) => ({ ...item, spans: spans.get(item.id) ?? [] })),
       edges,
       criticalPath: model.criticalPath,
       progress: model.progress,
@@ -1247,7 +1298,27 @@ export class PlanService {
 
   async #publish(planId: string): Promise<void> {
     const plan = await this.#repo().get(planId);
+    if (plan) await this.#syncSpans(this.#repo(), plan);
     this.#bus.publish('planChanged', { planId, state: plan?.state ?? null });
+  }
+
+  /**
+   * Brings the plan's item spans (the Timeline's history, `plan_item_spans`) up to date with the
+   * items' states now: an item whose kind changed has its open span closed and a new one opened;
+   * a finished or cancelled plan has none open. Every change publishes, so every change lands here;
+   * at activation every plan is brought up to date (a restart keeps one open span per item).
+   */
+  async #syncSpans(repo: PlanRepository, plan: PlanRecord): Promise<void> {
+    const view = await this.#view(plan, repo);
+    const now = this.#nowIso();
+    const open = await repo.openSpans(plan.id);
+    for (const item of view.items) {
+      const want = planItemSpanKind(plan, item);
+      const mine = open.filter((span) => span.itemId === item.id);
+      const keep = want === null ? undefined : mine.find((span) => span.kind === want);
+      for (const span of mine) if (span !== keep) await repo.closeSpan(span.id, now);
+      if (want !== null && !keep) await repo.openSpan(plan.id, item.id, want, now);
+    }
   }
 
   #nowIso(): string {

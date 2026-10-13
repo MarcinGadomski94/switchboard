@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { KnownSettings } from '../../core/settings.ts';
 import { Row, ToggleValue } from '../views/settings/rows.tsx';
 import type { SaveSettings } from '../views/settings/sections.tsx';
+import { JiraCredentialsForm } from './jira/JiraCredentialsForm.tsx';
 import { reloadPlans } from './store.ts';
 
 /**
@@ -9,29 +10,39 @@ import { reloadPlans } from './store.ts';
  * while off Switchboard behaves exactly as without it (no `plans.db`, no scheduler, no plan
  * tools for agents). Switching it off pauses every running plan ("Plans was switched off");
  * switched on again they show paused until the developer resumes them.
+ * While on, the row also holds the **Jira connection** (`jira/JiraCredentialsForm.tsx`, D99-Jira).
  * Rendered by the shared Experimental section (`views/settings/ExperimentalSection.tsx`).
  */
 export function PlansSwitchRow({ settings, save }: { readonly settings: KnownSettings; readonly save: SaveSettings }) {
   const [busy, setBusy] = useState(false);
   const on = settings['experimental.plans'];
   return (
-    <Row
-      id="experimental-plans"
-      label="Plans"
-      tour="experimental-plans"
-      description="Run a group of todos in dependency order, several at once, each merged into an epic branch. Off: no background work and no plan tools for agents; running plans are paused."
-    >
-      <ToggleValue
+    <>
+      <Row
+        id="experimental-plans"
         label="Plans"
-        value={on}
-        disabled={busy}
-        onToggle={() => {
-          setBusy(true);
-          void save({ 'experimental.plans': !on })
-            .then(() => reloadPlans())
-            .finally(() => setBusy(false));
-        }}
-      />
-    </Row>
+        tour="experimental-plans"
+        description="Run a group of todos in dependency order, several at once, each merged into an epic branch. Off: no background work and no plan tools for agents; running plans are paused."
+      >
+        <ToggleValue
+          label="Plans"
+          value={on}
+          disabled={busy}
+          onToggle={() => {
+            setBusy(true);
+            void save({ 'experimental.plans': !on })
+              .then(() => reloadPlans())
+              .finally(() => setBusy(false));
+          }}
+        />
+      </Row>
+      {/* D99-Jira-q3: the Jira connection, part of the Plans row, only while Plans is on (Settings → Integrations → Jira). */}
+      {on ? (
+        <div className="sb-jira-settings" data-testid="experimental-plans-jira">
+          <h3>Jira connection</h3>
+          <JiraCredentialsForm />
+        </div>
+      ) : null}
+    </>
   );
 }

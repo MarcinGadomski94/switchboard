@@ -255,7 +255,7 @@ test.describe('PR merged → worktree removable', () => {
     expect(await git(repo, 'branch', '--list', 'PROJ-231-speaking-page')).not.toBe('');
 
     // gh now reports the PR merged; the manager's check (15 s after start) flags the worktree removable → the item arrives live.
-    await writeFile(prsFile, JSON.stringify({ 'PROJ-231-speaking-page': { number: 231, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/231' } }));
+    await writeFile(prsFile, JSON.stringify({ 'PROJ-231-speaking-page': { number: 231, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/231' } }));
     const cards = page.getByTestId('inbox-item');
     await expect(cards).toHaveCount(1, { timeout: 60_000 });
     await expect(cards.locator('.sb-inbox__card-source')).toHaveText('worktrees');

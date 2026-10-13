@@ -5,6 +5,7 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PLAN_TOOLS, type PlansState } from '../../../src/core/plans.ts';
+import { PLAN_PROPOSE_TOOL } from '../../../src/core/plans-jira.ts';
 import { type AgentApi, createTodoServer } from '../../../src/hook/sb-mcp.ts';
 import { registerPlanToolsIfOn } from '../../../src/hook/sb-plan-tools.ts';
 import { buildApp } from '../../../src/server/app.ts';
@@ -141,7 +142,7 @@ describe('D99 · the Plans switch', () => {
     expect(planServiceOf(r.app)?.activeTimers()).toBe(2);
     expect((await ui(r, 'GET', '/api/plans')).json()).toEqual([]);
     const sessionId = (await r.store.sessions.create({ name: 'agent', claudeSessionId: 'c-agent', attached: true })).id;
-    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('plan_'))).toEqual(PLAN_TOOLS.map((tool) => tool.name));
+    expect((await toolsOf(helperApi(r, sessionId))).filter((name) => name.startsWith('plan_'))).toEqual([...PLAN_TOOLS.map((tool) => tool.name), PLAN_PROPOSE_TOOL.name]);
 
     expect((await ui(r, 'PUT', '/api/settings', { 'experimental.plans': false })).statusCode).toBe(200);
     expect(planServiceOf(r.app)?.activeTimers()).toBe(0);

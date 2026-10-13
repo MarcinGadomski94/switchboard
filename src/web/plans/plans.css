@@ -22,12 +22,28 @@
   gap: 6px;
 }
 
+.sb-plan-tab__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.sb-plan-tab__import {
+  font: var(--fs-mono-meta) var(--font-mono);
+  color: var(--muted-2);
+}
+
+.sb-plan-tab__import:hover {
+  color: var(--text-2);
+}
+
 .sb-plan-tab__label {
   font: 500 var(--fs-section-label) var(--font-mono);
   letter-spacing: var(--ls-section-label);
   text-transform: uppercase;
   color: var(--muted-2);
-  padding: 0 4px;
 }
 
 .sb-plan-tab__link {
@@ -382,6 +398,27 @@
   color: var(--muted-2);
 }
 
+/* ── the Jira section (the Jira lane's panel, collapsible) ─────────── */
+
+.sb-plan-jira {
+  margin: 10px 22px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sb-plan-jira__toggle {
+  align-self: flex-start;
+  font: 500 var(--fs-section-label) var(--font-mono);
+  letter-spacing: var(--ls-section-label);
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.sb-plan-jira__toggle:hover {
+  color: var(--text-2);
+}
+
 /* ── tabs, hint, body ────────────────────────────────────────────────── */
 
 .sb-plan-tabs {
@@ -430,6 +467,42 @@
 }
 
 /* ── the graph ───────────────────────────────────────────────────────── */
+
+.sb-plan-graph-frame {
+  position: relative;
+  min-width: 0;
+}
+
+/* A soft fade on a side that has more graph to scroll to. */
+.sb-plan-graph-frame::before,
+.sb-plan-graph-frame::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 36px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+
+.sb-plan-graph-frame::before {
+  left: 1px;
+  border-radius: var(--radius-card-lg) 0 0 var(--radius-card-lg);
+  background: linear-gradient(to right, var(--bg-list), transparent);
+}
+
+.sb-plan-graph-frame::after {
+  right: 1px;
+  border-radius: 0 var(--radius-card-lg) var(--radius-card-lg) 0;
+  background: linear-gradient(to left, var(--bg-list), transparent);
+}
+
+.sb-plan-graph-frame[data-fade-left]::before,
+.sb-plan-graph-frame[data-fade-right]::after {
+  opacity: 1;
+}
 
 .sb-plan-graph-scroll {
   overflow-x: auto;
@@ -718,7 +791,8 @@
   opacity: 0.7;
 }
 
-.sb-plan-seg[data-kind='usage'] {
+.sb-plan-seg[data-kind='usage'],
+.sb-plan-seg[data-kind='paused'] {
   background: var(--status-fail);
   opacity: 0.6;
 }
@@ -1127,6 +1201,10 @@
 
   .sb-plan-tabs {
     padding: 0 16px;
+  }
+
+  .sb-plan-jira {
+    margin: 10px 16px 0;
   }
 
   .sb-plan-list {

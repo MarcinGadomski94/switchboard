@@ -160,6 +160,22 @@ test('desktop: the graph, its colours and the critical path; the detail; the tim
   await expect(page.locator('.sb-plan-edge[data-critical]')).toHaveCount(0);
   await page.getByTestId('plan-critical-chip').click();
 
+  // A DAG wider than the panel scrolls sideways (a fade on the side with more); scrolled to the end, the final node shows whole.
+  const scroller = page.getByTestId('plan-graph');
+  const wide = await scroller.evaluate((el) => el.scrollWidth > el.clientWidth);
+  if (wide) {
+    await expect(page.locator('.sb-plan-graph-frame')).toHaveAttribute('data-fade-right', 'true');
+    await scroller.evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+    await expect(page.locator('.sb-plan-graph-frame')).not.toHaveAttribute('data-fade-right', 'true');
+    await expect(page.locator('.sb-plan-graph-frame')).toHaveAttribute('data-fade-left', 'true');
+  }
+  const finalBox = await page.getByTestId('plan-final').boundingBox();
+  const scrollBox = await scroller.boundingBox();
+  expect(finalBox && scrollBox && finalBox.x >= scrollBox.x && finalBox.x + finalBox.width <= scrollBox.x + scrollBox.width).toBe(true);
+  lines.push(`- graph: ${wide ? 'wider than the panel: scrolls sideways with an edge fade; scrolled to the end the final node shows whole' : 'fits the panel'}`);
+  if (wide) await shoot(page, 'plans-graph-end-desktop.png');
+  await scroller.evaluate((el) => el.scrollTo({ left: 0 }));
+
   await page.locator(card('PROJ-3152')).click();
   await expect(page.getByTestId('plan-detail-review')).toBeVisible();
   await page.getByTestId('plan-graph').scrollIntoViewIfNeeded();
@@ -205,7 +221,12 @@ test('tablet: the graph scrolls sideways inside its box', async ({ page }) => {
   expect(box.overflowX).toBe('auto');
   expect(box.scroll).toBeGreaterThan(box.client);
   expect(await overflow(page)).toBeLessThanOrEqual(0);
-  lines.push('## Tablet (1024 × 768)', '', `- graph ${box.scroll}px wide in a ${box.client}px box (scrolls sideways); the page does not`);
+  await page.getByTestId('plan-graph').evaluate((el) => el.scrollTo({ left: el.scrollWidth }));
+  const finalBox = await page.getByTestId('plan-final').boundingBox();
+  const scrollBox = await page.getByTestId('plan-graph').boundingBox();
+  expect(finalBox && scrollBox && finalBox.x + finalBox.width <= scrollBox.x + scrollBox.width).toBe(true);
+  await page.getByTestId('plan-graph').evaluate((el) => el.scrollTo({ left: 0 }));
+  lines.push('## Tablet (1024 × 768)', '', `- graph ${box.scroll}px wide in a ${box.client}px box (scrolls sideways, fade on the right; the final node whole at the end); the page does not`);
   await shoot(page, 'plans-graph-tablet.png');
   lines.push('');
 });

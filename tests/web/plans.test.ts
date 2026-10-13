@@ -56,6 +56,7 @@ function item(id: string, patch: Partial<PlanItem> = {}): PlanItem {
     waitingSince: null,
     mergedAt: null,
     doneAt: null,
+    spans: [],
     ...patch,
   };
 }
@@ -280,5 +281,55 @@ describe('timeline of a blocked item', () => {
     const segments = timeline(p, now).groups[0]?.rows[0]?.segments ?? [];
     expect(segments.map((segment) => segment.kind)).toEqual(['working']);
     expect(timeline(p, now).projectedFinish).toBeNull();
+  });
+});
+
+describe('timeline from the history (PlanItem.spans)', () => {
+  it('maps every span kind to its segment, draws an open span to now and sums every wait on you', () => {
+    const now = T0 + 10 * 3_600_000;
+    const a = item('1', {
+      state: 'done',
+      storedState: 'done',
+      developerMerges: true,
+      startedAt: iso(0),
+      mergedAt: iso(6),
+      doneAt: iso(6),
+      spans: [
+        { kind: 'running', startedAt: iso(0), endedAt: iso(1) },
+        { kind: 'waiting-you', startedAt: iso(1), endedAt: iso(2) },
+        { kind: 'running', startedAt: iso(2), endedAt: iso(3) },
+        { kind: 'waiting-you', startedAt: iso(3), endedAt: iso(6) },
+      ],
+    });
+    const b = item('2', {
+      state: 'question',
+      storedState: 'running',
+      startedAt: iso(6),
+      spans: [
+        { kind: 'waiting-dependency', startedAt: iso(0), endedAt: iso(5) },
+        { kind: 'paused-usage', startedAt: iso(5), endedAt: iso(5.5) },
+        { kind: 'paused-plan', startedAt: iso(5.5), endedAt: iso(6) },
+        { kind: 'running', startedAt: iso(6), endedAt: iso(8) },
+        { kind: 'waiting-you', startedAt: iso(8), endedAt: null },
+      ],
+    });
+    const p = plan([a, b], [{ from: '1', to: '2' }], { state: 'running', startedAt: iso(0) });
+    const view = timeline(p, now);
+    const rows = view.groups.flatMap((group) => group.rows);
+    expect(rows[0]?.segments.map((segment) => segment.kind)).toEqual(['working', 'you', 'working', 'you']);
+    expect(rows[1]?.segments.map((segment) => segment.kind)).toEqual(['dependency', 'usage', 'paused', 'working', 'you', 'projected']);
+    expect(rows[1]?.segments[2]?.note).toBe('plan paused');
+    expect(rows[1]?.segments[4]).toMatchObject({ from: T0 + 8 * 3_600_000, to: now, on: 'question' });
+    // 1 + 3 + 2 hours waiting on you; the longest single wait is 1's review (3 h).
+    expect(view.youHours).toBe(6);
+    expect(view.totalHours).toBe(10);
+    expect(view.longest).toMatchObject({ itemId: '1', on: 'review', hours: 3 });
+    expect(timelineSummary(view, p)).toMatch(/^Waiting on you: 6 h of 10 · longest: 1 review \(3 h\) · Projected finish: /);
+  });
+
+  it('names an open paused-plan span after the plan\'s reason', () => {
+    const p = plan([item('1', { state: 'waiting', spans: [{ kind: 'paused-plan', startedAt: iso(0), endedAt: null }] })], [], { state: 'paused', startedAt: iso(0), pausedReason: 'Plans was switched off' });
+    const segment = timeline(p, T0 + 3_600_000).groups[0]?.rows[0]?.segments[0];
+    expect(segment).toMatchObject({ kind: 'paused', note: 'Plans was switched off' });
   });
 });

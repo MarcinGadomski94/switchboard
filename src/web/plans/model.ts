@@ -1,4 +1,4 @@
-import { type Plan, type PlanEdge, type PlanItem, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, findCycle } from '../../core/plans.ts';
+import { type Plan, type PlanEdge, type PlanItem, type PlanItemSpanKind, type PlanItemState, type PlanMergeMode, DEFAULT_ITEM_MINUTES, findCycle } from '../../core/plans.ts';
 
 /**
  * D99 · the Plans page's pure rules (`docs/plans-ui.md` → *The Plans page*), kept free of React
@@ -315,16 +315,27 @@ export function alwaysOnNote(plan: Pick<Plan, 'targetBranch'>): string {
 // ── the timeline ──────────────────────────────────────────────────────────
 
 /** A timeline segment's kind (the design's legend). */
-export type SegmentKind = 'working' | 'you' | 'dependency' | 'usage' | 'projected';
+export type SegmentKind = 'working' | 'you' | 'dependency' | 'usage' | 'paused' | 'projected';
 
 /** One bar segment (epoch ms). */
 export interface Segment {
   readonly kind: SegmentKind;
   readonly from: number;
   readonly to: number;
-  /** What the developer waited on (`you` segments): `review`, `question`, `conflict`. */
+  /** What the developer waited on (`you` segments): `review`, `question`, `conflict`, `wait` (an earlier wait whose cause is not recorded). */
   readonly on?: string;
+  /** Why the plan was paused (`paused` segments): "Plans was switched off", "plan paused". */
+  readonly note?: string;
 }
+
+/** The segment kind of a history span (`PlanItem.spans`; paused-plan looks like paused-usage). */
+export const SPAN_SEGMENT: Readonly<Record<PlanItemSpanKind, SegmentKind>> = {
+  running: 'working',
+  'waiting-you': 'you',
+  'waiting-dependency': 'dependency',
+  'paused-usage': 'usage',
+  'paused-plan': 'paused',
+};
 
 /** One row of the timeline. */
 export interface TimelineRow {
@@ -365,16 +376,18 @@ function waitsOnYou(item: PlanItem): string | null {
 }
 
 /**
- * The timeline (`docs/plans-ui.md` → *Timeline*), from the items' timestamps (`startedAt`,
+ * The timeline (`docs/plans-ui.md` → *Timeline*). An item with a history (`PlanItem.spans`, the
+ * core's `plan_item_spans`) is drawn from it ({@link SPAN_SEGMENT}; an open span up to now; "Waiting
+ * on you" sums every waiting-you span, "longest" is the longest single one). Without one (older
+ * data) it is derived from the items' timestamps (`startedAt`,
  * `waitingSince`, `mergedAt`, `doneAt`) and the plan's: before an item starts it waits on a
  * dependency (hatched; from the plan's start); from its start the agent works (run blue) until
  * it waits on the developer (`waitingSince` of a question, review or conflict: amber) or is
  * done; while the plan is held for usage a ready item's wait shows red from the hold's best
  * known start (the latest of the plan's start and its dependencies' ends); what is left is
  * projected (dashed): each open item after the projected end of its dependencies, for its
- * estimate (a running one for what is left of it), not before now. Only the current wait on
- * the developer is known per item: the core keeps no history of earlier ones (ASSUMED,
- * `.loop/questions.md` → *D99-UI*).
+ * estimate (a running one for what is left of it), not before now. The fallback knows only each
+ * item's current wait on the developer.
  */
 export function timeline(plan: Plan, now: number): Timeline {
   const origin = parse(plan.startedAt) ?? parse(plan.createdAt) ?? now;
@@ -389,6 +402,43 @@ export function timeline(plan: Plan, now: number): Timeline {
   const heldForUsage = plan.state === 'running' && plan.held !== null;
   for (const item of ordered) {
     const segments: Segment[] = [];
+    const history = item.spans ?? [];
+    if (history.length > 0) {
+      // The core's history (plan_item_spans): each span as it was, an open one up to now.
+      const spans = history.filter((span) => parse(span.startedAt) !== null);
+      const lastYou = [...spans].reverse().find((span) => span.kind === 'waiting-you');
+      for (const span of spans) {
+        const from = parse(span.startedAt) as number;
+        const to = span.endedAt === null ? now : (parse(span.endedAt) ?? now);
+        if (to <= from) continue;
+        const kind = SPAN_SEGMENT[span.kind];
+        if (span.kind === 'waiting-you') {
+          const on = span.endedAt === null ? (waitsOnYou(item) ?? 'wait') : span === lastYou && item.state === 'done' && item.developerMerges ? 'review' : 'wait';
+          segments.push({ kind, from, to, on });
+          youMs += to - from;
+          if (!longest || (to - from) / 3_600_000 > longest.hours) longest = { itemId: item.id, on, hours: (to - from) / 3_600_000 };
+        } else if (span.kind === 'paused-plan') {
+          segments.push({ kind, from, to, note: span.endedAt === null && plan.pausedReason ? plan.pausedReason : 'plan paused' });
+        } else segments.push({ kind, from, to });
+        if (span.kind === 'running' || span.kind === 'waiting-you') totalMs += to - from;
+      }
+      const ended = parse(item.doneAt) ?? parse(item.mergedAt);
+      if (item.state === 'done' || ended !== null) projectedEnd.set(item.id, ended ?? now);
+      else if (item.state === 'blocked') projectedEnd.set(item.id, now);
+      else {
+        const started = parse(item.startedAt);
+        const estimate = (item.estimateMinutes ?? DEFAULT_ITEM_MINUTES) * MINUTE;
+        const depsEnd = Math.max(origin, ...item.dependsOn.map((dep) => projectedEnd.get(dep) ?? origin));
+        const from = Math.max(now, depsEnd);
+        const end = started !== null ? now + Math.max(estimate - (now - started), MINUTE) : from + estimate;
+        segments.push({ kind: 'projected', from: started !== null ? now : from, to: end });
+        projectedEnd.set(item.id, end);
+        projectedFinish = Math.max(projectedFinish ?? 0, end);
+      }
+      const repo = item.solutions.length > 0 ? (item.solutions[0] as string) : plan.repos.length === 1 ? (plan.repos[0] as string) : 'all repos';
+      rows.set(item.id, { itemId: item.id, repo, segments });
+      continue;
+    }
     const started = parse(item.startedAt);
     const ended = parse(item.doneAt) ?? parse(item.mergedAt);
     const depsEnd = Math.max(origin, ...item.dependsOn.map((dep) => projectedEnd.get(dep) ?? origin));

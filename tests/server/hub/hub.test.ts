@@ -475,7 +475,7 @@ describe('/hub · events (contract, field by field)', () => {
     const stream = await connect();
     const [record] = await manager.createForSession('hub-pr', ['web-front'], gw.folder);
     if (!record) throw new Error('no worktree');
-    await gw.setPullRequests({ 'session/hub-pr': { number: 7, state: 'MERGED', url: 'https://github.com/acme/web-front/pull/7' } });
+    await gw.setPullRequests({ 'session/hub-pr': { number: 7, state: 'MERGED', url: 'https://git.acme.example/acme/web-front/pull/7' } });
     expect((await manager.checkPullRequests()).find((c) => c.worktreeId === record.id)).toMatchObject({ prState: 'MERGED', removable: true });
 
     const [payload] = await stream.waitFor((p) => {

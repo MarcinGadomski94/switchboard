@@ -14,6 +14,9 @@ import { PlanDetail } from './PlanDetail.tsx';
 import { GraphLegend, PlanGraph } from './PlanGraph.tsx';
 import { PlansOff } from './PlansPage.tsx';
 import { PlanTimeline } from './PlanTimeline.tsx';
+import { PlanEdgeProposals, PlanJiraPanel, jiraApi } from './jira/index.ts';
+import { useSessionListOf } from '../api/session-list.ts';
+import { displayTitle } from '../../core/session-title.ts';
 import {
   STATE_LOOK,
   canEditDependencies,
@@ -121,6 +124,8 @@ export function PlanPage({ planId }: { readonly planId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [jiraOpen, setJiraOpen] = useState(true);
+  const sessions = useSessionListOf();
   const inbox = useApi(api.inbox);
   const reviews = useApi(api.reviews);
   useHubEvent('inboxChanged', () => inbox.reload());
@@ -193,6 +198,19 @@ export function PlanPage({ planId }: { readonly planId: string }) {
       return;
     }
     void plansApi.addEdge(plan.id, from, item.id).then(changed, (caught: unknown) => toast(refusalCode(caught) === 'cycle' ? (refuseEdge(plan, from, item.id) ?? `Refused: ${refusalText(caught)}`) : `Refused: ${refusalText(caught)}`));
+  };
+  const proposeOrder = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await jiraApi.askForOrder(plan.id);
+      const source = (sessions.data ?? []).find((session) => session.id === plan.sourceSessionId);
+      toast(`Asked ${source ? displayTitle(source) : 'the plan\'s session'} to propose the order — suggestions will appear above the graph`);
+    } catch (caught) {
+      setError(refusalText(caught));
+    } finally {
+      setBusy(false);
+    }
   };
   const removeEdge = (from: string, to: string): void => {
     void plansApi.removeEdge(plan.id, from, to).then(changed, (caught: unknown) => toast(refusalText(caught)));
@@ -280,6 +298,11 @@ export function PlanPage({ planId }: { readonly planId: string }) {
               ▶ Resume
             </button>
           ) : null}
+          {plan.state === 'draft' && !remote && plan.items.length > 1 ? (
+            <button type="button" className="sb-button sb-plan-btn" data-testid="plan-propose-order" disabled={busy} onClick={() => void proposeOrder()}>
+              Propose order
+            </button>
+          ) : null}
           {plan.state === 'draft' && !remote ? (
             <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-start" disabled={busy || plan.items.length === 0} onClick={() => setOpen('start')}>
               ▶ Start plan
@@ -296,6 +319,15 @@ export function PlanPage({ planId }: { readonly planId: string }) {
         <div className="sb-plan-error sb-plan-error--page" data-testid="plan-error">
           {error}
         </div>
+      ) : null}
+
+      {plan.external?.system === 'jira' ? (
+        <section className="sb-plan-jira" data-testid="plan-jira-section">
+          <button type="button" className="sb-button sb-plan-jira__toggle" data-testid="plan-jira-toggle" aria-expanded={jiraOpen} onClick={() => setJiraOpen(!jiraOpen)}>
+            {jiraOpen ? '▾' : '▸'} Jira · {plan.external.key}
+          </button>
+          {jiraOpen ? <PlanJiraPanel planId={plan.id} /> : null}
+        </section>
       ) : null}
 
       {!phone ? (
@@ -318,6 +350,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
       ) : null}
 
       <div className="sb-plan-body">
+        {!remote ? <PlanEdgeProposals planId={plan.id} /> : null}
         {view === 'graph' ? (
           <>
             <PlanGraph plan={plan} selectedId={selectedId} critical={critical} editing={editing} editFirst={editFirst} onCard={pickCard} onEdge={removeEdge} />

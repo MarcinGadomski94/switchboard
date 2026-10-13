@@ -4,6 +4,7 @@ import { planEnvironment } from './environment.ts';
 import { PlanGit } from './git.ts';
 import { registerPlanRoutes } from './routes.ts';
 import { PlanService } from './service.ts';
+import { installPlansJira } from './jira/install.ts';
 
 /** What {@link installPlans} needs from the app (the route context it already built). */
 export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers'>;
@@ -51,5 +52,7 @@ export async function installPlans(app: FastifyInstance, context: PlansAppContex
   }
   services.set(app, plans);
   await registerPlanRoutes(app, plans, context);
+  // D99-Jira: the Jira import and status sync (src/server/plans/jira/; its routes answer plans-off while Plans is off).
+  await installPlansJira(app, context, plans);
   return plans;
 }

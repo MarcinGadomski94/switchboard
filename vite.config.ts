@@ -40,6 +40,8 @@ export default defineConfig({
         main: fileURLToPath(new URL('./src/web/index.html', import.meta.url)),
         // D100-T2: the Access tab's stand-alone dev mount (not linked from the app; tests/e2e/team-access.spec.ts).
         teamAccessDev: fileURLToPath(new URL('./src/web/team-access-dev.html', import.meta.url)),
+        // D99-Jira: the import dialog's stand-alone dev mount (not linked from the app; tests/e2e/plans-jira.spec.ts).
+        plansJiraDev: fileURLToPath(new URL('./src/web/plans-jira-dev.html', import.meta.url)),
       },
     },
     // tools/dev.ts turns watching on; the exclusions apply whenever it is on.

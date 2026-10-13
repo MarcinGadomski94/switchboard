@@ -106,7 +106,7 @@ test.beforeAll(async () => {
   await writeTranscript(configDir, path.join(sandbox, 'tx main'), FIXTURE_IDS['tx-main'], await fixtureLines('tx-main', sandbox), OLD);
   // A terminal session with its --name title and a PR link.
   const tx = asTerminal(withSessionId(await fixtureLines('tx-main', sandbox), TX_ID));
-  tx.push({ type: 'pr-link', prNumber: 42, prUrl: 'https://github.com/acme/tx/pull/42', prRepository: 'acme/tx', timestamp: '2026-09-27T21:20:00.000Z', sessionId: TX_ID });
+  tx.push({ type: 'pr-link', prNumber: 42, prUrl: 'https://git.acme.example/acme/tx/pull/42', prRepository: 'acme/tx', timestamp: '2026-09-27T21:20:00.000Z', sessionId: TX_ID });
   await writeTranscript(configDir, path.join(sandbox, 'tx main'), TX_ID, tx, OLD);
   // The forked file (two leaves): the newest leaf's reply is "lantern, walnut".
   await writeTranscript(configDir, path.join(sandbox, 'handoff-conc'), CONC_ID, asTerminal(withSessionId(await fixtureLines('handoff-conc', sandbox), CONC_ID)), OLD);

@@ -1,9 +1,10 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type Page, expect } from '@playwright/test';
 import type { Plan, PlanItem, PlanItemState } from '../../src/core/plans.ts';
 import { fakeClaudeBinEnv } from '../../tools/fake-claude/command.ts';
 import { fakeGhBinEnv } from '../../tools/fake-gh/command.ts';
+import { type FakeJira, startFakeJira } from '../helpers/fake-jira.ts';
 import { seedFolderInDataDir } from '../helpers/folders.ts';
 import { type GitWorld, makeGitWorld } from '../helpers/git.ts';
 import { type ServerProcess, startServer } from '../helpers/server-process.ts';
@@ -13,12 +14,17 @@ import { type ServerProcess, startServer } from '../helpers/server-process.ts';
  * `node src/server/main.ts` with fake-claude and fake gh over temp git repos. The source
  * session works in the `mobile` repo (a repo folder without a remote, so items merge
  * locally); helpers switch Plans on, add todos, and play an item's agent (a commit in its
- * worktree, then a message so its turn ends) the way the core's integration test does.
+ * worktree, then a message so its turn ends) the way the core's integration test does. The
+ * server's Jira credentials point at the fake Jira (`tests/helpers/fake-jira.ts`).
  */
 export interface PlansWorld {
   readonly git: GitWorld;
   readonly server: ServerProcess;
   readonly baseUrl: string;
+  /** The fake Jira the server's ATL_* point at (loopback; never the real Jira). */
+  readonly jira: FakeJira;
+  /** Calls the agent API as session `sessionId`'s own agent (its token from the MCP config Switchboard wrote for it). */
+  asAgent(sessionId: string, url: string, body: unknown): Promise<{ readonly status: number; readonly body: any }>;
   /** The epic branch every plan here targets. */
   readonly target: string;
   /** Calls the local API from the page (same origin, the sb_token cookie). */
@@ -43,7 +49,11 @@ export async function startPlansWorld(): Promise<PlansWorld> {
   const claudeConfig = path.join(git.root, 'claude-config');
   await mkdir(claudeConfig, { recursive: true });
   await seedFolderInDataDir(path.join(git.root, 'data'), git.workspace);
+  const jira = await startFakeJira();
   const server = await startServer({
+    ATL_BASE_URL: jira.url,
+    ATL_USER: jira.email,
+    ATL_TOKEN: jira.token,
     SWITCHBOARD_DATA_DIR: path.join(git.root, 'data'),
     SWITCHBOARD_CLAUDE_BIN: fakeClaudeBinEnv(),
     SWITCHBOARD_GH_BIN: fakeGhBinEnv(),
@@ -82,6 +92,16 @@ export async function startPlansWorld(): Promise<PlansWorld> {
   return {
     git,
     server,
+    jira,
+    async asAgent(sessionId, url, body) {
+      const config = JSON.parse(await readFile(path.join(git.root, 'data', 'agent-mcp', `${sessionId}.json`), 'utf8')) as { mcpServers: { switchboard: { env: Record<string, string> } } };
+      const response = await fetch(`${server.baseUrl}${url}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${config.mcpServers.switchboard.env['SWITCHBOARD_TODO_TOKEN']}`, 'x-switchboard-session': sessionId },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json() };
+    },
     baseUrl: server.baseUrl,
     target: 'feature/PROJ-100-acme-epic',
     call,
@@ -120,6 +140,7 @@ export async function startPlansWorld(): Promise<PlansWorld> {
       try {
         expect(await server.stop()).toBe(0);
       } finally {
+        await jira.close();
         await git.cleanup();
       }
     },

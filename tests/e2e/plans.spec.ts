@@ -46,9 +46,6 @@ test('create a plan from todos, add a dependency (a loop refused), Start needs a
   await page.getByTestId('nav-plans').click();
   await expect(page.getByTestId('plans-empty')).toBeVisible();
 
-  // The Jira seam: nothing registered yet.
-  await page.getByTestId('plans-import-jira').click();
-  await expect(page.getByTestId('plans-note')).toHaveText(/Import from Jira is coming soon\./);
 
   await page.getByTestId('plans-new').click();
   const dialog = page.getByTestId('plan-new-dialog');
@@ -174,7 +171,9 @@ test('the timeline renders', async ({ page }) => {
   await expect(timeline.getByTestId('plan-timeline-group')).toHaveCount(1);
   await expect(page.getByTestId('plan-timeline-summary')).toHaveText(/^Waiting on you: [\d.]+ h of [\d.]+ · (longest: .* · )?Projected finish: /);
   const row = (key: string) => timeline.locator('[data-testid="plan-timeline-row"]').filter({ hasText: key });
-  await expect(row('PROJ-1').locator('[data-kind="working"]')).toHaveCount(1);
+  // From the core's history: PROJ-1 worked, then waited on my Merge (a waiting-you span, though it is done now).
+  await expect(row('PROJ-1').locator('[data-kind="working"]')).not.toHaveCount(0);
+  await expect(row('PROJ-1').locator('[data-kind="you"]')).not.toHaveCount(0);
   await expect(row('PROJ-2').locator('[data-kind="projected"]')).toHaveCount(1);
   await expect(page.getByTestId('plan-timeline-now')).toBeVisible();
   // A row selects its item.
@@ -207,6 +206,69 @@ test("the session's Plan tab links to its plan", async ({ page }) => {
   await expect(tab).toBeVisible();
   await tab.getByTestId('session-plan-link').click();
   await expect(page).toHaveURL(new RegExp(`/plans/${planId}$`));
+});
+
+test('import from Jira via the list: the draft opens, Propose order asks, a proposal ✓ adds an edge in the graph', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openWithHub(page, `${world.baseUrl}/plans`);
+  const source = (await world.plan(page, planId)).sourceSessionId;
+  await page.getByTestId('plans-import-jira').click();
+  const picker = page.getByTestId('plan-jira-source-dialog');
+  await picker.getByTestId('plan-jira-source-session').selectOption(source);
+  await picker.getByTestId('plan-jira-source-continue').click();
+  const dialog = page.getByTestId('jira-import');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-tour="plans-jira-epic"]')).toBeVisible();
+  await dialog.getByTestId('jira-epic').fill('PROJ-10');
+  await dialog.getByTestId('jira-preview').click();
+  await expect(dialog.getByTestId('jira-items').locator('li')).toHaveCount(5);
+  await dialog.getByTestId('jira-target').fill('feature/PROJ-10-acme-checkout');
+  await dialog.getByTestId('jira-create').click();
+
+  // The draft opens: five tickets, its Jira section under the header.
+  await expect(page.getByTestId('plan-title')).toHaveText('PROJ-10 Acme checkout');
+  const jiraPlanId = (await page.getByTestId('plan-page').getAttribute('data-plan-id')) as string;
+  await expect(page).toHaveURL(new RegExp(`/plans/${jiraPlanId}$`));
+  await expect(page.getByTestId('plan-card')).toHaveCount(5);
+  await expect(page.getByTestId('plan-external')).toHaveText('PROJ-10');
+  await expect(page.getByTestId('plan-jira-section')).toBeVisible();
+  await page.getByTestId('plan-jira-toggle').click();
+  await expect(page.getByTestId('plan-jira-sync')).toHaveCount(0);
+  await page.getByTestId('plan-jira-toggle').click();
+  const edgesBefore = await page.getByTestId('plan-edge').count();
+
+  // Propose order asks the source session.
+  await page.getByTestId('plan-propose-order').click();
+  await expect(page.getByTestId('toast')).toContainText('to propose the order — suggestions will appear above the graph');
+  await page.getByTestId('toast').getByRole('button', { name: 'Close' }).click();
+
+  // Its agent proposes; the proposal shows above the graph and ✓ adds the edge.
+  const plan = await world.plan(page, jiraPlanId);
+  const id = (key: string): string => plan.items.find((item) => item.key === key)?.id as string;
+  const proposed = await world.asAgent(source, `/agent/v1/plans/${jiraPlanId}/proposals`, { proposals: [{ from: 'PROJ-14', to: 'PROJ-15', reason: 'the receipt needs the payment provider' }] });
+  expect(proposed.status, JSON.stringify(proposed.body)).toBe(201);
+  const proposal = (proposed.body.added as Array<{ id: string }>)[0]?.id as string;
+  const list = page.getByTestId('plan-proposals');
+  await expect(list).toContainText('PROJ-15 should wait on PROJ-14');
+  const listBox = await list.boundingBox();
+  const graphBox = await page.getByTestId('plan-graph').boundingBox();
+  expect((listBox?.y ?? 0) < (graphBox?.y ?? 0)).toBe(true);
+  await page.getByTestId(`plan-proposal-accept-${proposal}`).click();
+  await expect(list).toHaveCount(0);
+  await expect(page.getByTestId('plan-edge')).toHaveCount(edgesBefore + 1);
+  await expect(page.locator(`[data-testid="plan-edge"][data-from="${id('PROJ-14')}"][data-to="${id('PROJ-15')}"]`)).toHaveCount(1);
+});
+
+test("the session's Plan strip imports from Jira with that session", async ({ page }) => {
+  const source = await (async () => {
+    await openWithHub(page, `${world.baseUrl}/inbox`);
+    return (await world.plan(page, planId)).sourceSessionId;
+  })();
+  await page.goto(`${world.baseUrl}/sessions/${source}`);
+  await page.getByTestId('session-plan-import').click();
+  await expect(page.getByTestId('jira-import')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('jira-import')).toHaveCount(0);
 });
 
 test("What's new: the Plans tour is listed while Plans is on, and replays", async ({ page }) => {

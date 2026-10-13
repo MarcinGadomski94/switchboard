@@ -314,3 +314,36 @@ export function LimitsDialog({ plan, onDone, onClose }: { readonly plan: Plan; r
     </PlanDialog>
   );
 }
+
+/** Import from Jira… on the Plans list: the session whose todo list the plan will run, then the Jira lane's dialog. */
+export function JiraSourceDialog({ onPick, onClose }: { readonly onPick: (sessionId: string) => void; readonly onClose: () => void }) {
+  const sessions = useSessionListOf();
+  const choices = useMemo(() => openSessions(sessions.data ?? []).filter((session) => session.folderKind !== 'plain'), [sessions.data]);
+  const [sessionId, setSessionId] = useState('');
+  useEffect(() => {
+    if (sessionId === '' && choices[0]) setSessionId(choices[0].id);
+  }, [choices, sessionId]);
+  return (
+    <PlanDialog label="Import from Jira" testId="plan-jira-source-dialog" onClose={onClose}>
+      <label className="sb-plan-field">
+        <span>Session (the epic's tickets become its todos)</span>
+        <select className="sb-plan-input" data-testid="plan-jira-source-session" value={sessionId} onChange={(event) => setSessionId(event.target.value)}>
+          {choices.map((session) => (
+            <option key={session.id} value={session.id}>
+              {displayTitle(session)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {choices.length === 0 ? <div className="sb-plan-muted">Start a session in the epic's repository first.</div> : null}
+      <div className="sb-plan-dialog__actions">
+        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="sb-button sb-plan-btn sb-plan-btn--primary" data-testid="plan-jira-source-continue" disabled={sessionId === ''} onClick={() => onPick(sessionId)}>
+          Continue
+        </button>
+      </div>
+    </PlanDialog>
+  );
+}

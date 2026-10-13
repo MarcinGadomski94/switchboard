@@ -1,7 +1,8 @@
 /**
  * D99 · the plan tools of the built-in `switchboard` MCP server (`src/hook/sb-mcp.ts`, D68's
  * helper and agent token): `plan_create`, `plan_add_item`, `plan_add_dependency`,
- * `plan_status`, `plan_start`. Plans is experimental: the helper asks `GET /agent/v1/plans`
+ * `plan_status`, `plan_start`, and the Jira lane's `plan_propose_dependencies` (proposals the
+ * developer accepts on the plan; `src/core/plans-jira.ts`). Plans is experimental: the helper asks `GET /agent/v1/plans`
  * once at start (`registerPlanToolsIfOn`) and registers them only when it answers 200
  * (Plans on and `plans.db` open); 404 `plans-off`, 503, an older Switchboard or no answer
  * register nothing. The routes check again on every call. Names, descriptions and
@@ -11,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { PLAN_CONCURRENCY_MAX, PLAN_MERGE_MODES, PLAN_TOOLS, type Plan, planStatusText } from '../core/plans.ts';
+import { EDGE_PROPOSALS_MAX, PLAN_PROPOSE_TOOL } from '../core/plans-jira.ts';
 import { TODO_ESTIMATE_MAX, TODO_PRIORITIES, type TodoToolDefinition } from '../core/todos.ts';
 import type { AgentApi, ApiAnswer, ToolInput } from './sb-mcp.ts';
 
@@ -133,6 +135,24 @@ export async function planStart(api: AgentApi, input: ToolInput): Promise<CallTo
   return request(api, 'POST', planRoute(id, '/start'), { mergeMode: mode }, (answer) => (isPlan(answer) ? textResult(`Started.\n\n${planStatusText(answer)}`) : textResult('Switchboard did not answer with the plan.', true)));
 }
 
+/** D99-Jira-q1 · `plan_propose_dependencies`: proposals for the developer, nothing changes. */
+export async function planProposeDependencies(api: AgentApi, input: ToolInput): Promise<CallToolResult> {
+  const id = planIdOf(input);
+  if (id === '') return textResult(NEED_PLAN_ID, true);
+  const proposals = Array.isArray(input['proposals']) ? input['proposals'] : [];
+  if (proposals.length === 0) return textResult('Give proposals: [{ from, to, reason }] (from = the item that goes first, to = the one that waits).', true);
+  return request(api, 'POST', planRoute(id, '/proposals'), { proposals }, (answer) => {
+    const value = record(answer);
+    const added = Array.isArray(value['added']) ? (value['added'] as Array<Record<string, unknown>>) : [];
+    const skipped = Array.isArray(value['skipped']) ? (value['skipped'] as Array<Record<string, unknown>>) : [];
+    const lines = [
+      added.length > 0 ? `Proposed to the developer (nothing changes until they accept on the plan):\n${added.map((entry) => `- ${String(entry['text'])}: ${String(entry['reason'])}`).join('\n')}` : 'Nothing new was proposed.',
+      ...(skipped.length > 0 ? [`Skipped:\n${skipped.map((entry) => `- ${String(entry['to'])} after ${String(entry['from'])}: ${String(entry['why'])}`).join('\n')}`] : []),
+    ];
+    return textResult(lines.join('\n\n'));
+  });
+}
+
 /** Tool `name`'s definition in {@link PLAN_TOOLS}. */
 function tool(name: string): TodoToolDefinition {
   const found = PLAN_TOOLS.find((candidate) => candidate.name === name);
@@ -243,6 +263,27 @@ export function registerPlanTools(server: McpServer, api: AgentApi): void {
       annotations: planStartTool.annotations,
     },
     (input) => serial(() => planStart(api, input)),
+  );
+  // D99-Jira-q1: proposals only (src/core/plans-jira.ts).
+  const proposeSchema = PLAN_PROPOSE_TOOL.inputSchema;
+  const proposeAbout = (key: string): string => String(record(record(proposeSchema['properties'])[key])['description'] ?? '');
+  const proposalAbout = (key: string): string => String(record(record(record(record(record(proposeSchema['properties'])['proposals'])['items'])['properties'])[key])['description'] ?? '');
+  server.registerTool(
+    PLAN_PROPOSE_TOOL.name,
+    {
+      title: PLAN_PROPOSE_TOOL.annotations.title,
+      description: PLAN_PROPOSE_TOOL.description,
+      inputSchema: z.looseObject({
+        plan_id: z.string().describe(proposeAbout('plan_id')).optional(),
+        proposals: z
+          .array(z.object({ from: z.string().describe(proposalAbout('from')), to: z.string().describe(proposalAbout('to')), reason: z.string().describe(proposalAbout('reason')) }))
+          .max(EDGE_PROPOSALS_MAX)
+          .describe(proposeAbout('proposals'))
+          .optional(),
+      }).meta({ required: ['plan_id', 'proposals'], additionalProperties: false }),
+      annotations: PLAN_PROPOSE_TOOL.annotations,
+    },
+    (input) => serial(() => planProposeDependencies(api, input)),
   );
 
 }

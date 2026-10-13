@@ -66,7 +66,7 @@ describe('D65 remote URLs', () => {
   it('gives two clones of one repo the same key whatever the URL shape', () => {
     const urls = [
       'git@github.com:acme/app.git',
-      'https://github.com/acme/app',
+      'https://git.acme.example/acme/app',
       'https://user:secret@GitHub.com/acme/app.git/',
       'ssh://git@github.com:22/acme/app.git',
       'https://github.com:443/acme/app.git',
@@ -75,8 +75,8 @@ describe('D65 remote URLs', () => {
   });
 
   it('keeps different repos, hosts and non-default ports apart', () => {
-    expect(normalizeRemoteUrl('https://github.com/acme/app')).not.toBe(normalizeRemoteUrl('https://github.com/acme/api'));
-    expect(normalizeRemoteUrl('https://github.com/acme/app')).not.toBe(normalizeRemoteUrl('https://gitlab.com/acme/app'));
+    expect(normalizeRemoteUrl('https://git.acme.example/acme/app')).not.toBe(normalizeRemoteUrl('https://git.acme.example/acme/api'));
+    expect(normalizeRemoteUrl('https://git.acme.example/acme/app')).not.toBe(normalizeRemoteUrl('https://gitlab.com/acme/app'));
     expect(normalizeRemoteUrl('ssh://git@host:2222/a/b.git')).toBe('host:2222/a/b');
   });
 
@@ -226,7 +226,7 @@ describe('D65: nothing the other machine sends reaches git unchecked', () => {
     expect(isCommitId('a'.repeat(40))).toBe(true);
     expect(isCommitId('a'.repeat(64))).toBe(true);
     expect(['', 'abc', 'g'.repeat(40), `${'a'.repeat(40)} `, '--help'].map(isCommitId)).toEqual([false, false, false, false, false]);
-    for (const ok of ['https://github.com/acme/app.git', 'git@github.com:acme/app.git', 'ssh://git@host/a/b', '/tmp/remotes/app.git', 'file:///tmp/app.git', 'C:\\repos\\app.git']) expect(isCloneableUrl(ok), ok).toBe(true);
+    for (const ok of ['https://git.acme.example/acme/app.git', 'git@github.com:acme/app.git', 'ssh://git@host/a/b', '/tmp/remotes/app.git', 'file:///tmp/app.git', 'C:\\repos\\app.git']) expect(isCloneableUrl(ok), ok).toBe(true);
     for (const bad of ['', '--upload-pack=touch /tmp/x', 'ext::sh -c touch% /tmp/x', 'fd::17', 'ftp://host/x', 'javascript://x', 'https://host/x\n--bad']) expect(isCloneableUrl(bad), JSON.stringify(bad)).toBe(false);
   });
 

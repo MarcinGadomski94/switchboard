@@ -2,7 +2,7 @@
 
 The web UI of Plans (decision D99; the core — storage, scheduler, API, MCP tools, the switch — is described in `docs/plans.md`). Built from the developer's approved clickable mockup. Experimental like Team (D100): everything here renders **only while Settings → Experimental → Plans is on**; while it is off the pages are as they were (the visual specs of the shell, the session panel and Settings pass unchanged). Removal: `docs/plans-removal.md`. Assumptions: `.loop/questions.md` → *D99-UI*.
 
-Code: `src/web/plans/` — `store.ts` (the switch + the plans list, shared), `api.ts` (the calls), `model.ts` (pure rules, `tests/web/plans.test.ts`), `PlansNav.tsx` (nav item, the session's Plan tab), `PlansPage.tsx` (the list), `PlanPage.tsx` (a plan), `PlanGraph.tsx`, `PlanTimeline.tsx`, `PlanDetail.tsx`, `dialogs.tsx`, `import-seam.tsx`, `plans.css`, and the core lane's `PlansSwitchRow.tsx` (Settings → Experimental → Plans).
+Code: `src/web/plans/` — `store.ts` (the switch + the plans list, shared), `api.ts` (the calls), `model.ts` (pure rules, `tests/web/plans.test.ts`), `PlansNav.tsx` (nav item, the session's Plan tab), `PlansPage.tsx` (the list), `PlanPage.tsx` (a plan), `PlanGraph.tsx`, `PlanTimeline.tsx`, `PlanDetail.tsx`, `dialogs.tsx`, `plans.css`, the core lane's `PlansSwitchRow.tsx` (Settings → Experimental → Plans) and the Jira lane's `jira/` (mounted here: `ImportJiraDialog`, `PlanJiraPanel`, `PlanEdgeProposals`, `jiraApi`).
 
 ## The switch
 
@@ -12,7 +12,7 @@ The page reads `GET /api/plans/state` (always answered) once, again after the hu
 
 - **Plans** in the sidebar nav after the others (and after Team), with the number of running plans.
 - `/plans` lists plans; `/plans/{id}` is a plan's page (`router.tsx`: views `plans`, `plan`).
-- The session that created a plan (`sourceSessionId`) gets a **Plan** strip at the top of its right panel: one link per plan with its progress and state. The right panel has no tabs, so this is the "tab" (ASSUMED).
+- Every session gets a **Plan** strip at the top of its right panel while Plans is on: **Import from Jira…** (this session as the source) and one link per plan it created, with its progress and state. The right panel has no tabs, so this is the "tab" (ASSUMED).
 
 ## The Plans page
 
@@ -20,7 +20,7 @@ A card per plan (this machine's first, newest first): title, external key chip, 
 
 ### Import from Jira
 
-**Import from Jira…** calls the seam in `import-seam.tsx`: the Jira lane registers an importer (`registerPlanImporter({ id: 'jira', render })`, imported once from `PlansPage.tsx`); its `render({ onImported, onClose })` draws its dialog and `onImported(plan)` opens the draft it made. With none registered the page shows "Import from Jira is coming soon."
+**Import from Jira…** on the list asks for the source session first (open sessions not in a plain folder), then opens the Jira lane's `ImportJiraDialog` (`docs/plans.md` → *Jira import and status sync*) with it; the session's Plan strip opens the dialog with that session. On `onImported` the new draft plan opens. On the plan page of a Jira plan, a collapsible **Jira · <epic>** section under the header mounts `PlanJiraPanel` (sync, refresh, drift notes, activity). `PlanEdgeProposals` sits above the graph (nothing without pending proposals: "PROJ-12 should wait on PROJ-11" with ✓ / ✕); a draft with two or more items has **Propose order** (`jiraApi.askForOrder`), which asks the source session's agent and toasts "Asked <session> to propose the order — suggestions will appear above the graph".
 
 ## The plan page
 
@@ -42,13 +42,13 @@ Left to right; layers by the **longest path** (an item one layer right of its fu
 | done | ✔ | `--status-done` | done · merged |
 | blocked | ✖ | `--status-fail` | blocked (the reason in the detail) |
 
-Keys shorten to their number when every keyed item shares one project prefix (`PROJ-3157` → `3157`), as the design shows. Edges are SVG cubic curves with arrowheads; the **critical path** (`criticalPath.itemIds` of the core) is amber with 2 px edges and dashed card outlines; every item without dependents leads (dashed) into the final dashed **◇ "target → base · yours"** node. The legend sits under the graph. On a tablet the graph scrolls sideways inside its box.
+Keys shorten to their number when every keyed item shares one project prefix (`PROJ-3157` → `3157`), as the design shows. Edges are SVG cubic curves with arrowheads; the **critical path** (`criticalPath.itemIds` of the core) is amber with 2 px edges and dashed card outlines; every item without dependents leads (dashed) into the final dashed **◇ "target → base · yours"** node. The legend sits under the graph. A DAG wider than the panel scrolls sideways inside its box (desktop and tablet), with a soft fade on the side that has more; the final node is reachable at the right end.
 
 **Edit dependencies:** a hint line "Click the ticket that must finish first." → "Now click the ticket that depends on X…"; the second click adds "Y after X" (`POST …/edges`). A loop is refused before anything is sent (and on the server's 409 `cycle`) with the toast "Refused: X already waits on Y — that would be a loop". A click on an existing edge removes it. **＋ Add items from todos** picks the source session's open todos not in the plan.
 
 ### Timeline
 
-One bar per item, grouped by repository (its first solution, else the plan's one repo, else "all repos"), on a time axis from the plan's start to the last projected end, a **now** line across. Segments: agent working (run blue, from `startedAt`), waiting on you (amber, from `waitingSince` of a question / review / conflict), waiting on a dependency (hatched grey, before it starts), paused for usage (red 60 %, a ready item while the plan is held), projected (dashed: each open item after its dependencies' projected ends, for its estimate, or what is left of it). Summary: "Waiting on you: 8.6 h of 24 · longest: 3165 review (3 h) · Projected finish: tomorrow 07:30". The core keeps no history of earlier waits, so only each item's current wait on you is known (ASSUMED; no additive history read was added — see the questions file).
+One bar per item, grouped by repository (its first solution, else the plan's one repo, else "all repos"), on a time axis from the plan's start to the last projected end, a **now** line across. Segments come from the core's history `PlanItem.spans` (`plan_item_spans`; an open span is drawn to now): `running` → agent working (run blue), `waiting-you` → waiting on you (amber), `waiting-dependency` → waiting on a dependency (hatched grey), `paused-usage` → paused for usage (red 60 %), `paused-plan` → the same look, titled with the plan's reason ("Plans was switched off") while open, else "plan paused"; then **projected** (dashed): each open item after its dependencies' projected ends, for its estimate, or what is left of it. Summary: "Waiting on you: 8.6 h of 24 · longest: 3165 review (3 h) · Projected finish: tomorrow 07:30" — the sum of every `waiting-you` span over the sum of working and waiting-on-you time, the longest single `waiting-you` span (named after what the item waits on while open, "review" for a developer-merged item's last one, else "wait"). Without spans (older data) the segments are derived from `startedAt` / `waitingSince` / `mergedAt` / `doneAt`.
 
 ### List
 
@@ -68,10 +68,10 @@ Desktop (≥ 1280): as above. Tablet: the same, padding 16 px, the graph scrolls
 
 ## What's new
 
-`plans` (1.18.0, D99): three steps (the nav item; ＋ New plan; Import from Jira, on the Jira dialog's epic field `jira-epic`, else the Plans list's Import button `plans-import`). It is offered and listed only while Plans is on (`TourHost.tsx`, `TutorialSection.tsx` filter it); while off it stays pending and shows the first time the page loads with Plans on.
+`plans` (1.18.0, D99): three steps (the nav item; ＋ New plan; Import from Jira, on the Jira dialog's epic field `plans-jira-epic`, else the Plans list's Import button `plans-import`). It is offered and listed only while Plans is on (`TourHost.tsx`, `TutorialSection.tsx` filter it); while off it stays pending and shows the first time the page loads with Plans on.
 
 ## Tests
 
-- `tests/web/plans.test.ts`: state look, status lines, chips, graph layers (longest path, barycentre order), critical path edges, loop refusal texts, timeline segments and summary.
-- `tests/e2e/plans.spec.ts` (real path, fake claude / temp git / fake gh): off by default; create from todos; a dependency and a refused loop; Start needs a merge mode; a question answered in the detail; running → review → merged → the dependent starts; pause / resume; the timeline; the phone list; the session's Plan tab; the What's-new entry; switched off → paused with the reason.
+- `tests/web/plans.test.ts`: state look, status lines, chips, graph layers (longest path, barycentre order), critical path edges, loop refusal texts, timeline segments from spans and from timestamps, and the summary.
+- `tests/e2e/plans.spec.ts` (real path, fake claude / temp git / fake gh / fake Jira): off by default; import from Jira via the list → the draft opens → a proposal ✓ adds an edge; create from todos; a dependency and a refused loop; Start needs a merge mode; a question answered in the detail; running → review → merged → the dependent starts; pause / resume; the timeline; the phone list; the session's Plan tab; the What's-new entry; switched off → paused with the reason.
 - `tests/e2e/visual/plans.spec.ts`: a plan in every state at desktop / tablet / phone; screenshots and `docs/visual/plans.md`.
