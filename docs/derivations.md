@@ -105,6 +105,8 @@ The live fields of `GET /api/solutions` (which sessions work on a solution, its 
 | `run` (blue) | each `loops` row of kind `Workflow` (D9) | its label, else the kind |
 | `loop` (blue) | each other `loops` row | its label, else the kind |
 
+**Header order and the scope (D104):** the API sends the chips in the order above; the header shows the status chips first (work, mode, phase, stack, ultracode, runs / loops) and then the scope as **one chip per solution** (`scope <first>`, then each other name alone; `src/web/views/session/chip-row.ts` → `headerChips`), so folding the row to one line (`docs/responsive.md` → *Session header: title and chips*) hides solutions, never the session's state. A `scope` chip without `Session.solutions` (an older peer) stays one chip.
+
 The words are the prototype's for a session started from the New-session form (`nsLaunch`). A chip is left out when its source is empty; nothing is invented (D13). The prototype's mock sessions carry hand-written chips with no data source (`bp 360`, `cap 12 items · breaker 2`, `contract …`, `runbook …`, `expires …`, a path-style scope such as `functions/calendar-func`); the app does not show them (`docs/visual/session-header.md`).
 
 ## Artifacts view (M7.3): replaced by D89

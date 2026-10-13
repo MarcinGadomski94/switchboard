@@ -1036,6 +1036,13 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Team (D100):** the `review-merge` gate and Needs-you review items are gone. The `merge-default-branch` gate stays a charter rule for the agent; a merge into a protected / default branch from Plans is refused for agents anyway (D99's `target-forbidden`), and the plan Merge is the developer's own click. Needs you shows a plan's "Ready to merge" Inbox item of a member's session with **Merge** / **Open plan** (it is an ordinary Inbox item of that session), besides questions, permissions and Team requests.
   - Not a feature: no What's-new entry (the *Review cards* one was removed). Details: `docs/plans.md` → *Merge step*, `docs/todos.md`, `docs/database.md` (0043), contract → *Plans (D99)*; `docs/reviews.md` is a pointer. ASSUMED items: `.loop/questions.md` → *D102*.
 
+## Session header on one line (added 2026-10-14)
+
+- **D104 One-line session title; the chip row folds to one line.** Developer request 2026-10-14: "when it comes to the title of the session on the top bar, it shouldn't wrap to new lines, it should be one line, so the top bar doesn't take too much space. also scope should be collapsable if there's shitload of repos". Details: `docs/responsive.md` → *Session header: title and chips*; the visual oracle's note: `docs/visual/README.md` → *D104*.
+  - **Title:** never wraps (cut with …; the tooltip and the rename field carry the full title). The root path gives way first, then the title, never the actions; from 1024 px the narrow-column overflow (D74 follow-up) counts the title at 160 px at most, so a long title is cut before an action moves into ⋯. The top row is one line at every width (it used to wrap at 1024–1279 px).
+  - **Chips:** "scope" in the request is the header's chip row. The status chips (work, mode, phase, stack, ultracode, runs / loops) come first; the scope follows as one chip per solution (the API's `Session.chips` is unchanged; the header splits the scope). When the chips need more than one line the row shows those that fit plus **+N more ▾**; a click shows them all (wrapping) with **▴ less**. Remembered per session in this browser (`switchboard.chipRows`), folded by default; refitted on every size change (`ResizeObserver`), at every width (it replaces the compact layouts' sideways-scrolling chip row).
+  - ASSUMED items and open questions: `.loop/questions.md` → *D104*.
+
 ## Resolved spec gaps (accepted as proposed)
 1. New-session worktree: branch `session/{name}` from the repo's current HEAD, at `../{repo}-wt-{name}`.
 2. "Move … to worktree": create the worktree, then pause + resume the session with a message telling it to move its work there. Never stash / reset / checkout the developer's working tree.
