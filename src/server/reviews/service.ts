@@ -83,6 +83,8 @@ export class ReviewService {
   /** One evaluation or action at a time per session. */
   readonly #runs = new Map<string, Promise<unknown>>();
   #unsubscribe: (() => void) | null = null;
+  /** The startup re-check of the open cards, while it runs. */
+  #startup: Promise<void> | null = null;
 
   constructor(options: ReviewServiceOptions) {
     this.#options = options;
@@ -95,7 +97,11 @@ export class ReviewService {
   start(): void {
     if (this.#unsubscribe) return;
     this.#unsubscribe = this.#options.bus.subscribe((message) => this.#onMessage(message));
-    void this.recheckOpen().catch((error: unknown) => this.#onError(error));
+    const startup = this.recheckOpen().catch((error: unknown) => this.#onError(error));
+    this.#startup = startup;
+    void startup.finally(() => {
+      if (this.#startup === startup) this.#startup = null;
+    });
   }
 
   /**
@@ -105,9 +111,16 @@ export class ReviewService {
    * evaluation; a card that cannot be read stays as it is.
    */
   async recheckOpen(sessionId?: string): Promise<void> {
-    const records = sessionId === undefined ? await this.#store.reviews.listOpen() : [await this.#store.reviews.openOf(sessionId)];
-    for (const record of records) {
-      if (!record || record.state !== 'pending') continue;
+    if (sessionId !== undefined) {
+      // Registered at once (a caller's `idle()` waits for it).
+      await this.#serial(sessionId, async () => {
+        const record = await this.#store.reviews.openOf(sessionId);
+        if (record?.state === 'pending') await this.#refreshed(record.id);
+      }).catch((error: unknown) => this.#onError(error));
+      return;
+    }
+    for (const record of await this.#store.reviews.listOpen()) {
+      if (record.state !== 'pending') continue;
       await this.#serial(record.sessionId, () => this.#refreshed(record.id)).catch((error: unknown) => this.#onError(error));
     }
   }
@@ -121,6 +134,7 @@ export class ReviewService {
 
   /** Resolves once the work in flight is done (tests). */
   async idle(): Promise<void> {
+    await this.#startup;
     while (this.#runs.size > 0) await Promise.all([...this.#runs.values()].map((run) => run.catch(() => undefined)));
   }
 
