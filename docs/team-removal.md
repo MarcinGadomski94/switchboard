@@ -26,7 +26,6 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/server/inbox/wire.ts` | imports `labelInboxItems`; `listInbox` returns `labelInboxItems(store, items)` | `return items;` |
 | `src/server/peers/service.ts` | imports `labelInboxItems`; `remoteInbox()` returns `labelInboxItems(this.#store, out)`; the Team entries of `PEER_API_ALLOW` (T2: the access metadata reads) | `return out;`; remove the entries under the Team comment |
 | `src/server/api/search.ts` | imports `labelSearchAnswer`; wraps the answer of `context.search.search(…)` | return `context.search.search(…)` directly |
-| `src/server/reviews/service.ts` | imports `teamReviewGate`; the gate check in `#act` before the action runs | drop the import and the three lines |
 | `src/server/devices/local-only.ts` | the Team entries of `DEVICE_ALLOWED` and `DEVICE_REFUSED` (T2: the Access tab's reads; setup / test / revoke / expiry refused) | remove them |
 | `src/hook/sb-mcp.ts` | imports `registerTeamToolsIfMember`; `main` registers the Team tools before `connect` | `await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());` |
 | `src/core/api.ts` | imports `TeamChanged`; `HubEvents.teamChanged` and its entry in `HUB_EVENT_NAMES`; `InboxItem.teamRole` | remove all four |

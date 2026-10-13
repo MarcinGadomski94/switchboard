@@ -112,10 +112,9 @@ describe('the routes (D88)', () => {
 
     await ui('PUT', `/api/sessions/${id}/drafts/todo-add`, { value: { title: 'Fix it', description: '', plan: 'No plan', priority: 'high', estimate: '30m' } });
     await ui('PUT', `/api/sessions/${id}/drafts/question:b1`, { value: { picks: { q1: 1, q2: { text: 'mine', editing: true } } } });
-    await ui('PUT', `/api/sessions/${id}/drafts/review:r1`, { value: { comment: 'Please rename it' } });
     await ui('PUT', `/api/sessions/${id}/drafts/todo-edit:t1`, { value: { title: 'Edited', description: 'd', plan: 'p', priority: 'low', estimate: '' } });
     const all = (await ui('GET', `/api/sessions/${id}/drafts`)).json() as SessionDraft[];
-    expect(all.map((d) => d.field)).toEqual(['composer', 'question:b1', 'review:r1', 'todo-add', 'todo-edit:t1']);
+    expect(all.map((d) => d.field)).toEqual(['composer', 'question:b1', 'todo-add', 'todo-edit:t1']);
     expect(all.find((d) => d.field === 'question:b1')?.value).toEqual({ picks: { q1: 1, q2: { text: 'mine', editing: true } } });
 
     // Overwrite (last write wins), then empty it: cleared (204), gone from the list.
@@ -123,21 +122,20 @@ describe('the routes (D88)', () => {
     expect((await ui('PUT', `/api/sessions/${id}/drafts/composer`, { value: { text: '   ', attachments: [] }, client: 'page2' })).statusCode).toBe(204);
     // The + Add form as it opens (No plan, medium, nothing typed) is empty too.
     expect((await ui('PUT', `/api/sessions/${id}/drafts/todo-add`, { value: { title: '', description: '', plan: 'No plan', priority: 'medium', estimate: '' } })).statusCode).toBe(204);
-    expect((await ui('DELETE', `/api/sessions/${id}/drafts/review:r1?client=page3`)).statusCode).toBe(204);
+    expect((await ui('DELETE', `/api/sessions/${id}/drafts/question:b1?client=page3`)).statusCode).toBe(204);
     // Idempotent: nothing there, nothing published.
-    expect((await ui('DELETE', `/api/sessions/${id}/drafts/review:r1`)).statusCode).toBe(204);
-    expect(((await ui('GET', `/api/sessions/${id}/drafts`)).json() as SessionDraft[]).map((d) => d.field)).toEqual(['question:b1', 'todo-edit:t1']);
+    expect((await ui('DELETE', `/api/sessions/${id}/drafts/question:b1`)).statusCode).toBe(204);
+    expect(((await ui('GET', `/api/sessions/${id}/drafts`)).json() as SessionDraft[]).map((d) => d.field)).toEqual(['todo-edit:t1']);
 
     expect(drafted()).toEqual([
       { sessionId: id, field: 'composer', client: 'page1' },
       { sessionId: id, field: 'todo-add', client: null },
       { sessionId: id, field: 'question:b1', client: null },
-      { sessionId: id, field: 'review:r1', client: null },
       { sessionId: id, field: 'todo-edit:t1', client: null },
       { sessionId: id, field: 'composer', client: null },
       { sessionId: id, field: 'composer', client: 'page2' },
       { sessionId: id, field: 'todo-add', client: null },
-      { sessionId: id, field: 'review:r1', client: 'page3' },
+      { sessionId: id, field: 'question:b1', client: 'page3' },
     ]);
   });
 
@@ -160,11 +158,12 @@ describe('the routes (D88)', () => {
     expect((await ui('PUT', `/api/sessions/${id}/drafts/composer`, { value: { text: 'é'.repeat(40_000), attachments: [] } })).statusCode).toBe(413);
     expect((await ui('PUT', `/api/sessions/${id}/drafts/composer`, { value: { text: 'y'.repeat(50_000), attachments: [] } })).statusCode).toBe(200);
 
-    for (let i = 1; i < DRAFTS_PER_SESSION_MAX; i += 1) await store.drafts.put(id, `review:r${i}`, { comment: 'c' }, 'local');
-    const over = await ui('PUT', `/api/sessions/${id}/drafts/review:one-more`, { value: { comment: 'c' } });
+    const form = { title: 't', description: '', plan: 'No plan', priority: 'medium', estimate: '' };
+    for (let i = 1; i < DRAFTS_PER_SESSION_MAX; i += 1) await store.drafts.put(id, `todo-edit:t${i}`, form, 'local');
+    const over = await ui('PUT', `/api/sessions/${id}/drafts/todo-edit:one-more`, { value: form });
     expect(over.statusCode).toBe(409);
     // An existing draft can still be saved.
-    expect((await ui('PUT', `/api/sessions/${id}/drafts/review:r1`, { value: { comment: 'd' } })).statusCode).toBe(200);
+    expect((await ui('PUT', `/api/sessions/${id}/drafts/todo-edit:t1`, { value: { ...form, title: 'u' } })).statusCode).toBe(200);
   });
 
   it("the composer's chips are answered only while their upload exists in the session (as stored)", async () => {
@@ -210,18 +209,6 @@ describe('peers and devices (D48, D73)', () => {
     expect(isLocalOnly('GET', '/api/sessions/s1/drafts')).toBe(false);
     expect(isLocalOnly('PUT', '/api/sessions/s1/drafts/composer')).toBe(false);
     expect(isLocalOnly('DELETE', '/api/sessions/s1/drafts/composer')).toBe(false);
-  });
-});
-
-describe('the review card\'s Commit message (ruling 2026-10-09)', () => {
-  it('is a session draft `commit:<reviewId>` ({ message }); an empty message clears it', async () => {
-    const id = await session('commit');
-    const saved = await ui('PUT', `/api/sessions/${id}/drafts/commit:r1`, { value: { message: 'feat: better words\n\nBody' } });
-    expect(saved.statusCode).toBe(200);
-    expect(saved.json()).toMatchObject({ field: 'commit:r1', value: { message: 'feat: better words\n\nBody' } });
-    expect((await ui('PUT', `/api/sessions/${id}/drafts/commit:r1`, { value: { message: '  ' } })).statusCode).toBe(204);
-    expect((await ui('PUT', `/api/sessions/${id}/drafts/commit:r1`, { value: { message: 'x'.repeat(4001) } })).statusCode).toBe(422);
-    expect(await fields(id)).toEqual([]);
   });
 });
 

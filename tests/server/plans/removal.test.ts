@@ -37,6 +37,7 @@ describe('D99 · the removal procedure', () => {
 
   it('the main database has no Plans migration (Plans lives in plans.db)', async () => {
     const migrations = await readdir(path.join(REPO_ROOT, 'src', 'server', 'db', 'migrations'));
-    expect(migrations.filter((file) => /plan/i.test(file) || file.startsWith('0043'))).toEqual([]);
+    // D102: 0043 is the review cards' removal (drop_session_reviews), not Plans'.
+    expect(migrations.filter((file) => /plan/i.test(file))).toEqual([]);
   });
 });

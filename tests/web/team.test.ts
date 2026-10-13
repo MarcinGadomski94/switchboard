@@ -269,7 +269,8 @@ describe('D100 · Team page: the member form and menu', () => {
     expect(needsYouShape({ source: 'team', kind: 'access', access: {} as never })).toBe('access');
     expect(needsYouShape({ source: 'inbox', kind: 'questions' })).toBe('question');
     expect(needsYouShape({ source: 'inbox', kind: 'permission' })).toBe('permission');
-    expect(needsYouShape({ source: 'inbox', kind: 'review' })).toBe('review');
+    // D102: a plan's "Ready to merge" item (its Merge action) is answered in place.
+    expect(needsYouShape({ source: 'inbox', kind: 'system', inbox: { actions: [{ id: 'plan-merge', label: 'Merge' }] } })).toBe('merge');
     expect(needsYouShape({ source: 'inbox', kind: 'system' })).toBe('other');
   });
 });
