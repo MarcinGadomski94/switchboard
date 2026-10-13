@@ -146,8 +146,8 @@ export function MemberPanel({
             <AccessTab key={`${member.id}:${accessFocus ?? ''}`} memberId={member.id} focusAccessId={accessFocus} loopLabels={member.rhythm.loops.map((loop) => loop.label ?? loop.prompt)} onChanged={onChanged} />
           </div>
         ) : null}
-        {/* D105: Edit… of a proposal mounts the form anew, filled with it. */}
-        {tab === 'settings' ? <MemberSettings key={`${member.id}:${focus === 'proposal' ? (member.charterRequest?.requestId ?? '') : ''}`} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
+        {/* D105: Edit… of a proposal mounts the form anew, filled with it; so does a charter that changed (an accepted proposal, a synced edit), so a later Save never puts the old one back. */}
+        {tab === 'settings' ? <MemberSettings key={`${member.id}:${focus === 'proposal' ? (member.charterRequest?.requestId ?? '') : ''}:${JSON.stringify(member.charter)}`} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
       </div>
     </section>
   );
