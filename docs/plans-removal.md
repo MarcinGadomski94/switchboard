@@ -8,7 +8,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/core/plans.ts` (shapes, graph rules, texts, the MCP tool definitions)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
 - `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans list and plan page, their dialogs, model, store and styles, the nav item and the session's Plan tab, the Jira import seam)
-- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
+- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/e2e/plans-switch.spec.ts`, `tests/web/plans.test.ts`, `tests/e2e/plans.spec.ts`, `tests/e2e/plans-world.ts`, `tests/e2e/visual/plans.spec.ts`
 - `docs/plans.md`, `docs/plans-ui.md`, this file, `docs/visual/plans.md` and its `docs/visual/plans-*.png`
 
 ## 2. Revert the hooks
@@ -21,7 +21,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 | `src/hook/sb-mcp.ts` | imports `registerPlanToolsIfOn`; `main` calls it before `connect` | drop the import and the call |
 | `src/core/api.ts` | imports `PlanChanged`; re-exports the plan types; `HubEvents.planChanged` and its entry in `HUB_EVENT_NAMES` | remove all four |
 | `src/core/peer-wire.ts` | imports `Plan`; `peerPlan`; `planChanged` in `PEER_HUB_EVENTS` and its `peerHubEvent` case; `plan` / `plans` / `plan-item` in `PeerAnswerKind`, `peerAnswerKind` and `mapPeerAnswer` | remove them |
-| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW`; the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call | remove them |
+| `src/server/peers/service.ts` | imports `peerPlan` and `Plan`; `plans` in `PEER_LISTS`; the Plans entries of `PEER_API_ALLOW`; the `planChanged` branch of the peer stream; `remotePlans()`; the plans refresh after a forwarded plan call; in `refreshList`, a 404 of the plans list read as no plans | remove them (`refreshList` back to `answer.body` throughout) |
 | `src/server/db/repos/peer-snapshots.ts` | `plans` in `PeerSnapshotKind` | remove it |
 | `src/server/devices/local-only.ts` | the Plans entries of `DEVICE_ALLOWED` and "(D99) plans" in the file comment | remove them |
 | `src/server/inbox/system-items.ts` | `planNotice` (the "Plan ready" and second-conflict Inbox items) | remove the method |
@@ -41,7 +41,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 Tests that name Plans' additions (revert with the code):
 
 - `tests/server/api/settings.test.ts`: the `'experimental.plans': false` line of the fresh-install answer.
-- `tests/e2e/visual/settings.spec.ts` / `tests/e2e/settings.spec.ts`: nothing Plans-specific beyond the Experimental section's second row (its screenshot changes back).
+- The Experimental section's Plans row has no screenshot of its own.
 - `tests/server/tutorial/tutorial.test.ts`: `'D99'` in the What's-new decisions.
 - `tests/e2e/shell.spec.ts`: the `/api/plans/state` branch of the shell's API calls.
 - `tests/e2e/tutorial.spec.ts`: the `WHATS_NEW` filter without `plans` and the `status['plans']` line.
