@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.15.4 (2026-10-13)
+
+### Fixed
+- **The agent's message before a question no longer disappears.** On the newest models (Opus 5.5, Sonnet 5.5, Fable 5.1) the text an agent writes between tool calls arrives as a progress note, which Switchboard dropped, so a message followed by a question showed only the question card. Notes now show as normal agent messages (directly above the question card when one follows), in sessions Switchboard runs, hooked terminal sessions and a paired machine's sessions; each note shows once. A question's Inbox card shows that message as its context. The activity line, History summaries and review-card summaries use the notes too. Messages lost before this update can't be recovered.
+
 ## 1.15.3 (2026-10-13)
 
 ### Fixed
