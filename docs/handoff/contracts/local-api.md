@@ -1051,7 +1051,7 @@ Developer request D73 (`docs/decisions.md` → *Devices*, `docs/devices.md`): ph
 | DELETE | /api/devices/pairing | — | 204 (local only) |
 | PUT | /api/devices/{id} | `{ name }` (1–40) | 200 Device · 404 `not-found` · 422 `invalid` (local only) |
 | DELETE | /api/devices/{id} | — | 204 (revoked: its connections closed) · 404 `not-found` (local only) |
-| GET | /api/device | — | 200 DeviceSelfView `{ device: Device \| null, vapidPublicKey, events }` (`device: null` on this machine's own UI) |
+| GET | /api/device | — | 200 DeviceSelfView `{ device: Device \| null, vapidPublicKey, events, pushEndpoint }` (`device: null` on this machine's own UI; `pushEndpoint`: the endpoint of the subscription stored for this device, else `null`; additive, 2026-10-13: the page restores a lost subscription, `docs/devices.md` → *Notifications*) |
 | PUT | /api/device | `{ name }` | 200 Device · 404 `not-a-device` · 422 `invalid` |
 | PUT | /api/device/push | DevicePushInput `{ subscription?: { endpoint, keys: { p256dh, auth } }, events?: Partial<PushEvents> }` | 200 DeviceSelfView · 404 `not-a-device` · 409 `no-subscription` (toggles before a subscription) · 422 `invalid` / `invalid-subscription` (endpoint not on a known push service) |
 | DELETE | /api/device/push | — | 200 DeviceSelfView · 404 `not-a-device` |

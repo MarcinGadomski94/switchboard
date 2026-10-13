@@ -13,10 +13,13 @@ import './pwa/app-install.ts';
 import { registerServiceWorker } from './pwa/service-worker.ts';
 // D87 (docs/devices.md): the page says whether it is in front (no system notifications on a device meanwhile).
 import { startPresence } from './pwa/presence-page.ts';
+// D73 fix (docs/devices.md → Notifications): a paired device sends back a push subscription Switchboard lost (re-pairing).
+import { startPushRestore } from './pwa/push-restore-page.ts';
 import { loadPaneState } from './shell/Panes.tsx';
 
 if (import.meta.env.PROD) registerServiceWorker();
 startPresence();
+startPushRestore();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Switchboard: #root element missing from index.html');

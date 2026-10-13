@@ -119,6 +119,12 @@ export interface DeviceSelfView {
   readonly vapidPublicKey: string | null;
   /** This device's push toggles (defaults while it has no subscription). */
   readonly events: PushEvents;
+  /**
+   * The endpoint of the push subscription stored for this device (`null` when it
+   * has none, and on this machine's own UI). The device's own page compares it
+   * with its browser's subscription to restore a lost one (`src/web/pwa/push-restore.ts`).
+   */
+  readonly pushEndpoint: string | null;
 }
 
 /** A browser `PushSubscription` as JSON (`PushSubscription.toJSON()`). */

@@ -113,6 +113,68 @@ async function pairPhone(context: BrowserContext, url: string, name?: string): P
   return page;
 }
 
+/**
+ * The phone's browser push, a stand-in pointing at the fake push service (headless
+ * Chromium has no push service). Like a real browser it outlives page loads and
+ * re-pairing: the permission and the subscription (with the `applicationServerKey`
+ * it was made with) are kept in the origin's localStorage. `fake-push-prompts`
+ * counts the permission prompts; `fake-push-unsubscribe-fails` makes
+ * `unsubscribe()` fail (the browser keeps its subscription).
+ */
+async function fakeBrowserPush(context: BrowserContext, sub: { readonly endpoint: string; readonly keys: { readonly p256dh: string; readonly auth: string } }): Promise<void> {
+  await context.addInitScript((subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) => {
+    const stored = (): number[] | null => {
+      const raw = localStorage.getItem('fake-push-sub');
+      return raw ? (JSON.parse(raw) as number[]) : null;
+    };
+    const make = (key: number[]) => ({
+      endpoint: subscription.endpoint,
+      options: { applicationServerKey: new Uint8Array(key).buffer, userVisibleOnly: true },
+      toJSON: () => ({ endpoint: subscription.endpoint, keys: subscription.keys }),
+      unsubscribe: async () => {
+        if (localStorage.getItem('fake-push-unsubscribe-fails') === '1') throw new Error('unsubscribe failed');
+        localStorage.removeItem('fake-push-sub');
+        return true;
+      },
+    });
+    PushManager.prototype.subscribe = async function (options?: PushSubscriptionOptionsInit) {
+      const key = options?.applicationServerKey;
+      const bytes = key instanceof ArrayBuffer ? new Uint8Array(key) : ArrayBuffer.isView(key) ? new Uint8Array(key.buffer, key.byteOffset, key.byteLength) : new Uint8Array();
+      localStorage.setItem('fake-push-sub', JSON.stringify(Array.from(bytes)));
+      return make(Array.from(bytes)) as unknown as PushSubscription;
+    };
+    PushManager.prototype.getSubscription = async function () {
+      const key = stored();
+      return (key ? make(key) : null) as unknown as PushSubscription | null;
+    };
+    Object.defineProperty(Notification, 'permission', { get: () => (localStorage.getItem('fake-push-permission') ?? 'default') as NotificationPermission });
+    Notification.requestPermission = async () => {
+      localStorage.setItem('fake-push-prompts', String(Number(localStorage.getItem('fake-push-prompts') ?? '0') + 1));
+      localStorage.setItem('fake-push-permission', 'granted');
+      return 'granted';
+    };
+  }, { endpoint: sub.endpoint, keys: sub.keys });
+}
+
+/** A revoked phone's open page: once it is on the pairing page (by itself or by its next load), closed. */
+async function leave(mobile: Page): Promise<void> {
+  await mobile.goto(`http://localhost:${devicePort}/`).catch(() => undefined);
+  await expect(mobile).toHaveURL(`http://localhost:${devicePort}/pair`);
+  await expect(mobile.getByTestId('pair-form')).toBeVisible();
+  await mobile.close();
+}
+
+/** The permission prompts the phone has shown so far. */
+async function prompts(page: Page): Promise<number> {
+  return page.evaluate(() => Number(localStorage.getItem('fake-push-prompts') ?? '0'));
+}
+
+/** The desktop's view of a paired device's notifications (`GET /api/devices`; `null` when no device has that name). */
+async function devicePush(name: string): Promise<boolean | null> {
+  const view = (await (await fetch(`${server.baseUrl}/api/devices`, { headers: { cookie: `sb_token=${token}` } })).json()) as { devices: Array<{ name: string; push: boolean }> };
+  return view.devices.find((device) => device.name === name)?.push ?? null;
+}
+
 test('pairs a phone with a QR code, enables its notifications, and revokes it', async ({ page, browser }) => {
   // Desktop: device access is off by default; switching it on publishes it (fake tailscale serve).
   await page.goto(`${server.baseUrl}/settings/devices`);
@@ -133,28 +195,7 @@ test('pairs a phone with a QR code, enables its notifications, and revokes it', 
     await probe.close();
     // Its push subscription: a stand-in pointing at the fake push service (headless Chromium has no push service).
     const sub = push.subscribe();
-    await android.addInitScript((subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) => {
-      const fake = {
-        endpoint: subscription.endpoint,
-        options: { applicationServerKey: null },
-        toJSON: () => ({ endpoint: subscription.endpoint, keys: subscription.keys }),
-        unsubscribe: async () => true,
-      };
-      let subscribed = false;
-      PushManager.prototype.subscribe = async function () {
-        subscribed = true;
-        return fake as unknown as PushSubscription;
-      };
-      PushManager.prototype.getSubscription = async function () {
-        return (subscribed ? fake : null) as unknown as PushSubscription | null;
-      };
-      let permission: NotificationPermission = 'default';
-      Object.defineProperty(Notification, 'permission', { get: () => permission });
-      Notification.requestPermission = async () => {
-        permission = 'granted';
-        return permission;
-      };
-    }, { endpoint: sub.endpoint, keys: sub.keys });
+    await fakeBrowserPush(android, sub);
 
     const mobile = await pairPhone(android, url, 'Pixel');
     // It sees this machine's sessions (D74: the phone layout, the sessions in the sidebar drawer behind ☰).
@@ -282,6 +323,91 @@ test('D81 · the share sheet: the device origin’s app is a share target; a sha
     const id = sessions.find((s) => s.title === SESSION_TITLE)?.id as string;
     const list = (await (await fetch(`${server.baseUrl}/api/sessions/${id}/todos`, { headers: { cookie: `sb_token=${token}` } })).json()) as { todos: Array<Record<string, unknown>> };
     expect(list.todos.find((t) => t['title'] === 'Flaky test write-up')).toMatchObject({ capturedFrom: 'share', addedBy: 'developer', plan: 'No plan', priority: 'medium' });
+  } finally {
+    await android.close();
+  }
+});
+
+test('D73 fix · re-pairing restores the notifications without asking; turned off stays off; a subscription for another key shows off', async ({ page, browser }) => {
+  await ensureAccess(page);
+  const android = await phone(browser, ANDROID_UA);
+  // Every PUT /api/device/push the phone makes (a restore is one).
+  const saves: string[] = [];
+  android.on('request', (request) => {
+    if (request.method() === 'PUT' && new URL(request.url()).pathname === '/api/device/push') saves.push(request.postData() ?? '');
+  });
+  try {
+    await fakeBrowserPush(android, push.subscribe());
+    // Paired, notifications enabled with one prompt, a toggle changed.
+    let mobile = await pairPhone(android, await makeCode(page), 'Restore A');
+    await mobile.goto(`http://localhost:${devicePort}/settings/devices`);
+    await press(mobile.getByTestId('device-push-enable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+    await press(mobile.getByTestId('device-push-turnFinished'));
+    await expect(mobile.getByTestId('device-push-turnFinished')).toHaveAttribute('aria-checked', 'false');
+    expect(await prompts(mobile)).toBe(1);
+
+    // Removed on the computer and paired again: the new device record has no subscription; the page sends the browser's back by itself.
+    await page.goto(`${server.baseUrl}/settings/devices`);
+    await page.getByTestId('device').filter({ hasText: 'Restore A' }).getByTestId('device-revoke').click();
+    await expect(page.getByTestId('device').filter({ hasText: 'Restore A' })).toHaveCount(0);
+    const before = saves.length;
+    await leave(mobile);
+    const restored = android.waitForEvent('request', (request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/device/push');
+    mobile = await pairPhone(android, await makeCode(page), 'Restore B');
+    await restored;
+    await expect.poll(() => devicePush('Restore B')).toBe(true);
+    // No prompt, no new subscribe: only the existing subscription, without toggles (the defaults, as a fresh opt-in).
+    expect(await prompts(mobile)).toBe(1);
+    expect(saves.slice(before).map((body) => JSON.parse(body))).toEqual([{ subscription: { endpoint: expect.any(String), keys: { p256dh: expect.any(String), auth: expect.any(String) } } }]);
+    await mobile.goto(`http://localhost:${devicePort}/settings/devices`);
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+    await expect(mobile.getByTestId('device-push-turnFinished')).toHaveAttribute('aria-checked', 'true');
+    // The restored subscription works.
+    const received = push.received.length;
+    await press(mobile.getByTestId('device-push-test'));
+    await expect(mobile.getByTestId('device-note')).toHaveText('Test notification sent.');
+    await push.waitFor(received + 1);
+
+    // Turned off on purpose, and the browser even kept its subscription (unsubscribe failed): never restored, not on a reload nor after re-pairing.
+    await mobile.evaluate(() => localStorage.setItem('fake-push-unsubscribe-fails', '1'));
+    await press(mobile.getByTestId('device-push-disable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'false');
+    expect(await mobile.evaluate(() => localStorage.getItem('fake-push-sub'))).not.toBeNull();
+    const offAt = saves.length;
+    await mobile.reload();
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'false');
+    await mobile.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.goto(`${server.baseUrl}/settings/devices`);
+    await page.getByTestId('device').filter({ hasText: 'Restore B' }).getByTestId('device-revoke').click();
+    await expect(page.getByTestId('device').filter({ hasText: 'Restore B' })).toHaveCount(0);
+    await leave(mobile);
+    mobile = await pairPhone(android, await makeCode(page), 'Restore C');
+    await mobile.goto(`http://localhost:${devicePort}/settings/devices`);
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'false');
+    await mobile.waitForTimeout(1_000);
+    expect(saves.length).toBe(offAt);
+    expect(await devicePush('Restore C')).toBe(false);
+    expect(await prompts(mobile)).toBe(1);
+
+    // Enabled again (the marker is cleared), then the browser's subscription turns out to be for another VAPID key (keys made anew):
+    // shown as off and not restored; Enable replaces it, as before.
+    await mobile.evaluate(() => localStorage.removeItem('fake-push-unsubscribe-fails'));
+    await press(mobile.getByTestId('device-push-enable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+    expect(await mobile.evaluate(() => localStorage.getItem('switchboard.push.off'))).toBeNull();
+    await mobile.evaluate(() => localStorage.setItem('fake-push-sub', JSON.stringify(Array.from({ length: 65 }, (_, i) => (i === 0 ? 4 : 9)))));
+    const keyAt = saves.length;
+    await mobile.reload();
+    await expect(mobile.getByTestId('device-push-enable')).toBeVisible();
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'false');
+    expect(saves.length).toBe(keyAt);
+    expect(await prompts(mobile)).toBe(2);
+    await press(mobile.getByTestId('device-push-enable'));
+    await expect(mobile.getByTestId('device-push-desc')).toHaveAttribute('data-enabled', 'true');
+    const vapid = await mobile.evaluate(async () => ((await (await fetch('/api/device')).json()) as { vapidPublicKey: string }).vapidPublicKey);
+    const key = await mobile.evaluate(() => localStorage.getItem('fake-push-sub'));
+    expect(Buffer.from(JSON.parse(key as string) as number[]).toString('base64url')).toBe(vapid);
   } finally {
     await android.close();
   }

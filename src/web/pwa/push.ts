@@ -1,5 +1,5 @@
 import type { PushSubscriptionInput } from '../../core/devices.ts';
-import { type PushEnvironment, vapidKeyBytes } from './push-support.ts';
+import { type PushEnvironment, sameKey, vapidKeyBytes } from './push-support.ts';
 
 /**
  * D73 (`docs/devices.md` → *Notifications*): turning web push on and off on a
@@ -21,10 +21,6 @@ export function currentPushEnvironment(): PushEnvironment {
     hasNotification: 'Notification' in window,
     permission: 'Notification' in window ? Notification.permission : 'default',
   };
-}
-
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
 /** A subscription's JSON as the API takes it; `null` when it lacks its keys. */
@@ -49,7 +45,7 @@ export async function subscribePush(vapidPublicKey: string): Promise<PushSubscri
   let existing = await registration.pushManager.getSubscription();
   // A subscription made for another key (VAPID keys made anew) cannot be used: replace it.
   const existingKey = existing?.options.applicationServerKey;
-  if (existing && existingKey && !sameBytes(new Uint8Array(existingKey), key)) {
+  if (existing && existingKey && !sameKey(new Uint8Array(existingKey), key)) {
     await existing.unsubscribe();
     existing = null;
   }

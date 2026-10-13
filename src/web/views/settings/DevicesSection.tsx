@@ -4,6 +4,7 @@ import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { QrCode } from '../../components/QrCode.tsx';
 import { currentPushEnvironment, subscribePush, unsubscribePush } from '../../pwa/push.ts';
+import { markPushTurnedOff, onPushRestored, restorePushNow } from '../../pwa/push-restore-page.ts';
 import { pushSupport, pushSupportText } from '../../pwa/push-support.ts';
 import { accessDescription, accessProblem, deviceDetail } from './devices.ts';
 import { codeTimeLeft, refusalText } from './machines.ts';
@@ -263,7 +264,23 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
   const [note, setNote] = useState<string | null>(null);
   const [name, setName] = useState(device.name);
   const [support, setSupport] = useState(() => pushSupport(currentPushEnvironment()));
+  // The browser's subscription was made with another VAPID key: it cannot be reused without Enable, so notifications show as off.
+  const [otherKey, setOtherKey] = useState(false);
   useEffect(() => setCurrent(view), [view]);
+  // D73 fix: restore a subscription Switchboard lost (re-pairing), here and when the page comes back into view (push-restore.ts).
+  useEffect(() => {
+    let live = true;
+    const off = onPushRestored((next) => setCurrent(next));
+    void restorePushNow().then((result) => {
+      if (!live || !result) return;
+      setOtherKey(result.state === 'other-key');
+      if (result.state === 'restore' && result.view) setCurrent(result.view);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
 
   const run = async (key: string, action: () => Promise<DeviceSelfView | void>, fallback: string): Promise<void> => {
     setBusy(key);
@@ -280,7 +297,7 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
     }
   };
 
-  const enabled = current.device?.push === true;
+  const enabled = current.device?.push === true && !otherKey;
   const supportText = pushSupportText(support);
   return (
     <>
@@ -314,6 +331,8 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
       >
         {enabled ? (
           <button type="button" className="sb-set-action" data-testid="device-push-disable" disabled={busy !== null} onClick={() => void run('disable', async () => {
+            // Off on purpose: never restored by itself (push-restore.ts), even if the browser keeps its subscription.
+            markPushTurnedOff(true);
             await unsubscribePush().catch(() => undefined);
             return api.deleteDevicePush();
           }, 'Notifications could not be switched off.')}>
@@ -330,7 +349,10 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
                 'enable',
                 async () => {
                   const subscription = await subscribePush(current.vapidPublicKey as string);
-                  return api.saveDevicePush({ subscription, events: current.events });
+                  const next = await api.saveDevicePush({ subscription, events: current.events });
+                  markPushTurnedOff(false);
+                  setOtherKey(false);
+                  return next;
                 },
                 'Notifications could not be enabled.',
               )

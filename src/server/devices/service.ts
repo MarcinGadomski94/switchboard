@@ -652,7 +652,7 @@ export class DeviceService {
 
   // ── this device and push ──────────────────────────────────────────────
 
-  /** `GET /api/device`: the asking device (or `null` on this machine's UI), the VAPID key and its toggles. */
+  /** `GET /api/device`: the asking device (or `null` on this machine's UI), the VAPID key, its toggles and its stored subscription's endpoint. */
   async selfView(device: DeviceRecord | null): Promise<DeviceSelfView> {
     const access = await this.accessState();
     const push = device ? await this.#store.devices.push(device.id) : null;
@@ -660,6 +660,7 @@ export class DeviceService {
       device: device ? await this.#toDevice(device) : null,
       vapidPublicKey: device && access.enabled ? (await this.vapidKeys()).publicKey : null,
       events: push ? readPushEvents(push.events) : DEFAULT_PUSH_EVENTS,
+      pushEndpoint: push ? push.endpoint : null,
     };
   }
 

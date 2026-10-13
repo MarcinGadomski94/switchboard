@@ -69,3 +69,8 @@ export function vapidKeyBytes(key: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+
+/** `true` when two keys hold the same bytes (a subscription's `applicationServerKey` vs the VAPID key). */
+export function sameKey(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((byte, i) => byte === b[i]);
+}

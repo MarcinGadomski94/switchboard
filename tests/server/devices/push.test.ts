@@ -155,6 +155,9 @@ describe('D73 push delivery', () => {
     const saved = await w.device('PUT', '/api/device/push', { cookie, body: { subscription: { endpoint: subscription.endpoint, keys: subscription.keys } } });
     expect(saved.status).toBe(200);
     expect(saved.body.device.push).toBe(true);
+    // D73 fix: the device sees its stored endpoint (to restore a lost subscription).
+    expect(saved.body.pushEndpoint).toBe(subscription.endpoint);
+    expect((await w.device('GET', '/api/device', { cookie })).body.pushEndpoint).toBe(subscription.endpoint);
     expect(saved.body.events).toEqual({ permission: true, questions: true, turnFinished: true, errors: true, inbox: true, review: true });
 
     // Test notification.
@@ -236,5 +239,6 @@ describe('D73 push delivery', () => {
     const off = await w.device('DELETE', '/api/device/push', { cookie: a.cookie });
     expect(off.status, off.text).toBe(200);
     expect(off.body.device.push).toBe(false);
+    expect(off.body.pushEndpoint).toBeNull();
   });
 });
