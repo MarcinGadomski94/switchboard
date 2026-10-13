@@ -43,14 +43,15 @@ export function TeamSidebarEntry() {
   const currentId = route.view === 'team' ? route.teamId : undefined;
   return (
     <div className="sb-team-entries" data-testid="sidebar-teams">
-      {shown.map((team) => (
+      {shown.map((team, index) => (
         <Link
           key={team.id}
           to={{ view: 'team', teamId: team.id }}
           className="sb-team-entry"
           data-testid="sidebar-team"
           data-team-id={team.id}
-          data-tour={team.id === DEFAULT_TEAM_ID ? 'sidebar-team' : undefined}
+          // The first entry (the first team may have been deleted, D100 follow-up 2026-10-14).
+          data-tour={index === 0 ? 'sidebar-team' : undefined}
           aria-current={currentId === team.id ? 'page' : undefined}
         >
           <span className="sb-team-entry__flag" aria-hidden="true">

@@ -27,14 +27,14 @@ export function TeamTabs({
 }) {
   const allNeeds = teams.reduce((sum, team) => sum + team.needsYou, 0);
   return (
-    <nav className="sb-team-tabs-row" data-testid="team-tabs" aria-label="Teams">
+    <nav className="sb-team-tabs-row" data-testid="team-tabs" data-tour="team-switcher" aria-label="Teams">
       <ReorderStrip items={teams} idOf={(team) => team.id} labelOf={(team) => team.name} axis="x" revealId={current} onReorder={onReorder} className="sb-team-tabs" testId="team-tab-strip">
         {(team) => (
           <TeamTab id={team.id} name={team.name} needs={team.needsYou} selected={team.id === current} onPick={onPick} />
         )}
       </ReorderStrip>
       <TeamTab id={ALL_TEAMS} name="All teams" needs={allNeeds} selected={current === ALL_TEAMS} onPick={onPick} />
-      <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost sb-team-tabs-new" data-testid="team-new" onClick={onNew}>
+      <button type="button" className="sb-button sb-team-btn sb-team-btn--ghost sb-team-tabs-new" data-testid="team-new" data-tour="team-new" onClick={onNew}>
         ＋ New team
       </button>
     </nav>

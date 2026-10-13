@@ -22,6 +22,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/server/supervisor/supervisor.ts` | imports `withTeamCharter` and `teamAccessEnv`; wraps `standingInstructionFor(…)` at the spawn (`#spawn`) and in `#reloadInstructionNow`; T2: `teamAccess` at the spawn (its `env` spread into the spawn's `env`, its `mask` applied in `onLine` and `onNotice`) | `await standingInstructionFor(this.#store.settings)` in both places; drop `teamAccess` (the spawn's `env` back to `{ ...childEnv(this.#env), ...profileEnv }`, `onLine` / `onNotice` without the mask) |
 | `src/server/todos/agent-mcp.ts` | T2: `AgentMcpLaunch.extraServers` (`AgentMcpExtraServer`), added by `claudeMcpConfig`, `codexMcpArgs` and `opencodeMcpEntries` | drop the field and the type; `claudeMcpConfig` / `codexMcpArgs` back to the `switchboard` server only; `opencodeMcpEntries` back to `opencodeMcpEntry` |
 | `src/server/cli/opencode/bridge.ts` | T2: `configContent` spreads `opencodeMcpEntries(agentMcp)` | `[agentMcp.name]: opencodeMcpEntry(agentMcp)` |
+| `src/server/api/sessions.ts` | imports `teamSessionModelChanged`; calls it after `supervisor.setModel` in `PUT /api/sessions/:id/model` (a member's saved model follows its header's choice) | drop the import and the call |
 | `src/server/sessions/wire.ts` | imports `withTeamCharter`; wraps `standingInstructionFor(store.settings)` in `instructionState` | `await standingInstructionFor(store.settings)` |
 | `src/server/inbox/wire.ts` | imports `labelInboxItems`; `listInbox` returns `labelInboxItems(store, items)` | `return items;` |
 | `src/server/peers/service.ts` | imports `labelInboxItems`; `remoteInbox()` returns `labelInboxItems(this.#store, out)`; the Team entries of `PEER_API_ALLOW` (T2: the access metadata reads) | `return out;`; remove the entries under the Team comment |
@@ -34,7 +35,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/router.tsx` | `team` in `ViewName` and `SIMPLE_VIEWS`; the `{ view: 'team'; teamId? }` member of the `Route` union; the `/team/{teamId}` branch of `parseRoute` and the `case 'team'` of `routePath` (multiple teams, 2026-10-14); the `/team` row of the header table | remove `team` in `ViewName` and `SIMPLE_VIEWS`, the union member, the branch, the case and the row |
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
-| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them |
+| `src/core/tutorial.ts` | `team` in `TourRoute`; `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` and `team-update` entries of `WHATS_NEW` | remove them |
 | `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
 | `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
 | `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |
