@@ -16,7 +16,7 @@
  * (`PUT /api/settings`), Reconnect of a paired machine, the device's own name
  * and notifications (D87: and its pages' presence), and (D79) the review cards with Merge, Open PR, Commit, Send
  * back and Dismiss (Discard and Clean up stay on the desktop), and (D85) the
- * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), and (D91) a
+ * tutorial's state (read it, mark a tour seen), (D88) the sessions' drafts and this machine's own (the New-session form), (D89) the saved artifacts (read, Save as artifact, Delete), (D94) a session's Switchboard loops (list, create, edit, pause / resume, run now, cancel), (D97) search, and (D91) a
  * session's Reload instruction (Settings' Apply to open sessions stays on the desktop).
  *
  * Everything else is refused (D84: Clean-up too); {@link DEVICE_REFUSED} lists those routes
@@ -121,6 +121,8 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['POST', /^\/api\/device\/push\/test$/],
   // D87: this device's open page says whether it is in front (no system notifications meanwhile).
   ['PUT', /^\/api\/device\/presence$/],
+  // D97: search across everything (a read; normal use, on the phone too).
+  ['GET', /^\/api\/search$/],
 ];
 
 /**

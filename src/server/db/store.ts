@@ -32,6 +32,7 @@ import { WorktreeRepository } from './repos/worktrees.ts';
 import { TutorialRepository } from './repos/tutorial.ts';
 import { DraftRepository } from './repos/drafts.ts';
 import { SessionLoopRepository } from './repos/session-loops.ts';
+import { SearchRepository } from './repos/search.ts';
 
 /**
  * The service's storage: one SQLite database (node:sqlite) with a repository per
@@ -86,6 +87,8 @@ export interface Store {
   readonly drafts: DraftRepository;
   /** D94 (0041): the loops Switchboard fires itself (`docs/loops.md`). */
   readonly sessionLoops: SessionLoopRepository;
+  /** D97 (0042): the full-text search index (`docs/search.md`); the events repository writes to it. */
+  readonly search: SearchRepository;
   /** The raw connection, for repositories added later and for tests. */
   readonly db: DatabaseSync;
   /** Closes the database; idempotent. */
@@ -123,12 +126,13 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
   }
   const ctx: RepoContext = { db, now: () => clock().toISOString() };
   let closed = false;
+  const search = new SearchRepository(ctx);
   return {
     file,
     migrations: result,
     sessions: new SessionRepository(ctx),
     agents: new AgentRepository(ctx),
-    events: new EventRepository(ctx),
+    events: new EventRepository(ctx, search),
     questions: new QuestionRepository(ctx),
     permissions: new PermissionRepository(ctx),
     systemItems: new SystemItemRepository(ctx),
@@ -155,6 +159,7 @@ export async function openStore(file: string, options: OpenStoreOptions = {}): P
     tutorial: new TutorialRepository(ctx),
     drafts: new DraftRepository(ctx),
     sessionLoops: new SessionLoopRepository(ctx),
+    search,
     db,
     async close(): Promise<void> {
       if (closed) return;

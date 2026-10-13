@@ -60,6 +60,8 @@ import type { DraftService } from './drafts/service.ts';
 import { registerDraftRoutes } from './api/drafts.ts';
 import type { LoopService } from './loops/owned.ts';
 import { registerLoopRoutes } from './api/loops.ts';
+import { registerSearchRoutes } from './api/search.ts';
+import type { SearchService } from './search/service.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -120,6 +122,8 @@ export interface ApiContext {
   readonly drafts: DraftService;
   /** D94: the loops Switchboard fires itself (docs/loops.md). */
   readonly loops: LoopService;
+  /** D97: search across everything (docs/search.md). */
+  readonly search: SearchService;
 }
 
 /**
@@ -163,5 +167,6 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerTutorialRoutes(app, context);
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);
+  await registerSearchRoutes(app, context);
   await registerHubRoutes(app, context);
 }

@@ -2,6 +2,7 @@ import type { EventKind } from '../../../core/model.ts';
 import type { CreateInput, Patch, RepoContext } from '../context.ts';
 import { Table, type TableSpec, defined } from '../table.ts';
 import { EventMemo, payloadType } from '../event-memo.ts';
+import type { SearchRepository } from './search.ts';
 
 /** One event of a session: drives the chat, the timeline and the terminal tail. */
 export interface EventRecord {
@@ -67,15 +68,20 @@ export class EventRepository {
   /** D95: per session, its write revision in this process and the ids of its newest writes. */
   readonly #changes = new Map<string, { revision: number; log: Array<{ readonly revision: number; readonly id: number }> }>();
 
-  constructor(ctx: RepoContext) {
+  /** D97: the search index each write updates (`docs/search.md`); absent in stores built without it. */
+  readonly #search: SearchRepository | null;
+
+  constructor(ctx: RepoContext, search: SearchRepository | null = null) {
     this.#ctx = ctx;
     this.#table = new Table(ctx.db, SPEC);
+    this.#search = search;
   }
 
-  /** Appends an event and returns it with its id. */
+  /** Appends an event and returns it with its id (D97: and indexes its text). */
   async append(input: EventCreate): Promise<EventRecord> {
     const record = this.#table.insert({ ...defined(input), ts: input.ts ?? this.#ctx.now() });
     this.#changed(record);
+    this.#search?.indexEvent(record, true);
     return record;
   }
 
@@ -165,6 +171,8 @@ export class EventRepository {
     query: {
       readonly limit?: number;
       readonly before?: Pick<EventRecord, 'ts' | 'id'>;
+      /** D97: only events newer than that one (ts, then id); with `limit`, the oldest `limit` of them. */
+      readonly after?: Pick<EventRecord, 'ts' | 'id'>;
       readonly sinceTs?: string;
       readonly agent?: { readonly id: string; readonly toolUseId: string | null };
     },
@@ -179,6 +187,10 @@ export class EventRepository {
       where.push('(ts < ? OR (ts = ? AND id < ?))');
       params.push(query.before.ts, query.before.ts, query.before.id);
     }
+    if (query.after) {
+      where.push('(ts > ? OR (ts = ? AND id > ?))');
+      params.push(query.after.ts, query.after.ts, query.after.id);
+    }
     if (query.agent) {
       if (query.agent.toolUseId) {
         where.push('(agent_id = ? OR tool_use_id = ?)');
@@ -189,7 +201,23 @@ export class EventRepository {
       }
     }
     if (query.limit === undefined) return this.#table.select(where.join(' AND '), params, 'ts, id');
+    // D97: a page after an event grows the window downward: the oldest `limit` newer events.
+    if (query.after && !query.before) return this.#table.select(where.join(' AND '), params, 'ts, id', query.limit);
     return this.#table.select(where.join(' AND '), params, 'ts DESC, id DESC', query.limit).reverse();
+  }
+
+  /**
+   * D97 (`docs/search.md` → *Opening a result*): a page of `limit` events centred on
+   * `anchor` (time order, oldest first): up to ⌊(limit − 1) / 2⌋ events before it, the
+   * anchor, and up to the rest after it. A side that has fewer is not filled from the
+   * other, so a side shorter than its share means the session ends there.
+   */
+  async around(sessionId: string, anchor: EventRecord, limit: number): Promise<EventRecord[]> {
+    const olderShare = Math.floor((limit - 1) / 2);
+    const newerShare = limit - 1 - olderShare;
+    const older = olderShare > 0 ? await this.page(sessionId, { limit: olderShare, before: anchor }) : [];
+    const newer = newerShare > 0 ? await this.page(sessionId, { limit: newerShare, after: anchor }) : [];
+    return [...older, anchor, ...newer];
   }
 
   /** The newest `limit` events of the session, returned oldest first. */
@@ -280,7 +308,11 @@ export class EventRepository {
 
   async update(id: number, patch: EventPatch): Promise<EventRecord | null> {
     const record = this.#table.update(id, patch);
-    if (record) this.#changed(record);
+    if (record) {
+      this.#changed(record);
+      // D97: only a new payload can change what the index holds.
+      if (patch.payload !== undefined) this.#search?.indexEvent(record, false);
+    }
     return record;
   }
 

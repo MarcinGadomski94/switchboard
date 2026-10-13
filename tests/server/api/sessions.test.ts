@@ -229,3 +229,35 @@ describe('D95 · GET /api/sessions/{id}/events pages (docs/performance.md → Pa
     }
   });
 });
+
+describe('D97 · GET /api/sessions/{id}/events?around= / after= (docs/search.md → Opening a result)', () => {
+  it('around = a page centred on the event (time order), after = the oldest n newer ones; 422 for a foreign or mixed anchor', async () => {
+    const w = await setup('handoff-start');
+    const session = await w.store.sessions.create({ name: 'around', claudeSessionId: 'c-around', task: 't' });
+    const other = await w.store.sessions.create({ name: 'other', claudeSessionId: 'c-other', task: 't' });
+    const ts = (minute: number): string => `2026-10-10T10:${String(minute).padStart(2, '0')}:00.000Z`;
+    const ids: number[] = [];
+    for (let minute = 1; minute <= 9; minute += 1) {
+      ids.push((await w.store.events.append({ sessionId: session.id, kind: 'text', label: `m${minute}`, ts: ts(minute), payload: { type: 'assistant', text: `m${minute}`, messageId: null } })).id);
+    }
+    // Stored last, sorted between m4 and m5 (an imported terminal turn).
+    const imported = (await w.store.events.append({ sessionId: session.id, kind: 'text', label: 'imported', ts: '2026-10-10T10:04:30.000Z', payload: { type: 'user', text: 'imported', origin: 'terminal', delivered: true } })).id;
+    const foreign = (await w.store.events.append({ sessionId: other.id, kind: 'text', label: 'x', payload: { type: 'user', text: 'x', origin: 'user', delivered: true } })).id;
+    const labels = async (url: string): Promise<string[]> => ((await call('GET', url)).json() as SessionEvent[]).map((event) => event.label);
+    const m5 = ids[4] ?? 0;
+    // 5 = 2 older + the anchor + 2 newer.
+    expect(await labels(`/api/sessions/${session.id}/events?around=${m5}&limit=5`)).toEqual(['m4', 'imported', 'm5', 'm6', 'm7']);
+    expect(await labels(`/api/sessions/${session.id}/events?around=${imported}&limit=3`)).toEqual(['m4', 'imported', 'm5']);
+    // Near an end the short side is not filled from the other one.
+    expect(await labels(`/api/sessions/${session.id}/events?around=${ids[0]}&limit=5`)).toEqual(['m1', 'm2', 'm3']);
+    expect(await labels(`/api/sessions/${session.id}/events?around=${ids[8]}&limit=5`)).toEqual(['m7', 'm8', 'm9']);
+    // Default limit: the chat's page (everything here).
+    expect((await labels(`/api/sessions/${session.id}/events?around=${m5}`)).length).toBe(10);
+    // after: the oldest n newer (time order); without limit every newer one.
+    expect(await labels(`/api/sessions/${session.id}/events?after=${ids[3]}&limit=2`)).toEqual(['imported', 'm5']);
+    expect(await labels(`/api/sessions/${session.id}/events?after=${ids[6]}`)).toEqual(['m8', 'm9']);
+    for (const bad of [`around=${foreign}`, 'around=0', 'around=x', `after=${foreign}`, `around=${m5}&before=${m5}`, `around=${m5}&agent=a`, `around=${m5}&limit=0`]) {
+      expect((await call('GET', `/api/sessions/${session.id}/events?${bad}`)).statusCode, bad).toBe(422);
+    }
+  });
+});

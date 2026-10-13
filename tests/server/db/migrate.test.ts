@@ -731,7 +731,7 @@ describe('0022 plain folders (D59)', () => {
 
   /** Every user table's rows, by name. */
   function dump(database: DatabaseSync): Record<string, unknown[]> {
-    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' AND name NOT LIKE 'search_fts%' ORDER BY name`).all();
     return Object.fromEntries(tables.map((row) => [String(row['name']), rowsOf(database, String(row['name']))]));
   }
 
@@ -885,7 +885,7 @@ describe('0023 session provider (D62)', () => {
   }
 
   function dump(database: DatabaseSync): Record<string, unknown[]> {
-    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' AND name NOT LIKE 'search_fts%' ORDER BY name`).all();
     return Object.fromEntries(tables.map((row) => [String(row['name']), rowsOf(database, String(row['name']))]));
   }
 
@@ -986,7 +986,7 @@ describe('0024 CLI accounts (D63)', () => {
 
 describe('0025 session take-over (D65)', () => {
   function dump(database: DatabaseSync): Record<string, unknown[]> {
-    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' ORDER BY name`).all();
+    const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' AND name NOT LIKE 'search_fts%' ORDER BY name`).all();
     return Object.fromEntries(tables.map((row) => [String(row['name']), database.prepare(`SELECT rowid AS _rowid, * FROM ${String(row['name'])} ORDER BY rowid`).all()]));
   }
 

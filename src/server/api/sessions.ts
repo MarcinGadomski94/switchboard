@@ -442,12 +442,21 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
 
   // D95 (additive, `docs/performance.md` → *Paged events*): `?limit=` the newest n (oldest first), `?before=<eventId>` older
   // than that event, `?agent=<agentId>` that agent's events and its starting call; without them every event, as before.
-  app.get<{ Params: IdParams; Querystring: { since?: string; limit?: string; before?: string; agent?: string } }>(
+  // D97 (additive, `docs/search.md` → *Opening a result*): `?around=<eventId>` a page of `limit` (default 1000) centred on
+  // that event; `?after=<eventId>` (with `limit`: the oldest n) newer than that event.
+  app.get<{ Params: IdParams; Querystring: { since?: string; limit?: string; before?: string; after?: string; around?: string; agent?: string } }>(
     '/api/sessions/:id/events',
     async (request, reply): Promise<SessionEvent[] | FastifyReply> => {
       const record = await store.sessions.get(request.params.id);
       if (!record) return notFound(reply, request.params.id);
-      const { since, limit, before, agent } = request.query;
+      const { since, limit, before, after, around, agent } = request.query;
+      const eventOf = async (field: string, value: string): Promise<{ ts: string; id: number } | FastifyReply> => {
+        const anchor = /^[1-9][0-9]{0,15}$/.test(value) ? await store.events.get(Number(value)) : null;
+        if (!anchor || anchor.sessionId !== record.id) {
+          return reply.code(422).send({ error: 'invalid', errors: [{ field, message: `${field} must be an event of this session` }] });
+        }
+        return anchor;
+      };
       if (since !== undefined && Number.isNaN(Date.parse(since))) {
         return reply.code(422).send({ error: 'invalid', errors: [{ field: 'since', message: 'since must be an ISO timestamp' }] });
       }
@@ -462,6 +471,22 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
         }
         cursor = { ts: anchor.ts, id: anchor.id };
       }
+      if (around !== undefined) {
+        if (before !== undefined || after !== undefined || agent !== undefined || since !== undefined) {
+          return reply.code(422).send({ error: 'invalid', errors: [{ field: 'around', message: 'around takes only limit' }] });
+        }
+        const anchor = /^[1-9][0-9]{0,15}$/.test(around) ? await store.events.get(Number(around)) : null;
+        if (!anchor || anchor.sessionId !== record.id) {
+          return reply.code(422).send({ error: 'invalid', errors: [{ field: 'around', message: 'around must be an event of this session' }] });
+        }
+        return (await store.events.around(record.id, anchor, limit === undefined ? 1000 : Number(limit))).map(toEvent);
+      }
+      let newer: { ts: string; id: number } | undefined;
+      if (after !== undefined) {
+        const anchor = await eventOf('after', after);
+        if (!('ts' in anchor)) return anchor;
+        newer = { ts: anchor.ts, id: anchor.id };
+      }
       let owner: { id: string; toolUseId: string | null } | undefined;
       if (agent !== undefined) {
         const found = await store.agents.get(agent);
@@ -472,6 +497,7 @@ export async function registerSessionRoutes(app: FastifyInstance, context: ApiCo
         ...(since === undefined ? {} : { sinceTs: new Date(since).toISOString() }),
         ...(limit === undefined ? {} : { limit: Number(limit) }),
         ...(cursor ? { before: cursor } : {}),
+        ...(newer ? { after: newer } : {}),
         ...(owner ? { agent: owner } : {}),
       });
       return events.map(toEvent);

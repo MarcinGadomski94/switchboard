@@ -202,6 +202,8 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['PUT', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
   ['POST', /^\/api\/sessions\/[^/]+\/loops\/[^/]+\/(?:pause|resume|run)$/],
   ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
+  // D97: that machine's search (its own index; a peer-injected search never fans out further).
+  ['GET', /^\/api\/search$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */
@@ -1022,6 +1024,39 @@ export class PeerService implements PeerHandlers {
   }
 
   /**
+   * D97 (`docs/search.md` → *Paired machines*): `GET path` (the peer's own path) on
+   * every paired machine at once (or only `only`), each bounded by `timeoutMs`. A
+   * machine that is not online is not asked; each answer comes back with its machine
+   * (a 2xx body as the peer sent it: the caller namespaces it), or `null` and why
+   * it was not searched (offline, unreachable, too slow, refused, an older Switchboard).
+   */
+  async fanOutGet(path: string, options: { readonly timeoutMs: number; readonly only?: string }): Promise<Array<{ readonly machine: PeerMachineRef; readonly body: unknown; readonly reason: string | null }>> {
+    const ids = [...this.#records.keys()].filter((id) => options.only === undefined || id === options.only);
+    return Promise.all(
+      ids.map(async (id) => {
+        const connection = this.#connections.get(id);
+        const ref = this.#ref(id) ?? { id, name: id, state: 'offline' as const };
+        if (!connection || connection.state !== 'online') return { machine: ref, body: null, reason: ref.state === 'reconnecting' ? 'reconnecting' : 'offline' };
+        try {
+          const answer = await connection.request('GET', `/peer/v1${path}`, undefined, { timeoutMs: options.timeoutMs });
+          if (answer.status === 401) {
+            connection.kick();
+            return { machine: ref, body: null, reason: 'refused this pairing' };
+          }
+          // A machine before D97 has no such route (403 peer-forbidden, 404).
+          if (answer.status === 403 || answer.status === 404) return { machine: ref, body: null, reason: 'an older Switchboard without search' };
+          if (answer.status < 200 || answer.status >= 300) return { machine: ref, body: null, reason: `answered ${answer.status}` };
+          return { machine: ref, body: answer.body, reason: null };
+        } catch (error) {
+          if (error instanceof PeerUnreachableError) return { machine: ref, body: null, reason: /timeout|aborted/i.test(error.message) ? 'did not answer in time' : 'unreachable' };
+          this.#onError(error);
+          return { machine: ref, body: null, reason: 'failed' };
+        }
+      }),
+    );
+  }
+
+  /**
    * D57: a GET of an attachment on machine `machineId` (`path` is the peer's own
    * path): the bytes and their serving headers, passed on as they are. 404 for an
    * unknown machine, 502 `peer-unreachable` when it is not connected (no snapshot:
@@ -1253,8 +1288,8 @@ export function unreachableMessage(machine: { readonly name: string; readonly st
 function snapshotOf(method: string, path: string, kind: ReturnType<typeof peerAnswerKind>): { readonly kind: 'detail' | 'events'; readonly key: string } | null {
   if (method.toUpperCase() !== 'GET' || (kind !== 'detail' && kind !== 'events')) return null;
   const [pathname, query] = path.split('?') as [string, string | undefined];
-  // D95: an older page (`before`) or one agent's events (`agent`) is not the latest list either.
-  if (kind === 'events' && query && ['since', 'before', 'agent'].some((name) => new URLSearchParams(query).has(name))) return null;
+  // D95: an older page (`before`) or one agent's events (`agent`) is not the latest list either; D97: nor a page around or after an event.
+  if (kind === 'events' && query && ['since', 'before', 'agent', 'around', 'after'].some((name) => new URLSearchParams(query).has(name))) return null;
   const segment = pathname.split('/')[3];
   if (!segment) return null;
   try {

@@ -41,6 +41,8 @@ import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { registerApiRoutes } from './routes.ts';
+import { SearchBackfill } from './search/backfill.ts';
+import { SearchService } from './search/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
 import { DraftService } from './drafts/service.ts';
 import { appVersion } from './updates/wire.ts';
@@ -173,6 +175,14 @@ export interface AppOptions {
    * closed with it.
    */
   readonly loops?: LoopService;
+  /**
+   * D97: the search index's startup backfill (`docs/search.md`). A caller that passes
+   * one owns it (starts and stops it); without one the app makes its own, started
+   * when the app is ready and stopped with it.
+   */
+  readonly searchBackfill?: SearchBackfill;
+  /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
+  readonly peerSearchTimeoutMs?: number;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -509,7 +519,20 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     drafts.dispose();
     await drafts.idle();
   });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService });
+  // D97: search across everything: the index fills in the background, its queries fan out to the paired machines.
+  let searchBackfill = options.searchBackfill;
+  if (!searchBackfill) {
+    const own = new SearchBackfill(options.store);
+    app.addHook('onReady', async () => {
+      own.start();
+    });
+    app.addHook('onClose', async () => {
+      own.stop();
+    });
+    searchBackfill = own;
+  }
+  const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
+  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search });
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }
