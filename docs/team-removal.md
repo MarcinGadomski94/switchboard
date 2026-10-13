@@ -6,7 +6,7 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 
 - `src/server/team/` (service, `team.db`, routes, hooks, suggestions, sync, T2's `access/`)
 - `src/core/team.ts`, `src/core/team-templates.ts`, `src/core/team-budget.ts`, `src/core/team-sync.ts`, `src/core/team-tools.ts`
-- `src/web/team/` (the sidebar filter and the sidebar's Team entries, Settings → Experimental, the Team page, its dialogs and styles, T2's Access tab in `src/web/team/access/`)
+- `src/web/team/` (the sidebar filter and the sidebar's Team entries, Settings → Experimental's Team row (`TeamSwitchRow.tsx`), the Team page, its dialogs and styles, T2's Access tab in `src/web/team/access/`)
 - `src/core/team-access.ts`, `src/core/team-access-catalog.ts`, `src/core/team-access-tools.ts` (T2: access requests)
 - `src/hook/sb-access-mcp.ts` (T2: the access MCP launcher) and `src/web/team-access-dev.html` (T2: the Access tab's dev mount)
 - `tests/server/team/`, `tests/web/team.test.ts`, `tests/e2e/team-*.spec.ts`, `tests/e2e/team-world.ts`, `tests/e2e/visual/team.spec.ts`
@@ -36,8 +36,9 @@ Team is experimental and built to be removed cleanly (`docs/team.md`, decision D
 | `src/web/shell/Shell.tsx` | imports `TeamPage`; `case 'team'` of `View` | drop both |
 | `src/web/shell/AppBar.tsx` | `case 'team'` of `pageTitle` | drop it |
 | `src/core/tutorial.ts` | `team` in `TourRoute`; `V1_18`, `TEAM_OFF`, `TEAM_NO_MEMBER`; the `team` entry of `WHATS_NEW` | remove them (and `V1_18` if nothing else ships in it) |
-| `src/web/views/settings/model.ts` | the `experimental` section | remove the entry |
-| `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` | remove both |
+| `src/web/views/settings/model.ts` | the `experimental` section (shared with Plans, D99) | remove the entry, unless another experimental feature (Plans) is still there |
+| `src/web/views/SettingsView.tsx` | imports `ExperimentalSection`; its `case 'experimental'` (shared with Plans, D99) | remove both, unless another experimental feature (Plans) is still there |
+| `src/web/views/settings/ExperimentalSection.tsx` | the shared Experimental section: imports `TeamSwitchRow` and renders it | drop the import and the element; delete the file when no other experimental feature (Plans) is left |
 
 Outside `src/` (not markers): `vite.config.ts` builds T2's dev mount as a second entry (`rollupOptions.input.teamAccessDev`: remove it; the `main` entry may stay or the whole `rollupOptions` go); `tools/fake-claude` has a generic `[fake:echo-env NAME]` token (T2's tests use it; it may stay).
 
