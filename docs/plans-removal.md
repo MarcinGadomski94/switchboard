@@ -8,7 +8,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 - `src/core/plans.ts` (shapes, graph rules, texts, the MCP tool definitions)
 - `src/hook/sb-plan-tools.ts` (the plan tools of the `switchboard` MCP helper)
 - `src/web/plans/` (Settings → Experimental's Plans row, `PlansSwitchRow.tsx`; the Plans page lane adds its page here)
-- `tests/server/plans/`, `tests/core/plans.test.ts`
+- `tests/server/plans/`, `tests/core/plans.test.ts`, `tests/e2e/plans-switch.spec.ts`
 - `docs/plans.md`, this file
 
 ## 2. Revert the hooks
@@ -33,7 +33,7 @@ Plans is experimental and built to be removed cleanly (`docs/plans.md`, decision
 Tests that name Plans' additions (revert with the code):
 
 - `tests/server/api/settings.test.ts`: the `'experimental.plans': false` line of the fresh-install answer.
-- `tests/e2e/visual/settings.spec.ts` / `tests/e2e/settings.spec.ts`: nothing Plans-specific beyond the Experimental section's second row (its screenshot changes back).
+- `tests/core/plans.test.ts` goes with step 1; nothing else names Plans (the Experimental section's Plans row has no screenshot of its own).
 
 Docs: the *Plans (D99)* section of `docs/handoff/contracts/local-api.md`, D99 in `docs/decisions.md` (mark it removed rather than deleting the record), the *D99* section of `.loop/questions.md`.
 
