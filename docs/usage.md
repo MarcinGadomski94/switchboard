@@ -124,3 +124,20 @@ With account profiles (`docs/accounts.md` → *Usage per account*) every Claude 
 
 ## Shared across paired machines (D98)
 With paired machines (D48) connected, the grid also lists their accounts (`docs/accounts.md` → *Shared across paired machines*). A paired machine's account that is not here is a line of its own; the **same login on both machines is one line**, and its bars are the **newest reading from either machine** (the limits belong to the account: both machines spend from the same windows). Once any paired machine's account shows, every line ends with the machines it is on in muted text (`Work · Desk + Studio`, `.sb-usage-machines`; this machine's name first on its own accounts) and the tooltip says `On Desk + Studio · reading from Studio` when the bars are the other machine's reading (then also for the active account, in place of this machine's `usageWindows`). A paired machine that is away drops out of the grid. Without paired machines nothing changes: no label, no attribute (the shell / full-pass visual specs are unchanged). Fields: `AccountUsageRow.machines`, `.windowsFrom` (`docs/handoff/contracts/local-api.md` → *Accounts shared across paired machines (D98)*). Tests: `tests/server/accounts/shared.test.ts` (the rows), `tests/web/accounts.test.ts` → *D98* (`usageGridLines`), `tests/e2e/shared-accounts.spec.ts` (two machines).
+
+## Credits (D103)
+An account past its 5-hour or weekly limit can keep answering, **paid from credits** (Claude's extra usage). The meter reads it from the readings it already stores (`src/core/credits.ts`, no new request, no migration):
+
+| Source | Field (VERIFIED, Claude Code 2.1.296) | Read as |
+|---|---|---|
+| `rate_limit_event` → `rate_limit_info` | `isUsingOverage`, `overageInUse` | `true`: the request was served from credits (seen with `status: "rejected"` on a 100 % window) |
+| | `overageStatus` (`allowed` / `allowed_warning` / `rejected`), `overageEnabled`, `overageDisabledReason` | whether credits are on |
+| | `overageResetsAt` (epoch seconds) | the credit period's reset (the 1st of the month) |
+| | `resetsAt` | the limiting plan window's reset: "on credits" ends there |
+| `get_usage` → `rate_limits.extra_usage` | `is_enabled`, `spend_limit_reached` | whether credits are on, or used up |
+| | `monthly_limit`, `used_credits` (minor units, `decimal_places` digits), `currency` (ISO 4217) | limit, used, left = limit − used, in that currency |
+
+- **On credits** = the newest event says overage in use and the window it names has not reset, or a window of the newest reading is at 100 % while credits are on and not used up. It ends at that window's reset (no newer reading needed).
+- **Unknown stays unknown:** a `rate_limit_event` has no amounts; without a `get_usage` answer with `extra_usage` the line reads "credits enabled · balance unknown". No prepaid balance is read (`spend.balance` was `null` in every reading seen; its shape is not known). Without `decimal_places` the `spend` money's `exponent` is used, else 2 (ASSUMED D103-decimals).
+- **Footer:** an account on credits gets an amber "€ on credits" badge row under its grid line with "€12.40 left of €50"; its tooltip says "On credits until 13:00 · …". An account with credits on but not in use has "Credits: …" in its tooltip only. Data: `AccountUsageRow.credits` / `ActiveAccount.credits` (a single account).
+- What the switcher does with it, the setting and the Inbox notices: `docs/accounts.md` → *Credits (D103)*. Tests: `tests/core/credits.test.ts` (fixtures `tests/fixtures/credits/`), `tests/web/accounts.test.ts` → *D103*, `tests/e2e/credits.spec.ts`.

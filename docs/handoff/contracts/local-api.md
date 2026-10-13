@@ -909,6 +909,25 @@ POST /peer/v1/api/accounts/shared   (the peer API; injected as POST /api/account
 200 { "v": 1, "machine": { "id": "stuv67wxyz23", "name": "Studio" }, "accounts": [ … ], "prefs": { … } }
 ```
 
+## Credits per account (D103, 2026-10-14, additive)
+
+Developer request D103 (`docs/decisions.md` → *Credits: on credits, and allowance first*): whether an account runs on credits (paid extra usage) and how much is left; the switcher prefers subscription allowance. Details: `docs/accounts.md` → *Credits (D103)*, `docs/usage.md` → *Credits (D103)*. Every field is additive; a client that ignores them sees no change.
+
+- `ProfileUsage.credits` (so `AccountProfile.usage`, `PeerOnlyAccount.usage` and the D98 `SharedAccount.usage` carry it), `AccountUsageRow.credits` and `ActiveAccount.credits`: the account's credit state, omitted while nothing is known about its credits.
+- `AccountSettings.outOfAllowance` (`PUT /api/accounts/settings`): `"use-credits"` (default) or `"pause"`.
+- `POST /api/sessions/{id}/messages`, and `POST /api/sessions` with a first message: **409 `credits-paused`** while `outOfAllowance` is `"pause"` and no enabled account of the session's CLI has allowance; the message names the account that is back first and when.
+- Inbox: system items of kind `account-credits` ("Work is using credits") and `account-credits-low` ("Work: credits running low"), source `accounts`, no session, dismiss-only.
+- The chat divider of a move off credits: `LifecyclePayload` action `account-switched` with `reason: "moved off credits: Private has allowance again"`.
+
+```ts
+AccountCredits { onCredits: boolean, until: string | null /* when "on credits" ends: the full window's reset */, enabled: boolean | null,
+  currency: string | null /* ISO 4217 */, limit: number | null, used: number | null, left: number | null /* major units: 12.4 = €12.40 */,
+  resetsAt: string | null /* the credit period's reset */, limitReached: boolean, at: string | null /* the newest reading's time */ }
+ProfileUsage.credits?: AccountCredits | null
+AccountUsageRow.credits?: AccountCredits, ActiveAccount.credits?: AccountCredits
+AccountSettings.outOfAllowance: "use-credits" | "pause"
+```
+
 ## Standing instruction for agents (D64, 2026-10-02, additive)
 
 Developer request D64 (`docs/decisions.md` → *Standing instruction for agents*): one instruction every session's agent gets. Additive; no new route, no `/hub` event, no migration (two rows of the existing `settings` table). Details: `docs/settings.md`, `docs/supervisor.md` → *Spawning*, `docs/providers.md` → *Standing instruction (D64)*.
