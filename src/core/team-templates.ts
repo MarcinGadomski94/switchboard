@@ -64,7 +64,7 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
     summary: 'Implements hand-offs in its repositories, with tests.',
     charter: {
       owns: 'Implementing its hand-offs in its workplace repositories.',
-      produces: 'Commits on a work branch, with tests, and a pull request when done.',
+      produces: 'Commits on a work branch with tests; a pull request, or a merge into the epic branch, as the plan or its charter says.',
       neverDoes: 'Merges into the default branch or pushes without approval.',
     },
     rhythm: { loops: [], onHandoff: true },
@@ -147,4 +147,44 @@ export const TEAM_TEMPLATES: readonly TeamTemplate[] = [
 /** The template `id`, else `null`. */
 export function templateById(id: string | null | undefined): TeamTemplate | null {
   return TEAM_TEMPLATES.find((template) => template.id === id) ?? null;
+}
+
+/**
+ * D105 · template texts of older builds that existing members may still carry: before
+ * D102 the Developer produced "… and a review card when done", until D105 "… and a
+ * pull request when done". Only used to recognise a template-only charter.
+ */
+const LEGACY_TEMPLATE_FIELDS: readonly string[] = ['Commits on a work branch, with tests, and a review card when done.', 'Commits on a work branch, with tests, and a pull request when done.'];
+
+/** The charter the Team page drafts for a suggestion that matched no template (`src/web/team/charter-draft.ts`). */
+const FALLBACK_DRAFT_FIELDS: readonly string[] = ['Its own area of work.', 'Short status notes and hand-offs.', 'Anything outward-facing without approval.'];
+
+/** The sentences the Team page's deterministic draft appends to a template's field (`charter-draft.ts`). */
+const DRAFT_SUFFIXES: readonly RegExp[] = [/\s*Continues the work of “[^”]*”(?: in .+?)?\.\s*$/, /\s*Keeps its \d+ recurring loops? going\.\s*$/, /\s*Stays within its \d+ repositories\.\s*$/];
+
+function bare(field: string): string {
+  let text = field.trim();
+  for (let again = true; again; ) {
+    again = false;
+    for (const suffix of DRAFT_SUFFIXES) {
+      const next = text.replace(suffix, '');
+      if (next !== text) {
+        text = next.trim();
+        again = true;
+      }
+    }
+  }
+  return text.replace(/\.?$/, '.');
+}
+
+/**
+ * D105 · `true` for a charter that says nothing specific: every field is empty, a
+ * template's text (this build's or an older one's), or the Team page's deterministic
+ * draft of one ("<template text> Continues the work of “<title>” in <folder>."), and it
+ * has no "how it works". Such members are offered "Draft better charters".
+ */
+export function isTemplateCharter(charter: TeamCharter): boolean {
+  if ((charter.howItWorks ?? '').trim() !== '') return false;
+  const known = new Set<string>([...TEAM_TEMPLATES.flatMap((t) => [t.charter.owns, t.charter.produces, t.charter.neverDoes]), ...LEGACY_TEMPLATE_FIELDS, ...FALLBACK_DRAFT_FIELDS].map((text) => bare(text)));
+  return [charter.owns, charter.produces, charter.neverDoes].every((field) => field.trim() === '' || known.has(bare(field)));
 }

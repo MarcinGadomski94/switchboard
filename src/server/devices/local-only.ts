@@ -148,6 +148,10 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['DELETE', /^\/api\/team\/teams\/[^/]+$/],
   ['POST', /^\/api\/team\/members\/[^/]+\/team$/],
   ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
+  // D105: Redraft charter / Draft better charters (a message to the members' agents, like giving a task) and Not now on the offer;
+  // Accept / Dismiss of a proposal are the requests' approve / dismiss above.
+  ['POST', /^\/api\/team\/members\/[^/]+\/charter\/ask$/],
+  ['POST', /^\/api\/team\/charters\/(?:ask|offer\/dismiss)$/],
   // Team (D100) hook, D100-T2: a member's Access tab read-only (Deny / Not now are the request decisions above).
   ['GET', /^\/api\/team\/members\/[^/]+\/access(?:\/shareable)?$/],
   ['GET', /^\/api\/team\/access\/catalog$/],

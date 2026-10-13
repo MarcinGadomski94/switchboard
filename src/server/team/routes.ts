@@ -95,10 +95,15 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
   );
   app.put<{ Params: { handoffId: string } }>('/api/team/handoffs/:handoffId', (request, reply) => run(request, reply, () => team.setHandoffState(request.params.handoffId, fields(request.body))));
 
-  // Needs-you requests: approve (runs the action), decline, dismiss.
+  // Needs-you requests: approve (runs the action; D105: a charter's Accept, with `{ charter }` when edited), decline, dismiss.
   for (const decision of ['approve', 'decline', 'dismiss'] as const) {
-    app.post<{ Params: { requestId: string } }>(`/api/team/requests/:requestId/${decision}`, (request, reply) => run(request, reply, () => team.decide(request.params.requestId, decision)));
+    app.post<{ Params: { requestId: string } }>(`/api/team/requests/:requestId/${decision}`, (request, reply) => run(request, reply, () => team.decide(request.params.requestId, decision, fields(request.body))));
   }
+
+  // D105 · better charters: ask one member's agent (Redraft charter), ask a team's / every team's members (Draft better charters), Not now on the offer.
+  app.post<{ Params: { memberId: string } }>('/api/team/members/:memberId/charter/ask', (request, reply) => run(request, reply, () => team.askCharter(request.params.memberId), 201));
+  app.post('/api/team/charters/ask', (request, reply) => run(request, reply, () => team.askCharters(fields(request.body))));
+  app.post('/api/team/charters/offer/dismiss', (request, reply) => run(request, reply, () => team.dismissCharterOffer()));
 
   // The exchange of a paired machine (its records in, this machine's out).
   app.post('/api/team/sync', (request, reply) =>
@@ -131,6 +136,8 @@ export async function registerTeamRoutes(app: FastifyInstance, team: TeamService
       return team.createHandoff({ from: me?.id ?? null, to: String(body['to'] ?? ''), brief: body['brief'], expected: body['expected'], links: body['links'], team: body['team'] });
     }, 201),
   );
+  // D105: `team_propose_charter`.
+  app.post('/agent/v1/team/charter', (request, reply) => run(request, reply, () => team.proposeCharter(memberOnly(request), fields(request.body)), 201));
   app.post('/agent/v1/team/reports', (request, reply) =>
     run(request, reply, async () => {
       await team.report(memberOnly(request), fields(request.body)['text']);

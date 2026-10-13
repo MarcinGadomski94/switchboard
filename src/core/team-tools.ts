@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { HANDOFF_TEXT_MAX, REPORT_MAX } from './team.ts';
+import { CHARTER_FIELD_MAX, CHARTER_NOTES_MAX, HANDOFF_TEXT_MAX, REPORT_MAX } from './team.ts';
 import { registerAccessTool } from './team-access-tools.ts';
 
 /**
@@ -18,13 +18,13 @@ export type TeamAgentApi = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: str
 
 /** One tool's name, description and annotations (the input schemas are the zod shapes below). */
 export interface TeamToolDefinition {
-  readonly name: 'team_handoff' | 'team_members' | 'team_report';
+  readonly name: 'team_handoff' | 'team_members' | 'team_report' | 'team_propose_charter';
   readonly title: string;
   readonly description: string;
   readonly readOnly: boolean;
 }
 
-/** The three tools. */
+/** The tools (D105 added `team_propose_charter`). */
 export const TEAM_TOOLS: readonly TeamToolDefinition[] = [
   {
     name: 'team_handoff',
@@ -44,6 +44,13 @@ export const TEAM_TOOLS: readonly TeamToolDefinition[] = [
     title: 'Post a status line to the team',
     description:
       'Post one short status line to the team activity the developer reads (for example "Sweep done: 2 new errors, handed to Developer"). One line, at most 500 characters. Use it at milestones and at the end of a loop run, not for every step. Deliverables (reports, plans, tables) go to artifact_save, not here.',
+    readOnly: false,
+  },
+  {
+    name: 'team_propose_charter',
+    title: 'Propose a charter for yourself',
+    description:
+      "Propose a new, specific charter for your own role. It is a PROPOSAL: the developer reviews it and accepts, edits or dismisses it; nothing changes until it is accepted. Call it once, when Switchboard (or the developer) asks you to, after summarising your own work in this session. Be specific: name the concrete feature or product area you own, the repositories you work in, what you actually deliver and where, the recurring process you run (rounds, cadence) and who gives you input or feedback (the developer, other people, other members). Base every field on this session's history and never invent a responsibility the history does not show. owns, produces and neverDoes are required; howItWorks is a short paragraph on how you work today; notes are for the developer only.",
     readOnly: false,
   },
 ];
@@ -99,6 +106,18 @@ export async function teamReport(api: TeamAgentApi, input: Readonly<Record<strin
   return text('Posted to the team activity.');
 }
 
+/** `team_propose_charter` (D105). */
+export async function teamProposeCharter(api: TeamAgentApi, input: Readonly<Record<string, unknown>>): Promise<CallToolResult> {
+  for (const field of ['owns', 'produces', 'neverDoes'] as const) {
+    if (typeof input[field] !== 'string' || input[field].trim() === '') return text(`team_propose_charter needs "${field}": specific to your work in this session.`, true);
+  }
+  const optional = (key: 'howItWorks' | 'notes') => (typeof input[key] === 'string' && input[key].trim() !== '' ? { [key]: input[key] } : {});
+  const answer = await call(api, 'POST', '/agent/v1/team/charter', { owns: input['owns'], produces: input['produces'], neverDoes: input['neverDoes'], ...optional('howItWorks'), ...optional('notes') });
+  if (isResult(answer)) return answer;
+  if (answer.status !== 201) return failure(answer);
+  return text('Proposed. The developer reviews it in Team → Needs you; your charter changes only if it is accepted, and then you get the new one with your next message.');
+}
+
 function definition(name: TeamToolDefinition['name']): TeamToolDefinition {
   return TEAM_TOOLS.find((tool) => tool.name === name) as TeamToolDefinition;
 }
@@ -107,7 +126,7 @@ function annotations(tool: TeamToolDefinition) {
   return { title: tool.title, readOnlyHint: tool.readOnly, destructiveHint: false, idempotentHint: tool.readOnly, openWorldHint: false };
 }
 
-/** Registers the three tools on `server` (the helper does it only for a member's session). */
+/** Registers the Team tools on `server` (the helper does it only for a member's session). */
 export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
   const handoff = definition('team_handoff');
   server.registerTool(
@@ -151,6 +170,25 @@ export function registerTeamTools(server: McpServer, api: TeamAgentApi): void {
       annotations: annotations(report),
     },
     (input) => teamReport(api, input),
+  );
+  const propose = definition('team_propose_charter');
+  server.registerTool(
+    propose.name,
+    {
+      title: propose.title,
+      description: propose.description,
+      inputSchema: z
+        .looseObject({
+          owns: z.string().max(CHARTER_FIELD_MAX).describe('What you own: the concrete feature or product area and the repositories you work in.').optional(),
+          produces: z.string().max(CHARTER_FIELD_MAX).describe('What you deliver and where (commits and branches, pull requests, reports, notes, hand-offs).').optional(),
+          neverDoes: z.string().max(CHARTER_FIELD_MAX).describe('What you must never do, including working outside your repositories.').optional(),
+          howItWorks: z.string().max(CHARTER_FIELD_MAX).describe('A short paragraph on how you work today: rounds and cadence, your inputs, who gives you feedback.').optional(),
+          notes: z.string().max(CHARTER_NOTES_MAX).describe('Optional notes for the developer reviewing the proposal (not part of the charter).').optional(),
+        })
+        .meta({ required: ['owns', 'produces', 'neverDoes'], additionalProperties: false }),
+      annotations: annotations(propose),
+    },
+    (input) => teamProposeCharter(api, input),
   );
 }
 

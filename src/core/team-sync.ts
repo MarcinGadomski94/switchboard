@@ -193,7 +193,7 @@ export function readRequestRecord(value: unknown): TeamRequestRecord | null {
   const memberId = str(r['memberId'], 100);
   const kind = r['kind'];
   const state = r['state'];
-  if (!memberId || (kind !== 'gate' && kind !== 'budget' && kind !== 'access') || !['open', 'approved', 'declined', 'dismissed'].includes(state as string)) return null;
+  if (!memberId || (kind !== 'gate' && kind !== 'budget' && kind !== 'access' && kind !== 'charter') || !['open', 'approved', 'declined', 'dismissed'].includes(state as string)) return null;
   const action = isRecord(r['action']) ? r['action'] : null;
   let parsedAction: TeamRequestRecord['action'] = null;
   if (action?.['type'] === 'resume-member') parsedAction = { type: 'resume-member' };
@@ -211,6 +211,8 @@ export function readRequestRecord(value: unknown): TeamRequestRecord | null {
     state: state as TeamRequestRecord['state'],
     action: parsedAction,
     note: strOrNull(r['note'], 4_000),
+    // D105: a charter request's proposal (absent on the other kinds).
+    ...(kind === 'charter' ? { proposal: r['proposal'] === null || r['proposal'] === undefined ? null : readCharter(r['proposal']) } : {}),
     createdAt: str(r['createdAt'], 40) ?? '',
     updatedAt: str(r['updatedAt'], 40) ?? '',
   };

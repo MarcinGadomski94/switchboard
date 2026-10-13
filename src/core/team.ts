@@ -36,8 +36,17 @@ export const DEFAULT_TEAM_NAME = 'Team';
 /** A member's role name / a team's name: 1–40 characters, one line. */
 export const TEAM_NAME_MAX = 40;
 
-/** Each charter field (owns / produces / never does): at most this many characters. */
+/** Each charter field (owns / produces / how it works / never does): at most this many characters. */
 export const CHARTER_FIELD_MAX = 2_000;
+
+/**
+ * D105 · how long an unanswered charter ask (`POST /api/team/members/{id}/charter/ask`)
+ * blocks a new one: after this the ask counts as lapsed and a new ask replaces it.
+ */
+export const CHARTER_ASK_STALE_MS = 24 * 3600_000;
+
+/** D105 · a charter proposal's `notes` (`team_propose_charter`): at most this many characters. */
+export const CHARTER_NOTES_MAX = 2_000;
 
 /** A hand-off's brief and expected result: at most this many characters each. */
 export const HANDOFF_TEXT_MAX = 4_000;
@@ -101,6 +110,12 @@ export interface TeamCharter {
   readonly produces: string;
   /** What it never does ("never merges", "never writes to the tracker"). */
   readonly neverDoes: string;
+  /**
+   * D105 · how it works today, in a short paragraph ("runs feedback rounds on input
+   * from the developer and the testers, then adjusts the feature"). Optional and
+   * additive: absent (or empty) on older records and templates.
+   */
+  readonly howItWorks?: string;
 }
 
 /** One Switchboard loop (D94) in a member's rhythm. The loop id is the session's; prompt and schedule find it again after a move. */
@@ -239,8 +254,8 @@ export interface TeamHandoffRecord extends TeamSynced {
   readonly updatedAt: string;
 }
 
-/** What a Needs-you request of Team is about. `access` is T2's (not built yet). */
-export type TeamRequestKind = 'gate' | 'budget' | 'access';
+/** What a Needs-you request of Team is about. `access` is T2's; D105 `charter`: a member's charter ask and its proposal. */
+export type TeamRequestKind = 'gate' | 'budget' | 'access' | 'charter';
 
 /** A request's state. */
 export type TeamRequestState = 'open' | 'approved' | 'declined' | 'dismissed';
@@ -260,6 +275,11 @@ export interface TeamRequestRecord extends TeamSynced {
   readonly action: TeamRequestAction | null;
   /** The result of the approved action, or the reason it failed. */
   readonly note: string | null;
+  /**
+   * D105, `kind: charter`: the charter the member's agent proposed (`team_propose_charter`);
+   * `null` (or absent) while the ask waits for it. Its notes are the request's `detail`.
+   */
+  readonly proposal?: TeamCharter | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -302,6 +322,20 @@ export interface TeamMember extends Omit<TeamMemberRecord, 'clock' | 'deleted'> 
   readonly cliLoopsUnmanaged: boolean;
   /** Its use today, % of its account's daily allowance (`null` = unknown or no budget). */
   readonly usedTodayPct: number | null;
+  /** D105: its open charter ask or proposal (`null` = none); additive, absent from older machines. */
+  readonly charterRequest?: TeamCharterRequestView | null;
+}
+
+/** D105 · a member's open charter request as the UI sees it. */
+export interface TeamCharterRequestView {
+  readonly requestId: string;
+  /** `asked`: its agent was asked and has not proposed yet; `proposed`: a proposal waits for the developer. */
+  readonly state: 'asked' | 'proposed';
+  readonly proposal: TeamCharter | null;
+  /** The agent's notes for the developer ('' = none). */
+  readonly notes: string;
+  /** When it was asked (or when the proposal came, without an ask). */
+  readonly at: string;
 }
 
 /** `GET /api/team/state`: the switch and what the sidebar hides (always answered, also while Team is off). */
@@ -336,6 +370,12 @@ export interface TeamView {
   readonly handoffs: readonly TeamHandoff[];
   /** Newest first (the newest 100; `GET /api/team/activity` pages the rest). */
   readonly activity: readonly TeamActivityRecord[];
+  /**
+   * D105 · the one-time "Draft better charters" offer: how many members (every team)
+   * have a template-only charter and no open charter request; `0` once the developer
+   * acted on it or chose Not now (remembered per install). Additive.
+   */
+  readonly charterOffer?: number;
 }
 
 /** A hand-off as the API answers it. */
@@ -369,6 +409,8 @@ export interface TeamNeedsYouItem {
   readonly request?: TeamRequest;
   /** D100-T2, `kind: access`: the access asked for (service, host, why, scope, fields, warning); "Set up…" opens the member's Access tab. */
   readonly access?: TeamAccessEntryView;
+  /** D105, `kind: charter`: the member's charter now and the proposal (Accept / Edit… / Dismiss). */
+  readonly charter?: { readonly before: TeamCharter; readonly after: TeamCharter; readonly notes: string };
 }
 
 /** What a suggestion is based on (cheap counts over the last 7 days; `src/server/team/suggestions.ts`). */
@@ -510,11 +552,13 @@ function charterLine(value: string): string {
 /**
  * The text a member's agent gets with its standing instruction (D64's mechanism:
  * appended at every spawn of its CLI): "You are now <role> in team <team>. Charter: …".
+ * D105: "How it works: …" when the charter has it.
  */
 export function charterInstruction(role: string, team: string, charter: TeamCharter, gates: readonly TeamGateKind[]): string {
   const needs = normalizeGates(gates).map((kind) => GATE_LABELS[kind]).join('; ');
+  const how = (charter.howItWorks ?? '').trim().replace(/[.!?]+$/, '');
   return [
-    `You are now ${role} in team ${team}. Charter: owns: ${charterLine(charter.owns)}. Produces: ${charterLine(charter.produces)}. Never does: ${charterLine(charter.neverDoes)}.`,
+    `You are now ${role} in team ${team}. Charter: owns: ${charterLine(charter.owns)}. Produces: ${charterLine(charter.produces)}.${how === '' ? '' : ` How it works: ${how}.`} Never does: ${charterLine(charter.neverDoes)}.`,
     `Ask the developer before: ${needs}.`,
     'Work arrives as hand-offs in your todo list. Use team_members to see the team, team_handoff to give another member work, and team_report to post a short status line. Save deliverables with artifact_save.',
   ].join(' ');
@@ -527,7 +571,7 @@ export function returnNote(role: string, team: string): string {
 
 /** "Tracker · question". */
 export function needsYouLabel(memberName: string, kind: string): string {
-  const what: Record<string, string> = { questions: 'question', permission: 'permission', system: 'system', gate: 'approval', budget: 'budget', access: 'access' };
+  const what: Record<string, string> = { questions: 'question', permission: 'permission', system: 'system', gate: 'approval', budget: 'budget', access: 'access', charter: 'charter' };
   return `${memberName} · ${what[kind] ?? kind}`;
 }
 
@@ -550,8 +594,43 @@ export function readCharter(value: unknown): TeamCharter | null {
   const owns = field('owns');
   const produces = field('produces');
   const neverDoes = field('neverDoes');
-  if (owns === null || produces === null || neverDoes === null) return null;
-  return { owns, produces, neverDoes };
+  // D105: optional; kept only when it says something (so older charters read the same).
+  const howItWorks = field('howItWorks');
+  if (owns === null || produces === null || neverDoes === null || howItWorks === null) return null;
+  return howItWorks === '' ? { owns, produces, neverDoes } : { owns, produces, howItWorks, neverDoes };
+}
+
+/** D105 · `true` when two charters say the same (each field trimmed; an absent `howItWorks` = empty). */
+export function sameCharter(a: TeamCharter, b: TeamCharter): boolean {
+  const f = (c: TeamCharter): string[] => [c.owns, c.produces, c.howItWorks ?? '', c.neverDoes].map((v) => v.trim());
+  return f(a).every((value, index) => value === f(b)[index]);
+}
+
+/**
+ * D105 · the message Switchboard sends a member's own session to ask for a specific
+ * charter (`docs/team.md` → *Better charters*). It names the role, the team and the
+ * charter it has now, and asks the agent to summarise its own work and call
+ * `team_propose_charter` once. A normal message: it is queued while a turn runs and
+ * held while new turns pause (D103), like any other.
+ */
+export function charterAskText(role: string, team: string, charter: TeamCharter): string {
+  const how = (charter.howItWorks ?? '').trim();
+  return [
+    `Switchboard asks you, ${role} in team ${team}, to draft a specific charter for yourself. Your charter now is:`,
+    `- owns: ${charterLine(charter.owns)}`,
+    `- produces: ${charterLine(charter.produces)}`,
+    `- how it works: ${how === '' ? '—' : how}`,
+    `- never does: ${charterLine(charter.neverDoes)}`,
+    '',
+    'First summarise for yourself what you have done in this session so far. Then call team_propose_charter once, with:',
+    '- owns: the specific feature, product area and repositories you are responsible for (name them);',
+    '- produces: what you actually deliver and where (commits and branches, pull requests, reports, notes, hand-offs);',
+    '- howItWorks: how you work today: your rounds and cadence, the inputs you work from, and who gives you feedback (the developer, other people, other members);',
+    '- neverDoes: what you must never do, including working outside your repositories;',
+    '- notes (optional): anything the developer should know when reviewing it.',
+    '',
+    "Base every line on this session's history and keep within your repositories; never invent a responsibility the history does not show. It is a proposal: the developer reviews it and nothing changes until it is accepted. Do no other work for this message.",
+  ].join('\n');
 }
 
 /** An empty charter. */

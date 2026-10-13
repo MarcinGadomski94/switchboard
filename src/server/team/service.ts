@@ -7,6 +7,10 @@ import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-l
 import {
   type TeamMoveRun,
   ALL_TEAMS,
+  CHARTER_ASK_STALE_MS,
+  CHARTER_NOTES_MAX,
+  type TeamCharterRequestView,
+  charterAskText,
   DEFAULT_TEAM_ID,
   DEFAULT_TEAM_NAME,
   EMPTY_CHARTER,
@@ -49,12 +53,13 @@ import {
   parseHandoffTarget,
   readBudget,
   readCharter,
+  sameCharter,
   readLinks,
   readRhythmInput,
   readWorkplace,
   returnNote,
 } from '../../core/team.ts';
-import { TEAM_TEMPLATES, templateById } from '../../core/team-templates.ts';
+import { TEAM_TEMPLATES, isTemplateCharter, templateById } from '../../core/team-templates.ts';
 import { dayStart, overBudget, pointsUsedSince, shareOfDaily } from '../../core/team-budget.ts';
 import { type TeamSnapshot, type TeamSyncMessage, TEAM_SYNC_PATH, TEAM_SYNC_VERSION, keepOrder, newActivity, newerRecords, readTeamSyncMessage } from '../../core/team-sync.ts';
 import type { Store } from '../db/store.ts';
@@ -128,6 +133,9 @@ interface MemberFields {
   effort?: string | null;
   charterDraft?: TeamCharter | null;
 }
+
+/** D105 · the one-time "Draft better charters" offer's mark in the main `settings` table (`done` = acted on or Not now; `docs/team-removal.md`). */
+export const CHARTER_OFFER_SETTING = 'team.charterOffer';
 
 /** Statuses of a session that count as the session existing for Team. */
 const STATUSES: ReadonlySet<string> = new Set(['need', 'run', 'done', 'fail', 'idle', 'paused']);
@@ -466,6 +474,7 @@ export class TeamService {
       local,
       cliLoopsUnmanaged: member.cliLoops.length > 0,
       usedTodayPct: local && member.budget.dailyPct !== null ? await this.#usedToday(member) : null,
+      charterRequest: this.#charterRequestView(member.id),
     };
   }
 
@@ -499,6 +508,7 @@ export class TeamService {
       members,
       handoffs: db.handoffs().filter((h) => !h.deleted && (h.teamId === team.id || ids.has(h.toMemberId))).map(stripHandoff).reverse(),
       activity: db.activity(team.id, 100),
+      charterOffer: await this.#charterOffer(),
     };
   }
 
@@ -835,6 +845,8 @@ export class TeamService {
     });
     this.#changed(['members', 'activity']);
     await this.#applyCharter(sessionId);
+    // D105: the Adopt form asks the new member's agent for a specific charter (the developer still approves it).
+    if (body['askCharter'] === true) await this.askCharter(record.id).catch((error: unknown) => this.#error(error));
     return this.member(record.id);
   }
 
@@ -1365,7 +1377,8 @@ export class TeamService {
     const others = this.#teams().filter((t) => t.id !== teamId);
     const lines = view.members.map((member) => {
       const you = member.id === me.id ? ' (you)' : '';
-      return `- ${member.name}${you} · ${member.status}${member.local ? '' : ` · on ${member.machineName}`}\n  owns: ${member.charter.owns || '—'}\n  produces: ${member.charter.produces || '—'}\n  never does: ${member.charter.neverDoes || '—'}`;
+      const how = member.charter.howItWorks ? `\n  how it works: ${member.charter.howItWorks}` : '';
+      return `- ${member.name}${you} · ${member.status}${member.local ? '' : ` · on ${member.machineName}`}\n  owns: ${member.charter.owns || '—'}\n  produces: ${member.charter.produces || '—'}${how}\n  never does: ${member.charter.neverDoes || '—'}`;
     });
     const open = view.handoffs.filter((h) => h.toMemberId === me.id && (h.state === 'open' || h.state === 'accepted'));
     const otherLine =
@@ -1413,8 +1426,11 @@ export class TeamService {
     for (const request of this.#need().requests()) {
       const member = byId.get(request.memberId);
       if (request.deleted || request.state !== 'open' || !member) continue;
+      // D105: a charter ask waits for the member's agent, not for the developer: only its proposal shows.
+      if (request.kind === 'charter' && !request.proposal) continue;
       const access = request.kind === 'access' ? await this.access.entryForRequest(request) : null;
-      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), request: stripRequest(request), ...(access ? { access } : {}) });
+      const charter = request.kind === 'charter' && request.proposal ? { charter: { before: member.charter, after: request.proposal, notes: request.detail } } : {};
+      out.push({ id: request.id, source: 'team', kind: request.kind === 'gate' ? 'gate' : request.kind, memberId: member.id, memberName: member.name, label: needsYouLabel(member.name, request.kind === 'gate' ? 'gate' : request.kind), title: request.title, detail: request.detail, createdAt: request.createdAt, sessionRef: this.#sessionRef(member), ...teamOf(member), request: stripRequest(request), ...(access ? { access } : {}), ...charter });
     }
     return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -1437,16 +1453,18 @@ export class TeamService {
   }
 
   /** `POST /api/team/requests/{id}/approve | decline | dismiss`; an approval runs the request's action on the member's machine. */
-  async decide(id: string, decision: 'approve' | 'decline' | 'dismiss'): Promise<TeamRequest> {
+  async decide(id: string, decision: 'approve' | 'decline' | 'dismiss', body: Record<string, unknown> = {}): Promise<TeamRequest> {
     const request = this.#need().requests().find((r) => r.id === id && !r.deleted);
     if (!request) throw new TeamError(404, 'not-found', `no request ${id}`);
     if (request.state !== 'open') throw new TeamError(409, 'decided', `the request is ${request.state} already`);
     const member = this.#liveMembers().find((m) => m.id === request.memberId);
     if (member && member.machineId !== this.#selfId()) {
-      await this.#forward(member.machineId, 'POST', `/api/team/requests/${encodeURIComponent(id)}/${decision}`, {});
+      // D105: the body (an edited charter) goes along.
+      await this.#forward(member.machineId, 'POST', `/api/team/requests/${encodeURIComponent(id)}/${decision}`, body);
       await this.syncNow();
       return stripRequest(this.#need().requests().find((r) => r.id === id) ?? request);
     }
+    if (request.kind === 'charter') return this.#decideCharter(request, member ?? null, decision, body);
     const state = decision === 'approve' ? 'approved' : decision === 'decline' ? 'declined' : 'dismissed';
     await this.#serial(async () => {
       this.#need().putRequest({ ...request, state, clock: this.#stamp(), updatedAt: this.#iso() });
@@ -1475,6 +1493,197 @@ export class TeamService {
       this.#changed(['requests']);
     }
     return stripRequest(this.#need().requests().find((r) => r.id === id) ?? request);
+  }
+
+  // ── D105: better charters (asks, proposals, the offer) ────────────────
+
+  /** The member's open charter request (an ask or a proposal; a lapsed ask without a proposal is not open any more). */
+  #openCharterRequest(memberId: string): TeamRequestRecord | null {
+    const lapsed = this.#now() - CHARTER_ASK_STALE_MS;
+    return (
+      this.#need()
+        .requests()
+        .filter((r) => !r.deleted && r.state === 'open' && r.kind === 'charter' && r.memberId === memberId)
+        .filter((r) => r.proposal || Date.parse(r.updatedAt) >= lapsed)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null
+    );
+  }
+
+  #charterRequestView(memberId: string): TeamCharterRequestView | null {
+    const request = this.#openCharterRequest(memberId);
+    if (!request) return null;
+    return { requestId: request.id, state: request.proposal ? 'proposed' : 'asked', proposal: request.proposal ?? null, notes: request.proposal ? request.detail : '', at: request.updatedAt };
+  }
+
+  /** The stored "Not now" / acted-on mark of the one-time offer (a row of the main `settings` table, `docs/team-removal.md`). */
+  async #charterOfferDone(): Promise<boolean> {
+    return (await this.#o.store.settings.get(CHARTER_OFFER_SETTING)) === 'done';
+  }
+
+  /** D105 · how many members (every team) the one-time offer is for: template-only charters, no open charter request; 0 once done. */
+  async #charterOffer(): Promise<number> {
+    if (await this.#charterOfferDone()) return 0;
+    return this.#liveMembers().filter((member) => isTemplateCharter(member.charter) && !this.#openCharterRequest(member.id)).length;
+  }
+
+  /** `POST /api/team/charters/offer/dismiss` (D105): Not now on the one-time banner (remembered on this install). */
+  async dismissCharterOffer(): Promise<{ readonly ok: true }> {
+    this.#need();
+    await this.#o.store.settings.set(CHARTER_OFFER_SETTING, 'done');
+    this.#publish(['charters']);
+    return { ok: true };
+  }
+
+  /**
+   * `POST /api/team/members/{id}/charter/ask` (D105): sends the member's own session a
+   * normal message ({@link charterAskText}) asking its agent to summarise its work and
+   * call `team_propose_charter`; the ask is a `charter` request without a proposal, so
+   * there is at most one per member. On the member's machine.
+   * @throws {TeamError} 409 `charter-open` while an ask or a proposal is open, `paused`, `offline` / `closed`, `not-sent`.
+   */
+  async askCharter(id: string): Promise<{ readonly asked: true; readonly requestId: string }> {
+    const before = this.#memberRecord(id);
+    if (before.machineId !== this.#selfId()) {
+      const answer = await this.#forward<{ asked: true; requestId: string }>(before.machineId, 'POST', `/api/team/members/${encodeURIComponent(id)}/charter/ask`, {});
+      await this.syncNow();
+      return answer;
+    }
+    if (before.paused) throw new TeamError(409, 'paused', `${before.name} is paused: resume it first`);
+    const session = await this.#o.store.sessions.get(before.sessionId);
+    if (!session || session.closedAt !== null) throw new TeamError(409, 'closed', `${before.name}'s session is closed: reopen it first`);
+    const request = await this.#serial(async () => {
+      const member = this.#memberRecord(id);
+      const open = this.#openCharterRequest(id);
+      if (open) {
+        throw new TeamError(409, 'charter-open', open.proposal ? `${member.name} has proposed a charter already: accept, edit or dismiss it first` : `${member.name} was asked already and has not proposed yet`, { requestId: open.id });
+      }
+      // A lapsed ask gives way to the new one.
+      for (const old of this.#need().requests()) {
+        if (!old.deleted && old.state === 'open' && old.kind === 'charter' && old.memberId === id) this.#need().putRequest({ ...old, state: 'dismissed', note: 'lapsed: asked again', clock: this.#stamp(), updatedAt: this.#iso() });
+      }
+      const now = this.#iso();
+      const created: TeamRequestRecord = { id: randomUUID(), teamId: member.teamId, clock: this.#stamp(), deleted: false, memberId: id, kind: 'charter', gate: null, title: `${member.name} was asked to draft its charter`, detail: '', state: 'open', action: null, note: null, proposal: null, createdAt: now, updatedAt: now };
+      this.#need().putRequest(created);
+      this.#activity('update', id, `${member.name} was asked to draft a specific charter from its own session`);
+      return created;
+    });
+    this.#changed(['requests', 'activity', 'members']);
+    try {
+      // The normal message path: queued while a turn runs, held while new turns pause (D103).
+      await this.#o.supervisor.sendMessage(before.sessionId, charterAskText(before.name, this.#teamName(before.teamId), before.charter), 'service');
+    } catch (error) {
+      await this.#serial(async () => {
+        const current = this.#need().requests().find((r) => r.id === request.id) ?? request;
+        this.#need().putRequest({ ...current, state: 'dismissed', note: 'not sent', clock: this.#stamp(), updatedAt: this.#iso() });
+      });
+      this.#changed(['requests', 'members']);
+      throw new TeamError(409, 'not-sent', `the ask could not be sent to ${before.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return { asked: true, requestId: request.id };
+  }
+
+  /**
+   * `POST /api/team/charters/ask` `{ teamId?, templateOnly? }` (D105 "Draft better
+   * charters"): asks every member of the team (`all`: every team), skipping members
+   * with an open ask or proposal, paused or offline ones (with the reason);
+   * `templateOnly` asks only members whose charter is template-only (the one-time
+   * offer). Marks the offer done.
+   */
+  async askCharters(body: Record<string, unknown>): Promise<{ readonly asked: readonly { readonly memberId: string; readonly name: string }[]; readonly skipped: readonly { readonly memberId: string; readonly name: string; readonly reason: string }[] }> {
+    this.#need();
+    const teamId = typeof body['teamId'] === 'string' && body['teamId'] !== '' ? body['teamId'] : undefined;
+    const members = teamId === ALL_TEAMS ? this.#liveMembers() : this.#teamMembers(this.#team(teamId).id);
+    const templateOnly = body['templateOnly'] === true;
+    const machines = await this.#machineNames();
+    const asked: { memberId: string; name: string }[] = [];
+    const skipped: { memberId: string; name: string; reason: string }[] = [];
+    for (const member of members) {
+      if (templateOnly && !isTemplateCharter(member.charter)) continue;
+      const open = this.#openCharterRequest(member.id);
+      if (open) skipped.push({ memberId: member.id, name: member.name, reason: open.proposal ? 'a proposal waits for you' : 'asked already' });
+      else if (member.paused) skipped.push({ memberId: member.id, name: member.name, reason: 'paused' });
+      else if (member.machineId !== this.#selfId() && machines.get(member.machineId)?.online !== true) skipped.push({ memberId: member.id, name: member.name, reason: `${machines.get(member.machineId)?.name ?? 'its machine'} is offline` });
+      else {
+        try {
+          await this.askCharter(member.id);
+          asked.push({ memberId: member.id, name: member.name });
+        } catch (error) {
+          skipped.push({ memberId: member.id, name: member.name, reason: error instanceof Error ? error.message : String(error) });
+        }
+      }
+    }
+    await this.#o.store.settings.set(CHARTER_OFFER_SETTING, 'done');
+    this.#publish(['charters']);
+    return { asked, skipped };
+  }
+
+  /**
+   * `team_propose_charter` (D105): the member's agent proposes a charter. It fills the
+   * open ask (or a new request when there is none; a newer proposal replaces an open
+   * one). It becomes a Needs-you item; nothing changes until the developer accepts it.
+   */
+  async proposeCharter(asSessionId: string, body: Record<string, unknown>): Promise<{ readonly requestId: string }> {
+    const me = this.memberOfSession(asSessionId);
+    if (!me) throw new TeamError(404, 'not-a-member', 'this session is not a team member (or Team is off)');
+    const proposal = readCharter({ owns: body['owns'], produces: body['produces'], neverDoes: body['neverDoes'], howItWorks: body['howItWorks'] });
+    if (!proposal) throw new TeamError(422, 'invalid', 'owns, produces, neverDoes and howItWorks must be text of at most 2,000 characters each');
+    for (const field of ['owns', 'produces', 'neverDoes'] as const) {
+      if (proposal[field] === '') throw new TeamError(422, 'invalid', `${field} is required`, { errors: [{ field, message: `${field} is required` }] });
+    }
+    const notes = typeof body['notes'] === 'string' ? body['notes'].trim() : '';
+    if (notes.length > CHARTER_NOTES_MAX) throw new TeamError(422, 'invalid', `notes are at most ${CHARTER_NOTES_MAX} characters`);
+    const record = await this.#serial(async () => {
+      const now = this.#iso();
+      const open = this.#need()
+        .requests()
+        .filter((r) => !r.deleted && r.state === 'open' && r.kind === 'charter' && r.memberId === me.id)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      const title = `${me.name} proposes a new charter`;
+      const next: TeamRequestRecord = open
+        ? { ...open, title, detail: notes, proposal, clock: this.#stamp(), createdAt: now, updatedAt: now }
+        : { id: randomUUID(), teamId: me.teamId, clock: this.#stamp(), deleted: false, memberId: me.id, kind: 'charter', gate: null, title, detail: notes, state: 'open', action: null, note: null, proposal, createdAt: now, updatedAt: now };
+      this.#need().putRequest(next);
+      this.#activity('update', me.id, `${me.name} proposed a new charter: it waits in Needs you`);
+      return next;
+    });
+    this.#changed(['requests', 'activity', 'members']);
+    return { requestId: record.id };
+  }
+
+  /**
+   * Accept (`approve`, optionally `{ charter }`: the developer's edit of the proposal)
+   * or Dismiss (`dismiss` / `decline`) of a charter request. Accept replaces the
+   * member's charter (synced; the standing instruction is re-sent, D64 / D91) and logs it.
+   */
+  async #decideCharter(request: TeamRequestRecord, member: TeamMemberRecord | null, decision: 'approve' | 'decline' | 'dismiss', body: Record<string, unknown>): Promise<TeamRequest> {
+    let charter: TeamCharter | null = null;
+    let edited = false;
+    if (decision === 'approve') {
+      if (!member) throw new TeamError(404, 'not-found', 'the member is gone');
+      if (body['charter'] !== undefined) {
+        charter = readCharter(body['charter']);
+        if (!charter) throw new TeamError(422, 'invalid', 'charter must be { owns, produces, howItWorks?, neverDoes }, each at most 2,000 characters', { errors: [{ field: 'charter', message: 'not a charter' }] });
+        edited = request.proposal ? !sameCharter(charter, request.proposal) : true;
+      } else if (request.proposal) charter = request.proposal;
+      else throw new TeamError(409, 'no-proposal', `${member.name} has not proposed a charter yet`);
+    }
+    await this.#serial(async () => {
+      const current = this.#need().requests().find((r) => r.id === request.id) ?? request;
+      if (current.state !== 'open') throw new TeamError(409, 'decided', `the request is ${current.state} already`);
+      const name = member?.name ?? 'The member';
+      if (charter && member) {
+        const now = this.#memberRecord(member.id);
+        this.#need().putMember({ ...now, charter, clock: this.#stamp(), updatedAt: this.#iso() });
+        this.#need().putRequest({ ...current, state: 'approved', note: edited ? 'accepted with your edits' : 'accepted', clock: this.#stamp(), updatedAt: this.#iso() });
+        this.#activity('update', member.id, `${name}'s new charter was accepted${edited ? ' (with your edits)' : ''}`);
+      } else {
+        this.#need().putRequest({ ...current, state: 'dismissed', note: current.proposal ? 'dismissed' : 'ask cancelled', clock: this.#stamp(), updatedAt: this.#iso() });
+        this.#activity('update', request.memberId, current.proposal ? `${name}'s charter proposal was dismissed` : `The charter ask to ${name} was cancelled`);
+      }
+    });
+    this.#changed(['requests', 'activity', 'members']);
+    if (charter && member) await this.#applyCharter(member.sessionId);
+    return stripRequest(this.#need().requests().find((r) => r.id === request.id) ?? request);
   }
 
   async #run(request: TeamRequestRecord, action: TeamRequestAction): Promise<string> {
