@@ -1090,7 +1090,7 @@ Developer request D73 (`docs/decisions.md` → *Devices*, `docs/devices.md`): ph
 | DELETE | /api/devices/{id} | — | 204 (revoked: its connections closed) · 404 `not-found` (local only) |
 | GET | /api/device | — | 200 DeviceSelfView `{ device: Device \| null, vapidPublicKey, events, pushEndpoint }` (`device: null` on this machine's own UI; `pushEndpoint`: the endpoint of the subscription stored for this device, else `null`; additive, 2026-10-13: the page restores a lost subscription, `docs/devices.md` → *Notifications*) |
 | PUT | /api/device | `{ name }` | 200 Device · 404 `not-a-device` · 422 `invalid` |
-| PUT | /api/device/push | DevicePushInput `{ subscription?: { endpoint, keys: { p256dh, auth } }, events?: Partial<PushEvents> }` | 200 DeviceSelfView · 404 `not-a-device` · 409 `no-subscription` (toggles before a subscription) · 422 `invalid` / `invalid-subscription` (endpoint not on a known push service) |
+| PUT | /api/device/push | DevicePushInput `{ subscription?: { endpoint, keys: { p256dh, auth } }, events?: Partial<PushEvents> }` | 200 DeviceSelfView · 404 `not-a-device` · 409 `no-subscription` (toggles before a subscription) · 409 `push-gone` (the endpoint was answered 404 / 410 by its push service: never stored again; subscribe anew) · 422 `invalid` / `invalid-subscription` (endpoint not on a known push service) |
 | DELETE | /api/device/push | — | 200 DeviceSelfView · 404 `not-a-device` |
 | POST | /api/device/push/test | — | 200 `{ ok: true }` / `{ ok: false, error }` · 404 `not-a-device` · 409 `no-subscription` |
 | PUT | /api/device/presence | DevicePresenceInput `{ client, visible, focused? }` (`client`: 8–64 of `A–Z a–z 0–9 _ -`) | 204 · 422 `invalid`. Additive (D87): one open page says whether it is in front (recorded for a paired device only; this machine's UI gets 204 and nothing is recorded) |
@@ -1576,4 +1576,90 @@ GET /api/search?q=invoice%20parser&scope=conversations&limit=1
 
 GET /api/sessions/0b7c3e0a-…/events?around=4711&limit=1000   → ≤ 499 before, event 4711, ≤ 500 after
 GET /api/sessions/0b7c3e0a-…/events?after=5211&limit=1000    → the 1,000 after event 5211
+```
+
+## Team (D100, 2026-10-13, additive, experimental)
+Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `docs/team-removal.md`). Types in `src/core/team.ts` (`TeamState`, `TeamView`, `TeamMember`, `TeamHandoff`, `TeamRequest`, `TeamNeedsYouItem`, `TeamActivityRecord`, `TeamChanged`), `src/core/team-templates.ts` (`TeamTemplate`), `src/core/team-sync.ts` (`TeamSyncMessage`). Data in the separate `<dataDir>/team.db` (no migration in the main database). **Off by default** (setting `experimental.team`, `PUT /api/settings`): while off only `GET /api/team/state` answers; every other route below is 404 `team-off`; with a broken `team.db` they are 503 `team-unavailable`. Errors are `{ error, message }` (+ `errors` for 422 `invalid`, + `blockers` for 409 `blocked`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/team/state | | 200 `TeamState` `{ enabled, available, problem, hiddenSessionIds, roles }` (always) |
+| GET | /api/team | | 200 `TeamView` `{ team, self, members, handoffs, activity }` (activity: newest 100) |
+| PUT | /api/team | `{ name }` | 200 `TeamView` · 422 |
+| GET | /api/team/templates | | 200 `TeamTemplate[]` |
+| GET | /api/team/suggestions | | 200 `TeamSuggestion[]` `{ sessionId, title, folder, evidence: { repos, loops, cliLoops, events7d, edits, reads, editRatio, planning?, activeDays? }, templateId, reason, confidence?: 'high' \| 'medium' \| 'low', score, charterDraft: null }` (only sessions with ≥ 50 events whose title or evidence names a template; `confidence`: title + behaviour agree = high, one of them = medium, weak = low; `activeDays` and `confidence` are additive, absent from older machines; see `docs/team.md` → *Templates and suggestions*) |
+| GET | /api/team/activity | `?before=<iso>&limit=1–500` | 200 `TeamActivityRecord[]` (newest first) |
+| GET | /api/team/needs-you | | 200 `TeamNeedsYouItem[]` |
+| POST | /api/team/members | adopt: `{ sessionId, name, charter?, templateId?, rhythm?: { loopIds, onHandoff }, budget?: { dailyPct, profileId }, gates?, workplace?: { folders }, model?, effort?, charterDraft? }` · create: the same without `sessionId`, with `session: NewSession` | 201 `TeamMember` · 404 · 409 `hooked` / `detached` / `closed` / `already-member` / `too-many` · 422 (create: `POST /api/sessions`' refusals in the body) |
+| GET | /api/team/members/{id} | | 200 `TeamMember` · 404 |
+| PUT | /api/team/members/{id} | any of the adopt fields but `sessionId` | 200 `TeamMember` · 404 · 422 |
+| DELETE | /api/team/members/{id} | | 200 `{ ok: true }` (the session returns to the list, no note) · 502 `peer-unreachable` |
+| POST | /api/team/members/{id}/pause · /resume | | 200 `TeamMember` |
+| POST | /api/team/members/{id}/return | | 200 `{ sessionId }` (how this machine addresses it) |
+| POST | /api/team/members/{id}/move/check | `{ targetMachineId }` | 200 `{ ok, blockers, preview }` (`preview`: the take-over's `TakeoverPreview`) · 422 |
+| POST | /api/team/members/{id}/move | `{ targetMachineId }` | 202 `TeamMoveRun` `{ id, memberId, state, takeoverRunId, error, targetMachineId }` · 409 `blocked` + `blockers` |
+| GET | /api/team/moves/{runId} | | 200 `TeamMoveRun` (`state`: `running` · `done` · `failed`) · 404 |
+| POST | /api/team/handoffs | `{ to: <role name or member id>, brief, expected?, links?, from?: <member id>, planRef? }` | 201 `TeamHandoff` · 404 (no such member) · 422 |
+| PUT | /api/team/handoffs/{id} | `{ state: open \| accepted \| done \| declined }` | 200 `TeamHandoff` |
+| POST | /api/team/requests/{id}/approve · /decline · /dismiss | | 200 `TeamRequest` (`note`: the approved action's result) · 409 `decided` |
+| POST | /api/team/sync | `TeamSyncMessage` (from a paired machine) | 200 `TeamSyncMessage` (this machine's) · 422 |
+
+- **`TeamMember`**: the record (`id, teamId, name, charter: { owns, produces, neverDoes }, charterDraft, templateId, machineId, sessionId, workplace, provider, model, effort, rhythm: { loops: [{ loopId, label, prompt, scheduleText }], onHandoff }, budget, gates, paused, pausedLoops, pausedBy, cliLoops, originalPlace: { place, folderId, index }, access: [{ id, name, setUpOn }], createdAt, updatedAt`) plus `status` (`working` · `needs-you` · `idle` · `paused` · `offline`), `sessionRef` (this machine's id, or `r~<machine>~<id>`), `sessionTitle`, `machineName`, `local`, `cliLoopsUnmanaged`, `usedTodayPct`.
+- **`gates`**: any of `outward-facing` (always on, always first), `merge-default-branch`, `external-write`, `delete-data`, `release`, `spend`.
+- **`TeamNeedsYouItem`**: `{ id, source: inbox | team, kind, memberId, memberName, label ("Tracker · question"), title, detail, createdAt, sessionRef, inbox?: InboxItem, request?: TeamRequest }`. `TeamRequest`: `{ id, teamId, memberId, kind: gate | budget | access, gate, title, detail, state: open | approved | declined | dismissed, action: { type: review-merge, reviewId } | { type: resume-member } | { type: external, ref } | null, note, createdAt, updatedAt }`.
+- **Agent routes** (the `switchboard` MCP helper, agent token; only a member's session, only while Team is on, else 404 `not-a-member`): `GET /agent/v1/team` → `{ member: { id, name } }`, `GET /agent/v1/team/members` → `{ text }`, `POST /agent/v1/team/handoffs` `{ to, brief, expected, links? }` → 201 `TeamHandoff`, `POST /agent/v1/team/reports` `{ text }` → 201. MCP tools: `team_handoff`, `team_members`, `team_report`.
+- **Additive fields:** `InboxItem.teamRole` and `SearchResult.teamRole` (the role name; then also `sourceTitle` / `sessionTitle`); settings key `experimental.team` (boolean, default `false`).
+- **Review cards (D79):** a member's `POST /api/reviews/{id}/merge` into a protected / default branch with its `merge-default-branch` gate on answers 409 `refused` and raises a `gate` request; the approval runs the merge.
+- **`/hub`:** `teamChanged` `{ teamId, what: string[] }`.
+- **Peers (D48):** on `PEER_API_ALLOW`: `POST /api/team/sync`, `GET /api/team`, `GET /api/team/members/{id}`, `GET /api/team/moves/{id}`, `POST /api/team/members`, `POST /api/team/handoffs`, `PUT /api/team/members/{id}`, `PUT /api/team/handoffs/{id}`, `DELETE /api/team/members/{id}`, `POST /api/team/members/{id}/(pause|resume|return|move|move/check)`, `POST /api/team/requests/{id}/(approve|decline|dismiss)`. A member on a paired machine is acted on there (forwarded); a request that came through the peer API is never forwarded again (409 `not-here`). An older peer answers 403 to the sync and is left out.
+- **Devices (D73):** allowed: the reads, `POST /api/team/members`, `DELETE /api/team/members/{id}`, `POST …/(pause|resume|return)`, hand-offs (create, state) and request decisions. Refused: `PUT /api/team`, `PUT /api/team/members/{id}`, the move routes, `POST /api/team/sync`.
+
+```
+POST /api/team/members { "sessionId": "0b7c3e0a-…", "name": "Tracker",
+  "charter": { "owns": "The PROJ board", "produces": "A daily status note", "neverDoes": "Merges or writes to the tracker" },
+  "rhythm": { "loopIds": ["a1b2c3d4e5"], "onHandoff": true }, "budget": { "dailyPct": 20, "profileId": null } }
+→ 201 { "id": "5f0c…", "name": "Tracker", "status": "idle", "sessionRef": "0b7c3e0a-…", "local": true,
+        "gates": ["outward-facing", "merge-default-branch"], "originalPlace": { "place": "folder", "folderId": "f-1", "index": 1 }, … }
+
+GET /api/team/needs-you
+→ 200 [ { "id": "q-1", "source": "inbox", "kind": "questions", "memberId": "5f0c…", "memberName": "Tracker",
+          "label": "Tracker · question", "title": "Which board?", "detail": "…", "createdAt": "2026-10-13T09:12:00.000Z",
+          "sessionRef": "0b7c3e0a-…", "inbox": { … } } ]
+
+POST /api/team/members/5f0c…/move { "targetMachineId": "m-pc-0002" }
+→ 202 { "id": "7a9e…", "memberId": "5f0c…", "state": "running", "takeoverRunId": "c3d1…", "error": null, "targetMachineId": "m-pc-0002" }
+```
+
+## Team access (D100-T2, 2026-10-13, additive, experimental)
+Access requests of Team members (`docs/team.md` → *Access requests*; decision D100 → *Access requests*). Types in `src/core/team-access.ts` (`TeamAccessRecord`, `TeamAccessEntryView`, `TeamAccessView`, `AccessField`, `AccessMcpServer`, `AccessKeyTest`, `AccessTestResult`) and `src/core/team-access-catalog.ts` (`AccessCatalogEntry`). Records in `team.db` (`access` table, Team migration 2); **values only in the OS keychain** of the machine they were entered on (service `Switchboard Team`, account `<memberId>/<accessId>/<FIELD>`), never in an answer, the sync or a log. Like every Team route: 404 `team-off` while Team is off, 503 `team-unavailable` with a broken `team.db`; errors `{ error, message }` (+ `errors: [{ field, message }]` for 422 `invalid`).
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/team/members/{id}/access | | 200 `TeamAccessView` `{ member: { id, name, machineId, machineName, local }, self: { id, name }, device, keychain: { name, available, problem }, entries: TeamAccessEntryView[] }` (newest first) · 404 |
+| GET | /api/team/members/{id}/access/shareable | | 200 `[{ name, scope, transport, command, url }]`: the MCP page's servers for the member's folder (this machine's member only, else `[]`) |
+| GET | /api/team/access/catalog | | 200 `AccessCatalogEntry[]` `{ id, name, summary, host, server, fields, custom, note }` |
+| POST | /api/team/access/{id}/setup | `{ values: { FIELD: value }, server?: { transport: stdio, command, args } \| { transport: http, url, headers }, shared?: { name, scope }, expiresAt?: iso \| null }` | 200 `TeamAccessEntryView` (no value) · 403 `local-only` (a phone: "Set this up on a computer…", or a peer request) · 409 `closed` (denied / revoked) · 422 (`values` per field; `server` for a custom server; `shared` for a shared one, stdio only) · 503 `keychain-unavailable` |
+| POST | /api/team/access/{id}/test | | 200 `AccessTestResult` `{ ok, detail, tools }` · 403 · 409 `not-set-up` (not on this machine) |
+| POST | /api/team/access/{id}/revoke | | 200 `TeamAccessEntryView` (`status: revoked`) · 403 |
+| PUT | /api/team/access/{id} | `{ expiresAt: iso \| null }` | 200 `TeamAccessEntryView` · 403 · 422 (past / malformed) |
+
+- **`TeamAccessEntryView`**: `{ id, teamId, memberId, requestId, kind: mcp | api-key, source: catalog | custom | shared | null, catalogId, service, host, why, scope, fields: [{ name, label, secret, help, helpUrl, pattern }], mcp: { transport, command, args, url, headers } | null, shared: { name, scope } | null, test: { url, header } | null, warning, state: requested | approved | active | denied | deferred | revoked | expired, setUpOn: [machineId], setUpAt, secretRefs: [{ field, service, account }], expiresAt, lastUsedAt, lastUsedOn, audit: [{ at, what: asked | approved | denied | deferred | set-up | replaced | used | tested | revoked | expired, machineId, text }], createdAt, updatedAt }` plus `status` (`requested` · `ready` · `needs-setup` · `denied` · `not-now` · `revoked` · `expired`), `statusText` ("Ready on Mac", "Set up on Mac only", "Set up on Mac only: needs setup on PC"), `here`, `setUpOnNames`, `ready` (the member's machine has it, active, not expired), `canSetUp`, `delivers` (the variables, or `MCP server access-<service>-<id>`).
+- **Needs you**: a request is a `TeamRequest` with `kind: access`, `action: { type: external, ref: "access:<accessId>" }`; its `TeamNeedsYouItem` carries `access: TeamAccessEntryView`. **Set up…** = the Access tab's setup (`focusAccessId`), **Deny** = `POST /api/team/requests/{id}/decline` (state `denied`), **Not now** = `…/dismiss` (`deferred`); `…/approve` alone = `approved` (waiting for setup; `note` says so). A setup settles the open request (`approved`, note "Set up on <machine>").
+- **Agent routes** (agent token; the member's own session, Team on; else 404 `not-a-member`): `POST /agent/v1/team/access` (the `request_access` tool) `{ kind, service, host, why, scope, fields?, source?, catalogId?, server?, sharedServer?, testUrl?, testHeader? }` → 201 `{ text, access: { id, service, host, status } }` (the same open request is reused) · 422 `invalid` + `errors` · 429 `rate-limited` (5 new per member per hour); `GET /agent/v1/team/access/{id}/launch` (the access launcher `sb-access-mcp.ts`) → 200 `{ command, args, env }` (values read now) · 404 `not-available` (another session, not ready here, revoked, expired).
+- **MCP tool**: `request_access` (with `team_handoff`, `team_members`, `team_report`; member sessions only, Team on).
+- **Spawn** (no route): a member's ready API keys are environment variables of its process; its MCP accesses join its MCP config (`access-<service>-<id>`: stdio through `node src/hook/sb-access-mcp.ts --switchboard-access <port> <sessionId> <accessId>`, http with `${FIELD}` header references, Claude Code only); its recorded output masks every value as `•••• (FIELD)`.
+- **Sync (D48)**: `TeamSyncMessage.snapshot.access: TeamAccessRecord[]` (an older peer sends none); last writer wins per record; never a value.
+- **Peers (D48)**: on `PEER_API_ALLOW`: `GET /api/team/members/{id}/access`, `GET /api/team/access/catalog`. Setup, test, revoke and the expiry are not (a peer request to them answers 403).
+- **Devices (D73)**: allowed: `GET /api/team/members/{id}/access(/shareable)`, `GET /api/team/access/catalog` (and the request decisions above). Refused: `POST /api/team/access/{id}/(setup|test|revoke)`, `PUT /api/team/access/{id}`.
+- **Web (for T3)**: `src/web/team/access/index.ts` exports `AccessTab { memberId, focusAccessId?, loopLabels?, onChanged? }`, `AccessRequestActions { item, onSetUp(memberId, accessId), onDecided? }` and `accessApi`; dev mount `/team-access-dev.html?member=<id>`.
+
+```
+POST /agent/v1/team/access { "kind": "api-key", "service": "Acme Analytics", "host": "api.acme.example",
+  "why": "Fetch the weekly traffic report.", "scope": "read-only, reports",
+  "fields": [{ "name": "ACME_ANALYTICS_KEY", "label": "API key", "secret": true, "help": "Settings → API keys" }] }
+→ 201 { "text": "Asked the developer for Acme Analytics on api.acme.example (read-only, reports). …", "access": { "id": "9c1e…", "service": "Acme Analytics", "host": "api.acme.example", "status": "requested" } }
+
+POST /api/team/access/9c1e…/setup { "values": { "ACME_ANALYTICS_KEY": "…" } }
+→ 200 { "id": "9c1e…", "status": "ready", "statusText": "Ready on Mac", "here": true, "setUpOn": ["m-mac-0001"],
+        "secretRefs": [{ "field": "ACME_ANALYTICS_KEY", "service": "Switchboard Team", "account": "5f0c…/9c1e…/ACME_ANALYTICS_KEY" }], … }
 ```

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PUSH_EVENTS, type DeviceSelfView, type PushSubscriptionInput } from '../../src/core/devices.ts';
-import { type BrowserSubscription, type PushRestoreHost, pushRestoreState, restorePush } from '../../src/web/pwa/push-restore.ts';
+import { type BrowserSubscription, type PushRestoreHost, isPushGoneError, pushRestoreState, restorePush } from '../../src/web/pwa/push-restore.ts';
 import { vapidKeyBytes } from '../../src/web/pwa/push-support.ts';
 
 /** D73 fix, 2026-10-13: a paired device restores a push subscription Switchboard lost (re-pairing). */
@@ -14,19 +14,30 @@ const FRESH: DeviceSelfView = { device: DEVICE, vapidPublicKey: VAPID, events: D
 const BROWSER: BrowserSubscription = { input: SUB, key: vapidKeyBytes(VAPID) };
 
 /** A host whose every call is recorded; it has no way to prompt or subscribe at all. */
-function host(options: { permission?: 'default' | 'granted' | 'denied'; turnedOff?: boolean; subscription?: BrowserSubscription | null; view?: DeviceSelfView } = {}) {
+/** `serverGone`: endpoints Switchboard refuses as gone (409 `push-gone`, as `ApiError` carries it). */
+function host(options: { permission?: 'default' | 'granted' | 'denied'; turnedOff?: boolean; subscription?: BrowserSubscription | null; view?: DeviceSelfView; serverGone?: readonly string[]; goneEndpoint?: string | null } = {}) {
   const calls: string[] = [];
   const saved: PushSubscriptionInput[] = [];
   const view = options.view ?? FRESH;
+  const state = { subscription: options.subscription === undefined ? BROWSER : options.subscription, gone: options.goneEndpoint ?? null };
   const value: PushRestoreHost = {
     permission: () => {
       calls.push('permission');
       return options.permission ?? 'granted';
     },
     turnedOff: () => options.turnedOff ?? false,
+    goneEndpoint: () => state.gone,
+    markGone: (endpoint) => {
+      calls.push('markGone');
+      state.gone = endpoint;
+    },
+    unsubscribe: async () => {
+      calls.push('unsubscribe');
+      state.subscription = null;
+    },
     subscription: async () => {
       calls.push('getSubscription');
-      return options.subscription === undefined ? BROWSER : options.subscription;
+      return state.subscription;
     },
     deviceSelf: async () => {
       calls.push('deviceSelf');
@@ -34,11 +45,14 @@ function host(options: { permission?: 'default' | 'granted' | 'denied'; turnedOf
     },
     save: async (subscription) => {
       calls.push('save');
+      if (options.serverGone?.includes(subscription.endpoint)) {
+        throw Object.assign(new Error('This push subscription expired.'), { status: 409, body: { error: 'push-gone', message: 'expired' } });
+      }
       saved.push(subscription);
       return { ...view, device: { ...DEVICE, push: true }, pushEndpoint: subscription.endpoint };
     },
   };
-  return { value, calls, saved };
+  return { value, calls, saved, state };
 }
 
 describe('D73 fix · restoring a lost push subscription', () => {
@@ -84,7 +98,7 @@ describe('D73 fix · restoring a lost push subscription', () => {
     expect((await restorePush(h.value)).state).toBe('other-key');
     expect(h.calls).not.toContain('save');
     // A browser that does not say which key: left alone, not restored.
-    expect(pushRestoreState({ view: FRESH, permission: 'granted', turnedOff: false, subscription: { input: SUB, key: null } })).toBe('unknown-key');
+    expect(pushRestoreState({ view: FRESH, permission: 'granted', turnedOff: false, goneEndpoint: null, subscription: { input: SUB, key: null } })).toBe('unknown-key');
   });
 
   it('does nothing on this machine’s own UI or while device access is off', async () => {
@@ -94,5 +108,45 @@ describe('D73 fix · restoring a lost push subscription', () => {
     const accessOff = host({ view: { ...FRESH, vapidPublicKey: null } });
     expect((await restorePush(accessOff.value)).state).toBe('unavailable');
     expect(accessOff.calls).not.toContain('save');
+  });
+
+  it('a subscription Switchboard refuses as gone (409 push-gone) is unsubscribed and never sent again', async () => {
+    const h = host({ serverGone: [SUB.endpoint] });
+    const first = await restorePush(h.value);
+    expect(first.state).toBe('gone');
+    // The view stays the server's (no subscription): the switch shows off.
+    expect(first.view).toEqual(FRESH);
+    expect(h.calls.filter((call) => call === 'save')).toHaveLength(1);
+    expect(h.calls).toContain('unsubscribe');
+    expect(h.state).toEqual({ subscription: null, gone: SUB.endpoint });
+    // The next start / visible event: nothing left to send.
+    expect((await restorePush(h.value)).state).toBe('none');
+    expect(h.calls.filter((call) => call === 'save')).toHaveLength(1);
+  });
+
+  it('stops even when unsubscribing fails: the noted endpoint is not sent again', async () => {
+    const h = host({ serverGone: [SUB.endpoint] });
+    h.value.unsubscribe = async () => {
+      throw new Error('unsubscribe failed');
+    };
+    expect((await restorePush(h.value)).state).toBe('gone');
+    expect(h.state.subscription).toEqual(BROWSER);
+    for (let i = 0; i < 3; i += 1) expect((await restorePush(h.value)).state).toBe('gone');
+    expect(h.calls.filter((call) => call === 'save')).toHaveLength(1);
+  });
+
+  it('a fresh subscription (another endpoint) is restored even with a gone endpoint noted; other errors still fail the run', async () => {
+    const fresh = host({ goneEndpoint: 'https://fcm.googleapis.com/fcm/send/dead' });
+    expect((await restorePush(fresh.value)).state).toBe('restore');
+    expect(fresh.saved).toEqual([SUB]);
+    const failing = host();
+    failing.value.save = async () => {
+      throw Object.assign(new Error('nope'), { status: 409, body: { error: 'no-subscription' } });
+    };
+    await expect(restorePush(failing.value)).rejects.toThrow('nope');
+    expect(failing.calls).not.toContain('unsubscribe');
+    expect(isPushGoneError({ status: 409, body: { error: 'push-gone' } })).toBe(true);
+    expect(isPushGoneError({ status: 410, body: { error: 'push-gone' } })).toBe(false);
+    expect(isPushGoneError(null)).toBe(false);
   });
 });

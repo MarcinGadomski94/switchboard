@@ -53,6 +53,7 @@ import { isLocalOnly } from './local-only.ts';
 import { isDeviceRequest, markDeviceRequest } from './mark.ts';
 import { DevicePresence } from './presence.ts';
 import { type VapidKeys, generateVapidKeys, validVapidKeys } from './push/crypto.ts';
+import { PUSH_GONE_SETTING, addGoneEndpoint, isGoneEndpoint } from './push/gone.ts';
 import { type PushNotice, PushNotifier } from './push/notifier.ts';
 import { type PushOutcome, sendPush, validSubscription } from './push/sender.ts';
 import { type TailscaleCallOptions, isTailscaleFailure, serveOff, serveOn, serveStatus, servedByOther, tailscaleStatus } from './tailscale-serve.ts';
@@ -186,6 +187,8 @@ export class DeviceService {
   readonly #config: ServerConfig;
   readonly #store: Store;
   readonly #now: () => number;
+  /** Serializes the writes of {@link PUSH_GONE_SETTING}. */
+  #goneWrites: Promise<void> = Promise.resolve();
   readonly #onError: (error: unknown) => void;
   readonly #machineName: () => Promise<string>;
   readonly #fetch: typeof fetch | undefined;
@@ -680,6 +683,10 @@ export class DeviceService {
         throw new DeviceError(422, 'invalid-subscription', "the subscription must be a browser push subscription on a known push service (Apple, Google, Mozilla, Microsoft)");
       }
       const subscription = input.subscription;
+      // D73 follow-up: an endpoint the push service called gone (404 / 410) is never stored again (push/gone.ts).
+      if (isGoneEndpoint(await this.#store.settings.get(PUSH_GONE_SETTING), subscription.endpoint, this.#now())) {
+        throw new DeviceError(409, 'push-gone', 'This push subscription expired. Turn notifications on again to make a new one.');
+      }
       await this.#store.devices.savePush({ deviceId: device.id, endpoint: subscription.endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, events });
     } else if (existing) {
       await this.#store.devices.setPushEvents(device.id, events);
@@ -770,12 +777,24 @@ export class DeviceService {
     if (outcome.ok) {
       if (record.lastError !== null) await this.#store.devices.setPushError(deviceId, null);
     } else if (outcome.gone) {
-      // 404 / 410: the browser dropped the subscription; forget it (the device can enable again).
+      // 404 / 410: the browser dropped the subscription; forget it (the device can enable again)
+      // and remember its endpoint as gone, so a browser still holding it cannot restore it (push/gone.ts).
       await this.#store.devices.deletePush(deviceId);
+      await this.#rememberGone(record.endpoint);
     } else {
       await this.#store.devices.setPushError(deviceId, `${outcome.status || 'network'}: ${outcome.error}`.slice(0, 300));
     }
     return outcome;
+  }
+
+  /** Adds `endpoint` (hashed) to the remembered gone endpoints; one write at a time, so concurrent deliveries do not lose one. */
+  #rememberGone(endpoint: string): Promise<void> {
+    const write = this.#goneWrites.then(async () => {
+      const stored = await this.#store.settings.get(PUSH_GONE_SETTING);
+      await this.#store.settings.set(PUSH_GONE_SETTING, addGoneEndpoint(stored, endpoint, this.#now()));
+    });
+    this.#goneWrites = write.catch(() => undefined);
+    return write;
   }
 }
 

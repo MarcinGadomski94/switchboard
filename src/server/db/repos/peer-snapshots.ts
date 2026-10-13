@@ -1,6 +1,6 @@
 import type { RepoContext } from '../context.ts';
 
-/** What a snapshot holds (D48 ruling D48-cache-persist; D52: `schedules` and `terminal-loops`, key ''; D68: `todos`, key ''). */
+/** What a snapshot holds (D48 ruling D48-cache-persist; D52: `schedules` and `terminal-loops`, key ''; D68: `todos`, key ''). Plans (D99) hook: `plans`, key ''. */
 export type PeerSnapshotKind = 'sessions' | 'detail' | 'events' | 'schedules' | 'terminal-loops' | 'todos' | 'reviews' | 'artifacts' | 'plans';
 
 /**

@@ -162,6 +162,8 @@ export interface Plan {
   readonly external: PlanExternalRef | null;
   /** Why new starts are held right now (paused, an account above the usage threshold); `null` = not held. */
   readonly held: string | null;
+  /** Why Switchboard paused the plan ({@link PLANS_OFF_REASON}); `null` = the developer paused it, or it is not paused. */
+  readonly pausedReason: string | null;
   readonly items: readonly PlanItem[];
   readonly edges: readonly PlanEdge[];
   readonly criticalPath: { readonly itemIds: readonly string[]; readonly minutes: number };
@@ -174,6 +176,22 @@ export interface Plan {
   readonly finishedAt: string | null;
   /** A paired machine's plan (D48): its machine; `null` = this machine. */
   readonly machine: { readonly id: string; readonly name: string; readonly state: string } | null;
+}
+
+/** The setting of Settings → Experimental → **Plans** (off by default; `docs/plans.md` → *The switch*). */
+export const PLANS_SETTING = 'experimental.plans';
+
+/** Why a running plan was paused when Plans was switched off (shown on the plan; the developer resumes it). */
+export const PLANS_OFF_REASON = 'Plans was switched off';
+
+/** `GET /api/plans/state`: the switch (always answered, also while Plans is off). */
+export interface PlansState {
+  /** Settings → Experimental → Plans. */
+  readonly enabled: boolean;
+  /** On and `plans.db` open (the plan routes answer). */
+  readonly available: boolean;
+  /** Why `plans.db` could not be opened while on (the plan routes answer 503); `null` otherwise. */
+  readonly problem: string | null;
 }
 
 /** `/hub` `planChanged`: any change of a plan (created, edited, an item's state, deleted: `state` `null`). */
@@ -698,8 +716,6 @@ export const PLAN_TOOLS: readonly TodoToolDefinition[] = [
   },
 ];
 
-/** D99: the sentence the `switchboard` MCP server's instructions add about plans (defined in `todos.ts`). */
-export { PLAN_INSTRUCTIONS } from './todos.ts';
 
 /** One line per item for `plan_status`. */
 export function planStatusText(plan: Plan): string {

@@ -27,6 +27,8 @@ import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
+// Team (D100) hook: the `teamChanged` payload (docs/team-removal.md).
+import type { TeamChanged } from './team.ts';
 import type {
   AgentKind,
   Coordination,
@@ -44,8 +46,9 @@ import type {
 } from './model.ts';
 
 export type { Attachment, AttachmentDelivery, AttachmentKind } from './attachments.ts';
+// Plans (D99) hook (docs/plans-removal.md).
 import type { PlanChanged } from './plans.ts';
-export type { Plan, PlanAnswers, PlanChanged, PlanChecks, PlanEdge, PlanExternalRef, PlanItem, PlanItemState, PlanMergeMode, PlanState } from './plans.ts';
+export type { Plan, PlanAnswers, PlanChanged, PlanChecks, PlanEdge, PlanExternalRef, PlanItem, PlanItemState, PlanMergeMode, PlanState, PlansState } from './plans.ts';
 export type { SessionChip } from './derive/chips.ts';
 export type { StatusTableFormat } from './derive/status-table.ts';
 export type { SidebarFolder, SidebarFolderCreate, SidebarFolderMove, SidebarFolderPatch, SidebarLayout, SidebarPlace, SidebarPlaceInput } from './sidebar-layout.ts';
@@ -1480,6 +1483,8 @@ export interface InboxItem {
   readonly machine?: SessionMachine | null;
   /** Additive (D79): a review item's card (`kind: 'review'`; its actions are `POST /api/reviews/{id}/<action>`). */
   readonly review?: Review;
+  /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
+  readonly teamRole?: string;
 }
 
 /**
@@ -2438,12 +2443,14 @@ export interface HubEvents {
    */
   readonly draftChanged: DraftChanged;
   /**
-   * Additive (D99, `docs/plans.md`): a plan changed (created, edited, an item added or removed,
+   * Plans (D99) hook. Additive (`docs/plans.md`): a plan changed (created, edited, an item added or removed,
    * an edge, started / paused / resumed / cancelled, an item's state, done; deleted: `state`
    * `null`). The Plans page reloads that plan. Forwarded between peers (a peer's with its remote
    * plan id).
    */
   readonly planChanged: PlanChanged;
+  /** Team (D100) hook: something of the team changed (`docs/team.md`; the page reads `GET /api/team` again). */
+  readonly teamChanged: TeamChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2479,7 +2486,10 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'reviewsChanged',
   'notice',
   'draftChanged',
+  // Plans (D99) hook.
   'planChanged',
+  // Team (D100) hook.
+  'teamChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

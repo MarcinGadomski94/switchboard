@@ -7,7 +7,7 @@ import { runTodo, type TodoRunContext } from '../todos/run.ts';
 import { todoRunOptions } from '../todos/run-options.ts';
 import { TodoError } from '../todos/service.ts';
 import { WorktreeError } from '../worktrees/manager.ts';
-import type { PlanRecord } from '../db/repos/plans.ts';
+import type { PlanRecord } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
 import { type PlanEnvironment, PlanError, type PlanRepoRef, type PlanRunInput } from './service.ts';
 

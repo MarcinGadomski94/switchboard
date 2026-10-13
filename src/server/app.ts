@@ -41,6 +41,9 @@ import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
 import { type ApiContext, registerApiRoutes } from './routes.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { installTeam } from './team/install.ts';
+import { withTeamAccessServers } from './team/hooks.ts';
 import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
@@ -56,11 +59,9 @@ import { registerWeb } from './web.ts';
 import { DeviceService } from './devices/service.ts';
 import { WorktreeAdoption } from './worktrees/adopt.ts';
 import { WorktreeManager } from './worktrees/manager.ts';
-import { PlanGit } from './plans/git.ts';
-import { planEnvironment } from './plans/environment.ts';
-import { PlanService } from './plans/service.ts';
-// Plans (D99) hook: the Jira import and status sync (docs/plans-removal.md).
-import { type PlansJiraOptions, installPlansJira } from './plans/jira/install.ts';
+// Plans (D99) hook (docs/plans-removal.md).
+import { installPlans } from './plans/install.ts';
+import type { PlanService } from './plans/service.ts';
 
 /** Options for {@link buildApp}. */
 export interface AppOptions {
@@ -187,14 +188,12 @@ export interface AppOptions {
    */
   readonly searchBackfill?: SearchBackfill;
   /**
-   * D99: plans and their scheduler (`docs/plans.md`). Without one the app makes its own (git
-   * from PATH, the configured gh), started when the app is ready and closed with it.
+   * Plans (D99) hook: plans and their scheduler (`docs/plans.md`). Without one the app makes its
+   * own (git from PATH, the configured gh), started when the app is ready and closed with it.
    */
   readonly plans?: PlanService;
   /** D97: a paired machine's search may take this long (default `PEER_SEARCH_TIMEOUT_MS`; tests shorten it). */
   readonly peerSearchTimeoutMs?: number;
-  /** Plans (D99) hook: the Jira lane's options (tests: the fake Jira's `env`, a memory keychain, the refresh interval). */
-  readonly plansJira?: Partial<PlansJiraOptions>;
   /** Fastify logger; off by default (tests). */
   readonly logger?: boolean;
 }
@@ -488,7 +487,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       withClaudeConfigFile(
         config.dataDir,
         session.id,
-        agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }),
+        // Team (D100) hook (D100-T2): a member's access MCP servers join its launch (docs/team-removal.md).
+        withTeamAccessServers(options.store, agentMcpLaunch({ nodePath: process.execPath, port: config.port, sessionId: session.id, token: agentTokenFor(options.token, session.id) }), session.id),
       ),
     );
   }
@@ -546,36 +546,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  // D99: plans: the scheduler starts ready items as todo runs (D76) and follows them to their merge.
-  let plans = options.plans;
-  if (!plans) {
-    const own = new PlanService({
-      store: options.store,
-      bus,
-      todos,
-      git: new PlanGit({ gh: config.ghCommand }),
-      env: planEnvironment({
-        context: { store: options.store, providers, supervisor, worktrees, folders, todos, attachments, clis },
-        accounts,
-        systemItems,
-        send: async (sessionId, text) => {
-          if (await hooks.isHooked(sessionId)) await hooks.sendMessage(sessionId, text);
-          else await supervisor.sendMessage(sessionId, text, 'service');
-        },
-      }),
-    });
-    app.addHook('onReady', async () => {
-      if (!config.demo) await own.start();
-    });
-    app.addHook('preClose', async () => {
-      await own.close();
-    });
-    plans = own;
-  }
-  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search, plans };
+  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search };
   await registerApiRoutes(app, apiContext);
-  // Plans (D99) hook: the Jira import and status sync (docs/plans-removal.md).
-  await installPlansJira(app, apiContext, { enabled: () => true, secretStore: null, ...options.plansJira });
+  // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
+  await installTeam(app, apiContext);
+  // ── Plans (D99) hook: the experimental Plans service and its routes (docs/plans-removal.md). ──
+  await installPlans(app, apiContext, options.plans);
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

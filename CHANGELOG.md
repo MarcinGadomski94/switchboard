@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (1.18.0)
+
+### Team (experimental)
+- **Run a set of role agents from one page.** Settings → Experimental → Team (off by default). A member is one of your sessions with a role, a charter, a rhythm, a budget and the things it needs you for; it leaves your session list and lives on the Team page, with its history, worktrees, todos and loops.
+- **Suggestions and templates:** Switchboard suggests sessions that look like team members and drafts a charter for each; or start a member from a template (Planner, Developer, Reviewer / QA, Release manager, On-call, Delivery tracking, Marketing monitoring).
+- **One page:** member cards by status, Needs you answered in place (questions, reviews, approvals), the activity feed, and each member's chat, settings, pause, tasks and moves between your paired machines. ↩ Return to sessions puts a session back where it was; switching Team off returns every member.
+- What's new has a short tour of it.
+
 ## 1.16.0 (2026-10-13)
 
 ### Search across everything

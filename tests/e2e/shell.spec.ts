@@ -103,6 +103,10 @@ test('the shell renders from the real API and shows only what the API returns', 
     } else if (call.url === '/api/device/presence') {
       // D87: the page reports whether it is in the foreground (no body).
       expect(call.status, call.url).toBe(204);
+    } else if (call.url === '/api/team/state') {
+      // D100: Team's switch (always answered, the sidebar's filter reads it); off on a fresh install, nothing hidden.
+      expect(call.status, call.url).toBe(200);
+      expect(call.body, call.url).toMatchObject({ enabled: false, available: false, hiddenSessionIds: [] });
     } else if (call.url === '/api/setup') {
       // M5.3: the first-run check; test servers keep the wizard from opening by itself (SWITCHBOARD_SETUP_WIZARD=off).
       expect(call.status, call.url).toBe(200);

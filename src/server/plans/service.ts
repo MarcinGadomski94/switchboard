@@ -20,6 +20,9 @@ import {
   type PlanItemFacts,
   type PlanMergeMode,
   type PlanWaitingOn,
+  type PlansState,
+  PLANS_OFF_REASON,
+  PLANS_SETTING,
   developerMerges,
   findCycle,
   forbiddenTargetReason,
@@ -34,7 +37,9 @@ import {
   planView,
   readyItems,
 } from '../../core/plans.ts';
-import type { PlanItemPatch, PlanItemRecord, PlanRecord } from '../db/repos/plans.ts';
+import { PlansDb } from './db.ts';
+import { registerPlanHooks } from './hooks.ts';
+import type { PlanItemPatch, PlanItemRecord, PlanRecord, PlanRepository } from './repo.ts';
 import type { TodoRecord } from '../db/repos/todos.ts';
 import type { Store } from '../db/store.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
@@ -104,6 +109,8 @@ export interface PlanEnvironment {
 
 /** Options for {@link PlanService}. */
 export interface PlanServiceOptions {
+  /** The data folder: `plans.db` is opened there while Plans is on. */
+  readonly dataDir: string;
   readonly store: Store;
   readonly bus: HubBus;
   readonly todos: TodoService;
@@ -166,8 +173,14 @@ const DISCARDED = 'was discarded';
  * (`todosChanged`), usage updates (`system`), a poll of the PR checks of the items waiting on
  * them, and once at start (plans that were running before a restart resume). Every change
  * publishes `planChanged`. One scheduling cycle at a time.
+ *
+ * **Experimental, off by default** (Settings → Experimental → Plans): while off it opens
+ * nothing (`plans.db` is not created), listens to nothing, runs no timer and answers every
+ * call with 404 `plans-off`; while on with a broken `plans.db`, 503 `plans-unavailable` and
+ * still nothing runs. Switching it off pauses the running plans ({@link PLANS_OFF_REASON}).
  */
 export class PlanService {
+  readonly #dataDir: string;
   readonly #store: Store;
   readonly #bus: HubBus;
   readonly #todos: TodoService;
@@ -187,8 +200,18 @@ export class PlanService {
   #unsubscribe: (() => void) | null = null;
   #poll: unknown = null;
   #closed = false;
+  /** Settings → Experimental → Plans as last read. */
+  #enabled = false;
+  /** `plans.db` while Plans is on and the file opened. */
+  #db: PlansDb | null = null;
+  /** Why `plans.db` could not be opened (while on). */
+  #problem: string | null = null;
+  #offHooks: (() => void) | null = null;
+  /** The switch changes, one at a time. */
+  #switching: Promise<void> = Promise.resolve();
 
   constructor(options: PlanServiceOptions) {
+    this.#dataDir = options.dataDir;
     this.#store = options.store;
     this.#bus = options.bus;
     this.#todos = options.todos;
@@ -201,11 +224,68 @@ export class PlanService {
 
   // ── lifecycle ───────────────────────────────────────────────────────────
 
-  /** Starts listening and resumes the running plans (once at startup). */
+  /**
+   * Reads the switch (the app calls it when ready) and registers the settings seam; while
+   * Plans is on, opens `plans.db`, starts listening and resumes the running plans.
+   */
   async start(): Promise<void> {
-    if (this.#unsubscribe || this.#closed) return;
-    for (const plan of await this.#store.plans.list({ states: ['running', 'paused'] })) {
-      for (const item of await this.#store.plans.items(plan.id)) {
+    if (this.#closed) return;
+    this.#offHooks ??= registerPlanHooks(this.#store, { switchChanged: () => this.switchChanged() });
+    await this.switchChanged();
+  }
+
+  /** Stops listening and polling, waits for the cycle in flight and closes `plans.db` (the app closes). */
+  async close(): Promise<void> {
+    this.#closed = true;
+    this.#offHooks?.();
+    this.#offHooks = null;
+    await this.#switching.catch(() => undefined);
+    this.#stopListening();
+    await this.idle();
+    this.#db?.close();
+    this.#db = null;
+  }
+
+  /**
+   * The switch was read again (start, or `PUT /api/settings` changed it). On: `plans.db` is
+   * opened (created on first use), the plans whose source session is gone are deleted, the
+   * running ones resume. Off: the scheduler stops, every running plan is paused with
+   * {@link PLANS_OFF_REASON} (their items' sessions finish their turn; nothing new starts) and
+   * the file is closed (it stays on disk; switched on again, the plans show paused).
+   */
+  switchChanged(): Promise<void> {
+    const next = this.#switching.then(() => this.#applySwitch());
+    this.#switching = next.catch((error: unknown) => this.#onError(error));
+    return next;
+  }
+
+  async #applySwitch(): Promise<void> {
+    if (this.#closed) return;
+    const on = (await this.#store.settings.get(PLANS_SETTING)) === true;
+    if (on === this.#enabled) return;
+    this.#enabled = on;
+    if (!on) {
+      await this.#deactivate();
+      return;
+    }
+    try {
+      this.#db = await PlansDb.open(this.#dataDir, () => this.#nowIso());
+      this.#problem = null;
+    } catch (error) {
+      // A broken plans.db breaks nothing else: Plans answers 503 and runs nothing.
+      this.#db = null;
+      this.#problem = `plans.db could not be opened: ${error instanceof Error ? error.message : String(error)}`;
+      this.#onError(error);
+      return;
+    }
+    await this.#activate();
+  }
+
+  async #activate(): Promise<void> {
+    const repo = (this.#db as PlansDb).plans;
+    await this.#prune();
+    for (const plan of await repo.list({ states: ['running', 'paused'] })) {
+      for (const item of await repo.items(plan.id)) {
         if (item.state !== 'running' || item.runSessionId === null) continue;
         this.#runs.set(item.runSessionId, { itemId: item.id, status: (await this.#store.sessions.get(item.runSessionId))?.status ?? null });
         this.#dirty.set(item.id, false);
@@ -216,14 +296,64 @@ export class PlanService {
     this.kick();
   }
 
-  /** Stops listening and polling; waits for the cycle in flight. */
-  async close(): Promise<void> {
-    this.#closed = true;
+  async #deactivate(): Promise<void> {
+    this.#stopListening();
+    await this.idle();
+    const db = this.#db;
+    this.#db = null;
+    this.#problem = null;
+    this.#runs.clear();
+    this.#dirty.clear();
+    this.#resolved.clear();
+    if (!db) return;
+    const paused: string[] = [];
+    try {
+      for (const plan of await db.plans.list({ states: ['running'] })) {
+        await db.plans.update(plan.id, { state: 'paused', pausedReason: PLANS_OFF_REASON, heldReason: null });
+        paused.push(plan.id);
+      }
+    } finally {
+      db.close();
+    }
+    for (const planId of paused) this.#bus.publish('planChanged', { planId, state: 'paused' });
+  }
+
+  /** Deletes the plans of a source session that is gone (the main database's cascade cannot reach `plans.db`); at activation and with each scheduling cycle. */
+  async #prune(): Promise<void> {
+    const repo = this.#db?.plans;
+    if (!repo) return;
+    for (const sessionId of await repo.sourceSessionIds()) {
+      if (await this.#store.sessions.get(sessionId)) continue;
+      for (const plan of await repo.list({ sourceSessionId: sessionId })) {
+        for (const item of await repo.items(plan.id)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
+        await repo.delete(plan.id);
+        this.#bus.publish('planChanged', { planId: plan.id, state: null });
+      }
+    }
+  }
+
+  #stopListening(): void {
     this.#unsubscribe?.();
     this.#unsubscribe = null;
     if (this.#poll !== null) this.#clock.clearTimeout(this.#poll);
     this.#poll = null;
-    await this.idle();
+  }
+
+  /** `GET /api/plans/state`: the switch (answered also while Plans is off). */
+  state(): PlansState {
+    return { enabled: this.#enabled, available: this.#enabled && this.#db !== null, problem: this.#enabled ? this.#problem : null };
+  }
+
+  /** Listeners and timers running (tests: none while off). */
+  activeTimers(): number {
+    return (this.#unsubscribe ? 1 : 0) + (this.#poll !== null ? 1 : 0);
+  }
+
+  /** The plans repository. @throws {PlanError} 404 `plans-off` while Plans is off, 503 `plans-unavailable` while `plans.db` is broken. */
+  #repo(): PlanRepository {
+    if (!this.#enabled) throw new PlanError(404, 'plans-off', 'Plans is off: switch it on in Settings → Experimental');
+    if (!this.#db) throw new PlanError(503, 'plans-unavailable', this.#problem ?? 'plans.db is not open');
+    return this.#db.plans;
   }
 
   /** Resolves once the queued cycles have run (tests). */
@@ -237,7 +367,7 @@ export class PlanService {
 
   /** Queues one scheduling cycle (coalesced: a cycle already queued covers this call). */
   kick(): void {
-    if (this.#closed || this.#queued) return;
+    if (this.#closed || this.#queued || !this.#db) return;
     this.#queued = true;
     this.#tail = this.#tail
       .then(async () => {
@@ -256,9 +386,10 @@ export class PlanService {
   }
 
   async #pollOnce(): Promise<void> {
+    if (!this.#db) return;
     let any = false;
-    for (const plan of await this.#store.plans.list({ states: ['running', 'paused'] })) {
-      for (const item of await this.#store.plans.items(plan.id)) {
+    for (const plan of await this.#repo().list({ states: ['running', 'paused'] })) {
+      for (const item of await this.#repo().items(plan.id)) {
         if (item.state === 'running' && item.waitingOn === 'checks') {
           if (!this.#dirty.has(item.id)) this.#dirty.set(item.id, false);
           any = true;
@@ -269,7 +400,7 @@ export class PlanService {
   }
 
   #armPoll(): void {
-    if (this.#closed) return;
+    if (this.#closed || !this.#unsubscribe) return;
     this.#poll = this.#clock.setTimeout(() => {
       this.#poll = null;
       this.pollChecks();
@@ -318,7 +449,7 @@ export class PlanService {
   /** Every plan of this machine with its view model, oldest first. */
   async list(): Promise<Plan[]> {
     const out: Plan[] = [];
-    for (const plan of await this.#store.plans.list()) out.push(await this.#view(plan));
+    for (const plan of await this.#repo().list()) out.push(await this.#view(plan));
     return out;
   }
 
@@ -327,29 +458,36 @@ export class PlanService {
     return this.#view(await this.#plan(planId));
   }
 
+  /** D99 seam for the Jira lane: the plans made from external list `system` / `key`, with their view models. */
+  async findByExternal(system: string, key: string): Promise<Plan[]> {
+    const out: Plan[] = [];
+    for (const plan of await this.#repo().findByExternal(system, key)) out.push(await this.#view(plan));
+    return out;
+  }
+
   /** The plans whose source is `sessionId` (the agent's `plan_status` without an id). */
   async listOf(sessionId: string): Promise<Plan[]> {
     const out: Plan[] = [];
-    for (const plan of await this.#store.plans.list({ sourceSessionId: sessionId })) out.push(await this.#view(plan));
+    for (const plan of await this.#repo().list({ sourceSessionId: sessionId })) out.push(await this.#view(plan));
     return out;
   }
 
   /** The plan `planId` if session `sessionId` is its source (the agent's routes), else 404. */
   async agentPlan(sessionId: string, planId: string): Promise<PlanRecord> {
-    const plan = await this.#store.plans.get(planId);
+    const plan = await this.#repo().get(planId);
     if (!plan || plan.sourceSessionId !== sessionId) throw new PlanError(404, 'not-found', `no plan ${planId} in this session`);
     return plan;
   }
 
   async #plan(planId: string): Promise<PlanRecord> {
-    const plan = await this.#store.plans.get(planId);
+    const plan = await this.#repo().get(planId);
     if (!plan) throw new PlanError(404, 'not-found', `no plan ${planId}`);
     return plan;
   }
 
   async #view(plan: PlanRecord): Promise<Plan> {
-    const items = await this.#store.plans.items(plan.id);
-    const edges = await this.#store.plans.edges(plan.id);
+    const items = await this.#repo().items(plan.id);
+    const edges = await this.#repo().edges(plan.id);
     const facts: PlanItemFacts[] = [];
     for (const item of items) {
       const session = item.runSessionId ? await this.#store.sessions.get(item.runSessionId) : null;
@@ -377,7 +515,8 @@ export class PlanService {
       answers: plan.answers,
       state: plan.state,
       external: plan.external,
-      held: plan.state === 'paused' ? 'the plan is paused' : plan.state === 'running' ? plan.heldReason : null,
+      held: plan.state === 'paused' ? (plan.pausedReason ?? 'the plan is paused') : plan.state === 'running' ? plan.heldReason : null,
+      pausedReason: plan.state === 'paused' ? plan.pausedReason : null,
       items: model.items,
       edges,
       criticalPath: model.criticalPath,
@@ -400,6 +539,7 @@ export class PlanService {
    * 85), `answers` (default the session's start answers), `external`.
    */
   async create(body: unknown): Promise<Plan> {
+    this.#repo();
     const input = isRecord(body) ? body : {};
     const sourceSessionId = typeof input['sourceSessionId'] === 'string' ? input['sourceSessionId'] : '';
     if (sourceSessionId === '') throw invalid('sourceSessionId', 'name the session whose todos the plan runs (sourceSessionId)');
@@ -421,7 +561,7 @@ export class PlanService {
     if (resolved.kind === 'plain') throw new PlanError(409, 'not-a-repo', "the session's folder is not a git repository: a plan needs a target branch");
     if (resolved.repos.length === 0) throw invalid('repos', 'name the solution repos the target branch lives in (the session uses none yet)');
     const answers = checkAnswers(input['answers'], { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination, notes: null });
-    return this.#store.plans.create({
+    return this.#repo().create({
       id: newId(),
       title,
       sourceSessionId,
@@ -461,7 +601,7 @@ export class PlanService {
     const target = (patch['targetBranch'] as string | undefined) ?? plan.targetBranch;
     const base = (patch['baseBranch'] as string | undefined) ?? plan.baseBranch;
     if (target === base) throw invalid('targetBranch', 'the target branch must differ from the base branch');
-    await this.#store.plans.update(planId, patch);
+    await this.#repo().update(planId, patch);
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -471,8 +611,8 @@ export class PlanService {
   async remove(planId: string): Promise<void> {
     const plan = await this.#plan(planId);
     if (plan.state === 'running') throw new PlanError(409, 'running', 'the plan is running: pause or cancel it first');
-    for (const item of await this.#store.plans.items(planId)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
-    await this.#store.plans.delete(planId);
+    for (const item of await this.#repo().items(planId)) if (item.runSessionId) this.#runs.delete(item.runSessionId);
+    await this.#repo().delete(planId);
     this.#bus.publish('planChanged', { planId, state: null });
   }
 
@@ -488,7 +628,7 @@ export class PlanService {
     const plan = await this.#plan(planId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
     const input = isRecord(body) ? body : {};
-    const items = await this.#store.plans.items(planId);
+    const items = await this.#repo().items(planId);
     if (items.length >= PLAN_ITEMS_MAX) throw new PlanError(409, 'too-many', `a plan holds at most ${PLAN_ITEMS_MAX} items`);
     const key = normalizeItemKey(input['key']);
     if (key === undefined) throw invalid('key', 'the key must be a ticket key such as PROJ-123');
@@ -514,9 +654,9 @@ export class PlanService {
     } else {
       throw invalid('todoId', 'give todoId (an existing todo) or todo (a new one: title, description, plan, priority, estimateMinutes)');
     }
-    const item = await this.#store.plans.addItem({ id: newId(), planId, todoId: todo.id, key, title: todo.title, estimateMinutes: todo.estimateMinutes, hold, solutions });
-    for (const from of after) await this.#store.plans.addEdge(planId, from, item.id);
-    await this.#store.plans.touch(planId);
+    const item = await this.#repo().addItem({ id: newId(), planId, todoId: todo.id, key, title: todo.title, estimateMinutes: todo.estimateMinutes, hold, solutions });
+    for (const from of after) await this.#repo().addEdge(planId, from, item.id);
+    await this.#repo().touch(planId);
     await this.#publish(planId);
     this.kick();
     return { plan: await this.get(planId), itemId: item.id };
@@ -540,8 +680,8 @@ export class PlanService {
     if (input['hold'] !== undefined) {
       await this.#setHolds(plan, { [itemId]: checkBool(input['hold'], 'hold') });
     }
-    if (Object.keys(patch).length > 0) await this.#store.plans.updateItem(itemId, patch);
-    await this.#store.plans.touch(planId);
+    if (Object.keys(patch).length > 0) await this.#repo().updateItem(itemId, patch);
+    await this.#repo().touch(planId);
     await this.#publish(planId);
     return this.get(planId);
   }
@@ -550,8 +690,8 @@ export class PlanService {
   async removeItem(planId: string, itemId: string): Promise<Plan> {
     const item = await this.#item(planId, itemId);
     if (item.state === 'running' || item.state === 'done') throw new PlanError(409, 'started', `the item is ${item.state}: only an item that has not started can be removed`);
-    await this.#store.plans.removeItem(itemId);
-    await this.#store.plans.touch(planId);
+    await this.#repo().removeItem(itemId);
+    await this.#repo().touch(planId);
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -565,41 +705,41 @@ export class PlanService {
     const plan = await this.#plan(planId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
     const input = isRecord(body) ? body : {};
-    const items = await this.#store.plans.items(planId);
+    const items = await this.#repo().items(planId);
     const [from] = this.#resolveRefs(items, [String(input['from'] ?? '')], 'from');
     const [to] = this.#resolveRefs(items, [String(input['to'] ?? '')], 'to');
     await this.#addEdge(planId, items, from as string, to as string);
-    await this.#store.plans.touch(planId);
+    await this.#repo().touch(planId);
     await this.#publish(planId);
     return this.get(planId);
   }
 
   async #addEdge(planId: string, items: readonly PlanItemRecord[], from: string, to: string): Promise<void> {
-    const edges = await this.#store.plans.edges(planId);
+    const edges = await this.#repo().edges(planId);
     const cycle = findCycle(edges, from, to);
     if (cycle) {
       const byId = new Map(items.map((item) => [item.id, item]));
       const names = cycle.map((id) => (byId.get(id) ? itemLabel(byId.get(id) as PlanItemRecord) : id));
       throw new PlanError(409, 'cycle', `that dependency would make a cycle: ${names.join(' → ')} (each waits for the next)`);
     }
-    await this.#store.plans.addEdge(planId, from, to);
+    await this.#repo().addEdge(planId, from, to);
   }
 
   /** `DELETE /api/plans/{id}/edges/{from}/{to}`. */
   async removeEdge(planId: string, from: string, to: string): Promise<Plan> {
     await this.#plan(planId);
-    const items = await this.#store.plans.items(planId);
+    const items = await this.#repo().items(planId);
     const [a] = this.#resolveRefs(items, [from], 'from');
     const [b] = this.#resolveRefs(items, [to], 'to');
-    if (!(await this.#store.plans.removeEdge(planId, a as string, b as string))) throw new PlanError(404, 'not-found', 'no such dependency');
-    await this.#store.plans.touch(planId);
+    if (!(await this.#repo().removeEdge(planId, a as string, b as string))) throw new PlanError(404, 'not-found', 'no such dependency');
+    await this.#repo().touch(planId);
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
   }
 
   async #item(planId: string, itemId: string): Promise<PlanItemRecord> {
-    const item = await this.#store.plans.item(itemId);
+    const item = await this.#repo().item(itemId);
     if (!item || item.planId !== planId) throw new PlanError(404, 'not-found', `no item ${itemId} in plan ${planId}`);
     return item;
   }
@@ -635,7 +775,7 @@ export class PlanService {
     const plan = await this.#plan(planId);
     const mode = checkMergeMode(isRecord(body) ? body['mergeMode'] : undefined);
     if (plan.state !== 'draft') throw new PlanError(409, plan.state === 'paused' ? 'paused' : 'started', plan.state === 'paused' ? 'the plan is paused: resume it' : `the plan is ${plan.state}`);
-    const items = await this.#store.plans.items(planId);
+    const items = await this.#repo().items(planId);
     if (items.length === 0) throw new PlanError(422, 'empty', 'add items to the plan before starting it');
     const repos = (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos;
     if (mode !== 'developer') await this.#checkTarget(plan.targetBranch, repos);
@@ -643,7 +783,7 @@ export class PlanService {
       const prepared = await this.#git.prepareTarget(repo.repoPath, plan.targetBranch, plan.baseBranch);
       if (!prepared.ok) throw new PlanError(409, 'no-target', prepared.message);
     }
-    await this.#store.plans.update(planId, { mergeMode: mode, state: 'running', startedAt: plan.startedAt ?? this.#nowIso() });
+    await this.#repo().update(planId, { mergeMode: mode, state: 'running', startedAt: plan.startedAt ?? this.#nowIso() });
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -662,16 +802,16 @@ export class PlanService {
   async pause(planId: string): Promise<Plan> {
     const plan = await this.#plan(planId);
     if (plan.state !== 'running') throw new PlanError(409, 'not-running', `the plan is ${plan.state}`);
-    await this.#store.plans.update(planId, { state: 'paused' });
+    await this.#repo().update(planId, { state: 'paused', pausedReason: null });
     await this.#publish(planId);
     return this.get(planId);
   }
 
-  /** `POST /api/plans/{id}/resume`: ready items start again. */
+  /** `POST /api/plans/{id}/resume`: ready items start again (also a plan paused because Plans was switched off). */
   async resume(planId: string): Promise<Plan> {
     const plan = await this.#plan(planId);
     if (plan.state !== 'paused') throw new PlanError(409, 'not-paused', `the plan is ${plan.state}`);
-    await this.#store.plans.update(planId, { state: 'running' });
+    await this.#repo().update(planId, { state: 'running', pausedReason: null });
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -681,7 +821,7 @@ export class PlanService {
   async cancel(planId: string): Promise<Plan> {
     const plan = await this.#plan(planId);
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
-    await this.#store.plans.update(planId, { state: 'cancelled', finishedAt: this.#nowIso(), heldReason: null });
+    await this.#repo().update(planId, { state: 'cancelled', finishedAt: this.#nowIso(), heldReason: null, pausedReason: null });
     await this.#publish(planId);
     return this.get(planId);
   }
@@ -696,8 +836,8 @@ export class PlanService {
     if (plan.state === 'done' || plan.state === 'cancelled') throw new PlanError(409, 'finished', `the plan is ${plan.state}`);
     const mode = checkMergeMode(isRecord(body) ? body['mergeMode'] : undefined);
     if (mode !== 'developer') await this.#checkTarget(plan.targetBranch, (await this.#env.repos(plan.sourceSessionId, plan.repos)).repos);
-    const items = await this.#store.plans.items(planId);
-    await this.#store.plans.update(planId, { mergeMode: mode });
+    const items = await this.#repo().items(planId);
+    await this.#repo().update(planId, { mergeMode: mode });
     if (plan.state !== 'draft') await this.#tellChangedRules(plan, plan.mergeMode, mode, items, items);
     await this.#publish(planId);
     this.kick();
@@ -709,7 +849,7 @@ export class PlanService {
     const plan = await this.#plan(planId);
     const holds = isRecord(body) && isRecord(body['holds']) ? body['holds'] : null;
     if (!holds) throw invalid('holds', 'give holds: { <item id or key>: true | false }');
-    const items = await this.#store.plans.items(planId);
+    const items = await this.#repo().items(planId);
     const resolved: Record<string, boolean> = {};
     for (const [ref, value] of Object.entries(holds)) {
       const [id] = this.#resolveRefs(items, [ref], 'holds');
@@ -722,14 +862,14 @@ export class PlanService {
   }
 
   async #setHolds(plan: PlanRecord, holds: Readonly<Record<string, boolean>>): Promise<void> {
-    const before = await this.#store.plans.items(plan.id);
+    const before = await this.#repo().items(plan.id);
     for (const [itemId, hold] of Object.entries(holds)) {
       const item = before.find((candidate) => candidate.id === itemId);
       if (!item) continue;
       if (item.state === 'done' && item.hold !== hold) throw new PlanError(409, 'merged', `${itemLabel(item)} is merged already`);
-      await this.#store.plans.updateItem(itemId, { hold });
+      await this.#repo().updateItem(itemId, { hold });
     }
-    if (plan.state === 'running' || plan.state === 'paused') await this.#tellChangedRules(plan, plan.mergeMode, plan.mergeMode, before, await this.#store.plans.items(plan.id));
+    if (plan.state === 'running' || plan.state === 'paused') await this.#tellChangedRules(plan, plan.mergeMode, plan.mergeMode, before, await this.#repo().items(plan.id));
   }
 
   /** Tells each running item whose merge rule changed (the mode, or its hold) its new rule. */
@@ -751,7 +891,7 @@ export class PlanService {
     const item = await this.#item(planId, itemId);
     if (item.state !== 'failed') throw new PlanError(409, 'not-failed', `the item is ${item.state}: only a failed item is retried`);
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
-    await this.#store.plans.updateItem(itemId, { state: 'pending', reason: null, note: null, waitingOn: null, waitingSince: null, runSessionId: null, branch: null, cut: {}, prUrl: null, checks: null, conflicts: 0, startedAt: null });
+    await this.#repo().updateItem(itemId, { state: 'pending', reason: null, note: null, waitingOn: null, waitingSince: null, runSessionId: null, branch: null, cut: {}, prUrl: null, checks: null, conflicts: 0, startedAt: null });
     await this.#publish(planId);
     this.kick();
     return this.get(planId);
@@ -777,6 +917,7 @@ export class PlanService {
    * {@link PlanError}); the rows go in one transaction. Answers the plan and the item id of each `ref`.
    */
   async createFromExternal(input: ExternalPlanInput): Promise<{ readonly plan: Plan; readonly itemIds: Readonly<Record<string, string>> }> {
+    this.#repo();
     const refs = new Set<string>();
     for (const item of input.items) {
       if (typeof item.ref !== 'string' || item.ref === '' || refs.has(item.ref)) throw invalid('items', `every item needs its own ref (${String(item.ref)})`);
@@ -811,13 +952,13 @@ export class PlanService {
       for (const item of input.items) {
         const solutions = this.#checkSolutions(record, item.solutions);
         const added = await this.#todos.add(record.sourceSessionId, { title: item.title, description: item.description ?? null, plan: item.plan ?? undefined, priority: item.priority, estimateMinutes: item.estimateMinutes ?? null }, 'developer');
-        const stored = await this.#store.plans.addItem({ id: newId(), planId: record.id, todoId: added.todo.id, key: keys.get(item.ref) ?? null, title: added.todo.title, estimateMinutes: added.todo.estimateMinutes, hold: item.hold === true, solutions });
+        const stored = await this.#repo().addItem({ id: newId(), planId: record.id, todoId: added.todo.id, key: keys.get(item.ref) ?? null, title: added.todo.title, estimateMinutes: added.todo.estimateMinutes, hold: item.hold === true, solutions });
         itemIds[item.ref] = stored.id;
       }
-      for (const edge of edges) await this.#store.plans.addEdge(record.id, itemIds[edge.from] as string, itemIds[edge.to] as string);
+      for (const edge of edges) await this.#repo().addEdge(record.id, itemIds[edge.from] as string, itemIds[edge.to] as string);
     } catch (error) {
       // Nothing half-made stays: the plan goes (the todos added stay in the list, like any added todo).
-      await this.#store.plans.delete(record.id);
+      await this.#repo().delete(record.id);
       if (error instanceof TodoError) throw new PlanError(error.status, error.code, error.message, error.status === 422 ? 'items' : null);
       throw error;
     }
@@ -828,8 +969,9 @@ export class PlanService {
   // ── the scheduler ───────────────────────────────────────────────────────
 
   async #cycle(): Promise<void> {
-    if (this.#closed) return;
-    for (const plan of await this.#store.plans.list({ states: ['running', 'paused'] })) {
+    if (this.#closed || !this.#db) return;
+    await this.#prune();
+    for (const plan of await this.#repo().list({ states: ['running', 'paused'] })) {
       try {
         await this.#schedule(plan);
       } catch (error) {
@@ -841,16 +983,16 @@ export class PlanService {
   async #schedule(planAtStart: PlanRecord): Promise<void> {
     let changed = false;
     // 1. Running items: their session's status, then (when asked) git and gh.
-    for (const item of await this.#store.plans.items(planAtStart.id)) {
+    for (const item of await this.#repo().items(planAtStart.id)) {
       if (item.state !== 'running') {
         this.#dirty.delete(item.id);
         continue;
       }
       if (await this.#refresh(planAtStart, item)) changed = true;
     }
-    const plan = (await this.#store.plans.get(planAtStart.id)) as PlanRecord;
-    let items = await this.#store.plans.items(plan.id);
-    const edges = await this.#store.plans.edges(plan.id);
+    const plan = (await this.#repo().get(planAtStart.id)) as PlanRecord;
+    let items = await this.#repo().items(plan.id);
+    const edges = await this.#repo().edges(plan.id);
     // 2. Start the ready items (running plans only), as long as a slot is free and usage allows.
     let held: string | null = null;
     if (plan.state === 'running') {
@@ -868,13 +1010,13 @@ export class PlanService {
         changed = true;
       }
       if (held !== plan.heldReason) {
-        await this.#store.plans.update(plan.id, { heldReason: held });
+        await this.#repo().update(plan.id, { heldReason: held });
         changed = true;
       }
-      items = await this.#store.plans.items(plan.id);
+      items = await this.#repo().items(plan.id);
       // 3. Every item done: the plan is done; the developer merges the epic.
       if (items.length > 0 && items.every((item) => item.state === 'done')) {
-        await this.#store.plans.update(plan.id, { state: 'done', finishedAt: this.#nowIso(), heldReason: null });
+        await this.#repo().update(plan.id, { state: 'done', finishedAt: this.#nowIso(), heldReason: null });
         await this.#env
           .notice({
             kind: 'plan-ready',
@@ -937,7 +1079,7 @@ export class PlanService {
       await this.#fail(item, `could not start: ${outcome.message}`);
       return;
     }
-    await this.#store.plans.updateItem(item.id, {
+    await this.#repo().updateItem(item.id, {
       state: 'running',
       runSessionId: outcome.sessionId,
       branch: outcome.branch,
@@ -1053,7 +1195,7 @@ export class PlanService {
     if (conflictCount !== item.conflicts) Object.assign(patch, { conflicts: conflictCount });
     let changed = false;
     if (Object.keys(patch).length > 0) {
-      await this.#store.plans.updateItem(item.id, patch);
+      await this.#repo().updateItem(item.id, patch);
       changed = true;
     }
     if (await this.#setWaiting({ ...item, ...patch } as PlanItemRecord, waiting)) changed = true;
@@ -1074,13 +1216,13 @@ export class PlanService {
   /** Sets what the item waits on (and since when); answers whether it changed. */
   async #setWaiting(item: PlanItemRecord, on: PlanWaitingOn | null): Promise<boolean> {
     if (item.waitingOn === on) return false;
-    await this.#store.plans.updateItem(item.id, { waitingOn: on, waitingSince: on === null ? null : this.#nowIso() });
+    await this.#repo().updateItem(item.id, { waitingOn: on, waitingSince: on === null ? null : this.#nowIso() });
     return true;
   }
 
   async #done(plan: PlanRecord, item: PlanItemRecord, note: string | null, prUrl: string | null = item.prUrl, checks: PlanChecks | null = item.checks): Promise<true> {
     const now = this.#nowIso();
-    await this.#store.plans.updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: item.mergedAt ?? now, doneAt: now, reason: null });
+    await this.#repo().updateItem(item.id, { state: 'done', note, prUrl, checks, waitingOn: null, waitingSince: null, mergedAt: item.mergedAt ?? now, doneAt: now, reason: null });
     // The todo is done too (a run item in review skips it: the plan's rule decided).
     const todo = await this.#store.todos.get(item.todoId);
     if (todo && todo.state !== 'done') await this.#todos.update(todo.sessionId, todo.id, { state: 'done', skipReview: true }, 'developer').catch((error: unknown) => this.#onError(error));
@@ -1091,19 +1233,20 @@ export class PlanService {
   }
 
   async #fail(item: PlanItemRecord, reason: string): Promise<void> {
-    await this.#store.plans.updateItem(item.id, { state: 'failed', reason, waitingOn: null, waitingSince: null });
+    await this.#repo().updateItem(item.id, { state: 'failed', reason, waitingOn: null, waitingSince: null });
     if (item.runSessionId) this.#runs.delete(item.runSessionId);
   }
 
   #publishOfItem(itemId: string): void {
-    void this.#store.plans
+    if (!this.#db) return;
+    void this.#repo()
       .item(itemId)
       .then((item) => (item ? this.#publish(item.planId) : undefined))
       .catch((error: unknown) => this.#onError(error));
   }
 
   async #publish(planId: string): Promise<void> {
-    const plan = await this.#store.plans.get(planId);
+    const plan = await this.#repo().get(planId);
     this.#bus.publish('planChanged', { planId, state: plan?.state ?? null });
   }
 

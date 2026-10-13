@@ -37,6 +37,9 @@ export function pageTitle(route: Route, toolName: string | null = null): string 
       return toolName ?? 'Tool';
     case 'session':
       return 'Session';
+    // Team (D100) hook (docs/team-removal.md).
+    case 'team':
+      return 'Team';
   }
 }
 

@@ -9,7 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
-import type { PlanChecks } from '../../../src/core/plans.ts';
+import { PLANS_SETTING, type PlanChecks } from '../../../src/core/plans.ts';
 import type { JiraPreview, PlanJiraState } from '../../../src/core/plans-jira.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { openDatabase } from '../../../src/server/db/database.ts';
@@ -119,17 +119,20 @@ async function setup(options: { env?: 'fake' | 'none' } = {}): Promise<Rig> {
     async notice() {},
   };
   const errors: unknown[] = [];
-  const plans = new PlanService({ store, bus, todos, git, env, clock, onError: (error) => errors.push(error) });
+  await store.settings.set(PLANS_SETTING, true);
+  const plans = new PlanService({ dataDir: dir, store, bus, todos, git, env, clock, onError: (error) => errors.push(error) });
   await plans.start();
   const fake = await startFakeJira();
   const keychain = new MemoryKeychain();
   const credentials = new JiraCredentialSource({ env: options.env === 'none' ? {} : { ATL_BASE_URL: fake.url, ATL_USER: fake.email, ATL_TOKEN: fake.token }, store: keychain });
   const db = await openDatabase(`${dir}/plans.db`);
   const state = { enabled: true };
-  const jira = new PlanJiraService({ store, plans, todos, bus, db: new PlanJiraStore(db, () => clock.now()), credentials, enabled: () => state.enabled, clock, onError: (error) => errors.push(error) });
+  const jiraStore = new PlanJiraStore(db, () => clock.now());
+  const on = () => state.enabled && plans.state().available;
+  const jira = new PlanJiraService({ store, plans, todos, bus, db: async () => jiraStore, credentials, enabled: on, clock, onError: (error) => errors.push(error) });
   jira.start();
   const app = Fastify();
-  await registerPlanJiraRoutes(app, jira, credentials, () => state.enabled);
+  await registerPlanJiraRoutes(app, jira, credentials, on);
   await app.ready();
   const made: Rig = {
     dir,
@@ -235,6 +238,15 @@ describe('D99-Jira · import preview', () => {
       const answer = await call(r, method, url, method === 'GET' ? undefined : {});
       expect([url, answer.status, answer.body?.error]).toEqual([url, 404, 'plans-off']);
     }
+  });
+
+  it('follows the core switch: Settings → Experimental → Plans off answers plans-off', async () => {
+    const r = await setup();
+    await r.store.settings.set(PLANS_SETTING, false);
+    await r.plans.switchChanged();
+    expect((await call(r, 'GET', '/api/integrations/jira')).body.error).toBe('plans-off');
+    expect((await call(r, 'POST', `/api/sessions/${r.sourceId}/plans/jira/preview`, { epic: 'PROJ-10' })).body.error).toBe('plans-off');
+    expect(r.fake.requests).toEqual([]);
   });
 
   it('answers 409 jira-not-configured without credentials', async () => {

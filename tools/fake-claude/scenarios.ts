@@ -77,6 +77,17 @@ export function toolToken(text: string): { name: string; input: JsonObject } | {
   }
 }
 
+/**
+ * D100-T2 `[fake:echo-env <NAME>]` in a stdin user message: the `tx-main` tool turn
+ * with a Bash call `printenv <NAME>` whose `tool_result` is the variable's value in
+ * the fake's own environment (empty when unset), like an agent that prints a key it
+ * was given: the masking pass and the per-member injection are tested on the real path.
+ * @returns the variable's name, `null` without a token.
+ */
+export function echoEnvToken(text: string): string | null {
+  return /\[fake:echo-env\s+([A-Z][A-Z0-9_]{0,63})\]/.exec(text)?.[1] ?? null;
+}
+
 /** Longest `[fake:hold <seconds>]` (ten minutes). */
 export const MAX_HOLD_SECONDS = 600;
 

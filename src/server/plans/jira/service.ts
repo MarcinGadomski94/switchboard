@@ -68,9 +68,12 @@ export interface PlanJiraServiceOptions {
   readonly plans: PlanService;
   readonly todos: TodoService;
   readonly bus: HubBus;
-  readonly db: PlanJiraStore;
+  /** The Jira tables in `plans.db` (opened on first use while Plans is on). */
+  readonly db: () => Promise<PlanJiraStore>;
+  /** Closes `plans.db`'s Jira connection (called when Plans is seen off). */
+  readonly release?: () => void;
   readonly credentials: JiraCredentialSource;
-  /** Whether Plans is on (Settings → Experimental → Plans). Off: every call answers 404 `plans-off`, no sync runs. */
+  /** Whether Plans is on and `plans.db` open (Settings → Experimental → Plans). Off: every call answers 404 `plans-off`, no sync runs. */
   readonly enabled: () => boolean | Promise<boolean>;
   /** The HTTP client Jira is called with (tests: the real one, at the fake Jira). */
   readonly fetch?: typeof fetch;
@@ -172,7 +175,7 @@ export class PlanJiraService {
   /** The timer's work (tests call it directly): every running plan with a sync is read again, then followed. */
   async tick(): Promise<void> {
     if (!(await this.#enabled())) return;
-    for (const record of await this.#options.db.plans()) {
+    for (const record of await (await this.#jdb()).plans()) {
       if (record.sync === 'off') continue;
       const plan = await this.#options.plans.get(record.planId).catch(() => null);
       if (!plan || plan.state !== 'running') continue;
@@ -187,7 +190,9 @@ export class PlanJiraService {
     if (isRemoteId(planId)) return;
     if (state === null) {
       // The plan was deleted: its Jira rows go too.
-      void this.#options.db.deletePlan(planId).catch((error: unknown) => this.#onError(error));
+      void this.#enabled()
+        .then(async (on) => (on ? (await this.#jdb()).deletePlan(planId) : undefined))
+        .catch((error: unknown) => this.#onError(error));
       return;
     }
     if (FOLLOWED.has(state)) this.#queue(planId);
@@ -211,11 +216,18 @@ export class PlanJiraService {
   }
 
   async #enabled(): Promise<boolean> {
+    let on = false;
     try {
-      return await this.#options.enabled();
+      on = await this.#options.enabled();
     } catch {
-      return false;
+      on = false;
     }
+    if (!on) this.#options.release?.();
+    return on;
+  }
+
+  #jdb(): Promise<PlanJiraStore> {
+    return this.#options.db();
   }
 
   async #gate(): Promise<void> {
@@ -297,7 +309,7 @@ export class PlanJiraService {
       }),
       edges: preview.edges.map((edge) => ({ from: edge.from, to: edge.to })),
     });
-    await this.#options.db.createPlan({
+    await (await this.#jdb()).createPlan({
       planId: created.plan.id,
       epicKey,
       baseUrl: client.baseUrl,
@@ -306,7 +318,7 @@ export class PlanJiraService {
       items: preview.items.map((item) => ({ itemId: created.itemIds[item.key] as string, key: item.key, status: item.status, statusCategory: null, summary: item.summary })),
     });
     const notes = [`${preview.items.length} items and ${preview.edges.length} dependencies from ${epicKey}`, preview.cycles.length > 0 ? `${preview.cycles.length} link(s) left out (cycle)` : null, preview.externalLinks.length > 0 ? `${preview.externalLinks.length} link(s) outside the epic` : null, `sync ${sync}`].filter(Boolean);
-    await this.#options.db.addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
+    await (await this.#jdb()).addActivity(created.plan.id, { itemId: null, key: epicKey, kind: 'import', text: `Imported ${notes.join(' · ')}` });
     this.#options.bus.publish('planChanged', { planId: created.plan.id, state: created.plan.state });
     return { plan: created.plan, jira: await this.#state(created.plan), preview };
   }
@@ -314,7 +326,7 @@ export class PlanJiraService {
   // ── a plan's Jira state and settings ────────────────────────────────────
 
   async #record(planId: string): Promise<PlanJiraRecord> {
-    const record = await this.#options.db.plan(planId);
+    const record = await (await this.#jdb()).plan(planId);
     if (!record) throw new PlanJiraError(404, 'not-jira', 'this plan was not imported from Jira');
     return record;
   }
@@ -325,7 +337,7 @@ export class PlanJiraService {
 
   async #state(plan: Plan): Promise<PlanJiraState> {
     const record = await this.#record(plan.id);
-    const rows = await this.#options.db.items(plan.id);
+    const rows = await (await this.#jdb()).items(plan.id);
     return {
       planId: plan.id,
       epicKey: record.epicKey,
@@ -350,7 +362,7 @@ export class PlanJiraService {
             syncNote: row.syncNote,
           };
         }),
-      activity: await this.#options.db.activity(plan.id),
+      activity: await (await this.#jdb()).activity(plan.id),
     };
   }
 
@@ -373,8 +385,8 @@ export class PlanJiraService {
     if (sync !== record.sync) changes.push(`sync ${record.sync} → ${sync}`);
     if (JSON.stringify(transitions) !== JSON.stringify(record.transitions)) changes.push(`transitions "${transitions.inProgress}" / "${transitions.inReview}"`);
     if (changes.length > 0) {
-      await this.#options.db.updatePlan(planId, { sync, transitions });
-      await this.#options.db.addActivity(planId, { itemId: null, key: null, kind: 'settings', text: `Jira ${changes.join(', ')}` });
+      await (await this.#jdb()).updatePlan(planId, { sync, transitions });
+      await (await this.#jdb()).addActivity(planId, { itemId: null, key: null, kind: 'settings', text: `Jira ${changes.join(', ')}` });
       this.#options.bus.publish('planChanged', { planId, state: plan.state });
     }
     return this.#state(plan);
@@ -401,10 +413,10 @@ export class PlanJiraService {
     try {
       client = await this.#client();
     } catch (error) {
-      await this.#options.db.addActivity(plan.id, { itemId: null, key: null, kind: 'error', text: `Refresh failed: ${(error as Error).message}` });
+      await (await this.#jdb()).addActivity(plan.id, { itemId: null, key: null, kind: 'error', text: `Refresh failed: ${(error as Error).message}` });
       throw error;
     }
-    const rows = await this.#options.db.items(plan.id);
+    const rows = await (await this.#jdb()).items(plan.id);
     // The same fields as the import, so a pending item's todo is rebuilt exactly as the import made it.
     const acceptanceField = await client.acceptanceField().catch(() => null);
     const fields = acceptanceField ? [...IMPORT_FIELDS, acceptanceField] : IMPORT_FIELDS;
@@ -421,7 +433,7 @@ export class PlanJiraService {
         if (!(error instanceof JiraError)) throw error;
         if (error.code === 'auth' || error.code === 'unreachable') {
           // Nothing else will read either: stop here, say so in the activity and to the caller.
-          await this.#options.db.addActivity(plan.id, { itemId: null, key: null, kind: 'error', text: `Refresh failed: ${error.message}` });
+          await (await this.#jdb()).addActivity(plan.id, { itemId: null, key: null, kind: 'error', text: `Refresh failed: ${error.message}` });
           throw fromJiraError(error);
         }
         failed.push(`${row.key}: ${error.message}`);
@@ -429,7 +441,7 @@ export class PlanJiraService {
       }
       read += 1;
       const fresh = jiraPreviewItem(issue, record.baseUrl, acceptanceField, false);
-      await this.#options.db.updateItem(row.itemId, { status: fresh.status, statusCategory: statusCategoryOf(issue), summary: fresh.summary, refreshedAt: this.#clock.now().toISOString() });
+      await (await this.#jdb()).updateItem(row.itemId, { status: fresh.status, statusCategory: statusCategoryOf(issue), summary: fresh.summary, refreshedAt: this.#clock.now().toISOString() });
       if (item.storedState === 'pending') {
         const todo = await this.#options.store.todos.get(item.todoId);
         const next = jiraItemTodo(fresh);
@@ -443,21 +455,21 @@ export class PlanJiraService {
         }
       }
     }
-    await this.#options.db.updatePlan(plan.id, { lastRefreshAt: this.#clock.now().toISOString() });
+    await (await this.#jdb()).updatePlan(plan.id, { lastRefreshAt: this.#clock.now().toISOString() });
     const summary = `Refreshed ${read} ticket(s)${updated > 0 ? `, ${updated} pending item(s) updated` : ''}${by === 'timer' ? ' (every 30 min)' : ''}`;
-    await this.#options.db.addActivity(plan.id, { itemId: null, key: null, kind: failed.length > 0 ? 'error' : 'refresh', text: failed.length > 0 ? `${summary}; failed: ${failed.join('; ')}` : summary });
+    await (await this.#jdb()).addActivity(plan.id, { itemId: null, key: null, kind: failed.length > 0 ? 'error' : 'refresh', text: failed.length > 0 ? `${summary}; failed: ${failed.join('; ')}` : summary });
   }
 
   // ── the write mode ──────────────────────────────────────────────────────
 
   async #follow(planId: string): Promise<void> {
     if (this.#closed || !(await this.#enabled())) return;
-    const record = await this.#options.db.plan(planId);
+    const record = await (await this.#jdb()).plan(planId);
     if (!record || record.sync !== 'write') return;
     const plan = await this.#plan(planId).catch((error: unknown) => (error instanceof PlanError ? null : Promise.reject(error)));
     if (!plan || !FOLLOWED.has(plan.state)) return;
-    const rows = await this.#options.db.items(planId);
-    const pass = new WritePass(this, plan, record);
+    const rows = await (await this.#jdb()).items(planId);
+    const pass = new WritePass(this, plan, record, await this.#jdb());
     for (const row of rows) {
       const item = plan.items.find((candidate) => candidate.id === row.itemId);
       if (item) await this.#followItem(pass, item, row);
@@ -478,23 +490,23 @@ export class PlanJiraService {
     let current = row;
     if (item.state === 'question' && !row.questionOpen) {
       current = { ...row, questionOpen: true, questionCount: row.questionCount + 1 };
-      await this.#options.db.updateItem(row.itemId, { questionOpen: true, questionCount: current.questionCount });
+      await (await this.#jdb()).updateItem(row.itemId, { questionOpen: true, questionCount: current.questionCount });
     } else if (item.state !== 'question' && row.questionOpen) {
       current = { ...row, questionOpen: false };
-      await this.#options.db.updateItem(row.itemId, { questionOpen: false });
+      await (await this.#jdb()).updateItem(row.itemId, { questionOpen: false });
     }
     if (current.questionCount > 0) {
       const event = `question:${current.questionCount}`;
-      const done = await this.#options.db.write(row.itemId, event);
+      const done = await (await this.#jdb()).write(row.itemId, event);
       if (current.questionOpen || done?.state === 'pending') await pass.comment(current, event, JIRA_COMMENTS.question());
     }
     // 4. Merged into the target (never Done: the team's process moves the ticket there).
     if (item.storedState === 'done' && item.note !== MARKED_DONE) await pass.comment(current, 'merged', JIRA_COMMENTS.merged(pass.plan.targetBranch));
   }
 
-  /** @internal the pass's access to the store, the client and the error sink. */
-  get internals(): { readonly db: PlanJiraStore; readonly client: () => Promise<JiraClient>; readonly onError: (error: unknown) => void } {
-    return { db: this.#options.db, client: () => this.#client(), onError: this.#onError };
+  /** @internal the pass's access to the client. */
+  get internals(): { readonly client: () => Promise<JiraClient> } {
+    return { client: () => this.#client() };
   }
 }
 
@@ -503,17 +515,15 @@ class WritePass {
   readonly plan: Plan;
   readonly record: PlanJiraRecord;
   readonly #service: PlanJiraService;
+  readonly #db: PlanJiraStore;
   #client: JiraClient | null = null;
   wrote = false;
 
-  constructor(service: PlanJiraService, plan: Plan, record: PlanJiraRecord) {
+  constructor(service: PlanJiraService, plan: Plan, record: PlanJiraRecord, db: PlanJiraStore) {
     this.#service = service;
     this.plan = plan;
     this.record = record;
-  }
-
-  get #db(): PlanJiraStore {
-    return this.#service.internals.db;
+    this.#db = db;
   }
 
   async #jira(): Promise<JiraClient> {

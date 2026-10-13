@@ -61,6 +61,9 @@ async function session(page: Page, name: string): Promise<string> {
 
 test('preview an epic, then create a draft plan with the write sync', async ({ page }) => {
   await page.goto(`${server.baseUrl}/inbox`);
+  // Plans is experimental (Settings → Experimental → Plans): the Jira routes answer plans-off until it is on.
+  expect((await call(page, 'POST', `/api/sessions/x/plans/jira/preview`, { epic: 'PROJ-10' })).body.error).toBe('plans-off');
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-planner');
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
   await page.getByTestId('dev-open-import').click();
@@ -104,6 +107,7 @@ test('preview an epic, then create a draft plan with the write sync', async ({ p
 test('at 360 px the dialog fills the screen and Create stays reachable', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto(`${server.baseUrl}/inbox`);
+  expect((await call(page, 'PUT', '/api/settings', { 'experimental.plans': true })).status).toBe(200);
   const sessionId = await session(page, 'epic-planner-phone');
   await page.goto(`${server.baseUrl}/plans-jira-dev.html?session=${encodeURIComponent(sessionId)}`);
   await page.getByTestId('dev-open-import').click();

@@ -4,6 +4,7 @@ import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 import type { FastifyInstance } from 'fastify';
 import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+// Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
 import type { Review } from '../../core/reviews.ts';
 import {
@@ -40,6 +41,8 @@ import { PairingCodes } from './pairing.ts';
 import { SidebarSync } from './sidebar-sync.ts';
 import { tailscaleIPv4 } from './tailscale.ts';
 import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { labelInboxItems } from '../team/hooks.ts';
 
 /**
  * D48 "Switchboard peers" (`docs/peers.md`): this machine's identity, its optional
@@ -85,7 +88,7 @@ export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
 /** D79: its review cards (`GET /api/reviews`). */
-/** D99: its plans (`GET /api/plans`). */
+/** Plans (D99) hook: its plans (`GET /api/plans`). */
 const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews', artifacts: '/api/artifacts', plans: '/api/plans' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
@@ -208,13 +211,25 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
   // D97: that machine's search (its own index; a peer-injected search never fans out further).
   ['GET', /^\/api\/search$/],
-  // D99: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
+  // Plans (D99) hook: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
   ['GET', /^\/api\/plans(?:\/[^/]+)?$/],
   ['POST', /^\/api\/plans$/],
   ['PUT', /^\/api\/plans\/[^/]+(?:\/(?:mode|holds|items\/[^/]+))?$/],
   ['DELETE', /^\/api\/plans\/[^/]+(?:\/items\/[^/]+|\/edges\/[^/]+\/[^/]+)?$/],
   ['POST', /^\/api\/plans\/[^/]+\/(?:items|edges|start|pause|resume|cancel)$/],
   ['POST', /^\/api\/plans\/[^/]+\/items\/[^/]+\/(?:retry|done)$/],
+  // Team (D100) hook (docs/team.md → Sync): the team exchange, and acting on a member on the machine that runs it
+  // (adopt one of its sessions, edit, pause / resume, return, remove, move, approve its requests, hand-offs).
+  ['POST', /^\/api\/team\/sync$/],
+  ['GET', /^\/api\/team(?:\/members\/[^/]+|\/moves\/[^/]+)?$/],
+  ['POST', /^\/api\/team\/(?:members|handoffs)$/],
+  ['PUT', /^\/api\/team\/(?:members|handoffs)\/[^/]+$/],
+  ['DELETE', /^\/api\/team\/members\/[^/]+$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return|move|move\/check)$/],
+  ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
+  // D100-T2: access metadata only (a member's Access tab, the catalog); setup / test / revoke never travel (values stay on their machine).
+  ['GET', /^\/api\/team\/members\/[^/]+\/access$/],
+  ['GET', /^\/api\/team\/access\/catalog$/],
   // Plans (D99) hook: Jira import and sync run on the machine that owns the plan (its credentials); the credential routes are never forwarded.
   ['POST', /^\/api\/sessions\/[^/]+\/plans\/jira\/(?:preview|import)$/],
   ['GET', /^\/api\/plans\/[^/]+\/jira$/],
@@ -830,7 +845,7 @@ export class PeerService implements PeerHandlers {
       return;
     }
     if (name === 'planChanged') {
-      // D99: the peer's plans are fetched again first, so the Plans page that reloads on the event sees the change.
+      // Plans (D99) hook: the peer's plans are fetched again first, so the Plans page that reloads on the event sees the change.
       void this.refreshList(id, 'plans').then(() => {
         const current = this.#ref(id);
         const mapped = current ? peerHubEvent(current, name, payload) : null;
@@ -897,7 +912,8 @@ export class PeerService implements PeerHandlers {
       const ref = this.#ref(id);
       if (ref) for (const item of connection.inbox) out.push(peerInboxItem(ref, item));
     }
-    return out;
+    // Team (D100) hook: a paired machine's member sessions' items carry the role name too (docs/team-removal.md).
+    return labelInboxItems(this.#store, out);
   }
 
   /**
@@ -915,7 +931,7 @@ export class PeerService implements PeerHandlers {
     return this.#remoteList('todos', (ref, item) => peerTodoGroup(ref, item as TodoGroup));
   }
 
-  /** D99: the paired machines' plans (`GET /api/plans` there) as last known; see {@link remoteSchedules}. */
+  /** Plans (D99) hook: the paired machines' plans (`GET /api/plans` there) as last known; see {@link remoteSchedules}. */
   remotePlans(): Plan[] {
     return this.#remoteList('plans', (ref, item) => (typeof item === 'object' && item !== null && Array.isArray((item as Record<string, unknown>)['items']) ? peerPlan(ref, item as unknown as Plan) : null)).filter((plan): plan is Plan => plan !== null);
   }
@@ -1048,7 +1064,7 @@ export class PeerService implements PeerHandlers {
       if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/reviews/')) await this.refreshList(machineId, 'reviews');
       // D89: an artifact was saved or deleted there: the Artifacts page's list is fetched again too.
       if (method.toUpperCase() !== 'GET' && /\/artifacts(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'artifacts');
-      // D99: a plan changed there: the plans are fetched again too.
+      // Plans (D99) hook: a plan changed there: the plans are fetched again too.
       if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/plans')) await this.refreshList(machineId, 'plans');
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }
