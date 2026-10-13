@@ -23,8 +23,8 @@ number**). A failing checkpoint never blocks the message: the session's last
 problem is remembered and shown where a turn has no checkpoint.
 
 Which working trees (follow-up 2026-10-13, "change tracking missed agent-made
-worktrees and repos outside the workspace"): the same set review cards and the Diff
-tab read, `WorktreeManager.repos` (`docs/reviews.md` → *Which repositories*): its
+worktrees and repos outside the workspace"): the same set the Diff tab reads,
+`WorktreeManager.repos` (`docs/worktrees.md` → *Which repositories*): its
 worktrees; its solutions in place, a main checkout **or a linked worktree** (the
 `…-wt-…` folders agents make themselves); the working trees of the files it
 **edited** with Write / Edit / MultiEdit / NotebookEdit, outside the workspace too

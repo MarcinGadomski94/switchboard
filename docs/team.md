@@ -78,7 +78,7 @@ Hand-offs (created, finished), adopt / create / return, pauses and resumes (also
 
 `GET /api/team/needs-you` aggregates, newest first:
 
-- the members' open **questions, permission requests and review cards** from the Inbox (this machine's and the paired machines'), **derived** from `listInbox` / the peers' Inbox caches and filtered to member sessions (nothing is stored twice; answer them through the Inbox routes);
+- the members' open **questions, permission requests and system items** (D102: a plan's "Ready to merge" item of a member's session, with **Merge** / **Open plan**; D79's review cards are gone) from the Inbox (this machine's and the paired machines'), **derived** from `listInbox` / the peers' Inbox caches and filtered to member sessions (nothing is stored twice; answer them through the Inbox routes);
 - Team's own open **requests** from `team.db`: `gate` (a gated action), `budget` (over its daily share), and `access` (T2: a member asks for data access; the item carries `access`, see *Access requests*).
 
 Item shape: `{ id, source: inbox | team, kind, memberId, memberName, label: "Tracker · question", title, detail, createdAt, sessionRef, inbox?, request? }`. Requests are decided with `POST /api/team/requests/{id}/approve | decline | dismiss`; an approval runs the request's action on the member's machine.
@@ -93,7 +93,7 @@ A member's budget is a share of the **daily usage** of its account (D63 / D98): 
 
 Wired in v1:
 
-- **A member's review-card Merge into a protected / default branch** (`main`, `master`, `trunk`, `develop`, `dev`, `release…`) with `merge-default-branch` on: the Merge (from any screen) answers 409 with "<role> needs your approval to merge into main" and raises the request; **Approve** runs the merge (`POST /api/reviews/{id}/merge` with the approved request's id). Open PR, Commit and the rest are not held.
+- **D102: the `review-merge` gate is gone** with review cards (it held a member's review-card Merge into a protected / default branch). `merge-default-branch` stays a charter rule the member's agent is told; where merges happen in Plans, agents never merge into a protected / default branch (D99's `target-forbidden`), and a plan item's Merge is the developer's own click. An approved request of the old `review-merge` kind (synced from an older machine) carries no action any more.
 - **Jira / external writes**: the seam is `TeamService.requestGate({ kind: 'gate', gate: 'external-write', action: { type: 'external', ref } })`; T2's access mechanism calls it before a write and proceeds on approval.
 
 Other outward-facing actions are not intercepted technically in v1: the charter tells the agent to ask, and the CLI's own permission prompts still apply.
@@ -129,7 +129,7 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
   - **Combined, with a confidence**: the title and the behaviour agree (the behaviour matches the title's template, or backs it: loops for On-call / tracking, ≥ 20 edits for Developer, ≥ 5 planning calls for Planner, mostly reading for Reviewer) → the title's template, **high**; they disagree → the title wins at **medium** and the reason names both; only one of them → **medium**; a title with no loops and under 10 file calls → **low**. Neither → not suggested.
 
   There is no fallback template, and sessions with identical evidence get a template once (`dedupeSuggestions`). The Team page shows the server's confidence in its pill (suggestions from an older machine without one get a derived pill) and lists the others under "Not suggested · too little activity or no clear role to tell".
-- **Charter drafts** are made by the Team page, on demand, when the review opens (`src/web/team/charter-draft.ts`): Switchboard has no model call for summaries (History and review-card summaries are the agent's own last message), so the draft is built deterministically from the template the heuristic picked and the evidence (the session's title and folder, its loops, its repos). Instant, free, never blocking the dialog, cached for the page's lifetime. The developer edits it in the Adopt form before anything is stored.
+- **Charter drafts** are made by the Team page, on demand, when the review opens (`src/web/team/charter-draft.ts`): Switchboard has no model call for summaries (History summaries are the agent's own last message), so the draft is built deterministically from the template the heuristic picked and the evidence (the session's title and folder, its loops, its repos). Instant, free, never blocking the dialog, cached for the page's lifetime. The developer edits it in the Adopt form before anything is stored.
 
 ## The Team page (T3)
 
@@ -143,7 +143,7 @@ Phones may read the team (state, members, templates, suggestions, activity, Need
 
 **Member cards** (a full-width grid at the top, `repeat(auto-fill, minmax(180px, 1fr))`, compact): a 3 px top border by status (working = `--status-run`, needs you = `--status-need`, idle = `--status-idle`, paused and offline dimmed, offline with ⌁), the status icon, the role, "from “<session title>”", the work line (the session's live activity, else what it waits for), the machine chip, the budget ("12% / 20% a day") and a "needs you" badge on the card's top-right corner. A card counts as needing you when its session waits or it has Needs-you items. Click selects; right click or ⋯ opens the menu.
 
-**Below the cards, left (330 px).** *Needs you (N)* from `GET /api/team/needs-you`, answered in place: a one-question batch shows its options (a tap answers it) and **Reply…** (selects the member and focuses its chat); several questions use the shared question card; a permission request its Inbox actions; a review card **Merge** / **Send back** (a comment) / **Open diff**; a gate or budget request **Approve** / **Decline**. *Activity*: time, the member's role, text.
+**Below the cards, left (330 px).** *Needs you (N)* from `GET /api/team/needs-you`, answered in place: a one-question batch shows its options (a tap answers it) and **Reply…** (selects the member and focuses its chat); several questions use the shared question card; a permission request its Inbox actions; (D102) a plan's "Ready to merge" item **Merge** / **Open plan**; a gate or budget request **Approve** / **Decline**. *Activity*: time, the member's role, text.
 
 **Below the cards, right: the member panel** (to the page's bottom, the chat filling it). Name, **⏸ Pause** / **▶ Resume**, **Open session**, ⋯; a subline (from session, the model and effort as the CLI names them, e.g. "Sonnet 5.5 · high", else "the session's model", machine, rhythm, needs-you-for). Tabs: **Chat** (default; the session view's own `ChatTab` over `useSessionData`, reloaded on the same `/hub` events, so the composer, queued messages, questions and the D88 per-session draft all work as in the session), **Access** (T2's `AccessTab`, see *The Access tab*; Set up… in Needs you opens it focused on that access), **Settings** (the member form saved with `PUT /api/team/members/{id}`, and *Runs on* with **Move to <PC>…**).
 

@@ -155,5 +155,5 @@ The Timeline tab (`TimelineTab.tsx`, `timeline.ts`) shows the session's **last 5
 - ~~**`sessionUpdated` size.**~~ Done in the follow-ups (*Agent deltas*, *Heavy fields only when they change*): 27.1 → 0.81 MB per 100 turns on the page's stream.
 - ~~**The Timeline tab**~~ Done in the follow-up (*Windowed Timeline*).
 - ~~**Session-list reloads on `sessionUpdated`**~~ and ~~**the session list's agents**~~: done in follow-up 2 (*Session list in memory*).
-- **Git per turn.** The checkpoint snapshot, the review card's fingerprint and the touched-files snapshot spawn git several times per turn (the largest remaining share of the server's streaming CPU, ≈0.4 s per 100 turns here); not conversation-size dependent.
+- **Git per turn.** The checkpoint snapshot and the touched-files snapshot spawn git (D102: the review card's fingerprint is gone) several times per turn (the largest remaining share of the server's streaming CPU, ≈0.4 s per 100 turns here); not conversation-size dependent.
 - **The whole-list stream** (older tabs, older peers) still carries every agent on each update (25.2 MB per 100 turns here); it goes once every client and machine runs this version.

@@ -32,23 +32,23 @@ Tables: `plans` (title, source session, target / base branch, repos, merge mode,
 
 ## Items and dependencies
 
-- An item is an existing todo of the source session (`todoId`), or a new todo added to its list (`todo: { title, description, plan, priority, estimateMinutes }`). A done or in-review todo cannot be planned. At most 100 items.
+- An item is an existing todo of the source session (`todoId`), or a new todo added to its list (`todo: { title, description, plan, priority, estimateMinutes }`). A done todo cannot be planned. At most 100 items.
 - Optional ticket **key** (`PROJ-123`): the run branch becomes `PROJ-123-<slug>` (else `todo/<slug>`, D76's form; `-2`, `-3`, … when taken).
 - **Hold** (agents-with-holds: the developer merges this one), **solutions** (a subset of the plan's repos), **after** (ids or keys it runs after).
 - A dependency that would close a **cycle** is refused (409 `cycle`, naming the loop).
-- View states: `waiting`, `ready`, `running`, `question` (its session waits in the Inbox), `review` (waits for the developer's Merge), `done`, `blocked` (failed, discarded, could not start, its session stopped with an error, a second conflict; and every dependent of a blocked item, with the reason "waiting on PROJ-12, which was discarded"). The view also carries the critical path, progress and the estimated time left.
+- View states: `waiting`, `ready`, `running`, `question` (its session waits in the Inbox), `ready-to-merge` (D102: its run finished and it waits for the developer's Merge, "Waiting for your merge"; see *Merge step*), `done`, `blocked` (failed, discarded, could not start, its session stopped with an error, a second conflict; and every dependent of a blocked item, with the reason "waiting on PROJ-12, which was discarded"). The view also carries the critical path, progress and the estimated time left.
 
 ## Item history (the Timeline)
 
-Each item keeps its history as **spans** (`plan_item_spans` in `plans.db`, migration 2): `running` (its agent works, also while its PR's checks run), `waiting-you` (a question, its Review card, a second conflict or a stopped session), `waiting-dependency` (an item it runs after is not done or is blocked), `paused-usage` (ready, but the usage threshold holds new starts) and `paused-plan` (the plan is paused, by the developer or because Plans was switched off). Every plan change publishes `planChanged`, and with it the service compares each item's kind now with its open span: a changed kind closes the open span and opens the new one (at most one open per item). A draft has none; a done, failed or about-to-start item has none open; a finished or cancelled plan has every span closed. At activation (a restart, Plans switched on) every plan is brought up to date the same way, so nothing doubles up. While Plans is off nothing changes: open spans stay open (the time off counts in them). `GET /api/plans/{id}` answers each item's newest 200 spans, oldest first (`PlanItem.spans`); "Waiting on you: X h" is the sum of its `waiting-you` spans.
+Each item keeps its history as **spans** (`plan_item_spans` in `plans.db`, migration 2): `running` (its agent works, also while its PR's checks run), `waiting-you` (a question, waiting for your merge, a second conflict or a stopped session), `waiting-dependency` (an item it runs after is not done or is blocked), `paused-usage` (ready, but the usage threshold holds new starts) and `paused-plan` (the plan is paused, by the developer or because Plans was switched off). Every plan change publishes `planChanged`, and with it the service compares each item's kind now with its open span: a changed kind closes the open span and opens the new one (at most one open per item). A draft has none; a done, failed or about-to-start item has none open; a finished or cancelled plan has every span closed. At activation (a restart, Plans switched on) every plan is brought up to date the same way, so nothing doubles up. While Plans is off nothing changes: open spans stay open (the time off counts in them). `GET /api/plans/{id}` answers each item's newest 200 spans, oldest first (`PlanItem.spans`); "Waiting on you: X h" is the sum of its `waiting-you` spans.
 
 ## Merge modes (required at start, no default)
 
 `POST /api/plans/{id}/start` requires `mergeMode` (422 `merge-mode-required`); the UI pre-selects `agents-with-holds` as the recommendation, the server never picks one. The `plan_start` tool's description tells the agent to ASK the developer and never choose.
 
 - `agents`: each item's agent opens a PR into the target and merges it once its checks are green.
-- `agents-with-holds`: the same, except held items wait for the developer's Merge on their Review card (D79).
-- `developer`: every item waits for the developer's Merge.
+- `agents-with-holds`: the same, except held items wait for the developer's Merge (*Merge step* below).
+- `developer`: every item waits for the developer's Merge (*Merge step* below).
 
 The mode can change while a plan runs (`PUT /api/plans/{id}/mode`), as can holds (`PUT /api/plans/{id}/holds`); running items whose rule changed are told their new rule.
 
@@ -65,7 +65,20 @@ The mode can change while a plan runs (`PUT /api/plans/{id}/mode`), as can holds
 
 An item's run is D76's todo run with the plan's overrides (`TodoRunOverrides` in `src/server/todos/run.ts`): the branch above, cut from the target's tip in each repo it works in (the target is created locally from the base when missing, never pushed), the plan's start answers, and a brief: the todo, its plan / acceptance criteria, the notes, then "commit, push, open a PR into the target, merge rule, mark the todo done".
 
-The scheduler is event driven (run sessions' status, review resolutions, todo changes, usage updates), polls the checks of items waiting on them (60 s), and reads git / gh only for items whose session changed. On restart it resumes the running plans.
+The scheduler is event driven (run sessions' status, todo changes, usage updates), polls the checks of items waiting on them (60 s), and reads git / gh only for items whose session changed. On restart it resumes the running plans.
+
+## Merge step (D102)
+
+Until D102 the developer's Merge was the run session's Review card (D79); review cards were removed, so Plans has its own step. It applies to the items the developer merges: every item in `developer` mode, the held ones in `agents-with-holds`.
+
+- **Ready:** an item's run is finished when its todo is done (the brief's last step, the agent's `todo_done`) and its session's turn is over, or when every pull request of its branch is open with green (or no) checks while its session is idle. The item then waits on `merge` (`waitingOn: 'merge'`, view state **`ready-to-merge`**, "Waiting for your merge", violet; stored as `waiting_on = 'review'`, the value `plans.db`'s migration 1 CHECK allows) until it is merged or sent back. Its time counts as `waiting-you`.
+- **Inbox:** becoming ready raises a system item **"Ready to merge: <item> (<plan>)"** (kind `plan-ready-to-merge`, source `plans`, on the item's run session; actions **Merge** and **Open plan**; `InboxItem.route` = `/plans/<id>`). **Merge** runs the plan's Merge (refusals answer 409 with the reason; the item stays open); **Open plan** only navigates (the item stays open). It is closed when the item is merged (here or by the agent), sent back, or fails. A paired machine's item names its plan by its remote id.
+- **Merge** (`POST /api/plans/{id}/items/{itemId}/merge`): the item's branch in every repo it worked in (its run session's worktrees on that branch) is merged into the plan's target **locally, never pushed, never forced**. Every repo is checked before any is merged (`src/server/worktrees/branch-merge.ts`, `BranchMergeGit`, moved from the old review cards' `ReviewGit`): refused 409 `uncommitted` (the worktree has uncommitted changes: they would not be merged), `target-dirty` (the target is checked out somewhere with uncommitted tracked changes), `conflicts` with `conflicts: [files]` (`git merge-tree --write-tree`, no working tree touched), `target-missing`, `no-branch`; also `not-ready` (not waiting for your merge), `busy` (its session's turn runs, or another action on the item runs), `finished` (the plan is done / cancelled). Then where the target is checked out `git merge --no-edit <branch>` runs there (hooks run; a failure is aborted), else the target ref moves with `git update-ref` (a fast-forward, or a merge commit `Merge branch '<branch>' into <target>` from the conflict-free tree); a target that exists only as `origin/<target>` is created locally. The item is done (`note`: "merged by you into <target>"), its todo done, its dependents may start. The developer's Merge is the developer's choice: it is not limited to agent-safe targets.
+- **Open PR** (`…/open-pr`): `git push -u origin <branch>` (never forced; 409 `no-remote` without an `origin`), then an open PR of the branch is reused or `gh pr create --base <target>` opens one; its URL is the item's `prUrl`. The item stays ready.
+- **Send back** (`…/send-back`, `{ comment }`, 1–4,000 characters, else 422): the comment goes to the item's session ("Plans: your work on "<item>" was sent back with this comment: …"; the normal message path), its todo goes back in progress, the item runs again (ready again when its run finishes once more: a new Inbox item).
+- **Open diff**: the run session's Diff tab (UI only).
+- **The agent merged it itself** (against the rule): the next look at git (a turn end, the poll) finds the branch merged into the target (`git merge-base --is-ancestor`, or its PR merged) and the item is done with the note "merged into <target> without your Merge". In agent modes this is how every item is done (unchanged).
+- Phones may Merge, Open PR and Send back (as on the cards before); a paired machine's plan item is acted on there through the peer API.
 
 ## Continue in a fresh session (D83)
 
@@ -81,7 +94,7 @@ While Plans is on, the `switchboard` MCP helper (`src/hook/sb-plan-tools.ts`) ad
 
 ## Team interplay (D100)
 
-Team hand-offs are todos (D68) and keep working with Plans off; Team never calls Plans. `TeamHandoff.planRef` is stored text only. Any future Team → Plans use must check both switches (Plans' calls already refuse with 404 `plans-off` while Plans is off).
+Team hand-offs are todos (D68) and keep working with Plans off; Team never calls Plans. D102: a plan's "Ready to merge" Inbox item of a member's session shows in Team's Needs you (it is an Inbox item of that session). `TeamHandoff.planRef` is stored text only. Any future Team → Plans use must check both switches (Plans' calls already refuse with 404 `plans-off` while Plans is off).
 
 ## Phones and paired machines
 
