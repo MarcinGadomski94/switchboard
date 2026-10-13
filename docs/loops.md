@@ -23,6 +23,7 @@ One timer for all loops (the scheduler's clock and 60 s bound, `SchedulerClock`)
 - **at most one firing waits**: while the previous firing's message has not been taken up (still `queued`, not withdrawn / not sent), a due time is **skipped** (counted, `lastError` "the previous firing has not been taken up yet"); never stacked;
 - **paused** (no process) → the message resumes the session (`--resume`, as any message does);
 - **hooked terminal session** → the hook mailbox (D48 P4: delivered to the next waiter; a waiting firing holds the next one back);
+- **waiting for the developer** (status `need`: a question or a permission request is pending) → the due time is **skipped** and counted ("the session is waiting for your answer"); Run now is refused (409 `waiting`). The next due time after the answer fires as usual. (Developer request 2026-10-13: a loop must not fire while the agent waits for answers.)
 - **closed** → the loop **ends** (`session closed`; `the session moved to <machine>` after a take-over); continued in a terminal / being taken over / the message refused (e.g. a slash command to a hooked session) → skipped with the reason;
 - **Run now** → one firing at once (counts as a run, the schedule unchanged), refused while one waits (409 `pending`) or for a closed session / ended loop.
 

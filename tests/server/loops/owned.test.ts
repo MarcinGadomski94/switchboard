@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { OwnedLoop } from '../../../src/core/api.ts';
 import type { UserPayload } from '../../../src/core/event-payload.ts';
 import { NO_ATTACHMENTS } from '../../../src/server/attachments/service.ts';
-import { DOWN_SKIP, LoopError, LoopService, PENDING_SKIP } from '../../../src/server/loops/owned.ts';
+import { DOWN_SKIP, LoopError, LoopService, PENDING_SKIP, WAITING_SKIP } from '../../../src/server/loops/owned.ts';
 import { FakeClock } from '../../helpers/clock.ts';
 import { type SupervisorWorld, makeSupervisorWorld, newSession, until, waitForStatus } from '../../helpers/supervisor.ts';
 
@@ -169,6 +169,22 @@ describe('LoopService · firing (D94)', () => {
     await advance(r, at(10, 3));
     expect((await firings(r, id)).map((p) => p.loop?.run)).toEqual([1, 2]);
     expect(await loopOf(r, id, loop.id)).toMatchObject({ runs: 2, skipped: 1, lastError: null });
+  });
+
+  it('waiting for the developer (a question or permission pending): the due time is skipped and counted; Run now is refused; it fires again once answered', async () => {
+    const r = await setup(at(10));
+    const id = await idleSession(r, 'need-fire');
+    const loop = await r.loops.create(id, { prompt: 'Heartbeat.', every_minutes: 1 }, 'agent');
+    await r.w.store.sessions.update(id, { status: 'need' });
+    await advance(r, at(10, 1));
+    expect(await firings(r, id)).toHaveLength(0);
+    expect(await loopOf(r, id, loop.id)).toMatchObject({ runs: 0, skipped: 1, lastError: WAITING_SKIP, nextFireAt: at(10, 2).toISOString() });
+    await expect(r.loops.runNow(id, loop.id)).rejects.toMatchObject({ status: 409, code: 'waiting' });
+    await r.w.store.sessions.update(id, { status: 'idle' });
+    await advance(r, at(10, 2));
+    await waitForStatus(r.w.store, id, ['done', 'idle']);
+    expect((await firings(r, id)).map((p) => p.loop?.run)).toEqual([1]);
+    expect(await loopOf(r, id, loop.id)).toMatchObject({ runs: 1, skipped: 1, lastError: null });
   });
 
   it('paused: the firing resumes the session (as a message to a paused session does)', async () => {

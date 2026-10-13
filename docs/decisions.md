@@ -912,6 +912,7 @@ The read-only spike (`docs/spike-remote.md`) found no headless way to list or st
   - **Standing instruction:** one line added ("For recurring or scheduled work use the switchboard loop_create tool, not CronCreate or /loop."), D68's earlier-default convention (1.14.x's default reads as the new one); the length bound in the tests went from 740 to 830.
   - **Peers / devices:** a paired machine's session's loops through the proxy (they fire there); devices may list, create, edit, pause / resume, run now and cancel.
   - **What's new (1.15.0):** "Loops run by Switchboard" (two steps). ASSUMED items: `.loop/questions.md` → *D94 · Switchboard-owned loops*.
+  - **Follow-up 2026-10-13 (developer request):** a firing due while the session waits for the developer (status `need`: question or permission pending) is skipped and counted (`the session is waiting for your answer`); Run now is refused then (409 `waiting`).
 
 ## Performance with long sessions (added 2026-10-10)
 

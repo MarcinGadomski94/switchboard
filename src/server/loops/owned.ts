@@ -14,6 +14,9 @@ const LOOP_ID = /^[a-f0-9]{10}$/;
 /** Why a due time was skipped because the previous firing still waits. */
 export const PENDING_SKIP = 'the previous firing has not been taken up yet';
 
+/** Why a due time was skipped while the session waits for the developer (a question or a permission request). */
+export const WAITING_SKIP = 'the session is waiting for your answer';
+
 /** Why missed due times were skipped (Switchboard was not running, or the machine slept). */
 export const DOWN_SKIP = 'Switchboard was not running at its time';
 
@@ -506,7 +509,7 @@ export class LoopService {
   /**
    * One firing (call inside {@link #serial}): ends the loop when its session is
    * closed; skips (counted, with the reason) when the previous firing still waits,
-   * the session is being taken over, continues in a terminal or cannot take the
+   * the session waits for the developer's answer, is being taken over, continues in a terminal or cannot take the
    * message; else sends it and counts the run (ending the loop at `max_runs`).
    * A manual firing is refused instead of skipped.
    */
@@ -522,6 +525,8 @@ export class LoopService {
       return (await this.#store.sessionLoops.update(loop.id, { skipped: loop.skipped + 1, lastError: reason })) as SessionLoopRecord;
     };
     if (await this.#waiting(loop)) return skip(PENDING_SKIP, 'pending');
+    // The agent waits for the developer (a question or a permission request): a loop prompt now would only pile up behind it.
+    if (session.status === 'need') return skip(WAITING_SKIP, 'waiting');
     if (this.#takingOver(session.id)) return skip('the session is being taken over', 'unavailable');
     if (!session.hooked && !session.attached) return skip('the session continues in a terminal', 'unavailable');
     const run = loop.runs + 1;
