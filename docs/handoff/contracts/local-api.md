@@ -1635,7 +1635,7 @@ Developer decision D100 (`docs/decisions.md`; details `docs/team.md`; removal `d
 | GET | /api/team/needs-you | `?teamId=` (none = the first team; `all` = every team) | 200 `TeamNeedsYouItem[]` (each with `teamId`, `teamName`, additive) |
 | POST | /api/team/members | adopt: `{ sessionId, teamId? (none = the first team), name, charter?, templateId?, rhythm?: { loopIds, onHandoff }, budget?: { dailyPct, profileId }, gates?, workplace?: { folders }, model?, effort?, charterDraft? }` · create: the same without `sessionId`, with `session: NewSession` | 201 `TeamMember` · 404 · 409 `hooked` / `detached` / `closed` / `already-member` (in any team: one team per session) / `too-many` · 422 (`teamId`: no such team) · 422 (create: `POST /api/sessions`' refusals in the body) |
 | GET | /api/team/members/{id} | | 200 `TeamMember` · 404 |
-| PUT | /api/team/members/{id} | any of the adopt fields but `sessionId` | 200 `TeamMember` · 404 · 422 |
+| PUT | /api/team/members/{id} | any of the adopt fields but `sessionId` (2026-10-14: `model` / `effort` also set the member's session's model as `PUT /api/sessions/{id}/model` does, from its next turn; on a paired machine's member they are stored and that machine applies them) | 200 `TeamMember` · 404 · 422 (a model or effort the CLI does not offer; nothing changed) · 409 (the CLI refused it) |
 | DELETE | /api/team/members/{id} | | 200 `{ ok: true }` (the session returns to the list, no note) · 502 `peer-unreachable` |
 | POST | /api/team/members/{id}/team | `{ teamId }` (2026-10-14) | 200 `TeamMember` (at the end of that team; charter, rhythm, budget, gates, access and hand-offs kept) · 404 · 409 `too-many` · 422 |
 | POST | /api/team/members/{id}/pause · /resume | | 200 `TeamMember` |

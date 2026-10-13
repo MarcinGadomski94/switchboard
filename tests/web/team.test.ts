@@ -12,7 +12,10 @@ import {
   cardStatus,
   confidenceOf,
   dropOrder,
+  fitMemberModel,
   inOrder,
+  pickMemberEffort,
+  pickMemberModel,
   moveInOrder,
   sideAlong,
   formBody,
@@ -302,6 +305,31 @@ describe('D100 · Team page: the member form and menu', () => {
     // Not a team: the whole text is the role name.
     expect(parseHandoffTarget('QA (nightly)', ['Team', 'Growth'])).toEqual({ name: 'QA (nightly)', team: null });
     expect(parseHandoffTarget('Developer', ['Team'])).toEqual({ name: 'Developer', team: null });
+  });
+
+  it('D100 follow-up 2026-10-14: the model dropdown: a template\'s model pre-selected when the CLI lists it, else the session\'s; efforts only where the model has them', () => {
+    const options = [
+      { value: 'default', label: 'Default (recommended)', efforts: ['low', 'medium', 'high'] },
+      { value: 'opus', label: 'Opus 5.5', efforts: ['low', 'medium', 'high', 'max'] },
+      { value: 'haiku', label: 'Haiku 4.5' },
+    ];
+    const session = { model: 'haiku', effort: null };
+    // The template's suggestion is on offer: taken with its effort.
+    expect(fitMemberModel({ ...EMPTY_FORM, model: 'opus', effort: 'high' }, options, session)).toMatchObject({ model: 'opus', effort: 'high' });
+    // Not on offer: the session's current model.
+    expect(fitMemberModel({ ...EMPTY_FORM, model: 'sonnet', effort: 'medium' }, options, session)).toMatchObject({ model: 'haiku', effort: '' });
+    // No session model (the CLI's default): `default`; an effort the model lacks is dropped.
+    expect(fitMemberModel({ ...EMPTY_FORM, model: 'haiku', effort: 'low' }, options, { model: null, effort: null })).toMatchObject({ model: 'haiku', effort: '' });
+    expect(fitMemberModel(EMPTY_FORM, options, { model: null, effort: 'high' })).toMatchObject({ model: 'default', effort: 'high' });
+    // A pick keeps the effort only when the new model has it (the header's rule).
+    const opusHigh = { ...EMPTY_FORM, model: 'opus', effort: 'max' };
+    expect(pickMemberModel(opusHigh, options, 'default')).toMatchObject({ model: 'default', effort: '' });
+    expect(pickMemberModel({ ...opusHigh, effort: 'high' }, options, 'default')).toMatchObject({ model: 'default', effort: 'high' });
+    expect(pickMemberModel(opusHigh, options, 'haiku')).toMatchObject({ model: 'haiku', effort: '' });
+    expect(pickMemberEffort(opusHigh, null)).toMatchObject({ effort: '' });
+    // Nothing chosen yet (the list did not load): the body leaves the session's model alone.
+    const body = formBody({ ...EMPTY_FORM, name: 'T' });
+    expect(body.ok && 'model' in body.body).toBe(false);
   });
 
   it('D100 follow-up 2026-10-14: the order model: drop before / after, move one place, an optimistic order', () => {

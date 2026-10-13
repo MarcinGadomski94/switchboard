@@ -380,3 +380,35 @@ describe('D100 follow-up 2026-10-14 · multiple teams between paired machines', 
     expect(r.team.state().hiddenSessionIds).toEqual([s1.id]);
   });
 });
+
+describe('D100 follow-up 2026-10-14 · the member\'s model', () => {
+  it('a model chosen for a member changes its session\'s model (as the header\'s picker); a model not on offer is refused; a peer\'s choice is applied here', async () => {
+    const r = await setup();
+    await r.team.init();
+    await switchOn(r);
+    const session = await idleSession(r, 'model-one');
+    const member = await r.team.adopt({ sessionId: session.id, name: 'Builder' });
+    await until(async () => !r.world.supervisor.turnRunning(session.id) || undefined, 'idle after adopt');
+
+    // Haiku (no effort levels): the session's stored model and its step line.
+    const updated = await r.team.update(member.id, { model: 'haiku', effort: null });
+    expect([updated.model, updated.effort]).toEqual(['haiku', null]);
+    expect((await r.world.store.sessions.get(session.id))?.model).toBe('haiku');
+    // An effort Haiku does not have, or a model the CLI does not list: refused, nothing changes.
+    await expect(r.team.update(member.id, { model: 'haiku', effort: 'high' })).rejects.toMatchObject({ status: 422 });
+    await expect(r.team.update(member.id, { model: 'gpt-nope' })).rejects.toMatchObject({ status: 422 });
+    expect((await r.team.member(member.id)).model).toBe('haiku');
+    expect((await r.world.store.sessions.get(session.id))?.model).toBe('haiku');
+    // A body without a model leaves the session's alone.
+    await r.team.update(member.id, { name: 'Builder 2' });
+    expect((await r.world.store.sessions.get(session.id))?.model).toBe('haiku');
+
+    // The paired machine chose Opus · high for it (a newer record): this machine, which runs it, applies it.
+    const mine = await r.team.message();
+    const later = `${(Date.now() + 60_000).toString(36).padStart(9, '0')}.0001.m-pc-0002`;
+    const members = mine.snapshot.members.map((m) => (m.id === member.id ? { ...m, model: 'opus', effort: 'high', clock: later } : m));
+    expect(await r.team.receive({ v: 1, machine: { id: 'm-pc-0002', name: 'PC' }, snapshot: { ...mine.snapshot, members } })).toBe(true);
+    await until(async () => ((await r.world.store.sessions.get(session.id))?.model === 'opus' ? true : undefined), 'opus applied');
+    expect((await r.world.store.sessions.get(session.id))?.effort).toBe('high');
+  });
+});

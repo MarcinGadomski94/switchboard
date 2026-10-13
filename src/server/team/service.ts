@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { InboxItem, OwnedLoop, Session, SessionTodo } from '../../core/api.ts';
+import type { InboxItem, OwnedLoop, Session, SessionModelInput, SessionTodo } from '../../core/api.ts';
 import { HybridClock } from '../../core/hlc.ts';
 import { remoteId, parseRemoteId } from '../../core/peers.ts';
 import { isPlaced, looseList, placeOf, placeSession } from '../../core/sidebar-layout.ts';
@@ -61,7 +61,7 @@ import type { HubBus } from '../hub/bus.ts';
 import { listInbox } from '../inbox/wire.ts';
 import type { LoopService } from '../loops/owned.ts';
 import type { PeerService } from '../peers/service.ts';
-import type { SessionSupervisor } from '../supervisor/supervisor.ts';
+import { ModelChoiceError, type SessionSupervisor, SupervisorError } from '../supervisor/supervisor.ts';
 import type { TakeoverRunner } from '../takeover/runner.ts';
 import type { TodoService } from '../todos/service.ts';
 import { TeamAccess, accessIdOfRef } from './access/service.ts';
@@ -773,6 +773,9 @@ export class TeamService {
       throw new TeamError(409, 'hooked', 'This is a hooked terminal session: Switchboard does not run its CLI, so it cannot get a charter. Continue it in Switchboard first (its ⋯ menu → Continue in Switchboard), then adopt it.');
     }
     if (!session.attached) throw new TeamError(409, 'detached', 'the session continues in a terminal: attach it here first');
+    // D100 follow-up 2026-10-14: a model / effort chosen in the Adopt form becomes the session's (as the header's picker).
+    await this.#applyModel(sessionId, modelInput(fields));
+    const fresh = (await this.#o.store.sessions.get(sessionId)) ?? session;
     const record = await this.#serial(async () => {
       this.#assertCapacity(team.id);
       // One team per session (D100 follow-up 2026-10-14): any team counts.
@@ -794,8 +797,8 @@ export class TeamService {
         sessionId,
         workplace: fields.workplace ?? { folders: session.cwd ? [session.cwd] : [] },
         provider: session.provider,
-        model: fields.model !== undefined ? fields.model : session.model,
-        effort: fields.effort !== undefined ? fields.effort : session.effort,
+        model: fields.model !== undefined ? fields.model : fresh.model,
+        effort: fields.effort !== undefined ? fields.effort : fresh.effort,
         rhythm: { loops: await this.#rhythmFromIds(sessionId, fields.rhythm?.loopIds ?? []), onHandoff: fields.rhythm?.onHandoff ?? true },
         budget: fields.budget ?? NO_BUDGET,
         gates: fields.gates ?? normalizeGates([]),
@@ -895,6 +898,10 @@ export class TeamService {
       await this.syncNow();
       return updated;
     }
+    // D100 follow-up 2026-10-14 (model dropdown): a model / effort change goes to the session first, the way the
+    // session header's picker does (a running turn finishes on the old one); a refusal changes nothing. On a paired
+    // machine's member it is stored here and applied there when the record arrives (`receive`).
+    if (local) await this.#applyModel(before.sessionId, modelInput(fields));
     const after = await this.#serial(async () => {
       const current = this.#memberRecord(id);
       const next: TeamMemberRecord = {
@@ -955,6 +962,24 @@ export class TeamService {
     });
     if (changed) this.#changed(['members', 'order'], teamId);
     return this.view(teamId);
+  }
+
+  /**
+   * D100 follow-up 2026-10-14: sets the session's model / effort through the session
+   * header's mechanism (`SessionSupervisor.setModel`: checked against the models the
+   * CLI reported; a live process gets `set_model` / `apply_flag_settings` and uses
+   * it from its next turn; stored for every later spawn). Nothing given: nothing.
+   * @throws {TeamError} 422 for a model or effort not on offer; 409 when the CLI refused it.
+   */
+  async #applyModel(sessionId: string, input: SessionModelInput): Promise<void> {
+    if (input.model === undefined && input.effort === undefined) return;
+    try {
+      await this.#o.supervisor.setModel(sessionId, input);
+    } catch (error) {
+      if (error instanceof ModelChoiceError) throw new TeamError(422, 'invalid', error.message, { errors: [{ field: error.field, message: error.message }] });
+      if (error instanceof SupervisorError) throw new TeamError(409, error.code, error.message);
+      throw error;
+    }
   }
 
   /** D64 / D91: the session's process picks the (new / withdrawn) charter up: idle → restarted now, busy → after its turn, not running → its next start. */
@@ -1498,6 +1523,12 @@ export class TeamService {
       const teams = keepOrder(db.teams(), newerRecords(db.teams(), s.teams));
       // An older peer's records carry no order: the local one is kept (D100 follow-up 2026-10-14).
       const members = keepOrder(db.members(), newerRecords(db.members(), s.members));
+      // The model / effort chosen on the other machine for a member that runs here (applied below).
+      const previous = new Map(db.members().map((member) => [member.id, member]));
+      const models = members.filter((member) => {
+        const was = previous.get(member.id);
+        return member.machineId === this.#selfId() && !member.deleted && was !== undefined && (was.model !== member.model || was.effort !== member.effort);
+      });
       const handoffs = newerRecords(db.handoffs(), s.handoffs);
       const requests = newerRecords(db.requests(), s.requests);
       const activity = newActivity(db.activityAll(), s.activity);
@@ -1510,12 +1541,16 @@ export class TeamService {
         for (const record of access) db.putAccess(record);
       });
       db.addActivity(activity);
-      return { any: teams.length + members.length + handoffs.length + requests.length + activity.length + access.length > 0, members, access };
+      return { any: teams.length + members.length + handoffs.length + requests.length + activity.length + access.length > 0, members, access, models };
     });
     this.#syncedWith.add(message.machine.id);
     if (changed.any) {
       this.#refreshRoles();
       this.#publish(['teams', 'members', 'handoffs', 'requests', 'activity']);
+      // D100 follow-up 2026-10-14: a model chosen on the other machine for a member that runs here: this machine applies it.
+      for (const member of changed.models) {
+        await this.#applyModel(member.sessionId, { model: member.model, effort: member.effort }).catch((error: unknown) => this.#error(error));
+      }
       // A member that now runs here (a move) or whose charter changed elsewhere: its process picks it up.
       for (const member of changed.members) {
         if (member.machineId === this.#selfId()) await this.#applyCharter(member.sessionId);
@@ -1716,6 +1751,11 @@ export class TeamService {
     const error = (answer.body ?? {}) as { error?: unknown; message?: unknown };
     throw new TeamError(answer.status, typeof error.error === 'string' ? error.error : 'peer-failed', typeof error.message === 'string' ? error.message : `the paired machine answered HTTP ${answer.status}`, answer.body as Record<string, unknown> | null);
   }
+}
+
+/** The model / effort fields a member body set (left out: not changed). */
+function modelInput(fields: { readonly model?: string | null; readonly effort?: string | null }): SessionModelInput {
+  return { ...(fields.model !== undefined ? { model: fields.model } : {}), ...(fields.effort !== undefined ? { effort: fields.effort } : {}) };
 }
 
 function firstLine(text: string, max: number): string {

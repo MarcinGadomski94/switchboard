@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { Folder, OwnedLoop, SessionListItem } from '../../core/api.ts';
+import type { Folder, OwnedLoop, SessionListItem, SessionModel } from '../../core/api.ts';
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TeamCharter, TeamMember, TeamMoveRun, TeamSuggestion } from '../../core/team.ts';
 import type { TeamTemplate } from '../../core/team-templates.ts';
 import { displayTitle } from '../../core/session-title.ts';
@@ -8,6 +9,7 @@ import { type MoveCheck, refusalText, teamApi } from './api.ts';
 import { draftAll } from './charter-draft.ts';
 import { dismissedSuggestions, setDismissed } from './local.ts';
 import { MemberFormFields } from './MemberFormFields.tsx';
+import { useFitMemberModel, useMemberModels } from './MemberModel.tsx';
 import {
   CONFIDENCE_LABEL,
   type Confidence,
@@ -306,10 +308,16 @@ export function MemberFormDialog({
   folders,
   teams = [],
   teamId,
+  sessionModel = null,
+  provider = null,
   onDone,
   onClose,
 }: {
   readonly target: FormTarget;
+  /** D100 follow-up 2026-10-14: adopt: the session's model, effort and reported models (the model dropdown); create: `null`. */
+  readonly sessionModel?: SessionModel | null;
+  /** The CLI whose models the dropdown lists (the session's; create: the default CLI). */
+  readonly provider?: CliProviderId | null;
   readonly folders: readonly Folder[] | null;
   /** D100 follow-up 2026-10-14: the teams to pick from (the picker shows with two or more). */
   readonly teams?: readonly { readonly id: string; readonly name: string }[];
@@ -320,6 +328,9 @@ export function MemberFormDialog({
 }) {
   const [form, setForm] = useState<MemberForm>(target.form);
   const [team, setTeam] = useState<string>(teamId ?? teams[0]?.id ?? '');
+  // D100 follow-up 2026-10-14: the model dropdown, pre-selected on the template's suggestion when it is on offer, else the session's model.
+  const models = useMemberModels(target.kind === 'adopt' ? sessionModel : null, provider);
+  useFitMemberModel(models, setForm, false);
   const inTeam = team ? { teamId: team } : {};
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
@@ -388,7 +399,7 @@ export function MemberFormDialog({
           </select>
         </label>
       ) : null}
-      <MemberFormFields form={form} onChange={setForm} errors={errors} parts={target.kind === 'adopt' ? { sessionLoops: loops } : { folder: folders ?? [] }} disabled={busy} />
+      <MemberFormFields form={form} onChange={setForm} errors={errors} parts={target.kind === 'adopt' ? { sessionLoops: loops, models: models.options } : { folder: folders ?? [], models: models.options }} disabled={busy} />
       {error ? (
         <div className="sb-team-error" role="alert" data-testid="team-form-error">
           {error}

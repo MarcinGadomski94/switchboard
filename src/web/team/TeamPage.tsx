@@ -265,6 +265,8 @@ export function TeamPage() {
     const item = allItems.find((i) => i.memberId === memberId);
     if (item?.teamId) openTeam(item.teamId);
   };
+  /** The listed session (its model, effort, reported models and CLI: the model dropdown). */
+  const sessionOf = (ref: string) => sessions.data?.find((session) => session.id === ref);
   const modelOf = (member: TeamMember): string => modelLine(sessions.data?.find((session) => session.id === member.sessionRef)?.model, member);
   const moveTargetsOf = (member: TeamMember): { id: string; name: string; online: boolean }[] =>
     [{ id: selfId, name: view?.self.name ?? 'this machine', online: true }, ...peerMachines.map((machine) => ({ id: machine.id, name: machine.name, online: machine.state === 'online' }))].filter((target) => target.id !== member.machineId);
@@ -474,6 +476,7 @@ export function TeamPage() {
           member={selected}
           status={cardStatus(selected, counts)}
           modelText={modelOf(selected)}
+          sessionModel={sessionOf(selected.sessionRef)?.model}
           tab={tab}
           onTab={setTab}
           focus={focus}
@@ -511,6 +514,7 @@ export function TeamPage() {
                     member={selected}
                     status={cardStatus(selected, counts)}
                     modelText={modelOf(selected)}
+                    sessionModel={sessionOf(selected.sessionRef)?.model}
                     tab={tab}
                     onTab={setTab}
                     focus={focus}
@@ -566,6 +570,8 @@ export function TeamPage() {
           folders={folders.data}
           teams={teams}
           teamId={teamId}
+          sessionModel={open.target.kind === 'adopt' ? sessionOf(open.target.sessionId)?.model : null}
+          provider={open.target.kind === 'adopt' ? (sessionOf(open.target.sessionId)?.provider ?? null) : null}
           onClose={() => setOpen(null)}
           onDone={(member) => {
             // It may have joined another team (the form's Team picker): show that team.

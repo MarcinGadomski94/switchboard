@@ -1,6 +1,7 @@
 import { useId } from 'react';
-import type { Folder, OwnedLoop } from '../../core/api.ts';
+import type { Folder, OwnedLoop, SessionModelOption } from '../../core/api.ts';
 import { ALWAYS_ON_GATE, GATE_KINDS } from '../../core/team.ts';
+import { MemberModelField } from './MemberModel.tsx';
 import { type MemberForm, gateCheckboxLabel, toggleGate } from './model.ts';
 
 /** Which parts of the form show (the dialogs show all; Settings shows all but the folder). */
@@ -9,6 +10,8 @@ export interface FormParts {
   readonly folder?: readonly Folder[] | null;
   /** Adopt / Settings: the session's live Switchboard loops (the rhythm picks among them). */
   readonly sessionLoops?: readonly OwnedLoop[] | null;
+  /** D100 follow-up 2026-10-14: the models the member's CLI offers (`null` while loading). */
+  readonly models?: readonly SessionModelOption[] | null;
 }
 
 /**
@@ -90,20 +93,9 @@ export function MemberFormFields({
           <span>On hand-off (a new hand-off wakes it)</span>
         </label>
       </fieldset>
-      <div className="sb-team-form__row" data-section="model">
-        <label className="sb-team-field">
-          <span className="sb-team-field__label">Model</span>
-          <input className="sb-team-input" data-testid="team-form-model" placeholder="the session's" value={form.model} disabled={disabled} onChange={(event) => set('model', event.target.value)} />
-        </label>
-        <label className="sb-team-field">
-          <span className="sb-team-field__label">Effort</span>
-          <select className="sb-team-input" data-testid="team-form-effort" value={form.effort} disabled={disabled} onChange={(event) => set('effort', event.target.value)}>
-            <option value="">the session's</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-        </label>
+      <div className="sb-team-form__row">
+        {/* D100 follow-up 2026-10-14: the session header's model and effort picker over the CLI's models (MemberModel.tsx). */}
+        <MemberModelField form={form} options={parts.models ?? null} onChange={onChange} disabled={disabled} />
         <label className="sb-team-field" data-section="budget">
           <span className="sb-team-field__label">Budget (% of daily usage)</span>
           <input className="sb-team-input" data-testid="team-form-budget" inputMode="numeric" placeholder="none" value={form.budget} disabled={disabled} onChange={(event) => set('budget', event.target.value)} />

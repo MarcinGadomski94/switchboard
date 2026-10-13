@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { OwnedLoop } from '../../core/api.ts';
+import type { OwnedLoop, SessionModel } from '../../core/api.ts';
+import type { CliProviderId } from '../../core/cli-providers.ts';
 import type { TeamMember, TeamMemberStatus } from '../../core/team.ts';
 import { useHubEvent } from '../api/useHub.ts';
 import { useThrottled } from '../api/useThrottled.ts';
@@ -12,7 +13,8 @@ import '../views/session/session.css';
 import { AccessTab } from './access/index.ts';
 import { refusalText, teamApi } from './api.ts';
 import { MemberFormFields } from './MemberFormFields.tsx';
-import { STATUS_META, type MemberForm, formBody, formFromMember, gatesLine, rhythmLine } from './model.ts';
+import { useFitMemberModel, useMemberModels } from './MemberModel.tsx';
+import { STATUS_META, type MemberForm, fitMemberModel, formBody, formFromMember, gatesLine, rhythmLine } from './model.ts';
 
 /** The member panel's tabs: Chat (default), Access (T2's slot), Settings. */
 export type PanelTab = 'chat' | 'access' | 'settings';
@@ -35,6 +37,7 @@ export function MemberPanel({
   member,
   status,
   modelText,
+  sessionModel = null,
   tab,
   onTab,
   focus,
@@ -51,6 +54,8 @@ export function MemberPanel({
   readonly status: TeamMemberStatus;
   /** The model line ("Sonnet 5.5 · high"; `modelLine` in model.ts). */
   readonly modelText: string;
+  /** D100 follow-up 2026-10-14: the session's model, effort and the models its CLI reported (Settings' model dropdown). */
+  readonly sessionModel?: SessionModel | null;
   readonly tab: PanelTab;
   readonly onTab: (tab: PanelTab) => void;
   readonly focus: SettingsFocus;
@@ -140,7 +145,7 @@ export function MemberPanel({
             <AccessTab key={`${member.id}:${accessFocus ?? ''}`} memberId={member.id} focusAccessId={accessFocus} loopLabels={member.rhythm.loops.map((loop) => loop.label ?? loop.prompt)} onChanged={onChanged} />
           </div>
         ) : null}
-        {tab === 'settings' ? <MemberSettings key={member.id} member={member} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
+        {tab === 'settings' ? <MemberSettings key={member.id} member={member} sessionModel={sessionModel} focus={focus} moveTargets={moveTargets} onMove={onMove} onChanged={onChanged} /> : null}
       </div>
     </section>
   );
@@ -177,12 +182,14 @@ function MemberChat({ sessionId, composerFocus }: { readonly sessionId: string; 
 /** Settings: the member form (saved with PUT), and where it runs with Move to <PC>…. */
 function MemberSettings({
   member,
+  sessionModel,
   focus,
   moveTargets,
   onMove,
   onChanged,
 }: {
   readonly member: TeamMember;
+  readonly sessionModel: SessionModel | null;
   readonly focus: SettingsFocus;
   readonly moveTargets: readonly { readonly id: string; readonly name: string; readonly online: boolean }[];
   readonly onMove: (targetMachineId: string) => void;
@@ -192,6 +199,13 @@ function MemberSettings({
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // D100 follow-up 2026-10-14: the model dropdown starts on what the session runs with.
+  const models = useMemberModels(sessionModel, (member.provider as CliProviderId | null) ?? null);
+  useFitMemberModel(models, setForm, true);
+  const fresh = (): MemberForm => {
+    const base = formFromMember(member);
+    return models.options && models.current ? fitMemberModel({ ...base, model: '', effort: '' }, models.options, models.current) : base;
+  };
   const [loops, setLoops] = useState<readonly OwnedLoop[] | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -221,7 +235,7 @@ function MemberSettings({
     setNote(null);
     try {
       await teamApi.updateMember(member.id, checked.body);
-      setNote('Saved. A changed charter reaches the agent with its next message.');
+      setNote('Saved. A changed charter or model reaches the agent with its next message.');
       onChanged();
     } catch (caught) {
       setNote(refusalText(caught));
@@ -231,7 +245,7 @@ function MemberSettings({
   };
   return (
     <div ref={root} className="sb-team-settings" data-testid="team-settings">
-      <MemberFormFields form={form} onChange={setForm} errors={errors} parts={{ sessionLoops: loops }} disabled={busy} />
+      <MemberFormFields form={form} onChange={setForm} errors={errors} parts={{ sessionLoops: loops, models: models.options }} disabled={busy} />
       <div className="sb-team-field" data-section="machine">
         <span className="sb-team-field__label">Runs on</span>
         <div className="sb-team-runs-on">
@@ -251,7 +265,7 @@ function MemberSettings({
         </div>
       ) : null}
       <div className="sb-team-dialog__actions">
-        <button type="button" className="sb-button sb-team-btn" onClick={() => setForm(formFromMember(member))} disabled={busy}>
+        <button type="button" className="sb-button sb-team-btn" onClick={() => setForm(fresh())} disabled={busy}>
           Reset
         </button>
         <button type="button" className="sb-button sb-team-btn sb-team-btn--primary" data-testid="team-settings-save" disabled={busy} onClick={() => void save()}>

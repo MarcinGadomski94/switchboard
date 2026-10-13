@@ -1215,3 +1215,24 @@
 .sb-team-cards {
   padding-top: 8px;
 }
+
+/*
+ * D100 follow-up 2026-10-14 · the member form's model dropdown: D31's picker (the
+ * session header's, session.css) in a form field, as the New-session form's Model
+ * row shows it; its popover opens under it, left-aligned, and scrolls inside the dialog.
+ */
+.sb-team-form .sb-sv-model {
+  font-size: 12px;
+  color: var(--text-2);
+  align-self: flex-start;
+}
+
+/* Below 1024 px the picker's popover is a sheet at the window's bottom (responsive/session.css). */
+@media (min-width: 1024px) {
+  .sb-team-form .sb-sv-model-pop {
+    left: 0;
+    right: auto;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+}

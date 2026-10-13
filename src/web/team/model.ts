@@ -1,5 +1,5 @@
 import type { SessionModelOption } from '../../core/api.ts';
-import { modelLabel } from '../../core/model-choice.ts';
+import { DEFAULT_MODEL_VALUE, effortLevelsFor, modelLabel, normalizeModel } from '../../core/model-choice.ts';
 import type { Machine } from '../../core/peers.ts';
 import { type SidebarLayout, dropPosition } from '../../core/sidebar-layout.ts';
 import {
@@ -410,10 +410,46 @@ export function formBody(form: MemberForm): FormCheck {
       rhythm: { loopIds: [...form.loopIds], onHandoff: form.onHandoff },
       budget: { dailyPct, profileId: null },
       gates: [...form.gates],
-      model: form.model.trim() === '' ? null : form.model.trim(),
-      effort: form.effort.trim() === '' ? null : form.effort.trim(),
+      // No model chosen (the list has not loaded): the session's model and effort are left as they are.
+      ...(form.model.trim() === '' ? {} : { model: form.model.trim(), effort: form.effort.trim() === '' ? null : form.effort.trim() }),
     },
   };
+}
+
+// ── the model dropdown (D100 follow-up 2026-10-14) ───────────────────────
+
+/** What the member form's model picker says about when a choice applies. */
+export const MEMBER_MODEL_NOTE = "The member's session runs on this choice: a change applies from its next turn (a running turn finishes on the current one).";
+
+/**
+ * The form's model and effort fitted to the models the member's CLI offers: the
+ * form's own choice (a template's suggestion) when the list has it, else `fallback`
+ * (the session's current model, or the New-session form's last choice for a new
+ * member); the effort is kept only when that model has the level.
+ */
+export function fitMemberModel(form: MemberForm, options: readonly SessionModelOption[], fallback: { readonly model: string | null; readonly effort: string | null }): MemberForm {
+  const listed = (value: string): boolean => options.some((option) => option.value === value);
+  const own = form.model.trim() !== '' && listed(form.model.trim());
+  const model = own ? form.model.trim() : (fallback.model ?? DEFAULT_MODEL_VALUE);
+  const levels = effortLevelsFor(options, normalizeModel(model)) ?? [];
+  const wanted = own ? form.effort : (fallback.effort ?? '');
+  return { ...form, model, effort: wanted !== '' && levels.includes(wanted) ? wanted : '' };
+}
+
+/** The form after a model is picked: the session header's rule (the effort is kept when the new model has that level). */
+export function pickMemberModel(form: MemberForm, options: readonly SessionModelOption[], value: string): MemberForm {
+  const levels = effortLevelsFor(options, normalizeModel(value)) ?? [];
+  return { ...form, model: value, effort: form.effort !== '' && levels.includes(form.effort) ? form.effort : '' };
+}
+
+/** The form after an effort is picked (`null` = Default). */
+export function pickMemberEffort(form: MemberForm, effort: string | null): MemberForm {
+  return { ...form, effort: effort ?? '' };
+}
+
+/** The choice as the shared picker reads it (`null` = the CLI's default). */
+export function memberModelChoice(form: Pick<MemberForm, 'model' | 'effort'>): { readonly model: string | null; readonly effort: string | null } {
+  return { model: normalizeModel(form.model === '' ? null : form.model), effort: form.effort === '' ? null : form.effort };
 }
 
 /** The NewSession body of a created member's session (an empty first message; the folder, else the default). */
