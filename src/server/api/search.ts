@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { SEARCH_LIMIT_MAX, SEARCH_QUERY_MAX, type SearchAnswer, decodeSearchCursor, isSearchScope } from '../../core/search.ts';
 import type { ApiContext } from '../routes.ts';
 import { isPeerRequest } from './machines.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { labelSearchAnswer } from '../team/hooks.ts';
 
 interface SearchQueryString {
   readonly q?: string;
@@ -37,7 +39,8 @@ export async function registerSearchRoutes(app: FastifyInstance, context: ApiCon
       await reply.code(422).send({ error: 'invalid', errors });
       return undefined;
     }
-    return context.search.search({
+    // Team (D100) hook: member sessions' results carry the role name (docs/team-removal.md).
+    return labelSearchAnswer(context.store, await context.search.search({
       q,
       scope: isSearchScope(scope) ? scope : 'all',
       session: session ?? null,
@@ -45,6 +48,6 @@ export async function registerSearchRoutes(app: FastifyInstance, context: ApiCon
       limit: limit === undefined ? null : Number(limit),
       cursor: parsedCursor,
       fromPeer: isPeerRequest(request),
-    });
+    }));
   });
 }

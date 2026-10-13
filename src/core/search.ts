@@ -61,6 +61,8 @@ export interface SearchResult {
   readonly target: SearchTarget;
   /** D48: a paired machine's result. */
   readonly machine?: SessionMachine;
+  /** Additive, Team (D100) hook: the role name when the result's session is a team member's (then also its {@link sessionTitle}). */
+  readonly teamRole?: string;
 }
 
 /** One scope's results. */

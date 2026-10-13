@@ -4,7 +4,8 @@ import { ApiError, api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { QrCode } from '../../components/QrCode.tsx';
 import { currentPushEnvironment, subscribePush, unsubscribePush } from '../../pwa/push.ts';
-import { markPushTurnedOff, onPushRestored, restorePushNow } from '../../pwa/push-restore-page.ts';
+import { markPushGone, markPushTurnedOff, onPushRestored, restorePushNow } from '../../pwa/push-restore-page.ts';
+import { isPushGoneError } from '../../pwa/push-restore.ts';
 import { pushSupport, pushSupportText } from '../../pwa/push-support.ts';
 import { accessDescription, accessProblem, deviceDetail } from './devices.ts';
 import { codeTimeLeft, refusalText } from './machines.ts';
@@ -348,9 +349,18 @@ function ThisDevice({ view, reload }: { readonly view: DeviceSelfView; readonly 
               void run(
                 'enable',
                 async () => {
-                  const subscription = await subscribePush(current.vapidPublicKey as string);
-                  const next = await api.saveDevicePush({ subscription, events: current.events });
+                  const key = current.vapidPublicKey as string;
+                  let next: DeviceSelfView;
+                  try {
+                    next = await api.saveDevicePush({ subscription: await subscribePush(key), events: current.events });
+                  } catch (caught) {
+                    // D73 follow-up: the browser still held a subscription the push service called gone; drop it and make a new one.
+                    if (!isPushGoneError(caught)) throw caught;
+                    await unsubscribePush();
+                    next = await api.saveDevicePush({ subscription: await subscribePush(key), events: current.events });
+                  }
                   markPushTurnedOff(false);
+                  markPushGone(null);
                   setOtherKey(false);
                   return next;
                 },

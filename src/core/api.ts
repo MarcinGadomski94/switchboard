@@ -27,6 +27,8 @@ import type { Review, ReviewResolvedEvent } from './reviews.ts';
 import type { SidebarLayout } from './sidebar-layout.ts';
 import type { DeviceNotice } from './devices.ts';
 import type { DraftChanged } from './drafts.ts';
+// Team (D100) hook: the `teamChanged` payload (docs/team-removal.md).
+import type { TeamChanged } from './team.ts';
 import type {
   AgentKind,
   Coordination,
@@ -1480,6 +1482,8 @@ export interface InboxItem {
   readonly machine?: SessionMachine | null;
   /** Additive (D79): a review item's card (`kind: 'review'`; its actions are `POST /api/reviews/{id}/<action>`). */
   readonly review?: Review;
+  /** Additive, Team (D100) hook: the role name when the item's session is a team member's (then also its {@link sourceTitle}). */
+  readonly teamRole?: string;
 }
 
 /**
@@ -2444,6 +2448,8 @@ export interface HubEvents {
    * plan id).
    */
   readonly planChanged: PlanChanged;
+  /** Team (D100) hook: something of the team changed (`docs/team.md`; the page reads `GET /api/team` again). */
+  readonly teamChanged: TeamChanged;
 }
 
 /** D68: the `todosChanged` payload. */
@@ -2480,6 +2486,8 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'notice',
   'draftChanged',
   'planChanged',
+  // Team (D100) hook.
+  'teamChanged',
 ];
 
 /** Body of a route that exists but whose backlog item has not landed yet (HTTP 501). */

@@ -24,6 +24,8 @@ import { Sidebar } from './Sidebar.tsx';
 import { AppBar } from './AppBar.tsx';
 import { TouchTooltip } from './TouchTooltip.tsx';
 import { TourHost } from '../tutorial/TourHost.tsx';
+// Team (D100) hook: the Team page (docs/team-removal.md).
+import { TeamPage } from '../team/TeamPage.tsx';
 import './shell.css';
 
 function View({ route }: { readonly route: Route }) {
@@ -52,6 +54,8 @@ function View({ route }: { readonly route: Route }) {
       return <ToolView key={route.id} toolId={route.id} />;
     case 'settings':
       return <SettingsView section={route.section} />;
+    case 'team':
+      return <TeamPage />;
   }
 }
 

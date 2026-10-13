@@ -7,6 +7,8 @@ import { readSettings, validateSettingsPatch } from '../settings/settings.ts';
 import { applyInstructionToOpenSessions } from '../settings/apply-instruction.ts';
 import type { InstructionApplyResult } from '../../core/standing-instruction.ts';
 import type { PendingRoute } from './not-implemented.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { teamSwitchChanged } from '../team/hooks.ts';
 
 /** Settings routes (contract → REST) not implemented yet: none since M8.2. */
 export const SETTINGS_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -47,6 +49,8 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
     await store.settings.setMany(result.value);
     // D91: a changed standing instruction makes running sessions' processes "older" (their `instructionOutdated`).
     if ('agents.standingInstruction' in result.value || 'agents.standingInstruction.enabled' in result.value) await context.supervisor.instructionSettingChanged();
+    // Team (D100) hook: Settings → Experimental → Team opens / closes team.db and its timers (docs/team-removal.md).
+    if ('experimental.team' in result.value) await teamSwitchChanged(store);
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
 

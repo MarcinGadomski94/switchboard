@@ -26,6 +26,8 @@ import type { SessionRepoSet } from '../worktrees/session-repos.ts';
 import type { HubBus, HubMessage } from '../hub/bus.ts';
 import { inboxCount } from '../inbox/wire.ts';
 import { type MergePlan, type RepoReading, ReviewGit, ReviewGitError, type ReviewTarget } from './git.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { teamReviewGate } from '../team/hooks.ts';
 
 /**
  * D79 "Review queue" (`docs/reviews.md`). When a turn of one of this machine's
@@ -399,6 +401,9 @@ export class ReviewService {
       throw new ReviewError(record.state === 'resolved' && before.state === 'pending' ? 'gone' : 'not-offered', 409, `${action} is not available on this review: ${why}`);
     }
     const data = dataOf(record);
+    // Team (D100) hook: a member's merge into a protected / default branch may need the developer's approval first (docs/team-removal.md).
+    const gate = await teamReviewGate(this.#store, { reviewId: id, sessionId: session.id, action, body, bases: data.repos.map((repo) => repo.base) });
+    if (gate !== null) throw new ReviewError('refused', 409, gate);
     try {
       switch (action) {
         case 'merge':
