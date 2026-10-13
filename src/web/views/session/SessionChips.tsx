@@ -108,6 +108,7 @@ export function SessionChips({ sessionId, chips, solutions, placeholder }: Sessi
           ref={toggle}
           className="sb-sv-chip sb-sv-chip-more"
           data-testid="session-chips-toggle"
+          data-tour="session-chips-toggle"
           aria-expanded={expanded}
           aria-controls={`sb-sv-chips-${sessionId}`}
           title={expanded ? 'Show the chips on one line' : `Show all ${items.length} chips`}

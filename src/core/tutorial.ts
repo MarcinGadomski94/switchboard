@@ -707,6 +707,22 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         missing: "Model · effort sits in a member's Settings tab (open a member, then Settings) and in the Adopt / Create form. ",
       },
     ],
+  },  {
+    id: 'chip-fold',
+    decision: 'D104',
+    version: V1_18,
+    title: 'One-line session header',
+    steps: [
+      {
+        id: 'toggle',
+        title: 'Long chip rows fold to one line — +N more',
+        what: "A session's title stays on one line (hover it for the whole title), and when its chips (work, mode, phase, loops, then one per solution in scope) need more than one line they fold to the chips that fit plus +N more. Your choice is remembered per session.",
+        todo: ['Press +N more ▾ to see every chip.', 'Press ▴ less to fold them back to one line.'],
+        anchors: ['session-chips-toggle'],
+        route: { view: 'session' },
+        missing: 'When a session has more chips than fit on one line (many solutions in scope), its header shows them folded with a +N more ▾ button under the title; ▴ less folds them back.',
+      },
+    ],
   },
 ];
 
