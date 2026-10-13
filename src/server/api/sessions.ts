@@ -56,6 +56,8 @@ const ERROR_STATUS: Record<SupervisorErrorCode, number> = {
   'turn-running': 409,
   // D91: the restart with the current standing instruction failed.
   'reload-failed': 502,
+  // D103: every account is out of allowance and new turns pause until one resets (Settings → Accounts).
+  'credits-paused': 409,
   // D33: closing a live / running / waiting session needs `{ confirm: true }`; a closed session takes no message, Resume or Attach.
   'close-needs-confirm': 409,
   closed: 409,

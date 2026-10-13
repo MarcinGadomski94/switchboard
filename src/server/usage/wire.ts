@@ -179,7 +179,7 @@ export function withAccountUsage(
         const active = list.length > 0 ? await accounts.pick(cli, { check: false }) : null;
         // D66: the active account's name, also with a single one (the footer grid's line label).
         const current = list.find((p) => p.id === active) ?? list[0];
-        if (current) actives.push({ cli, profileId: current.id, name: current.name });
+        if (current) actives.push({ cli, profileId: current.id, name: current.name, ...(current.usage?.credits ? { credits: current.usage.credits } : {}) });
         if (list.length < 2 && others.length === 0 && !list.some((p) => (p.elsewhere?.length ?? 0) > 0)) continue;
         for (const profile of list) {
           const usage = profile.usage;
@@ -194,6 +194,8 @@ export function withAccountUsage(
             windows: cli === 'claude' && windowsOf && fromPeer === null ? await windowsOf(profile.id) : profileUsageWindows(usage, at),
             ...(self !== null ? { machines: [self, ...(profile.elsewhere ?? []).map((e) => e.machineName)] } : {}),
             ...(fromPeer !== null ? { windowsFrom: fromPeer } : {}),
+            // D103: its credit state (the newest reading's, like its windows).
+            ...(usage?.credits ? { credits: usage.credits } : {}),
           });
         }
         for (const other of others) {
@@ -206,6 +208,7 @@ export function withAccountUsage(
             exhaustedUntil: other.exhausted?.until ?? null,
             windows: profileUsageWindows(other.usage, at),
             machines: other.machines.map((m) => m.name),
+            ...(other.usage?.credits ? { credits: other.usage.credits } : {}),
           });
         }
       }

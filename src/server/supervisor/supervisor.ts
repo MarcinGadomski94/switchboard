@@ -49,7 +49,7 @@ import type { ProviderUsage } from '../cli/bridge-common.ts';
 import { CLI_LABELS, type CliProviderId, type HandoverSource, switchDividerLabel, terminalResumeCommand, unavailableText } from '../../core/cli-providers.ts';
 import { chatMarkdown, findCodexRollout, freshHandoverRequest, handoverRequest, incomingAfterAccountSwitch, incomingFresh, incomingFromHistory, incomingWithHandover, writeExport } from '../cli/handover.ts';
 import { FRESH_BUSY_REASON, FRESH_HOOKED_REASON, type FreshStep, continuationNumber, continuedFromLabel, continuedInLabel, freshName, freshTitle } from '../../core/fresh-session.ts';
-import { CONTINUE_AFTER_SWITCH, accountSwitchLabel, sessionProfileId } from '../../core/accounts.ts';
+import { CONTINUE_AFTER_SWITCH, accountSwitchLabel, clock, sessionProfileId } from '../../core/accounts.ts';
 import type { AccountService } from '../accounts/service.ts';
 import { copyClaudeConversation, copyCodexRollout } from '../accounts/transplant.ts';
 import type { ProviderSwitchRecord } from '../db/repos/providers.ts';
@@ -370,7 +370,9 @@ export type SupervisorErrorCode =
   /** D83: a turn runs: a fresh session is offered once it ends. */
   | 'turn-running'
   /** D91: the process could not be restarted with the current standing instruction. */
-  | 'reload-failed';
+  | 'reload-failed'
+  /** D103: every account of the CLI is out of allowance and Settings → Accounts says to pause new turns until one resets. */
+  | 'credits-paused';
 
 /** A refusal of the supervisor. */
 export class SupervisorError extends Error {
@@ -787,6 +789,8 @@ export class SessionSupervisor {
    */
   async start(input: SessionStartInput, place: SessionPlace, firstMessage: string = input.task, options: StartOptions = {}): Promise<SessionRecord> {
     this.#assertOpen();
+    // D103: a first message is a new turn: refused while new turns pause (every account out of allowance, "pause" chosen).
+    if (firstMessage.trim() !== '') await this.#assertNotCreditsPaused(input.provider ?? 'claude');
     const cwd = await canonicalFolder(place.cwd);
     const session = await this.#store.sessions.create({
       name: input.name,
@@ -852,6 +856,7 @@ export class SessionSupervisor {
     this.#assertNotClosed(session);
     if (!session.attached) throw new SupervisorError('detached', 'the session continues in a terminal; attach it first');
     this.#assertNotSwitching(session);
+    await this.#assertNotCreditsPaused(session.provider);
     // D91: a message sent while the instruction reload restarts the process goes to the new process.
     await this.#instructionReloads.get(sessionId)?.catch(() => undefined);
     let live = this.#live.get(sessionId);
@@ -1100,6 +1105,19 @@ export class SessionSupervisor {
   /** D62 P7: `provider`'s latest own usage limits (Codex's rate limits), `null` while none was read. */
   providerUsage(provider: CliProviderId): ProviderUsage | null {
     return this.#providerUsage.get(provider) ?? null;
+  }
+
+  /**
+   * D103 (`docs/accounts.md` → *Credits*): with "When every account is out of
+   * allowance: pause new turns until an account resets", a new turn is refused
+   * (409 `credits-paused`) while no account of the CLI has allowance, rather than
+   * paid from credits.
+   */
+  async #assertNotCreditsPaused(cli: CliProviderId): Promise<void> {
+    const paused = await this.#accounts?.creditsPause(cli);
+    if (!paused) return;
+    const back = paused.until ? ` ${paused.name ?? 'The first account'} has allowance again at ${clock(paused.until)}.` : '';
+    throw new SupervisorError('credits-paused', `Every ${CLI_LABELS[cli]} account is out of allowance and Settings → Accounts says to pause new turns rather than use credits.${back}`);
   }
 
   /** D62 P5: messages, Resume and Attach wait for nothing while a switch runs: they are refused (the switch sends the first message itself). */

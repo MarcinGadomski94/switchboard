@@ -10,11 +10,13 @@ import {
   type ProfileSnapshot,
   type ProfileUsage,
   cleanProfileName,
+  creditsPause,
   defaultProfileId,
   pickProfileForNewSession,
   readAccountSettings,
 } from '../../core/accounts.ts';
 import { CLI_PROVIDERS, type CliProviderId } from '../../core/cli-providers.ts';
+import { accountCredits } from '../../core/credits.ts';
 import { ACCOUNT_IDENTITIES_KEY, type PeerAccounts, type RemoteCopy, accountIdentity, newestUsage, spentAcross } from '../../core/shared-accounts.ts';
 import type { ProfileRecord } from '../db/repos/profiles.ts';
 import type { Store } from '../db/store.ts';
@@ -395,9 +397,19 @@ export class AccountService {
   async usageOf(record: ProfileRecord): Promise<ProfileUsage | null> {
     if (record.cli === 'claude') {
       const reading = await this.#store.usage.latest(undefined, record.id);
-      return reading
-        ? { fiveHourPct: reading.fiveHourPct, fiveHourResetsAt: reading.fiveHourResetsAt, sevenDayPct: reading.sevenDayPct, sevenDayResetsAt: reading.sevenDayResetsAt, receivedAt: reading.receivedAt }
-        : null;
+      if (!reading) return null;
+      const fields = { fiveHourPct: reading.fiveHourPct, fiveHourResetsAt: reading.fiveHourResetsAt, sevenDayPct: reading.sevenDayPct, sevenDayResetsAt: reading.sevenDayResetsAt };
+      // D103: the credit state from the same readings (the newest rate_limit_event's overage, the newest get_usage's extra_usage).
+      const [event, getUsage] = await Promise.all([this.#store.usage.latest('rate_limit_event', record.id), this.#store.usage.latest('get_usage', record.id)]);
+      const credits = accountCredits(
+        {
+          event: event ? { raw: event.raw, at: event.receivedAt } : null,
+          getUsage: getUsage ? { raw: getUsage.raw, at: getUsage.receivedAt } : null,
+          latest: fields,
+        },
+        new Date(this.#now()),
+      );
+      return { ...fields, receivedAt: reading.receivedAt, ...(credits ? { credits } : {}) };
     }
     const usage = this.#providerUsage.get(record.id);
     if (!usage) return null;
@@ -445,6 +457,16 @@ export class AccountService {
       });
     }
     return out;
+  }
+
+  /**
+   * D103: new turns of `cli` pause (the setting is "pause new turns" and no account
+   * has allowance): when one is back, or `false` when turns may run.
+   */
+  async creditsPause(cli: CliProviderId): Promise<{ readonly until: string | null; readonly name: string | null } | false> {
+    const settings = await this.settings();
+    if (settings.outOfAllowance !== 'pause') return false;
+    return creditsPause(settings, cli, await this.snapshots(cli), this.#now());
   }
 
   /** The profile a new session of `cli` starts on (`null` = the Default / none has allowance). */

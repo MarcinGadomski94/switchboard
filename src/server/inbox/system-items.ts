@@ -283,6 +283,34 @@ export class SystemItemService {
   }
 
   /**
+   * D103 (`docs/accounts.md` → *Credits*): an Inbox item about an account's credits:
+   * it started paying from credits (`account-credits`), or its credits left fell
+   * below 20 % of the limit (`account-credits-low`). Not tied to a session; once
+   * per `dedupe` key (open or closed); dismiss-only. A new Inbox item is what the
+   * devices' push (D73, the Inbox toggle) announces.
+   * @returns the new item, or `null` when this key already raised one.
+   */
+  async creditNotice(input: { readonly kind: 'account-credits' | 'account-credits-low'; readonly title: string; readonly detail: string; readonly dedupe: string }): Promise<SystemItemRecord | null> {
+    const created = await this.#store.systemItems.createOnceByPayload(
+      {
+        kind: input.kind,
+        source: 'accounts',
+        status: 'need',
+        title: input.title,
+        detail: input.detail,
+        branches: [],
+        actions: [{ id: 'dismiss', label: 'Dismiss' }],
+        sessionId: null,
+        payload: { dedupe: input.dedupe },
+      },
+      'dedupe',
+      input.dedupe,
+    );
+    if (created) await this.#publishInbox();
+    return created;
+  }
+
+  /**
    * Plans (D99) hook (`docs/plans.md`): an Inbox item about a plan: every item is done ("Plan ready: <target>
    * → <base>", the developer merges the epic), or an item's branch conflicts with the target a
    * second time (a question to the developer). Once per `dedupe` key (open or closed); dismiss-only.

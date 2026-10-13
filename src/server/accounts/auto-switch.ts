@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, decideAccountSwitch, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
+import { type LimitStrictness, type SwitchDecision, type SwitchTrigger, clock, decideAccountSwitch, parseLimitError, sessionProfileId } from '../../core/accounts.ts';
 import { CLI_LABELS } from '../../core/cli-providers.ts';
+import { LOW_CREDITS_PCT, creditsInUse, creditsLeftPct, creditsMoneyText } from '../../core/credits.ts';
 import type { SessionEvent } from '../../core/api.ts';
 import type { CliStatusService } from '../cli/status.ts';
 import type { Store } from '../db/store.ts';
@@ -16,7 +17,7 @@ export interface AutoSwitcherOptions {
   /** Where exports of a switch go (`<dataDir>/handovers`). */
   readonly dataDir: string;
   /** Inbox items for "every account is spent" and a failed switch. */
-  readonly systemItems?: Pick<SystemItemService, 'accountNotice'>;
+  readonly systemItems?: Pick<SystemItemService, 'accountNotice'> & Partial<Pick<SystemItemService, 'creditNotice'>>;
   /** CLIs' status (a "switch to another CLI" rule checks the target can be chosen). */
   readonly clis?: Pick<CliStatusService, 'refusal'>;
   readonly now?: () => number;
@@ -105,12 +106,53 @@ export class AutoSwitcher {
   }
 
   async #tick(): Promise<void> {
+    // D103: the credit notices do not depend on automatic switching being on.
+    await this.#watchCredits().catch((error: unknown) => this.#error(error));
     const settings = await this.#o.accounts.settings();
     if (!settings.enabled) return;
     for (const live of this.#o.supervisor.liveSessions()) {
       if (!settings.perCli[live.provider]) continue;
       await this.#decide(live.id, { kind: 'threshold' }, live.idle);
       if (settings.afterReset === 'back-to-first') await this.#decide(live.id, { kind: 'reset' }, live.idle);
+    }
+  }
+
+  /**
+   * D103 (`docs/accounts.md` → *Credits*): one Inbox item (and so the devices'
+   * push, D73) when an account starts paying from credits, once per time it does
+   * (keyed by the account and the reset that ends it), and one when its credits
+   * left fall below {@link LOW_CREDITS_PCT} % of the limit (once per credit period).
+   * Accounts of this machine and, merged by identity (D98), their newest readings
+   * from paired machines.
+   */
+  async #watchCredits(): Promise<void> {
+    const items = this.#o.systemItems;
+    if (!items?.creditNotice) return;
+    const now = this.#now();
+    for (const profile of await this.#o.accounts.list({ check: false })) {
+      const credits = profile.usage?.credits;
+      if (!profile.enabled || profile.cli !== 'claude' || !credits) continue;
+      const key = profile.identity ?? profile.id;
+      const money = creditsMoneyText(credits);
+      if (creditsInUse(credits, now) && credits.until) {
+        // Minutes only: the two readings carry the same reset with different sub-second parts.
+        await items.creditNotice({
+          kind: 'account-credits',
+          title: `${profile.name} is using credits`,
+          detail: `${profile.name} is past its plan limit, so its requests are paid from credits until ${clock(credits.until, new Date(now))}${money ? ` (${money})` : ''}. Switchboard moves its sessions to an account with allowance as soon as one has it (Settings → Accounts).`,
+          dedupe: `credits:${key}:${credits.until.slice(0, 16)}`,
+        });
+      }
+      const pct = creditsLeftPct(credits);
+      if (pct !== null && pct < LOW_CREDITS_PCT) {
+        const period = credits.resetsAt?.slice(0, 10) ?? new Date(now).toISOString().slice(0, 7);
+        await items.creditNotice({
+          kind: 'account-credits-low',
+          title: `${profile.name}: credits running low`,
+          detail: `${money ?? 'Less than 20 % of the credit limit is left'}${credits.resetsAt ? `; the credits reset on ${clock(credits.resetsAt, new Date(now))}` : ''}.`,
+          dedupe: `credits-low:${key}:${period}`,
+        });
+      }
     }
   }
 
