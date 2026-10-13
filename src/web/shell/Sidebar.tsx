@@ -18,6 +18,8 @@ import { PANE_ID, PaneHideButton, usePanes } from './Panes.tsx';
 import { SidebarSessions } from './SidebarSessions.tsx';
 import { CliSwitcher } from './CliSwitcher.tsx';
 import { cliBadgeOf } from './cli-switch.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { useTeamHiddenSessions, withoutTeamMembers } from '../team/hidden.ts';
 import {
   type Meter,
   type UsageCell,
@@ -176,6 +178,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
 
   // D95 follow-up 2: the page's shared list, patched from /hub (no read per sessionUpdated).
   const sessions = useSessionListOf();
+  // Team (D100) hook (docs/team-removal.md).
+  const teamHidden = useTeamHiddenSessions();
   const tools = useApi(api.tools);
   const inbox = useApi(api.inbox);
   const solutions = useApi(api.solutions);
@@ -226,7 +230,8 @@ export function Sidebar({ hidden = false }: { readonly hidden?: boolean }) {
   useProbeOnLoad(tools.data);
   useFrameHelperSites(tools.data); // D28 ruling: the saved site tools' hosts, for the frame helper's rules in this tab
   // D33: the list is already open sessions only; a closed one never shows even from a stale payload.
-  const sessionList = openSessions(sessions.data ?? []);
+  // Team (D100) hook: team members' sessions leave SESSIONS while Team is on (one filter; docs/team-removal.md).
+  const sessionList = withoutTeamMembers(openSessions(sessions.data ?? []), teamHidden);
   const reachable = system.reachable ?? sessions.reachable;
 
   return (

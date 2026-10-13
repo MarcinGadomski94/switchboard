@@ -37,6 +37,8 @@ import { registerSwitchSource, registerWorkflowSource, toEvent, toSession } from
 import { WorkflowService } from '../workflows/service.ts';
 import { rememberModelChoice, rememberModelOptions } from '../settings/models.ts';
 import { standingInstructionFor } from '../settings/settings.ts';
+// Team (D100) hook: a member session's charter rides on the standing instruction (docs/team-removal.md).
+import { withTeamCharter } from '../team/hooks.ts';
 import type { AgentMcpLaunch } from '../todos/agent-mcp.ts';
 import { type ClaudeStart, DEFAULT_PERMISSION_MODE, childEnv, resumeCommand } from './argv.ts';
 import { attachWarningMessage, attachWarnings, claudeConfigDir, findTranscriptFile, importTerminalTurns } from './attach.ts';
@@ -1493,7 +1495,7 @@ export class SessionSupervisor {
       if (wasPending) await this.#emitSession(sessionId);
       return 'not-running';
     }
-    if (live.instruction === (await standingInstructionFor(this.#store.settings))) {
+    if (live.instruction === (await withTeamCharter(this.#store, sessionId, await standingInstructionFor(this.#store.settings)))) {
       if (wasPending) await this.#emitSession(sessionId);
       return 'current';
     }
@@ -2730,7 +2732,7 @@ export class SessionSupervisor {
       this.#onError(error);
     }
     // D91: kept on the live process, so a later change of the setting shows it runs an older one.
-    const instruction = await standingInstructionFor(this.#store.settings);
+    const instruction = await withTeamCharter(this.#store, session.id, await standingInstructionFor(this.#store.settings));
     const proc = this.#providers.adapter(provider).spawn({
       session: prepared,
       claudeStart: start,

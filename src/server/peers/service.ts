@@ -39,6 +39,8 @@ import { PairingCodes } from './pairing.ts';
 import { SidebarSync } from './sidebar-sync.ts';
 import { tailscaleIPv4 } from './tailscale.ts';
 import { hashPeerToken, hashesMatch, newMachineId, newPeerToken } from './tokens.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { labelInboxItems } from '../team/hooks.ts';
 
 /**
  * D48 "Switchboard peers" (`docs/peers.md`): this machine's identity, its optional
@@ -206,6 +208,15 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
   // D97: that machine's search (its own index; a peer-injected search never fans out further).
   ['GET', /^\/api\/search$/],
+  // Team (D100) hook (docs/team.md → Sync): the team exchange, and acting on a member on the machine that runs it
+  // (adopt one of its sessions, edit, pause / resume, return, remove, move, approve its requests, hand-offs).
+  ['POST', /^\/api\/team\/sync$/],
+  ['GET', /^\/api\/team(?:\/members\/[^/]+|\/moves\/[^/]+)?$/],
+  ['POST', /^\/api\/team\/(?:members|handoffs)$/],
+  ['PUT', /^\/api\/team\/(?:members|handoffs)\/[^/]+$/],
+  ['DELETE', /^\/api\/team\/members\/[^/]+$/],
+  ['POST', /^\/api\/team\/members\/[^/]+\/(?:pause|resume|return|move|move\/check)$/],
+  ['POST', /^\/api\/team\/requests\/[^/]+\/(?:approve|decline|dismiss)$/],
 ];
 
 /** D57: the peer API's attachment download (its answer is bytes, not JSON); D89: an artifact version's bytes too. */
@@ -874,7 +885,8 @@ export class PeerService implements PeerHandlers {
       const ref = this.#ref(id);
       if (ref) for (const item of connection.inbox) out.push(peerInboxItem(ref, item));
     }
-    return out;
+    // Team (D100) hook: a paired machine's member sessions' items carry the role name too (docs/team-removal.md).
+    return labelInboxItems(this.#store, out);
   }
 
   /**

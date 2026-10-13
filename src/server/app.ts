@@ -40,7 +40,9 @@ import { FreshPlaces } from './sessions/fresh-place.ts';
 import { HOOK_TOKEN_FILE, loadOrCreateToken } from './token.ts';
 import path from 'node:path';
 import type { Providers } from './providers.ts';
-import { registerApiRoutes } from './routes.ts';
+import { type ApiContext, registerApiRoutes } from './routes.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { installTeam } from './team/install.ts';
 import { SearchBackfill } from './search/backfill.ts';
 import { SearchService } from './search/service.ts';
 import { TutorialService, tutorialAutoOpen } from './tutorial/service.ts';
@@ -534,7 +536,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     searchBackfill = own;
   }
   const search = new SearchService({ store: options.store, backfill: searchBackfill, peers, ...(options.peerSearchTimeoutMs ? { peerTimeoutMs: options.peerSearchTimeoutMs } : {}) });
-  await registerApiRoutes(app, { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search });
+  const apiContext: ApiContext = { config, store: options.store, providers, supervisor, worktrees, bus, hub, questions, systemItems, setup, folders, scheduler, peers, hooks, attachments, artifacts, mcp, clis, accounts, signIn, ...(sharedAccounts ? { sharedAccounts } : {}), takeover, takeoverRunner, todos, devices: deviceService, reviews, checkpoints, tutorial, drafts, loops: loopService, search };
+  await registerApiRoutes(app, apiContext);
+  // ── Team (D100) hook: the experimental Team service and its routes (docs/team-removal.md). ──
+  await installTeam(app, apiContext);
   await registerWeb(app, { webRoot: options.webRoot, token: options.token });
   return app;
 }

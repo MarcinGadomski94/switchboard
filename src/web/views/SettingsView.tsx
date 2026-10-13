@@ -17,6 +17,8 @@ import { WorkspaceSection } from './settings/WorkspaceSection.tsx';
 import { UpdatesSection } from '../updates/UpdatesSection.tsx';
 import { CleanupSection } from './settings/CleanupSection.tsx';
 import { TutorialSection } from './settings/TutorialSection.tsx';
+// Team (D100) hook (docs/team-removal.md).
+import { ExperimentalSection } from '../team/ExperimentalSection.tsx';
 import './settings.css';
 
 function Section({ section, settings, save, onSaved }: { readonly section: SettingsSection; readonly settings: KnownSettings; readonly save: SaveSettings; readonly onSaved: (body: Settings) => void }) {
@@ -49,6 +51,9 @@ function Section({ section, settings, save, onSaved }: { readonly section: Setti
       return <CleanupSection />;
     case 'tutorial':
       return <TutorialSection />;
+    // Team (D100) hook (docs/team-removal.md).
+    case 'experimental':
+      return <ExperimentalSection settings={settings} save={save} />;
   }
 }
 

@@ -32,6 +32,8 @@ export const SETTINGS_SECTIONS = [
   { key: 'updates', label: 'Updates' },
   // D85 (docs/tutorial.md): replay the tour and the What's-new mini-tours.
   { key: 'tutorial', label: 'Tutorial' },
+  // Team (D100) hook: switchable, revertible features (docs/team-removal.md); before Clean-up, which stays last (D84).
+  { key: 'experimental', label: 'Experimental' },
   // D84 (docs/cleanup.md): occasional, so last.
   { key: 'cleanup', label: 'Clean-up' },
 ] as const;

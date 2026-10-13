@@ -29,6 +29,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+// Team (D100) hook (docs/team-removal.md).
+import { registerTeamToolsIfMember } from '../core/team-tools.ts';
 import type { Artifact, ArtifactDetail, ArtifactSaveResult, OwnedLoop, SessionTodo, SessionTodoList } from '../core/api.ts';
 import { LOOP_EVERY_MAX, LOOP_MAX_RUNS_MAX, LOOP_TOOLS, loopDetailText, loopListText } from '../core/owned-loops.ts';
 import { ARTIFACT_KINDS, ARTIFACT_TOOLS, ARTIFACT_VERSIONS_MAX, artifactLine, artifactListText, artifactSizeLabel } from '../core/artifacts.ts';
@@ -639,8 +641,12 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stderr.write(`usage: node sb-mcp.ts ${AGENT_MCP_MARKER} <port> <sessionId> (with ${AGENT_TOKEN_ENV} set)\n`);
     return 2;
   }
+  const api = loopbackApi(port, sessionId, token);
+  const server = createTodoServer(api);
+  // Team (D100) hook: a team member's session (Team on) also gets team_handoff / team_members / team_report (docs/team-removal.md).
+  await registerTeamToolsIfMember(server, api, loopbackApi(port, sessionId, token, 3_000));
   // Serves until stdin ends; the process exits once the last answer is written.
-  await createTodoServer(loopbackApi(port, sessionId, token)).connect(new StdioServerTransport());
+  await server.connect(new StdioServerTransport());
   return 0;
 }
 

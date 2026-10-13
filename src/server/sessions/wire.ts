@@ -16,6 +16,8 @@ import type { Providers } from '../providers.ts';
 import { resumeCommand } from '../supervisor/argv.ts';
 import { reportedTable } from './reported-table.ts';
 import { standingInstructionFor } from '../settings/settings.ts';
+// Team (D100) hook (docs/team-removal.md).
+import { withTeamCharter } from '../team/hooks.ts';
 import type { WorkflowSource } from '../workflows/service.ts';
 
 /** How many recent events `GET /api/sessions/{id}` includes (the rest via `/events`). */
@@ -245,7 +247,7 @@ export async function toSession(store: Store, record: SessionRecord, activity: S
 async function instructionState(store: Store, sessionId: string): Promise<{ instructionOutdated: boolean; instructionPending: boolean }> {
   const live = switchSources.get(store)?.instruction?.(sessionId) ?? null;
   if (live === null) return { instructionOutdated: false, instructionPending: false };
-  return { instructionOutdated: live.text !== (await standingInstructionFor(store.settings)), instructionPending: live.pending };
+  return { instructionOutdated: live.text !== (await withTeamCharter(store, sessionId, await standingInstructionFor(store.settings))), instructionPending: live.pending };
 }
 
 /** D83: the other session of a continuation, with its display title now (`null` when it is gone); `null` without a link. */

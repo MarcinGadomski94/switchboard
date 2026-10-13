@@ -143,6 +143,8 @@ test('the seven sections: nav, deep links, Claude Code rows from the service, Ru
     'Updates',
     // D85: after Updates.
     'Tutorial',
+    // D100: Team's switch, before Clean-up.
+    'Experimental',
     // D84: last.
     'Clean-up',
   ]);
