@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.16.0 (2026-10-13)
+
+### Search across everything
+- **One search for everything:** conversations (your messages and the agents'), artifacts, todos and History, on this machine and your paired machine. Open it with ⌘⇧F / Ctrl+Shift+F, the search button in the top bar on tablets and phones, or by typing `?` and your text in ⌘K. Filter by type; results are grouped by type and machine, with the matching words highlighted.
+- **A result opens the exact message:** the chat loads the part of the conversation around it, even far back in a long session, scrolls to it and highlights it, with "Show later messages" and "Jump to latest" below.
+- Fast on large histories (about 40–55 ms on a 32,000-message test setup). Existing history is indexed in the background after the update, without slowing Switchboard down. A paired machine that doesn't answer within 2.5 s is shown as "not searched".
+- What's new has a short tour of it.
+
+### Fixed
+- **Paired phones no longer drop back to the pairing page.** Opening Switchboard from a notification, from a link in another app, or from the installed app's icon could land on the pairing page although the phone was still paired. You don't need to pair again: the phone picks up the fix the next time it opens Switchboard.
+
 ## 1.15.5 (2026-10-13)
 
 ### Changed
