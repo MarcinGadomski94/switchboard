@@ -1663,3 +1663,38 @@ POST /api/team/access/9c1e…/setup { "values": { "ACME_ANALYTICS_KEY": "…" } 
 → 200 { "id": "9c1e…", "status": "ready", "statusText": "Ready on Mac", "here": true, "setUpOn": ["m-mac-0001"],
         "secretRefs": [{ "field": "ACME_ANALYTICS_KEY", "service": "Switchboard Team", "account": "5f0c…/9c1e…/ACME_ANALYTICS_KEY" }], … }
 ```
+
+## Plans · Jira (D99, 2026-10-13, additive, experimental)
+The Jira import and the optional status sync of Plans (`docs/plans.md` → *Jira import and status sync*; decision D99 → *Follow-up · Jira*). Types in `src/core/plans-jira.ts` (`JiraPreview`, `JiraPreviewItem`, `JiraPreviewEdge`, `JiraExternalLink`, `JiraCycleLink`, `PlanJiraState`, `PlanJiraItem`, `PlanJiraActivity`, `JiraConnectionStatus`, `JiraSyncMode`, `JiraTransitionNames`). Every route answers 404 `plans-off` while Plans is off (Settings → Experimental → Plans) or `plans.db` is unavailable.
+
+| Method | Path | Body | Answers |
+|---|---|---|---|
+| GET | /api/integrations/jira | | 200 `JiraConnectionStatus` `{ configured, source: settings \| env \| null, baseUrl, email, keychain }` (never the token) |
+| PUT | /api/integrations/jira | `{ baseUrl, email, token }` | 200 `JiraConnectionStatus` · 409 `keychain-unavailable` · 422 on `baseUrl` (https, or http on loopback) / `email` / `token` |
+| DELETE | /api/integrations/jira | | 200 `JiraConnectionStatus` (the Settings credentials removed; `ATL_*` stay) |
+| POST | /api/sessions/{id}/plans/jira/preview | `{ epic }` (a key or an issue link) | 200 `JiraPreview` (nothing created) · 404 (session, epic: `jira-not-found`) · 409 `jira-not-configured` · 422 on `epic` (`invalid`, `empty-epic`) · 502 `jira-auth` / `jira-unreachable` / `jira-failed` |
+| POST | /api/sessions/{id}/plans/jira/import | `{ epic, targetBranch, title?, baseBranch?, repos?, maxConcurrency?, sync?: off \| read-only \| write, transitions?: { inProgress?, inReview? } }` | 201 `{ plan: Plan, jira: PlanJiraState, preview: JiraPreview }` (a draft) · the preview's errors · the core's `PlanError`s (422 `targetBranch`, 409 `cycle`, `too-many`, …) |
+| GET | /api/plans/{id}/jira | | 200 `PlanJiraState` · 404 `not-jira` (not imported from Jira) / `not-found` |
+| PUT | /api/plans/{id}/jira | `{ sync?, transitions? }` | 200 `PlanJiraState` · 409 `finished` · 422 on `sync` / `transitions.*` |
+| POST | /api/plans/{id}/jira/refresh | | 200 `PlanJiraState` (tickets read again) · 409 `sync-off` · 502 `jira-auth` / `jira-unreachable` |
+
+- **`JiraPreview`**: `{ epic: { key, summary, url }, items: JiraPreviewItem[], edges: [{ from, to, text }], externalLinks: [{ key, other, relation: waits-on | blocks, text }], cycles: [{ from, to, cycle, text }], unlinked: key[], truncated, suggestedTitle, suggestedTargetBranch, proposeAvailable: false }`. Keys are the edges' ids; "`to` waits on `from`" = the plan's "`to` after `from`". `JiraPreviewItem`: `{ key, summary, description, acceptanceCriteria, acceptanceSource: field | description | null, components, status, assignee, estimateMinutes, url, unlinked }`.
+- **`PlanJiraState`**: `{ planId, epicKey, epicUrl, sync, transitions: { inProgress, inReview }, lastRefreshAt, items: [{ itemId, key, url, statusAtImport, status, statusCategory, summary, refreshedAt, drift, syncNote }], activity: [{ id, at, itemId, key, kind: import | refresh | transition | comment | soft-failure | error | settings, text }] }` (activity newest first, at most 200). `drift` is `null` while the sync is off.
+- **Hub**: no new event. A Jira write, a refresh or a settings change publishes `planChanged` for the plan; the page reloads `GET /api/plans/{id}/jira` with the plan.
+- **Peers (D48)**: on `PEER_API_ALLOW`: the preview, the import, `GET|PUT /api/plans/{id}/jira`, the refresh (a remote session or plan id is forwarded to its machine, which uses its own credentials). The credential routes are not (403 to a peer). A forwarded import's `plan` is namespaced like an added item's (`plan-item`); `PlanJiraState` passes raw (its ids are the plan's raw item ids).
+- **Devices (D73)**: allowed: the preview, the import, `GET|PUT /api/plans/{id}/jira`, the refresh. Refused: `/api/integrations/jira` (all methods).
+- **Web (for the Plans page)**: `src/web/plans/jira/index.ts` exports `ImportJiraDialog { sourceSessionId, repos?, initialEpic?, onImported(plan), onClose() }`, `PlanJiraPanel { planId }`, `JiraCredentialsForm { onChanged? }` and `jiraApi`; dev mount `/plans-jira-dev.html?session=<sessionId>`.
+
+```
+POST /api/sessions/5f0c…/plans/jira/preview { "epic": "https://acme.atlassian.net/browse/PROJ-10" }
+→ 200 { "epic": { "key": "PROJ-10", "summary": "Acme checkout", "url": "https://acme.atlassian.net/browse/PROJ-10" },
+        "edges": [{ "from": "PROJ-11", "to": "PROJ-12", "text": "PROJ-12 waits on PROJ-11" }],
+        "cycles": [{ "from": "PROJ-13", "to": "PROJ-14", "cycle": ["PROJ-13", "PROJ-14", "PROJ-13"],
+                     "text": "PROJ-14 waits on PROJ-13 was left out: PROJ-13 → PROJ-14 → PROJ-13 would be a cycle (each waits on the next)" }],
+        "externalLinks": [{ "key": "PROJ-15", "other": "PROJ-99", "relation": "waits-on", "text": "PROJ-15 waits on PROJ-99 (outside the epic)" }],
+        "unlinked": ["PROJ-15"], "suggestedTargetBranch": "feature/PROJ-10-acme-checkout", "proposeAvailable": false, … }
+
+POST /api/sessions/5f0c…/plans/jira/import { "epic": "PROJ-10", "targetBranch": "feature/PROJ-10-acme-checkout", "sync": "write" }
+→ 201 { "plan": { "id": "a1b2c3d4e5", "state": "draft", "mergeMode": null, "external": { "system": "jira", "key": "PROJ-10" }, … },
+        "jira": { "sync": "write", "transitions": { "inProgress": "In Progress", "inReview": "In Review" }, … }, "preview": { … } }
+```
