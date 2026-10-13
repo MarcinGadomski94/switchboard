@@ -4,6 +4,7 @@ import { AgentDeltaEncoder } from '../../core/agent-delta.ts';
 import type { FastifyInstance } from 'fastify';
 import type { ArtifactListItem, HubEventName, HubEvents, InboxItem, Schedule, Session, TerminalLoop, TodoGroup } from '../../core/api.ts';
 import { PEER_HUB_EVENTS, type PeerMachineRef, isSavedArtifact, mapPeerAnswer, peerAnswerKind, peerArtifactItem, peerHubEvent, peerInboxItem, peerSchedule, peerSession, peerPlan, peerReview, peerTerminalLoop, peerTodoGroup } from '../../core/peer-wire.ts';
+// Plans (D99) hook (docs/plans-removal.md): `peerPlan` above and the Plan type.
 import type { Plan } from '../../core/plans.ts';
 import type { Review } from '../../core/reviews.ts';
 import {
@@ -87,7 +88,7 @@ export const PEER_LIST_STALE_MS = 10_000;
 
 /** D52: the lists of a peer that are kept as last known (and snapshotted), with the peer API route each comes from. D68: its todos (the Todos page). */
 /** D79: its review cards (`GET /api/reviews`). */
-/** D99: its plans (`GET /api/plans`). */
+/** Plans (D99) hook: its plans (`GET /api/plans`). */
 const PEER_LISTS = { schedules: '/api/schedules', 'terminal-loops': '/api/terminal-loops', todos: '/api/todos', reviews: '/api/reviews', artifacts: '/api/artifacts', plans: '/api/plans' } as const;
 
 /** D52: one of {@link PEER_LISTS}. */
@@ -210,7 +211,7 @@ export const PEER_API_ALLOW: ReadonlyArray<readonly [method: string, path: RegEx
   ['DELETE', /^\/api\/sessions\/[^/]+\/loops\/[^/]+$/],
   // D97: that machine's search (its own index; a peer-injected search never fans out further).
   ['GET', /^\/api\/search$/],
-  // D99: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
+  // Plans (D99) hook: that machine's plans (they run there): read, create / edit / delete, items, dependencies, start / pause / resume / cancel, mode and holds.
   ['GET', /^\/api\/plans(?:\/[^/]+)?$/],
   ['POST', /^\/api\/plans$/],
   ['PUT', /^\/api\/plans\/[^/]+(?:\/(?:mode|holds|items\/[^/]+))?$/],
@@ -839,7 +840,7 @@ export class PeerService implements PeerHandlers {
       return;
     }
     if (name === 'planChanged') {
-      // D99: the peer's plans are fetched again first, so the Plans page that reloads on the event sees the change.
+      // Plans (D99) hook: the peer's plans are fetched again first, so the Plans page that reloads on the event sees the change.
       void this.refreshList(id, 'plans').then(() => {
         const current = this.#ref(id);
         const mapped = current ? peerHubEvent(current, name, payload) : null;
@@ -925,7 +926,7 @@ export class PeerService implements PeerHandlers {
     return this.#remoteList('todos', (ref, item) => peerTodoGroup(ref, item as TodoGroup));
   }
 
-  /** D99: the paired machines' plans (`GET /api/plans` there) as last known; see {@link remoteSchedules}. */
+  /** Plans (D99) hook: the paired machines' plans (`GET /api/plans` there) as last known; see {@link remoteSchedules}. */
   remotePlans(): Plan[] {
     return this.#remoteList('plans', (ref, item) => (typeof item === 'object' && item !== null && Array.isArray((item as Record<string, unknown>)['items']) ? peerPlan(ref, item as unknown as Plan) : null)).filter((plan): plan is Plan => plan !== null);
   }
@@ -1058,7 +1059,7 @@ export class PeerService implements PeerHandlers {
       if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/reviews/')) await this.refreshList(machineId, 'reviews');
       // D89: an artifact was saved or deleted there: the Artifacts page's list is fetched again too.
       if (method.toUpperCase() !== 'GET' && /\/artifacts(?:\/|$)/.test(path.split('?')[0] ?? '')) await this.refreshList(machineId, 'artifacts');
-      // D99: a plan changed there: the plans are fetched again too.
+      // Plans (D99) hook: a plan changed there: the plans are fetched again too.
       if (method.toUpperCase() !== 'GET' && (path.split('?')[0] ?? '').startsWith('/api/plans')) await this.refreshList(machineId, 'plans');
       return { status: answer.status, body: mapPeerAnswer(this.#ref(machineId) ?? ref, kind, answer.body) };
     }

@@ -268,7 +268,7 @@ export class SystemItemService {
   }
 
   /**
-   * D99 (`docs/plans.md`): an Inbox item about a plan: every item is done ("Plan ready: <target>
+   * Plans (D99) hook (`docs/plans.md`): an Inbox item about a plan: every item is done ("Plan ready: <target>
    * → <base>", the developer merges the epic), or an item's branch conflicts with the target a
    * second time (a question to the developer). Once per `dedupe` key (open or closed); dismiss-only.
    * @returns the new item, or `null` when this key already raised one.

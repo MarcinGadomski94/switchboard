@@ -10,7 +10,7 @@ import path from 'node:path';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Folder, Session } from '../../../src/core/api.ts';
-import type { Plan, PlanItem, PlanMergeMode } from '../../../src/core/plans.ts';
+import { PLANS_SETTING, type Plan, type PlanItem, type PlanMergeMode } from '../../../src/core/plans.ts';
 import { buildApp } from '../../../src/server/app.ts';
 import { loadConfig } from '../../../src/server/config.ts';
 import { FolderService } from '../../../src/server/folders/service.ts';
@@ -63,6 +63,7 @@ afterEach(async () => {
 
 function makePlans(r: Omit<Rig, 'plans'>): PlanService {
   return new PlanService({
+    dataDir: r.s.root,
     store: r.s.store,
     bus: r.bus,
     todos: r.todos,
@@ -82,6 +83,7 @@ function makePlans(r: Omit<Rig, 'plans'>): PlanService {
 
 async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
   const s = await makeSupervisorWorld({ scenario: 'handoff-start' });
+  await s.store.settings.set(PLANS_SETTING, true);
   const g = await makeGitWorld({ root: s.root, workspace: s.workspace, store: s.store, baseEnv: s.env });
   const repoPath = await g.makeRepo(path.join(s.root, 'acme'));
   if (options.origin) await g.addOrigin(repoPath);
@@ -103,9 +105,7 @@ async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
   const partial = { s, g, bus, repoPath, reviews, systemItems, todos, worktrees, folders } as unknown as Rig;
   partial.plans = makePlans(partial);
   token = generateToken();
-  const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: s.root }, platform: 'linux', home: s.root, cwd: s.root });
-  app = await buildApp({ config: { ...base, port: PORT }, token, store: s.store, webRoot: s.root, supervisor: s.supervisor, worktrees, providers: { diff: worktrees }, bus, reviews, folders, todos, systemItems, plans: partial.plans });
-  await app.ready();
+  await openApp(partial);
   await partial.plans.start();
   const folder = (await call('POST', '/api/folders', { path: repoPath })).json() as Folder;
   const started = await call('POST', '/api/sessions', { simple: true, name: 'source', title: 'Source', task: 'Hello', folder: folder.id, worktrees: false });
@@ -113,6 +113,14 @@ async function setup(options: { origin?: boolean } = {}): Promise<Rig> {
   Object.assign(partial, { folder, source: started.json() as Session });
   rig = partial;
   return partial;
+}
+
+/** The app over the rig's services (again after a restart: its routes are the current plan service's). */
+async function openApp(r: Rig): Promise<void> {
+  await app?.close();
+  const base = loadConfig({ env: { SWITCHBOARD_DATA_DIR: r.s.root }, platform: 'linux', home: r.s.root, cwd: r.s.root });
+  app = await buildApp({ config: { ...base, port: PORT }, token, store: r.s.store, webRoot: r.s.root, supervisor: r.s.supervisor, worktrees: r.worktrees, providers: { diff: r.worktrees }, bus: r.bus, reviews: r.reviews, folders: r.folders, todos: r.todos, systemItems: r.systemItems, plans: r.plans });
+  await app.ready();
 }
 
 function call(method: InjectOptions['method'], url: string, payload?: unknown) {
@@ -370,6 +378,7 @@ describe('D99 · a plan on the real path', () => {
     await r.g.commit(run.cwd, 'PROJ-1.txt', 'PROJ-1\n', 'PROJ-1: work');
     await r.g.git(await targetCheckout(r), 'merge', '-q', '--no-edit', item.branch as string);
     r.plans = makePlans(r);
+    await openApp(r);
     await r.plans.start();
     await r.plans.idle();
     await until(async () => ((await itemOf(created.id, 'PROJ-1')).state === 'done' ? true : undefined), 'PROJ-1 done after the restart');

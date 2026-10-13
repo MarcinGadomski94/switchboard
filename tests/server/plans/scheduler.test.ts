@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Session } from '../../../src/core/api.ts';
-import type { Plan, PlanChecks } from '../../../src/core/plans.ts';
+import { PLANS_SETTING, type Plan, type PlanChecks } from '../../../src/core/plans.ts';
 import type { SessionStatus } from '../../../src/core/model.ts';
 import type { Store } from '../../../src/server/db/store.ts';
 import { HubBus } from '../../../src/server/hub/bus.ts';
@@ -113,13 +113,14 @@ async function setup(options: { pollMs?: number } = {}): Promise<Rig> {
   const store = await openTempStore(dir, { now: () => clock.now() });
   const bus = new HubBus();
   const todos = new TodoService({ store, bus, now: () => clock.now().getTime() });
+  await store.settings.set(PLANS_SETTING, true);
   const source = await store.sessions.create({ name: 'source', claudeSessionId: 'c-source', status: 'idle', cwd: '/ws', root: '/ws', rootKind: 'workspace', solutions: ['acme-front'], worktrees: false, workType: 'feature', mode: 'single', phase: 'ui-first' });
   const base = { dir, store, bus, clock, git: new FakeGit(), todos, runs: [] as PlanRunInput[], sent: [], notices: [], changed: [] as string[], errors: [] as unknown[], held: null, failRun: null, sourceId: source.id };
   bus.subscribe((message) => {
     if (message.name === 'planChanged') base.changed.push(message.payload.planId);
   });
   const partial = base as unknown as Rig;
-  partial.plans = new PlanService({ store, bus, todos, git: base.git, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
+  partial.plans = new PlanService({ dataDir: dir, store, bus, todos, git: base.git, env: environment(partial), clock, pollMs: options.pollMs ?? 60_000, onError: (error) => base.errors.push(error) });
   await partial.plans.start();
   rig = partial;
   return partial;
@@ -415,10 +416,10 @@ describe('D99 · plan scheduler', () => {
     expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
 
     // A restart: a new service over the same store; B was merged while it was down.
-    await r.plans.close();
     const b = await item(r, plan.id, ids.B);
+    await r.plans.close();
     r.git.branches.set(b.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'none', summary: null, sha: null } } });
-    r.plans = new PlanService({ store: r.store, bus: r.bus, todos: r.todos, git: r.git, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
+    r.plans = new PlanService({ dataDir: r.dir, store: r.store, bus: r.bus, todos: r.todos, git: r.git, env: environment(r), clock: r.clock, onError: (error) => r.errors.push(error) });
     await r.plans.start();
     await settle(r);
     expect((await item(r, plan.id, ids.B)).state).toBe('done');
@@ -431,7 +432,7 @@ describe('D99 · plan scheduler', () => {
     await expect(
       r.plans.createFromExternal({ sourceSessionId: r.sourceId, title: 'PROJ-900', targetBranch: 'feature/PROJ-900-x', external: { system: 'jira', key: 'PROJ-900' }, items: [{ ref: 'PROJ-901', key: 'PROJ-901', title: 'a' }, { ref: 'PROJ-902', key: 'PROJ-902', title: 'b' }], edges: [{ from: 'PROJ-901', to: 'PROJ-902' }, { from: 'PROJ-902', to: 'PROJ-901' }] }),
     ).rejects.toMatchObject({ code: 'cycle' });
-    expect(await r.store.plans.list()).toEqual([]);
+    expect(await r.plans.list()).toEqual([]);
     const made = await r.plans.createFromExternal({
       sourceSessionId: r.sourceId,
       title: 'PROJ-900 Acme import',
@@ -449,7 +450,7 @@ describe('D99 · plan scheduler', () => {
       ['PROJ-902', 'waiting', true],
     ]);
     expect(made.plan.edges).toEqual([{ from: made.itemIds['PROJ-901'], to: made.itemIds['PROJ-902'] }]);
-    expect((await r.store.plans.findByExternal('jira', 'PROJ-900')).map((plan) => plan.id)).toEqual([made.plan.id]);
+    expect((await r.plans.findByExternal('jira', 'PROJ-900')).map((plan) => plan.id)).toEqual([made.plan.id]);
     expect((await r.todos.list(r.sourceId)).todos.map((todo) => todo.title)).toEqual(['First', 'Second']);
   });
 
@@ -463,5 +464,54 @@ describe('D99 · plan scheduler', () => {
     await settle(r);
     expect(await item(r, plan.id, first.itemId)).toMatchObject({ state: 'blocked', reason: 'could not start: the CLI is not available' });
     expect(await item(r, plan.id, second.itemId)).toMatchObject({ state: 'blocked', reason: 'waiting on PROJ-801, which could not start: the CLI is not available' });
+  });
+  it('switched off: running plans pause with the reason, nothing runs; switched on: they stay paused until resumed', async () => {
+    const r = await setup();
+    const { plan, ids } = await diamond(r);
+    await r.plans.startPlan(plan.id, { mergeMode: 'agents' });
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1']);
+    const a = await item(r, plan.id, ids.A);
+    const draft = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Still a draft', targetBranch: 'feature/PROJ-200-later' });
+    expect(r.plans.activeTimers()).toBe(2);
+
+    await r.store.settings.set(PLANS_SETTING, false);
+    await r.plans.switchChanged();
+    expect(r.plans.activeTimers()).toBe(0);
+    expect(r.clock.delays()).toEqual([]);
+    expect(r.plans.state()).toEqual({ enabled: false, available: false, problem: null });
+    await expect(r.plans.list()).rejects.toMatchObject({ status: 404, code: 'plans-off' });
+    // A's session finishes its turn with the work merged: nothing reacts while Plans is off.
+    r.git.branches.set(a.branch as string, { hasWork: true, merged: true, pr: { state: 'MERGED', checks: { state: 'green', summary: null, sha: 'abc' } } });
+    const inspected = r.git.inspected.length;
+    await status(r, a.runSessionId as string, 'idle');
+    await r.clock.advanceTo(new Date(r.clock.now().getTime() + 10 * 60_000), () => settle(r));
+    expect(started(r)).toEqual(['PROJ-1']);
+    expect(r.git.inspected).toHaveLength(inspected);
+
+    await r.store.settings.set(PLANS_SETTING, true);
+    await r.plans.switchChanged();
+    await settle(r);
+    const paused = await r.plans.get(plan.id);
+    expect(paused).toMatchObject({ state: 'paused', pausedReason: 'Plans was switched off', held: 'Plans was switched off' });
+    expect((await r.plans.get(draft.id)).state).toBe('draft');
+    // A's merge is picked up (its item finished its turn), but nothing new starts until the developer resumes.
+    expect((await item(r, plan.id, ids.A)).state).toBe('done');
+    expect(started(r)).toEqual(['PROJ-1']);
+    const resumed = await r.plans.resume(plan.id);
+    expect(resumed).toMatchObject({ state: 'running', pausedReason: null });
+    await settle(r);
+    expect(started(r)).toEqual(['PROJ-1', 'PROJ-2', 'PROJ-3']);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('a plan whose source session is deleted goes with it', async () => {
+    const r = await setup();
+    const plan = await r.plans.create({ sourceSessionId: r.sourceId, title: 'Orphan', targetBranch: 'feature/PROJ-300-orphan' });
+    await r.store.sessions.delete(r.sourceId);
+    r.plans.kick();
+    await settle(r);
+    expect(await r.plans.list()).toEqual([]);
+    expect(r.changed).toContain(plan.id);
   });
 });
