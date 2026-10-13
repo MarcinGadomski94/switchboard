@@ -345,6 +345,9 @@ Developer ruling D41 (`docs/decisions.md` → *Collapsible panes*): the sidebar 
 Settings { …, "ui.sidebarHidden": false, "ui.rightPanelHidden": true }
 ```
 
+## Collapsible TOOLS (D101, 2026-10-14, additive)
+- **Settings** (`GET/PUT /api/settings`) gains the editable key `ui.toolsCollapsed`, boolean, default `false` (the sidebar's TOOLS section expanded). Like D41's keys: a value that is not a boolean → 422 `invalid`; `GET` always returns it (a stored value of the wrong type reads as `false`). Per install; not sent to paired machines. No new route or `/hub` event.
+
 ## Solutions chosen by the agent (D38, 2026-09-29, additive)
 Developer ruling D38 (`docs/decisions.md` → *Solutions chosen by the agent*): a workspace session can start without picked solutions; the agent determines them. Additive: an empty list is now allowed; the rows and payloads above keep their meaning. Details: `docs/new-session.md` → *Solutions chosen by the agent (D38)*, `docs/worktrees.md` → *Adopted worktrees (D38)*, `docs/derivations.md` → *Session solutions (D38)*.
 

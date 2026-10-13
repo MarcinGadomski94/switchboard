@@ -79,6 +79,9 @@ const V1_16 = '1.16.0';
 /** The version D98 (accounts shared across paired machines), D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
 const V1_17 = '1.17.0';
 
+/** The version D101 (the sidebar's navigation as an icon grid, collapsible TOOLS) ships in. */
+const V1_18 = '1.18.0';
+
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
 const TEAM_OFF = 'Team is experimental and off by default: switch it on in Settings → Experimental → Team, then open Team in the sidebar. ';
 
@@ -684,6 +687,23 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         anchors: ['team-needs-you', 'team-member-menu'],
         route: { view: 'team' },
         missing: TEAM_NO_MEMBER,
+      },
+    ],
+  },
+  {
+    id: 'sidebar-icons',
+    decision: 'D101',
+    version: V1_18,
+    title: 'Navigation as icons',
+    steps: [
+      {
+        id: 'grid',
+        title: 'Navigation is now icons: hover for names',
+        what: 'Inbox, Solutions, Schedules & loops, MCP, Artifacts, History and Todos (and Team and Plans when they are on) are a grid of icons under + New session, so the sessions get more room. Each icon keeps its count or warning as a badge; hover an icon (or long-press it on a touch screen) for its name. TOOLS folds away from its header too.',
+        todo: ['Hover an icon to see its name, click it to open the page.', 'Click the TOOLS header to fold the tools away; it stays folded after a reload.'],
+        anchors: ['nav'],
+        drawer: true,
+        missing: 'The icons sit in the sidebar, under + New session.',
       },
     ],
   },

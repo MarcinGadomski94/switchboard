@@ -21,6 +21,7 @@ The CSS is in `src/web/styles/responsive/` (imported last, from `main.tsx`): `sh
 ## Shell
 
 - **App bar** (tablet and phone, every page but the session view): ☰ (opens the sidebar), the page's title, **Inbox** with its count. `AppBar.tsx`.
+- **Nav grid in the drawer (D101):** 4 columns, each cell its icon with the name under it, at least 56 px high (`docs/sidebar.md` → *Navigation grid*).
 - **Sidebar drawer:** the D41 slide (`--pane-slide`, transform + visibility), as a fixed drawer over the page: `min(320px, 88vw)` on a tablet with a scrim, the whole screen on a phone (its brand row's hide button closes it). It closes when a page is picked, on the scrim, on Escape, and when a dialog opens from it. While it is open the page behind is `inert`; while it is closed the sidebar is. The drawer scrolls as one (the desktop's fixed top and bottom would leave the sessions no room on a phone).
 - **D41 state:** on the compact layouts `usePanes()` reports the drawers (both closed at first, never saved); the stored desktop choice (`ui.sidebarHidden`, `ui.rightPanelHidden`) is untouched and applies again at desktop width. ⌘B / ⌥⌘B toggle the drawers there, and focus moves between a drawer's opener and its hide button as D41's handle and button do (the openers carry `data-pane-handle`). One drawer at a time.
 - **Height:** the shell is `var(--app-height, 100dvh)` high; `useVisualViewportHeight` keeps `--app-height` at the visual viewport's height on the compact layouts, so the composer stays above an on-screen keyboard where the browser does not resize the layout viewport (iOS Safari). The viewport meta has `viewport-fit=cover` (safe areas, `env(safe-area-inset-*)` on the app bar, drawers, composer and sheets) and `interactive-widget=resizes-content` (Chrome on Android shrinks the page for the keyboard).
@@ -62,7 +63,7 @@ The CSS is in `src/web/styles/responsive/` (imported last, from `main.tsx`): `sh
 
 On a coarse pointer (any width), `touch.css`:
 
-- **Tap targets ≥ 44 × 44 px**: nav items, session and folder rows, ⋯ buttons, tabs, header actions, Send, the composer's 📎, question options, todo controls, page actions and filters, dialog pills and buttons, menu items.
+- **Tap targets ≥ 44 × 44 px**: nav grid cells (D101), the TOOLS toggle, session and folder rows, ⋯ buttons, tabs, header actions, Send, the composer's 📎, question options, todo controls, page actions and filters, dialog pills and buttons, menu items.
 - **Hover-only controls get a touch path:** a sidebar row's and a folder's **⋯** are always shown; the row's **×** (hover only) hides and **Close** is in the row's ⋯ menu instead (`sidebar-menu-close`, coarse pointers only).
 - **Tooltips:** a long press (~500 ms) on an element with a `title` shows it in a bubble above the element (`TouchTooltip.tsx`); the click that would follow is swallowed; the next touch dismisses it. Not in the sessions list, where a long press drags.
 - Fields are at least 16 px (iOS zooms into smaller ones).
