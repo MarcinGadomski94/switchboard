@@ -174,6 +174,11 @@ export function useSessionData(sessionId: string, wantEvents: boolean, focusEven
       () => {
         if (cancelled) return;
         settle();
+        // D97: an event that is not there (deleted, a bad address) or a machine that refuses `around`: the newest page instead.
+        if (aroundId !== null) {
+          setAround(null);
+          return;
+        }
         setEvents((current) => ({ ...(current.id === sessionId ? current : cachedEvents(sessionId)), failed: true }));
       },
     );

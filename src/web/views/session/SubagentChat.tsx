@@ -141,11 +141,9 @@ export function SubagentChatView({ sessionId, session, events, activity, agentId
   const revealed = useRef<number | null>(null);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && focusEventId !== null && revealed.current !== focusEventId) {
-      if (revealEvent(el, focusEventId)) {
-        revealed.current = focusEventId;
-        stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
-      }
+    if (el && focusEventId !== null && revealed.current !== focusEventId && revealEvent(el, focusEventId)) {
+      revealed.current = focusEventId;
+      stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
       return;
     }
     if (el && stick.current) el.scrollTop = el.scrollHeight;

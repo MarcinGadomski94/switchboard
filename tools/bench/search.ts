@@ -41,9 +41,9 @@ function queries(bigSessionId: string): ReadonlyArray<readonly [label: string, r
     ['two common words', q('queue drains')],
     ['phrase', q('"queue drains before"')],
     ['prefix', q('retr*')],
-    ['rare (one file name)', q('file-1234')],
+    ['rare (one file name)', q('file-12')],
     ['no match', q('zanzibar')],
-    ['conversations, page 2 size', q('token expires', '&scope=conversations&limit=20')],
+    ['one scope, 20 results', q('token expires', '&scope=conversations&limit=20')],
     ['one session', q('worker starts', `&session=${bigSessionId}`)],
     ['artifacts only', q('upload', '&scope=artifacts')],
   ];

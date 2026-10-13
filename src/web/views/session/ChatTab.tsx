@@ -217,15 +217,14 @@ function MainChat({ sessionId, session, events, eventsState, placeholder, activi
     if (items.length > 0 && newer.available && !newer.loading && !newer.failed && el.scrollHeight <= el.clientHeight) newer.load();
     // D97: a window that does not reach the end never follows the newest item.
     if (newer.available) stick.current = false;
-    // D97: opened at a search result: that event comes into view (centred, highlighted) once it is shown.
-    if (focusEventId !== null && revealed.current !== focusEventId && loaded && session) {
-      if (revealEvent(el, focusEventId)) {
-        revealed.current = focusEventId;
-        restored.current = true;
-        stick.current = atBottom(el) && !newer.available;
-        rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
-        anchor.current = stick.current ? null : anchorItem(el);
-      }
+    // D97: opened at a search result: that event comes into view (centred, highlighted) once it is shown
+    // (until then the chat behaves as usual: its window around the event may still be on its way).
+    if (focusEventId !== null && revealed.current !== focusEventId && loaded && session && revealEvent(el, focusEventId)) {
+      revealed.current = focusEventId;
+      restored.current = true;
+      stick.current = atBottom(el) && !newer.available;
+      rememberMainChat(sessionId, { top: el.scrollTop, stick: stick.current });
+      anchor.current = stick.current ? null : anchorItem(el);
       return;
     }
     if (!restored.current && loaded && session) {

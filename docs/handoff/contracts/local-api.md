@@ -1510,3 +1510,33 @@ sessionUpdated { "id": "s1", "status": "done", …, "agents": [ main ], "agentsD
 
 ## Windowed Timeline (D95 follow-up, 2026-10-10, no contract change)
 The Timeline tab reads the session's events through *Paged events (D95)* (`?limit=1000`, then `&before=` until it holds the last 50 turns, or 50 more after **Show earlier**). No new route, query or field.
+
+## Search (D97, 2026-10-13, additive)
+Developer decision D97 (`docs/decisions.md`; details `docs/search.md`): search across the conversations, artifacts, todos and History, here and on the paired machines. Types in `src/core/search.ts`: `SearchAnswer`, `SearchGroup`, `SearchResult`, `SearchSegment`, `SearchTarget`, `SearchScope` (`conversations` · `artifacts` · `todos` · `history`). Migration 0042 (the FTS5 index).
+
+| Method | Path | Query | Answers |
+|---|---|---|---|
+| GET | /api/search | `q` (≤ 1,000 characters; words, `"phrases"`, `prefix*`; FTS syntax is searched as text), `scope` (`all` default, or a `SearchScope`), `session` (a session id; a remote id: only its machine), `machine` (`all` default, `local`, a machine id), `limit` (1–50; default 5 per group for `all`, 20 for one scope), `cursor` (a group's `nextCursor`; one scope only) | 200 `SearchAnswer` · 422 `invalid` + `errors` (`field`: `q`, `scope`, `session`, `machine`, `limit`, `cursor`) |
+| GET | /api/sessions/{id}/events | `around=<eventId>` (+ `limit`, default 1,000): ⌊(limit − 1) / 2⌋ events before it in time order, the event, and up to the rest after it; a short side is not filled from the other. `after=<eventId>` (+ `limit`: the oldest n newer ones; without: every newer one), combinable like `before` | 200 `SessionEvent[]` (oldest first) · 422 `invalid` (`field: "around"` / `"after"`: not an event of this session; `around` with anything but `limit`) |
+
+- **`SearchAnswer`**: `{ query, groups: SearchGroup[], indexing: { done, percent }, notSearched: { machine, reason }[] }`. A group: `{ scope, count, results, nextCursor }`, in the order conversations, artifacts, todos, history; `count` is every match (this machine's plus the paired machines' searched). `query` is the text as understood (`""`: nothing to search; every group empty, no error). `indexing.done` is `false` while the startup backfill runs (older history may be missing).
+- **`SearchResult`**: `{ id, scope, kind, title, snippet, sessionTitle, detail, ts, score, target, machine? }`. `kind`: `message` · `note` (D96) · `prompt` (a subagent's) · `tool` · `session` · `artifact` · `todo` · `history`. `title` / `snippet`: `SearchSegment[]` (`{ text, match?: true }`; plain text, never HTML). `score`: lower is better (bm25 × recency). `target`: `{ type: "event", sessionId, eventId, agentId }` (`agentId`: a subagent's event, its chat) · `{ type: "session", sessionId }` · `{ type: "artifact", sessionId | null, artifactId }` · `{ type: "todo", sessionId, todoId }` · `{ type: "history", claudeSessionId }`.
+- **Peers (D48):** `GET /api/search` is on `PEER_API_ALLOW`; a peer's request answers its own index only (never fans out). This machine asks every online paired machine at once (2.5 s each) with `machine=local`, namespaces the answers (`id`, session ids: `r~<machine>~…`), adds `machine`, merges by score and lists the machines it could not search in `notSearched` (`offline`, `reconnecting`, `did not answer in time`, `unreachable`, `refused this pairing`, `an older Switchboard without search`, `answered <status>`, `answered something unexpected`). History is not asked of peers. `around` / `after` reads pass through the proxy and are not kept as the offline snapshot.
+- **Devices (D73):** `GET /api/search` is allowed.
+- **UI addresses:** `/search?q=…&scope=…`, `/sessions/{id}/events/{eventId}`, `/sessions/{id}/agents/{agentId}/events/{eventId}`. No new `/hub` event.
+
+```
+GET /api/search?q=invoice%20parser&scope=conversations&limit=1
+→ 200
+{ "query": "invoice parser",
+  "groups": [ { "scope": "conversations", "count": 3, "nextCursor": "eyJsIjoxfQ",
+    "results": [ { "id": "e:4711", "scope": "conversations", "kind": "message", "detail": "Agent",
+      "title": [ { "text": "Acme billing" } ], "sessionTitle": "Acme billing",
+      "snippet": [ { "text": "The " }, { "text": "invoice parser", "match": true }, { "text": " now handles PROJ-123 dates." } ],
+      "ts": "2026-10-13T09:12:00.000Z", "score": -7.41,
+      "target": { "type": "event", "sessionId": "0b7c3e0a-…", "eventId": 4711, "agentId": null } } ] } ],
+  "indexing": { "done": true, "percent": 100 }, "notSearched": [] }
+
+GET /api/sessions/0b7c3e0a-…/events?around=4711&limit=1000   → ≤ 499 before, event 4711, ≤ 500 after
+GET /api/sessions/0b7c3e0a-…/events?after=5211&limit=1000    → the 1,000 after event 5211
+```
