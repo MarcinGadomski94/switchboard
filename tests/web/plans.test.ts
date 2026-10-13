@@ -75,6 +75,7 @@ function plan(items: readonly PlanItem[], edges: readonly { from: string; to: st
     state: 'draft',
     external: null,
     held: null,
+    pausedReason: null,
     items: items.map((entry) => ({ ...entry, dependsOn: edges.filter((edge) => edge.to === entry.id).map((edge) => edge.from) })),
     edges,
     criticalPath: { itemIds: [], minutes: 0 },
@@ -145,8 +146,9 @@ describe('header texts', () => {
     expect(durationShort(60 * 30)).toBe('30h');
     expect(durationShort(60 * 50)).toBe('2d 2h');
     expect(runningCount([{ state: 'running' }, { state: 'paused' }, { state: 'running' }])).toBe(2);
-    expect(planStateText({ state: 'paused', held: 'Plans was switched off' })).toBe('paused · Plans was switched off');
-    expect(planStateText({ state: 'paused', held: 'the plan is paused' })).toBe('paused');
+    expect(planStateText({ state: 'paused', held: 'the plan is paused', pausedReason: 'Plans was switched off' })).toBe('paused · Plans was switched off');
+    expect(planStateText({ state: 'paused', held: 'the plan is paused', pausedReason: null })).toBe('paused');
+    expect(planStateText({ state: 'running', held: 'acme is at 91% of its 5-hour limit', pausedReason: null })).toBe('running · held: acme is at 91% of its 5-hour limit');
   });
 
   it('writes the detail lines', () => {

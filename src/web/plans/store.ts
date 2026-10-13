@@ -5,8 +5,8 @@ import { isPlansOff, plansApi } from './api.ts';
 
 /**
  * D99 · what the page knows of Plans: the switch (Settings → Experimental → Plans, off by
- * default) and the plans list (`GET /api/plans`, which answers 404 `plans-off` while the
- * switch is off). One read shared by the nav's Plans item, the Plans list, the session's
+ * default; `GET /api/plans/state`, answered also while off) and, while on, the plans list
+ * (`GET /api/plans`, which answers 404 `plans-off` while the switch is off). One read shared by the nav's Plans item, the Plans list, the session's
  * Plan tab and the What's-new tour; read again on `planChanged` (coalesced), after the hub
  * reconnects and after Settings changed the switch ({@link reloadPlans}). While off,
  * nothing of Plans renders, so every other page is as it was.
@@ -39,10 +39,16 @@ function set(next: PlansState): void {
 
 async function readOnce(): Promise<void> {
   try {
+    // The switch first (always answered); the list only while Plans is on and plans.db is open.
+    const state = await plansApi.state();
+    if (!state.available || !state.enabled) {
+      set({ on: false, plans: [], loaded: true });
+      return;
+    }
     const plans = await plansApi.list();
     set({ on: true, plans: Array.isArray(plans) ? plans : [], loaded: true });
   } catch (error) {
-    // Off (404 plans-off, or a build without Plans: any 404) → nothing of Plans shows.
+    // Off meanwhile (404 plans-off), or a build without Plans (404): nothing of Plans shows.
     if (isPlansOff(error) || (error as { status?: number }).status === 404) set({ on: false, plans: [], loaded: true });
     else if (!current.loaded) set({ ...current, loaded: true });
   }

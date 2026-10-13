@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Plan } from '../../core/plans.ts';
 import { AGENT_SESSION_HEADER } from '../../core/todos.ts';
-import { PlanError } from '../plans/service.ts';
 import { PEER_REQUEST_HEADER } from '../peers/service.ts';
 import type { ApiContext } from '../routes.ts';
+import { PlanError, type PlanService } from './service.ts';
 
 function sendPlanError(reply: FastifyReply, error: unknown): FastifyReply {
   if (error instanceof PlanError) return reply.code(error.status).send(error.body());
@@ -39,11 +39,23 @@ type Control = 'start' | 'pause' | 'resume' | 'cancel';
  * The agent's (the `plan_*` MCP tools), only with the session's agent token, over the plans
  * whose source is that session: `GET|POST /agent/v1/plans`, `GET /agent/v1/plans/{planId}`,
  * `POST /agent/v1/plans/{planId}/items | edges | start`.
+ *
+ * Experimental (`docs/plans.md` → *The switch*): while Plans is off every route answers 404
+ * `plans-off` except `GET /api/plans/state` (the switch); while `plans.db` is broken, 503
+ * `plans-unavailable`. Registered by `installPlans` (`install.ts`), the one hook in `app.ts`.
  */
-export async function registerPlanRoutes(app: FastifyInstance, context: ApiContext): Promise<void> {
-  const plans = context.plans;
+export async function registerPlanRoutes(app: FastifyInstance, plans: PlanService, context: Pick<ApiContext, 'peers'>): Promise<void> {
+  // The switch (always answered: Settings and the Plans page read it).
+  app.get('/api/plans/state', async () => plans.state());
 
-  app.get('/api/plans', async (request): Promise<Plan[]> => [...(await plans.list()), ...(request.headers[PEER_REQUEST_HEADER] !== undefined ? [] : context.peers.remotePlans())]);
+  app.get('/api/plans', async (request, reply) => {
+    try {
+      const own: Plan[] = await plans.list();
+      return [...own, ...(request.headers[PEER_REQUEST_HEADER] !== undefined ? [] : context.peers.remotePlans())];
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
 
   app.post('/api/plans', async (request, reply) => {
     try {
@@ -158,7 +170,13 @@ export async function registerPlanRoutes(app: FastifyInstance, context: ApiConte
 
   // ── the agent's routes (the `switchboard` MCP helper) ──────────────────
 
-  app.get('/agent/v1/plans', async (request) => plans.listOf(agentSession(request)));
+  app.get('/agent/v1/plans', async (request, reply) => {
+    try {
+      return await plans.listOf(agentSession(request));
+    } catch (error) {
+      return sendPlanError(reply, error);
+    }
+  });
 
   app.post('/agent/v1/plans', async (request, reply) => {
     try {

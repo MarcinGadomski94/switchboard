@@ -125,12 +125,12 @@ export function finalNodeText(plan: Pick<Plan, 'targetBranch' | 'baseBranch'>): 
   return `${plan.targetBranch} → ${plan.baseBranch} · yours`;
 }
 
-/** The reason the developer switched Plans off pauses a running plan with (the core's `held`). */
-export const SWITCHED_OFF_REASON = 'Plans was switched off';
-
-/** A plan's state word for the list and the header ("running", "paused · Plans was switched off", "draft", …). */
-export function planStateText(plan: Pick<Plan, 'state' | 'held'>): string {
-  if (plan.state === 'paused') return plan.held && plan.held !== 'the plan is paused' ? `paused · ${plan.held}` : 'paused';
+/**
+ * A plan's state word for the list and the header: "running", "paused", "paused · Plans was
+ * switched off" (the core's `pausedReason`), "running · held: <why>" (usage), "draft", "done", ….
+ */
+export function planStateText(plan: Pick<Plan, 'state' | 'held' | 'pausedReason'>): string {
+  if (plan.state === 'paused') return plan.pausedReason ? `paused · ${plan.pausedReason}` : 'paused';
   if (plan.state === 'running' && plan.held) return `running · held: ${plan.held}`;
   return plan.state;
 }

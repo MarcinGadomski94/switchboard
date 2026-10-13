@@ -132,6 +132,7 @@ describe('D99 · plan graph rules', () => {
     expect(start?.description).toContain('ASK the developer');
     expect(start?.description).toContain('never choose it yourself');
     expect(PLAN_TOOLS.filter((tool) => tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(['plan_status']);
-    expect(AGENT_MCP_INSTRUCTIONS).toContain('plan_start; always ask the developer for the merge mode first');
+    // Experimental (D99): the server's instructions never name the plan tools (they exist only while Plans is on).
+    expect(AGENT_MCP_INSTRUCTIONS).not.toContain('plan_');
   });
 });

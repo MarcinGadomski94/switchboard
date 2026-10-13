@@ -25,7 +25,7 @@ export const TODO_RUN_BRANCH_PREFIX = 'todo/';
 export type TodoRunContext = SessionStartContext & Pick<ApiContext, 'todos'>;
 
 /**
- * D99 (a plan item's run, `docs/plans.md` → *Item runs*): what a plan changes in a todo's run.
+ * Plans (D99) hook (a plan item's run, `docs/plans.md` → *Item runs*): what a plan changes in a todo's run.
  * The run gets these worktrees, branch and first message instead of the ones computed from the
  * source session, and these start answers instead of the source's.
  */
@@ -113,7 +113,7 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   const name = shortNameFromTitle(todo.title, names);
 
   // The source's branch in each repo the run gets a worktree in (D76; ruling D76-workspace: a workspace's solution repos).
-  // D99: a plan item's run is cut from the plan's target branch instead.
+  // Plans (D99) hook: a plan item's run is cut from the plan's target branch instead.
   const from: Record<string, string> = {};
   const repoPaths: string[] = [];
   let note: string | null = null;
@@ -176,7 +176,7 @@ export async function runTodo(context: TodoRunContext, sessionId: string, todoId
   };
   // A workspace source with the router's answers starts the run as a Full start with the same answers (its first message carries
   // the session-start block with the worktrees, like a Full start with worktrees per solution); every other one as a simple start.
-  // D99: a plan item's run takes the plan's answers (given once on the plan) instead of the source's.
+  // Plans (D99) hook: a plan item's run takes the plan's answers (given once on the plan) instead of the source's.
   const answers = overrides ? overrides.answers : source.workType !== null && source.mode !== null && source.phase !== null ? { workType: source.workType, mode: source.mode, phase: source.phase, coordination: source.coordination } : null;
   const full = folder.kind === 'workspace' && answers !== null;
   const body = full

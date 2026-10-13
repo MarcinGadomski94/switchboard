@@ -87,7 +87,7 @@ export async function startPlansWorld(): Promise<PlansWorld> {
     call,
     async setPlans(page, on) {
       const answer = await call(page, 'PUT', '/api/settings', { 'experimental.plans': on });
-      void answer; // TEMP pre-switch
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     },
     async sourceSession(page, name) {
       const folder = await call(page, 'POST', '/api/folders', { path: git.mobile });

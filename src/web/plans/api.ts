@@ -1,4 +1,4 @@
-import type { Plan, PlanMergeMode } from '../../core/plans.ts';
+import type { Plan, PlanMergeMode, PlansState } from '../../core/plans.ts';
 import { ApiError } from '../api/client.ts';
 
 /**
@@ -66,6 +66,8 @@ export function isPlansOff(error: unknown): boolean {
 
 /** The REST calls of the Plans UI. */
 export const plansApi = {
+  /** The switch (answered also while Plans is off). */
+  state: () => call<PlansState>('GET', '/api/plans/state'),
   list: () => call<Plan[]>('GET', '/api/plans'),
   get: (id: string) => call<Plan>('GET', `/api/plans/${enc(id)}`),
   create: (body: NewPlanBody) => call<Plan>('POST', '/api/plans', body),

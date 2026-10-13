@@ -63,8 +63,6 @@ import type { LoopService } from './loops/owned.ts';
 import { registerLoopRoutes } from './api/loops.ts';
 import { registerSearchRoutes } from './api/search.ts';
 import type { SearchService } from './search/service.ts';
-import type { PlanService } from './plans/service.ts';
-import { registerPlanRoutes } from './api/plans.ts';
 
 /** What API route modules receive when they register. Later items add their services here. */
 export interface ApiContext {
@@ -129,8 +127,6 @@ export interface ApiContext {
   readonly loops: LoopService;
   /** D97: search across everything (docs/search.md). */
   readonly search: SearchService;
-  /** D99: plans: todo items in a dependency graph that a scheduler runs (docs/plans.md). */
-  readonly plans: PlanService;
 }
 
 /**
@@ -175,6 +171,5 @@ export async function registerApiRoutes(app: FastifyInstance, context: ApiContex
   await registerDraftRoutes(app, context);
   await registerLoopRoutes(app, context);
   await registerSearchRoutes(app, context);
-  await registerPlanRoutes(app, context);
   await registerHubRoutes(app, context);
 }

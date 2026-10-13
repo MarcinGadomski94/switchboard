@@ -74,6 +74,11 @@ export interface KnownSettings {
    * off Team opens nothing, runs nothing and hides nothing. Editable, default `false`.
    */
   readonly 'experimental.team': boolean;
+  /**
+   * Plans (D99) hook: Settings → Experimental → **Plans** (`docs/plans.md`). Off by default; while
+   * off Plans opens nothing (no `plans.db`), runs no scheduler and gives agents no plan tools. Editable, default `false`.
+   */
+  readonly 'experimental.plans': boolean;
   /** Launch the service at login. Read-only until M9.1 adds the toggle; `false` until set. */
   readonly 'service.startAtLogin': boolean;
   /** Where the service listens (`127.0.0.1:<port>`). Read-only. */
@@ -157,7 +162,7 @@ export function effectiveStandingInstruction(settings: Pick<KnownSettings, 'agen
 export type SettingKey = keyof KnownSettings;
 
 /** The keys `PUT /api/settings` accepts. */
-export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team'] as const;
+export const EDITABLE_SETTINGS = ['sessions.worktrees', 'sessions.ultracode', 'usage.warnAtPct', 'ui.sidebarHidden', 'ui.rightPanelHidden', 'newSession.mode', 'agents.standingInstruction', 'agents.standingInstruction.enabled', 'sessions.todoReminder', 'sessions.reviewCards', 'sessions.checkpoints', 'sessions.todoEnrich', 'sessions.modelRules', 'sessions.freshOffer', 'sessions.freshOfferPct', 'experimental.team', 'experimental.plans'] as const;
 
 /** An editable setting key. */
 export type EditableSettingKey = (typeof EDITABLE_SETTINGS)[number];
@@ -184,6 +189,8 @@ export const SETTING_DEFAULTS: EditableSettings = {
   'sessions.freshOfferPct': FRESH_OFFER_DEFAULT_PCT,
   // Team (D100) hook: off by default.
   'experimental.team': false,
+  // Plans (D99) hook: off by default.
+  'experimental.plans': false,
 };
 
 /** Bounds of `usage.warnAtPct` (a whole percentage). */
@@ -218,6 +225,7 @@ export function readKnownSettings(body: Readonly<Record<string, unknown>> | null
     'sessions.freshOffer': bool('sessions.freshOffer', SETTING_DEFAULTS['sessions.freshOffer']),
     'sessions.freshOfferPct': num('sessions.freshOfferPct', SETTING_DEFAULTS['sessions.freshOfferPct']),
     'experimental.team': bool('experimental.team', SETTING_DEFAULTS['experimental.team']),
+    'experimental.plans': bool('experimental.plans', SETTING_DEFAULTS['experimental.plans']),
     'service.startAtLogin': bool('service.startAtLogin', false),
     'service.address': text('service.address') ?? '',
     'workspace.root': text('workspace.root'),

@@ -46,8 +46,9 @@ import type {
 } from './model.ts';
 
 export type { Attachment, AttachmentDelivery, AttachmentKind } from './attachments.ts';
+// Plans (D99) hook (docs/plans-removal.md).
 import type { PlanChanged } from './plans.ts';
-export type { Plan, PlanAnswers, PlanChanged, PlanChecks, PlanEdge, PlanExternalRef, PlanItem, PlanItemState, PlanMergeMode, PlanState } from './plans.ts';
+export type { Plan, PlanAnswers, PlanChanged, PlanChecks, PlanEdge, PlanExternalRef, PlanItem, PlanItemState, PlanMergeMode, PlanState, PlansState } from './plans.ts';
 export type { SessionChip } from './derive/chips.ts';
 export type { StatusTableFormat } from './derive/status-table.ts';
 export type { SidebarFolder, SidebarFolderCreate, SidebarFolderMove, SidebarFolderPatch, SidebarLayout, SidebarPlace, SidebarPlaceInput } from './sidebar-layout.ts';
@@ -2442,7 +2443,7 @@ export interface HubEvents {
    */
   readonly draftChanged: DraftChanged;
   /**
-   * Additive (D99, `docs/plans.md`): a plan changed (created, edited, an item added or removed,
+   * Plans (D99) hook. Additive (`docs/plans.md`): a plan changed (created, edited, an item added or removed,
    * an edge, started / paused / resumed / cancelled, an item's state, done; deleted: `state`
    * `null`). The Plans page reloads that plan. Forwarded between peers (a peer's with its remote
    * plan id).
@@ -2485,6 +2486,7 @@ export const HUB_EVENT_NAMES: readonly HubEventName[] = [
   'reviewsChanged',
   'notice',
   'draftChanged',
+  // Plans (D99) hook.
   'planChanged',
   // Team (D100) hook.
   'teamChanged',

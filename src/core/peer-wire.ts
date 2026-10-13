@@ -11,6 +11,7 @@
 import type { Artifact, ArtifactDetail, ArtifactListItem, ArtifactSaveResult, HubEventName, HubEvents, InboxItem, Loop, OwnedLoop, Question, Schedule, Session, SessionDetail, SessionEvent, SessionTodo, SessionTodoList, TerminalLoop, TodoGroup } from './api.ts';
 import { type SessionMachine, parseRemoteId, remoteId } from './peers.ts';
 import type { Review } from './reviews.ts';
+// Plans (D99) hook (docs/plans-removal.md).
 import type { Plan } from './plans.ts';
 import { DEFAULT_TODO_PRIORITY, TODO_NO_PLAN, checkTodoEstimate, isTodoPriority, todoStateOf } from './todos.ts';
 
@@ -181,7 +182,7 @@ export function peerTodoGroup(machine: PeerMachineRef, group: TodoGroup): TodoGr
 }
 
 /**
- * D99: a peer's {@link Plan}: its id, its source session and its items' run sessions
+ * Plans (D99) hook: a peer's {@link Plan}: its id, its source session and its items' run sessions
  * namespaced, `machine` added. Item ids, todo ids and edges stay raw (the item routes take the
  * plan's remote id and a raw item id).
  */
@@ -199,6 +200,7 @@ export function peerPlan(machine: PeerMachineRef, plan: Plan): Plan {
  * The `/hub` events a peer's stream forwards (the rest are the peer's own
  * business: worktrees, its machine). D52: `scheduleRun` and `schedulesChanged`, so
  * a paired machine refreshes the peer's schedules when one changes there.
+ * Plans (D99) hook: `planChanged`.
  */
 export const PEER_HUB_EVENTS: ReadonlySet<HubEventName> = new Set<HubEventName>(['sessionUpdated', 'event', 'questionBatch', 'inboxChanged', 'activity', 'scheduleRun', 'schedulesChanged', 'todosChanged', 'reviewsChanged', 'artifactsChanged', 'draftChanged', 'planChanged']);
 
@@ -250,7 +252,7 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
         : null;
     }
     case 'planChanged': {
-      // D99: a peer's plan changed: its plan id namespaced.
+      // Plans (D99) hook: a peer's plan changed: its plan id namespaced.
       const changed = value as unknown as HubEvents['planChanged'];
       return typeof changed.planId === 'string' ? ({ ...changed, planId: ns(machine, changed.planId) } as HubEvents[K]) : null;
     }
@@ -277,6 +279,7 @@ export function peerHubEvent<K extends HubEventName>(machine: PeerMachineRef, na
 /** D89: `artifacts` (a session's artifacts), `artifact` (one with its versions), `artifact-save` (a save's answer). */
 /** D94: `owned-loops` (a session's Switchboard loops), `owned-loop` (one, the answer of a create / change / action). */
 export type PeerAnswerKind =
+  // Plans (D99) hook: a plan, the plans, an added item.
   | 'plan'
   | 'plans'
   | 'plan-item'
@@ -332,7 +335,7 @@ export function peerAnswerKind(method: string, path: string): PeerAnswerKind {
   // D94: a session's Switchboard loops (the list; a create, a change and an action answer the loop; Cancel answers 204).
   if (/^\/api\/sessions\/[^/]+\/loops$/.test(pathname)) return upper === 'GET' ? 'owned-loops' : upper === 'POST' ? 'owned-loop' : 'none';
   if (/^\/api\/sessions\/[^/]+\/loops\/[^/]+(?:\/(?:pause|resume|run))?$/.test(pathname)) return upper === 'PUT' || upper === 'POST' ? 'owned-loop' : 'none';
-  // D99: plans (the list; every other route answers the plan, an added item `{ plan, itemId }`; Delete answers 204).
+  // Plans (D99) hook: plans (the list; every other route answers the plan, an added item `{ plan, itemId }`; Delete answers 204).
   if (pathname === '/api/plans') return upper === 'GET' ? 'plans' : upper === 'POST' ? 'plan' : 'none';
   if (upper === 'POST' && /^\/api\/plans\/[^/]+\/items$/.test(pathname)) return 'plan-item';
   if (/^\/api\/plans\/[^/]+(?:\/.*)?$/.test(pathname)) return upper === 'DELETE' && /^\/api\/plans\/[^/]+$/.test(pathname) ? 'none' : 'plan';
@@ -407,6 +410,7 @@ export function mapPeerAnswer(machine: PeerMachineRef, kind: PeerAnswerKind, bod
       return Array.isArray(body) ? body.filter((loop) => isRecord(loop) && typeof loop['sessionId'] === 'string').map((loop) => peerOwnedLoop(machine, loop as unknown as OwnedLoop)) : body;
     case 'owned-loop':
       return isRecord(body) && typeof body['sessionId'] === 'string' ? peerOwnedLoop(machine, body as unknown as OwnedLoop) : body;
+    // Plans (D99) hook.
     case 'plan':
       return isRecord(body) && typeof body['id'] === 'string' && Array.isArray(body['items']) ? peerPlan(machine, body as unknown as Plan) : body;
     case 'plans':

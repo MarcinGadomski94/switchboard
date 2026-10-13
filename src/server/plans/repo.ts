@@ -1,9 +1,9 @@
 import type { StatementSync } from 'node:sqlite';
-import type { PlanAnswers, PlanChecks, PlanEdge, PlanExternalRef, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../../core/plans.ts';
-import type { RepoContext } from '../context.ts';
-import { transaction } from '../database.ts';
+import type { PlanAnswers, PlanChecks, PlanEdge, PlanExternalRef, PlanItemStoredState, PlanMergeMode, PlanState, PlanWaitingOn } from '../../core/plans.ts';
+import type { RepoContext } from '../db/context.ts';
+import { transaction } from '../db/database.ts';
 
-/** D99 (0043): a stored plan (`plans`). */
+/** D99 (`plans.db`): a stored plan (`plans`). */
 export interface PlanRecord {
   readonly id: string;
   readonly title: string;
@@ -18,13 +18,15 @@ export interface PlanRecord {
   readonly state: PlanState;
   readonly external: PlanExternalRef | null;
   readonly heldReason: string | null;
+  /** Why the plan was paused when Switchboard paused it (Plans switched off), `null` = by the developer or not paused. */
+  readonly pausedReason: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 }
 
-/** D99 (0043): a stored plan item (`plan_items`). */
+/** D99 (`plans.db`): a stored plan item (`plan_items`). */
 export interface PlanItemRecord {
   readonly id: string;
   readonly planId: string;
@@ -96,6 +98,7 @@ function planOf(row: Row): PlanRecord {
     state: String(row['state']) as PlanState,
     external: json<PlanExternalRef | null>(row['external'] ?? null, null),
     heldReason: text(row['held_reason'] ?? null),
+    pausedReason: text(row['paused_reason'] ?? null),
     createdAt: String(row['created_at']),
     updatedAt: String(row['updated_at']),
     startedAt: text(row['started_at'] ?? null),
@@ -146,6 +149,7 @@ const PLAN_COLUMNS: Readonly<Record<string, readonly [column: string, kind: 'tex
   state: ['state', 'text'],
   external: ['external', 'json'],
   heldReason: ['held_reason', 'text'],
+  pausedReason: ['paused_reason', 'text'],
   startedAt: ['started_at', 'text'],
   finishedAt: ['finished_at', 'text'],
 };
@@ -181,9 +185,10 @@ function stored(value: unknown, kind: 'text' | 'int' | 'json' | 'bool'): string 
 }
 
 /**
- * D99: plans, their items and dependency edges (`plans`, `plan_items`, `plan_edges`, migration
- * 0043, `docs/plans.md`). A plan goes with its source session (`ON DELETE CASCADE`), its items
- * and edges with it.
+ * D99: plans, their items and dependency edges (`plans`, `plan_items`, `plan_edges` in Plans'
+ * own `plans.db`, `db.ts`, `docs/plans.md`). Items and edges go with their plan (`ON DELETE
+ * CASCADE`). A plan's source session lives in `switchboard.db`, so the service deletes the plans
+ * of a session that is gone itself ({@link PlanRepository.sourceSessionIds}).
  */
 export class PlanRepository {
   readonly #ctx: RepoContext;
@@ -266,6 +271,11 @@ export class PlanRepository {
 
   async delete(id: string): Promise<boolean> {
     return Number(this.#statement('DELETE FROM plans WHERE id = ?').run(id).changes) > 0;
+  }
+
+  /** The distinct source sessions of the stored plans (the service prunes the plans of a deleted session). */
+  async sourceSessionIds(): Promise<string[]> {
+    return (this.#statement('SELECT DISTINCT source_session_id AS s FROM plans').all() as unknown as Row[]).map((row) => String(row['s']));
   }
 
   /** D83: a continued session's plans follow it to the fresh session. */

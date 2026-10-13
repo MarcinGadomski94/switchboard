@@ -1,0 +1,55 @@
+import type { FastifyInstance } from 'fastify';
+import type { ApiContext } from '../routes.ts';
+import { planEnvironment } from './environment.ts';
+import { PlanGit } from './git.ts';
+import { registerPlanRoutes } from './routes.ts';
+import { PlanService } from './service.ts';
+
+/** What {@link installPlans} needs from the app (the route context it already built). */
+export type PlansAppContext = Pick<ApiContext, 'config' | 'store' | 'bus' | 'todos' | 'providers' | 'supervisor' | 'worktrees' | 'folders' | 'attachments' | 'clis' | 'accounts' | 'systemItems' | 'hooks' | 'peers'>;
+
+/** The Plans service of an app (tests). */
+const services = new WeakMap<FastifyInstance, PlanService>();
+
+/** The Plans service `installPlans` gave `app` (`undefined` before). */
+export function planServiceOf(app: FastifyInstance): PlanService | undefined {
+  return services.get(app);
+}
+
+/**
+ * D99 · the one place `app.ts` wires Plans in (`docs/plans-removal.md`): the service (started
+ * when the app is ready: it reads the switch, and opens `plans.db` and starts the scheduler only
+ * while Plans is on), its routes, and its close. A `given` service (tests) is the caller's to
+ * start and close.
+ */
+export async function installPlans(app: FastifyInstance, context: PlansAppContext, given?: PlanService): Promise<PlanService> {
+  let plans = given;
+  if (!plans) {
+    const own = new PlanService({
+      dataDir: context.config.dataDir,
+      store: context.store,
+      bus: context.bus,
+      todos: context.todos,
+      git: new PlanGit({ gh: context.config.ghCommand }),
+      env: planEnvironment({
+        context: { store: context.store, providers: context.providers, supervisor: context.supervisor, worktrees: context.worktrees, folders: context.folders, todos: context.todos, attachments: context.attachments, clis: context.clis },
+        accounts: context.accounts,
+        systemItems: context.systemItems,
+        send: async (sessionId, text) => {
+          if (await context.hooks.isHooked(sessionId)) await context.hooks.sendMessage(sessionId, text);
+          else await context.supervisor.sendMessage(sessionId, text, 'service');
+        },
+      }),
+    });
+    app.addHook('onReady', async () => {
+      if (!context.config.demo) await own.start();
+    });
+    app.addHook('preClose', async () => {
+      await own.close();
+    });
+    plans = own;
+  }
+  services.set(app, plans);
+  await registerPlanRoutes(app, plans, context);
+  return plans;
+}

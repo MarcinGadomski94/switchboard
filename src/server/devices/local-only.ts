@@ -123,7 +123,7 @@ export const DEVICE_ALLOWED: readonly DeviceRule[] = [
   ['PUT', /^\/api\/device\/presence$/],
   // D97: search across everything (a read; normal use, on the phone too).
   ['GET', /^\/api\/search$/],
-  // D99: plans, all of it (ruling recorded in docs/plans.md → *Phones and paired machines*): reads, create / edit / delete,
+  // Plans (D99) hook: plans, all of it (ruling recorded in docs/plans.md → *Phones and paired machines*): reads, create / edit / delete,
   // items and dependencies, start / pause / resume / cancel, mode and holds, retry / mark done. A start is no more than the
   // phone's ▸ Run in new session (D76) many times; its safeguards (target branch, merge mode, green checks) hold on any device.
   ['GET|POST', /^\/api\/plans$/],

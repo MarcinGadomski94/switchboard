@@ -208,3 +208,17 @@ test("the session's Plan tab links to its plan", async ({ page }) => {
   await tab.getByTestId('session-plan-link').click();
   await expect(page).toHaveURL(new RegExp(`/plans/${planId}$`));
 });
+
+test('switched off while running: nothing of Plans shows; on again, the plan is paused with the reason', async ({ page }) => {
+  await openWithHub(page, `${world.baseUrl}/plans/${planId}`);
+  await expect(page.getByTestId('plan-state')).toHaveText('running');
+  await world.setPlans(page, false);
+  await page.goto(`${world.baseUrl}/plans/${planId}`);
+  await expect(page.getByTestId('plans-off')).toBeVisible();
+  await expect(page.getByTestId('nav-plans')).toHaveCount(0);
+  await world.setPlans(page, true);
+  await page.goto(`${world.baseUrl}/plans/${planId}`);
+  await expect(page.getByTestId('plan-state')).toHaveText('paused · Plans was switched off');
+  await page.getByTestId('plan-resume').click();
+  await expect(page.getByTestId('plan-state')).toHaveText('running');
+});

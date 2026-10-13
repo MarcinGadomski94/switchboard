@@ -9,6 +9,8 @@ import type { InstructionApplyResult } from '../../core/standing-instruction.ts'
 import type { PendingRoute } from './not-implemented.ts';
 // Team (D100) hook (docs/team-removal.md).
 import { teamSwitchChanged } from '../team/hooks.ts';
+// Plans (D99) hook (docs/plans-removal.md).
+import { plansSwitchChanged } from '../plans/hooks.ts';
 
 /** Settings routes (contract → REST) not implemented yet: none since M8.2. */
 export const SETTINGS_ROUTES_PENDING: readonly PendingRoute[] = [];
@@ -51,6 +53,8 @@ export async function registerSettingsRoutes(app: FastifyInstance, context: ApiC
     if ('agents.standingInstruction' in result.value || 'agents.standingInstruction.enabled' in result.value) await context.supervisor.instructionSettingChanged();
     // Team (D100) hook: Settings → Experimental → Team opens / closes team.db and its timers (docs/team-removal.md).
     if ('experimental.team' in result.value) await teamSwitchChanged(store);
+    // Plans (D99) hook: Settings → Experimental → Plans opens / closes plans.db and its scheduler; off pauses the running plans (docs/plans-removal.md).
+    if ('experimental.plans' in result.value) await plansSwitchChanged(store);
     return readSettings(store.settings, config, await folders.defaultRecord());
   });
 

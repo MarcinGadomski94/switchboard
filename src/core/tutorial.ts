@@ -632,7 +632,7 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Open Plans in the sidebar.', 'The number next to it counts the plans running now.'],
         anchors: ['plans'],
         drawer: true,
-        missing: null,
+        missing: 'Plans sits in the sidebar, after Todos. ',
       },
       {
         id: 'new',
