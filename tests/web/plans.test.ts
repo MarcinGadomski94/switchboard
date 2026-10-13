@@ -270,3 +270,13 @@ describe('timeline', () => {
     expect(finishText(new Date(2026, 9, 16, 9, 0).getTime(), now)).toMatch(/16 Oct 09:00$/);
   });
 });
+
+describe('timeline of a blocked item', () => {
+  it('shows its work up to now and projects nothing', () => {
+    const now = T0 + 2 * 3_600_000;
+    const p = plan([item('1', { state: 'blocked', storedState: 'failed', startedAt: iso(0), reason: 'was discarded' })], [], { state: 'running', startedAt: iso(0) });
+    const segments = timeline(p, now).groups[0]?.rows[0]?.segments ?? [];
+    expect(segments.map((segment) => segment.kind)).toEqual(['working']);
+    expect(timeline(p, now).projectedFinish).toBeNull();
+  });
+});

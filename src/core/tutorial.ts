@@ -15,8 +15,8 @@ import { compareSemVer, parseSemVer } from './semver.ts';
 
 /** Where a step goes before it looks for its anchor. `session` = the newest open session (none: the step's {@link TourStep.missing} card). */
 export type TourRoute =
-  // Team (D100) hook: `team` (docs/team-removal.md).
-  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' }
+  // Team (D100) hook: `team` (docs/team-removal.md). Plans (D99) hook: `plans` (docs/plans-removal.md).
+  | { readonly view: 'inbox' | 'todos' | 'schedules' | 'mcp' | 'artifacts' | 'search' | 'team' | 'plans' }
   | { readonly view: 'settings'; readonly section: string }
   | { readonly view: 'session'; readonly tab?: 'diff' };
 
@@ -79,7 +79,7 @@ const V1_16 = '1.16.0';
 /** The version D98 (accounts shared across paired machines) ships in. */
 const V1_17 = '1.17.0';
 
-/** The version D100 (Team, experimental) ships in. */
+/** The version D100 (Team, experimental) and D99 (Plans, experimental) ship in. */
 const V1_18 = '1.18.0';
 
 /** Team (D100): the steps on the Team page say this when Team is off (they point to the switch). */
@@ -614,6 +614,33 @@ export const WHATS_NEW: readonly WhatsNewFeature[] = [
         todo: ['Rename a shared account: the other machine shows the new name.', 'Reorder the accounts: the order follows.', 'Use Manage on a listed account to open its machine\'s accounts.'],
         anchors: ['accounts-shared', 'accounts-others', 'accounts-list'],
         route: { view: 'settings', section: 'accounts' },
+        missing: null,
+      },
+    ],
+  },
+  // Plans (D99) hook: its What's-new tour, shown only while Plans is on (the web filters it: src/web/plans/store.ts; docs/plans-removal.md).
+  {
+    id: 'plans',
+    decision: 'D99',
+    version: V1_18,
+    title: 'Plans (experimental)',
+    steps: [
+      {
+        id: 'nav',
+        title: 'Plans: todos that run by themselves',
+        what: "A plan groups a session's todos into a dependency graph (\"B after A\"). Switchboard starts each ticket in its own session and worktree when the ones it waits on are done, and merges the work into one epic branch, never into dev or master.",
+        todo: ['Open Plans in the sidebar.', 'The number next to it counts the plans running now.'],
+        anchors: ['plans'],
+        drawer: true,
+        missing: null,
+      },
+      {
+        id: 'new',
+        title: 'Make a plan',
+        what: 'Pick a session, name the epic branch and tick the todos that belong to it. On the plan page, ✎ Edit dependencies orders them; ▶ Start plan asks how finished tickets should be merged: there is no default.',
+        todo: ['Press ＋ New plan.', 'Fill in the title and the target branch, tick the todos, Create plan.', 'Edit the dependencies, then ▶ Start plan and choose the merge mode.'],
+        anchors: ['plans-new'],
+        route: { view: 'plans' },
         missing: null,
       },
     ],

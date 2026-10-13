@@ -108,3 +108,18 @@ export function putPlan(plan: Plan): void {
 export function dropPlan(id: string): void {
   set({ ...current, plans: current.plans.filter((plan) => plan.id !== id) });
 }
+
+/** The What's-new tour of Plans (`src/core/tutorial.ts`): it exists only while Plans is on. */
+export const PLANS_TOUR_ID = 'plans';
+
+/** Whether Plans is on, read once now (the What's-new gate asks before it opens the pending tours). */
+export async function plansOn(): Promise<boolean> {
+  start();
+  await reloadPlans();
+  return current.on;
+}
+
+/** `ids` without the Plans tour while Plans is off (the same array otherwise). */
+export function withoutPlansTour<T extends string | { readonly id: string }>(ids: readonly T[], on: boolean): readonly T[] {
+  return on ? ids : ids.filter((entry) => (typeof entry === 'string' ? entry : entry.id) !== PLANS_TOUR_ID);
+}

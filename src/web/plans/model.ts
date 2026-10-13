@@ -143,7 +143,7 @@ export function runningCount(plans: readonly Pick<Plan, 'state'>[]): number {
 // ── the graph ─────────────────────────────────────────────────────────────
 
 /** Card size and gaps of the graph (px). */
-export const GRAPH = { cardWidth: 190, cardHeight: 86, gapX: 64, gapY: 18, pad: 16 } as const;
+export const GRAPH = { cardWidth: 190, cardHeight: 86, gapX: 48, gapY: 18, pad: 16 } as const;
 
 /** One card's place. */
 export interface GraphNode {
@@ -406,6 +406,7 @@ export function timeline(plan: Plan, now: number): Timeline {
       }
       totalMs += (ended ?? now) - started;
       if (ended !== null) projectedEnd.set(item.id, ended);
+      else if (item.state === 'blocked') projectedEnd.set(item.id, now);
       else {
         const estimate = item.estimateMinutes ?? DEFAULT_ITEM_MINUTES;
         const left = Math.max(estimate * MINUTE - (now - started), MINUTE);

@@ -55,7 +55,7 @@ export function PlanTimeline({ plan, now, selectedId, onSelect }: { readonly pla
                 <button
                   type="button"
                   key={row.itemId}
-                  className="sb-plan-timeline__row"
+                  className="sb-button sb-plan-timeline__row"
                   data-testid="plan-timeline-row"
                   data-item-id={row.itemId}
                   aria-pressed={selectedId === row.itemId}

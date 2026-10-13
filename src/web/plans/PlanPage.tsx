@@ -57,7 +57,7 @@ function PlanList({ plan, selectedId, reviews, onSelect, onMerged }: { readonly 
         const review = action === 'merge' && item.runSessionId ? reviews.find((entry) => entry.sessionId === item.runSessionId && entry.state === 'pending') : undefined;
         return (
           <div key={item.id} className="sb-plan-row" data-testid="plan-row" data-item-id={item.id} data-state={item.state} aria-selected={selectedId === item.id}>
-            <button type="button" className="sb-plan-row__main" onClick={() => onSelect(item.id)}>
+            <button type="button" className="sb-button sb-plan-row__main" onClick={() => onSelect(item.id)}>
               <span className="sb-plan-row__icon" style={{ color: look.color }} aria-hidden="true">
                 {look.icon}
               </span>
@@ -301,7 +301,7 @@ export function PlanPage({ planId }: { readonly planId: string }) {
       {!phone ? (
         <div className="sb-plan-tabs" role="tablist">
           {TABS.map((entry) => (
-            <button key={entry.id} type="button" role="tab" className="sb-plan-tab-button" data-testid={`plan-tab-${entry.id}`} aria-selected={view === entry.id} onClick={() => setTab(entry.id)}>
+            <button key={entry.id} type="button" role="tab" className="sb-button sb-plan-tab-button" data-testid={`plan-tab-${entry.id}`} aria-selected={view === entry.id} onClick={() => setTab(entry.id)}>
               {entry.label}
             </button>
           ))}
@@ -326,11 +326,12 @@ export function PlanPage({ planId }: { readonly planId: string }) {
         ) : null}
         {view === 'timeline' ? <PlanTimeline plan={plan} now={now} selectedId={selectedId} onSelect={setSelectedId} /> : null}
         {view === 'list' ? <PlanList plan={plan} selectedId={selectedId} reviews={reviews.data ?? []} onSelect={setSelectedId} onMerged={() => changed()} /> : null}
-        {detail ?? (
-          <div className="sb-plan-detail sb-plan-detail--empty" data-testid="plan-detail-empty">
-            Click a ticket to see it here.
-          </div>
-        )}
+        {detail ??
+          (phone ? null : (
+            <div className="sb-plan-detail sb-plan-detail--empty" data-testid="plan-detail-empty">
+              Click a ticket to see it here.
+            </div>
+          ))}
       </div>
 
       {open === 'start' || open === 'mode' ? (

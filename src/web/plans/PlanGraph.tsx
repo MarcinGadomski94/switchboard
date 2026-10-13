@@ -89,7 +89,7 @@ export function PlanGraph({
             <button
               type="button"
               key={item.id}
-              className="sb-plan-card"
+              className="sb-button sb-plan-card"
               data-testid="plan-card"
               data-item-id={item.id}
               data-state={item.state}
@@ -105,7 +105,7 @@ export function PlanGraph({
                 <span className="sb-plan-card__icon" style={{ color: look.color }} aria-hidden="true">
                   {look.icon}
                 </span>
-                <span className="sb-plan-card__key">{item.key ?? '—'}</span>
+                {item.key ? <span className="sb-plan-card__key">{item.key}</span> : null}
                 {item.hold ? (
                   <span className="sb-plan-card__hold" data-testid="plan-card-hold" title="You merge this one">
                     ⚑ you

@@ -3,6 +3,8 @@ import { api } from '../../api/client.ts';
 import { useApi } from '../../api/useApi.ts';
 import { startTours, tourStatusText } from '../../tutorial/tour.ts';
 import { Action, Row, SectionTitle } from './rows.tsx';
+// Plans (D99) hook (docs/plans-removal.md).
+import { usePlans, withoutPlansTour } from '../../plans/store.ts';
 
 /** The Settings row of the main tour's replay. */
 export const TUTORIAL_REPLAY_LABEL = 'Show the tutorial again';
@@ -14,6 +16,9 @@ export const TUTORIAL_REPLAY_LABEL = 'Show the tutorial again';
  */
 export function TutorialSection() {
   const state = useApi(api.tutorial);
+  // Plans (D99) hook: the Plans tour is listed only while Plans is on (docs/plans-removal.md).
+  const plans = usePlans();
+  const whatsNew = withoutPlansTour(state.data?.whatsNew ?? [], plans.on);
   return (
     <>
       <SectionTitle>Tutorial</SectionTitle>
@@ -28,11 +33,11 @@ export function TutorialSection() {
         </Action>
       </Row>
       <Row id="whats-new" label="What's new tours: replay" description="A short tour of each feature added since this machine first ran Switchboard; each shows once after the update that brings it.">
-        <Action testId="whats-new-replay-all" onClick={() => startTours(state.data?.whatsNew.map((entry) => entry.id) ?? [], { replay: true })}>
+        <Action testId="whats-new-replay-all" onClick={() => startTours(whatsNew.map((entry) => entry.id), { replay: true })}>
           Replay all
         </Action>
       </Row>
-      {state.data?.whatsNew.map((entry) => (
+      {whatsNew.map((entry) => (
         <Row key={entry.id} id={`whats-new-${entry.id}`} label={entry.title} description={`${entry.version} · ${tourStatusText(entry)}`}>
           <Action testId={`whats-new-replay-${entry.id}`} onClick={() => startTours([entry.id], { replay: true })}>
             Replay
